@@ -175,6 +175,9 @@
 
   .lod-pct { font-size: 11px; color: var(--text3); margin-left: 4px; }
 
+  .kbd-grid { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12.5px; color: var(--text2); }
+  kbd { background: var(--bg4); border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 11px; color: var(--text); }
+
   .hint { font-size: 11px; color: var(--text3); margin-top: 7px; }
   .hint b { color: var(--text2); font-weight: 500; font-family: var(--mono); }
 
@@ -227,6 +230,23 @@
     <span class="dot"></span>
     <h1>Size <span>/ Calculator</span></h1>
     <span class="sub" id="lastUpdated"></span>
+  </div>
+
+  <div class="card" id="kbdHelp" style="display:none;">
+    <div class="section-title">Keyboard shortcuts</div>
+    <div class="kbd-grid">
+      <span><kbd>/</kbd> ticker</span>
+      <span><kbd>q</kbd> quick lookup</span>
+      <span><kbd>s</kbd> shares</span>
+      <span><kbd>o</kbd> options</span>
+      <span><kbd>r</kbd> refresh</span>
+      <span><kbd>l</kbd> live 60s</span>
+      <span><kbd>d</kbd> long/short</span>
+      <span><kbd>b</kbd> <kbd>c</kbd> <kbd>p</kbd> both/calls/puts</span>
+      <span><kbd>[</kbd> <kbd>]</kbd> prev/next expiry</span>
+      <span><kbd>esc</kbd> close/unfocus</span>
+      <span><kbd>?</kbd> this help</span>
+    </div>
   </div>
 
   <div class="card" id="apiKeySection">
@@ -284,13 +304,13 @@
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" onclick="refreshQuote()" title="Refresh quote">
+        <button class="btn" onclick="refreshQuote()" title="Refresh quote (r) · press ? for all shortcuts">
           ↻ Refresh
         </button>
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" onclick="toggleLive()" id="liveBtn" title="Auto-refresh every 5s for 60s">⚡ Live 60s</button>
+        <button class="btn" onclick="toggleLive()" id="liveBtn" title="Auto-refresh every 5s for 60s (l)">⚡ Live 60s</button>
       </div>
     </div>
   </div>
@@ -1321,9 +1341,57 @@ async function fetchQuickOption() {
   }
 }
 
+// ---------- keyboard shortcuts ----------
+function cycleExp(dir) {
+  if (currentMode !== 'options' || !allExps.length || !selectedExp) return;
+  const i = allExps.indexOf(selectedExp);
+  const next = allExps[i + dir];
+  if (next) selectExp(next);
+}
+
+function closeDetails() {
+  document.querySelectorAll('.detail-row').forEach(r => r.remove());
+  document.querySelectorAll('tbody tr').forEach(r => r.classList.remove('selected'));
+}
+
+function initShortcuts() {
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
+    if (e.key === 'Escape') {
+      if (typing) { e.target.blur(); return; }
+      closeDetails();
+      return;
+    }
+    if (typing) return; // never hijack keys while filling a field
+    const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
+    switch (e.key) {
+      case '/': focus('ticker'); break;
+      case 'q': focus('quickInput'); break;
+      case 's': setMode('shares'); break;
+      case 'o': setMode('options'); break;
+      case 'r': refreshQuote(); break;
+      case 'l': toggleLive(); break;
+      case 'd': if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long'); break;
+      case 'b': if (currentMode === 'options') setSide('both'); break;
+      case 'c': if (currentMode === 'options') setSide('call'); break;
+      case 'p': if (currentMode === 'options') setSide('put'); break;
+      case '[': cycleExp(-1); break;
+      case ']': cycleExp(1); break;
+      case '?': {
+        const h = document.getElementById('kbdHelp');
+        h.style.display = h.style.display === 'none' ? 'block' : 'none';
+        break;
+      }
+    }
+  });
+}
+
 loadKey();
 syncRiskDollar();
 initChartEvents();
+initShortcuts();
 </script>
 </body>
 </html>
