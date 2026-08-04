@@ -209,6 +209,14 @@
     table { font-size: 12px; }
     thead th, tbody td { padding: 7px 6px; }
     .quote-price { font-size: 24px; }
+    input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
+  }
+  @media (max-width: 500px) {
+    .m-hide { display: none; } /* condensed chain: strike/cts/loss/vol/mid only */
+    #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11px; }
+    #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
+    thead th, tbody td { padding: 7px 3px; }
+    td.strike-col, th.strike-col { width: auto !important; }
   }
 </style>
 </head>
@@ -746,6 +754,19 @@ function initChartEvents() {
     drawChart();
   });
   canvas.addEventListener('mouseleave', () => { chartHover = -1; drawChart(); });
+  // touch: drag shows crosshair (vertical page scroll still works via pan-y); tap fires click
+  canvas.style.touchAction = 'pan-y';
+  canvas.addEventListener('touchmove', e => {
+    if (!chartBars.length || !e.touches.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const g = chartGeom(canvas);
+    const xx = e.touches[0].clientX - rect.left;
+    const slot = g.plotW / chartBars.length;
+    chartHover = Math.floor((xx - g.padL) / slot);
+    if (chartHover < 0 || chartHover >= chartBars.length) chartHover = -1;
+    drawChart();
+  }, { passive: true });
+  canvas.addEventListener('touchend', () => { chartHover = -1; if (chartBars.length) drawChart(); });
   canvas.addEventListener('click', e => {
     if (!chartBars.length) return;
     const price = chartPriceAtY(e.clientY);
@@ -756,6 +777,10 @@ function initChartEvents() {
     drawChart();
   });
   window.addEventListener('resize', () => { if (chartBars.length) drawChart(); });
+  // re-render chain colspans when crossing the mobile breakpoint (rotation etc.)
+  window.matchMedia('(max-width: 500px)').addEventListener('change', () => {
+    if (quoteData && chainData.length) renderChain();
+  });
 }
 
 // ---------- live mode: poll every 5s for 60s ----------
@@ -994,40 +1019,61 @@ function calcOpt(opt, price, callStop, putStop, risk) {
   return { opt, mid, delta, iv, atStop, lossPerContract, contracts, totalCost, lossOfCost, itm, vol, oi, isCall, stop };
 }
 
+// mobile-compact formatters — keep 9 columns fitting a 375px screen
+function fmtKM(v) { // 12,345 → 12k · 2,000 → 2.0k
+  v = Number(v) || 0;
+  if (!isMobileChain()) return v.toLocaleString();
+  if (v >= 10000) return (v / 1000).toFixed(0) + 'k';
+  if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+  return String(v);
+}
+function fmt$M(v) { return isMobileChain() ? fmtN(v, 2) : fmt$(v); } // drop $ on mobile
+function fmtStrikeM(v) { return isMobileChain() ? String(+v) : fmt$(v); } // 100 not $100.00
+
 function sideCells(c, mirror) {
   // mirror=true → calls side (reads right-to-left toward strike)
   if (!c) {
-    return Array(6).fill('<td class="empty-cell">—</td>').join('');
+    // positions must mirror the cells below: OI (2) and Δ (4) hidden on mobile
+    const empties = [0,1,2,3,4,5].map(i => `<td class="empty-cell${i === 2 || i === 4 ? ' m-hide' : ''}">—</td>`);
+    return (mirror ? empties : empties.slice().reverse()).join('');
   }
   const volStyle = c.vol > c.oi && c.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--text);font-weight:600';
   const cells = [
     `<td class="side-cell${c.itm ? ' itm-tint' : ''}" style="font-weight:600;color:var(--blue)">${c.contracts > 0 ? c.contracts : '—'}</td>`,
-    `<td class="side-cell${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
-    `<td class="side-cell voloi${c.itm ? ' itm-tint' : ''}" style="color:var(--text);font-weight:600">${c.oi.toLocaleString()}</td>`,
-    `<td class="side-cell voloi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${c.vol.toLocaleString()}</td>`,
-    `<td class="side-cell${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${fmtN(c.delta, 3)}</td>`,
-    `<td class="side-cell${c.itm ? ' itm-tint' : ''}">${fmt$(c.mid)}</td>`
+    `<td class="side-cell${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
+    `<td class="side-cell voloi m-hide${c.itm ? ' itm-tint' : ''}" style="color:var(--text);font-weight:600">${c.oi.toLocaleString()}</td>`,
+    `<td class="side-cell voloi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${fmtKM(c.vol)}</td>`,
+    `<td class="side-cell m-hide${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${fmtN(c.delta, 3)}</td>`,
+    `<td class="side-cell${c.itm ? ' itm-tint' : ''}">${fmt$M(c.mid)}</td>`
   ];
   return (mirror ? cells : cells.slice().reverse()).join('');
 }
 
 function chainColCount() {
+  if (isMobileChain()) return chainSide === 'both' ? 9 : 6;
   return chainSide === 'both' ? 13 : 12;
+}
+
+function isMobileChain() {
+  return window.matchMedia('(max-width: 500px)').matches;
 }
 
 function renderChainHead() {
   const head = document.getElementById('chainHead');
+  const m = isMobileChain();
+  const sideSpan = m ? 4 : 6; // OI + Δ hidden per side on mobile
+  const lossH = m ? 'Loss' : 'Loss/ct';
   if (chainSide === 'both') {
     head.innerHTML = `<tr>
-      <th class="call-h">Cts</th><th class="call-h">Loss/ct</th><th class="call-h">OI</th><th class="call-h">Vol</th><th class="call-h">Δ</th><th class="call-h">Mid</th>
+      <th class="call-h">Cts</th><th class="call-h">${lossH}</th><th class="call-h m-hide">OI</th><th class="call-h">Vol</th><th class="call-h m-hide">Δ</th><th class="call-h">Mid</th>
       <th class="strike-col" style="width:80px;">Strike</th>
-      <th class="put-h">Mid</th><th class="put-h">Δ</th><th class="put-h">Vol</th><th class="put-h">OI</th><th class="put-h">Loss/ct</th><th class="put-h">Cts</th>
+      <th class="put-h">Mid</th><th class="put-h m-hide">Δ</th><th class="put-h">Vol</th><th class="put-h m-hide">OI</th><th class="put-h">${lossH}</th><th class="put-h">Cts</th>
     </tr>
-    <tr><th colspan="6" class="call-h" style="text-align:center;border-bottom:none;padding:2px;">← CALLS (stop: call stop)</th><th class="strike-col" style="border-bottom:none;"></th><th colspan="6" class="put-h" style="text-align:center;border-bottom:none;padding:2px;">PUTS (stop: put stop) →</th></tr>`;
+    <tr><th colspan="${sideSpan}" class="call-h" style="text-align:center;border-bottom:none;padding:2px;">← CALLS (stop: call stop)</th><th class="strike-col" style="border-bottom:none;"></th><th colspan="${sideSpan}" class="put-h" style="text-align:center;border-bottom:none;padding:2px;">PUTS (stop: put stop) →</th></tr>`;
   } else {
     head.innerHTML = `<tr>
       <th class="strike-col" style="width:80px;">Strike</th>
-      <th>Bid</th><th>Ask</th><th>Mid</th><th>Δ</th><th>IV</th><th>Vol</th><th>OI</th><th>@ stop</th><th>Loss/ct</th><th>Cts</th><th>Total cost</th>
+      <th class="m-hide">Bid</th><th class="m-hide">Ask</th><th>Mid</th><th class="m-hide">Δ</th><th class="m-hide">IV</th><th>Vol</th><th class="m-hide">OI</th><th class="m-hide">@ stop</th><th>Loss/ct</th><th>Cts</th><th>Total cost</th>
     </tr>`;
   }
 }
@@ -1097,7 +1143,7 @@ function renderChain() {
     if (strike === atmStrike) tr.classList.add('atm-row');
 
     if (chainSide === 'both') {
-      tr.innerHTML = sideCells(c, true) + `<td class="strike-col">${fmt$(strike)}</td>` + sideCells(p, false);
+      tr.innerHTML = sideCells(c, true) + `<td class="strike-col">${fmtStrikeM(strike)}</td>` + sideCells(p, false);
       // click left half → call detail, right half → put detail
       const tds = tr.querySelectorAll('td');
       tds.forEach((td, i) => {
@@ -1109,16 +1155,16 @@ function renderChain() {
       if (!one) return;
       const volStyle = one.vol > one.oi && one.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--text);font-weight:600';
       tr.innerHTML = `
-        <td class="strike-col">${fmt$(strike)}${one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
-        <td>${fmt$(one.opt.bid || 0)}</td>
-        <td>${fmt$(one.opt.ask || 0)}</td>
-        <td>${fmt$(one.mid)}</td>
-        <td style="color:var(--text2)">${fmtN(one.delta, 3)}</td>
-        <td style="color:var(--text2)">${one.iv > 0 ? (one.iv * 100).toFixed(1) + '%' : '—'}</td>
-        <td class="voloi" style="${volStyle}">${one.vol.toLocaleString()}</td>
-        <td class="voloi" style="color:var(--text);font-weight:600">${one.oi.toLocaleString()}</td>
-        <td style="color:var(--teal)">${fmt$(one.atStop)}</td>
-        <td class="loss-cell ${lossClass(one.lossOfCost)}">${one.lossPerContract > 0 ? fmt$(one.lossPerContract) + `<div class="loss-pct ${lossClass(one.lossOfCost)}">${one.lossOfCost.toFixed(0)}%</div>` : '—'}</td>
+        <td class="strike-col">${fmtStrikeM(strike)}${one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
+        <td class="m-hide">${fmt$(one.opt.bid || 0)}</td>
+        <td class="m-hide">${fmt$(one.opt.ask || 0)}</td>
+        <td>${fmt$M(one.mid)}</td>
+        <td class="m-hide" style="color:var(--text2)">${fmtN(one.delta, 3)}</td>
+        <td class="m-hide" style="color:var(--text2)">${one.iv > 0 ? (one.iv * 100).toFixed(1) + '%' : '—'}</td>
+        <td class="voloi" style="${volStyle}">${fmtKM(one.vol)}</td>
+        <td class="voloi m-hide" style="color:var(--text);font-weight:600">${one.oi.toLocaleString()}</td>
+        <td class="m-hide" style="color:var(--teal)">${fmt$(one.atStop)}</td>
+        <td class="loss-cell ${lossClass(one.lossOfCost)}">${one.lossPerContract > 0 ? fmt$M(one.lossPerContract) + `<div class="loss-pct ${lossClass(one.lossOfCost)}">${one.lossOfCost.toFixed(0)}%</div>` : '—'}</td>
         <td style="font-weight:600;color:var(--blue)">${one.contracts > 0 ? one.contracts : '—'}</td>
         <td style="color:var(--text2)">${one.contracts > 0 ? fmt$(one.totalCost) : '—'}</td>
       `;
