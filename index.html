@@ -313,6 +313,18 @@
         <button class="btn" onclick="toggleLive()" id="liveBtn" title="Auto-refresh every 5s for 60s (l)">⚡ Live 60s</button>
       </div>
     </div>
+    <div class="section-title" style="margin-top:16px;">Stops</div>
+    <div class="row" style="align-items:flex-end;">
+      <div class="field" style="flex:0 0 150px;">
+        <label>Long stop · calls</label>
+        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopLong" placeholder="LOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
+      </div>
+      <div class="field" style="flex:0 0 150px;">
+        <label>Short stop · puts</label>
+        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopShort" placeholder="HOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);padding-bottom:11px;">one stop pair, used everywhere · blank = LOD / HOD · click the chart to set: below price = long, above = short</div>
+    </div>
   </div>
 
   <div class="card">
@@ -323,16 +335,12 @@
         <input type="text" id="quickInput" placeholder="AAPL 245 6/20  or  SPY 580 put 6/20" oninput="parseQuick()" onkeydown="if(event.key==='Enter')fetchQuickOption()" style="padding-right:120px;" />
         <span id="quickParsed" style="position:absolute;right:10px;top:35px;font-size:11px;color:var(--teal);pointer-events:none;white-space:nowrap;font-family:var(--mono);"></span>
       </div>
-      <div class="field" style="flex:0 0 130px;">
-        <label>Stop (underlying)</label>
-        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="quickStop" placeholder="LOD" step="0.01" min="0" onkeydown="if(event.key==='Enter')fetchQuickOption()" /></div>
-      </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
         <button class="btn primary" onclick="fetchQuickOption()" id="quickBtn"><span id="quickBtnText">Look up</span></button>
       </div>
     </div>
-    <div class="hint">ticker · strike · expiry (m/d or m/d/yy) — calls by default, add "put" to flip &nbsp;·&nbsp; stop blank = LOD &nbsp;·&nbsp; e.g. <b>AAPL 245 6/20</b> &nbsp;or&nbsp; <b>SPY 580 put 6/18/26</b></div>
+    <div class="hint">ticker · strike · expiry (m/d or m/d/yy) — calls by default, add "put" to flip &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 6/20</b> &nbsp;or&nbsp; <b>SPY 580 put 6/18/26</b></div>
   </div>
 
   <div id="pinnedSection"></div>
@@ -365,11 +373,7 @@
               <button id="dirShort" onclick="setDirection('short')">Short</button>
             </div>
           </div>
-          <div class="field" style="flex:0 0 160px;">
-            <label>Stop level</label>
-            <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="sharesStop" placeholder="LOD" step="0.01" min="0" oninput="renderShares()" /></div>
-          </div>
-          <div style="font-size:11px;color:var(--text3);padding-bottom:11px;" id="stopHint">blank = use LOD</div>
+          <div style="font-size:11px;color:var(--text3);padding-bottom:11px;" id="stopHint">stop: long stop above, blank = LOD</div>
         </div>
         <div class="stat-grid" id="sharesStats"></div>
       </div>
@@ -387,10 +391,7 @@
           </div>
           <span style="margin-left:12px;font-size:12px;color:var(--text2);">Min |Δ|:</span>
           <input type="number" id="minDelta" value="0.20" step="0.05" min="0" max="1" style="width:70px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Shows OTM contracts with |delta| at or above this. 0 = show everything incl. ITM" />
-          <span style="margin-left:12px;font-size:12px;color:var(--text2);">Call stop:</span>
-          <div class="prefix-wrap" style="width:100px;"><span class="prefix">$</span><input type="number" id="chainStop" placeholder="LOD" step="0.01" min="0" style="padding:5px 8px 5px 22px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--mono);outline:none;" oninput="renderChain()" /></div>
-          <span style="font-size:12px;color:var(--text2);">Put stop:</span>
-          <div class="prefix-wrap" style="width:100px;"><span class="prefix">$</span><input type="number" id="chainStopPut" placeholder="HOD" step="0.01" min="0" style="padding:5px 8px 5px 22px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--mono);outline:none;" oninput="renderChain()" /></div>
+          <span style="margin-left:12px;font-size:11px;color:var(--text3);">stops: long for calls, short for puts (set above)</span>
           <span style="margin-left:auto;font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
         </div>
         <div style="overflow-x:auto;">
@@ -408,7 +409,7 @@
         <span class="ohlc" id="chartOhlc"></span>
       </div>
       <canvas id="chart" height="260"></canvas>
-      <div class="chart-hint">click a level on the chart to set it as your stop &nbsp;·&nbsp; dashed lines: <span style="color:var(--green);">HOD</span> / <span style="color:var(--red);">LOD</span> / <span style="color:var(--amber);">stop</span></div>
+      <div class="chart-hint">click to set a stop: below price = long, above = short &nbsp;·&nbsp; dashed lines: <span style="color:var(--green);">HOD</span> / <span style="color:var(--red);">LOD</span> / <span style="color:var(--amber);">long stop</span> / <span style="color:var(--teal);">short stop</span></div>
     </div>
   </div>
 
@@ -497,10 +498,21 @@ function setDirection(dir) {
   const s = document.getElementById('dirShort');
   l.className = dir === 'long' ? 'active long' : '';
   s.className = dir === 'short' ? 'active short' : '';
-  const stopInput = document.getElementById('sharesStop');
-  stopInput.placeholder = dir === 'long' ? 'LOD' : 'HOD';
-  document.getElementById('stopHint').textContent = dir === 'long' ? 'blank = use LOD' : 'blank = use HOD';
+  document.getElementById('stopHint').textContent = dir === 'long' ? 'stop: long stop above, blank = LOD' : 'stop: short stop above, blank = HOD';
   renderShares();
+}
+
+// ---------- global stop pair: one long stop (calls), one short stop (puts) ----------
+function rawStop(id) { // 0 = input blank, fall back to LOD/HOD
+  const v = parseFloat(document.getElementById(id).value);
+  return (!isNaN(v) && v > 0) ? v : 0;
+}
+function stopLongVal() { return rawStop('stopLong') || (quoteData ? (quoteData.low || 0) : 0); }
+function stopShortVal() { return rawStop('stopShort') || (quoteData ? (quoteData.high || 0) : 0); }
+
+function stopsChanged() {
+  if (quoteData) { renderShares(); renderChain(); }
+  if (chartBars.length) drawChart();
 }
 
 async function setMode(mode) {
@@ -557,6 +569,11 @@ async function fetchQuote() {
     const q = qJson?.quotes?.quote;
     if (!q || q.type === 'option') throw new Error('Symbol not found or invalid.');
 
+    // stops belong to the underlying's levels; clear them on a symbol change
+    if (quoteData && quoteData.symbol !== q.symbol) {
+      document.getElementById('stopLong').value = '';
+      document.getElementById('stopShort').value = '';
+    }
     quoteData = q;
     chainData = [];
     renderQuote();
@@ -643,17 +660,12 @@ function chartGeom(canvas) {
 function chartRange() {
   let lo = Infinity, hi = -Infinity;
   for (const b of chartBars) { if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h; }
-  // include stop line in range if set
-  const stop = currentStopLevel();
-  if (stop > 0) { if (stop < lo) lo = stop; if (stop > hi) hi = stop; }
+  // include explicitly-set stop lines in range
+  for (const s of [rawStop('stopLong'), rawStop('stopShort')]) {
+    if (s > 0) { if (s < lo) lo = s; if (s > hi) hi = s; }
+  }
   const pad = (hi - lo) * 0.06 || 0.5;
   return { lo: lo - pad, hi: hi + pad };
-}
-
-function currentStopLevel() {
-  const id = currentMode === 'shares' ? 'sharesStop' : 'chainStop';
-  const v = parseFloat(document.getElementById(id).value);
-  return (!isNaN(v) && v > 0) ? v : 0;
 }
 
 function drawChart() {
@@ -713,16 +725,19 @@ function drawChart() {
   dash(hod, cGreen);
   dash(lod, cRed);
 
-  // stop line
-  const stop = currentStopLevel();
-  if (stop > 0) {
+  // stop lines: amber = long stop, teal = short stop (only when explicitly set)
+  const cTeal = css.getPropertyValue('--teal').trim();
+  const stopLine = (price, color, label) => {
+    if (!(price > 0)) return;
     ctx.save();
-    ctx.strokeStyle = cAmber; ctx.setLineDash([6, 3]); ctx.lineWidth = 1.25;
-    ctx.beginPath(); ctx.moveTo(g.padL, y(stop)); ctx.lineTo(g.w - g.padR, y(stop)); ctx.stroke();
-    ctx.fillStyle = cAmber;
-    ctx.fillText('stop ' + stop.toFixed(2), g.w - g.padR - 70, y(stop) - 4);
+    ctx.strokeStyle = color; ctx.setLineDash([6, 3]); ctx.lineWidth = 1.25;
+    ctx.beginPath(); ctx.moveTo(g.padL, y(price)); ctx.lineTo(g.w - g.padR, y(price)); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillText(label + ' ' + price.toFixed(2), g.w - g.padR - 90, y(price) - 4);
     ctx.restore();
-  }
+  };
+  stopLine(rawStop('stopLong'), cAmber, 'long stop');
+  stopLine(rawStop('stopShort'), cTeal, 'short stop');
 
   // candles
   for (let i = 0; i < n; i++) {
@@ -793,10 +808,11 @@ function initChartEvents() {
     if (!chartBars.length) return;
     const price = chartPriceAtY(e.clientY);
     if (!(price > 0)) return;
-    const id = currentMode === 'shares' ? 'sharesStop' : 'chainStop';
+    // below current price = long stop, above = short stop
+    const spot = quoteData ? (quoteData.last || quoteData.ask || 0) : 0;
+    const id = (spot > 0 && price >= spot) ? 'stopShort' : 'stopLong';
     document.getElementById(id).value = price.toFixed(2);
-    if (currentMode === 'shares') renderShares(); else renderChain();
-    drawChart();
+    stopsChanged();
   });
   window.addEventListener('resize', () => { if (chartBars.length) drawChart(); });
   // re-render chain colspans when crossing the mobile breakpoint (rotation etc.)
@@ -894,9 +910,9 @@ function renderShares() {
   const defaultStop = isLong ? lod : hod;
   const defaultLabel = isLong ? 'LOD' : 'HOD';
 
-  const stopInput = parseFloat(document.getElementById('sharesStop').value);
-  const stop = (!isNaN(stopInput) && stopInput > 0) ? stopInput : defaultStop;
-  const usingDefault = isNaN(stopInput) || stopInput <= 0;
+  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
+  const stop = raw > 0 ? raw : defaultStop;
+  const usingDefault = raw <= 0;
   const risk = riskDollars();
   const riskPerShare = isLong ? (price - stop) : (stop - price);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
@@ -1113,10 +1129,8 @@ function renderChain() {
   const price = q.last || q.ask || 0;
   const lod = q.low || 0;
   const hod = q.high || 0;
-  const csIn = parseFloat(document.getElementById('chainStop').value);
-  const psIn = parseFloat(document.getElementById('chainStopPut').value);
-  const callStop = (!isNaN(csIn) && csIn > 0) ? csIn : lod;
-  const putStop = (!isNaN(psIn) && psIn > 0) ? psIn : hod;
+  const callStop = stopLongVal() || lod;
+  const putStop = stopShortVal() || hod;
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
 
@@ -1294,7 +1308,7 @@ function renderPinnedCard(cardId) {
       <div class="stat"><div class="s-label">Mid premium</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}</div></div>
       <div class="stat"><div class="s-label">Delta</div><div class="s-val">${d.delta.toFixed(3)}</div><div class="s-sub">${d.iv > 0 ? 'IV ' + (d.iv*100).toFixed(1) + '%' : 'IV n/a'}</div></div>
       <div class="stat ${d.vol > d.oi && d.vol > 0 ? 'highlight' : ''}"><div class="s-label">Vol / OI</div><div class="s-val">${Number(d.vol).toLocaleString()}</div><div class="s-sub">OI ${Number(d.oi).toLocaleString()}${d.vol > d.oi && d.vol > 0 ? ' · vol > OI' : ''}</div></div>
-      <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">Δ × move to ${d.usingLod ? 'LOD' : 'stop'}</div></div>
+      <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">Δ × move to ${d.stopName}</div></div>
       <div class="stat ${d.lossOfCost > 60 ? 'danger' : d.lossOfCost > 25 ? '' : 'good'}"><div class="s-label">Loss of premium</div><div class="s-val">${d.lossOfCost.toFixed(1)}%</div><div class="s-sub">${fmt$(d.lossPerContract > 0 ? d.lossPerContract : 0)} per contract</div></div>
     </div>
     <div style="height:10px;"></div>
@@ -1302,7 +1316,7 @@ function renderPinnedCard(cardId) {
       <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${contracts > 0 ? contracts : '—'}</div><div class="s-sub">for ${fmt$(risk)} risk</div></div>
       <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${contracts > 0 ? fmt$(contracts * d.lossPerContract) : '—'}</div><div class="s-sub">${contracts > 0 ? (contracts * d.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
       <div class="stat good"><div class="s-label">Total cost</div><div class="s-val">${contracts > 0 ? fmt$(totalCost) : '—'}</div><div class="s-sub">${contracts > 0 ? (totalCost / acct * 100).toFixed(1) + '% of acct' : ''}</div></div>
-      <div class="stat"><div class="s-label">Loss / contract</div><div class="s-val">${d.lossPerContract > 0 ? fmt$(d.lossPerContract) : '—'}</div><div class="s-sub">at ${d.usingLod ? 'LOD' : 'stop'}</div></div>
+      <div class="stat"><div class="s-label">Loss / contract</div><div class="s-val">${d.lossPerContract > 0 ? fmt$(d.lossPerContract) : '—'}</div><div class="s-sub">at ${d.stopName}</div></div>
     </div>
   `;
 }
@@ -1336,10 +1350,15 @@ async function fetchQuickOption() {
     if (!oq || oq.type !== 'option') throw new Error(`Option not found: ${parsed.occ} — check strike/expiry`);
 
     const underlyingPrice = uq.last || uq.ask || 0;
+    const isCall = parsed.optType === 'call';
     const lod = uq.low || 0;
-    const stopInput = parseFloat(document.getElementById('quickStop').value);
-    const stopLevel = (!isNaN(stopInput) && stopInput > 0) ? stopInput : lod;
-    const usingLod = isNaN(stopInput) || stopInput <= 0;
+    const hod = uq.high || 0;
+    // same ticker as the loaded quote → use the global stop pair; else this underlying's LOD/HOD
+    const sameTicker = quoteData && quoteData.symbol === parsed.ticker;
+    const raw = sameTicker ? rawStop(isCall ? 'stopLong' : 'stopShort') : 0;
+    const usingDefault = raw <= 0;
+    const stopLevel = usingDefault ? (isCall ? lod : hod) : raw;
+    const stopName = usingDefault ? (isCall ? 'LOD' : 'HOD') : 'stop';
     const lodDrop = stopLevel - underlyingPrice;
     const mid = ((oq.bid || 0) + (oq.ask || 0)) / 2;
     const delta = oq.greeks?.delta || 0;
@@ -1347,14 +1366,13 @@ async function fetchQuickOption() {
     const atLod = Math.max(0, mid + delta * lodDrop);
     const lossPerContract = (mid - atLod) * 100;
     const lossOfCost = mid > 0 ? ((mid - atLod) / mid * 100) : 0;
-    const isCall = parsed.optType === 'call';
     const itm = isCall ? parsed.strike < underlyingPrice : parsed.strike > underlyingPrice;
     const lodPct = underlyingPrice > 0 ? ((stopLevel - underlyingPrice) / underlyingPrice * 100).toFixed(2) : '0.00';
-    const stopLabel = usingLod ? `LOD ${fmt$(lod)}` : `stop ${fmt$(stopLevel)}`;
+    const stopLabel = `${stopName} ${fmt$(stopLevel)}`;
 
     const cardId = 'pinned_' + Date.now();
     pinnedData[cardId] = {
-      parsed, isCall, itm, underlyingPrice, stopLabel, lodPct, usingLod,
+      parsed, isCall, itm, underlyingPrice, stopLabel, lodPct, stopName,
       mid, bid: oq.bid || 0, ask: oq.ask || 0, delta, iv, atLod,
       lossPerContract, lossOfCost, vol: oq.volume || 0, oi: oq.open_interest || 0
     };
@@ -1364,7 +1382,6 @@ async function fetchQuickOption() {
     document.getElementById('pinnedSection').prepend(newCard);
     renderPinnedCard(cardId);
     document.getElementById('quickInput').value = '';
-    document.getElementById('quickStop').value = '';
     document.getElementById('quickParsed').textContent = '';
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch(e) {
