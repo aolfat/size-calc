@@ -11,6 +11,7 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 - **Shares mode** (default): Long/Short toggle. Shares = risk$ / |entry − stop|
 - **Options mode**: straddle T-chart — calls left, strike center column, puts right, mirrored columns (Cts, Loss/ct, OI, Vol, Δ, Mid | Strike | reversed). Single-side views (Calls/Puts) use a wider layout with bid/ask/IV/@stop/total. Mobile (<500px) hides OI/Δ/bid/ask/IV/@stop and compacts number formats
 - **Option loss model**: linear delta approx. `premium@stop = max(0, mid + delta × (stop − spot))`, loss/ct = (mid − premium@stop) × 100, contracts = floor(risk$ / loss per ct). Calls priced off the long stop, puts off the short stop
+- **Reverse sizing**: Shares stat and Contracts stats (detail row, pinned cards) are editable inputs; committing a quantity writes risk$ back (riskForQty) and everything re-renders from it. Quantity floors use unitsFor (epsilon-tolerant) so counts round-trip exactly
 - **Min |Δ| filter** (default 0.20): when set, shows ONLY OTM contracts with |delta| ≥ threshold (ITM hidden). Set to 0 = full chain
 - **Loss/ct cells** show dollar loss with % of premium lost stacked below, color coded (green <25%, amber 25–60%, red >60%)
 - **Vol/OI**: bold bright columns with blue tint; Vol turns amber when vol > OI (new positioning signal). This emphasis is intentional — don't tone it down

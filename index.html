@@ -119,6 +119,11 @@
   .stat.teal::before { background: var(--teal); }
   .stat.teal .s-val { color: var(--teal); }
 
+  /* editable stat value (shares / contracts back into risk) */
+  .s-val-input { background: transparent; border: none; border-bottom: 1px dashed var(--border2); color: inherit; font: inherit; padding: 0; width: 100px; outline: none; }
+  .s-val-input:focus { border-bottom: 1px solid var(--blue); }
+  .s-val-input::-webkit-outer-spin-button, .s-val-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
   .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; font-variant-numeric: tabular-nums; }
@@ -213,6 +218,7 @@
     thead th, tbody td { padding: 7px 6px; }
     .quote-price { font-size: 24px; }
     input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
+    .s-val-input { font-size: 22px !important; } /* keep stat-value inputs matching the stat font */
   }
   @media (max-width: 500px) {
     .m-hide { display: none; } /* condensed chain: strike/cts/loss/vol/mid only */
@@ -490,6 +496,40 @@ function recalcAll() {
     renderChain();
   }
   renderPinnedCards();
+}
+
+// reverse sizing: type a share/contract count, risk $ follows
+function sharesQtyChanged(el) {
+  const qty = Math.floor(parseFloat(el.value) || 0);
+  if (!quoteData || qty <= 0) { renderShares(); return; }
+  const q = quoteData;
+  const price = q.last || q.ask || 0;
+  const isLong = direction === 'long';
+  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
+  const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
+  const rps = isLong ? price - stop : stop - price;
+  if (rps <= 0) { renderShares(); return; }
+  document.getElementById('riskDollar').value = riskForQty(qty, rps);
+  syncFromDollar();
+}
+
+function contractsQtyChanged(el, lossPerCt) {
+  const qty = Math.floor(parseFloat(el.value) || 0);
+  if (qty <= 0 || !(lossPerCt > 0)) { renderChain(); renderPinnedCards(); return; }
+  document.getElementById('riskDollar').value = riskForQty(qty, lossPerCt);
+  syncFromDollar();
+}
+
+function riskForQty(qty, perUnit) {
+  // cent-rounded risk that floors back to exactly qty units
+  let risk = +(qty * perUnit).toFixed(2);
+  if (unitsFor(risk, perUnit) < qty) risk = +(risk + 0.01).toFixed(2);
+  return risk;
+}
+
+function unitsFor(risk, perUnit) {
+  // float-noise-tolerant floor: 11.999999999999998 units is 12, not 11
+  return perUnit > 0 ? Math.floor(risk / perUnit + 1e-9) : 0;
 }
 
 function setDirection(dir) {
@@ -925,14 +965,14 @@ function renderShares() {
     if (chartBars.length) drawChart();
     return;
   }
-  const shares = Math.floor(risk / riskPerShare);
+  const shares = unitsFor(risk, riskPerShare);
   const posSize = shares * price;
   const dirTag = isLong
     ? '<span class="tag call" style="margin-left:6px;">Long</span>'
     : '<span class="tag put" style="margin-left:6px;">Short</span>';
 
   document.getElementById('sharesStats').innerHTML = `
-    <div class="stat highlight"><div class="s-label">Shares</div><div class="s-val">${shares.toLocaleString()}</div><div class="s-sub">to ${isLong ? 'buy' : 'short'}</div></div>
+    <div class="stat highlight"><div class="s-label">Shares</div><div class="s-val"><input type="number" class="s-val-input" value="${shares}" min="0" step="1" title="Type a share count, risk $ follows" onchange="sharesQtyChanged(this)" /></div><div class="s-sub">to ${isLong ? 'buy' : 'short'} · edit to set risk</div></div>
     <div class="stat danger"><div class="s-label">Max loss</div><div class="s-val">${fmt$(shares * riskPerShare)}</div><div class="s-sub">${(shares * riskPerShare / acct * 100).toFixed(2)}% of acct</div></div>
     <div class="stat"><div class="s-label">Position size</div><div class="s-val">${fmt$(posSize)}</div><div class="s-sub">${(posSize / acct * 100).toFixed(1)}% of acct</div></div>
     <div class="stat teal"><div class="s-label">Risk / share</div><div class="s-val">${fmt$(riskPerShare)}</div><div class="s-sub">${fmt$(price)} → ${fmt$(stop)}${usingDefault ? ' (' + defaultLabel + ')' : ''}</div></div>
@@ -1048,7 +1088,7 @@ function calcOpt(opt, price, callStop, putStop, risk) {
   const drop = stop - price;
   const atStop = Math.max(0, mid + delta * drop);
   const lossPerContract = (mid - atStop) * 100;
-  const contracts = lossPerContract > 0 ? Math.floor(risk / lossPerContract) : 0;
+  const contracts = unitsFor(risk, lossPerContract);
   const totalCost = contracts * mid * 100;
   const lossOfCost = mid > 0 ? ((mid - atStop) / mid * 100) : 0;
   const itm = isCall ? opt.strike < price : opt.strike > price;
@@ -1236,7 +1276,7 @@ function showDetail(tr, c, acct) {
   dr.dataset.sym = c.opt.symbol;
   dr.innerHTML = `<td colspan="${chainColCount()}"><div class="detail-inner">
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${c.contracts > 0 ? c.contracts : '—'}</div><div class="s-sub">${c.contracts > 0 ? fmt$(c.totalCost) + ' outlay' : 'stop too wide'}</div></div>
+      <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${c.lossPerContract > 0 ? `<input type="number" class="s-val-input" value="${c.contracts}" min="0" step="1" title="Type a contract count, risk $ follows" onchange="contractsQtyChanged(this, ${c.lossPerContract})" />` : '—'}</div><div class="s-sub">${c.contracts > 0 ? fmt$(c.totalCost) + ' outlay · edit to set risk' : 'stop too wide'}</div></div>
       <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${c.lossPerContract > 0 ? fmt$(c.contracts * c.lossPerContract) : '—'}</div><div class="s-sub">${c.lossPerContract > 0 ? (c.contracts * c.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
       <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(c.atStop)}</div><div class="s-sub">was ${fmt$(c.mid)} mid · stop ${fmt$(c.stop)}</div></div>
       <div class="stat"><div class="s-label">Loss of premium</div><div class="s-val">${c.lossOfCost.toFixed(1)}%</div><div class="s-sub">per contract</div></div>
@@ -1294,7 +1334,7 @@ function renderPinnedCard(cardId) {
   if (!d || !el) return;
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  const contracts = d.lossPerContract > 0 ? Math.floor(risk / d.lossPerContract) : 0;
+  const contracts = unitsFor(risk, d.lossPerContract);
   const totalCost = contracts * d.mid * 100;
   el.innerHTML = `
     <div class="pinned-header">
@@ -1313,7 +1353,7 @@ function renderPinnedCard(cardId) {
     </div>
     <div style="height:10px;"></div>
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${contracts > 0 ? contracts : '—'}</div><div class="s-sub">for ${fmt$(risk)} risk</div></div>
+      <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${d.lossPerContract > 0 ? `<input type="number" class="s-val-input" value="${contracts}" min="0" step="1" title="Type a contract count, risk $ follows" onchange="contractsQtyChanged(this, ${d.lossPerContract})" />` : '—'}</div><div class="s-sub">for ${fmt$(risk)} risk · edit to set risk</div></div>
       <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${contracts > 0 ? fmt$(contracts * d.lossPerContract) : '—'}</div><div class="s-sub">${contracts > 0 ? (contracts * d.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
       <div class="stat good"><div class="s-label">Total cost</div><div class="s-val">${contracts > 0 ? fmt$(totalCost) : '—'}</div><div class="s-sub">${contracts > 0 ? (totalCost / acct * 100).toFixed(1) + '% of acct' : ''}</div></div>
       <div class="stat"><div class="s-label">Loss / contract</div><div class="s-val">${d.lossPerContract > 0 ? fmt$(d.lossPerContract) : '—'}</div><div class="s-sub">at ${d.stopName}</div></div>
