@@ -548,6 +548,7 @@ function setDirection(dir) {
   l.className = dir === 'long' ? 'active long' : '';
   s.className = dir === 'short' ? 'active short' : '';
   document.getElementById('stopHint').textContent = dir === 'long' ? 'stop: long stop above, blank = LOD' : 'stop: short stop above, blank = HOD';
+  renderAdr();
   renderShares();
 }
 
@@ -569,6 +570,7 @@ async function setMode(mode) {
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
   document.getElementById('fetchBtnText').textContent = mode === 'shares' ? 'Load quote' : 'Load chain';
+  renderAdr();
   recalcAll();
   if (quoteData) {
     document.getElementById('sharesSection').style.display = mode === 'shares' ? 'block' : 'none';
@@ -728,8 +730,19 @@ function renderAdr() {
   if (!(adrValue > 0) || !quoteData) { el.textContent = ''; return; }
   const price = quoteData.last || quoteData.ask || 0;
   const lod = quoteData.low || 0;
-  const off = (price - lod) / adrValue;
-  el.textContent = `ADR14 ${fmtN(adrValue, 2)} · ${fmtN(off, 2)} ADR off LOD`;
+  const hod = quoteData.high || 0;
+  const adrPct = price > 0 ? (adrValue / price * 100) : 0;
+  // % of the ADR already consumed from the reference level
+  const used = ref => Math.max(0, (ref === 'lod' ? price - lod : hod - price) / adrValue * 100);
+  const tag = (label, v) => `${label} <span style="color:${v >= 90 ? 'var(--amber)' : 'var(--text)'};font-weight:600;">${v.toFixed(0)}%</span>`;
+  // long trades measure off LOD, shorts off HOD; follow the active context
+  const ctx = currentMode === 'shares'
+    ? (direction === 'long' ? 'long' : 'short')
+    : (chainSide === 'put' ? 'short' : chainSide === 'call' ? 'long' : 'both');
+  const usage = ctx === 'long' ? tag('used off LOD', used('lod'))
+    : ctx === 'short' ? tag('used off HOD', used('hod'))
+    : `${tag('LOD', used('lod'))} · ${tag('HOD', used('hod'))}`;
+  el.innerHTML = `ADR14 ${fmtN(adrValue, 2)} (${adrPct.toFixed(1)}%) · ${usage}`;
 }
 
 function chartGeom(canvas) {
@@ -1148,6 +1161,7 @@ function setSide(s) {
   chainSide = s;
   ['sBoth','sCall','sPut'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('s' + s.charAt(0).toUpperCase() + s.slice(1)).classList.add('active');
+  renderAdr();
   renderChain();
 }
 
