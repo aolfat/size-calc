@@ -16,7 +16,7 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 - **Loss/ct cells** show dollar loss with % of premium lost stacked below, color coded (green <25%, amber 25–60%, red >60%)
 - **Vol/OI**: bold bright columns with blue tint; Vol turns amber when vol > OI (new positioning signal). This emphasis is intentional — don't tone it down
 - **Expirations**: tabs, monthlies (third Friday, or Thursday-before if holiday) badged amber with "M" corner tag. Shows 12 + "+N more" expand
-- **Quick lookup**: shorthand parser ("AAPL 245 6/20", "SPY 580 put 6/18/26") → OCC symbol → pinned result cards, newest on top
+- **Quick lookup**: shorthand parser ("AAPL 245 6/20", "SPY 580 put 6/18/26") → OCC symbol → pinned result cards, newest on top. Each card's stop is editable in its header (recalcPinnedStop rederives premium@stop, loss/ct, loss %, contracts)
 - **5-min chart**: canvas candlesticks (hand-rolled, no chart lib) at the bottom of the page. Walks back up to 6 sessions if today has no data. Dashed lines: HOD/LOD, amber long stop, teal short stop. Click = set stop (side-aware). Hover/touch-drag = OHLC crosshair
 - **Keyboard shortcuts**: single keydown listener, ? shows the map. Keys ignored while typing in fields
 - **Live mode**: ⚡ button polls quote + current chain every 5s for 60s, chart every ~20s, with countdown and overlap guards

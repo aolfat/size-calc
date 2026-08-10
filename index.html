@@ -180,6 +180,8 @@
 
   .lod-pct { font-size: 11px; color: var(--text3); margin-left: 4px; }
 
+  .kbd-toggle { background: none; border: none; color: var(--text3); font-size: 11.5px; cursor: pointer; padding: 2px 4px; }
+  .kbd-toggle:hover { color: var(--text); }
   .kbd-grid { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12.5px; color: var(--text2); }
   kbd { background: var(--bg4); border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 11px; color: var(--text); }
 
@@ -236,6 +238,7 @@
     <span class="dot"></span>
     <h1>Size <span>/ Calculator</span></h1>
     <span class="sub" id="lastUpdated"></span>
+    <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
   </div>
 
   <div class="card" id="kbdHelp" style="display:none;">
@@ -1328,6 +1331,27 @@ function removePinned(cardId) {
   if (el) el.remove();
 }
 
+// everything derived from the card's stop level
+function recalcPinnedStop(d) {
+  const drop = d.stopLevel - d.underlyingPrice;
+  d.atLod = Math.max(0, d.mid + d.delta * drop);
+  d.lossPerContract = (d.mid - d.atLod) * 100;
+  d.lossOfCost = d.mid > 0 ? ((d.mid - d.atLod) / d.mid * 100) : 0;
+  d.lodPct = d.underlyingPrice > 0 ? (drop / d.underlyingPrice * 100).toFixed(2) : '0.00';
+}
+
+function pinnedStopChanged(cardId, el) {
+  const d = pinnedData[cardId];
+  if (!d) return;
+  const v = parseFloat(el.value);
+  if (!isNaN(v) && v > 0) {
+    d.stopLevel = v;
+    d.stopName = 'stop';
+    recalcPinnedStop(d);
+  }
+  renderPinnedCard(cardId);
+}
+
 function renderPinnedCard(cardId) {
   const d = pinnedData[cardId];
   const el = document.getElementById(cardId);
@@ -1341,7 +1365,7 @@ function renderPinnedCard(cardId) {
       <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span class="${d.itm ? 'badge-itm' : 'badge-otm'}" style="font-size:11px;padding:2px 7px;border-radius:3px;">${d.itm ? 'ITM' : 'OTM'}</span>
-      <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopLabel} (${d.lodPct}%)</span></span>
+      <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span></span>
       <button onclick="removePinned('${cardId}')" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
@@ -1399,23 +1423,19 @@ async function fetchQuickOption() {
     const usingDefault = raw <= 0;
     const stopLevel = usingDefault ? (isCall ? lod : hod) : raw;
     const stopName = usingDefault ? (isCall ? 'LOD' : 'HOD') : 'stop';
-    const lodDrop = stopLevel - underlyingPrice;
     const mid = ((oq.bid || 0) + (oq.ask || 0)) / 2;
     const delta = oq.greeks?.delta || 0;
     const iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
-    const atLod = Math.max(0, mid + delta * lodDrop);
-    const lossPerContract = (mid - atLod) * 100;
-    const lossOfCost = mid > 0 ? ((mid - atLod) / mid * 100) : 0;
     const itm = isCall ? parsed.strike < underlyingPrice : parsed.strike > underlyingPrice;
-    const lodPct = underlyingPrice > 0 ? ((stopLevel - underlyingPrice) / underlyingPrice * 100).toFixed(2) : '0.00';
-    const stopLabel = `${stopName} ${fmt$(stopLevel)}`;
 
     const cardId = 'pinned_' + Date.now();
-    pinnedData[cardId] = {
-      parsed, isCall, itm, underlyingPrice, stopLabel, lodPct, stopName,
-      mid, bid: oq.bid || 0, ask: oq.ask || 0, delta, iv, atLod,
-      lossPerContract, lossOfCost, vol: oq.volume || 0, oi: oq.open_interest || 0
+    const d = {
+      parsed, isCall, itm, underlyingPrice, stopName, stopLevel,
+      mid, bid: oq.bid || 0, ask: oq.ask || 0, delta, iv,
+      vol: oq.volume || 0, oi: oq.open_interest || 0
     };
+    recalcPinnedStop(d);
+    pinnedData[cardId] = d;
     const newCard = document.createElement('div');
     newCard.className = 'pinned-card';
     newCard.id = cardId;
@@ -1444,6 +1464,11 @@ function closeDetails() {
   document.querySelectorAll('tbody tr').forEach(r => r.classList.remove('selected'));
 }
 
+function toggleKbdHelp() {
+  const h = document.getElementById('kbdHelp');
+  h.style.display = h.style.display === 'none' ? 'block' : 'none';
+}
+
 function initShortcuts() {
   document.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1469,11 +1494,7 @@ function initShortcuts() {
       case 'p': if (currentMode === 'options') setSide('put'); break;
       case '[': cycleExp(-1); break;
       case ']': cycleExp(1); break;
-      case '?': {
-        const h = document.getElementById('kbdHelp');
-        h.style.display = h.style.display === 'none' ? 'block' : 'none';
-        break;
-      }
+      case '?': toggleKbdHelp(); break;
     }
   });
 }
