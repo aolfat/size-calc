@@ -3,7 +3,7 @@
 Single-file trade position sizing tool. No build step, no dependencies, no framework — one self-contained HTML file with vanilla JS. Keep it that way.
 
 ## What it does
-Sizes shares and options positions off a dollar risk amount (account size × risk %), using Tradier's REST API directly from the browser (key stored in localStorage, never in the file).
+Sizes shares and options positions off a dollar risk amount (account size × risk %), using Tradier's REST API directly from the browser (key stored in localStorage, never in the file). Account size and risk % persist in localStorage. Risk $ is styled as the loud number (big, bold, red — it's the max loss). Risk % preset chips: .25/.50/1/2/3%, active chip tracks whatever the current % resolves to.
 
 ## Architecture
 - **Tradier API**: `api.tradier.com/v1` (or sandbox), Bearer auth. Endpoints used: `/markets/quotes` (greeks=true), `/markets/options/expirations`, `/markets/options/chains`, `/markets/timesales` (5min interval, for the chart)

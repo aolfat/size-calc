@@ -167,6 +167,11 @@
   #stopLong { border-left: 3px solid var(--red); }
   #stopShort { border-left: 3px solid var(--green); }
 
+  /* Risk $ is the number that matters: the money you're willing to lose */
+  #riskDollar { font-size: 20px; font-weight: 700; color: var(--red); border-color: var(--red-bd); }
+  #riskDollar:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,93,93,0.12); }
+  .risk-wrap .prefix { color: var(--red); font-weight: 700; }
+
   /* recalc flash: pulse freshly re-rendered stat values */
   @keyframes valPulse { 0% { color: var(--blue); text-shadow: 0 0 14px rgba(91,157,255,0.75); } 100% { } }
   .pulse .s-val { animation: valPulse 0.6s ease; }
@@ -245,6 +250,7 @@
     .quote-price { font-size: 24px; }
     input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
     .s-val-input { font-size: 22px !important; } /* keep stat-value inputs matching the stat font */
+    #riskDollar { font-size: 20px !important; } /* keep the max-loss figure prominent on mobile */
   }
   @media (max-width: 500px) {
     .m-hide { display: none; } /* condensed chain: strike/cts/loss/vol/mid only */
@@ -316,9 +322,17 @@
         <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" oninput="recalcAll()" />
       </div>
       <div class="field">
-        <label>Risk $</label>
-        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" oninput="syncFromDollar()" /></div>
+        <label style="color:var(--red);">Risk $ — max loss</label>
+        <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" oninput="syncFromDollar()" title="The dollar amount you're willing to lose on this trade" /></div>
       </div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap;" id="riskPresets">
+      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Presets</span>
+      <button class="filter-btn" data-pct="0.25" onclick="setRiskPct(0.25)">.25%</button>
+      <button class="filter-btn" data-pct="0.5" onclick="setRiskPct(0.5)">.50%</button>
+      <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
+      <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
+      <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
     </div>
   </div>
 
@@ -557,6 +571,19 @@ function syncRiskDollar() {
   document.getElementById('riskDollar').value = Math.round(acct * pct / 100);
   store.set('calc_account', acct);
   store.set('calc_risk', pct);
+  updateRiskPresets();
+}
+
+function setRiskPct(pct) {
+  document.getElementById('riskPct').value = pct;
+  recalcAll();
+}
+
+function updateRiskPresets() {
+  const pct = parseFloat(document.getElementById('riskPct').value);
+  document.querySelectorAll('#riskPresets .filter-btn').forEach(b => {
+    b.classList.toggle('active', parseFloat(b.dataset.pct) === pct);
+  });
 }
 function syncFromDollar() {
   const acct = parseFloat(document.getElementById('accountSize').value) || 0;
@@ -566,6 +593,7 @@ function syncFromDollar() {
   }
   store.set('calc_account', acct);
   store.set('calc_risk', document.getElementById('riskPct').value);
+  updateRiskPresets();
   flashNext = true;
   if (quoteData) { renderShares(); renderChain(); }
   renderPinnedCards();
