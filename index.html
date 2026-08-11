@@ -148,7 +148,30 @@
   .badge-itm { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--amber-bg); color: var(--amber); font-weight: 600; margin-left: 6px; vertical-align: middle; }
   .badge-otm { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--bg4); color: var(--text3); font-weight: 600; margin-left: 6px; vertical-align: middle; }
 
-  .error { background: var(--red-bg); border: 1px solid var(--red-bd); border-radius: var(--radius); padding: 10px 14px; color: var(--red); font-size: 13px; margin-bottom: 12px; }
+  .error { background: var(--red-bg); border: 1px solid var(--red-bd); border-radius: var(--radius); padding: 10px 14px; color: var(--red); font-size: 13px; position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 120; max-width: min(90vw, 640px); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.8); }
+
+  /* sticky context bar: appears once you scroll past the quote card */
+  #stickyBar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 90; align-items: center; gap: 14px; padding: 7px 16px; background: rgba(18,21,28,0.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2); font-family: var(--mono); font-size: 12.5px; cursor: pointer; white-space: nowrap; overflow-x: auto; }
+  #stickyBar .sb-sym { font-weight: 700; color: var(--text); }
+  #stickyBar .sb-px { font-weight: 600; }
+  #stickyBar span { flex: 0 0 auto; }
+
+  /* collapsed setup cards */
+  .card-toggle { cursor: pointer; user-select: none; }
+  .card-toggle:not(.open) { margin-bottom: 0; }
+  .card-toggle .chev { color: var(--text3); font-size: 10px; transition: transform 0.15s; display: inline-block; }
+  .card-toggle.open .chev { transform: rotate(90deg); }
+  .card-toggle .title-status { color: var(--text3); font-weight: 500; text-transform: none; letter-spacing: 0; font-family: var(--mono); }
+
+  /* stop inputs carry their chart line color */
+  #stopLong { border-left: 3px solid var(--amber); }
+  #stopShort { border-left: 3px solid var(--teal); }
+
+  /* recalc flash: pulse freshly re-rendered stat values */
+  @keyframes valPulse { 0% { color: var(--blue); text-shadow: 0 0 14px rgba(91,157,255,0.75); } 100% { } }
+  .pulse .s-val { animation: valPulse 0.6s ease; }
+
+  .fgroup { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border2); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -233,6 +256,7 @@
 </style>
 </head>
 <body>
+<div id="stickyBar" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top"></div>
 <div class="app">
 
   <div class="header">
@@ -261,21 +285,23 @@
   </div>
 
   <div class="card" id="apiKeySection">
-    <div class="section-title">Tradier API</div>
-    <div class="row">
-      <div class="field" style="flex:2;">
-        <label>API Key</label>
-        <input type="password" id="apiKey" placeholder="Paste your Tradier access token" oninput="saveKey()" />
+    <div class="section-title card-toggle" id="apiToggle" onclick="toggleApi()"><span class="chev">▶</span> Tradier API <span class="title-status" id="apiStatus"></span></div>
+    <div id="apiBody">
+      <div class="row">
+        <div class="field" style="flex:2;">
+          <label>API Key</label>
+          <input type="password" id="apiKey" placeholder="Paste your Tradier access token" oninput="saveKey()" />
+        </div>
+        <div class="field" style="flex:0 0 auto; justify-content: flex-end;">
+          <label>&nbsp;</label>
+          <select id="apiEnv" onchange="saveKey()" style="width:140px;">
+            <option value="production">Production</option>
+            <option value="sandbox">Sandbox</option>
+          </select>
+        </div>
       </div>
-      <div class="field" style="flex:0 0 auto; justify-content: flex-end;">
-        <label>&nbsp;</label>
-        <select id="apiEnv" onchange="saveKey()" style="width:140px;">
-          <option value="production">Production</option>
-          <option value="sandbox">Sandbox</option>
-        </select>
-      </div>
+      <p class="api-notice">Key stored in localStorage — never leaves your browser. Get one free at <a href="https://developer.tradier.com" target="_blank">developer.tradier.com</a></p>
     </div>
-    <p class="api-notice">Key stored in localStorage — never leaves your browser. Get one free at <a href="https://developer.tradier.com" target="_blank">developer.tradier.com</a></p>
   </div>
 
   <div class="card">
@@ -339,7 +365,8 @@
   </div>
 
   <div class="card">
-    <div class="section-title">Quick lookup</div>
+    <div class="section-title card-toggle" id="quickToggle" onclick="toggleQuick()"><span class="chev">▶</span> Quick lookup <span class="title-status">shorthand option lookup · q</span></div>
+    <div id="quickBody">
     <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
       <div class="field" style="flex:2;min-width:220px;position:relative;">
         <label>Option shorthand</label>
@@ -352,6 +379,7 @@
       </div>
     </div>
     <div class="hint">ticker · strike · expiry (m/d or m/d/yy) — calls by default, add "put" to flip &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 6/20</b> &nbsp;or&nbsp; <b>SPY 580 put 6/18/26</b></div>
+    </div>
   </div>
 
   <div id="pinnedBar"></div>
@@ -391,6 +419,16 @@
       </div>
     </div>
 
+    <div class="card chart-wrap" id="chartWrap" style="display:none;">
+      <div class="chart-head">
+        <span class="section-title" style="margin-bottom:0;">5-min chart</span>
+        <span style="font-size:11.5px;color:var(--text2);font-family:var(--mono);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
+        <span class="ohlc" id="chartOhlc"></span>
+      </div>
+      <canvas id="chart" height="260"></canvas>
+      <div class="chart-hint">click to set a stop: below price = long, above = short &nbsp;·&nbsp; dashed lines: <span style="color:var(--green);">HOD</span> / <span style="color:var(--red);">LOD</span> / <span style="color:var(--amber);">long stop</span> / <span style="color:var(--teal);">short stop</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
+    </div>
+
     <div id="optionsSection" style="display:none;">
       <div class="card">
         <div class="section-title">Expiration</div>
@@ -401,13 +439,16 @@
             <button id="sCall" onclick="setSide('call')">Calls</button>
             <button id="sPut" onclick="setSide('put')">Puts</button>
           </div>
-          <button class="filter-btn active" id="zoneOtm" onclick="toggleZone('otm')" title="Show OTM contracts at or above the Δ floor · key: 1">OTM</button>
-          <span style="font-size:12px;color:var(--text2);">|Δ|≥</span>
-          <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the OTM zone" />
-          <button class="filter-btn" id="zoneItm" onclick="toggleZone('itm')" style="margin-left:8px;" title="Show ITM contracts at or above the Δ floor, down to ATM · key: 2">ITM→ATM</button>
-          <span style="font-size:12px;color:var(--text2);">|Δ|≥</span>
-          <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the ITM zone (ATM always shown)" />
-          <span style="margin-left:12px;font-size:11px;color:var(--text3);">stops: long for calls, short for puts (set above)</span>
+          <div class="fgroup">
+            <button class="filter-btn active" id="zoneOtm" onclick="toggleZone('otm')" title="Show OTM contracts at or above the Δ floor · key: 1">OTM</button>
+            <span style="font-size:12px;color:var(--text2);">|Δ|≥</span>
+            <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the OTM zone" />
+          </div>
+          <div class="fgroup">
+            <button class="filter-btn" id="zoneItm" onclick="toggleZone('itm')" title="Show ITM contracts at or above the Δ floor, down to ATM · key: 2">ITM→ATM</button>
+            <span style="font-size:12px;color:var(--text2);">|Δ|≥</span>
+            <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the ITM zone (ATM always shown)" />
+          </div>
           <span style="margin-left:auto;font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
         </div>
         <div style="overflow-x:auto;">
@@ -419,15 +460,6 @@
       </div>
     </div>
 
-    <div class="card chart-wrap" id="chartWrap" style="display:none;">
-      <div class="chart-head">
-        <span class="section-title" style="margin-bottom:0;">5-min chart</span>
-        <span style="font-size:11.5px;color:var(--text2);font-family:var(--mono);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
-        <span class="ohlc" id="chartOhlc"></span>
-      </div>
-      <canvas id="chart" height="260"></canvas>
-      <div class="chart-hint">click to set a stop: below price = long, above = short &nbsp;·&nbsp; dashed: <span style="color:var(--green);">HOD</span> / <span style="color:var(--red);">LOD</span> / <span style="color:var(--amber);">long stop</span> / <span style="color:var(--teal);">short stop</span> &nbsp;·&nbsp; lines: <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
-    </div>
   </div>
 
 </div>
@@ -452,6 +484,7 @@ const store = {
 function saveKey() {
   store.set('tradier_key', document.getElementById('apiKey').value.trim());
   store.set('tradier_env', document.getElementById('apiEnv').value);
+  applyApiOpen();
 }
 function loadKey() {
   document.getElementById('apiKey').value = store.get('tradier_key') || '';
@@ -476,10 +509,43 @@ function headers() {
   };
 }
 
+let errorTimer = null;
 function showError(msg) {
   const b = document.getElementById('errorBox');
   b.textContent = msg;
   b.style.display = 'block';
+  clearTimeout(errorTimer);
+  errorTimer = setTimeout(clearError, 6000); // floating toast, self-dismissing
+}
+
+// ---------- collapsible setup cards ----------
+let apiOpen = true;
+function applyApiOpen() {
+  document.getElementById('apiBody').style.display = apiOpen ? 'block' : 'none';
+  document.getElementById('apiToggle').classList.toggle('open', apiOpen);
+  const key = document.getElementById('apiKey').value.trim();
+  document.getElementById('apiStatus').innerHTML = key
+    ? `<span style="color:var(--green)">●</span> key saved · ${document.getElementById('apiEnv').value}`
+    : '○ no key';
+}
+function toggleApi() { apiOpen = !apiOpen; applyApiOpen(); }
+
+let quickOpen = false;
+function applyQuickOpen() {
+  document.getElementById('quickBody').style.display = quickOpen ? 'block' : 'none';
+  document.getElementById('quickToggle').classList.toggle('open', quickOpen);
+}
+function toggleQuick(force) {
+  quickOpen = typeof force === 'boolean' ? force : !quickOpen;
+  applyQuickOpen();
+}
+
+// ---------- recalc flash: pulse stats that just changed ----------
+let flashNext = false;
+function withFlash(el) {
+  if (!flashNext || !el) return;
+  el.classList.add('pulse');
+  setTimeout(() => el.classList.remove('pulse'), 650);
 }
 function clearError() {
   document.getElementById('errorBox').style.display = 'none';
@@ -500,16 +566,22 @@ function syncFromDollar() {
   }
   store.set('calc_account', acct);
   store.set('calc_risk', document.getElementById('riskPct').value);
+  flashNext = true;
   if (quoteData) { renderShares(); renderChain(); }
   renderPinnedCards();
+  flashNext = false;
+  updateStickyBar();
 }
 function recalcAll() {
   syncRiskDollar();
+  flashNext = true;
   if (quoteData) {
     renderShares();
     renderChain();
   }
   renderPinnedCards();
+  flashNext = false;
+  updateStickyBar();
 }
 
 // reverse sizing: type a share/contract count, risk $ follows
@@ -566,7 +638,9 @@ function stopLongVal() { return rawStop('stopLong') || (quoteData ? (quoteData.l
 function stopShortVal() { return rawStop('stopShort') || (quoteData ? (quoteData.high || 0) : 0); }
 
 function stopsChanged() {
+  flashNext = true;
   if (quoteData) { renderShares(); renderChain(); }
+  flashNext = false;
   if (chartBars.length) drawChart();
 }
 
@@ -730,24 +804,57 @@ async function fetchAdr(ticker) {
   renderAdr();
 }
 
-function renderAdr() {
-  const el = document.getElementById('adrInfo');
-  if (!(adrValue > 0) || !quoteData) { el.textContent = ''; return; }
+function adrUsage() {
+  if (!(adrValue > 0) || !quoteData) return null;
   const price = quoteData.last || quoteData.ask || 0;
   const lod = quoteData.low || 0;
   const hod = quoteData.high || 0;
-  const adrPct = price > 0 ? (adrValue / price * 100) : 0;
-  // % of the ADR already consumed from the reference level
+  // % of the ADR already consumed from the reference level; long trades
+  // measure off LOD, shorts off HOD — follow the active context
   const used = ref => Math.max(0, (ref === 'lod' ? price - lod : hod - price) / adrValue * 100);
-  const tag = (label, v) => `${label} <span style="color:${v >= 90 ? 'var(--amber)' : 'var(--text)'};font-weight:600;">${v.toFixed(0)}%</span>`;
-  // long trades measure off LOD, shorts off HOD; follow the active context
   const ctx = currentMode === 'shares'
     ? (direction === 'long' ? 'long' : 'short')
     : (chainSide === 'put' ? 'short' : chainSide === 'call' ? 'long' : 'both');
-  const usage = ctx === 'long' ? tag('used off LOD', used('lod'))
-    : ctx === 'short' ? tag('used off HOD', used('hod'))
-    : `${tag('LOD', used('lod'))} · ${tag('HOD', used('hod'))}`;
-  el.innerHTML = `ADR14 ${fmtN(adrValue, 2)} (${adrPct.toFixed(1)}%) · ${usage}`;
+  return { adrPct: price > 0 ? (adrValue / price * 100) : 0, ctx, usedLod: used('lod'), usedHod: used('hod') };
+}
+
+function renderAdr() {
+  const el = document.getElementById('adrInfo');
+  const u = adrUsage();
+  if (!u) { el.textContent = ''; return; }
+  const tag = (label, v) => `${label} <span style="color:${v >= 90 ? 'var(--amber)' : 'var(--text)'};font-weight:600;">${v.toFixed(0)}%</span>`;
+  const usage = u.ctx === 'long' ? tag('used off LOD', u.usedLod)
+    : u.ctx === 'short' ? tag('used off HOD', u.usedHod)
+    : `${tag('LOD', u.usedLod)} · ${tag('HOD', u.usedHod)}`;
+  el.innerHTML = `ADR14 ${fmtN(adrValue, 2)} (${u.adrPct.toFixed(1)}%) · ${usage}`;
+  updateStickyBar();
+}
+
+// ---------- sticky context bar ----------
+function renderStickyBar() {
+  const q = quoteData;
+  if (!q) return;
+  const price = q.last || q.ask || 0;
+  const chg = q.change_percentage || 0;
+  const u = adrUsage();
+  const adrTxt = !u ? '' : u.ctx === 'both'
+    ? `ADR L ${u.usedLod.toFixed(0)}% · H ${u.usedHod.toFixed(0)}%`
+    : `ADR ${(u.ctx === 'long' ? u.usedLod : u.usedHod).toFixed(0)}% used`;
+  document.getElementById('stickyBar').innerHTML =
+    `<span class="sb-sym">${q.symbol}</span>` +
+    `<span class="sb-px" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(price)} ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%</span>` +
+    `<span style="color:var(--red)">▼ ${fmtN(q.low || 0, 2)}</span>` +
+    `<span style="color:var(--green)">▲ ${fmtN(q.high || 0, 2)}</span>` +
+    (adrTxt ? `<span style="color:var(--text2)">${adrTxt}</span>` : '') +
+    `<span style="color:var(--blue);margin-left:auto;">risk ${fmt$(riskDollars())}</span>`;
+}
+
+function updateStickyBar() {
+  const bar = document.getElementById('stickyBar');
+  const qs = document.getElementById('quoteSection');
+  const show = !!quoteData && qs.style.display !== 'none' && window.scrollY > qs.offsetTop + 60;
+  bar.style.display = show ? 'flex' : 'none';
+  if (show) renderStickyBar();
 }
 
 function chartGeom(canvas) {
@@ -1074,6 +1181,7 @@ function renderShares() {
     <div class="stat"><div class="s-label">Position size</div><div class="s-val">${fmt$(posSize)}</div><div class="s-sub">${(posSize / acct * 100).toFixed(1)}% of acct</div></div>
     <div class="stat teal"><div class="s-label">Risk / share</div><div class="s-val">${fmt$(riskPerShare)}</div><div class="s-sub">${fmt$(price)} → ${fmt$(stop)}${usingDefault ? ' (' + defaultLabel + ')' : ''}</div></div>
   `;
+  withFlash(document.getElementById('sharesStats'));
   if (chartBars.length) drawChart();
 }
 
@@ -1410,6 +1518,7 @@ function showDetail(tr, c, acct) {
     </div>
   </div></td>`;
   tr.parentNode.insertBefore(dr, tr.nextSibling);
+  withFlash(dr.querySelector('.detail-inner'));
 }
 
 function parseQuickStr(str) {
@@ -1519,7 +1628,9 @@ function pinnedStopChanged(cardId, el) {
     d.stopName = 'stop';
     recalcPinnedStop(d);
   }
+  flashNext = true;
   renderPinnedCard(cardId);
+  flashNext = false;
 }
 
 function renderPinnedCard(cardId) {
@@ -1554,6 +1665,7 @@ function renderPinnedCard(cardId) {
       <div class="stat"><div class="s-label">Loss / contract</div><div class="s-val">${d.lossPerContract > 0 ? fmt$(d.lossPerContract) : '—'}</div><div class="s-sub">at ${d.stopName}</div></div>
     </div>
   `;
+  withFlash(el);
 }
 
 function renderPinnedCards() {
@@ -1658,7 +1770,7 @@ function initShortcuts() {
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
     switch (e.key) {
       case '/': focus('ticker'); break;
-      case 'q': focus('quickInput'); break;
+      case 'q': toggleQuick(true); focus('quickInput'); break;
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
       case 'r': refreshQuote(); break;
@@ -1680,6 +1792,10 @@ loadKey();
 syncRiskDollar();
 initChartEvents();
 initShortcuts();
+apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
+applyApiOpen();
+applyQuickOpen();
+window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // pick up where you left off: auto-load the last ticker if a key is saved
 if (document.getElementById('apiKey').value.trim() && document.getElementById('ticker').value.trim()) fetchQuote();
 </script>

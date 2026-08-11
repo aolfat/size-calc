@@ -23,6 +23,9 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 
 ## Conventions
 - Dark trading-terminal theme, CSS variables in `:root`, monospace tabular numerals for all figures
+- Page order = trade order: setup cards (API collapsible chip, Account & Risk), ticker + stops, quick lookup (collapsible, q expands), pinned cards, quote bar, chart, then the chain. Chart sits ABOVE the chain — levels before contracts
+- Sticky context bar (fixed, appears when scrolled past the quote card): symbol, price/chg, LOD/HOD, ADR used %, risk $. Click = back to top
+- Stop inputs carry their chart line colors (amber long, teal short). Recalc-triggered re-renders pulse stat values (.pulse). Errors are fixed-position toasts, self-dismiss in 6s
 - Big Shares/Options segmented switcher at top of ticker card — keep it prominent
 - localStorage wrapped in try/catch (`store` helper) so sandboxed previews don't crash
 - iOS home-screen meta tags present (apple-mobile-web-app-*) — file is meant to be hosted (GitHub Pages) and added to iPhone home screen
