@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Size Calc">
 <meta name="theme-color" content="#0b0d12">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
 <title>Size Calculator</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1823,6 +1826,15 @@ apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a ke
 applyApiOpen();
 applyQuickOpen();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
+// scrolling over a focused number input should scroll the page, not spin the value
+document.addEventListener('wheel', () => {
+  const el = document.activeElement;
+  if (el && el.tagName === 'INPUT' && el.type === 'number') el.blur();
+}, { passive: true });
+// network-first service worker keeps the iOS home-screen app fresh
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js');
+}
 // pick up where you left off: auto-load the last ticker if a key is saved
 if (document.getElementById('apiKey').value.trim() && document.getElementById('ticker').value.trim()) fetchQuote();
 </script>

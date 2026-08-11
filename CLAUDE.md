@@ -28,7 +28,9 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 - Stop inputs carry their chart line colors (red long stop, green short stop — a stop is a loss point, and it groups with the level it defaults to: LOD red, HOD green). Recalc-triggered re-renders pulse stat values (.pulse). Errors are fixed-position toasts, self-dismiss in 6s
 - Big Shares/Options segmented switcher at top of ticker card — keep it prominent
 - localStorage wrapped in try/catch (`store` helper) so sandboxed previews don't crash
+- PWA: manifest.json + icon-180/512.png + sw.js (network-first, same-origin GETs only — API calls pass through; cached fallback offline). Registered only on https. Fixes iOS home-screen staleness — fresh version on every online open
 - iOS home-screen meta tags present (apple-mobile-web-app-*) — file is meant to be hosted (GitHub Pages) and added to iPhone home screen
+- Wheel over a focused number input blurs it so the page scrolls instead of spinning the value
 - Owner's style: direct, terse. No em dashes in user-facing copy.
 
 ## Known caveats / next ideas
