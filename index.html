@@ -369,15 +369,15 @@
     </div>
     <div class="section-title" style="margin-top:16px;">Stops</div>
     <div class="row" style="align-items:flex-end;">
-      <div class="field" style="flex:0 0 150px;">
+      <div class="field" style="flex:0 0 150px;" id="stopLongField">
         <label>Long stop · calls</label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopLong" placeholder="LOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
       </div>
-      <div class="field" style="flex:0 0 150px;">
+      <div class="field" style="flex:0 0 150px;" id="stopShortField">
         <label>Short stop · puts</label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopShort" placeholder="HOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
       </div>
-      <div style="font-size:11px;color:var(--text3);padding-bottom:11px;">one stop pair, used everywhere · blank = LOD / HOD · click the chart to set: below price = long, above = short</div>
+      <div style="font-size:11px;color:var(--text3);padding-bottom:11px;" id="stopsHint"></div>
     </div>
   </div>
 
@@ -443,7 +443,7 @@
         <span class="ohlc" id="chartOhlc"></span>
       </div>
       <canvas id="chart" height="260"></canvas>
-      <div class="chart-hint">click to set a stop: below price = long, above = short &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
+      <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
     </div>
 
     <div id="optionsSection" style="display:none;">
@@ -656,8 +656,10 @@ function setDirection(dir) {
   l.className = dir === 'long' ? 'active long' : '';
   s.className = dir === 'short' ? 'active short' : '';
   document.getElementById('stopHint').textContent = dir === 'long' ? 'stop: long stop above, blank = LOD' : 'stop: short stop above, blank = HOD';
+  updateStopVisibility();
   renderAdr();
   renderShares();
+  if (chartBars.length) drawChart();
 }
 
 // ---------- global stop pair: one long stop (calls), one short stop (puts) ----------
@@ -667,6 +669,29 @@ function rawStop(id) { // 0 = input blank, fall back to LOD/HOD
 }
 function stopLongVal() { return rawStop('stopLong') || (quoteData ? (quoteData.low || 0) : 0); }
 function stopShortVal() { return rawStop('stopShort') || (quoteData ? (quoteData.high || 0) : 0); }
+
+// the active trade direction: shares follow the Long/Short toggle,
+// options follow chain side (calls = long, puts = short, Both = both)
+function tradeCtx() {
+  return currentMode === 'shares'
+    ? (direction === 'long' ? 'long' : 'short')
+    : (chainSide === 'put' ? 'short' : chainSide === 'call' ? 'long' : 'both');
+}
+
+// only show the stop that matches the trade you're taking
+function updateStopVisibility() {
+  const tc = tradeCtx();
+  document.getElementById('stopLongField').style.display = tc !== 'short' ? 'flex' : 'none';
+  document.getElementById('stopShortField').style.display = tc !== 'long' ? 'flex' : 'none';
+  document.getElementById('stopsHint').textContent =
+    tc === 'long' ? 'blank = LOD · click the chart to set it'
+    : tc === 'short' ? 'blank = HOD · click the chart to set it'
+    : 'blank = LOD / HOD · click the chart: below price = long stop, above = short stop';
+  document.getElementById('chartClickHint').textContent =
+    tc === 'long' ? 'click the chart = set your long stop'
+    : tc === 'short' ? 'click the chart = set your short stop'
+    : 'click to set a stop: below price = long, above = short';
+}
 
 function stopsChanged() {
   flashNext = true;
@@ -680,6 +705,7 @@ async function setMode(mode) {
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
   document.getElementById('fetchBtnText').textContent = mode === 'shares' ? 'Load quote' : 'Load chain';
+  updateStopVisibility();
   renderAdr();
   recalcAll();
   if (quoteData) {
@@ -843,10 +869,7 @@ function adrUsage() {
   // % of the ADR already consumed from the reference level; long trades
   // measure off LOD, shorts off HOD — follow the active context
   const used = ref => Math.max(0, (ref === 'lod' ? price - lod : hod - price) / adrValue * 100);
-  const ctx = currentMode === 'shares'
-    ? (direction === 'long' ? 'long' : 'short')
-    : (chainSide === 'put' ? 'short' : chainSide === 'call' ? 'long' : 'both');
-  return { adrPct: price > 0 ? (adrValue / price * 100) : 0, ctx, usedLod: used('lod'), usedHod: used('hod') };
+  return { adrPct: price > 0 ? (adrValue / price * 100) : 0, ctx: tradeCtx(), usedLod: used('lod'), usedHod: used('hod') };
 }
 
 function renderAdr() {
@@ -897,8 +920,12 @@ function chartGeom(canvas) {
 function chartRange() {
   let lo = Infinity, hi = -Infinity;
   for (const b of chartBars) { if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h; }
-  // include explicitly-set stop lines in range
-  for (const s of [rawStop('stopLong'), rawStop('stopShort')]) {
+  // include explicitly-set stop lines in range (only the ones the context draws)
+  const tc = tradeCtx();
+  const inRange = [];
+  if (tc !== 'short') inRange.push(rawStop('stopLong'));
+  if (tc !== 'long') inRange.push(rawStop('stopShort'));
+  for (const s of inRange) {
     if (s > 0) { if (s < lo) lo = s; if (s > hi) hi = s; }
   }
   const pad = (hi - lo) * 0.06 || 0.5;
@@ -972,8 +999,9 @@ function drawChart() {
     ctx.fillText(label + ' ' + price.toFixed(2), g.w - g.padR - 90, y(price) - 4);
     ctx.restore();
   };
-  stopLine(rawStop('stopLong'), cRed, 'long stop');
-  stopLine(rawStop('stopShort'), cGreen, 'short stop');
+  const tc = tradeCtx();
+  if (tc !== 'short') stopLine(rawStop('stopLong'), cRed, 'long stop');
+  if (tc !== 'long') stopLine(rawStop('stopShort'), cGreen, 'short stop');
 
   // candles
   for (let i = 0; i < n; i++) {
@@ -1081,9 +1109,12 @@ function initChartEvents() {
     if (!chartBars.length) return;
     const price = chartPriceAtY(e.clientY);
     if (!(price > 0)) return;
-    // below current price = long stop, above = short stop
+    // clicks set the active context's stop; in Both view, below price = long, above = short
+    const tc = tradeCtx();
     const spot = quoteData ? (quoteData.last || quoteData.ask || 0) : 0;
-    const id = (spot > 0 && price >= spot) ? 'stopShort' : 'stopLong';
+    const id = tc === 'long' ? 'stopLong'
+      : tc === 'short' ? 'stopShort'
+      : (spot > 0 && price >= spot) ? 'stopShort' : 'stopLong';
     document.getElementById(id).value = price.toFixed(2);
     stopsChanged();
   });
@@ -1311,8 +1342,10 @@ function setSide(s) {
   chainSide = s;
   ['sBoth','sCall','sPut'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('s' + s.charAt(0).toUpperCase() + s.slice(1)).classList.add('active');
+  updateStopVisibility();
   renderAdr();
   renderChain();
+  if (chartBars.length) drawChart();
 }
 
 function lossClass(lossPct) {
@@ -1825,6 +1858,7 @@ initShortcuts();
 apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
 applyApiOpen();
 applyQuickOpen();
+updateStopVisibility();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {
