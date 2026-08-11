@@ -253,6 +253,8 @@
       <span><kbd>l</kbd> live 60s</span>
       <span><kbd>d</kbd> long/short</span>
       <span><kbd>b</kbd> <kbd>c</kbd> <kbd>p</kbd> both/calls/puts</span>
+      <span><kbd>1</kbd> OTM ≥.20Δ</span>
+      <span><kbd>2</kbd> ITM ≥.65Δ</span>
       <span><kbd>[</kbd> <kbd>]</kbd> prev/next expiry</span>
       <span><kbd>esc</kbd> close/unfocus</span>
       <span><kbd>?</kbd> this help</span>
@@ -400,8 +402,10 @@
             <button id="sCall" onclick="setSide('call')">Calls</button>
             <button id="sPut" onclick="setSide('put')">Puts</button>
           </div>
+          <button class="filter-btn active" id="zoneOtm" onclick="setZone('otm', 0.20)" title="OTM contracts, |Δ| at least 0.20 · key: 1">OTM ≥.20Δ</button>
+          <button class="filter-btn" id="zoneItm" onclick="setZone('itm', 0.65)" title="ITM contracts, |Δ| at least 0.65 · key: 2">ITM ≥.65Δ</button>
           <span style="margin-left:12px;font-size:12px;color:var(--text2);">Min |Δ|:</span>
-          <input type="number" id="minDelta" value="0.20" step="0.05" min="0" max="1" style="width:70px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Shows OTM contracts with |delta| at or above this. 0 = show everything incl. ITM" />
+          <input type="number" id="minDelta" value="0.20" step="0.05" min="0" max="1" style="width:70px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Min |delta| within the active OTM/ITM zone. 0 = show the full chain" />
           <span style="margin-left:12px;font-size:11px;color:var(--text3);">stops: long for calls, short for puts (set above)</span>
           <span style="margin-left:auto;font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
         </div>
@@ -1156,6 +1160,15 @@ async function fetchChain(ticker, exp) {
 }
 
 let chainSide = 'both';
+let chainZone = 'otm'; // min |Δ| applies within this zone; the other zone is hidden
+
+function setZone(zone, minDelta) {
+  chainZone = zone;
+  document.getElementById('minDelta').value = minDelta;
+  document.getElementById('zoneOtm').classList.toggle('active', zone === 'otm');
+  document.getElementById('zoneItm').classList.toggle('active', zone === 'itm');
+  renderChain();
+}
 
 function setSide(s) {
   chainSide = s;
@@ -1279,10 +1292,10 @@ function renderChain() {
   const minD = Math.abs(parseFloat(document.getElementById('minDelta').value)) || 0;
   const passesDelta = o => {
     if (!o) return false;
-    if (minD <= 0) return true; // filter off → show everything incl. ITM
+    if (minD <= 0) return true; // filter off → show everything, both zones
     const isCall = o.option_type === 'call';
     const itm = isCall ? o.strike < price : o.strike > price;
-    if (itm) return false; // filter on → OTM only
+    if ((chainZone === 'otm') === itm) return false; // keep only the active zone
     return Math.abs(o.greeks?.delta || 0) >= minD;
   };
 
@@ -1644,6 +1657,8 @@ function initShortcuts() {
       case 'b': if (currentMode === 'options') setSide('both'); break;
       case 'c': if (currentMode === 'options') setSide('call'); break;
       case 'p': if (currentMode === 'options') setSide('put'); break;
+      case '1': if (currentMode === 'options') setZone('otm', 0.20); break;
+      case '2': if (currentMode === 'options') setZone('itm', 0.65); break;
       case '[': cycleExp(-1); break;
       case ']': cycleExp(1); break;
       case '?': toggleKbdHelp(); break;
