@@ -163,9 +163,9 @@
   .card-toggle.open .chev { transform: rotate(90deg); }
   .card-toggle .title-status { color: var(--text3); font-weight: 500; text-transform: none; letter-spacing: 0; font-family: var(--mono); }
 
-  /* stop inputs carry their chart line color */
-  #stopLong { border-left: 3px solid var(--amber); }
-  #stopShort { border-left: 3px solid var(--teal); }
+  /* stop inputs carry their chart line color (long = green, short = red) */
+  #stopLong { border-left: 3px solid var(--green); }
+  #stopShort { border-left: 3px solid var(--red); }
 
   /* recalc flash: pulse freshly re-rendered stat values */
   @keyframes valPulse { 0% { color: var(--blue); text-shadow: 0 0 14px rgba(91,157,255,0.75); } 100% { } }
@@ -426,7 +426,7 @@
         <span class="ohlc" id="chartOhlc"></span>
       </div>
       <canvas id="chart" height="260"></canvas>
-      <div class="chart-hint">click to set a stop: below price = long, above = short &nbsp;·&nbsp; dashed lines: <span style="color:var(--green);">HOD</span> / <span style="color:var(--red);">LOD</span> / <span style="color:var(--amber);">long stop</span> / <span style="color:var(--teal);">short stop</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
+      <div class="chart-hint">click to set a stop: below price = long, above = short &nbsp;·&nbsp; dashed lines: <span style="color:var(--green);">HOD / long stop</span> · <span style="color:var(--red);">LOD / short stop</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
     </div>
 
     <div id="optionsSection" style="display:none;">
@@ -931,8 +931,7 @@ function drawChart() {
   dash(hod, cGreen);
   dash(lod, cRed);
 
-  // stop lines: amber = long stop, teal = short stop (only when explicitly set)
-  const cTeal = css.getPropertyValue('--teal').trim();
+  // stop lines: green = long stop, red = short stop (only when explicitly set)
   const stopLine = (price, color, label) => {
     if (!(price > 0)) return;
     ctx.save();
@@ -942,8 +941,8 @@ function drawChart() {
     ctx.fillText(label + ' ' + price.toFixed(2), g.w - g.padR - 90, y(price) - 4);
     ctx.restore();
   };
-  stopLine(rawStop('stopLong'), cAmber, 'long stop');
-  stopLine(rawStop('stopShort'), cTeal, 'short stop');
+  stopLine(rawStop('stopLong'), cGreen, 'long stop');
+  stopLine(rawStop('stopShort'), cRed, 'short stop');
 
   // candles
   for (let i = 0; i < n; i++) {
