@@ -384,6 +384,7 @@
         <button class="btn" onclick="toggleLive()" id="liveBtn" title="Auto-refresh every 5s for 60s (l)">⚡ Live 60s</button>
       </div>
     </div>
+    <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
     <div class="section-title" style="margin-top:16px;">Stops</div>
     <div class="row" style="align-items:flex-end;">
       <div class="field" style="flex:0 0 150px;" id="stopLongField">
@@ -486,7 +487,7 @@
         <span class="ohlc" id="chartOhlc"></span>
       </div>
       <canvas id="chart" height="260"></canvas>
-      <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
+      <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
     </div>
 
     <div id="optionsSection" style="display:none;">
@@ -509,7 +510,8 @@
             <span style="font-size:12px;color:var(--text2);">|Δ|≥</span>
             <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the ITM zone (ATM always shown)" />
           </div>
-          <span style="margin-left:auto;font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
+          <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
+          <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
         </div>
         <div class="chain-scroll">
           <table id="chainTable" style="min-width:1000px;">
@@ -556,6 +558,30 @@ function loadKey() {
   const lastTicker = store.get('last_ticker');
   if (lastTicker) document.getElementById('ticker').value = lastTicker;
   syncRiskDollar();
+}
+
+// ---------- recent tickers: last five symbols as one-tap chips ----------
+function pushRecentTicker(t) {
+  let arr = [];
+  try { arr = JSON.parse(store.get('recent_tickers') || '[]'); } catch(e) {}
+  arr = [t, ...arr.filter(x => x !== t)].slice(0, 5);
+  store.set('recent_tickers', JSON.stringify(arr));
+  renderRecentTickers();
+}
+
+function renderRecentTickers() {
+  let arr = [];
+  try { arr = JSON.parse(store.get('recent_tickers') || '[]'); } catch(e) {}
+  const cur = document.getElementById('ticker').value.trim().toUpperCase();
+  document.getElementById('recentTickers').innerHTML = arr
+    .filter(t => t !== cur)
+    .map(t => `<button class="filter-btn" onclick="loadTicker('${t}')">${t}</button>`)
+    .join('');
+}
+
+function loadTicker(t) {
+  document.getElementById('ticker').value = t;
+  fetchQuote();
 }
 
 function baseUrl() {
@@ -1075,7 +1101,7 @@ async function setMode(mode) {
           renderExpTabs(expList);
           selectedExp = expList[0];
           markActiveExp(selectedExp);
-          await fetchChain(ticker, selectedExp);
+          await fetchChain(ticker, selectedExp, true);
         }
       } catch(e) {}
     }
@@ -1113,6 +1139,7 @@ async function fetchQuote() {
     quoteData = q;
     chainData = [];
     store.set('last_ticker', ticker);
+    pushRecentTicker(ticker);
     renderQuote();
     fetchChart(ticker);
     fetchAdr(ticker);
@@ -1127,7 +1154,7 @@ async function fetchQuote() {
       renderExpTabs(expList);
       selectedExp = expList[0];
       markActiveExp(selectedExp);
-      await fetchChain(ticker, selectedExp);
+      await fetchChain(ticker, selectedExp, true);
     }
 
     document.getElementById('quoteSection').style.display = 'block';
@@ -1189,25 +1216,42 @@ async function fetchChart(ticker) {
   }
 }
 
-// ---------- ADR: 14-day average daily range ----------
+// ---------- daily history: ADR14, prior-day levels, HV20 ----------
 let adrValue = 0;
+let prevDay = null; // { h, l, c } of the last completed session
+let hv20 = 0;       // annualized 20-day historical volatility
+
+function applyDailyHistory(list) {
+  const today = dateStr(new Date());
+  const done = list.filter(x => x.date !== today); // today's range is still forming
+  const last14 = done.slice(-14);
+  if (last14.length) adrValue = last14.reduce((s, x) => s + (x.high - x.low), 0) / last14.length;
+  const last = done[done.length - 1];
+  prevDay = last ? { h: last.high, l: last.low, c: last.close } : null;
+  const closes = done.slice(-21).map(x => x.close);
+  if (closes.length >= 15) {
+    const rets = [];
+    for (let i = 1; i < closes.length; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
+    const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+    const v = rets.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (rets.length - 1);
+    hv20 = Math.sqrt(v * 252);
+  }
+}
 
 async function fetchAdr(ticker) {
   adrValue = 0;
+  prevDay = null;
+  hv20 = 0;
   try {
     const from = new Date();
     from.setDate(from.getDate() - 45);
     const url = `${baseUrl()}/markets/history?symbol=${ticker}&interval=daily&start=${dateStr(from)}&end=${dateStr(new Date())}`;
     const res = await fetch(url, { headers: headers() });
     const days = (await res.json())?.history?.day;
-    if (days) {
-      const today = dateStr(new Date());
-      const done = (Array.isArray(days) ? days : [days]).filter(x => x.date !== today); // today's range is still forming
-      const last14 = done.slice(-14);
-      if (last14.length) adrValue = last14.reduce((s, x) => s + (x.high - x.low), 0) / last14.length;
-    }
+    if (days) applyDailyHistory(Array.isArray(days) ? days : [days]);
   } catch(e) {}
   renderAdr();
+  if (chartBars.length) drawChart(); // prior-day lines
 }
 
 function adrUsage() {
@@ -1339,6 +1383,22 @@ function drawChart() {
   };
   dash(hod, cGreen);
   dash(lod, cRed);
+
+  // prior-day levels, drawn only when they fall inside the visible range
+  if (prevDay) {
+    const pdLine = (price, label) => {
+      if (!(price > 0) || price < lo || price > hi) return;
+      ctx.save();
+      ctx.strokeStyle = cText3; ctx.globalAlpha = 0.6; ctx.setLineDash([2, 5]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(g.padL, y(price)); ctx.lineTo(g.w - g.padR, y(price)); ctx.stroke();
+      ctx.fillStyle = cText3;
+      ctx.fillText(label, g.padL + 3, y(price) - 3);
+      ctx.restore();
+    };
+    pdLine(prevDay.h, 'PDH');
+    pdLine(prevDay.l, 'PDL');
+    pdLine(prevDay.c, 'PDC');
+  }
 
   // stop lines: red = long stop (LOD side), green = short stop (HOD side); drawn only when explicitly set
   const stopLine = (price, color, label) => {
@@ -1519,8 +1579,12 @@ async function livePoll() {
     if (currentMode === 'options' && selectedExp) {
       await fetchChain(ticker, selectedExp);
     }
-    // chart is heavier — refresh it every 4th tick (~20s)
+    // heavier refreshes spread across ticks: chart ~20s, cards ~20s offset
     if (liveTicks % 4 === 0) fetchChart(ticker);
+    if (liveTicks % 4 === 2) {
+      refreshAllPinned();
+      if (positionsView) refreshAllSaved();
+    }
     liveTicks++;
     document.getElementById('lastUpdated').textContent = 'Live · updated ' + new Date().toLocaleTimeString();
   } catch(e) {} finally {
@@ -1645,11 +1709,13 @@ async function selectExp(exp) {
   selectedExp = exp;
   markActiveExp(exp);
   const ticker = document.getElementById('ticker').value.trim().toUpperCase();
-  await fetchChain(ticker, exp);
+  await fetchChain(ticker, exp, true);
 }
 
 let chainLoading = false;
-async function fetchChain(ticker, exp) {
+let pendingAtmScroll = false; // set on user-driven chain loads, never on live polls
+
+async function fetchChain(ticker, exp, scrollAtm) {
   if (chainLoading) return;
   chainLoading = true;
   document.getElementById('chainStatus').innerHTML = '<span class="spinner" style="vertical-align:middle;"></span> loading ' + exp;
@@ -1671,6 +1737,7 @@ async function fetchChain(ticker, exp) {
     }
     chainData = Array.isArray(opts) ? opts : [opts];
     document.getElementById('chainStatus').textContent = chainData.length + ' contracts · ' + exp;
+    pendingAtmScroll = !!scrollAtm;
     renderChain();
   } catch(e) {
     document.getElementById('chainStatus').textContent = 'Error loading chain — check key/network';
@@ -1705,7 +1772,13 @@ function lossClass(lossPct) {
   return 'loss-high';
 }
 
-function calcOpt(opt, price, callStop, putStop, risk) {
+function yearsToExp(expStr, daysLess = 0) {
+  if (!expStr) return 0;
+  const ms = new Date(expStr + 'T16:00:00') - Date.now();
+  return Math.max(0, ms / (365 * 24 * 3600 * 1000) - daysLess / 365);
+}
+
+function calcOpt(opt, price, callStop, putStop, risk, Texp) {
   if (!opt) return null;
   const mid = ((opt.bid || 0) + (opt.ask || 0)) / 2;
   const delta = opt.greeks?.delta || 0;
@@ -1714,11 +1787,26 @@ function calcOpt(opt, price, callStop, putStop, risk) {
   const isCall = opt.option_type === 'call';
   const stop = isCall ? callStop : putStop;
   const drop = stop - price;
-  // Δ + ½Γ·move² — gamma cushions the loss, but can't turn a stop-out into a gain
-  let atStopEst = mid + delta * drop + 0.5 * gamma * drop * drop;
   const losing = isCall ? drop < 0 : drop > 0;
-  if (losing) atStopEst = Math.min(atStopEst, mid);
+  // premium at the stop: Black-Scholes move applied to the market mid (baseline stays
+  // the real mid, so IV-skew level offsets cancel); Δ+½Γ approx when no IV
+  let atStopEst, atStopEstON, model;
+  if (iv > 0 && Texp > 0) {
+    const K = opt.strike;
+    const baseNow = bsPrice(isCall, price, K, Texp, iv, RISK_FREE);
+    atStopEst = mid + bsPrice(isCall, stop, K, Texp, iv, RISK_FREE) - baseNow;
+    atStopEstON = mid + bsPrice(isCall, stop, K, Math.max(0, Texp - 1 / 365), iv, RISK_FREE) - baseNow;
+    model = 'bs';
+  } else {
+    atStopEst = mid + delta * drop + 0.5 * gamma * drop * drop;
+    atStopEstON = atStopEst;
+    model = 'approx';
+  }
+  if (losing) { atStopEst = Math.min(atStopEst, mid); atStopEstON = Math.min(atStopEstON, mid); } // a stop-out can't show a gain
   const atStop = Math.max(0, atStopEst);
+  const atStopON = Math.max(0, atStopEstON);
+  const lossPerContractON = (mid - atStopON) * 100;
+  const lossOfCostON = mid > 0 ? ((mid - atStopON) / mid * 100) : 0;
   const spreadPct = mid > 0 ? ((opt.ask || 0) - (opt.bid || 0)) / mid * 100 : 0;
   const wideSpread = spreadPct > 10 && (opt.ask || 0) > 0;
   const lossPerContract = (mid - atStop) * 100;
@@ -1728,7 +1816,7 @@ function calcOpt(opt, price, callStop, putStop, risk) {
   const itm = isCall ? opt.strike < price : opt.strike > price;
   const vol = opt.volume || 0;
   const oi = opt.open_interest || 0;
-  return { opt, mid, delta, gamma, iv, atStop, lossPerContract, contracts, totalCost, lossOfCost, itm, vol, oi, isCall, stop, spreadPct, wideSpread };
+  return { opt, mid, delta, gamma, iv, atStop, lossPerContract, contracts, totalCost, lossOfCost, itm, vol, oi, isCall, stop, spreadPct, wideSpread, atStopON, lossPerContractON, lossOfCostON, model };
 }
 
 // mobile-compact formatters — keep 9 columns fitting a 375px screen
@@ -1827,6 +1915,15 @@ function renderChain() {
     if (dd < atmAllDist) { atmAllDist = dd; atmAll = s; }
   }
 
+  // expected move by this expiry: the ATM straddle mid (computed before the zone filter mutates pairs)
+  const atmPair = byStrike.get(atmAll);
+  let em = 0;
+  if (atmPair && atmPair.call && atmPair.put) {
+    em = ((atmPair.call.bid || 0) + (atmPair.call.ask || 0)) / 2 + ((atmPair.put.bid || 0) + (atmPair.put.ask || 0)) / 2;
+  }
+  document.getElementById('emInfo').textContent = em > 0 && price > 0
+    ? `±${fmt$(em)} (${(em / price * 100).toFixed(1)}%) exp move` : '';
+
   const passesDelta = o => {
     if (!o) return false;
     if (!zoneFilter.otm && !zoneFilter.itm) return true; // no zones active → full chain
@@ -1858,10 +1955,11 @@ function renderChain() {
   const openSym = document.querySelector('.detail-row')?.dataset.sym || null;
   tbody.innerHTML = '';
 
+  const Tex = yearsToExp(selectedExp);
   strikes.forEach(strike => {
     const pair = byStrike.get(strike);
-    const c = calcOpt(pair.call, price, callStop, putStop, risk);
-    const p = calcOpt(pair.put, price, callStop, putStop, risk);
+    const c = calcOpt(pair.call, price, callStop, putStop, risk, Tex);
+    const p = calcOpt(pair.put, price, callStop, putStop, risk, Tex);
     const tr = document.createElement('tr');
     if (strike === atmStrike) tr.classList.add('atm-row');
 
@@ -1904,6 +2002,11 @@ function renderChain() {
   if (!strikes.length) {
     tbody.innerHTML = `<tr><td colspan="${chainColCount()}" style="text-align:center;color:var(--text3);padding:20px;">No contracts match filter</td></tr>`;
   }
+  if (pendingAtmScroll) {
+    pendingAtmScroll = false;
+    const atmRow = tbody.querySelector('tr.atm-row');
+    if (atmRow) atmRow.scrollIntoView({ block: 'center' });
+  }
   if (chartBars.length) drawChart();
 }
 
@@ -1934,8 +2037,9 @@ function showDetail(tr, c, acct) {
       <div class="stat"><div class="s-label">Loss of premium</div><div class="s-val">${c.lossOfCost.toFixed(1)}%</div><div class="s-sub">per contract</div></div>
       <div class="stat ${c.vol > c.oi && c.vol > 0 ? 'highlight' : ''}"><div class="s-label">Vol / OI</div><div class="s-val">${c.vol.toLocaleString()}</div><div class="s-sub">OI ${c.oi.toLocaleString()}${c.vol > c.oi && c.vol > 0 ? ' · vol > OI' : ''}</div></div>
     </div>
+    ${c.lossPerContractON > c.lossPerContract + 0.005 && c.lossPerContractON > 0 ? `<div style="font-size:11.5px;color:var(--text3);margin-top:8px;font-family:var(--mono);">held overnight: −${fmt$(c.lossPerContractON)}/ct (−${c.lossOfCostON.toFixed(0)}%) · a stop hit tomorrow costs one more day of theta</div>` : ''}
     <div style="font-size:12px;color:var(--text3);margin-top:8px;font-family:var(--mono);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-      <span>${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'} · Est. via Δ + ½Γ·move² approx</span>
+      <span>${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'}${c.iv > 0 && hv20 > 0 ? (c.iv > hv20 * 1.5 ? ` <span style="color:var(--amber)">vs HV20 ${(hv20*100).toFixed(1)}% — paying up for vol</span>` : ` vs HV20 ${(hv20*100).toFixed(1)}%`) : ''} · Est. via ${c.model === 'bs' ? 'Black-Scholes, IV const' : 'Δ + ½Γ·move² approx'}</span>
       <button class="filter-btn" style="margin-left:auto;" onclick="openSim(simReg['${c.opt.symbol}'])">simulate returns</button>
     </div>
   </div></td>`;
@@ -2008,10 +2112,21 @@ function removePinned(cardId) {
 // everything derived from the card's stop level
 function recalcPinnedStop(d) {
   const drop = d.stopLevel - d.underlyingPrice;
-  let atStopEst = d.mid + d.delta * drop + 0.5 * (d.gamma || 0) * drop * drop;
   const losing = d.isCall ? drop < 0 : drop > 0;
-  if (losing) atStopEst = Math.min(atStopEst, d.mid);
+  const T = yearsToExp(d.parsed && d.parsed.expStr);
+  let atStopEst, atStopEstON;
+  if (d.iv > 0 && T > 0) {
+    const K = d.parsed.strike;
+    const baseNow = bsPrice(d.isCall, d.underlyingPrice, K, T, d.iv, RISK_FREE);
+    atStopEst = d.mid + bsPrice(d.isCall, d.stopLevel, K, T, d.iv, RISK_FREE) - baseNow;
+    atStopEstON = d.mid + bsPrice(d.isCall, d.stopLevel, K, Math.max(0, T - 1 / 365), d.iv, RISK_FREE) - baseNow;
+  } else {
+    atStopEst = d.mid + d.delta * drop + 0.5 * (d.gamma || 0) * drop * drop;
+    atStopEstON = atStopEst;
+  }
+  if (losing) { atStopEst = Math.min(atStopEst, d.mid); atStopEstON = Math.min(atStopEstON, d.mid); }
   d.atLod = Math.max(0, atStopEst);
+  d.atLodON = Math.max(0, atStopEstON);
   d.lossPerContract = (d.mid - d.atLod) * 100;
   d.lossOfCost = d.mid > 0 ? ((d.mid - d.atLod) / d.mid * 100) : 0;
   d.lodPct = d.underlyingPrice > 0 ? (drop / d.underlyingPrice * 100).toFixed(2) : '0.00';
@@ -2170,7 +2285,7 @@ function renderSavedCard(id) {
       <div class="stat highlight"><div class="s-label">Entry / ct</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price per contract" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
       <div class="stat"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" value="${qty}" step="1" min="0" title="Contracts you hold (does not change risk $)" onchange="savedQtyChanged('${id}', this)" /></div><div class="s-sub">${fmt$(cost)} at entry</div></div>
       <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</div><div class="s-sub">mid ${fmt$(d.mid)} · ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%</div></div>
-      <div class="stat ${lossAtStop > 0 ? 'danger' : 'good'}"><div class="s-label">${lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop'}</div><div class="s-val">${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}</div><div class="s-sub">${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct · from your entry</div></div>
+      <div class="stat ${lossAtStop > 0 ? 'danger' : 'good'}"><div class="s-label">${lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop'}</div><div class="s-val">${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}</div><div class="s-sub">${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct · from your entry${qty > 0 && (d.entry - d.atLodON) * 100 * qty > lossAtStop + 0.005 ? `<br>held overnight: −${fmt$((d.entry - d.atLodON) * 100 * qty)}` : ''}</div></div>
       <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">Δ × move to ${d.stopName}</div></div>
     </div>
   `;
@@ -2241,7 +2356,7 @@ function renderPinnedCard(cardId) {
     <div style="height:10px;"></div>
     <div class="stat-grid">
       <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${d.lossPerContract > 0 ? `<input type="number" class="s-val-input" value="${contracts}" min="0" step="1" title="Type a contract count, risk $ follows" onchange="contractsQtyChanged(this, ${d.lossPerContract})" />` : '—'}</div><div class="s-sub">for ${fmt$(risk)} risk · edit to set risk</div></div>
-      <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${contracts > 0 ? fmt$(contracts * d.lossPerContract) : '—'}</div><div class="s-sub">${contracts > 0 ? (contracts * d.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
+      <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${contracts > 0 ? fmt$(contracts * d.lossPerContract) : '—'}</div><div class="s-sub">${contracts > 0 ? (contracts * d.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}${contracts > 0 && (d.mid - d.atLodON) * 100 > d.lossPerContract + 0.005 ? `<br>held overnight: −${fmt$((d.mid - d.atLodON) * 100 * contracts)}` : ''}</div></div>
       <div class="stat good"><div class="s-label">Total cost</div><div class="s-val">${contracts > 0 ? fmt$(totalCost) : '—'}</div><div class="s-sub">${contracts > 0 ? (totalCost / acct * 100).toFixed(1) + '% of acct' : ''}</div></div>
       <div class="stat"><div class="s-label">Loss / contract</div><div class="s-val">${d.lossPerContract > 0 ? fmt$(d.lossPerContract) : '—'}</div><div class="s-sub">at ${d.stopName}</div></div>
     </div>
@@ -2383,6 +2498,9 @@ updateStopVisibility();
 loadSaved();
 setView('calc'); // saved cards live in the Positions tab
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
+// backgrounding the app ends a live session instead of polling blind
+document.addEventListener('visibilitychange', () => { if (document.hidden && liveInterval) stopLive(); });
+renderRecentTickers();
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {
   const el = document.activeElement;
