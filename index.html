@@ -425,6 +425,28 @@
 
   <div id="errorBox" style="display:none;" class="error"></div>
 
+  <div id="simOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:150;overflow-y:auto;" onclick="if(event.target===this)closeSim()">
+    <div class="card" style="max-width:600px;margin:7vh auto 40px;padding:16px 18px;">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:2px;">
+        <span class="pinned-symbol" id="simTitle"></span>
+        <button onclick="closeSim()" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;">×</button>
+      </div>
+      <div class="hint" id="simMeta" style="margin:0 0 10px;"></div>
+      <canvas id="simChart" height="240" style="width:100%;display:block;border-radius:10px;background:var(--bg3);border:1px solid var(--border);cursor:crosshair;"></canvas>
+      <div style="font-size:12.5px;color:var(--text2);font-family:var(--mono);margin:10px 2px;" id="simReadout"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Underlying</span>
+        <input type="range" id="simPrice" style="flex:1;min-width:160px;" oninput="drawSim()" />
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;" id="simPriceLabel"></span>
+        <button class="filter-btn" onclick="simSetPrice('stop')">stop</button>
+        <button class="filter-btn" onclick="simSetPrice(0)">now</button>
+        <button class="filter-btn" onclick="simSetPrice(1)">1R</button>
+        <button class="filter-btn" onclick="simSetPrice(2)">2R</button>
+      </div>
+      <div class="hint">theoretical Black-Scholes value, IV held constant · drag the chart for a date · slide or tap chips for a price</div>
+    </div>
+  </div>
+
   <div id="quoteSection" style="display:none;">
     <div class="card">
       <div class="quote-bar">
@@ -554,6 +576,200 @@ function showError(msg) {
   b.style.display = 'block';
   clearTimeout(errorTimer);
   errorTimer = setTimeout(clearError, 6000); // floating toast, self-dismissing
+}
+
+// ---------- simulate returns: Black-Scholes value over time at a chosen price ----------
+const RISK_FREE = 0.04;
+
+function normCdf(x) {
+  // Abramowitz-Stegun approximation, |error| < 7.5e-8
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014327 * Math.exp(-x * x / 2);
+  const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return x > 0 ? 1 - p : p;
+}
+
+function bsPrice(isCall, S, K, T, sigma, r) {
+  if (T <= 0 || sigma <= 0 || S <= 0) return Math.max(0, isCall ? S - K : K - S);
+  const sqT = Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * sqT);
+  const d2 = d1 - sigma * sqT;
+  return isCall
+    ? S * normCdf(d1) - K * Math.exp(-r * T) * normCdf(d2)
+    : K * Math.exp(-r * T) * normCdf(-d2) - S * normCdf(-d1);
+}
+
+let simState = null;
+let simHover = -1;
+const simReg = {}; // chain detail rows park their sim params here by option symbol
+
+function openSim(o) {
+  if (!o) return;
+  if (!(o.iv > 0)) { showError('No IV on this contract — cannot simulate.'); return; }
+  if (!(o.entry > 0)) { showError('No entry price to measure returns from.'); return; }
+  simState = o;
+  simHover = -1;
+  document.getElementById('simTitle').textContent = o.label;
+  document.getElementById('simMeta').textContent = `entry ${fmt$(o.entry)}/ct · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant`;
+  const sl = document.getElementById('simPrice');
+  const span = Math.max(o.spot * 0.12, (adrValue || 0) * 2.5);
+  sl.min = Math.max(0.01, o.spot - span).toFixed(2);
+  sl.max = (o.spot + span).toFixed(2);
+  sl.step = '0.01'; // penny steps so the stop/1R/2R chips land exactly
+  sl.value = o.spot;
+  document.getElementById('simOverlay').style.display = 'block';
+  drawSim();
+}
+
+function closeSim() {
+  document.getElementById('simOverlay').style.display = 'none';
+  simState = null;
+}
+
+function simSetPrice(mult) { // chips: stop / now / 1R / 2R
+  const o = simState;
+  if (!o) return;
+  const rDist = o.isCall ? o.spot - o.stop : o.stop - o.spot;
+  const target = mult === 'stop' ? o.stop : o.spot + (o.isCall ? 1 : -1) * rDist * mult;
+  const sl = document.getElementById('simPrice');
+  sl.value = Math.min(+sl.max, Math.max(+sl.min, target)).toFixed(2);
+  drawSim();
+}
+
+function simCurve(S) {
+  const exp = new Date(simState.expStr + 'T16:00:00');
+  const now = Date.now();
+  const total = Math.max(exp - now, 3600 * 1000);
+  const N = 80;
+  const pts = [];
+  for (let i = 0; i <= N; i++) {
+    const t = now + total * i / N;
+    const T = (exp - t) / (365 * 24 * 3600 * 1000);
+    pts.push({ t, v: bsPrice(simState.isCall, S, simState.K, T, simState.iv, RISK_FREE) });
+  }
+  return pts;
+}
+
+function drawSim() {
+  const o = simState;
+  if (!o) return;
+  const S = parseFloat(document.getElementById('simPrice').value);
+  document.getElementById('simPriceLabel').textContent = fmt$(S);
+  const pts = simCurve(S);
+  const ret = pts.map(p => (p.v - o.entry) / o.entry * 100);
+
+  const canvas = document.getElementById('simChart');
+  const w = canvas.clientWidth, h = 240;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  const padL = 8, padR = 58, padT = 14, padB = 24;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+
+  let lo = Math.min(-100, ...ret), hi = Math.max(10, ...ret);
+  const pad = (hi - lo) * 0.07;
+  lo -= pad; hi += pad;
+  const y = v => padT + (hi - v) / (hi - lo) * plotH;
+  const x = i => padL + i / (pts.length - 1) * plotW;
+
+  const css = getComputedStyle(document.documentElement);
+  const cGreen = css.getPropertyValue('--green').trim();
+  const cRed = css.getPropertyValue('--red').trim();
+  const cText3 = css.getPropertyValue('--text3').trim();
+  const cBorder = css.getPropertyValue('--border2').trim();
+
+  ctx.font = '10px ui-monospace, Menlo, monospace';
+  // gridlines at sensible % steps
+  const step = (hi - lo) > 400 ? 100 : (hi - lo) > 150 ? 50 : 25;
+  ctx.lineWidth = 1;
+  for (let g = Math.ceil(lo / step) * step; g <= hi; g += step) {
+    ctx.strokeStyle = g === 0 ? cBorder : 'rgba(255,255,255,0.05)';
+    ctx.beginPath(); ctx.moveTo(padL, y(g)); ctx.lineTo(w - padR, y(g)); ctx.stroke();
+    ctx.fillStyle = cText3;
+    ctx.fillText((g > 0 ? '+' : '') + g + '%', w - padR + 6, y(g) + 3);
+  }
+  // max loss floor
+  ctx.save();
+  ctx.strokeStyle = cRed; ctx.setLineDash([4, 4]); ctx.globalAlpha = 0.6;
+  ctx.beginPath(); ctx.moveTo(padL, y(-100)); ctx.lineTo(w - padR, y(-100)); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = cRed; ctx.fillText('max loss', w - padR - 52, y(-100) - 4);
+
+  // date ticks
+  ctx.fillStyle = cText3;
+  for (let k = 0; k <= 4; k++) {
+    const i = Math.round(k / 4 * (pts.length - 1));
+    const d = new Date(pts[i].t);
+    const lab = k === 4 ? 'EXP' : (d.getMonth() + 1) + '/' + d.getDate();
+    ctx.fillText(lab, Math.min(x(i) - 8, w - padR - 24), h - 8);
+  }
+
+  // the curve, green above 0 and red below via clipping
+  const path = () => {
+    ctx.beginPath();
+    ret.forEach((v, i) => { i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v)); });
+  };
+  ctx.lineWidth = 2;
+  ctx.save(); ctx.beginPath(); ctx.rect(padL, padT - 8, plotW, y(0) - padT + 8); ctx.clip();
+  path(); ctx.strokeStyle = cGreen; ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(padL, y(0), plotW, h - padB - y(0)); ctx.clip();
+  path(); ctx.strokeStyle = cRed; ctx.stroke(); ctx.restore();
+
+  // start dot
+  ctx.fillStyle = ret[0] >= 0 ? cGreen : cRed;
+  ctx.beginPath(); ctx.arc(x(0), y(ret[0]), 3, 0, Math.PI * 2); ctx.fill();
+
+  // hover crosshair
+  const idx = simHover >= 0 && simHover < pts.length ? simHover : pts.length - 1;
+  if (simHover >= 0) {
+    ctx.save();
+    ctx.strokeStyle = cBorder; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(x(idx), padT); ctx.lineTo(x(idx), h - padB); ctx.stroke();
+    ctx.restore();
+  }
+  // readout
+  const d = new Date(pts[idx].t);
+  const v = pts[idx].v;
+  const pct = ret[idx];
+  const pnl = (v - o.entry) * 100 * o.qty;
+  document.getElementById('simReadout').innerHTML =
+    `at <b>${(d.getMonth() + 1)}/${d.getDate()}</b> with ${o.parsedTicker || ''} at ${fmt$(S)}: ` +
+    `est <b>${fmt$(v)}</b>/ct · <span style="color:${pct >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:600;">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span> · ` +
+    `<span style="color:${pnl >= 0 ? 'var(--green)' : 'var(--red)'};">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</span> for ${o.qty} ct`;
+}
+
+function simParamsFromCard(d, entry, qty) {
+  return {
+    isCall: d.isCall, K: d.parsed.strike, expStr: d.parsed.expStr, iv: d.iv,
+    entry, qty: Math.max(1, qty), spot: d.underlyingPrice, stop: d.stopLevel,
+    parsedTicker: d.parsed.ticker,
+    label: `${d.parsed.ticker} $${d.parsed.strike} ${d.isCall ? 'call' : 'put'} ${d.parsed.expStr}`
+  };
+}
+
+function simFromPinned(cardId) {
+  const d = pinnedData[cardId];
+  if (d) openSim(simParamsFromCard(d, d.mid, unitsFor(riskDollars(), d.lossPerContract)));
+}
+
+function simFromSaved(id) {
+  const d = savedData[id];
+  if (d) openSim(simParamsFromCard(d, d.entry, d.qty)); // returns measured from YOUR fill
+}
+
+function initSimEvents() {
+  const canvas = document.getElementById('simChart');
+  const toIdx = clientX => {
+    const rect = canvas.getBoundingClientRect();
+    const frac = (clientX - rect.left - 8) / (rect.width - 8 - 58);
+    return Math.max(0, Math.min(80, Math.round(frac * 80)));
+  };
+  canvas.addEventListener('mousemove', e => { simHover = toIdx(e.clientX); drawSim(); });
+  canvas.addEventListener('mouseleave', () => { simHover = -1; drawSim(); });
+  canvas.style.touchAction = 'pan-y';
+  canvas.addEventListener('touchmove', e => { if (e.touches.length) { simHover = toIdx(e.touches[0].clientX); drawSim(); } }, { passive: true });
 }
 
 // ---------- backup: everything the app stores, as a JSON file ----------
@@ -1681,6 +1897,13 @@ function showDetail(tr, c, acct) {
   if (sameSymbol) return; // toggle off
   tr.classList.add('selected');
 
+  simReg[c.opt.symbol] = {
+    isCall: c.isCall, K: c.opt.strike, expStr: selectedExp, iv: c.iv,
+    entry: c.mid, qty: Math.max(1, c.contracts), spot: quoteData.last || quoteData.ask || 0,
+    stop: c.stop, parsedTicker: quoteData.symbol,
+    label: `${quoteData.symbol} $${c.opt.strike} ${c.isCall ? 'call' : 'put'} ${selectedExp}`
+  };
+
   const dr = document.createElement('tr');
   dr.className = 'detail-row';
   dr.dataset.sym = c.opt.symbol;
@@ -1692,8 +1915,9 @@ function showDetail(tr, c, acct) {
       <div class="stat"><div class="s-label">Loss of premium</div><div class="s-val">${c.lossOfCost.toFixed(1)}%</div><div class="s-sub">per contract</div></div>
       <div class="stat ${c.vol > c.oi && c.vol > 0 ? 'highlight' : ''}"><div class="s-label">Vol / OI</div><div class="s-val">${c.vol.toLocaleString()}</div><div class="s-sub">OI ${c.oi.toLocaleString()}${c.vol > c.oi && c.vol > 0 ? ' · vol > OI' : ''}</div></div>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-top:8px;font-family:var(--mono);">
-      ${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'} · Est. via Δ + ½Γ·move² approx
+    <div style="font-size:12px;color:var(--text3);margin-top:8px;font-family:var(--mono);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span>${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'} · Est. via Δ + ½Γ·move² approx</span>
+      <button class="filter-btn" style="margin-left:auto;" onclick="openSim(simReg['${c.opt.symbol}'])">simulate returns</button>
     </div>
   </div></td>`;
   tr.parentNode.insertBefore(dr, tr.nextSibling);
@@ -1919,7 +2143,8 @@ function renderSavedCard(id) {
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">POSITION</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="refreshSaved('${id}')" title="Refresh quote" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
+      <button onclick="simFromSaved('${id}')" title="Simulate returns over time from your entry (Black-Scholes)" style="margin-left:auto;background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button onclick="refreshSaved('${id}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
@@ -1982,7 +2207,8 @@ function renderPinnedCard(cardId) {
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span class="${d.itm ? 'badge-itm' : 'badge-otm'}" style="font-size:11px;padding:2px 7px;border-radius:3px;">${d.itm ? 'ITM' : 'OTM'}</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry price and contracts" style="margin-left:auto;background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
+      <button onclick="simFromPinned('${cardId}')" title="Simulate returns over time (Black-Scholes)" style="margin-left:auto;background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry price and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
       <button onclick="refreshPinned('${cardId}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
@@ -2098,6 +2324,7 @@ function initShortcuts() {
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
     if (e.key === 'Escape') {
+      if (simState) { closeSim(); return; }
       if (typing) { e.target.blur(); return; }
       closeDetails();
       return;
@@ -2129,6 +2356,7 @@ loadKey();
 syncRiskDollar();
 initChartEvents();
 initShortcuts();
+initSimEvents();
 apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
 applyApiOpen();
 applyQuickOpen();
