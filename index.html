@@ -408,6 +408,9 @@
   <div id="pinnedBar"></div>
   <div id="pinnedSection"></div>
 
+  <div id="savedBar"></div>
+  <div id="savedSection"></div>
+
   <div id="errorBox" style="display:none;" class="error"></div>
 
   <div id="quoteSection" style="display:none;">
@@ -606,6 +609,7 @@ function syncFromDollar() {
   flashNext = true;
   if (quoteData) { renderShares(); renderChain(); }
   renderPinnedCards();
+  renderSavedCards();
   flashNext = false;
   updateStickyBar();
 }
@@ -617,6 +621,7 @@ function recalcAll() {
     renderChain();
   }
   renderPinnedCards();
+  renderSavedCards();
   flashNext = false;
   updateStickyBar();
 }
@@ -1666,35 +1671,38 @@ function recalcPinnedStop(d) {
   d.lodPct = d.underlyingPrice > 0 ? (drop / d.underlyingPrice * 100).toFixed(2) : '0.00';
 }
 
+async function refreshCardData(d) {
+  const [qRes, oRes] = await Promise.all([
+    fetch(`${baseUrl()}/markets/quotes?symbols=${d.parsed.ticker}`, { headers: headers() }),
+    fetch(`${baseUrl()}/markets/quotes?symbols=${d.parsed.occ}&greeks=true`, { headers: headers() })
+  ]);
+  const uq = (await qRes.json())?.quotes?.quote;
+  const oq = (await oRes.json())?.quotes?.quote;
+  if (!uq || !oq) throw new Error('no data');
+  d.underlyingPrice = uq.last || uq.ask || 0;
+  d.bid = oq.bid || 0;
+  d.ask = oq.ask || 0;
+  d.mid = (d.bid + d.ask) / 2;
+  d.delta = oq.greeks?.delta || 0;
+  d.gamma = oq.greeks?.gamma || 0;
+  d.iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
+  d.vol = oq.volume || 0;
+  d.oi = oq.open_interest || 0;
+  d.itm = d.isCall ? d.parsed.strike < d.underlyingPrice : d.parsed.strike > d.underlyingPrice;
+  d.spreadPct = d.mid > 0 ? (d.ask - d.bid) / d.mid * 100 : 0;
+  // default stops track the fresh session levels; a user-set stop stays put
+  if (d.stopName === 'LOD') d.stopLevel = uq.low || d.stopLevel;
+  if (d.stopName === 'HOD') d.stopLevel = uq.high || d.stopLevel;
+  d.asOf = new Date().toLocaleTimeString();
+  recalcPinnedStop(d);
+}
+
 async function refreshPinned(cardId) {
   const d = pinnedData[cardId];
   if (!d) return;
-  const key = document.getElementById('apiKey').value.trim();
-  if (!key) { showError('Enter your Tradier API key above.'); return; }
+  if (!document.getElementById('apiKey').value.trim()) { showError('Enter your Tradier API key above.'); return; }
   try {
-    const [qRes, oRes] = await Promise.all([
-      fetch(`${baseUrl()}/markets/quotes?symbols=${d.parsed.ticker}`, { headers: headers() }),
-      fetch(`${baseUrl()}/markets/quotes?symbols=${d.parsed.occ}&greeks=true`, { headers: headers() })
-    ]);
-    const uq = (await qRes.json())?.quotes?.quote;
-    const oq = (await oRes.json())?.quotes?.quote;
-    if (!uq || !oq) throw new Error('no data');
-    d.underlyingPrice = uq.last || uq.ask || 0;
-    d.bid = oq.bid || 0;
-    d.ask = oq.ask || 0;
-    d.mid = (d.bid + d.ask) / 2;
-    d.delta = oq.greeks?.delta || 0;
-    d.gamma = oq.greeks?.gamma || 0;
-    d.iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
-    d.vol = oq.volume || 0;
-    d.oi = oq.open_interest || 0;
-    d.itm = d.isCall ? d.parsed.strike < d.underlyingPrice : d.parsed.strike > d.underlyingPrice;
-    d.spreadPct = d.mid > 0 ? (d.ask - d.bid) / d.mid * 100 : 0;
-    // default stops track the fresh session levels; a user-set stop stays put
-    if (d.stopName === 'LOD') d.stopLevel = uq.low || d.stopLevel;
-    if (d.stopName === 'HOD') d.stopLevel = uq.high || d.stopLevel;
-    d.asOf = new Date().toLocaleTimeString();
-    recalcPinnedStop(d);
+    await refreshCardData(d);
     renderPinnedCard(cardId);
   } catch(e) {
     showError('Card refresh failed — check key/network.');
@@ -1703,6 +1711,136 @@ async function refreshPinned(cardId) {
 
 function refreshAllPinned() {
   Object.keys(pinnedData).forEach(refreshPinned);
+}
+
+// ---------- saved positions: persisted cards tracking a real entry ----------
+const savedData = {};
+
+function persistSaved() {
+  store.set('saved_positions', JSON.stringify(savedData));
+}
+
+function saveCard(cardId) {
+  const d = pinnedData[cardId];
+  if (!d) return;
+  const id = 'saved_' + Date.now();
+  // entry defaults to the current mid; qty to the risk-sized count — edit both to your real fill
+  savedData[id] = Object.assign({}, d, { entry: d.mid, qty: Math.max(1, unitsFor(riskDollars(), d.lossPerContract)) });
+  addSavedDiv(id);
+  renderSavedCard(id);
+  persistSaved();
+  updateSavedBar();
+}
+
+function addSavedDiv(id) {
+  const div = document.createElement('div');
+  div.className = 'pinned-card';
+  div.id = id;
+  document.getElementById('savedSection').prepend(div);
+}
+
+function removeSaved(id) {
+  delete savedData[id];
+  const el = document.getElementById(id);
+  if (el) el.remove();
+  persistSaved();
+  updateSavedBar();
+}
+
+function savedEntryChanged(id, el) {
+  const d = savedData[id];
+  const v = parseFloat(el.value);
+  if (d && !isNaN(v) && v > 0) { d.entry = v; persistSaved(); }
+  flashNext = true; renderSavedCard(id); flashNext = false;
+}
+
+function savedQtyChanged(id, el) {
+  const d = savedData[id];
+  const v = Math.floor(parseFloat(el.value) || 0);
+  if (d && v >= 0) { d.qty = v; persistSaved(); }
+  flashNext = true; renderSavedCard(id); flashNext = false;
+}
+
+function savedStopChanged(id, el) {
+  const d = savedData[id];
+  if (!d) return;
+  const v = parseFloat(el.value);
+  if (!isNaN(v) && v > 0) {
+    d.stopLevel = v;
+    d.stopName = 'stop';
+    recalcPinnedStop(d);
+    persistSaved();
+  }
+  flashNext = true; renderSavedCard(id); flashNext = false;
+}
+
+async function refreshSaved(id) {
+  const d = savedData[id];
+  if (!d) return;
+  if (!document.getElementById('apiKey').value.trim()) { showError('Enter your Tradier API key above.'); return; }
+  try {
+    await refreshCardData(d);
+    persistSaved();
+    renderSavedCard(id);
+  } catch(e) {
+    showError('Position refresh failed — check key/network.');
+  }
+}
+
+function refreshAllSaved() {
+  Object.keys(savedData).forEach(refreshSaved);
+}
+
+function updateSavedBar() {
+  const n = Object.keys(savedData).length;
+  document.getElementById('savedBar').innerHTML = n
+    ? `<div class="section-title" style="margin:4px 0 10px;">Saved positions (${n})<button class="btn" style="font-size:11px;padding:3px 10px;margin-left:10px;" onclick="refreshAllSaved()">↻ refresh</button></div>`
+    : '';
+}
+
+function renderSavedCard(id) {
+  const d = savedData[id];
+  const el = document.getElementById(id);
+  if (!d || !el) return;
+  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  const qty = d.qty || 0;
+  const pnl = (d.mid - d.entry) * 100 * qty;
+  const pnlPct = d.entry > 0 ? ((d.mid - d.entry) / d.entry * 100) : 0;
+  // what the stop-out is worth measured from YOUR entry, not from mid
+  const lossAtStop = (d.entry - d.atLod) * 100 * qty;
+  const cost = d.entry * 100 * qty;
+  el.innerHTML = `
+    <div class="pinned-header">
+      <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
+      <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
+      <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">POSITION</span>
+      <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
+      <button onclick="refreshSaved('${id}')" title="Refresh quote" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
+      <button onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
+    </div>
+    <div class="stat-grid">
+      <div class="stat highlight"><div class="s-label">Entry / ct</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price per contract" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
+      <div class="stat"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" value="${qty}" step="1" min="0" title="Contracts you hold (does not change risk $)" onchange="savedQtyChanged('${id}', this)" /></div><div class="s-sub">${fmt$(cost)} at entry</div></div>
+      <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</div><div class="s-sub">mid ${fmt$(d.mid)} · ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%</div></div>
+      <div class="stat ${lossAtStop > 0 ? 'danger' : 'good'}"><div class="s-label">${lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop'}</div><div class="s-val">${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}</div><div class="s-sub">${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct · from your entry</div></div>
+      <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">Δ × move to ${d.stopName}</div></div>
+    </div>
+  `;
+  withFlash(el);
+}
+
+function renderSavedCards() {
+  Object.keys(savedData).forEach(renderSavedCard);
+}
+
+function loadSaved() {
+  try {
+    const raw = store.get('saved_positions');
+    if (!raw) return;
+    Object.assign(savedData, JSON.parse(raw));
+    Object.keys(savedData).sort().forEach(id => { addSavedDiv(id); renderSavedCard(id); });
+    updateSavedBar();
+  } catch(e) {}
 }
 
 function updatePinnedBar() {
@@ -1740,7 +1878,8 @@ function renderPinnedCard(cardId) {
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span class="${d.itm ? 'badge-itm' : 'badge-otm'}" style="font-size:11px;padding:2px 7px;border-radius:3px;">${d.itm ? 'ITM' : 'OTM'}</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="refreshPinned('${cardId}')" title="Refresh quote" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
+      <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry price and contracts" style="margin-left:auto;background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
+      <button onclick="refreshPinned('${cardId}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
@@ -1889,6 +2028,7 @@ apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a ke
 applyApiOpen();
 applyQuickOpen();
 updateStopVisibility();
+loadSaved();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {
