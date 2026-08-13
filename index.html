@@ -245,6 +245,12 @@
   td.voloi.itm-tint { background: linear-gradient(rgba(245,176,46,0.045), rgba(245,176,46,0.045)), rgba(91,157,255,0.05); }
 
   .chart-wrap { position: relative; margin-top: 14px; }
+  .chart-row { display: flex; gap: 12px; }
+  .chart-row > div { min-width: 0; }
+  #chartCol5 { flex: 1.55; }
+  #chartColD { flex: 1; }
+  .chart-cap { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4px; }
+  @media (max-width: 700px) { .chart-row { flex-direction: column; } }
   .chart-wrap canvas { width: 100%; display: block; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; }
   .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .chart-head .ohlc { font-size: 11.5px; color: var(--text2); font-family: var(--mono); margin-left: auto; white-space: nowrap; }
@@ -482,11 +488,14 @@
 
     <div class="card chart-wrap" id="chartWrap" style="display:none;">
       <div class="chart-head">
-        <span class="section-title" style="margin-bottom:0;">5-min chart</span>
+        <span class="section-title" style="margin-bottom:0;">Chart</span>
         <span style="font-size:11.5px;color:var(--text2);font-family:var(--mono);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
         <span class="ohlc" id="chartOhlc"></span>
       </div>
-      <canvas id="chart" height="260"></canvas>
+      <div class="chart-row">
+        <div id="chartColD"><div class="chart-cap">daily</div><canvas id="dailyChart" height="260"></canvas></div>
+        <div id="chartCol5"><div class="chart-cap">5-min</div><canvas id="chart" height="260"></canvas></div>
+      </div>
       <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
     </div>
 
@@ -1048,6 +1057,7 @@ function stopsChanged() {
   if (quoteData) { renderShares(); renderChain(); }
   flashNext = false;
   if (chartBars.length) drawChart();
+  else if (dailyBars.length) drawDailyChart();
 }
 
 // positions is a view, not a sizing mode: currentMode stays shares/options underneath
@@ -1185,7 +1195,6 @@ function dateStr(d) {
 }
 
 async function fetchChart(ticker) {
-  const wrap = document.getElementById('chartWrap');
   chartBars = [];
   // walk back up to 6 days to find the most recent session with data
   for (let back = 0; back <= 6; back++) {
@@ -1208,20 +1217,18 @@ async function fetchChart(ticker) {
       }
     } catch(e) { break; }
   }
-  if (chartBars.length) {
-    wrap.style.display = 'block';
-    drawChart();
-  } else {
-    wrap.style.display = 'none';
-  }
+  updateChartVisibility();
+  if (chartBars.length) drawChart();
 }
 
-// ---------- daily history: ADR14, prior-day levels, HV20 ----------
+// ---------- daily history: ADR14, prior-day levels, HV20, daily chart ----------
 let adrValue = 0;
 let prevDay = null; // { h, l, c } of the last completed session
 let hv20 = 0;       // annualized 20-day historical volatility
+let dailyBars = []; // full history incl. today's forming bar, for the daily chart
 
 function applyDailyHistory(list) {
+  dailyBars = list;
   const today = dateStr(new Date());
   const done = list.filter(x => x.date !== today); // today's range is still forming
   const last14 = done.slice(-14);
@@ -1242,16 +1249,26 @@ async function fetchAdr(ticker) {
   adrValue = 0;
   prevDay = null;
   hv20 = 0;
+  dailyBars = [];
   try {
     const from = new Date();
-    from.setDate(from.getDate() - 45);
+    from.setDate(from.getDate() - 130); // ~90 sessions for the daily chart; stats use the tail
     const url = `${baseUrl()}/markets/history?symbol=${ticker}&interval=daily&start=${dateStr(from)}&end=${dateStr(new Date())}`;
     const res = await fetch(url, { headers: headers() });
     const days = (await res.json())?.history?.day;
     if (days) applyDailyHistory(Array.isArray(days) ? days : [days]);
   } catch(e) {}
   renderAdr();
+  updateChartVisibility();
   if (chartBars.length) drawChart(); // prior-day lines
+  if (dailyBars.length) drawDailyChart();
+}
+
+function updateChartVisibility() {
+  const has5 = chartBars.length > 0, hasD = dailyBars.length > 0;
+  document.getElementById('chartWrap').style.display = has5 || hasD ? 'block' : 'none';
+  document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
+  document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
 }
 
 function adrUsage() {
@@ -1477,6 +1494,7 @@ function drawChart() {
     const sess = (chartBars[0].t || '').slice(0, 10);
     document.getElementById('chartOhlc').textContent = sess + ' · ' + n + ' bars';
   }
+  if (dailyBars.length) drawDailyChart(); // keep the two panes in sync
 }
 
 function chartPriceAtY(clientY) {
@@ -1486,6 +1504,157 @@ function chartPriceAtY(clientY) {
   const { lo, hi } = chartRange();
   const yy = clientY - rect.top;
   return hi - (yy - g.padT) / g.plotH * (hi - lo);
+}
+
+// clicks on either chart set the active context's stop; in Both view, below price = long, above = short
+function setStopFromPrice(price) {
+  if (!(price > 0)) return;
+  const tc = tradeCtx();
+  const spot = quoteData ? (quoteData.last || quoteData.ask || 0) : 0;
+  const id = tc === 'long' ? 'stopLong'
+    : tc === 'short' ? 'stopShort'
+    : (spot > 0 && price >= spot) ? 'stopShort' : 'stopLong';
+  document.getElementById(id).value = price.toFixed(2);
+  stopsChanged();
+}
+
+// ---------- daily chart: candles + 8 EMA over ~90 sessions ----------
+let dailyHover = -1;
+
+function drawDailyChart() {
+  if (!dailyBars.length) return;
+  const canvas = document.getElementById('dailyChart');
+  const w = canvas.clientWidth, h = 260;
+  if (!w) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  const padL = 6, padR = 52, padT = 12, padB = 22;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+
+  let lo = Infinity, hi = -Infinity;
+  for (const b of dailyBars) { if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; }
+  const tc = tradeCtx();
+  if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
+  if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
+  const pad = (hi - lo) * 0.05 || 0.5;
+  lo -= pad; hi += pad;
+  const y = p => padT + (hi - p) / (hi - lo) * plotH;
+  const n = dailyBars.length;
+  const slot = plotW / n;
+  const bw = Math.max(1.5, Math.min(7, slot * 0.65));
+  const x = i => padL + i * slot + slot / 2;
+
+  const css = getComputedStyle(document.documentElement);
+  const cGreen = css.getPropertyValue('--green').trim();
+  const cRed = css.getPropertyValue('--red').trim();
+  const cPurple = css.getPropertyValue('--purple').trim();
+  const cText3 = css.getPropertyValue('--text3').trim();
+  const cBorder = css.getPropertyValue('--border2').trim();
+
+  ctx.font = '10px ui-monospace, Menlo, monospace';
+  ctx.fillStyle = cText3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const p = lo + (hi - lo) * i / 4;
+    ctx.beginPath(); ctx.moveTo(padL, y(p)); ctx.lineTo(w - padR, y(p)); ctx.stroke();
+    ctx.fillText('$' + p.toFixed(2), w - padR + 5, y(p) + 3);
+  }
+  const tickEvery = Math.max(1, Math.round(n / 5));
+  for (let i = 0; i < n; i += tickEvery) {
+    const parts = (dailyBars[i].date || '').split('-');
+    if (parts.length === 3) ctx.fillText(+parts[1] + '/' + +parts[2], x(i) - 10, h - 8);
+  }
+
+  // stop lines follow the same context rules as the 5-min chart
+  const stopLine = (price, color, label) => {
+    if (!(price > 0)) return;
+    ctx.save();
+    ctx.strokeStyle = color; ctx.setLineDash([6, 3]); ctx.lineWidth = 1.25;
+    ctx.beginPath(); ctx.moveTo(padL, y(price)); ctx.lineTo(w - padR, y(price)); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillText(label + ' ' + price.toFixed(2), w - padR - 84, y(price) - 4);
+    ctx.restore();
+  };
+  if (tc !== 'short') stopLine(rawStop('stopLong'), cRed, 'long stop');
+  if (tc !== 'long') stopLine(rawStop('stopShort'), cGreen, 'short stop');
+
+  // candles
+  for (let i = 0; i < n; i++) {
+    const b = dailyBars[i];
+    const col = b.close >= b.open ? cGreen : cRed;
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x(i), y(b.high)); ctx.lineTo(x(i), y(b.low)); ctx.stroke();
+    const top = y(Math.max(b.open, b.close)), bot = y(Math.min(b.open, b.close));
+    ctx.fillRect(x(i) - bw / 2, top, bw, Math.max(1, bot - top));
+  }
+
+  // 8 EMA of daily closes
+  const k = 2 / 9;
+  let e = dailyBars[0].close;
+  ctx.save();
+  ctx.strokeStyle = cPurple; ctx.lineWidth = 1.25; ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  dailyBars.forEach((b, i) => {
+    e = b.close * k + e * (1 - k);
+    i ? ctx.lineTo(x(i), y(e)) : ctx.moveTo(x(i), y(e));
+  });
+  ctx.stroke(); ctx.restore();
+
+  // hover crosshair shares the OHLC readout with the 5-min chart
+  if (dailyHover >= 0 && dailyHover < n) {
+    const b = dailyBars[dailyHover];
+    ctx.save();
+    ctx.strokeStyle = cBorder; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(x(dailyHover), padT); ctx.lineTo(x(dailyHover), h - padB); ctx.stroke();
+    ctx.restore();
+    const chg = b.close - b.open;
+    document.getElementById('chartOhlc').innerHTML =
+      `1D ${b.date} &nbsp; O ${b.open.toFixed(2)} &nbsp; H ${b.high.toFixed(2)} &nbsp; L ${b.low.toFixed(2)} &nbsp; C <span style="color:${chg >= 0 ? cGreen : cRed}">${b.close.toFixed(2)}</span>`;
+  }
+}
+
+function initDailyChartEvents() {
+  const canvas = document.getElementById('dailyChart');
+  const geom = () => {
+    const rect = canvas.getBoundingClientRect();
+    return { rect, plotW: rect.width - 6 - 52 };
+  };
+  const toIdx = clientX => {
+    const g = geom();
+    const i = Math.floor((clientX - g.rect.left - 6) / (g.plotW / dailyBars.length));
+    return i >= 0 && i < dailyBars.length ? i : -1;
+  };
+  canvas.addEventListener('mousemove', e => {
+    if (!dailyBars.length) return;
+    dailyHover = toIdx(e.clientX);
+    drawDailyChart();
+  });
+  canvas.addEventListener('mouseleave', () => {
+    dailyHover = -1;
+    drawDailyChart();
+    if (chartBars.length) drawChart(); // restores the 5-min readout
+  });
+  canvas.style.touchAction = 'pan-y';
+  canvas.addEventListener('touchmove', e => {
+    if (dailyBars.length && e.touches.length) { dailyHover = toIdx(e.touches[0].clientX); drawDailyChart(); }
+  }, { passive: true });
+  canvas.addEventListener('click', e => {
+    if (!dailyBars.length) return;
+    const rect = canvas.getBoundingClientRect();
+    let dLo = Infinity, dHi = -Infinity;
+    for (const b of dailyBars) { if (b.low < dLo) dLo = b.low; if (b.high > dHi) dHi = b.high; }
+    const tc = tradeCtx();
+    if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+    if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+    const pad = (dHi - dLo) * 0.05 || 0.5;
+    dLo -= pad; dHi += pad;
+    const yy = e.clientY - rect.top;
+    setStopFromPrice(dHi - (yy - 12) / (260 - 12 - 22) * (dHi - dLo));
+  });
 }
 
 function initChartEvents() {
@@ -1518,18 +1687,12 @@ function initChartEvents() {
   canvas.addEventListener('touchend', () => { chartHover = -1; chartHoverY = -1; if (chartBars.length) drawChart(); });
   canvas.addEventListener('click', e => {
     if (!chartBars.length) return;
-    const price = chartPriceAtY(e.clientY);
-    if (!(price > 0)) return;
-    // clicks set the active context's stop; in Both view, below price = long, above = short
-    const tc = tradeCtx();
-    const spot = quoteData ? (quoteData.last || quoteData.ask || 0) : 0;
-    const id = tc === 'long' ? 'stopLong'
-      : tc === 'short' ? 'stopShort'
-      : (spot > 0 && price >= spot) ? 'stopShort' : 'stopLong';
-    document.getElementById(id).value = price.toFixed(2);
-    stopsChanged();
+    setStopFromPrice(chartPriceAtY(e.clientY));
   });
-  window.addEventListener('resize', () => { if (chartBars.length) drawChart(); });
+  window.addEventListener('resize', () => {
+    if (chartBars.length) drawChart();
+    else if (dailyBars.length) drawDailyChart();
+  });
   // re-render chain colspans when crossing the mobile breakpoint (rotation etc.)
   window.matchMedia('(max-width: 500px)').addEventListener('change', () => {
     if (quoteData && chainData.length) renderChain();
@@ -2489,6 +2652,7 @@ function initShortcuts() {
 loadKey();
 syncRiskDollar();
 initChartEvents();
+initDailyChartEvents();
 initShortcuts();
 initSimEvents();
 apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
