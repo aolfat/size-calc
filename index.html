@@ -437,7 +437,7 @@
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Underlying</span>
         <input type="range" id="simPrice" style="flex:1;min-width:160px;" oninput="drawSim()" />
-        <span style="font-family:var(--mono);font-size:13px;font-weight:600;" id="simPriceLabel"></span>
+        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--mono);outline:none;" onchange="simPriceTyped(this)" /></div>
         <button class="filter-btn" onclick="simSetPrice('stop')">stop</button>
         <button class="filter-btn" onclick="simSetPrice(0)">now</button>
         <button class="filter-btn" onclick="simSetPrice(1)">1R</button>
@@ -636,6 +636,17 @@ function simSetPrice(mult) { // chips: stop / now / 1R / 2R
   drawSim();
 }
 
+function simPriceTyped(el) {
+  const v = parseFloat(el.value);
+  if (!simState || isNaN(v) || v <= 0) { drawSim(); return; }
+  const sl = document.getElementById('simPrice');
+  // typed prices outside the slider's range widen the range
+  if (v < +sl.min) sl.min = Math.max(0.01, v).toFixed(2);
+  if (v > +sl.max) sl.max = v.toFixed(2);
+  sl.value = v;
+  drawSim();
+}
+
 function simCurve(S) {
   const exp = new Date(simState.expStr + 'T16:00:00');
   const now = Date.now();
@@ -654,7 +665,8 @@ function drawSim() {
   const o = simState;
   if (!o) return;
   const S = parseFloat(document.getElementById('simPrice').value);
-  document.getElementById('simPriceLabel').textContent = fmt$(S);
+  const priceInput = document.getElementById('simPriceInput');
+  if (document.activeElement !== priceInput) priceInput.value = S.toFixed(2); // don't clobber mid-typing
   const pts = simCurve(S);
   const ret = pts.map(p => (p.v - o.entry) / o.entry * 100);
 
