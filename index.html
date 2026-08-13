@@ -733,8 +733,8 @@ function drawSim() {
   ctx.fillStyle = ret[0] >= 0 ? cGreen : cRed;
   ctx.beginPath(); ctx.arc(x(0), y(ret[0]), 3, 0, Math.PI * 2); ctx.fill();
 
-  // hover crosshair
-  const idx = simHover >= 0 && simHover < pts.length ? simHover : pts.length - 1;
+  // hover crosshair; no hover = today's estimate, not expiry
+  const idx = simHover >= 0 && simHover < pts.length ? simHover : 0;
   if (simHover >= 0) {
     ctx.save();
     ctx.strokeStyle = cBorder; ctx.setLineDash([2, 3]);
@@ -746,8 +746,9 @@ function drawSim() {
   const v = pts[idx].v;
   const pct = ret[idx];
   const pnl = (v - o.entry) * 100 * o.qty;
+  const when = idx === 0 ? 'now' : (idx === pts.length - 1 ? 'at exp' : `${(d.getMonth() + 1)}/${d.getDate()}`);
   document.getElementById('simReadout').innerHTML =
-    `at <b>${(d.getMonth() + 1)}/${d.getDate()}</b> with ${o.parsedTicker || ''} at ${fmt$(S)}: ` +
+    `<b>${when}</b> with ${o.parsedTicker || ''} at ${fmt$(S)}: ` +
     `est <b>${fmt$(v)}</b>/ct · <span style="color:${pct >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:600;">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span> · ` +
     `<span style="color:${pnl >= 0 ? 'var(--green)' : 'var(--red)'};">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</span> for ${o.qty} ct`;
 }
