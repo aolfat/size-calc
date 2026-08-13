@@ -288,6 +288,7 @@
       <span><kbd>q</kbd> quick lookup</span>
       <span><kbd>s</kbd> shares</span>
       <span><kbd>o</kbd> options</span>
+      <span><kbd>v</kbd> positions</span>
       <span><kbd>r</kbd> refresh</span>
       <span><kbd>l</kbd> live 60s</span>
       <span><kbd>d</kbd> long/short</span>
@@ -349,7 +350,9 @@
     <div class="seg mode-big" id="modeSeg">
       <button id="modeShares" class="active" onclick="setMode('shares')">Shares</button>
       <button id="modeOptions" onclick="setMode('options')">Options</button>
+      <button id="modePositions" onclick="setView('positions')">Positions <span id="posCount" style="font-size:11px;opacity:0.8;"></span></button>
     </div>
+    <div id="sizingControls">
     <div class="section-title" style="margin-top:16px;">Ticker</div>
     <div class="row" style="align-items:flex-end;">
       <div class="field" style="flex:0 0 140px;">
@@ -385,9 +388,10 @@
       </div>
       <div style="font-size:11px;color:var(--text3);padding-bottom:11px;" id="stopsHint"></div>
     </div>
+    </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="quickCard">
     <div class="section-title card-toggle" id="quickToggle" onclick="toggleQuick()"><span class="chev">▶</span> Quick lookup <span class="title-status">shorthand option lookup · q</span></div>
     <div id="quickBody">
     <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
@@ -711,8 +715,33 @@ function stopsChanged() {
   if (chartBars.length) drawChart();
 }
 
+// positions is a view, not a sizing mode: currentMode stays shares/options underneath
+let positionsView = false;
+
+function setView(v) {
+  positionsView = v === 'positions';
+  document.getElementById('modeShares').classList.toggle('active', !positionsView && currentMode === 'shares');
+  document.getElementById('modeOptions').classList.toggle('active', !positionsView && currentMode === 'options');
+  document.getElementById('modePositions').classList.toggle('active', positionsView);
+  const hide = positionsView ? 'none' : '';
+  document.getElementById('sizingControls').style.display = hide;
+  document.getElementById('quickCard').style.display = hide;
+  document.getElementById('pinnedBar').style.display = hide;
+  document.getElementById('pinnedSection').style.display = hide;
+  document.getElementById('quoteSection').style.display = positionsView ? 'none' : (quoteData ? 'block' : 'none');
+  document.getElementById('savedBar').style.display = positionsView ? '' : 'none';
+  document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
+  if (positionsView) {
+    updateSavedBar();
+    // fresh P&L on open when a key is available
+    if (document.getElementById('apiKey').value.trim() && Object.keys(savedData).length) refreshAllSaved();
+  }
+  updateStickyBar();
+}
+
 async function setMode(mode) {
   currentMode = mode;
+  if (positionsView) { positionsView = false; setView('calc'); }
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
   document.getElementById('fetchBtnText').textContent = mode === 'shares' ? 'Load quote' : 'Load chain';
@@ -1793,9 +1822,10 @@ function refreshAllSaved() {
 
 function updateSavedBar() {
   const n = Object.keys(savedData).length;
+  document.getElementById('posCount').textContent = n ? `(${n})` : '';
   document.getElementById('savedBar').innerHTML = n
     ? `<div class="section-title" style="margin:4px 0 10px;">Saved positions (${n})<button class="btn" style="font-size:11px;padding:3px 10px;margin-left:10px;" onclick="refreshAllSaved()">↻ refresh</button></div>`
-    : '';
+    : '<div class="hint" style="margin:8px 4px;">no saved positions yet — press <b>save</b> on a quick lookup card to track one here</div>';
 }
 
 function renderSavedCard(id) {
@@ -2005,6 +2035,7 @@ function initShortcuts() {
       case 'q': toggleQuick(true); focus('quickInput'); break;
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
+      case 'v': setView(positionsView ? 'calc' : 'positions'); break;
       case 'r': refreshQuote(); break;
       case 'l': toggleLive(); break;
       case 'd': if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long'); break;
@@ -2029,6 +2060,7 @@ applyApiOpen();
 applyQuickOpen();
 updateStopVisibility();
 loadSaved();
+setView('calc'); // saved cards live in the Positions tab
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {
