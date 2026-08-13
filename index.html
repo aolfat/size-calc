@@ -155,6 +155,7 @@
   .badge-otm { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--bg4); color: var(--text3); font-weight: 600; margin-left: 6px; vertical-align: middle; }
 
   .error { background: var(--red-bg); border: 1px solid var(--red-bd); border-radius: var(--radius); padding: 10px 14px; color: var(--red); font-size: 13px; position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 120; max-width: min(90vw, 640px); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.8); }
+  .error.ok { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
 
   /* sticky context bar: appears once you scroll past the quote card */
   #stickyBar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 90; align-items: center; gap: 14px; padding: 7px 16px; background: rgba(18,21,28,0.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2); font-family: var(--mono); font-size: 12.5px; cursor: pointer; white-space: nowrap; overflow-x: auto; }
@@ -317,6 +318,13 @@
         </div>
       </div>
       <p class="api-notice">Key stored in localStorage — never leaves your browser. Get one free at <a href="https://developer.tradier.com" target="_blank">developer.tradier.com</a></p>
+      <hr class="divider">
+      <div class="row" style="align-items:center;gap:8px;">
+        <button class="btn" onclick="exportBackup()" style="font-size:12px;padding:6px 12px;">⬇ Export backup</button>
+        <button class="btn" onclick="document.getElementById('importFile').click()" style="font-size:12px;padding:6px 12px;">⬆ Import backup</button>
+        <input type="file" id="importFile" accept=".json,application/json" style="display:none;" onchange="importBackup(this)" />
+        <span class="hint" style="margin-top:0;">settings · API key · saved positions → JSON file · import merges positions · keep the file private</span>
+      </div>
     </div>
   </div>
 
@@ -548,6 +556,70 @@ function showError(msg) {
   errorTimer = setTimeout(clearError, 6000); // floating toast, self-dismissing
 }
 
+// ---------- backup: everything the app stores, as a JSON file ----------
+const BACKUP_KEYS = ['tradier_key', 'tradier_env', 'calc_account', 'calc_risk', 'last_ticker', 'saved_positions'];
+
+function buildBackup() {
+  const out = { app: 'size-calc', exported: new Date().toISOString(), data: {} };
+  BACKUP_KEYS.forEach(k => { const v = store.get(k); if (v !== null) out.data[k] = v; });
+  return JSON.stringify(out, null, 2);
+}
+
+function exportBackup() {
+  const json = buildBackup();
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'size-calc-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  if (navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
+  showToast('Backup downloaded (and copied to clipboard). Keep it private — it includes your API key.');
+}
+
+function applyBackup(text) { // returns restored key count, throws on junk
+  const j = JSON.parse(text);
+  const payload = j && j.app === 'size-calc' && j.data ? j.data : j;
+  let n = 0;
+  BACKUP_KEYS.forEach(k => {
+    if (payload[k] === undefined || payload[k] === null) return;
+    let v = String(payload[k]);
+    if (k === 'saved_positions') { // merge, don't clobber positions already on this device
+      const existing = JSON.parse(store.get('saved_positions') || '{}');
+      v = JSON.stringify(Object.assign(existing, JSON.parse(v)));
+    }
+    store.set(k, v);
+    n++;
+  });
+  if (!n) throw new Error('no recognized keys');
+  return n;
+}
+
+function importBackup(input) {
+  const f = input.files && input.files[0];
+  input.value = '';
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      applyBackup(reader.result);
+      location.reload(); // rehydrate everything from storage
+    } catch(e) {
+      showError('Import failed — not a Size Calc backup file.');
+    }
+  };
+  reader.readAsText(f);
+}
+
+function showToast(msg) {
+  const b = document.getElementById('errorBox');
+  b.textContent = msg;
+  b.classList.add('ok');
+  b.style.display = 'block';
+  clearTimeout(errorTimer);
+  errorTimer = setTimeout(clearError, 5000);
+}
+
 // ---------- collapsible setup cards ----------
 let apiOpen = true;
 function applyApiOpen() {
@@ -578,7 +650,9 @@ function withFlash(el) {
   setTimeout(() => el.classList.remove('pulse'), 650);
 }
 function clearError() {
-  document.getElementById('errorBox').style.display = 'none';
+  const b = document.getElementById('errorBox');
+  b.style.display = 'none';
+  b.classList.remove('ok');
 }
 
 function syncRiskDollar() {
@@ -2071,6 +2145,8 @@ document.addEventListener('wheel', () => {
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js');
 }
+// ask the browser to protect this origin's storage from eviction (key + saved positions live here)
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e) {}
 // pick up where you left off: auto-load the last ticker if a key is saved
 if (document.getElementById('apiKey').value.trim() && document.getElementById('ticker').value.trim()) fetchQuote();
 </script>

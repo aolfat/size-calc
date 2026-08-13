@@ -30,6 +30,7 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 - Big Shares/Options segmented switcher at top of ticker card — keep it prominent
 - localStorage wrapped in try/catch (`store` helper) so sandboxed previews don't crash
 - PWA: manifest.json + icon-180/512.png + sw.js (network-first, same-origin GETs only — API calls pass through; cached fallback offline). Registered only on https. Fixes iOS home-screen staleness — fresh version on every online open
+- Durability: navigator.storage.persist() requested at init. Export/Import backup buttons in the API card (BACKUP_KEYS → JSON file + clipboard; import merges saved_positions rather than clobbering, overwrites the rest, reloads). Backup file contains the API key — hints tell the user to keep it private. Green toast variant: .error.ok via showToast()
 - iOS home-screen meta tags present (apple-mobile-web-app-*) — file is meant to be hosted (GitHub Pages) and added to iPhone home screen
 - Wheel over a focused number input blurs it so the page scrolls instead of spinning the value
 - Owner's style: direct, terse. No em dashes in user-facing copy.
