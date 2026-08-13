@@ -395,7 +395,7 @@
         <button class="btn primary" onclick="fetchQuickOption()" id="quickBtn"><span id="quickBtnText">Look up</span></button>
       </div>
     </div>
-    <div class="hint">ticker · strike · expiry (m/d or m/d/yy) — calls by default, add "put" to flip &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 6/20</b> &nbsp;or&nbsp; <b>SPY 580 put 6/18/26</b></div>
+    <div class="hint">ticker · strike · expiry in any order — m/d or m.d, year optional &nbsp;·&nbsp; calls by default, add "put" to flip &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 9/18</b> · <b>9.18 300 aapl</b> · <b>SPY 580 put 6/18/26</b></div>
     </div>
   </div>
 
@@ -1585,17 +1585,39 @@ function showDetail(tr, c, acct) {
 }
 
 function parseQuickStr(str) {
-  if (!str.trim()) return null;
   const s = str.trim();
-  const re = /^([A-Za-z]{1,5})\s+(\d+(?:\.\d+)?)\s*(call|put|c|p)?\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/i;
-  const m = s.match(re);
-  if (!m) return null;
-  const ticker = m[1].toUpperCase();
-  const strike = parseFloat(m[2]);
-  const optType = (m[3] || 'call').toLowerCase().startsWith('p') ? 'put' : 'call';
-  const month = parseInt(m[4]);
-  const day = parseInt(m[5]);
-  let year = m[6] ? parseInt(m[6]) : new Date().getFullYear();
+  if (!s) return null;
+  // order-free tokens: ticker, strike, expiry (m/d, m.d, m/d/yy), call/put
+  const tokens = s.split(/\s+/);
+  const isAlpha = t => /^[A-Za-z]{1,5}$/.test(t);
+  const isDate = t => {
+    const m = t.match(/^(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?$/);
+    return m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31;
+  };
+  const alphaCount = tokens.filter(isAlpha).length;
+  let ticker = null, strike = null, optType = null, dateTok = null;
+  for (const raw of tokens) {
+    const t = raw.replace(/^\$/, '');
+    const low = t.toLowerCase();
+    if ((low === 'call' || low === 'put') && !optType) { optType = low; continue; }
+    // bare c/p means the type only when another word can be the ticker (C and P are real tickers)
+    if ((low === 'c' || low === 'p') && alphaCount > 1 && !optType) { optType = low === 'c' ? 'call' : 'put'; continue; }
+    if (t.includes('/') && isDate(t) && !dateTok) { dateTok = t; continue; }
+    if (isAlpha(t) && !ticker) { ticker = t.toUpperCase(); continue; }
+    if (/^\d+(\.\d+)?$/.test(t)) {
+      // a dotted number (9.18) is a date unless one is already set, then it's a strike
+      if (t.includes('.') && !dateTok && isDate(t)) { dateTok = t; continue; }
+      if (strike === null) { strike = parseFloat(t); continue; }
+    }
+    if (isDate(t) && !dateTok) { dateTok = t; continue; } // dotted with year: 9.18.26
+    return null; // unrecognized token
+  }
+  if (!ticker || strike === null || !dateTok) return null;
+  optType = optType || 'call';
+  const parts = dateTok.split(/[\/.]/).map(Number);
+  const month = parts[0];
+  const day = parts[1];
+  let year = parts.length > 2 ? parts[2] : new Date().getFullYear();
   if (year < 100) year += 2000;
   const expDate = new Date(year, month - 1, day);
   const yyyy = expDate.getFullYear();
