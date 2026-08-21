@@ -173,6 +173,7 @@
   /* stop inputs carry their chart line color: long stop lives at the LOD side (red), short at the HOD side (green) */
   #stopLong { border-left: 3px solid var(--red); }
   #stopShort { border-left: 3px solid var(--green); }
+  #entryPrice { border-left: 3px solid var(--blue); }
 
   /* Risk $ is the number that matters: the money you're willing to lose */
   #riskDollar { font-size: 20px; font-weight: 700; color: var(--red); border-color: var(--red-bd); }
@@ -300,7 +301,7 @@
       <span><kbd>l</kbd> live 60s</span>
       <span><kbd>d</kbd> long/short</span>
       <span><kbd>b</kbd> <kbd>c</kbd> <kbd>p</kbd> both/calls/puts</span>
-      <span><kbd>1</kbd> <kbd>2</kbd> toggle OTM / ITM→ATM zones</span>
+      <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> OTM / ITM→ATM / both / all</span>
       <span><kbd>[</kbd> <kbd>]</kbd> prev/next expiry</span>
       <span><kbd>esc</kbd> close/unfocus</span>
       <span><kbd>?</kbd> this help</span>
@@ -391,8 +392,12 @@
       </div>
     </div>
     <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
-    <div class="section-title" style="margin-top:16px;">Stops</div>
+    <div class="section-title" style="margin-top:16px;">Entry &amp; stops</div>
     <div class="row" style="align-items:flex-end;">
+      <div class="field" style="flex:0 0 150px;">
+        <label>Entry price</label>
+        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="entryPrice" placeholder="now" step="0.01" min="0" title="The underlying price you plan to enter at. Blank = current price" oninput="stopsChanged()" /></div>
+      </div>
       <div class="field" style="flex:0 0 150px;" id="stopLongField">
         <label>Long stop · calls</label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopLong" placeholder="LOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
@@ -496,7 +501,7 @@
         <div id="chartColD"><div class="chart-cap">daily</div><canvas id="dailyChart" height="260"></canvas></div>
         <div id="chartCol5"><div class="chart-cap">5-min</div><canvas id="chart" height="260"></canvas></div>
       </div>
-      <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
+      <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
     </div>
 
     <div id="optionsSection" style="display:none;">
@@ -509,15 +514,19 @@
             <button id="sCall" onclick="setSide('call')">Calls</button>
             <button id="sPut" onclick="setSide('put')">Puts</button>
           </div>
-          <div class="fgroup">
-            <button class="filter-btn active" id="zoneOtm" onclick="toggleZone('otm')" title="Show OTM contracts at or above the Δ floor · key: 1">OTM</button>
-            <span style="font-size:12px;color:var(--text2);">|Δ|≥</span>
+          <div class="seg" id="zoneSeg">
+            <button id="zOtm" class="active" onclick="setZoneMode('otm')" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
+            <button id="zItm" onclick="setZoneMode('itm')" title="ITM contracts at or above the floor, down to the ATM strike · key 2">ITM→ATM</button>
+            <button id="zBoth" onclick="setZoneMode('both')" title="OTM and ITM→ATM together · key 3">Both</button>
+            <button id="zAll" onclick="setZoneMode('all')" title="Full chain, no filter · key 4">All</button>
+          </div>
+          <div class="fgroup" id="otmFloorGroup">
+            <span style="font-size:12px;color:var(--text2);">OTM |Δ|≥</span>
             <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the OTM zone" />
           </div>
-          <div class="fgroup">
-            <button class="filter-btn" id="zoneItm" onclick="toggleZone('itm')" title="Show ITM contracts at or above the Δ floor, down to ATM · key: 2">ITM→ATM</button>
-            <span style="font-size:12px;color:var(--text2);">|Δ|≥</span>
-            <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the ITM zone (ATM always shown)" />
+          <div class="fgroup" id="itmFloorGroup" style="display:none;">
+            <span style="font-size:12px;color:var(--text2);">ITM |Δ|≥</span>
+            <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the ITM zone (the ATM strike always shows)" />
           </div>
           <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
           <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
@@ -979,11 +988,11 @@ function sharesQtyChanged(el) {
   const qty = Math.floor(parseFloat(el.value) || 0);
   if (!quoteData || qty <= 0) { renderShares(); return; }
   const q = quoteData;
-  const price = q.last || q.ask || 0;
+  const entry = entryVal();
   const isLong = direction === 'long';
   const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
   const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
-  const rps = isLong ? price - stop : stop - price;
+  const rps = isLong ? entry - stop : stop - entry;
   if (rps <= 0) { renderShares(); return; }
   document.getElementById('riskDollar').value = riskForQty(qty, rps);
   syncFromDollar();
@@ -1028,6 +1037,7 @@ function rawStop(id) { // 0 = input blank, fall back to LOD/HOD
 }
 function stopLongVal() { return rawStop('stopLong') || (quoteData ? (quoteData.low || 0) : 0); }
 function stopShortVal() { return rawStop('stopShort') || (quoteData ? (quoteData.high || 0) : 0); }
+function entryVal() { return rawStop('entryPrice') || (quoteData ? (quoteData.last || quoteData.ask || 0) : 0); } // blank = current price
 
 // the active trade direction: shares follow the Long/Short toggle,
 // options follow chain side (calls = long, puts = short, Both = both)
@@ -1145,6 +1155,7 @@ async function fetchQuote() {
     if (quoteData && quoteData.symbol !== q.symbol) {
       document.getElementById('stopLong').value = '';
       document.getElementById('stopShort').value = '';
+      document.getElementById('entryPrice').value = '';
     }
     quoteData = q;
     chainData = [];
@@ -1334,7 +1345,7 @@ function chartRange() {
   for (const b of chartBars) { if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h; }
   // include explicitly-set stop lines in range (only the ones the context draws)
   const tc = tradeCtx();
-  const inRange = [];
+  const inRange = [rawStop('entryPrice')];
   if (tc !== 'short') inRange.push(rawStop('stopLong'));
   if (tc !== 'long') inRange.push(rawStop('stopShort'));
   for (const s of inRange) {
@@ -1366,6 +1377,8 @@ function drawChart() {
   const cGreen = css.getPropertyValue('--green').trim();
   const cRed = css.getPropertyValue('--red').trim();
   const cAmber = css.getPropertyValue('--amber').trim();
+  const cBlue = css.getPropertyValue('--blue').trim();
+  const cPurple = css.getPropertyValue('--purple').trim();
   const cText3 = css.getPropertyValue('--text3').trim();
   const cBorder = css.getPropertyValue('--border2').trim();
 
@@ -1430,6 +1443,7 @@ function drawChart() {
   const tc = tradeCtx();
   if (tc !== 'short') stopLine(rawStop('stopLong'), cRed, 'long stop');
   if (tc !== 'long') stopLine(rawStop('stopShort'), cGreen, 'short stop');
+  stopLine(rawStop('entryPrice'), cBlue, 'entry');
 
   // candles
   for (let i = 0; i < n; i++) {
@@ -1445,8 +1459,6 @@ function drawChart() {
   }
 
   // VWAP (blue) + 8 EMA (purple) overlays
-  const cBlue = css.getPropertyValue('--blue').trim();
-  const cPurple = css.getPropertyValue('--purple').trim();
   let pvSum = 0, vSum = 0;
   const vwap = chartBars.map(b => {
     const tp = (b.h + b.l + b.c) / 3;
@@ -1539,6 +1551,7 @@ function drawDailyChart() {
   const tc = tradeCtx();
   if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
   if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
+  { const s = rawStop('entryPrice'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
   const pad = (hi - lo) * 0.05 || 0.5;
   lo -= pad; hi += pad;
   const y = p => padT + (hi - p) / (hi - lo) * plotH;
@@ -1581,6 +1594,7 @@ function drawDailyChart() {
   };
   if (tc !== 'short') stopLine(rawStop('stopLong'), cRed, 'long stop');
   if (tc !== 'long') stopLine(rawStop('stopShort'), cGreen, 'short stop');
+  stopLine(rawStop('entryPrice'), css.getPropertyValue('--blue').trim(), 'entry');
 
   // candles
   for (let i = 0; i < n; i++) {
@@ -1650,6 +1664,7 @@ function initDailyChartEvents() {
     const tc = tradeCtx();
     if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
     if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+    { const s = rawStop('entryPrice'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
     const pad = (dHi - dLo) * 0.05 || 0.5;
     dLo -= pad; dHi += pad;
     const yy = e.clientY - rect.top;
@@ -1796,20 +1811,22 @@ function renderShares() {
   const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
   const stop = raw > 0 ? raw : defaultStop;
   const usingDefault = raw <= 0;
+  const entry = entryVal();
+  const customEntry = rawStop('entryPrice') > 0;
   const risk = riskDollars();
-  const riskPerShare = isLong ? (price - stop) : (stop - price);
+  const riskPerShare = isLong ? (entry - stop) : (stop - entry);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
 
   if (riskPerShare <= 0) {
     const msg = isLong
-      ? `Stop (${fmt$(stop)}) must be below entry (${fmt$(price)}) for a long.`
-      : `Stop (${fmt$(stop)}) must be above entry (${fmt$(price)}) for a short.`;
+      ? `Stop (${fmt$(stop)}) must be below entry (${fmt$(entry)}) for a long.`
+      : `Stop (${fmt$(stop)}) must be above entry (${fmt$(entry)}) for a short.`;
     document.getElementById('sharesStats').innerHTML = `<div style="grid-column:1/-1;color:var(--amber);font-size:13px;padding:8px 0;">${msg}</div>`;
     if (chartBars.length) drawChart();
     return;
   }
   const shares = unitsFor(risk, riskPerShare);
-  const posSize = shares * price;
+  const posSize = shares * entry;
   const dirTag = isLong
     ? '<span class="tag call" style="margin-left:6px;">Long</span>'
     : '<span class="tag put" style="margin-left:6px;">Short</span>';
@@ -1818,7 +1835,7 @@ function renderShares() {
     <div class="stat highlight"><div class="s-label">Shares</div><div class="s-val"><input type="number" class="s-val-input" value="${shares}" min="0" step="1" title="Type a share count, risk $ follows" onchange="sharesQtyChanged(this)" /></div><div class="s-sub">to ${isLong ? 'buy' : 'short'} · edit to set risk</div></div>
     <div class="stat danger"><div class="s-label">Max loss</div><div class="s-val">${fmt$(shares * riskPerShare)}</div><div class="s-sub">${(shares * riskPerShare / acct * 100).toFixed(2)}% of acct</div></div>
     <div class="stat"><div class="s-label">Position size</div><div class="s-val">${fmt$(posSize)}</div><div class="s-sub">${(posSize / acct * 100).toFixed(1)}% of acct</div></div>
-    <div class="stat teal"><div class="s-label">Risk / share</div><div class="s-val">${fmt$(riskPerShare)}</div><div class="s-sub">${fmt$(price)} → ${fmt$(stop)}${usingDefault ? ' (' + defaultLabel + ')' : ''}</div></div>
+    <div class="stat teal"><div class="s-label">Risk / share</div><div class="s-val">${fmt$(riskPerShare)}</div><div class="s-sub">${customEntry ? 'entry ' : ''}${fmt$(entry)} → ${fmt$(stop)}${usingDefault ? ' (' + defaultLabel + ')' : ''}${customEntry ? ' · now ' + fmt$(price) : ''}</div></div>
   `;
   withFlash(document.getElementById('sharesStats'));
   if (chartBars.length) drawChart();
@@ -1911,11 +1928,19 @@ async function fetchChain(ticker, exp, scrollAtm) {
 }
 
 let chainSide = 'both';
-const zoneFilter = { otm: true, itm: false }; // independently toggleable; both off = full chain
+// one mode at a time: otm | itm | both | all — zoneFilter derives from it (both off = full chain)
+let zoneMode = 'otm';
+const zoneFilter = { otm: true, itm: false };
 
-function toggleZone(zone) {
-  zoneFilter[zone] = !zoneFilter[zone];
-  document.getElementById(zone === 'otm' ? 'zoneOtm' : 'zoneItm').classList.toggle('active', zoneFilter[zone]);
+function setZoneMode(m) {
+  zoneMode = m;
+  zoneFilter.otm = m === 'otm' || m === 'both';
+  zoneFilter.itm = m === 'itm' || m === 'both';
+  const btns = { otm: 'zOtm', itm: 'zItm', both: 'zBoth', all: 'zAll' };
+  Object.values(btns).forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById(btns[m]).classList.add('active');
+  document.getElementById('otmFloorGroup').style.display = zoneFilter.otm ? 'flex' : 'none';
+  document.getElementById('itmFloorGroup').style.display = zoneFilter.itm ? 'flex' : 'none';
   renderChain();
 }
 
@@ -1941,7 +1966,7 @@ function yearsToExp(expStr, daysLess = 0) {
   return Math.max(0, ms / (365 * 24 * 3600 * 1000) - daysLess / 365);
 }
 
-function calcOpt(opt, price, callStop, putStop, risk, Texp) {
+function calcOpt(opt, price, callStop, putStop, risk, Texp, entryU) {
   if (!opt) return null;
   const mid = ((opt.bid || 0) + (opt.ask || 0)) / 2;
   const delta = opt.greeks?.delta || 0;
@@ -1949,37 +1974,41 @@ function calcOpt(opt, price, callStop, putStop, risk, Texp) {
   const iv = opt.greeks?.smv_vol || opt.greeks?.mid_iv || 0;
   const isCall = opt.option_type === 'call';
   const stop = isCall ? callStop : putStop;
-  const drop = stop - price;
-  const losing = isCall ? drop < 0 : drop > 0;
-  // premium at the stop: Black-Scholes move applied to the market mid (baseline stays
-  // the real mid, so IV-skew level offsets cancel); Δ+½Γ approx when no IV
-  let atStopEst, atStopEstON, model;
+  const entry = entryU > 0 ? entryU : price; // planned underlying entry, blank = spot
+  const losing = isCall ? stop < entry : stop > entry;
+  // premiums at the entry and the stop: Black-Scholes moves applied to the market mid
+  // (baseline stays the real mid, so IV-skew level offsets cancel); Δ+½Γ approx when no IV
+  let entryPremEst, atStopEst, atStopEstON, model;
   if (iv > 0 && Texp > 0) {
     const K = opt.strike;
     const baseNow = bsPrice(isCall, price, K, Texp, iv, RISK_FREE);
+    entryPremEst = mid + bsPrice(isCall, entry, K, Texp, iv, RISK_FREE) - baseNow;
     atStopEst = mid + bsPrice(isCall, stop, K, Texp, iv, RISK_FREE) - baseNow;
     atStopEstON = mid + bsPrice(isCall, stop, K, Math.max(0, Texp - 1 / 365), iv, RISK_FREE) - baseNow;
     model = 'bs';
   } else {
+    const dropE = entry - price, drop = stop - price;
+    entryPremEst = mid + delta * dropE + 0.5 * gamma * dropE * dropE;
     atStopEst = mid + delta * drop + 0.5 * gamma * drop * drop;
     atStopEstON = atStopEst;
     model = 'approx';
   }
-  if (losing) { atStopEst = Math.min(atStopEst, mid); atStopEstON = Math.min(atStopEstON, mid); } // a stop-out can't show a gain
+  const entryPrem = Math.max(0, entryPremEst);
+  if (losing) { atStopEst = Math.min(atStopEst, entryPrem); atStopEstON = Math.min(atStopEstON, entryPrem); } // a stop-out can't show a gain
   const atStop = Math.max(0, atStopEst);
   const atStopON = Math.max(0, atStopEstON);
-  const lossPerContractON = (mid - atStopON) * 100;
-  const lossOfCostON = mid > 0 ? ((mid - atStopON) / mid * 100) : 0;
+  const lossPerContractON = (entryPrem - atStopON) * 100;
+  const lossOfCostON = entryPrem > 0 ? ((entryPrem - atStopON) / entryPrem * 100) : 0;
   const spreadPct = mid > 0 ? ((opt.ask || 0) - (opt.bid || 0)) / mid * 100 : 0;
   const wideSpread = spreadPct > 10 && (opt.ask || 0) > 0;
-  const lossPerContract = (mid - atStop) * 100;
+  const lossPerContract = (entryPrem - atStop) * 100;
   const contracts = unitsFor(risk, lossPerContract);
-  const totalCost = contracts * mid * 100;
-  const lossOfCost = mid > 0 ? ((mid - atStop) / mid * 100) : 0;
+  const totalCost = contracts * entryPrem * 100;
+  const lossOfCost = entryPrem > 0 ? ((entryPrem - atStop) / entryPrem * 100) : 0;
   const itm = isCall ? opt.strike < price : opt.strike > price;
   const vol = opt.volume || 0;
   const oi = opt.open_interest || 0;
-  return { opt, mid, delta, gamma, iv, atStop, lossPerContract, contracts, totalCost, lossOfCost, itm, vol, oi, isCall, stop, spreadPct, wideSpread, atStopON, lossPerContractON, lossOfCostON, model };
+  return { opt, mid, entryPrem, entryU: entry, customEntry: entryU > 0 && Math.abs(entryU - price) > 0.004, delta, gamma, iv, atStop, lossPerContract, contracts, totalCost, lossOfCost, itm, vol, oi, isCall, stop, spreadPct, wideSpread, atStopON, lossPerContractON, lossOfCostON, model };
 }
 
 // mobile-compact formatters — keep 9 columns fitting a 375px screen
@@ -2119,10 +2148,11 @@ function renderChain() {
   tbody.innerHTML = '';
 
   const Tex = yearsToExp(selectedExp);
+  const entryU = rawStop('entryPrice');
   strikes.forEach(strike => {
     const pair = byStrike.get(strike);
-    const c = calcOpt(pair.call, price, callStop, putStop, risk, Tex);
-    const p = calcOpt(pair.put, price, callStop, putStop, risk, Tex);
+    const c = calcOpt(pair.call, price, callStop, putStop, risk, Tex, entryU);
+    const p = calcOpt(pair.put, price, callStop, putStop, risk, Tex, entryU);
     const tr = document.createElement('tr');
     if (strike === atmStrike) tr.classList.add('atm-row');
 
@@ -2184,7 +2214,7 @@ function showDetail(tr, c, acct) {
 
   simReg[c.opt.symbol] = {
     isCall: c.isCall, K: c.opt.strike, expStr: selectedExp, iv: c.iv,
-    entry: c.mid, qty: Math.max(1, c.contracts), spot: quoteData.last || quoteData.ask || 0,
+    entry: c.entryPrem, qty: Math.max(1, c.contracts), spot: quoteData.last || quoteData.ask || 0,
     stop: c.stop, parsedTicker: quoteData.symbol,
     label: `${quoteData.symbol} $${c.opt.strike} ${c.isCall ? 'call' : 'put'} ${selectedExp}`
   };
@@ -2196,7 +2226,7 @@ function showDetail(tr, c, acct) {
     <div class="stat-grid">
       <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${c.lossPerContract > 0 ? `<input type="number" class="s-val-input" value="${c.contracts}" min="0" step="1" title="Type a contract count, risk $ follows" onchange="contractsQtyChanged(this, ${c.lossPerContract})" />` : '—'}</div><div class="s-sub">${c.contracts > 0 ? fmt$(c.totalCost) + ' outlay · edit to set risk' : 'stop too wide'}</div></div>
       <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${c.lossPerContract > 0 ? fmt$(c.contracts * c.lossPerContract) : '—'}</div><div class="s-sub">${c.lossPerContract > 0 ? (c.contracts * c.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
-      <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(c.atStop)}</div><div class="s-sub">was ${fmt$(c.mid)} mid · stop ${fmt$(c.stop)}</div></div>
+      <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(c.atStop)}</div><div class="s-sub">${c.customEntry ? `est ${fmt$(c.entryPrem)} @ your ${fmt$(c.entryU)} entry` : `was ${fmt$(c.mid)} mid`} · stop ${fmt$(c.stop)}</div></div>
       <div class="stat"><div class="s-label">Loss of premium</div><div class="s-val">${c.lossOfCost.toFixed(1)}%</div><div class="s-sub">per contract</div></div>
       <div class="stat ${c.vol > c.oi && c.vol > 0 ? 'highlight' : ''}"><div class="s-label">Vol / OI</div><div class="s-val">${c.vol.toLocaleString()}</div><div class="s-sub">OI ${c.oi.toLocaleString()}${c.vol > c.oi && c.vol > 0 ? ' · vol > OI' : ''}</div></div>
     </div>
@@ -2640,8 +2670,10 @@ function initShortcuts() {
       case 'b': if (currentMode === 'options') setSide('both'); break;
       case 'c': if (currentMode === 'options') setSide('call'); break;
       case 'p': if (currentMode === 'options') setSide('put'); break;
-      case '1': if (currentMode === 'options') toggleZone('otm'); break;
-      case '2': if (currentMode === 'options') toggleZone('itm'); break;
+      case '1': if (currentMode === 'options') setZoneMode('otm'); break;
+      case '2': if (currentMode === 'options') setZoneMode('itm'); break;
+      case '3': if (currentMode === 'options') setZoneMode('both'); break;
+      case '4': if (currentMode === 'options') setZoneMode('all'); break;
       case '[': cycleExp(-1); break;
       case ']': cycleExp(1); break;
       case '?': toggleKbdHelp(); break;
