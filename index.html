@@ -394,6 +394,13 @@
     <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
     <div class="section-title" style="margin-top:16px;">Entry &amp; stops</div>
     <div class="row" style="align-items:flex-end;">
+      <div class="field" style="flex:0 0 auto;" id="dirField">
+        <label>Direction</label>
+        <div class="seg dir" id="dirSeg">
+          <button id="dirLong" class="active long" onclick="setDirection('long')">Long</button>
+          <button id="dirShort" onclick="setDirection('short')">Short</button>
+        </div>
+      </div>
       <div class="field" style="flex:0 0 150px;">
         <label>Entry price</label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="entryPrice" placeholder="now" step="0.01" min="0" title="The underlying price you plan to enter at. Blank = current price" oninput="stopsChanged()" /></div>
@@ -477,16 +484,6 @@
       <div id="sharesSection" style="display:none;">
         <hr class="divider">
         <div class="section-title">Shares sizing</div>
-        <div class="row" style="margin-bottom:14px;align-items:flex-end;">
-          <div class="field" style="flex:0 0 auto;">
-            <label>Direction</label>
-            <div class="seg dir" id="dirSeg">
-              <button id="dirLong" class="active long" onclick="setDirection('long')">Long</button>
-              <button id="dirShort" onclick="setDirection('short')">Short</button>
-            </div>
-          </div>
-          <div style="font-size:11px;color:var(--text3);padding-bottom:11px;" id="stopHint">stop: long stop above, blank = LOD</div>
-        </div>
         <div class="stat-grid" id="sharesStats"></div>
       </div>
     </div>
@@ -1023,7 +1020,6 @@ function setDirection(dir) {
   const s = document.getElementById('dirShort');
   l.className = dir === 'long' ? 'active long' : '';
   s.className = dir === 'short' ? 'active short' : '';
-  document.getElementById('stopHint').textContent = dir === 'long' ? 'stop: long stop above, blank = LOD' : 'stop: short stop above, blank = HOD';
   updateStopVisibility();
   renderAdr();
   renderShares();
@@ -1050,6 +1046,8 @@ function tradeCtx() {
 // only show the stop that matches the trade you're taking
 function updateStopVisibility() {
   const tc = tradeCtx();
+  // the Long/Short toggle is the shares-mode direction; chain side plays that role in options
+  document.getElementById('dirField').style.display = currentMode === 'shares' ? 'flex' : 'none';
   document.getElementById('stopLongField').style.display = tc !== 'short' ? 'flex' : 'none';
   document.getElementById('stopShortField').style.display = tc !== 'long' ? 'flex' : 'none';
   document.getElementById('stopsHint').textContent =
