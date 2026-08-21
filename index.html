@@ -1945,6 +1945,7 @@ function setZoneMode(m) {
   document.getElementById(btns[m]).classList.add('active');
   document.getElementById('otmFloorGroup').style.display = zoneFilter.otm ? 'flex' : 'none';
   document.getElementById('itmFloorGroup').style.display = zoneFilter.itm ? 'flex' : 'none';
+  pendingAtmScroll = true; // re-orient to ATM — the tradeable end of an ITM ladder is at the bottom
   renderChain();
 }
 
@@ -1953,6 +1954,7 @@ function setSide(s) {
   ['sBoth','sCall','sPut'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('s' + s.charAt(0).toUpperCase() + s.slice(1)).classList.add('active');
   if (s === 'both' && (zoneMode === 'itm' || zoneMode === 'both')) setZoneMode('all'); // directional zones don't fit the T-chart
+  pendingAtmScroll = true;
   updateStopVisibility();
   renderAdr();
   renderChain();
