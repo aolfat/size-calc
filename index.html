@@ -513,8 +513,8 @@
           </div>
           <div class="seg" id="zoneSeg">
             <button id="zOtm" class="active" onclick="setZoneMode('otm')" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
-            <button id="zItm" onclick="setZoneMode('itm')" title="ITM contracts at or above the floor, down to the ATM strike · key 2">ITM→ATM</button>
-            <button id="zBoth" onclick="setZoneMode('both')" title="OTM and ITM→ATM together · key 3">Both</button>
+            <button id="zItm" onclick="setZoneMode('itm')" title="ITM contracts at or above the floor, down to the ATM strike. Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
+            <button id="zBoth" onclick="setZoneMode('both')" title="OTM and ITM→ATM together. Needs a side — switches to Calls from the T-chart · key 3">Both</button>
             <button id="zAll" onclick="setZoneMode('all')" title="Full chain, no filter · key 4">All</button>
           </div>
           <div class="fgroup" id="otmFloorGroup">
@@ -1931,6 +1931,12 @@ let zoneMode = 'otm';
 const zoneFilter = { otm: true, itm: false };
 
 function setZoneMode(m) {
+  // ITM is directional: in the mirrored Both view, "ITM both sides" = the strike
+  // extremes, which reads as the whole chain. Those modes need a side first.
+  if (chainSide === 'both' && (m === 'itm' || m === 'both')) {
+    setSide('call');
+    showToast('ITM→ATM filters one side — switched to Calls. Tap Puts if that’s your trade.');
+  }
   zoneMode = m;
   zoneFilter.otm = m === 'otm' || m === 'both';
   zoneFilter.itm = m === 'itm' || m === 'both';
@@ -1946,6 +1952,7 @@ function setSide(s) {
   chainSide = s;
   ['sBoth','sCall','sPut'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('s' + s.charAt(0).toUpperCase() + s.slice(1)).classList.add('active');
+  if (s === 'both' && (zoneMode === 'itm' || zoneMode === 'both')) setZoneMode('all'); // directional zones don't fit the T-chart
   updateStopVisibility();
   renderAdr();
   renderChain();
