@@ -513,7 +513,7 @@
           </div>
           <div class="seg" id="zoneSeg">
             <button id="zOtm" class="active" onclick="setZoneMode('otm')" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
-            <button id="zItm" onclick="setZoneMode('itm')" title="ITM contracts at or above the floor, down to the ATM strike. Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
+            <button id="zItm" onclick="setZoneMode('itm')" title="ITM from ATM down to Δ .95 — deeper stock-substitutes hidden (use All). Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
             <button id="zBoth" onclick="setZoneMode('both')" title="OTM and ITM→ATM together. Needs a side — switches to Calls from the T-chart · key 3">Both</button>
             <button id="zAll" onclick="setZoneMode('all')" title="Full chain, no filter · key 4">All</button>
           </div>
@@ -2272,14 +2272,26 @@ function renderChain() {
   document.getElementById('emInfo').textContent = em > 0 && price > 0
     ? `±${fmt$(em)} (${(em / price * 100).toFixed(1)}%) exp move` : '';
 
+  const Tex = yearsToExp(selectedExp);
+  // filter on a BS-computed delta: Tradier greeks can come back flat (1.000 across
+  // every ITM strike), which makes any floor useless. Display still shows the API delta.
+  const filterDelta = o => {
+    const api = Math.abs(o.greeks?.delta || 0);
+    const iv = o.greeks?.smv_vol || o.greeks?.mid_iv || 0;
+    if (!(iv > 0) || !(Tex > 0) || !(price > 0) || !(o.strike > 0)) return api;
+    const d1 = (Math.log(price / o.strike) + (RISK_FREE + iv * iv / 2) * Tex) / (iv * Math.sqrt(Tex));
+    const nd1 = normCdf(d1);
+    return o.option_type === 'call' ? nd1 : 1 - nd1;
+  };
   const passesDelta = o => {
     if (!o) return false;
     if (!zoneFilter.otm && !zoneFilter.itm) return true; // no zones active → full chain
     const isCall = o.option_type === 'call';
     const itm = isCall ? o.strike < price : o.strike > price;
-    const d = Math.abs(o.greeks?.delta || 0);
+    const d = filterDelta(o);
     if (o.strike === atmAll && zoneFilter.itm) return true; // ATM belongs to the ITM view
-    if (itm) return zoneFilter.itm && d >= itmFloor;
+    // ITM runs from the floor up to Δ .95 — deeper is a stock substitute, see it under All
+    if (itm) return zoneFilter.itm && d >= itmFloor && d <= 0.95;
     return zoneFilter.otm && d >= otmFloor;
   };
   // apply delta filter per side; drop strikes with nothing left to show
@@ -2303,7 +2315,6 @@ function renderChain() {
   const openSym = document.querySelector('.detail-row')?.dataset.sym || null;
   tbody.innerHTML = '';
 
-  const Tex = yearsToExp(selectedExp);
   const entryU = rawStop('entryPrice');
   strikes.forEach(strike => {
     const pair = byStrike.get(strike);
