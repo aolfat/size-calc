@@ -2433,7 +2433,7 @@ function renderChain() {
       if (!one) return;
       const volStyle = one.vol > one.oi && one.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--text);font-weight:600';
       tr.innerHTML = `
-        <td class="strike-col">${fmtStrikeM(strike)}${one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
+        <td class="strike-col">${fmtStrikeM(strike)}${strike === atmAll ? '<span class="badge-itm" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);" title="ATM boundary strike — always shown in the ITM→ATM view, exempt from the Δ floor">ATM</span>' : one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
         <td class="m-hide">${fmt$(one.opt.bid || 0)}</td>
         <td class="m-hide">${fmt$(one.opt.ask || 0)}</td>
         <td${one.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${one.spreadPct.toFixed(0)}% of mid"` : ''}>${fmt$M(one.mid)}</td>
