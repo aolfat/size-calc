@@ -836,9 +836,34 @@ function initSimEvents() {
 const SC = { bg: '#0b0d12', card1: '#161c28', card2: '#0e1118', border: '#323a4a', text: '#e9ecf2', text2: '#97a0b3', text3: '#5b6478', green: '#2fd67b', red: '#ff5d5d', blue: '#5b9dff', teal: '#2dd4bf' };
 
 function drawShareCard(spec) {
-  const W = 720;
+  const mono = 'ui-monospace, Menlo, monospace';
   const rows = [];
   for (let i = 0; i < spec.stats.length; i += 4) rows.push(spec.stats.slice(i, i + 4));
+
+  // measure-and-fit: columns take the width their content needs; the canvas grows
+  // to hold them, and the value font steps down uniformly if it would get too wide
+  const meas = document.createElement('canvas').getContext('2d');
+  const PAD = 40, GAP = 36;
+  let valueFont = 29, W = 0, rowCols = [];
+  for (valueFont = 29; valueFont >= 20; valueFont--) {
+    rowCols = rows.map(row => row.map(s => {
+      meas.font = `700 ${valueFont}px ${mono}`;
+      const v = meas.measureText(s.value).width;
+      meas.font = `500 13px ${mono}`;
+      const sb = s.sub ? meas.measureText(s.sub).width : 0;
+      meas.font = '600 12px -apple-system, "Segoe UI", sans-serif';
+      const lb = meas.measureText(s.label.toUpperCase()).width;
+      return Math.max(v, sb, lb, 104);
+    }));
+    meas.font = `700 30px ${mono}`;
+    const titleW = spec.title.reduce((a, p) => a + meas.measureText(p.t).width, 0);
+    meas.font = `500 14px ${mono}`;
+    const subW = meas.measureText(spec.sub).width;
+    W = Math.max(720, titleW + PAD * 2, subW + PAD * 2,
+      ...rowCols.map(ws => PAD * 2 + ws.reduce((a, b) => a + b, 0) + GAP * (ws.length - 1)));
+    if (W <= 900) break;
+  }
+
   const H = 132 + rows.length * 116 + 24;
   const scale = 2;
   const c = document.createElement('canvas');
@@ -861,7 +886,6 @@ function drawShareCard(spec) {
   x.fillStyle = g; x.fill();
   x.strokeStyle = SC.border; x.lineWidth = 1.5; x.stroke();
 
-  const mono = 'ui-monospace, Menlo, monospace';
   let tx = 40;
   x.font = `700 30px ${mono}`;
   spec.title.forEach(part => {
@@ -874,14 +898,16 @@ function drawShareCard(spec) {
   x.fillText(spec.sub, 40, 96);
 
   rows.forEach((row, ri) => {
-    const colW = (W - 80) / row.length;
+    const widths = rowCols[ri];
+    // spread the leftover space between measured columns
+    const slack = Math.max(0, (W - PAD * 2 - widths.reduce((a, b) => a + b, 0) - GAP * (widths.length - 1)) / Math.max(1, widths.length - 1));
     const top = 134 + ri * 116;
+    let sx = PAD;
     row.forEach((s, ci) => {
-      const sx = 40 + ci * colW;
       x.font = '600 12px -apple-system, "Segoe UI", sans-serif';
       x.fillStyle = SC.text3;
       x.fillText(s.label.toUpperCase(), sx, top + 14);
-      x.font = `700 29px ${mono}`;
+      x.font = `700 ${valueFont}px ${mono}`;
       x.fillStyle = s.color || SC.text;
       x.fillText(s.value, sx, top + 50);
       if (s.sub) {
@@ -889,6 +915,7 @@ function drawShareCard(spec) {
         x.fillStyle = SC.text2;
         x.fillText(s.sub, sx, top + 74);
       }
+      sx += widths[ci] + GAP + slack;
     });
   });
 
@@ -935,11 +962,11 @@ function shareShares() {
   const chg = q.change_percentage || 0;
   shareCanvasToClipboard(drawShareCard({
     title: [{ t: q.symbol + '  ' }, { t: fmt$(price) }, { t: `  ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%`, c: chg >= 0 ? SC.green : SC.red }],
-    sub: `${isLong ? 'LONG' : 'SHORT'} · entry ${fmt$(entry)} · stop ${fmt$(stop)}${raw > 0 ? '' : (isLong ? ' (LOD)' : ' (HOD)')} · risk ${fmt$(risk)} · ${new Date().toLocaleString()}`,
+    sub: `${isLong ? 'LONG' : 'SHORT'} · entry ${fmt$(entry)} · stop ${fmt$(stop)}${raw > 0 ? '' : (isLong ? ' (LOD)' : ' (HOD)')} · risk ${fmt$(risk)} · ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
     stats: [
       { label: 'Shares', value: shares.toLocaleString(), color: SC.blue, sub: isLong ? 'to buy' : 'to short' },
       { label: 'Max loss', value: fmt$(shares * rps), color: SC.red, sub: (shares * rps / acct * 100).toFixed(2) + '% of acct' },
-      { label: 'Position', value: fmt$(shares * entry), sub: (shares * entry / acct * 100).toFixed(1) + '% of acct' },
+      { label: 'Position', value: '$' + Math.round(shares * entry).toLocaleString(), sub: (shares * entry / acct * 100).toFixed(1) + '% of acct' },
       { label: 'Risk / share', value: fmt$(rps), color: SC.teal, sub: `${fmt$(entry)} → ${fmt$(stop)}` }
     ]
   }), q.symbol + '-plan');
