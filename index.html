@@ -966,7 +966,7 @@ function shareShares() {
     stats: [
       { label: 'Shares', value: shares.toLocaleString(), color: SC.blue, sub: isLong ? 'to buy' : 'to short' },
       { label: 'Max loss', value: fmt$(shares * rps), color: SC.red, sub: (shares * rps / acct * 100).toFixed(2) + '% of acct' },
-      { label: 'Position', value: '$' + Math.round(shares * entry).toLocaleString(), sub: (shares * entry / acct * 100).toFixed(1) + '% of acct' },
+      { label: 'Position', value: (shares * entry / acct * 100).toFixed(1) + '%', sub: 'of account' },
       { label: 'Risk / share', value: fmt$(rps), color: SC.teal, sub: `${fmt$(entry)} → ${fmt$(stop)}` }
     ]
   }), q.symbol + '-plan');
