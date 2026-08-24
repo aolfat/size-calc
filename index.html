@@ -483,7 +483,7 @@
 
       <div id="sharesSection" style="display:none;">
         <hr class="divider">
-        <div class="section-title">Shares sizing</div>
+        <div class="section-title">Shares sizing<button class="filter-btn" style="margin-left:10px;" onclick="shareShares()" title="Copy this plan as an image">share</button></div>
         <div class="stat-grid" id="sharesStats"></div>
       </div>
     </div>
@@ -830,6 +830,155 @@ function initSimEvents() {
   canvas.addEventListener('mouseleave', () => { simHover = -1; drawSim(); });
   canvas.style.touchAction = 'pan-y';
   canvas.addEventListener('touchmove', e => { if (e.touches.length) { simHover = toIdx(e.touches[0].clientX); drawSim(); } }, { passive: true });
+}
+
+// ---------- share cards: hand-drawn PNG of a plan/position, copied to the clipboard ----------
+const SC = { bg: '#0b0d12', card1: '#161c28', card2: '#0e1118', border: '#323a4a', text: '#e9ecf2', text2: '#97a0b3', text3: '#5b6478', green: '#2fd67b', red: '#ff5d5d', blue: '#5b9dff', teal: '#2dd4bf' };
+
+function drawShareCard(spec) {
+  const W = 720;
+  const rows = [];
+  for (let i = 0; i < spec.stats.length; i += 4) rows.push(spec.stats.slice(i, i + 4));
+  const H = 132 + rows.length * 116 + 24;
+  const scale = 2;
+  const c = document.createElement('canvas');
+  c.width = W * scale; c.height = H * scale;
+  const x = c.getContext('2d');
+  x.scale(scale, scale);
+  x.fillStyle = SC.bg; x.fillRect(0, 0, W, H);
+  const rr = (px, py, pw, ph, r) => {
+    x.beginPath();
+    x.moveTo(px + r, py);
+    x.arcTo(px + pw, py, px + pw, py + ph, r);
+    x.arcTo(px + pw, py + ph, px, py + ph, r);
+    x.arcTo(px, py + ph, px, py, r);
+    x.arcTo(px, py, px + pw, py, r);
+    x.closePath();
+  };
+  const g = x.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, SC.card1); g.addColorStop(1, SC.card2);
+  rr(14, 14, W - 28, H - 28, 16);
+  x.fillStyle = g; x.fill();
+  x.strokeStyle = SC.border; x.lineWidth = 1.5; x.stroke();
+
+  const mono = 'ui-monospace, Menlo, monospace';
+  let tx = 40;
+  x.font = `700 30px ${mono}`;
+  spec.title.forEach(part => {
+    x.fillStyle = part.c || SC.text;
+    x.fillText(part.t, tx, 66);
+    tx += x.measureText(part.t).width;
+  });
+  x.font = `500 14px ${mono}`;
+  x.fillStyle = SC.text2;
+  x.fillText(spec.sub, 40, 96);
+
+  rows.forEach((row, ri) => {
+    const colW = (W - 80) / row.length;
+    const top = 134 + ri * 116;
+    row.forEach((s, ci) => {
+      const sx = 40 + ci * colW;
+      x.font = '600 12px -apple-system, "Segoe UI", sans-serif';
+      x.fillStyle = SC.text3;
+      x.fillText(s.label.toUpperCase(), sx, top + 14);
+      x.font = `700 29px ${mono}`;
+      x.fillStyle = s.color || SC.text;
+      x.fillText(s.value, sx, top + 50);
+      if (s.sub) {
+        x.font = `500 13px ${mono}`;
+        x.fillStyle = SC.text2;
+        x.fillText(s.sub, sx, top + 74);
+      }
+    });
+  });
+
+  x.font = `700 12px ${mono}`;
+  x.textAlign = 'right';
+  x.fillStyle = SC.text3;
+  x.fillText('SIZE / CALCULATOR', W - 40, H - 30);
+  x.fillStyle = SC.green;
+  x.fillText('●', W - 40 - x.measureText('SIZE / CALCULATOR').width - 8, H - 30);
+  x.textAlign = 'left';
+  return c;
+}
+
+function shareCanvasToClipboard(canvas, name) {
+  const blobP = new Promise(res => canvas.toBlob(res, 'image/png'));
+  const fallback = () => {
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = name + '.png';
+    a.click();
+    showToast('Clipboard unavailable — downloaded the image instead.');
+  };
+  try {
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard || !navigator.clipboard.write) return fallback();
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blobP })])
+      .then(() => showToast('Card image copied to clipboard.'))
+      .catch(fallback);
+  } catch(e) { fallback(); }
+}
+
+function shareShares() {
+  const q = quoteData;
+  if (!q) { showError('Load a ticker first.'); return; }
+  const price = q.last || q.ask || 0;
+  const isLong = direction === 'long';
+  const entry = entryVal();
+  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
+  const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
+  const rps = isLong ? entry - stop : stop - entry;
+  if (rps <= 0) { showError('Stop is on the wrong side of entry — nothing to share.'); return; }
+  const risk = riskDollars();
+  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  const shares = unitsFor(risk, rps);
+  const chg = q.change_percentage || 0;
+  shareCanvasToClipboard(drawShareCard({
+    title: [{ t: q.symbol + '  ' }, { t: fmt$(price) }, { t: `  ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%`, c: chg >= 0 ? SC.green : SC.red }],
+    sub: `${isLong ? 'LONG' : 'SHORT'} · entry ${fmt$(entry)} · stop ${fmt$(stop)}${raw > 0 ? '' : (isLong ? ' (LOD)' : ' (HOD)')} · risk ${fmt$(risk)} · ${new Date().toLocaleString()}`,
+    stats: [
+      { label: 'Shares', value: shares.toLocaleString(), color: SC.blue, sub: isLong ? 'to buy' : 'to short' },
+      { label: 'Max loss', value: fmt$(shares * rps), color: SC.red, sub: (shares * rps / acct * 100).toFixed(2) + '% of acct' },
+      { label: 'Position', value: fmt$(shares * entry), sub: (shares * entry / acct * 100).toFixed(1) + '% of acct' },
+      { label: 'Risk / share', value: fmt$(rps), color: SC.teal, sub: `${fmt$(entry)} → ${fmt$(stop)}` }
+    ]
+  }), q.symbol + '-plan');
+}
+
+function sharePinned(cardId) {
+  const d = pinnedData[cardId];
+  if (!d) return;
+  const cts = unitsFor(riskDollars(), d.lossPerContract);
+  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  shareCanvasToClipboard(drawShareCard({
+    title: [{ t: `${d.parsed.ticker} $${d.parsed.strike} ` }, { t: d.isCall ? 'CALL' : 'PUT', c: d.isCall ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
+    sub: `underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
+    stats: [
+      { label: 'Mid / ct', value: fmt$(d.mid), sub: `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
+      { label: 'Loss / ct @ stop', value: fmt$(d.lossPerContract), color: SC.red, sub: d.lossOfCost.toFixed(0) + '% of premium' },
+      { label: 'Contracts', value: String(cts), color: SC.blue, sub: `for ${fmt$(riskDollars())} risk` },
+      { label: 'Max loss', value: cts > 0 ? fmt$(cts * d.lossPerContract) : '—', color: SC.red, sub: cts > 0 ? (cts * d.lossPerContract / acct * 100).toFixed(2) + '% of acct' : '' }
+    ]
+  }), `${d.parsed.ticker}-${d.parsed.strike}${d.isCall ? 'c' : 'p'}`);
+}
+
+function shareSaved(id) {
+  const d = savedData[id];
+  if (!d) return;
+  const qty = d.qty || 0;
+  const pnl = (d.mid - d.entry) * 100 * qty;
+  const lossAtStop = (d.entry - d.atLod) * 100 * qty;
+  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  shareCanvasToClipboard(drawShareCard({
+    title: [{ t: `${d.parsed.ticker} $${d.parsed.strike} ` }, { t: d.isCall ? 'CALL' : 'PUT', c: d.isCall ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
+    sub: `POSITION · underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
+    stats: [
+      { label: 'Entry / ct', value: fmt$(d.entry), sub: `${qty} ct · ${fmt$(d.entry * 100 * qty)} cost` },
+      { label: 'P&L now', value: `${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}`, color: pnl >= 0 ? SC.green : SC.red, sub: `mid ${fmt$(d.mid)}` },
+      { label: lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop', value: `${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}`, color: lossAtStop > 0 ? SC.red : SC.green, sub: 'from entry' },
+      { label: 'Of account', value: (Math.abs(lossAtStop) / acct * 100).toFixed(2) + '%', sub: 'at the stop' }
+    ]
+  }), `${d.parsed.ticker}-position`);
 }
 
 // ---------- backup: everything the app stores, as a JSON file ----------
@@ -2477,7 +2626,8 @@ function renderSavedCard(id) {
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">POSITION</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="simFromSaved('${id}')" title="Simulate returns over time from your entry (Black-Scholes)" style="margin-left:auto;background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button onclick="shareSaved('${id}')" title="Copy this position as an image" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button onclick="simFromSaved('${id}')" title="Simulate returns over time from your entry (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
       <button onclick="refreshSaved('${id}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
@@ -2541,7 +2691,8 @@ function renderPinnedCard(cardId) {
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span class="${d.itm ? 'badge-itm' : 'badge-otm'}" style="font-size:11px;padding:2px 7px;border-radius:3px;">${d.itm ? 'ITM' : 'OTM'}</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="simFromPinned('${cardId}')" title="Simulate returns over time (Black-Scholes)" style="margin-left:auto;background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button onclick="simFromPinned('${cardId}')" title="Simulate returns over time (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
       <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry price and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
       <button onclick="refreshPinned('${cardId}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
