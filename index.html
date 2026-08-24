@@ -513,7 +513,7 @@
           </div>
           <div class="seg" id="zoneSeg">
             <button id="zOtm" class="active" onclick="setZoneMode('otm')" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
-            <button id="zItm" onclick="setZoneMode('itm')" title="ITM from ATM down to Δ .95 — deeper stock-substitutes hidden (use All). Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
+            <button id="zItm" onclick="setZoneMode('itm')" title="ITM between the ATM strike and your Δ depth limit — deeper is under All. Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
             <button id="zBoth" onclick="setZoneMode('both')" title="OTM and ITM→ATM together. Needs a side — switches to Calls from the T-chart · key 3">Both</button>
             <button id="zAll" onclick="setZoneMode('all')" title="Full chain, no filter · key 4">All</button>
           </div>
@@ -522,8 +522,8 @@
             <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the OTM zone" />
           </div>
           <div class="fgroup" id="itmFloorGroup" style="display:none;">
-            <span style="font-size:12px;color:var(--text2);">ITM |Δ|≥</span>
-            <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the ITM zone (the ATM strike always shows)" />
+            <span style="font-size:12px;color:var(--text2);">ITM |Δ|≤</span>
+            <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
           </div>
           <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
           <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
@@ -2344,7 +2344,7 @@ function renderChain() {
   renderChainHead();
 
   const otmFloor = Math.abs(parseFloat(document.getElementById('otmDelta').value)) || 0;
-  const itmFloor = Math.abs(parseFloat(document.getElementById('itmDelta').value)) || 0;
+  const itmCeil = Math.abs(parseFloat(document.getElementById('itmDelta').value)) || 1;
 
   // group by strike
   const byStrike = new Map();
@@ -2387,8 +2387,8 @@ function renderChain() {
     const itm = isCall ? o.strike < price : o.strike > price;
     const d = filterDelta(o);
     if (o.strike === atmAll && zoneFilter.itm) return true; // ATM belongs to the ITM view
-    // ITM runs from the floor up to Δ .95 — deeper is a stock substitute, see it under All
-    if (itm) return zoneFilter.itm && d >= itmFloor && d <= 0.95;
+    // ITM runs from ATM down to the depth limit: |Δ| ≤ the setting (deeper = All view)
+    if (itm) return zoneFilter.itm && d <= itmCeil;
     return zoneFilter.otm && d >= otmFloor;
   };
   // apply delta filter per side; drop strikes with nothing left to show
