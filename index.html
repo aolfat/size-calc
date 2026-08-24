@@ -483,7 +483,7 @@
 
       <div id="sharesSection" style="display:none;">
         <hr class="divider">
-        <div class="section-title">Shares sizing<button class="filter-btn" style="margin-left:10px;" onclick="shareShares()" title="Copy this plan as an image">share</button></div>
+        <div class="section-title">Shares sizing<button class="filter-btn" style="margin-left:10px;" onclick="shareShares()" title="Copy this plan as an image">share</button><button class="filter-btn" style="margin-left:6px;" onclick="copyShares()" title="Copy as text: bought N shares of $X @ entry with stop at Y">copy</button></div>
         <div class="stat-grid" id="sharesStats"></div>
       </div>
     </div>
@@ -1006,6 +1006,54 @@ function shareSaved(id) {
       { label: 'Of account', value: (Math.abs(lossAtStop) / acct * 100).toFixed(2) + '%', sub: 'at the stop' }
     ]
   }), `${d.parsed.ticker}-position`);
+}
+
+// ---------- copy as text: one-liners for the live chat ----------
+function copyPlainText(text) {
+  const ok = () => showToast('Copied: ' + text);
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); ok(); } catch(e) { showError('Could not copy.'); }
+    ta.remove();
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok).catch(fallback);
+    else fallback();
+  } catch(e) { fallback(); }
+}
+
+function expChat(expStr) { // 2026-09-18 → 9/18
+  const p = (expStr || '').split('-');
+  return p.length === 3 ? +p[1] + '/' + +p[2] : expStr;
+}
+
+function copyShares() {
+  const q = quoteData;
+  if (!q) { showError('Load a ticker first.'); return; }
+  const isLong = direction === 'long';
+  const entry = entryVal();
+  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
+  const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
+  const rps = isLong ? entry - stop : stop - entry;
+  if (rps <= 0) { showError('Stop is on the wrong side of entry.'); return; }
+  const shares = unitsFor(riskDollars(), rps);
+  copyPlainText(`${isLong ? 'bought' : 'shorted'} ${shares.toLocaleString()} shares of $${q.symbol} @ ${fmtN(entry, 2)} with stop at ${fmtN(stop, 2)}`);
+}
+
+function copyPinned(cardId) {
+  const d = pinnedData[cardId];
+  if (!d) return;
+  const cts = Math.max(1, unitsFor(riskDollars(), d.lossPerContract));
+  copyPlainText(`bought ${cts} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${+d.parsed.strike}${d.isCall ? 'c' : 'p'} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying`);
+}
+
+function copySaved(id) {
+  const d = savedData[id];
+  if (!d) return;
+  copyPlainText(`bought ${d.qty || 1} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${+d.parsed.strike}${d.isCall ? 'c' : 'p'} @ ${fmtN(d.entry, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying`);
 }
 
 // ---------- backup: everything the app stores, as a JSON file ----------
@@ -2664,7 +2712,8 @@ function renderSavedCard(id) {
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">POSITION</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="shareSaved('${id}')" title="Copy this position as an image" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button onclick="copySaved('${id}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
+      <button onclick="shareSaved('${id}')" title="Copy this position as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
       <button onclick="simFromSaved('${id}')" title="Simulate returns over time from your entry (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
       <button onclick="refreshSaved('${id}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
@@ -2729,7 +2778,8 @@ function renderPinnedCard(cardId) {
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
       <span class="${d.itm ? 'badge-itm' : 'badge-otm'}" style="font-size:11px;padding:2px 7px;border-radius:3px;">${d.itm ? 'ITM' : 'OTM'}</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button onclick="copyPinned('${cardId}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
+      <button onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
       <button onclick="simFromPinned('${cardId}')" title="Simulate returns over time (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
       <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry price and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
       <button onclick="refreshPinned('${cardId}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
