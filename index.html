@@ -859,7 +859,9 @@ function drawShareCard(spec) {
     const titleW = spec.title.reduce((a, p) => a + meas.measureText(p.t).width, 0);
     meas.font = `500 14px ${mono}`;
     const subW = meas.measureText(spec.sub).width;
-    W = Math.max(720, titleW + PAD * 2, subW + PAD * 2,
+    meas.font = `500 13px ${mono}`;
+    const footW = spec.footer ? meas.measureText(spec.footer).width + 220 : 0; // leave room for the wordmark
+    W = Math.max(720, titleW + PAD * 2, subW + PAD * 2, footW + PAD * 2,
       ...rowCols.map(ws => PAD * 2 + ws.reduce((a, b) => a + b, 0) + GAP * (ws.length - 1)));
     if (W <= 900) break;
   }
@@ -919,6 +921,11 @@ function drawShareCard(spec) {
     });
   });
 
+  if (spec.footer) {
+    x.font = `500 13px ${mono}`;
+    x.fillStyle = SC.text2;
+    x.fillText(spec.footer, PAD, H - 30);
+  }
   x.font = `700 12px ${mono}`;
   x.textAlign = 'right';
   x.fillStyle = SC.text3;
@@ -962,13 +969,17 @@ function shareShares() {
   const chg = q.change_percentage || 0;
   shareCanvasToClipboard(drawShareCard({
     title: [{ t: q.symbol + '  ' }, { t: fmt$(price) }, { t: `  ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%`, c: chg >= 0 ? SC.green : SC.red }],
-    sub: `${isLong ? 'LONG' : 'SHORT'} · entry ${fmt$(entry)} · stop ${fmt$(stop)}${raw > 0 ? '' : (isLong ? ' (LOD)' : ' (HOD)')} · risk ${fmt$(risk)} · ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+    sub: `${isLong ? 'LONG' : 'SHORT'} · entry ${fmt$(entry)} · stop ${fmt$(stop)}${raw > 0 ? '' : (isLong ? ' (LOD)' : ' (HOD)')} · risk ${(risk / acct * 100).toFixed(2)}% · ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
     stats: [
       { label: 'Shares', value: shares.toLocaleString(), color: SC.blue, sub: isLong ? 'to buy' : 'to short' },
-      { label: 'Max loss', value: fmt$(shares * rps), color: SC.red, sub: (shares * rps / acct * 100).toFixed(2) + '% of acct' },
+      { label: 'Max loss', value: (shares * rps / acct * 100).toFixed(2) + '%', color: SC.red, sub: 'of account' },
       { label: 'Position', value: (shares * entry / acct * 100).toFixed(1) + '%', sub: 'of account' },
       { label: 'Risk / share', value: fmt$(rps), color: SC.teal, sub: `${fmt$(entry)} → ${fmt$(stop)}` }
-    ]
+    ],
+    footer: (() => {
+      const s10 = unitsFor(10000 * (risk / acct), rps);
+      return `on a $10k account: ${s10.toLocaleString()} shares · ${fmt$(s10 * rps)} max loss`;
+    })()
   }), q.symbol + '-plan');
 }
 
