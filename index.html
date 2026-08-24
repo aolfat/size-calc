@@ -974,7 +974,7 @@ function shareShares() {
       { label: 'Shares', value: shares.toLocaleString(), color: SC.blue, sub: isLong ? 'to buy' : 'to short' },
       { label: 'Max loss', value: (shares * rps / acct * 100).toFixed(2) + '%', color: SC.red, sub: 'of account' },
       { label: 'Position', value: (shares * entry / acct * 100).toFixed(1) + '%', sub: 'of account' },
-      { label: 'Risk / share', value: fmt$(rps), color: SC.teal, sub: `${fmt$(entry)} → ${fmt$(stop)}` }
+      { label: 'Stop distance', value: (entry > 0 ? rps / entry * 100 : 0).toFixed(1) + '%', color: SC.teal, sub: `${fmt$(entry)} → ${fmt$(stop)}` }
     ],
     footer: (() => {
       const s10 = unitsFor(10000 * (risk / acct), rps);
@@ -993,10 +993,17 @@ function sharePinned(cardId) {
     sub: `underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
     stats: [
       { label: 'Mid / ct', value: fmt$(d.mid), sub: `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
-      { label: 'Loss / ct @ stop', value: fmt$(d.lossPerContract), color: SC.red, sub: d.lossOfCost.toFixed(0) + '% of premium' },
-      { label: 'Contracts', value: String(cts), color: SC.blue, sub: `for ${fmt$(riskDollars())} risk` },
-      { label: 'Max loss', value: cts > 0 ? fmt$(cts * d.lossPerContract) : '—', color: SC.red, sub: cts > 0 ? (cts * d.lossPerContract / acct * 100).toFixed(2) + '% of acct' : '' }
-    ]
+      { label: 'Loss @ stop', value: d.lossOfCost.toFixed(0) + '%', color: SC.red, sub: 'of premium' },
+      { label: 'Contracts', value: String(cts), color: SC.blue, sub: 'risk-sized' },
+      { label: 'Max loss', value: cts > 0 ? (cts * d.lossPerContract / acct * 100).toFixed(2) + '%' : '—', color: SC.red, sub: cts > 0 ? 'of account' : '' }
+    ],
+    footer: (() => {
+      if (!(d.lossPerContract > 0)) return '';
+      const c10 = unitsFor(10000 * (riskDollars() / acct), d.lossPerContract);
+      return c10 >= 1
+        ? `on a $10k account: ${c10} contract${c10 === 1 ? '' : 's'} · ${fmt$(c10 * d.lossPerContract)} max loss`
+        : `on a $10k account: even 1 contract risks ${fmt$(d.lossPerContract)} (${(d.lossPerContract / 10000 * 100).toFixed(2)}% of it)`;
+    })()
   }), `${d.parsed.ticker}-${d.parsed.strike}${d.isCall ? 'c' : 'p'}`);
 }
 
@@ -1011,9 +1018,9 @@ function shareSaved(id) {
     title: [{ t: `${d.parsed.ticker} $${d.parsed.strike} ` }, { t: d.isCall ? 'CALL' : 'PUT', c: d.isCall ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
     sub: `POSITION · underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
     stats: [
-      { label: 'Entry / ct', value: fmt$(d.entry), sub: `${qty} ct · ${fmt$(d.entry * 100 * qty)} cost` },
-      { label: 'P&L now', value: `${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}`, color: pnl >= 0 ? SC.green : SC.red, sub: `mid ${fmt$(d.mid)}` },
-      { label: lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop', value: `${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}`, color: lossAtStop > 0 ? SC.red : SC.green, sub: 'from entry' },
+      { label: 'Entry / ct', value: fmt$(d.entry), sub: `${qty} ct` },
+      { label: 'P&L now', value: `${pnl >= 0 ? '+' : '−'}${(d.entry > 0 ? Math.abs(pnl) / (d.entry * 100 * qty) * 100 : 0).toFixed(1)}%`, color: pnl >= 0 ? SC.green : SC.red, sub: `mid ${fmt$(d.mid)}` },
+      { label: lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop', value: `${lossAtStop > 0 ? '−' : '+'}${(d.entry > 0 ? Math.abs(lossAtStop) / (d.entry * 100 * qty) * 100 : 0).toFixed(0)}%`, color: lossAtStop > 0 ? SC.red : SC.green, sub: 'of cost, from entry' },
       { label: 'Of account', value: (Math.abs(lossAtStop) / acct * 100).toFixed(2) + '%', sub: 'at the stop' }
     ]
   }), `${d.parsed.ticker}-position`);
