@@ -2927,7 +2927,7 @@ function initShortcuts() {
     if (typing) return; // never hijack keys while filling a field
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
     switch (e.key) {
-      case '/': focus('ticker'); break;
+      case '/': focus('ticker'); document.getElementById('ticker').select(); break;
       case 'q': toggleQuick(true); focus('quickInput'); break;
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
