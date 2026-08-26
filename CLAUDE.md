@@ -31,6 +31,8 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 - **Keyboard shortcuts**: single keydown listener, ? shows the map. Keys ignored while typing in fields
 - **Live mode**: ⚡ button polls quote + current chain every 5s for 60s, chart every ~20s, with countdown and overlap guards
 
+- **Extended hours**: extSession(q) classifies the quote's trade_date in ET — AH (≥16:00, change vs today's close, prevclose fallback) or PRE (4:00–9:30, vs prevclose); null during RTH or when the print isn't from today. Shown as a dim secondary figure in the quote bar (qExt) and sticky bar. `last` itself already carries the extended print, so sizing/entry defaults follow it naturally
+
 ## Conventions
 - Dark trading-terminal theme, CSS variables in `:root`, monospace tabular numerals for all figures
 - Page order = trade order: setup cards (API collapsible chip, Account & Risk), ticker + stops, quick lookup (collapsible, q expands), pinned cards, quote bar, chart, then the chain. Chart sits ABOVE the chain — levels before contracts

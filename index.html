@@ -473,6 +473,7 @@
           <span class="quote-ticker" id="qTicker"></span>
           <span class="quote-price" id="qPrice"></span>
           <span class="quote-chg" id="qChg"></span>
+          <span id="qExt" style="font-size:13px;font-family:var(--mono);margin-left:4px;"></span>
         </div>
         <div style="display:flex;gap:16px;align-items:center;">
           <span class="quote-lod">▼ LOD <span id="qLod"></span> <span class="lod-pct" id="qLodPct"></span></span>
@@ -1559,9 +1560,11 @@ function renderStickyBar() {
   const adrTxt = !u ? '' : u.ctx === 'both'
     ? `ADR L ${u.usedLod.toFixed(0)}% · H ${u.usedHod.toFixed(0)}%`
     : `ADR ${(u.ctx === 'long' ? u.usedLod : u.usedHod).toFixed(0)}% used`;
+  const ext = extSession(q);
   document.getElementById('stickyBar').innerHTML =
     `<span class="sb-sym">${q.symbol}</span>` +
     `<span class="sb-px" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(price)} ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%</span>` +
+    (ext ? `<span style="color:var(--text3)">${ext.label} <span style="color:${ext.chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtN(ext.price, 2)} ${ext.chg >= 0 ? '+' : ''}${fmtN(ext.chgPct, 1)}%</span></span>` : '') +
     `<span style="color:var(--red)">▼ ${fmtN(q.low || 0, 2)}</span>` +
     `<span style="color:var(--green)">▲ ${fmtN(q.high || 0, 2)}</span>` +
     (adrTxt ? `<span style="color:var(--text2)">${adrTxt}</span>` : '') +
@@ -2014,6 +2017,33 @@ async function livePoll() {
   }
 }
 
+// pre/after-hours detection: Tradier's `last` keeps printing in extended sessions,
+// and trade_date says when. Returns null during regular hours or when the print is stale.
+function extSession(q) {
+  const t = q.trade_date;
+  if (!t) return null;
+  const et = tz => new Intl.DateTimeFormat(tz === 'day' ? 'en-CA' : 'en-US',
+    tz === 'day' ? { timeZone: 'America/New_York' }
+      : { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' });
+  if (et('day').format(new Date(t)) !== et('day').format(new Date())) return null; // not today (ET)
+  const [h, m] = et('hm').format(new Date(t)).split(':').map(Number);
+  const mins = h * 60 + m;
+  const label = mins >= 16 * 60 ? 'AH' : (mins >= 4 * 60 && mins < 9 * 60 + 30) ? 'PRE' : null;
+  if (!label) return null;
+  const ref = label === 'AH' ? (q.close || q.prevclose || 0) : (q.prevclose || 0);
+  const price = q.last || 0;
+  if (!(ref > 0) || !(price > 0)) return null;
+  return { label, price, chg: price - ref, chgPct: (price - ref) / ref * 100 };
+}
+
+function renderExt(q) {
+  const ext = extSession(q);
+  document.getElementById('qExt').innerHTML = ext
+    ? `<span style="color:var(--text3);">${ext.label}</span> <span style="color:${ext.chg >= 0 ? 'var(--green)' : 'var(--red)'};">${fmt$(ext.price)} ${ext.chg >= 0 ? '+' : ''}${fmtN(ext.chgPct, 2)}%</span>`
+    : '';
+  return ext;
+}
+
 function renderQuote() {
   const q = quoteData;
   const price = q.last || q.ask || 0;
@@ -2029,6 +2059,7 @@ function renderQuote() {
   const chgEl = document.getElementById('qChg');
   chgEl.textContent = ` ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)} (${chgPct >= 0 ? '+' : ''}${fmtN(chgPct, 2)}%)`;
   chgEl.className = 'quote-chg ' + (chg >= 0 ? 'up' : 'dn');
+  renderExt(q);
   document.getElementById('qLod').textContent = fmt$(lod);
   document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
   document.getElementById('qHod').textContent = fmt$(hod);
