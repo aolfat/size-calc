@@ -2017,23 +2017,39 @@ async function livePoll() {
   }
 }
 
-// pre/after-hours detection: Tradier's `last` keeps printing in extended sessions,
-// and trade_date says when. Returns null during regular hours or when the print is stale.
+// pre/after-hours detection. Tradier's last trade print often freezes at the 15:59
+// closing print, but the extended-session NBBO (bid/ask + their timestamps) keeps
+// ticking — so consider both and use the fresher signal. Null during RTH / stale data.
 function extSession(q) {
-  const t = q.trade_date;
-  if (!t) return null;
-  const et = tz => new Intl.DateTimeFormat(tz === 'day' ? 'en-CA' : 'en-US',
-    tz === 'day' ? { timeZone: 'America/New_York' }
-      : { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' });
-  if (et('day').format(new Date(t)) !== et('day').format(new Date())) return null; // not today (ET)
-  const [h, m] = et('hm').format(new Date(t)).split(':').map(Number);
-  const mins = h * 60 + m;
-  const label = mins >= 16 * 60 ? 'AH' : (mins >= 4 * 60 && mins < 9 * 60 + 30) ? 'PRE' : null;
-  if (!label) return null;
-  const ref = label === 'AH' ? (q.close || q.prevclose || 0) : (q.prevclose || 0);
-  const price = q.last || 0;
-  if (!(ref > 0) || !(price > 0)) return null;
-  return { label, price, chg: price - ref, chgPct: (price - ref) / ref * 100 };
+  const day = ms => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(ms));
+  const minsOf = ms => {
+    const [h, m] = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' })
+      .format(new Date(ms)).split(':').map(Number);
+    return h * 60 + m;
+  };
+  const today = day(Date.now());
+  const winOf = ms => {
+    if (!ms || day(ms) !== today) return null;
+    const m = minsOf(ms);
+    return m >= 16 * 60 ? 'AH' : (m >= 4 * 60 && m < 9 * 60 + 30) ? 'PRE' : null;
+  };
+  const cands = [];
+  if (q.last > 0) {
+    const w = winOf(q.trade_date);
+    if (w) cands.push({ when: q.trade_date, price: q.last, win: w });
+  }
+  if (q.bid > 0 && q.ask > 0 && q.ask >= q.bid) {
+    const when = Math.max(q.bid_date || 0, q.ask_date || 0);
+    const w = winOf(when);
+    const mid = (q.bid + q.ask) / 2;
+    if (w && (q.ask - q.bid) / mid < 0.05) cands.push({ when, price: mid, win: w }); // skip junk overnight spreads
+  }
+  if (!cands.length) return null;
+  cands.sort((a, b) => b.when - a.when);
+  const c = cands[0];
+  const ref = c.win === 'AH' ? (q.close || q.prevclose || 0) : (q.prevclose || 0);
+  if (!(ref > 0)) return null;
+  return { label: c.win, price: c.price, chg: c.price - ref, chgPct: (c.price - ref) / ref * 100 };
 }
 
 function renderExt(q) {
