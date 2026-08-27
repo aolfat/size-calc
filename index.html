@@ -436,7 +436,7 @@
         <button class="btn primary" onclick="fetchQuickOption()" id="quickBtn"><span id="quickBtnText">Look up</span></button>
       </div>
     </div>
-    <div class="hint">ticker · strike · expiry in any order — m/d or m.d, year optional &nbsp;·&nbsp; calls by default, add "put" to flip &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 9/18</b> · <b>9.18 300 aapl</b> · <b>SPY 580 put 6/18/26</b></div>
+    <div class="hint">ticker · strike · expiry in any order — m/d or m.d, year optional &nbsp;·&nbsp; calls by default, add "put" to flip &nbsp;·&nbsp; spreads: <b>rbrk 105/115 8/28 cds</b> (or pds) &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 9/18</b> · <b>9.18 300 aapl</b> · <b>SPY 580 put 6/18/26</b></div>
     </div>
   </div>
 
@@ -2675,25 +2675,41 @@ function parseQuickStr(str) {
     return m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31;
   };
   const alphaCount = tokens.filter(isAlpha).length;
-  let ticker = null, strike = null, optType = null, dateTok = null;
+  let ticker = null, optType = null, dateTok = null, pair = null, spread = false;
+  const nums = [];
   for (const raw of tokens) {
     const t = raw.replace(/^\$/, '');
     const low = t.toLowerCase();
+    if ((low === 'cds' || low === 'pds') && !spread) { spread = true; optType = low === 'cds' ? 'call' : 'put'; continue; }
     if ((low === 'call' || low === 'put') && !optType) { optType = low; continue; }
     // bare c/p means the type only when another word can be the ticker (C and P are real tickers)
     if ((low === 'c' || low === 'p') && alphaCount > 1 && !optType) { optType = low === 'c' ? 'call' : 'put'; continue; }
     if (t.includes('/') && isDate(t) && !dateTok) { dateTok = t; continue; }
+    // a strike pair (105/115) is anything slashed that can't be a date
+    if (!pair && /^\d+(\.\d+)?\/\d+(\.\d+)?$/.test(t) && !isDate(t)) { pair = t.split('/').map(Number); continue; }
     if (isAlpha(t) && !ticker) { ticker = t.toUpperCase(); continue; }
     if (/^\d+(\.\d+)?$/.test(t)) {
       // a dotted number (9.18) is a date unless one is already set, then it's a strike
       if (t.includes('.') && !dateTok && isDate(t)) { dateTok = t; continue; }
-      if (strike === null) { strike = parseFloat(t); continue; }
+      if (nums.length < 2) { nums.push(parseFloat(t)); continue; }
     }
     if (isDate(t) && !dateTok) { dateTok = t; continue; } // dotted with year: 9.18.26
     return null; // unrecognized token
   }
-  if (!ticker || strike === null || !dateTok) return null;
+  if (!ticker || !dateTok) return null;
   optType = optType || 'call';
+  let strike, strike2 = null;
+  if (spread) {
+    const pr = pair || (nums.length === 2 ? nums : null);
+    if (!pr || pr[0] === pr[1] || !(pr[0] > 0) || !(pr[1] > 0)) return null;
+    const lo = Math.min(pr[0], pr[1]), hi = Math.max(pr[0], pr[1]);
+    strike = optType === 'call' ? lo : hi;  // debit: buy the closer-to-the-money strike
+    strike2 = optType === 'call' ? hi : lo; // sell the further one
+  } else {
+    if (pair) return null; // a strike pair needs cds/pds to say which spread
+    if (!nums.length) return null;
+    strike = nums[0];
+  }
   const parts = dateTok.split(/[\/.]/).map(Number);
   const month = parts[0];
   const day = parts[1];
@@ -2704,9 +2720,13 @@ function parseQuickStr(str) {
   const mm = String(expDate.getMonth() + 1).padStart(2, '0');
   const dd = String(expDate.getDate()).padStart(2, '0');
   const expStr = `${yyyy}-${mm}-${dd}`;
-  const strikeFormatted = String(Math.round(strike * 1000)).padStart(8, '0');
   const typeChar = optType === 'call' ? 'C' : 'P';
-  const occ = `${ticker}${yyyy.toString().slice(2)}${mm}${dd}${typeChar}${strikeFormatted}`;
+  const mkOcc = k => `${ticker}${yyyy.toString().slice(2)}${mm}${dd}${typeChar}${String(Math.round(k * 1000)).padStart(8, '0')}`;
+  const occ = mkOcc(strike);
+  if (spread) {
+    return { ticker, strike, strike2, optType, spread: true, expStr, occ, occ2: mkOcc(strike2),
+      display: `${ticker} $${strike}/$${strike2} ${optType} debit spread ${expStr}` };
+  }
   return { ticker, strike, optType, expStr, occ, display: `${ticker} $${strike} ${optType} ${expStr}` };
 }
 
@@ -3118,18 +3138,19 @@ async function fetchQuickOption() {
   document.getElementById('quickBtnText').innerHTML = '<span class="spinner"></span>';
 
   try {
+    const optSyms = parsed.spread ? `${parsed.occ},${parsed.occ2}` : parsed.occ;
     const [quoteRes, optRes] = await Promise.all([
       fetch(`${baseUrl()}/markets/quotes?symbols=${parsed.ticker}`, { headers: headers() }),
-      fetch(`${baseUrl()}/markets/quotes?symbols=${parsed.occ}&greeks=true`, { headers: headers() })
+      fetch(`${baseUrl()}/markets/quotes?symbols=${optSyms}&greeks=true`, { headers: headers() })
     ]);
     const quoteJson = await quoteRes.json();
     const optJson = await optRes.json();
 
     const uq = quoteJson?.quotes?.quote;
-    const oq = optJson?.quotes?.quote;
+    const oqRaw = optJson?.quotes?.quote;
 
     if (!uq) throw new Error(`Could not find underlying ${parsed.ticker}`);
-    if (!oq || oq.type !== 'option') throw new Error(`Option not found: ${parsed.occ} — check strike/expiry`);
+    if (!oqRaw) throw new Error(`Option not found: ${parsed.occ} — check strike/expiry`);
 
     const underlyingPrice = effectivePrice(uq);
     const isCall = parsed.optType === 'call';
@@ -3141,20 +3162,46 @@ async function fetchQuickOption() {
     const usingDefault = raw <= 0;
     const stopLevel = usingDefault ? (isCall ? lod : hod) : raw;
     const stopName = usingDefault ? (isCall ? 'LOD' : 'HOD') : 'stop';
-    const mid = ((oq.bid || 0) + (oq.ask || 0)) / 2;
-    const delta = oq.greeks?.delta || 0;
-    const gamma = oq.greeks?.gamma || 0;
-    const iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
     const itm = isCall ? parsed.strike < underlyingPrice : parsed.strike > underlyingPrice;
 
     const cardId = 'pinned_' + Date.now();
-    const d = {
-      parsed, isCall, itm, underlyingPrice, stopName, stopLevel,
-      mid, bid: oq.bid || 0, ask: oq.ask || 0, delta, gamma, iv,
-      vol: oq.volume || 0, oi: oq.open_interest || 0,
-      spreadPct: mid > 0 ? ((oq.ask || 0) - (oq.bid || 0)) / mid * 100 : 0,
-      asOf: new Date().toLocaleTimeString()
-    };
+    let d;
+    if (parsed.spread) {
+      const oqs = Array.isArray(oqRaw) ? oqRaw : [oqRaw];
+      const legQ = occ => oqs.find(o => o.symbol === occ && o.type === 'option');
+      const q1 = legQ(parsed.occ), q2 = legQ(parsed.occ2);
+      if (!q1 || !q2) throw new Error(`Spread leg not found — check strikes/expiry (${parsed.occ}, ${parsed.occ2})`);
+      const leg = (q2x, K, side) => ({
+        K, side, occ: q2x.symbol,
+        mid: ((q2x.bid || 0) + (q2x.ask || 0)) / 2, bid: q2x.bid || 0, ask: q2x.ask || 0,
+        iv: q2x.greeks?.smv_vol || q2x.greeks?.mid_iv || 0, delta: q2x.greeks?.delta || 0
+      });
+      const lg = leg(q1, parsed.strike, 1), sh = leg(q2, parsed.strike2, -1);
+      const debit = lg.mid - sh.mid;
+      if (!(debit > 0)) throw new Error('That combination is a credit at current mids, not a debit.');
+      d = {
+        kind: 'spread', parsed, legs: [lg, sh],
+        isCall, itm, underlyingPrice, stopName, stopLevel,
+        mid: debit, bid: lg.bid - sh.ask, ask: lg.ask - sh.bid,
+        delta: lg.delta - sh.delta, gamma: (q1.greeks?.gamma || 0) - (q2.greeks?.gamma || 0), iv: lg.iv,
+        vol: Math.min(q1.volume || 0, q2.volume || 0), oi: Math.min(q1.open_interest || 0, q2.open_interest || 0),
+        spreadPct: debit > 0 ? ((lg.ask - sh.bid) - (lg.bid - sh.ask)) / debit * 100 : 0,
+        asOf: new Date().toLocaleTimeString()
+      };
+    } else {
+      const oq = oqRaw;
+      if (oq.type !== 'option') throw new Error(`Option not found: ${parsed.occ} — check strike/expiry`);
+      const mid = ((oq.bid || 0) + (oq.ask || 0)) / 2;
+      d = {
+        parsed, isCall, itm, underlyingPrice, stopName, stopLevel,
+        mid, bid: oq.bid || 0, ask: oq.ask || 0,
+        delta: oq.greeks?.delta || 0, gamma: oq.greeks?.gamma || 0,
+        iv: oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0,
+        vol: oq.volume || 0, oi: oq.open_interest || 0,
+        spreadPct: mid > 0 ? ((oq.ask || 0) - (oq.bid || 0)) / mid * 100 : 0,
+        asOf: new Date().toLocaleTimeString()
+      };
+    }
     recalcPinnedStop(d);
     pinnedData[cardId] = d;
     const newCard = document.createElement('div');
