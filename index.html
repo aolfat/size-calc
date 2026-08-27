@@ -1599,7 +1599,27 @@ function renderStickyBar() {
     `<span style="color:var(--red)">▼ ${fmtN(q.low || 0, 2)}</span>` +
     `<span style="color:var(--green)">▲ ${fmtN(q.high || 0, 2)}</span>` +
     (adrTxt ? `<span style="color:var(--text2)">${adrTxt}</span>` : '') +
-    `<span style="color:var(--blue);margin-left:auto;">risk ${fmt$(riskDollars())}</span>`;
+    `<span style="color:var(--blue);margin-left:auto;">risk ${fmt$(riskDollars())}</span>` +
+    `<span id="sbLive" class="sb-live" title="Live: tap to start, tap again to extend (1m→5m→30m→stop)" onclick="event.stopPropagation();toggleLive()"></span>`;
+  syncSbLive();
+}
+
+// the sticky bar's live chip mirrors the main button so live is reachable from anywhere
+function syncSbLive() {
+  const el = document.getElementById('sbLive');
+  if (!el) return;
+  if (liveInterval) {
+    const remain = Math.max(0, Math.ceil((liveEnd - Date.now()) / 1000));
+    const mmss = remain >= 60 ? `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, '0')}` : `${remain}s`;
+    el.className = 'sb-live on';
+    el.innerHTML = `<span class="pulse"></span>${mmss}`;
+  } else if (livePausedRemaining > 0) {
+    el.className = 'sb-live on';
+    el.textContent = '⏸ live';
+  } else {
+    el.className = 'sb-live';
+    el.textContent = '⚡ live';
+  }
 }
 
 function updateStickyBar() {
@@ -2036,6 +2056,7 @@ function stopLive() {
   const b = document.getElementById('liveBtn');
   b.className = 'btn';
   b.innerHTML = '⚡ Live';
+  syncSbLive();
 }
 
 function pauseLive() { // backgrounded: keep the session, stop the polling
@@ -2047,6 +2068,7 @@ function pauseLive() { // backgrounded: keep the session, stop the polling
   const b = document.getElementById('liveBtn');
   b.className = 'btn live-on';
   b.innerHTML = `<span class="pulse"></span> Live paused`;
+  syncSbLive();
 }
 
 function resumeLive() {
@@ -2066,6 +2088,7 @@ function updateLiveBtn() {
   const mmss = remain >= 60 ? `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, '0')}` : `${remain}s`;
   const next = liveModeIdx + 1 < LIVE_MODES.length ? `tap: ${LIVE_MODES[liveModeIdx + 1].label}` : 'tap: stop';
   b.innerHTML = `<span class="pulse"></span> Live ${mmss} · ${next}`;
+  syncSbLive();
 }
 
 async function livePoll() {

@@ -38,7 +38,7 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 ## Conventions
 - Dark trading-terminal theme, CSS variables in `:root`, monospace tabular numerals for all figures
 - Page order = trade order: setup cards (API collapsible chip, Account & Risk), ticker + stops, quick lookup (collapsible, q expands), pinned cards, quote bar, chart, then the chain. Chart sits ABOVE the chain — levels before contracts
-- Sticky context bar (fixed, appears when scrolled past the quote card): symbol, price/chg, LOD/HOD, ADR used %, risk $. Click = back to top
+- Sticky context bar (fixed, appears when scrolled past the quote card): symbol, price/chg, LOD/HOD, ADR used %, risk $, and a live chip (sbLive — start/extend/stop live from anywhere on the page, synced with the main button via syncSbLive; stopPropagation so it doesn't trigger the bar's back-to-top). Click elsewhere on the bar = back to top
 - Stop inputs carry their chart line colors (red long stop, green short stop — a stop is a loss point, and it groups with the level it defaults to: LOD red, HOD green). Recalc-triggered re-renders pulse stat values (.pulse). Errors are fixed-position toasts, self-dismiss in 6s
 - Big Shares/Options segmented switcher at top of ticker card — keep it prominent
 - localStorage wrapped in try/catch (`store` helper) so sandboxed previews don't crash
