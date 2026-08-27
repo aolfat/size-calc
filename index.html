@@ -298,7 +298,7 @@
       <span><kbd>o</kbd> options</span>
       <span><kbd>v</kbd> positions</span>
       <span><kbd>r</kbd> refresh</span>
-      <span><kbd>l</kbd> live 60s</span>
+      <span><kbd>l</kbd> live · again extends 1m→5m→30m</span>
       <span><kbd>d</kbd> long/short</span>
       <span><kbd>b</kbd> <kbd>c</kbd> <kbd>p</kbd> both/calls/puts</span>
       <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> OTM / ITM→ATM / both / all</span>
@@ -389,7 +389,7 @@
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" onclick="toggleLive()" id="liveBtn" title="Auto-refresh every 5s for 60s (l)">⚡ Live 60s</button>
+        <button class="btn" onclick="toggleLive()" id="liveBtn" title="Live quotes: tap for 1m (5s ticks), tap again for 5m (10s), again for 30m (20s), again to stop. Pauses while backgrounded (l)">⚡ Live</button>
       </div>
     </div>
     <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
@@ -530,6 +530,7 @@
           <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
           <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
         </div>
+        <div id="spreadBanner" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--radius);font-size:12.5px;color:var(--blue);font-family:var(--mono);"></div>
         <div class="chain-scroll">
           <table id="chainTable" style="min-width:1000px;">
             <thead id="chainHead"></thead>
@@ -705,7 +706,9 @@ function simCurve(S) {
   for (let i = 0; i <= N; i++) {
     const t = now + total * i / N;
     const T = (exp - t) / (365 * 24 * 3600 * 1000);
-    pts.push({ t, v: bsPrice(simState.isCall, S, simState.K, T, simState.iv, RISK_FREE) });
+    pts.push({ t, v: simState.legs
+      ? simState.legs.reduce((a, L) => a + L.side * bsPrice(simState.isCall, S, L.K, Math.max(0, T), L.iv || simState.iv, RISK_FREE), 0)
+      : bsPrice(simState.isCall, S, simState.K, T, simState.iv, RISK_FREE) });
   }
   return pts;
 }
@@ -802,18 +805,37 @@ function drawSim() {
     `<span style="color:${pnl >= 0 ? 'var(--green)' : 'var(--red)'};">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</span> for ${o.qty} ct`;
 }
 
+function strikesLabel(d) {
+  return d.kind === 'spread' ? `$${+d.legs[0].K}/$${+d.legs[1].K}` : `$${+d.parsed.strike}`;
+}
+
+function typeLabel(d) {
+  return `${d.isCall ? 'call' : 'put'}${d.kind === 'spread' ? ' debit spread' : ''}`;
+}
+
+// net Black-Scholes value of a card at underlying S with T years left (legs-aware)
+function cardValueAt(d, S, T) {
+  const TT = Math.max(0, T);
+  if (d.legs) return d.legs.reduce((a, L) => a + L.side * bsPrice(d.isCall, S, L.K, TT, L.iv || d.iv, RISK_FREE), 0);
+  return bsPrice(d.isCall, S, d.parsed.strike, TT, d.iv, RISK_FREE);
+}
+
 function simParamsFromCard(d, entry, qty) {
   return {
-    isCall: d.isCall, K: d.parsed.strike, expStr: d.parsed.expStr, iv: d.iv,
+    isCall: d.isCall, K: d.parsed.strike, expStr: d.parsed.expStr, iv: d.iv, legs: d.legs,
     entry, qty: Math.max(1, qty), spot: d.underlyingPrice, stop: d.stopLevel,
     parsedTicker: d.parsed.ticker,
-    label: `${d.parsed.ticker} $${d.parsed.strike} ${d.isCall ? 'call' : 'put'} ${d.parsed.expStr}`
+    label: `${d.parsed.ticker} ${strikesLabel(d)} ${typeLabel(d)} ${d.parsed.expStr}`
   };
+}
+
+function sizeUnit(d) { // $ risked per contract for sizing: full debit for spreads, loss@stop for singles
+  return d.kind === 'spread' ? d.mid * 100 : d.lossPerContract;
 }
 
 function simFromPinned(cardId) {
   const d = pinnedData[cardId];
-  if (d) openSim(simParamsFromCard(d, d.mid, unitsFor(riskDollars(), d.lossPerContract)));
+  if (d) openSim(simParamsFromCard(d, d.mid, unitsFor(riskDollars(), sizeUnit(d))));
 }
 
 function simFromSaved(id) {
@@ -1341,6 +1363,7 @@ function setView(v) {
 }
 
 async function setMode(mode) {
+  cancelSpread();
   currentMode = mode;
   if (positionsView) { positionsView = false; setView('calc'); }
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
@@ -1962,27 +1985,70 @@ function initChartEvents() {
   });
 }
 
-// ---------- live mode: poll every 5s for 60s ----------
+// ---------- live mode: duration ladder, tap to extend ----------
+// each tap climbs a rung; longer sessions poll slower to stay well inside API limits
+const LIVE_MODES = [
+  { dur: 60e3, tick: 5e3, label: '1m' },
+  { dur: 300e3, tick: 10e3, label: '5m' },
+  { dur: 1800e3, tick: 20e3, label: '30m' }
+];
 let liveInterval = null, liveCountdown = null, liveEnd = 0, liveTicks = 0, livePolling = false;
+let liveModeIdx = 0, livePausedRemaining = 0;
+
+function startLiveTimers() {
+  clearInterval(liveInterval); clearInterval(liveCountdown);
+  liveInterval = setInterval(livePoll, LIVE_MODES[liveModeIdx].tick);
+  liveCountdown = setInterval(updateLiveBtn, 1000);
+}
 
 function toggleLive() {
-  if (liveInterval) { stopLive(); return; }
+  if (liveInterval || livePausedRemaining > 0) {
+    // running (or paused): climb to the next rung, or stop past the last one
+    if (liveModeIdx + 1 >= LIVE_MODES.length) { stopLive(); return; }
+    liveModeIdx++;
+    livePausedRemaining = 0;
+    liveEnd = Date.now() + LIVE_MODES[liveModeIdx].dur;
+    startLiveTimers();
+    updateLiveBtn();
+    return;
+  }
   if (!quoteData) { showError('Load a ticker first, then go live.'); return; }
   clearError();
-  liveEnd = Date.now() + 60000;
+  liveModeIdx = 0;
+  liveEnd = Date.now() + LIVE_MODES[0].dur;
   liveTicks = 0;
   livePoll();
-  liveInterval = setInterval(livePoll, 5000);
-  liveCountdown = setInterval(updateLiveBtn, 1000);
+  startLiveTimers();
   updateLiveBtn();
 }
 
 function stopLive() {
   clearInterval(liveInterval); clearInterval(liveCountdown);
   liveInterval = null; liveCountdown = null;
+  livePausedRemaining = 0;
   const b = document.getElementById('liveBtn');
   b.className = 'btn';
-  b.innerHTML = '⚡ Live 60s';
+  b.innerHTML = '⚡ Live';
+}
+
+function pauseLive() { // backgrounded: keep the session, stop the polling
+  if (!liveInterval) return;
+  livePausedRemaining = Math.max(0, liveEnd - Date.now());
+  clearInterval(liveInterval); clearInterval(liveCountdown);
+  liveInterval = null; liveCountdown = null;
+  if (!(livePausedRemaining > 0)) { stopLive(); return; }
+  const b = document.getElementById('liveBtn');
+  b.className = 'btn live-on';
+  b.innerHTML = `<span class="pulse"></span> Live paused`;
+}
+
+function resumeLive() {
+  if (!(livePausedRemaining > 0) || liveInterval) return;
+  liveEnd = Date.now() + livePausedRemaining;
+  livePausedRemaining = 0;
+  livePoll();
+  startLiveTimers();
+  updateLiveBtn();
 }
 
 function updateLiveBtn() {
@@ -1990,7 +2056,9 @@ function updateLiveBtn() {
   if (remain <= 0) { stopLive(); return; }
   const b = document.getElementById('liveBtn');
   b.className = 'btn live-on';
-  b.innerHTML = `<span class="pulse"></span> Live · ${remain}s — stop`;
+  const mmss = remain >= 60 ? `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, '0')}` : `${remain}s`;
+  const next = liveModeIdx + 1 < LIVE_MODES.length ? `tap: ${LIVE_MODES[liveModeIdx + 1].label}` : 'tap: stop';
+  b.innerHTML = `<span class="pulse"></span> Live ${mmss} · ${next}`;
 }
 
 async function livePoll() {
@@ -2217,6 +2285,7 @@ async function fetchChain(ticker, exp, scrollAtm) {
       return;
     }
     chainData = Array.isArray(opts) ? opts : [opts];
+    cancelSpread();
     document.getElementById('chainStatus').textContent = chainData.length + ' contracts · ' + exp;
     pendingAtmScroll = !!scrollAtm;
     renderChain();
@@ -2253,6 +2322,7 @@ function setZoneMode(m) {
 }
 
 function setSide(s) {
+  cancelSpread();
   chainSide = s;
   ['sBoth','sCall','sPut'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('s' + s.charAt(0).toUpperCase() + s.slice(1)).classList.add('active');
@@ -2503,7 +2573,7 @@ function renderChain() {
         <td style="font-weight:600;color:var(--blue)">${one.contracts > 0 ? one.contracts : '—'}</td>
         <td style="color:var(--text2)">${one.contracts > 0 ? fmt$(one.totalCost) : '—'}</td>
       `;
-      tr.addEventListener('click', () => showDetail(tr, one, acct));
+      tr.addEventListener('click', () => { if (spreadPending) completeSpread(one); else showDetail(tr, one, acct); });
     }
     tbody.appendChild(tr);
     if (openSym) {
@@ -2540,6 +2610,8 @@ function showDetail(tr, c, acct) {
     label: `${quoteData.symbol} $${c.opt.strike} ${c.isCall ? 'call' : 'put'} ${selectedExp}`
   };
 
+  detailReg[c.opt.symbol] = c;
+
   const dr = document.createElement('tr');
   dr.className = 'detail-row';
   dr.dataset.sym = c.opt.symbol;
@@ -2555,6 +2627,7 @@ function showDetail(tr, c, acct) {
     <div style="font-size:12px;color:var(--text3);margin-top:8px;font-family:var(--mono);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
       <span>${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'}${c.iv > 0 && hv20 > 0 ? (c.iv > hv20 * 1.5 ? ` <span style="color:var(--amber)">vs HV20 ${(hv20*100).toFixed(1)}% — paying up for vol</span>` : ` vs HV20 ${(hv20*100).toFixed(1)}%`) : ''} · Est. via ${c.model === 'bs' ? 'Black-Scholes, IV const' : 'Δ + ½Γ·move² approx'}</span>
       <button class="filter-btn" style="margin-left:auto;" onclick="openSim(simReg['${c.opt.symbol}'])">simulate returns</button>
+      ${chainSide !== 'both' ? `<button class="filter-btn" onclick="startSpread('${c.opt.symbol}')" title="Buy this leg, then tap the strike to sell against it">+ debit spread</button>` : ''}
     </div>
   </div></td>`;
   tr.parentNode.insertBefore(dr, tr.nextSibling);
@@ -2630,10 +2703,9 @@ function recalcPinnedStop(d) {
   const T = yearsToExp(d.parsed && d.parsed.expStr);
   let atStopEst, atStopEstON;
   if (d.iv > 0 && T > 0) {
-    const K = d.parsed.strike;
-    const baseNow = bsPrice(d.isCall, d.underlyingPrice, K, T, d.iv, RISK_FREE);
-    atStopEst = d.mid + bsPrice(d.isCall, d.stopLevel, K, T, d.iv, RISK_FREE) - baseNow;
-    atStopEstON = d.mid + bsPrice(d.isCall, d.stopLevel, K, Math.max(0, T - 1 / 365), d.iv, RISK_FREE) - baseNow;
+    const baseNow = cardValueAt(d, d.underlyingPrice, T);
+    atStopEst = d.mid + cardValueAt(d, d.stopLevel, T) - baseNow;
+    atStopEstON = d.mid + cardValueAt(d, d.stopLevel, T - 1 / 365) - baseNow;
   } else {
     atStopEst = d.mid + d.delta * drop + 0.5 * (d.gamma || 0) * drop * drop;
     atStopEstON = atStopEst;
@@ -2695,12 +2767,72 @@ function persistSaved() {
   store.set('saved_positions', JSON.stringify(savedData));
 }
 
+// ---------- debit spreads: pick the long leg in a detail row, then tap the short strike ----------
+const detailReg = {}; // full calcOpt results by OCC symbol, for spread legs
+let spreadPending = null;
+
+function startSpread(sym) {
+  const c = detailReg[sym];
+  if (!c) return;
+  spreadPending = c;
+  closeDetails();
+  const b = document.getElementById('spreadBanner');
+  b.style.display = 'block';
+  b.innerHTML = `debit spread · long ${quoteData.symbol} $${+c.opt.strike}${c.isCall ? 'C' : 'P'} @ ${fmt$(c.mid)} — tap the strike to SELL (${c.isCall ? 'higher' : 'lower'}) <button onclick="cancelSpread()" style="float:right;background:none;border:none;color:var(--blue);cursor:pointer;font-weight:700;font-size:13px;line-height:1;">✕</button>`;
+}
+
+function cancelSpread() {
+  spreadPending = null;
+  const b = document.getElementById('spreadBanner');
+  if (b) b.style.display = 'none';
+}
+
+function completeSpread(shortC) {
+  const L = spreadPending;
+  if (!L) return;
+  if (shortC.opt.symbol === L.opt.symbol) { showError('Pick a different strike for the short leg.'); return; }
+  const okDir = L.isCall ? shortC.opt.strike > L.opt.strike : shortC.opt.strike < L.opt.strike;
+  if (!okDir) { showError(`Debit ${L.isCall ? 'call' : 'put'} spread: sell a ${L.isCall ? 'higher' : 'lower'} strike than $${+L.opt.strike}.`); return; }
+  const debit = L.mid - shortC.mid;
+  if (!(debit > 0)) { showError('That combination is a credit, not a debit — pick a strike closer to the money.'); return; }
+  cancelSpread();
+  const cardId = 'pinned_' + Date.now();
+  const d = {
+    kind: 'spread',
+    parsed: { ticker: quoteData.symbol, strike: L.opt.strike, expStr: selectedExp, occ: L.opt.symbol },
+    legs: [
+      { K: L.opt.strike, iv: L.iv, side: 1, occ: L.opt.symbol, mid: L.mid, delta: L.delta },
+      { K: shortC.opt.strike, iv: shortC.iv, side: -1, occ: shortC.opt.symbol, mid: shortC.mid, delta: shortC.delta }
+    ],
+    isCall: L.isCall, itm: L.itm,
+    underlyingPrice: effectivePrice(quoteData),
+    stopName: rawStop(L.isCall ? 'stopLong' : 'stopShort') > 0 ? 'stop' : (L.isCall ? 'LOD' : 'HOD'),
+    stopLevel: L.stop,
+    mid: debit,
+    bid: (L.opt.bid || 0) - (shortC.opt.ask || 0),
+    ask: (L.opt.ask || 0) - (shortC.opt.bid || 0),
+    delta: L.delta - shortC.delta, gamma: (L.gamma || 0) - (shortC.gamma || 0), iv: L.iv,
+    vol: Math.min(L.vol, shortC.vol), oi: Math.min(L.oi, shortC.oi),
+    spreadPct: debit > 0 ? (((L.opt.ask || 0) - (shortC.opt.bid || 0)) - ((L.opt.bid || 0) - (shortC.opt.ask || 0))) / debit * 100 : 0,
+    asOf: new Date().toLocaleTimeString()
+  };
+  recalcPinnedStop(d);
+  pinnedData[cardId] = d;
+  const div = document.createElement('div');
+  div.className = 'pinned-card';
+  div.id = cardId;
+  document.getElementById('pinnedSection').prepend(div);
+  renderPinnedCard(cardId);
+  updatePinnedBar();
+  showToast(`Spread added: ${quoteData.symbol} ${strikesLabel(d)} ${typeLabel(d)} · ${fmt$(debit)} debit`);
+}
+
 function saveCard(cardId) {
   const d = pinnedData[cardId];
   if (!d) return;
   const id = 'saved_' + Date.now();
   // entry defaults to the current mid; qty to the risk-sized count — edit both to your real fill
-  savedData[id] = Object.assign({}, d, { entry: d.mid, qty: Math.max(1, unitsFor(riskDollars(), d.lossPerContract)) });
+  savedData[id] = Object.assign({}, d, { entry: d.mid, qty: Math.max(1, unitsFor(riskDollars(), sizeUnit(d))) });
   addSavedDiv(id);
   renderSavedCard(id);
   persistSaved();
@@ -2849,8 +2981,9 @@ function renderPinnedCard(cardId) {
   if (!d || !el) return;
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  const contracts = unitsFor(risk, d.lossPerContract);
+  const contracts = unitsFor(risk, sizeUnit(d));
   const totalCost = contracts * d.mid * 100;
+  if (d.kind === 'spread') { renderSpreadCard(cardId, d, risk, acct, contracts); return; }
   el.innerHTML = `
     <div class="pinned-header">
       <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
@@ -2877,6 +3010,43 @@ function renderPinnedCard(cardId) {
       <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${contracts > 0 ? fmt$(contracts * d.lossPerContract) : '—'}</div><div class="s-sub">${contracts > 0 ? (contracts * d.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}${contracts > 0 && (d.mid - d.atLodON) * 100 > d.lossPerContract + 0.005 ? `<br>held overnight: −${fmt$((d.mid - d.atLodON) * 100 * contracts)}` : ''}</div></div>
       <div class="stat good"><div class="s-label">Total cost</div><div class="s-val">${contracts > 0 ? fmt$(totalCost) : '—'}</div><div class="s-sub">${contracts > 0 ? (totalCost / acct * 100).toFixed(1) + '% of acct' : ''}</div></div>
       <div class="stat"><div class="s-label">Loss / contract</div><div class="s-val">${d.lossPerContract > 0 ? fmt$(d.lossPerContract) : '—'}</div><div class="s-sub">at ${d.stopName}</div></div>
+    </div>
+  `;
+  withFlash(el);
+}
+
+function renderSpreadCard(cardId, d, risk, acct, cts) {
+  const el = document.getElementById(cardId);
+  const width = Math.abs(d.legs[1].K - d.legs[0].K);
+  const maxProfitCt = (width - d.mid) * 100;
+  const breakeven = d.isCall ? d.legs[0].K + d.mid : d.legs[0].K - d.mid;
+  const debitTotal = cts * d.mid * 100;
+  const lossStopCt = (d.mid - d.atLod) * 100;
+  el.innerHTML = `
+    <div class="pinned-header">
+      <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
+      <span class="pinned-symbol">${d.parsed.ticker} ${strikesLabel(d)} ${d.parsed.expStr}</span>
+      <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">DEBIT SPREAD</span>
+      <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
+      <button onclick="copyPinned('${cardId}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
+      <button onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button onclick="simFromPinned('${cardId}')" title="Simulate spread returns over time (Black-Scholes, both legs)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry debit and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
+      <button onclick="refreshPinned('${cardId}')" title="Refresh both legs" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
+      <button onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="s-label">Net debit / spread</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">long $${+d.legs[0].K} @ ${fmt$(d.legs[0].mid)} · short $${+d.legs[1].K} @ ${fmt$(d.legs[1].mid)}${d.spreadPct > 15 ? ` · <span style="color:var(--amber)">wide fill risk</span>` : ''}</div></div>
+      <div class="stat good"><div class="s-label">Max profit / spread</div><div class="s-val">${fmt$(maxProfitCt)}</div><div class="s-sub">+${d.mid > 0 ? (maxProfitCt / (d.mid * 100) * 100).toFixed(0) : 0}% at ≥ $${+d.legs[1].K} by expiry</div></div>
+      <div class="stat teal"><div class="s-label">Breakeven</div><div class="s-val">${fmt$(breakeven)}</div><div class="s-sub">at expiry · width ${fmt$(width)}</div></div>
+      <div class="stat"><div class="s-label">Value @ stop</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">${lossStopCt > 0 ? `−${fmt$(lossStopCt)} (−${d.lossOfCost.toFixed(0)}%)` : 'holds value'} · BS both legs${(d.mid - d.atLodON) * 100 > lossStopCt + 0.005 ? `<br>held overnight: −${fmt$((d.mid - d.atLodON) * 100)}` : ''}</div></div>
+    </div>
+    <div style="height:10px;"></div>
+    <div class="stat-grid">
+      <div class="stat highlight"><div class="s-label">Spreads</div><div class="s-val">${d.mid > 0 ? `<input type="number" class="s-val-input" value="${cts}" min="0" step="1" title="Type a spread count, risk $ follows" onchange="contractsQtyChanged(this, ${d.mid * 100})" />` : '—'}</div><div class="s-sub">sized by full debit · edit to set risk</div></div>
+      <div class="stat danger"><div class="s-label">Max loss</div><div class="s-val">${cts > 0 ? fmt$(debitTotal) : '—'}</div><div class="s-sub">${cts > 0 ? (debitTotal / acct * 100).toFixed(2) + '% of acct · the full debit' : ''}</div></div>
+      <div class="stat good"><div class="s-label">Max profit total</div><div class="s-val">${cts > 0 ? fmt$(cts * maxProfitCt) : '—'}</div><div class="s-sub">${cts > 0 ? (cts * maxProfitCt / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
+      <div class="stat"><div class="s-label">Reward / risk</div><div class="s-val">${d.mid > 0 ? (maxProfitCt / (d.mid * 100)).toFixed(2) : '—'}</div><div class="s-sub">max profit ÷ debit</div></div>
     </div>
   `;
   withFlash(el);
@@ -2977,6 +3147,7 @@ function initShortcuts() {
     const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
     if (e.key === 'Escape') {
       if (simState) { closeSim(); return; }
+      if (spreadPending) { cancelSpread(); return; }
       if (typing) { e.target.blur(); return; }
       closeDetails();
       return;
@@ -3020,7 +3191,7 @@ loadSaved();
 setView('calc'); // saved cards live in the Positions tab
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // backgrounding the app ends a live session instead of polling blind
-document.addEventListener('visibilitychange', () => { if (document.hidden && liveInterval) stopLive(); });
+document.addEventListener('visibilitychange', () => { document.hidden ? pauseLive() : resumeLive(); });
 renderRecentTickers();
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {
