@@ -31,7 +31,8 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 - **Keyboard shortcuts**: single keydown listener, ? shows the map. Keys ignored while typing in fields
 - **Live mode**: ⚡ button polls quote + current chain every 5s for 60s, chart every ~20s, with countdown and overlap guards
 
-- **Extended hours**: extSession(q) classifies the quote's trade_date in ET — AH (≥16:00, change vs today's close, prevclose fallback) or PRE (4:00–9:30, vs prevclose); null during RTH or when the print isn't from today. Shown as a dim secondary figure in the quote bar (qExt) and sticky bar. `last` itself already carries the extended print, so sizing/entry defaults follow it naturally
+- **Extended hours**: extSession(q) picks the fresher of two signals inside the PRE (4:00–9:30 ET, vs prevclose) / AH (≥16:00, vs close) windows — the last trade print, or the extended NBBO mid (bid/ask with their own timestamps; Tradier often freezes `last` at the 15:59 closing print). Spreads >5% of mid rejected as overnight junk; null during RTH or when nothing is from today (ET). Shown as a dim secondary figure in the quote bar (qExt) and sticky bar
+- **Sizing anchors on effectivePrice(q)** — the extended price when live, else last: entryVal blank default, renderShares/renderChain/shareShares, ADR usage, chart-click both-view split, sim spot, quick lookup + card refresh underlying. The entry input's placeholder cues it ("AH 181.00"). The headline qPrice and sticky-bar price stay the official last with the ext figure alongside
 
 ## Conventions
 - Dark trading-terminal theme, CSS variables in `:root`, monospace tabular numerals for all figures

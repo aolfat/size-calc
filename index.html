@@ -672,7 +672,7 @@ function simSetPrice(mult) { // chips: stop / current / 1R / 2R
   const o = simState;
   if (!o) return;
   // freshest price we have: the live quote when it matches this ticker, else the open-time snapshot
-  const cur = (quoteData && quoteData.symbol === o.parsedTicker && (quoteData.last || quoteData.ask)) || o.spot;
+  const cur = (quoteData && quoteData.symbol === o.parsedTicker && effectivePrice(quoteData)) || o.spot;
   const rDist = o.isCall ? o.spot - o.stop : o.stop - o.spot;
   const target = mult === 'stop' ? o.stop
     : mult === 'current' ? cur
@@ -957,7 +957,7 @@ function shareCanvasToClipboard(canvas, name) {
 function shareShares() {
   const q = quoteData;
   if (!q) { showError('Load a ticker first.'); return; }
-  const price = q.last || q.ask || 0;
+  const price = effectivePrice(q);
   const isLong = direction === 'long';
   const entry = entryVal();
   const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
@@ -1280,7 +1280,7 @@ function rawStop(id) { // 0 = input blank, fall back to LOD/HOD
 }
 function stopLongVal() { return rawStop('stopLong') || (quoteData ? (quoteData.low || 0) : 0); }
 function stopShortVal() { return rawStop('stopShort') || (quoteData ? (quoteData.high || 0) : 0); }
-function entryVal() { return rawStop('entryPrice') || (quoteData ? (quoteData.last || quoteData.ask || 0) : 0); } // blank = current price
+function entryVal() { return rawStop('entryPrice') || effectivePrice(quoteData); } // blank = current (incl. pre/after-hours) price
 
 // the active trade direction: shares follow the Long/Short toggle,
 // options follow chain side (calls = long, puts = short, Both = both)
@@ -1529,7 +1529,7 @@ function updateChartVisibility() {
 
 function adrUsage() {
   if (!(adrValue > 0) || !quoteData) return null;
-  const price = quoteData.last || quoteData.ask || 0;
+  const price = effectivePrice(quoteData);
   const lod = quoteData.low || 0;
   const hod = quoteData.high || 0;
   // % of the ADR already consumed from the reference level; long trades
@@ -1769,7 +1769,7 @@ function chartPriceAtY(clientY) {
 function setStopFromPrice(price) {
   if (!(price > 0)) return;
   const tc = tradeCtx();
-  const spot = quoteData ? (quoteData.last || quoteData.ask || 0) : 0;
+  const spot = effectivePrice(quoteData);
   const id = tc === 'long' ? 'stopLong'
     : tc === 'short' ? 'stopShort'
     : (spot > 0 && price >= spot) ? 'stopShort' : 'stopLong';
@@ -2057,7 +2057,16 @@ function renderExt(q) {
   document.getElementById('qExt').innerHTML = ext
     ? `<span style="color:var(--text3);">${ext.label}</span> <span style="color:${ext.chg >= 0 ? 'var(--green)' : 'var(--red)'};">${fmt$(ext.price)} ${ext.chg >= 0 ? '+' : ''}${fmtN(ext.chgPct, 2)}%</span>`
     : '';
+  // sizing anchors on the extended price when there is one — cue it in the entry field
+  document.getElementById('entryPrice').placeholder = ext ? `${ext.label} ${fmtN(ext.price, 2)}` : 'now';
   return ext;
+}
+
+// what sizing anchors on: the extended-session price when live, else the last print
+function effectivePrice(q) {
+  if (!q) return 0;
+  const ext = extSession(q);
+  return ext ? ext.price : (q.last || q.ask || 0);
 }
 
 function renderQuote() {
@@ -2092,7 +2101,7 @@ function renderQuote() {
 function renderShares() {
   const q = quoteData;
   if (!q) return;
-  const price = q.last || q.ask || 0;
+  const price = effectivePrice(q);
   const lod = q.low || 0;
   const hod = q.high || 0;
   const isLong = direction === 'long';
@@ -2380,7 +2389,7 @@ function renderChain() {
   const q = quoteData;
   if (!q || !chainData.length) return;
 
-  const price = q.last || q.ask || 0;
+  const price = effectivePrice(q);
   const lod = q.low || 0;
   const hod = q.high || 0;
   const callStop = stopLongVal() || lod;
@@ -2525,7 +2534,7 @@ function showDetail(tr, c, acct) {
 
   simReg[c.opt.symbol] = {
     isCall: c.isCall, K: c.opt.strike, expStr: selectedExp, iv: c.iv,
-    entry: c.entryPrem, qty: Math.max(1, c.contracts), spot: quoteData.last || quoteData.ask || 0,
+    entry: c.entryPrem, qty: Math.max(1, c.contracts), spot: effectivePrice(quoteData),
     stop: c.stop, parsedTicker: quoteData.symbol,
     label: `${quoteData.symbol} $${c.opt.strike} ${c.isCall ? 'call' : 'put'} ${selectedExp}`
   };
@@ -2644,7 +2653,7 @@ async function refreshCardData(d) {
   const uq = (await qRes.json())?.quotes?.quote;
   const oq = (await oRes.json())?.quotes?.quote;
   if (!uq || !oq) throw new Error('no data');
-  d.underlyingPrice = uq.last || uq.ask || 0;
+  d.underlyingPrice = effectivePrice(uq);
   d.bid = oq.bid || 0;
   d.ask = oq.ask || 0;
   d.mid = (d.bid + d.ask) / 2;
@@ -2900,7 +2909,7 @@ async function fetchQuickOption() {
     if (!uq) throw new Error(`Could not find underlying ${parsed.ticker}`);
     if (!oq || oq.type !== 'option') throw new Error(`Option not found: ${parsed.occ} — check strike/expiry`);
 
-    const underlyingPrice = uq.last || uq.ask || 0;
+    const underlyingPrice = effectivePrice(uq);
     const isCall = parsed.optType === 'call';
     const lod = uq.low || 0;
     const hod = uq.high || 0;
