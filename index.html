@@ -501,7 +501,7 @@
       </div>
       <div class="chart-row">
         <div id="chartColD"><div class="chart-cap">daily</div><canvas id="dailyChart" height="260"></canvas></div>
-        <div id="chartCol5"><div class="chart-cap">5-min</div><canvas id="chart" height="260"></canvas></div>
+        <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button></div><canvas id="chart" height="260"></canvas></div>
       </div>
       <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
     </div>
@@ -1481,29 +1481,60 @@ function dateStr(d) {
   return `${y}-${m}-${dd}`;
 }
 
+// intraday interval: 5m native; 15/30/65m aggregated from 5m. Bigger bars pull more sessions.
+let chartInterval = parseInt(store.get('chart_interval')) || 5;
+const CHART_SESSIONS = { 5: 1, 15: 2, 30: 3, 65: 5 };
+
+function setChartInterval(iv) {
+  chartInterval = iv;
+  store.set('chart_interval', String(iv));
+  updateIntervalChips();
+  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+  if (ticker && quoteData) fetchChart(ticker);
+}
+
+function updateIntervalChips() {
+  document.querySelectorAll('#ivChips .filter-btn').forEach(b =>
+    b.classList.toggle('active', +b.dataset.iv === chartInterval));
+}
+
+function aggregateBars(bars5, iv) {
+  if (iv <= 5) return bars5;
+  const chunk = Math.round(iv / 5);
+  const out = [];
+  let day = null, idx = 0;
+  for (const b of bars5) {
+    const d = (b.t || '').slice(0, 10);
+    if (d !== day) { day = d; idx = 0; } // buckets never cross a session boundary
+    if (idx % chunk === 0) out.push({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 });
+    else {
+      const cur = out[out.length - 1];
+      cur.h = Math.max(cur.h, b.h);
+      cur.l = Math.min(cur.l, b.l);
+      cur.c = b.c;
+      cur.v += b.v || 0;
+    }
+    idx++;
+  }
+  return out;
+}
+
 async function fetchChart(ticker) {
   chartBars = [];
-  // walk back up to 6 days to find the most recent session with data
-  for (let back = 0; back <= 6; back++) {
-    const d = new Date();
-    d.setDate(d.getDate() - back);
-    const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue; // skip weekends
-    const ds = dateStr(d);
-    try {
-      const url = `${baseUrl()}/markets/timesales?symbol=${ticker}&interval=5min&start=${encodeURIComponent(ds + ' 09:30')}&end=${encodeURIComponent(ds + ' 16:00')}&session_filter=open`;
-      const res = await fetch(url, { headers: headers() });
-      const json = await res.json();
-      const data = json?.series?.data;
-      if (data) {
-        const bars = Array.isArray(data) ? data : [data];
-        if (bars.length > 1) {
-          chartBars = bars.map(b => ({ t: b.time, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume }));
-          break;
-        }
-      }
-    } catch(e) { break; }
-  }
+  try {
+    const sessions = CHART_SESSIONS[chartInterval] || 1;
+    const from = new Date();
+    from.setDate(from.getDate() - Math.ceil(sessions * 1.7 + 4)); // weekend/holiday buffer
+    const url = `${baseUrl()}/markets/timesales?symbol=${ticker}&interval=5min&start=${encodeURIComponent(dateStr(from) + ' 09:30')}&end=${encodeURIComponent(dateStr(new Date()) + ' 16:00')}&session_filter=open`;
+    const res = await fetch(url, { headers: headers() });
+    const data = (await res.json())?.series?.data;
+    if (data) {
+      const raw = (Array.isArray(data) ? data : [data]).map(b => ({ t: b.time, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume }));
+      const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
+      const keep = new Set(days.slice(-sessions));
+      chartBars = aggregateBars(raw.filter(b => keep.has((b.t || '').slice(0, 10))), chartInterval);
+    }
+  } catch(e) {}
   updateChartVisibility();
   if (chartBars.length) drawChart();
 }
@@ -1693,16 +1724,30 @@ function drawChart() {
     ctx.fillText('$' + p.toFixed(2), g.w - g.padR + 6, yy + 3);
   }
 
-  // time labels every ~hour (12 bars)
+  // time labels (~6 across) + faint separators where a new session starts
   ctx.fillStyle = cText3;
-  for (let i = 0; i < n; i += 12) {
+  const labelStep = Math.max(1, Math.floor(n / 6));
+  for (let i = 0; i < n; i += labelStep) {
     const tm = (chartBars[i].t || '').slice(11, 16);
     if (tm) ctx.fillText(tm, x(i) - 12, g.h - 8);
   }
+  for (let i = 1; i < n; i++) {
+    if ((chartBars[i].t || '').slice(0, 10) !== (chartBars[i - 1].t || '').slice(0, 10)) {
+      ctx.save();
+      ctx.strokeStyle = cBorder; ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.moveTo(x(i) - slot / 2, g.padT); ctx.lineTo(x(i) - slot / 2, g.h - g.padB); ctx.stroke();
+      ctx.restore();
+    }
+  }
 
-  // LOD / HOD dashed lines from bars
+  // LOD / HOD dashed lines from the LAST session's bars (today's levels)
+  const lastDay = (chartBars[n - 1].t || '').slice(0, 10);
   let lod = Infinity, hod = -Infinity;
-  for (const b of chartBars) { if (b.l < lod) lod = b.l; if (b.h > hod) hod = b.h; }
+  for (const b of chartBars) {
+    if ((b.t || '').slice(0, 10) !== lastDay) continue;
+    if (b.l < lod) lod = b.l;
+    if (b.h > hod) hod = b.h;
+  }
   const dash = (price, color) => {
     ctx.save();
     ctx.strokeStyle = color; ctx.globalAlpha = 0.55; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
@@ -1756,9 +1801,11 @@ function drawChart() {
     ctx.fillRect(x(i) - bw / 2, top, bw, Math.max(1, bot - top));
   }
 
-  // VWAP (blue) + 8 EMA (purple) overlays
-  let pvSum = 0, vSum = 0;
+  // VWAP (blue, resets each session) + 8 EMA (purple) overlays
+  let pvSum = 0, vSum = 0, vwDay = null;
   const vwap = chartBars.map(b => {
+    const bd = (b.t || '').slice(0, 10);
+    if (bd !== vwDay) { vwDay = bd; pvSum = 0; vSum = 0; }
     const tp = (b.h + b.l + b.c) / 3;
     pvSum += tp * (b.v || 0); vSum += (b.v || 0);
     return vSum > 0 ? pvSum / vSum : tp;
@@ -3287,6 +3334,7 @@ applyQuickOpen();
 updateStopVisibility();
 loadSaved();
 setView('calc'); // saved cards live in the Positions tab
+updateIntervalChips();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // backgrounding the app ends a live session instead of polling blind
 document.addEventListener('visibilitychange', () => { document.hidden ? pauseLive() : resumeLive(); });
