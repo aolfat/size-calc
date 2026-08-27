@@ -160,6 +160,9 @@
   /* sticky context bar: appears once you scroll past the quote card */
   #stickyBar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 90; align-items: center; gap: 14px; padding: 7px 16px; background: rgba(18,21,28,0.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2); font-family: var(--mono); font-size: 12.5px; cursor: pointer; white-space: nowrap; overflow-x: auto; }
   #stickyBar .sb-sym { font-weight: 700; color: var(--text); }
+  .sb-live { border: 1px solid var(--border2); border-radius: 6px; padding: 2px 9px; cursor: pointer; color: var(--text3); font-size: 11.5px; user-select: none; }
+  .sb-live.on { color: var(--red); border-color: var(--red-bd); background: var(--red-bg); }
+  .sb-live .pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: livePulse 1.2s ease-in-out infinite; margin-right: 5px; }
   #stickyBar .sb-px { font-weight: 600; }
   #stickyBar span { flex: 0 0 auto; }
 
@@ -1010,23 +1013,25 @@ function shareShares() {
 function sharePinned(cardId) {
   const d = pinnedData[cardId];
   if (!d) return;
-  const cts = unitsFor(riskDollars(), d.lossPerContract);
+  const cts = unitsFor(riskDollars(), sizeUnit(d));
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   shareCanvasToClipboard(drawShareCard({
-    title: [{ t: `${d.parsed.ticker} $${d.parsed.strike} ` }, { t: d.isCall ? 'CALL' : 'PUT', c: d.isCall ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
+    title: [{ t: `${d.parsed.ticker} ${strikesLabel(d)} ` }, { t: (d.isCall ? 'CALL' : 'PUT') + (d.kind === 'spread' ? ' SPREAD' : ''), c: d.isCall ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
     sub: `underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
     stats: [
       { label: 'Entry / ct', value: fmt$(d.mid), color: SC.blue, sub: `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
       { label: 'Stop — underlying', value: fmt$(d.stopLevel), color: SC.red, sub: `${d.lodPct}% away · ${d.stopName}` },
-      { label: 'Loss @ stop', value: d.lossOfCost.toFixed(0) + '%', color: SC.red, sub: 'of premium' },
-      { label: 'Max loss', value: cts > 0 ? (cts * d.lossPerContract / acct * 100).toFixed(2) + '%' : '—', color: SC.red, sub: cts > 0 ? 'of account' : '' }
+      { label: 'Loss @ stop', value: d.lossOfCost.toFixed(0) + '%', color: SC.red, sub: d.kind === 'spread' ? 'of debit' : 'of premium' },
+      { label: 'Max loss', value: cts > 0 ? (cts * sizeUnit(d) / acct * 100).toFixed(2) + '%' : '—', color: SC.red, sub: cts > 0 ? (d.kind === 'spread' ? 'of account · full debit' : 'of account') : '' }
     ],
     footer: (() => {
-      if (!(d.lossPerContract > 0)) return '';
-      const c10 = unitsFor(10000 * (riskDollars() / acct), d.lossPerContract);
+      const unit = sizeUnit(d);
+      if (!(unit > 0)) return '';
+      const word = d.kind === 'spread' ? 'spread' : 'contract';
+      const c10 = unitsFor(10000 * (riskDollars() / acct), unit);
       return c10 >= 1
-        ? `on a $10k account: ${c10} contract${c10 === 1 ? '' : 's'} · ${fmt$(c10 * d.lossPerContract)} max loss`
-        : `on a $10k account: even 1 contract risks ${fmt$(d.lossPerContract)} (${(d.lossPerContract / 10000 * 100).toFixed(2)}% of it)`;
+        ? `on a $10k account: ${c10} ${word}${c10 === 1 ? '' : 's'} · ${fmt$(c10 * unit)} max loss`
+        : `on a $10k account: even 1 ${word} risks ${fmt$(unit)} (${(unit / 10000 * 100).toFixed(2)}% of it)`;
     })()
   }), `${d.parsed.ticker}-${d.parsed.strike}${d.isCall ? 'c' : 'p'}`);
 }
@@ -1089,9 +1094,10 @@ function copyShares() {
 function copyPinned(cardId) {
   const d = pinnedData[cardId];
   if (!d) return;
-  const cts = unitsFor(riskDollars(), d.lossPerContract);
+  const cts = unitsFor(riskDollars(), sizeUnit(d));
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  copyPlainText(`bought $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${+d.parsed.strike}${d.isCall ? 'c' : 'p'} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying · risk ${(Math.max(1, cts) * d.lossPerContract / acct * 100).toFixed(2)}% of account`);
+  const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} debit spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
+  copyPlainText(`bought $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying · risk ${(Math.max(1, cts) * sizeUnit(d) / acct * 100).toFixed(2)}% of account`);
 }
 
 function copySaved(id) {
@@ -1099,7 +1105,8 @@ function copySaved(id) {
   if (!d) return;
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const lossPct = (d.entry - d.atLod) * 100 * (d.qty || 0) / acct * 100;
-  copyPlainText(`bought $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${+d.parsed.strike}${d.isCall ? 'c' : 'p'} @ ${fmtN(d.entry, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying${lossPct > 0 ? ` · risk ${lossPct.toFixed(2)}% of account` : ''}`);
+  const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} debit spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
+  copyPlainText(`bought $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.entry, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying${lossPct > 0 ? ` · risk ${lossPct.toFixed(2)}% of account` : ''}`);
 }
 
 // ---------- backup: everything the app stores, as a JSON file ----------
@@ -2719,24 +2726,45 @@ function recalcPinnedStop(d) {
 }
 
 async function refreshCardData(d) {
+  const optSyms = d.legs ? d.legs.map(L => L.occ).join(',') : d.parsed.occ;
   const [qRes, oRes] = await Promise.all([
     fetch(`${baseUrl()}/markets/quotes?symbols=${d.parsed.ticker}`, { headers: headers() }),
-    fetch(`${baseUrl()}/markets/quotes?symbols=${d.parsed.occ}&greeks=true`, { headers: headers() })
+    fetch(`${baseUrl()}/markets/quotes?symbols=${optSyms}&greeks=true`, { headers: headers() })
   ]);
   const uq = (await qRes.json())?.quotes?.quote;
-  const oq = (await oRes.json())?.quotes?.quote;
-  if (!uq || !oq) throw new Error('no data');
+  const oqRaw = (await oRes.json())?.quotes?.quote;
+  if (!uq || !oqRaw) throw new Error('no data');
   d.underlyingPrice = effectivePrice(uq);
-  d.bid = oq.bid || 0;
-  d.ask = oq.ask || 0;
-  d.mid = (d.bid + d.ask) / 2;
-  d.delta = oq.greeks?.delta || 0;
-  d.gamma = oq.greeks?.gamma || 0;
-  d.iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
-  d.vol = oq.volume || 0;
-  d.oi = oq.open_interest || 0;
-  d.itm = d.isCall ? d.parsed.strike < d.underlyingPrice : d.parsed.strike > d.underlyingPrice;
-  d.spreadPct = d.mid > 0 ? (d.ask - d.bid) / d.mid * 100 : 0;
+  if (d.legs) {
+    const oqs = Array.isArray(oqRaw) ? oqRaw : [oqRaw];
+    for (const L of d.legs) {
+      const q2 = oqs.find(o => o.symbol === L.occ);
+      if (!q2) throw new Error('leg missing');
+      L.mid = ((q2.bid || 0) + (q2.ask || 0)) / 2;
+      L.bid = q2.bid || 0; L.ask = q2.ask || 0;
+      L.iv = q2.greeks?.smv_vol || q2.greeks?.mid_iv || L.iv;
+      L.delta = q2.greeks?.delta || L.delta;
+    }
+    const [lg, sh] = d.legs;
+    d.mid = lg.mid - sh.mid;
+    d.bid = (lg.bid || 0) - (sh.ask || 0);
+    d.ask = (lg.ask || 0) - (sh.bid || 0);
+    d.delta = (lg.delta || 0) - (sh.delta || 0);
+    d.iv = lg.iv;
+    d.spreadPct = d.mid > 0 ? (d.ask - d.bid) / d.mid * 100 : 0;
+  } else {
+    const oq = oqRaw;
+    d.bid = oq.bid || 0;
+    d.ask = oq.ask || 0;
+    d.mid = (d.bid + d.ask) / 2;
+    d.delta = oq.greeks?.delta || 0;
+    d.gamma = oq.greeks?.gamma || 0;
+    d.iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
+    d.vol = oq.volume || 0;
+    d.oi = oq.open_interest || 0;
+    d.itm = d.isCall ? d.parsed.strike < d.underlyingPrice : d.parsed.strike > d.underlyingPrice;
+    d.spreadPct = d.mid > 0 ? (d.ask - d.bid) / d.mid * 100 : 0;
+  }
   // default stops track the fresh session levels; a user-set stop stays put
   if (d.stopName === 'LOD') d.stopLevel = uq.low || d.stopLevel;
   if (d.stopName === 'HOD') d.stopLevel = uq.high || d.stopLevel;
@@ -2920,8 +2948,8 @@ function renderSavedCard(id) {
   el.innerHTML = `
     <div class="pinned-header">
       <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
-      <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
-      <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">POSITION</span>
+      <span class="pinned-symbol">${d.parsed.ticker} ${strikesLabel(d)} ${d.parsed.expStr}</span>
+      <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">${d.kind === 'spread' ? 'SPREAD POSITION' : 'POSITION'}</span>
       <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
       <button onclick="copySaved('${id}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
       <button onclick="shareSaved('${id}')" title="Copy this position as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
@@ -2930,11 +2958,11 @@ function renderSavedCard(id) {
       <button onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">Entry / ct</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price per contract" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
+      <div class="stat highlight"><div class="s-label">${d.kind === 'spread' ? 'Debit / spread' : 'Entry / ct'}</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
       <div class="stat"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" value="${qty}" step="1" min="0" title="Contracts you hold (does not change risk $)" onchange="savedQtyChanged('${id}', this)" /></div><div class="s-sub">${fmt$(cost)} at entry</div></div>
       <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</div><div class="s-sub">mid ${fmt$(d.mid)} · ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%</div></div>
       <div class="stat ${lossAtStop > 0 ? 'danger' : 'good'}"><div class="s-label">${lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop'}</div><div class="s-val">${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}</div><div class="s-sub">${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct · from your entry${qty > 0 && (d.entry - d.atLodON) * 100 * qty > lossAtStop + 0.005 ? `<br>held overnight: −${fmt$((d.entry - d.atLodON) * 100 * qty)}` : ''}</div></div>
-      <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">Δ × move to ${d.stopName}</div></div>
+      <div class="stat teal"><div class="s-label">${d.kind === 'spread' ? 'Value @ stop' : 'Premium @ stop'}</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">${d.kind === 'spread' ? 'BS both legs' : 'Δ × move'} to ${d.stopName}</div></div>
     </div>
   `;
   withFlash(el);
