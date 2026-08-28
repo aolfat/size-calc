@@ -271,7 +271,7 @@
   #chartCol5 { flex: 1.55; }
   #chartColD { flex: 1; }
   .chart-cap { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4px; }
-  @media (max-width: 700px) { .chart-row { flex-direction: column; } }
+  @media (max-width: 700px) { .chart-row { flex-direction: column; } .chart-row #chartCol5 { order: -1; } } /* stacked: the 5-min working chart leads */
   /* two-pane desktop, all modes: controls and tables left, charts pinned right */
   @media (min-width: 1100px) {
     .app { max-width: 1500px; display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); column-gap: 16px; align-items: start; }
@@ -280,7 +280,8 @@
     #quoteSection { display: contents; } /* its children join the app grid */
     #quoteSection > * { grid-column: 1; min-width: 0; }
     #chartWrap { grid-column: 2; grid-row: 2 / span 60; } /* in normal flow: sticky made the charts shift against the page while scrolling */
-    .chart-row { flex-direction: column; } /* daily above intraday in the chart column */
+    .chart-row { flex-direction: column; }
+    .chart-row #chartCol5 { order: -1; } /* stacked: the 5-min working chart leads, daily below for context */
     .m-hide { display: none; } /* left column is chain-pane width: compact columns */
     .m-hide.m-delta { display: table-cell; } /* with room for Δ */
     #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11.5px; }
