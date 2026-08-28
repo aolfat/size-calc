@@ -470,6 +470,19 @@
     </div>
   </div>
 
+  <div class="card chart-wrap" id="chartWrap" style="display:none;">
+    <div class="chart-head">
+      <span class="section-title" style="margin-bottom:0;">Chart</span>
+      <span style="font-size:11.5px;color:var(--text2);font-family:var(--mono);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
+      <span class="ohlc" id="chartOhlc"></span>
+    </div>
+    <div class="chart-row">
+      <div id="chartColD"><div class="chart-cap">daily</div><canvas id="dailyChart" height="260"></canvas></div>
+      <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button></div><canvas id="chart" height="260"></canvas></div>
+    </div>
+    <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
+  </div>
+
   <div class="card" id="quickCard">
     <div class="section-title card-toggle" id="quickToggle" onclick="toggleQuick()"><span class="chev">▶</span> Quick lookup <span class="title-status">shorthand option lookup · q</span></div>
     <div id="quickBody">
@@ -541,18 +554,7 @@
       </div>
     </div>
 
-    <div class="card chart-wrap" id="chartWrap" style="display:none;">
-      <div class="chart-head">
-        <span class="section-title" style="margin-bottom:0;">Chart</span>
-        <span style="font-size:11.5px;color:var(--text2);font-family:var(--mono);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
-        <span class="ohlc" id="chartOhlc"></span>
-      </div>
-      <div class="chart-row">
-        <div id="chartColD"><div class="chart-cap">daily</div><canvas id="dailyChart" height="260"></canvas></div>
-        <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button></div><canvas id="chart" height="260"></canvas></div>
-      </div>
-      <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
-    </div>
+
 
     <div id="optionsSection" style="display:none;">
       <div class="card">
@@ -1472,6 +1474,7 @@ function setView(v) {
   document.getElementById('pinnedSection').style.display = hide;
   document.getElementById('quoteSection').style.display = positionsView ? 'none' : (quoteData ? '' : 'none');
   document.getElementById('savedBar').style.display = positionsView ? '' : 'none';
+  updateChartVisibility();
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
   if (positionsView) {
     updateSavedBar();
@@ -1696,7 +1699,7 @@ async function fetchAdr(ticker) {
 
 function updateChartVisibility() {
   const has5 = chartBars.length > 0, hasD = dailyBars.length > 0;
-  document.getElementById('chartWrap').style.display = has5 || hasD ? 'block' : 'none';
+  document.getElementById('chartWrap').style.display = !positionsView && (has5 || hasD) ? 'block' : 'none';
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
 }
