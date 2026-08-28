@@ -420,7 +420,7 @@
     <div class="row" style="align-items:flex-end;">
       <div class="field" style="flex:0 0 140px;">
         <label>Symbol</label>
-        <input type="text" id="ticker" placeholder="AAPL" style="text-transform:uppercase;" onkeydown="if(event.key==='Enter')fetchQuote()" />
+        <input type="text" id="ticker" placeholder="AAPL" style="text-transform:uppercase;" onkeydown="if(event.key==='Enter'){this.blur();fetchQuote();}" />
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
@@ -3442,6 +3442,7 @@ function initShortcuts() {
       closeDetails();
       return;
     }
+    if (typing && e.key === '/' && e.target.id === 'ticker') { e.preventDefault(); e.target.select(); return; } // '/' re-selects even from inside the field
     if (typing) return; // never hijack keys while filling a field
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
     switch (e.key) {
