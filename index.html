@@ -605,6 +605,7 @@
             <input type="number" id="itmDelta" value="0.65" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
           </div>
           <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
+          <span style="font-size:12px;color:var(--text2);font-family:var(--mono);" id="ivInfo"></span>
           <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
         </div>
         <div id="spreadBanner" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--radius);font-size:12.5px;color:var(--blue);font-family:var(--mono);"></div>
@@ -1697,6 +1698,7 @@ async function fetchChart(ticker) {
 let adrValue = 0;
 let prevDay = null; // { h, l, c } of the last completed session
 let hv20 = 0;       // annualized 20-day historical volatility
+let hvDist = [];    // rolling HV20 over the past year, for the IV percentile
 let dailyBars = []; // full history incl. today's forming bar, for the daily chart
 
 function applyDailyHistory(list) {
@@ -1707,14 +1709,49 @@ function applyDailyHistory(list) {
   if (last14.length) adrValue = last14.reduce((s, x) => s + (x.high - x.low), 0) / last14.length;
   const last = done[done.length - 1];
   prevDay = last ? { h: last.high, l: last.low, c: last.close } : null;
-  const closes = done.slice(-21).map(x => x.close);
-  if (closes.length >= 15) {
+  const closes = done.map(x => x.close);
+  const hvAt = end => { // annualized 20-day HV ending at index `end` (exclusive)
     const rets = [];
-    for (let i = 1; i < closes.length; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
+    for (let i = end - 19; i < end; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
     const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
     const v = rets.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (rets.length - 1);
-    hv20 = Math.sqrt(v * 252);
-  }
+    return Math.sqrt(v * 252);
+  };
+  hvDist = [];
+  for (let end = 20; end < closes.length; end++) hvDist.push(hvAt(end));
+  if (closes.length >= 21) hv20 = hvAt(closes.length - 1);
+}
+
+function percentileOf(value, arr) {
+  if (!(value > 0) || arr.length < 20) return null;
+  return Math.round(arr.filter(v => v < value).length / arr.length * 100);
+}
+
+// per-ticker IV diary: one ATM-IV sample per day the chain is loaded → a true
+// IV rank against the ticker's own history once enough days accumulate
+function recordIvSample(symbol, iv) {
+  if (!(iv > 0) || !symbol) return;
+  try {
+    const key = 'ivh_' + symbol;
+    const hist = JSON.parse(store.get(key) || '{}');
+    hist[dateStr(new Date())] = +iv.toFixed(4);
+    const dates = Object.keys(hist).sort();
+    while (dates.length > 260) delete hist[dates.shift()];
+    store.set(key, JSON.stringify(hist));
+  } catch(e) {}
+}
+
+function ivRankInfo(symbol, iv) {
+  if (!(iv > 0)) return null;
+  let own = null;
+  try {
+    const hist = JSON.parse(store.get('ivh_' + symbol) || '{}');
+    const vals = Object.values(hist);
+    if (vals.length >= 20) own = { pct: percentileOf(iv, vals), n: vals.length };
+  } catch(e) {}
+  if (own && own.pct !== null) return { pct: own.pct, basis: `own IV, ${own.n}d recorded` };
+  const p = percentileOf(iv, hvDist);
+  return p === null ? null : { pct: p, basis: '1y realized vol' };
 }
 
 async function fetchAdr(ticker) {
@@ -1724,7 +1761,7 @@ async function fetchAdr(ticker) {
   dailyBars = [];
   try {
     const from = new Date();
-    from.setDate(from.getDate() - 130); // ~90 sessions for the daily chart; stats use the tail
+    from.setDate(from.getDate() - 380); // ~1 year: daily chart uses it all, HV percentile needs the year, ADR/HV20 use the tail
     const url = `${baseUrl()}/markets/history?symbol=${ticker}&interval=daily&start=${dateStr(from)}&end=${dateStr(new Date())}`;
     const res = await fetch(url, { headers: headers() });
     const days = (await res.json())?.history?.day;
@@ -2823,6 +2860,25 @@ function renderChain() {
   }
   document.getElementById('emInfo').textContent = em > 0 && price > 0
     ? `±${fmt$(em)} (${(em / price * 100).toFixed(1)}%) exp move` : '';
+  // ATM IV of the loaded expiry → cheap/rich gauge + the per-ticker IV diary
+  let atmIv = 0;
+  if (atmPair) {
+    const ivs = [atmPair.call, atmPair.put].map(o => o && o.greeks ? (o.greeks.smv_vol || o.greeks.mid_iv || 0) : 0).filter(v => v > 0);
+    if (ivs.length) atmIv = ivs.reduce((a, b) => a + b, 0) / ivs.length;
+  }
+  const ivEl = document.getElementById('ivInfo');
+  if (atmIv > 0 && quoteData) {
+    recordIvSample(quoteData.symbol, atmIv);
+    const rank = ivRankInfo(quoteData.symbol, atmIv);
+    if (rank) {
+      const col = rank.pct >= 80 ? 'var(--amber)' : rank.pct <= 20 ? 'var(--green)' : 'var(--text2)';
+      ivEl.innerHTML = `IV ${(atmIv * 100).toFixed(0)}% · <span style="color:${col};font-weight:600;">${rank.pct}%ile</span>`;
+      ivEl.title = `ATM IV of the loaded expiry vs ${rank.basis}. High percentile = options are historically expensive for this ticker, low = cheap.`;
+    } else {
+      ivEl.textContent = `IV ${(atmIv * 100).toFixed(0)}%`;
+      ivEl.title = 'ATM IV of the loaded expiry';
+    }
+  } else if (ivEl) ivEl.textContent = '';
 
   const Tex = yearsToExp(selectedExp);
   // filter on a BS-computed delta: Tradier greeks can come back flat (1.000 across
