@@ -123,6 +123,8 @@
   .stat.teal::before { background: var(--teal); }
   .stat.teal .s-val { color: var(--teal); }
 
+  .usd-edit-box { width: 68px; padding: 5px 4px; font-size: 12px; background: var(--bg3); border: 1px solid var(--blue-bd); border-radius: var(--radius); color: var(--text); font-family: var(--mono); text-align: center; outline: none; }
+  .usd-edit-box:focus { border-color: var(--blue); }
   /* editable stat value (shares / contracts back into risk) */
   .s-val-input { background: transparent; border: none; border-bottom: 1px dashed var(--border2); color: inherit; font: inherit; padding: 0; width: 100px; outline: none; }
   .s-val-input:focus { border-bottom: 1px solid var(--blue); }
@@ -301,7 +303,7 @@
     input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
     /* preset rows: equal-width chips, one line, everything visible */
     #riskPresets, #riskUsdRow { flex-wrap: nowrap !important; gap: 5px; }
-    #riskPresets .filter-btn, #riskUsdRow .filter-btn { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 11px; text-align: center; }
+    #riskPresets .filter-btn, #riskUsdRow .filter-btn, #riskUsdRow .usd-edit-box { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 11px; text-align: center; width: auto; }
     #riskPresets > span:first-child, #riskUsdRow > span:first-child { display: none; } /* % and $ make the labels redundant */
     /* recent tickers: unbounded list, keep the side-swipe */
     #recentTickers { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -315,6 +317,9 @@
     #dirField { flex-basis: 100% !important; }
     #entryStopsRow .field:not(#dirField) { flex: 1 1 0 !important; min-width: 0; }
     #entryStopsRow > div:not(.field) { flex: 0 0 100%; } /* the hint gets its own line */
+    /* the in-field parse preview overlaps the typed shorthand on a phone: give it its own line */
+    #quickInput { padding-right: 12px !important; }
+    #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
     #tickerRow { gap: 8px; }
     #tickerRow .field { min-width: 0; }
     .s-val-input { font-size: 22px !important; } /* keep stat-value inputs matching the stat font */
@@ -426,8 +431,7 @@
     <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap;" id="riskUsdRow">
       <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">$ risk</span>
       <span id="riskUsdPresets" style="display:contents;"></span>
-      <button class="filter-btn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
-      <input type="text" id="usdPresetEdit" placeholder="100, 250, 500, 1000" style="display:none;width:170px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" onchange="saveUsdPresets(this)" onkeydown="if(event.key==='Enter')this.blur()" />
+      <button class="filter-btn" id="usdEditBtn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
     </div>
     </div>
   </div>
@@ -1338,10 +1342,25 @@ function getUsdPresets() {
   return [100, 250, 500, 1000];
 }
 
+let editingUsd = false;
+
 function renderUsdPresets() {
-  document.getElementById('riskUsdPresets').innerHTML = getUsdPresets()
-    .map(v => `<button class="filter-btn" data-usd="${v}" onclick="setRiskUsd(${v})">$${v.toLocaleString()}</button>`)
-    .join('');
+  const el = document.getElementById('riskUsdPresets');
+  if (editingUsd) {
+    // the chips themselves become editable; a blank box deletes that preset, the trailing box adds one
+    el.innerHTML = getUsdPresets()
+      .map(v => `<input type="number" class="usd-edit-box" value="${v}" min="0" inputmode="decimal" onkeydown="if(event.key==='Enter')toggleUsdEdit()" />`)
+      .join('')
+      + `<input type="number" class="usd-edit-box" placeholder="+" min="0" inputmode="decimal" onkeydown="if(event.key==='Enter')toggleUsdEdit()" />`;
+  } else {
+    el.innerHTML = getUsdPresets()
+      .map(v => `<button class="filter-btn" data-usd="${v}" onclick="setRiskUsd(${v})">$${v.toLocaleString()}</button>`)
+      .join('');
+  }
+  const btn = document.getElementById('usdEditBtn');
+  btn.textContent = editingUsd ? '✓' : '✎';
+  btn.title = editingUsd ? 'Save the dollar presets' : 'Edit the dollar presets';
+  btn.classList.toggle('active', editingUsd);
   updateRiskPresets();
 }
 
@@ -1351,20 +1370,14 @@ function setRiskUsd(v) {
 }
 
 function toggleUsdEdit() {
-  const inp = document.getElementById('usdPresetEdit');
-  const show = inp.style.display === 'none';
-  inp.style.display = show ? 'inline-block' : 'none';
-  inp.style.flex = show ? '1 1 auto' : '';
-  document.getElementById('riskUsdPresets').style.display = show ? 'none' : 'contents';
-  if (show) { inp.value = getUsdPresets().join(', '); inp.focus(); }
-}
-
-function saveUsdPresets(inp) {
-  const vals = [...new Set(inp.value.split(/[,\s$]+/).map(Number).filter(v => v > 0))].slice(0, 6);
-  if (vals.length) store.set('risk_usd_presets', JSON.stringify(vals));
-  inp.style.display = 'none';
-  document.getElementById('riskUsdPresets').style.display = 'contents';
+  if (editingUsd) { // ✓ pressed: collect the boxes
+    const vals = [...new Set([...document.querySelectorAll('.usd-edit-box')]
+      .map(b => parseFloat(b.value)).filter(v => v > 0))].slice(0, 6);
+    if (vals.length) store.set('risk_usd_presets', JSON.stringify(vals));
+  }
+  editingUsd = !editingUsd;
   renderUsdPresets();
+  if (editingUsd) { const first = document.querySelector('.usd-edit-box'); if (first) first.select(); }
 }
 function syncFromDollar() {
   const acct = parseFloat(document.getElementById('accountSize').value) || 0;
