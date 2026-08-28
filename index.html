@@ -223,13 +223,16 @@
 
   .kbd-toggle { background: none; border: none; color: var(--text3); font-size: 11.5px; cursor: pointer; padding: 2px 4px; }
   .kbd-toggle:hover { color: var(--text); }
-  .kbd-grid { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12.5px; color: var(--text2); }
+  .kbd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px 22px; font-size: 12.5px; color: var(--text2); }
+  .kbd-group span { display: block; margin: 5px 0; }
+  .kbd-h { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
   kbd { background: var(--bg4); border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 11px; color: var(--text); }
 
   .hint { font-size: 11px; color: var(--text3); margin-top: 7px; }
   .hint b { color: var(--text2); font-weight: 500; font-family: var(--mono); }
 
   .pinned-card { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px; box-shadow: 0 8px 24px -18px rgba(0,0,0,0.8); }
+  .saved-card { box-shadow: inset 3px 0 0 var(--blue-bd), 0 8px 24px -18px rgba(0,0,0,0.8); }
   .pinned-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .pinned-header .pinned-meta { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pinned-header > .tag, .pinned-header > .pinned-symbol, .pinned-header > .pinned-badge, .pinned-header > .card-act { flex: 0 0 auto; }
@@ -265,6 +268,16 @@
   #chartColD { flex: 1; }
   .chart-cap { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4px; }
   @media (max-width: 700px) { .chart-row { flex-direction: column; } }
+  /* two-pane desktop: charts left, chain right — options mode only (.app.wide set by setMode) */
+  @media (min-width: 1100px) {
+    .app.wide { max-width: 1440px; }
+    .app.wide #quoteSection { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 14px; align-items: start; }
+    .app.wide #quoteSection > .card:first-child { grid-column: 1 / -1; }
+    .app.wide #quoteSection .chart-row { flex-direction: column; }
+    .app.wide #quoteSection .m-hide { display: none; } /* the chain pane is phone-width: compact columns */
+    .app.wide #quoteSection #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11.5px; }
+    .app.wide #quoteSection #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
+  }
   .chart-wrap canvas { width: 100%; display: block; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; }
   .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .chart-head .ohlc { font-size: 11.5px; color: var(--text2); font-family: var(--mono); margin-left: auto; white-space: nowrap; }
@@ -305,19 +318,27 @@
   <div class="card" id="kbdHelp" style="display:none;">
     <div class="section-title">Keyboard shortcuts</div>
     <div class="kbd-grid">
-      <span><kbd>/</kbd> ticker</span>
-      <span><kbd>q</kbd> quick lookup</span>
-      <span><kbd>s</kbd> shares</span>
-      <span><kbd>o</kbd> options</span>
-      <span><kbd>v</kbd> positions</span>
-      <span><kbd>r</kbd> refresh</span>
-      <span><kbd>l</kbd> live · again extends 1m→5m→30m</span>
-      <span><kbd>d</kbd> long/short</span>
-      <span><kbd>b</kbd> <kbd>c</kbd> <kbd>p</kbd> both/calls/puts</span>
-      <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> OTM / ITM→ATM / both / all</span>
-      <span><kbd>[</kbd> <kbd>]</kbd> prev/next expiry</span>
-      <span><kbd>esc</kbd> close/unfocus</span>
-      <span><kbd>?</kbd> this help</span>
+      <div class="kbd-group"><div class="kbd-h">navigate</div>
+        <span><kbd>/</kbd> ticker (selects it)</span>
+        <span><kbd>q</kbd> quick lookup</span>
+        <span><kbd>esc</kbd> close / unfocus</span>
+        <span><kbd>?</kbd> this help</span>
+      </div>
+      <div class="kbd-group"><div class="kbd-h">views</div>
+        <span><kbd>s</kbd> shares</span>
+        <span><kbd>o</kbd> options</span>
+        <span><kbd>v</kbd> positions</span>
+        <span><kbd>d</kbd> long / short</span>
+      </div>
+      <div class="kbd-group"><div class="kbd-h">chain</div>
+        <span><kbd>b</kbd> <kbd>c</kbd> <kbd>p</kbd> both / calls / puts</span>
+        <span><kbd>1</kbd>–<kbd>4</kbd> OTM / ITM→ATM / both / all</span>
+        <span><kbd>[</kbd> <kbd>]</kbd> prev / next expiry</span>
+      </div>
+      <div class="kbd-group"><div class="kbd-h">data</div>
+        <span><kbd>r</kbd> refresh quote</span>
+        <span><kbd>l</kbd> live · again extends 1m→5m→30m</span>
+      </div>
     </div>
   </div>
 
@@ -1395,7 +1416,7 @@ function setView(v) {
   document.getElementById('quickCard').style.display = hide;
   document.getElementById('pinnedBar').style.display = hide;
   document.getElementById('pinnedSection').style.display = hide;
-  document.getElementById('quoteSection').style.display = positionsView ? 'none' : (quoteData ? 'block' : 'none');
+  document.getElementById('quoteSection').style.display = positionsView ? 'none' : (quoteData ? '' : 'none');
   document.getElementById('savedBar').style.display = positionsView ? '' : 'none';
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
   if (positionsView) {
@@ -1409,6 +1430,7 @@ function setView(v) {
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
+  document.querySelector('.app').classList.toggle('wide', mode === 'options');
   if (positionsView) { positionsView = false; setView('calc'); }
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
@@ -1491,7 +1513,7 @@ async function fetchQuote() {
       await fetchChain(ticker, selectedExp, true);
     }
 
-    document.getElementById('quoteSection').style.display = 'block';
+    document.getElementById('quoteSection').style.display = '';
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch(e) {
     showError('Error: ' + e.message);
@@ -2120,6 +2142,10 @@ function initChartEvents() {
   window.matchMedia('(max-width: 500px)').addEventListener('change', () => {
     if (quoteData && chainData.length) renderChain();
   });
+  window.matchMedia('(min-width: 1100px)').addEventListener('change', () => {
+    if (quoteData && chainData.length) renderChain();
+    if (chartBars.length) drawChart(); else if (dailyBars.length) drawDailyChart();
+  });
 }
 
 // ---------- live mode: duration ladder, tap to extend ----------
@@ -2568,7 +2594,9 @@ function chainColCount() {
 }
 
 function isMobileChain() {
-  return window.matchMedia('(max-width: 500px)').matches;
+  // phone, or the phone-width chain pane of the two-pane desktop layout
+  return window.matchMedia('(max-width: 500px)').matches
+    || (window.matchMedia('(min-width: 1100px)').matches && document.querySelector('.app').classList.contains('wide'));
 }
 
 function renderChainHead() {
@@ -3023,7 +3051,7 @@ function saveCard(cardId) {
 
 function addSavedDiv(id) {
   const div = document.createElement('div');
-  div.className = 'pinned-card';
+  div.className = 'pinned-card saved-card';
   div.id = id;
   document.getElementById('savedSection').prepend(div);
 }
