@@ -299,6 +299,20 @@
     thead th, tbody td { padding: 7px 6px; }
     .quote-price { font-size: 24px; }
     input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
+    /* chip rows: one line, side-swipe instead of ragged wrapping */
+    #riskPresets, #riskUsdRow, #recentTickers { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+    #riskPresets::-webkit-scrollbar, #riskUsdRow::-webkit-scrollbar, #recentTickers::-webkit-scrollbar { display: none; }
+    #riskPresets > *, #riskUsdRow > *, #recentTickers > * { flex: 0 0 auto; }
+    /* ticker row on one line: the symbol field flexes, refresh goes icon-only */
+    #symbolField { flex: 1 1 90px !important; min-width: 0; }
+    #tickerRow .btn { padding: 9px 11px; }
+    .btn-word { display: none; }
+    /* entry & stops: direction on its own line, then entry + stop split evenly */
+    #dirField { flex-basis: 100% !important; }
+    #entryStopsRow .field:not(#dirField) { flex: 1 1 0 !important; min-width: 0; }
+    #entryStopsRow > div:not(.field) { flex: 0 0 100%; } /* the hint gets its own line */
+    #tickerRow { gap: 8px; }
+    #tickerRow .field { min-width: 0; }
     .s-val-input { font-size: 22px !important; } /* keep stat-value inputs matching the stat font */
     #riskDollar { font-size: 20px !important; } /* keep the max-loss figure prominent on mobile */
   }
@@ -422,21 +436,21 @@
     </div>
     <div id="sizingControls">
     <div class="section-title" style="margin-top:16px;">Ticker</div>
-    <div class="row" style="align-items:flex-end;">
-      <div class="field" style="flex:0 0 140px;">
+    <div class="row" id="tickerRow" style="align-items:flex-end;">
+      <div class="field" id="symbolField" style="flex:0 0 140px;">
         <label>Symbol</label>
         <input type="text" id="ticker" placeholder="AAPL" style="text-transform:uppercase;" onkeydown="if(event.key==='Enter'){this.blur();fetchQuote();}" />
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
         <button class="btn primary" onclick="fetchQuote()" id="fetchBtn">
-          <span id="fetchBtnText">Load quote</span>
+          <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
         </button>
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
         <button class="btn" onclick="refreshQuote()" title="Refresh quote (r) · press ? for all shortcuts">
-          ↻ Refresh
+          ↻<span class="btn-word"> Refresh</span>
         </button>
       </div>
       <div class="field" style="flex:0 0 auto;">
@@ -446,7 +460,7 @@
     </div>
     <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
     <div class="section-title" style="margin-top:16px;">Entry &amp; stops</div>
-    <div class="row" style="align-items:flex-end;">
+    <div class="row" id="entryStopsRow" style="align-items:flex-end;">
       <div class="field" style="flex:0 0 auto;" id="dirField">
         <label>Direction</label>
         <div class="seg dir" id="dirSeg">
@@ -479,7 +493,7 @@
     </div>
     <div class="chart-row">
       <div id="chartColD"><div class="chart-cap">daily</div><canvas id="dailyChart" height="260"></canvas></div>
-      <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button></div><canvas id="chart" height="260"></canvas></div>
+      <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button><button class="filter-btn active" id="dailyToggle" onclick="toggleDaily()" style="padding:2px 8px;font-size:11px;margin-left:10px;" title="Show / hide the daily chart">daily</button></div><canvas id="chart" height="260"></canvas></div>
     </div>
     <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
   </div>
@@ -1494,7 +1508,7 @@ async function setMode(mode) {
   if (positionsView) { positionsView = false; setView('calc'); }
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
-  document.getElementById('fetchBtnText').textContent = mode === 'shares' ? 'Load quote' : 'Load chain';
+  document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
   updateStopVisibility();
   renderAdr();
   recalcAll();
@@ -1578,7 +1592,7 @@ async function fetchQuote() {
   } catch(e) {
     showError('Error: ' + e.message);
   } finally {
-    document.getElementById('fetchBtnText').textContent = currentMode === 'shares' ? 'Load quote' : 'Load chain';
+    document.getElementById('fetchBtnText').innerHTML = currentMode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
   }
 }
 
@@ -1701,11 +1715,21 @@ async function fetchAdr(ticker) {
   if (dailyBars.length) drawDailyChart();
 }
 
+let showDaily = true;
+
+function toggleDaily() {
+  showDaily = !showDaily;
+  store.set('show_daily', showDaily ? '1' : '0');
+  updateChartVisibility();
+  if (showDaily && dailyBars.length) drawDailyChart(); // canvas needs a paint after re-display
+}
+
 function updateChartVisibility() {
-  const has5 = chartBars.length > 0, hasD = dailyBars.length > 0;
+  const has5 = chartBars.length > 0, hasD = dailyBars.length > 0 && showDaily;
   document.getElementById('chartWrap').style.display = !positionsView && (has5 || hasD) ? 'block' : 'none';
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
+  document.getElementById('dailyToggle').classList.toggle('active', showDaily);
 }
 
 function adrUsage() {
@@ -3538,6 +3562,7 @@ initSimEvents();
 apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
 applyApiOpen();
 renderUsdPresets();
+showDaily = store.get('show_daily') !== '0';
 riskOpen = store.get('risk_open') !== '0'; // open by default; remembers a manual collapse
 applyRiskOpen();
 updateRiskStatus();
