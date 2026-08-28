@@ -176,7 +176,7 @@
   /* stop inputs carry their chart line color: long stop lives at the LOD side (red), short at the HOD side (green) */
   #stopLong { border-left: 3px solid var(--red); }
   #stopShort { border-left: 3px solid var(--green); }
-  #entryPrice { border-left: 3px solid var(--blue); }
+  #entryPrice { border-left: 3px solid var(--amber); }
 
   /* Risk $ is the number that matters: the money you're willing to lose */
   #riskDollar { font-size: 20px; font-weight: 700; color: var(--red); border-color: var(--red-bd); }
@@ -199,6 +199,7 @@
   .exp-tab.monthly { border-color: var(--amber); border-style: solid; background: linear-gradient(180deg, rgba(245,176,46,0.08), transparent), var(--bg3); }
   .exp-tab.monthly::after { content: 'M'; font-size: 8.5px; font-weight: 700; color: var(--bg); background: var(--amber); border-radius: 3px; padding: 0px 3px; position: absolute; top: -6px; right: -5px; line-height: 1.4; }
   .exp-tab.monthly.active { border-color: var(--amber); color: var(--amber); background: var(--amber-bg); }
+  .exp-tab .dte { display: block; font-size: 9px; color: var(--text3); margin-top: 1px; text-align: center; }
 
   .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
   .filter-btn { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--text2); transition: all 0.12s; }
@@ -230,6 +231,15 @@
 
   .pinned-card { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px; box-shadow: 0 8px 24px -18px rgba(0,0,0,0.8); }
   .pinned-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .pinned-header .pinned-meta { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pinned-header > .tag, .pinned-header > .pinned-symbol, .pinned-header > .pinned-badge, .pinned-header > .card-act { flex: 0 0 auto; }
+  @media (min-width: 601px) { .pinned-header { flex-wrap: nowrap; } } /* shrink the meta instead of wrapping */
+  @media (max-width: 600px) {
+    .pinned-header { row-gap: 8px; }
+    .pinned-header .pinned-badge { display: none; } /* redundant on a phone: the label carries it */
+    .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
+    .pinned-header .card-act { order: 3; }
+  }
   .pinned-symbol { font-size: 13px; font-weight: 600; color: var(--text); font-family: var(--mono); }
 
   .btn.live-on { background: var(--red-bg); border-color: var(--red-bd); color: var(--red); }
@@ -339,7 +349,8 @@
   </div>
 
   <div class="card">
-    <div class="section-title">Account &amp; Risk</div>
+    <div class="section-title card-toggle" id="riskToggle" onclick="toggleRisk()"><span class="chev">▶</span> Account &amp; Risk <span class="title-status" id="riskStatus"></span></div>
+    <div id="riskBody">
     <div class="row" style="align-items:flex-end;">
       <div class="field">
         <label>Account size</label>
@@ -362,6 +373,7 @@
       <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
       <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
       <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
+    </div>
     </div>
   </div>
 
@@ -1225,6 +1237,20 @@ function syncRiskDollar() {
   store.set('calc_account', acct);
   store.set('calc_risk', pct);
   updateRiskPresets();
+  updateRiskStatus();
+}
+
+let riskOpen = true;
+function applyRiskOpen() {
+  document.getElementById('riskBody').style.display = riskOpen ? 'block' : 'none';
+  document.getElementById('riskToggle').classList.toggle('open', riskOpen);
+}
+function toggleRisk() { riskOpen = !riskOpen; applyRiskOpen(); }
+
+function updateRiskStatus() {
+  const pct = parseFloat(document.getElementById('riskPct').value) || 0;
+  document.getElementById('riskStatus').innerHTML =
+    `<span style="color:var(--red);font-weight:600;">${fmt$(riskDollars())}</span> · ${pct}%`;
 }
 
 function setRiskPct(pct) {
@@ -1247,6 +1273,7 @@ function syncFromDollar() {
   store.set('calc_account', acct);
   store.set('calc_risk', document.getElementById('riskPct').value);
   updateRiskPresets();
+  updateRiskStatus();
   flashNext = true;
   if (quoteData) { renderShares(); renderChain(); }
   renderPinnedCards();
@@ -1641,8 +1668,17 @@ function renderStickyBar() {
     `<span style="color:var(--green)">▲ ${fmtN(q.high || 0, 2)}</span>` +
     (adrTxt ? `<span style="color:var(--text2)">${adrTxt}</span>` : '') +
     `<span style="color:var(--blue);margin-left:auto;">risk ${fmt$(riskDollars())}</span>` +
+    `<span class="sb-live sb-jump" title="Jump to the charts" onclick="event.stopPropagation();jumpTo('chartWrap')">chart</span>` +
+    (currentMode === 'options' ? `<span class="sb-live sb-jump" title="Jump to the option chain" onclick="event.stopPropagation();jumpTo('optionsSection')">chain</span>` : '') +
     `<span id="sbLive" class="sb-live" title="Live: tap to start, tap again to extend (1m→5m→30m→stop)" onclick="event.stopPropagation();toggleLive()"></span>`;
   syncSbLive();
+}
+
+function jumpTo(id) {
+  const el = document.getElementById(id);
+  if (!el || el.style.display === 'none') return;
+  const barH = document.getElementById('stickyBar').offsetHeight || 0;
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - barH - 8, behavior: 'smooth' });
 }
 
 // the sticky bar's live chip mirrors the main button so live is reachable from anywhere
@@ -2338,7 +2374,8 @@ function renderExpTabs(exps) {
   const show = expsExpanded ? exps : exps.slice(0, 12);
   let html = show.map(e => {
     const monthly = isMonthlyExp(e);
-    return `<button class="exp-tab${monthly ? ' monthly' : ''}" onclick="selectExp('${e}')" id="exp_${e.replace(/-/g,'_')}" title="${monthly ? 'Monthly expiration' : 'Weekly expiration'}">${e}</button>`;
+    const dte = Math.max(0, Math.ceil((new Date(e + 'T16:00:00') - Date.now()) / 864e5));
+    return `<button class="exp-tab${monthly ? ' monthly' : ''}" onclick="selectExp('${e}')" id="exp_${e.replace(/-/g,'_')}" title="${monthly ? 'Monthly expiration' : 'Weekly expiration'}">${e}<span class="dte">${dte}d</span></button>`;
   }).join('');
   if (exps.length > 12) {
     html += `<button class="exp-tab" style="color:var(--text3);" onclick="toggleExps()">${expsExpanded ? 'Show fewer' : '+' + (exps.length - 12) + ' more'}</button>`;
@@ -3066,13 +3103,13 @@ function renderSavedCard(id) {
     <div class="pinned-header">
       <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
       <span class="pinned-symbol">${d.parsed.ticker} ${strikesLabel(d)} ${d.parsed.expStr}</span>
-      <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">${d.kind === 'spread' ? 'SPREAD POSITION' : 'POSITION'}</span>
-      <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="copySaved('${id}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
-      <button onclick="shareSaved('${id}')" title="Copy this position as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
-      <button onclick="simFromSaved('${id}')" title="Simulate returns over time from your entry (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
-      <button onclick="refreshSaved('${id}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
-      <button onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
+      <span class="pinned-badge" style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">${d.kind === 'spread' ? 'SPREAD POSITION' : 'POSITION'}</span>
+      <span class="pinned-meta" style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
+      <button class="card-act" onclick="copySaved('${id}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
+      <button class="card-act" onclick="shareSaved('${id}')" title="Copy this position as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button class="card-act" onclick="simFromSaved('${id}')" title="Simulate returns over time from your entry (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button class="card-act" onclick="refreshSaved('${id}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
+      <button class="card-act" onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
       <div class="stat highlight"><div class="s-label">${d.kind === 'spread' ? 'Debit / spread' : 'Entry / ct'}</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
@@ -3133,14 +3170,14 @@ function renderPinnedCard(cardId) {
     <div class="pinned-header">
       <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
       <span class="pinned-symbol">${d.parsed.ticker} $${d.parsed.strike} ${d.parsed.expStr}</span>
-      <span class="${d.itm ? 'badge-itm' : 'badge-otm'}" style="font-size:11px;padding:2px 7px;border-radius:3px;">${d.itm ? 'ITM' : 'OTM'}</span>
-      <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="copyPinned('${cardId}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
-      <button onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
-      <button onclick="simFromPinned('${cardId}')" title="Simulate returns over time (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
-      <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry price and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
-      <button onclick="refreshPinned('${cardId}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
-      <button onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
+      <span class="pinned-badge ${d.itm ? 'badge-itm' : 'badge-otm'}" style="font-size:11px;padding:2px 7px;border-radius:3px;">${d.itm ? 'ITM' : 'OTM'}</span>
+      <span class="pinned-meta" style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
+      <button class="card-act" onclick="copyPinned('${cardId}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
+      <button class="card-act" onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button class="card-act" onclick="simFromPinned('${cardId}')" title="Simulate returns over time (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button class="card-act" onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry price and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
+      <button class="card-act" onclick="refreshPinned('${cardId}')" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
+      <button class="card-act" onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
       <div class="stat"><div class="s-label">Mid premium</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}${d.spreadPct > 10 && d.ask > 0 ? ` · <span style="color:var(--amber)">spread ${d.spreadPct.toFixed(0)}%</span>` : ''}</div></div>
@@ -3171,14 +3208,14 @@ function renderSpreadCard(cardId, d, risk, acct, cts) {
     <div class="pinned-header">
       <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
       <span class="pinned-symbol">${d.parsed.ticker} ${strikesLabel(d)} ${d.parsed.expStr}</span>
-      <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">DEBIT SPREAD</span>
-      <span style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
-      <button onclick="copyPinned('${cardId}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
-      <button onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
-      <button onclick="simFromPinned('${cardId}')" title="Simulate spread returns over time (Black-Scholes, both legs)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
-      <button onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry debit and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
-      <button onclick="refreshPinned('${cardId}')" title="Refresh both legs" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
-      <button onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
+      <span class="pinned-badge" style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">DEBIT SPREAD</span>
+      <span class="pinned-meta" style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
+      <button class="card-act" onclick="copyPinned('${cardId}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
+      <button class="card-act" onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
+      <button class="card-act" onclick="simFromPinned('${cardId}')" title="Simulate spread returns over time (Black-Scholes, both legs)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
+      <button class="card-act" onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry debit and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
+      <button class="card-act" onclick="refreshPinned('${cardId}')" title="Refresh both legs" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
+      <button class="card-act" onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
       <div class="stat"><div class="s-label">Net debit / spread</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">long $${+d.legs[0].K} @ ${fmt$(d.legs[0].mid)} · short $${+d.legs[1].K} @ ${fmt$(d.legs[1].mid)}${d.spreadPct > 15 ? ` · <span style="color:var(--amber)">wide fill risk</span>` : ''}</div></div>
@@ -3357,6 +3394,9 @@ initShortcuts();
 initSimEvents();
 apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
 applyApiOpen();
+riskOpen = !store.get('calc_account'); // collapse once configured
+applyRiskOpen();
+updateRiskStatus();
 applyQuickOpen();
 updateStopVisibility();
 loadSaved();
