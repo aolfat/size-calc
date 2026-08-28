@@ -262,6 +262,10 @@
   td.voloi.itm-tint { background: linear-gradient(rgba(245,176,46,0.045), rgba(245,176,46,0.045)), rgba(91,157,255,0.05); }
 
   .chart-wrap { position: relative; margin-top: 14px; }
+  /* long-press on a chart must not start iOS text selection / copy callout */
+  .chart-wrap, .chart-wrap canvas, #simChart, #simOverlay {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
   .chart-row { display: flex; gap: 12px; }
   .chart-row > div { min-width: 0; }
   #chartCol5 { flex: 1.55; }
