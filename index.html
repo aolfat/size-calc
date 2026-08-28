@@ -394,7 +394,9 @@
       <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
       <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
       <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
-      <span style="color:var(--text3);">·</span>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap;" id="riskUsdRow">
+      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">$ risk</span>
       <span id="riskUsdPresets" style="display:contents;"></span>
       <button class="filter-btn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
       <input type="text" id="usdPresetEdit" placeholder="100, 250, 500, 1000" style="display:none;width:170px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" onchange="saveUsdPresets(this)" onkeydown="if(event.key==='Enter')this.blur()" />
@@ -1289,7 +1291,7 @@ function updateRiskPresets() {
     b.classList.toggle('active', parseFloat(b.dataset.pct) === pct);
   });
   const usd = riskDollars();
-  document.querySelectorAll('#riskPresets .filter-btn[data-usd]').forEach(b => {
+  document.querySelectorAll('#riskUsdPresets .filter-btn[data-usd]').forEach(b => {
     b.classList.toggle('active', Math.abs(parseFloat(b.dataset.usd) - usd) < 0.5);
   });
 }
