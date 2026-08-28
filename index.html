@@ -283,8 +283,9 @@
     #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
   }
   .chart-wrap canvas { width: 100%; display: block; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; }
-  .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .chart-head .ohlc { font-size: 11.5px; color: var(--text2); font-family: var(--mono); margin-left: auto; white-space: nowrap; }
+  .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  /* the readout owns a reserved full-width line: hover text swaps can never reflow the card */
+  .chart-head .ohlc { font-size: 11.5px; color: var(--text2); font-family: var(--mono); flex-basis: 100%; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chart-hint { font-size: 11px; color: var(--text3); margin-top: 6px; }
 
   @media (max-width: 600px) {
