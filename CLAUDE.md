@@ -37,7 +37,7 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 
 ## Conventions
 - Dark trading-terminal theme, CSS variables in `:root`, monospace tabular numerals for all figures
-- Two-pane desktop (≥1100px, options mode only): setMode toggles .app.wide → #quoteSection becomes a grid (quote bar full-width, charts stacked left, chain right). The chain pane is phone-width, so isMobileChain() is true there too (compact columns/formats, min-width 0). quoteSection visibility uses style.display '' (never 'block') so the stylesheet can pick block vs grid
+- Two-pane desktop (≥1100px, options mode only): setMode toggles .app.wide → #quoteSection becomes a grid (quote bar full-width, charts stacked left, chain right). The chain pane is phone-width, so isMobileChain() is true there too (compact columns/formats, min-width 0) — except Δ, which the pane has room for (.m-delta re-shown; twoPaneChain() adjusts colspans: both 11 / single 7 / banner 5). quoteSection visibility uses style.display '' (never 'block') so the stylesheet can pick block vs grid
 - Saved cards carry a blue inset left accent (.saved-card) to scan pinned vs positions
 - Keyboard help card is grouped (navigate / views / chain / data)
 - Card headers (pinned/saved/spread): desktop = one line, flex-wrap nowrap so the .pinned-meta shrinks/ellipsizes instead of splitting the .card-act cluster; mobile (<600px) = identity line, full-width meta, right-aligned action row (flex order), badges hidden

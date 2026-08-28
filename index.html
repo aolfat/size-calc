@@ -275,6 +275,7 @@
     .app.wide #quoteSection > .card:first-child { grid-column: 1 / -1; }
     .app.wide #quoteSection .chart-row { flex-direction: column; }
     .app.wide #quoteSection .m-hide { display: none; } /* the chain pane is phone-width: compact columns */
+    .app.wide #quoteSection .m-hide.m-delta { display: table-cell; } /* but there's room for Δ here */
     .app.wide #quoteSection #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11.5px; }
     .app.wide #quoteSection #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
   }
@@ -2618,7 +2619,7 @@ function sideCells(c, mirror) {
   // mirror=true → calls side (reads right-to-left toward strike)
   if (!c) {
     // positions must mirror the cells below: OI (2) and Δ (4) hidden on mobile
-    const empties = [0,1,2,3,4,5].map(i => `<td class="empty-cell${i === 2 || i === 4 ? ' m-hide' : ''}">—</td>`);
+    const empties = [0,1,2,3,4,5].map(i => `<td class="empty-cell${i === 2 ? ' m-hide' : i === 4 ? ' m-hide m-delta' : ''}">—</td>`);
     return (mirror ? empties : empties.slice().reverse()).join('');
   }
   const volStyle = c.vol > c.oi && c.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--text);font-weight:600';
@@ -2627,13 +2628,18 @@ function sideCells(c, mirror) {
     `<td class="side-cell${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
     `<td class="side-cell voloi m-hide${c.itm ? ' itm-tint' : ''}" style="color:var(--text);font-weight:600">${c.oi.toLocaleString()}</td>`,
     `<td class="side-cell voloi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${fmtKM(c.vol)}</td>`,
-    `<td class="side-cell m-hide${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${fmtN(c.delta, 3)}</td>`,
+    `<td class="side-cell m-hide m-delta${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${fmtN(c.delta, 3)}</td>`,
     `<td class="side-cell${c.itm ? ' itm-tint' : ''}"${c.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${c.spreadPct.toFixed(0)}% of mid"` : ''}>${fmt$M(c.mid)}</td>`
   ];
   return (mirror ? cells : cells.slice().reverse()).join('');
 }
 
+function twoPaneChain() {
+  return window.matchMedia('(min-width: 1100px)').matches && document.querySelector('.app').classList.contains('wide');
+}
+
 function chainColCount() {
+  if (twoPaneChain()) return chainSide === 'both' ? 11 : 7; // compact + Δ
   if (isMobileChain()) return chainSide === 'both' ? 9 : 6;
   return chainSide === 'both' ? 13 : 12;
 }
@@ -2647,19 +2653,19 @@ function isMobileChain() {
 function renderChainHead() {
   const head = document.getElementById('chainHead');
   const m = isMobileChain();
-  const sideSpan = m ? 4 : 6; // OI + Δ hidden per side on mobile
+  const sideSpan = twoPaneChain() ? 5 : m ? 4 : 6; // per-side visible columns: compact+Δ / compact / full
   const lossH = m ? 'Loss' : 'Loss/ct';
   if (chainSide === 'both') {
     head.innerHTML = `<tr>
-      <th class="call-h">Cts</th><th class="call-h">${lossH}</th><th class="call-h m-hide">OI</th><th class="call-h">Vol</th><th class="call-h m-hide">Δ</th><th class="call-h">Mid</th>
+      <th class="call-h">Cts</th><th class="call-h">${lossH}</th><th class="call-h m-hide">OI</th><th class="call-h">Vol</th><th class="call-h m-hide m-delta">Δ</th><th class="call-h">Mid</th>
       <th class="strike-col" style="width:80px;">Strike</th>
-      <th class="put-h">Mid</th><th class="put-h m-hide">Δ</th><th class="put-h">Vol</th><th class="put-h m-hide">OI</th><th class="put-h">${lossH}</th><th class="put-h">Cts</th>
+      <th class="put-h">Mid</th><th class="put-h m-hide m-delta">Δ</th><th class="put-h">Vol</th><th class="put-h m-hide">OI</th><th class="put-h">${lossH}</th><th class="put-h">Cts</th>
     </tr>
     <tr><th colspan="${sideSpan}" class="call-h" style="text-align:center;border-bottom:none;padding:2px;">← CALLS (stop: call stop)</th><th class="strike-col" style="border-bottom:none;"></th><th colspan="${sideSpan}" class="put-h" style="text-align:center;border-bottom:none;padding:2px;">PUTS (stop: put stop) →</th></tr>`;
   } else {
     head.innerHTML = `<tr>
       <th class="strike-col" style="width:80px;">Strike</th>
-      <th class="m-hide">Bid</th><th class="m-hide">Ask</th><th>Mid</th><th class="m-hide">Δ</th><th class="m-hide">IV</th><th>Vol</th><th class="m-hide">OI</th><th class="m-hide">@ stop</th><th>Loss/ct</th><th>Cts</th><th>Total cost</th>
+      <th class="m-hide">Bid</th><th class="m-hide">Ask</th><th>Mid</th><th class="m-hide m-delta">Δ</th><th class="m-hide">IV</th><th>Vol</th><th class="m-hide">OI</th><th class="m-hide">@ stop</th><th>Loss/ct</th><th>Cts</th><th>Total cost</th>
     </tr>`;
   }
 }
@@ -2778,7 +2784,7 @@ function renderChain() {
         <td class="m-hide">${fmt$(one.opt.bid || 0)}</td>
         <td class="m-hide">${fmt$(one.opt.ask || 0)}</td>
         <td${one.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${one.spreadPct.toFixed(0)}% of mid"` : ''}>${fmt$M(one.mid)}</td>
-        <td class="m-hide" style="color:var(--text2)">${fmtN(one.delta, 3)}</td>
+        <td class="m-hide m-delta" style="color:var(--text2)">${fmtN(one.delta, 3)}</td>
         <td class="m-hide" style="color:var(--text2)">${one.iv > 0 ? (one.iv * 100).toFixed(1) + '%' : '—'}</td>
         <td class="voloi" style="${volStyle}">${fmtKM(one.vol)}</td>
         <td class="voloi m-hide" style="color:var(--text);font-weight:600">${one.oi.toLocaleString()}</td>
