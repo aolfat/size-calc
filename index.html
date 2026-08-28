@@ -299,10 +299,14 @@
     thead th, tbody td { padding: 7px 6px; }
     .quote-price { font-size: 24px; }
     input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
-    /* chip rows: one line, side-swipe instead of ragged wrapping */
-    #riskPresets, #riskUsdRow, #recentTickers { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
-    #riskPresets::-webkit-scrollbar, #riskUsdRow::-webkit-scrollbar, #recentTickers::-webkit-scrollbar { display: none; }
-    #riskPresets > *, #riskUsdRow > *, #recentTickers > * { flex: 0 0 auto; }
+    /* preset rows: equal-width chips, one line, everything visible */
+    #riskPresets, #riskUsdRow { flex-wrap: nowrap !important; gap: 5px; }
+    #riskPresets .filter-btn, #riskUsdRow .filter-btn { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 11px; text-align: center; }
+    #riskPresets > span:first-child, #riskUsdRow > span:first-child { display: none; } /* % and $ make the labels redundant */
+    /* recent tickers: unbounded list, keep the side-swipe */
+    #recentTickers { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    #recentTickers::-webkit-scrollbar { display: none; }
+    #recentTickers > * { flex: 0 0 auto; }
     /* ticker row on one line: the symbol field flexes, refresh goes icon-only */
     #symbolField { flex: 1 1 90px !important; min-width: 0; }
     #tickerRow .btn { padding: 9px 11px; }
@@ -492,8 +496,8 @@
       <span class="ohlc" id="chartOhlc"></span>
     </div>
     <div class="chart-row">
-      <div id="chartColD"><div class="chart-cap">daily</div><canvas id="dailyChart" height="260"></canvas></div>
-      <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button><button class="filter-btn active" id="dailyToggle" onclick="toggleDaily()" style="padding:2px 8px;font-size:11px;margin-left:10px;" title="Show / hide the daily chart">daily</button></div><canvas id="chart" height="260"></canvas></div>
+      <div id="chartColD"><div class="chart-cap" onclick="toggleDaily()" style="cursor:pointer;" title="Tap to hide the daily chart (bring it back with the D1 chip)">daily <span style="text-transform:none;letter-spacing:0;font-weight:500;">· tap to hide</span></div><canvas id="dailyChart" height="260"></canvas></div>
+      <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button><button class="filter-btn active" id="dailyToggle" onclick="toggleDaily()" style="padding:2px 8px;font-size:11px;margin-left:10px;" title="Show / hide the daily chart">D1</button></div><canvas id="chart" height="260"></canvas></div>
     </div>
     <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
   </div>
@@ -1350,6 +1354,8 @@ function toggleUsdEdit() {
   const inp = document.getElementById('usdPresetEdit');
   const show = inp.style.display === 'none';
   inp.style.display = show ? 'inline-block' : 'none';
+  inp.style.flex = show ? '1 1 auto' : '';
+  document.getElementById('riskUsdPresets').style.display = show ? 'none' : 'contents';
   if (show) { inp.value = getUsdPresets().join(', '); inp.focus(); }
 }
 
@@ -1357,6 +1363,7 @@ function saveUsdPresets(inp) {
   const vals = [...new Set(inp.value.split(/[,\s$]+/).map(Number).filter(v => v > 0))].slice(0, 6);
   if (vals.length) store.set('risk_usd_presets', JSON.stringify(vals));
   inp.style.display = 'none';
+  document.getElementById('riskUsdPresets').style.display = 'contents';
   renderUsdPresets();
 }
 function syncFromDollar() {
