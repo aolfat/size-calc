@@ -268,16 +268,19 @@
   #chartColD { flex: 1; }
   .chart-cap { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4px; }
   @media (max-width: 700px) { .chart-row { flex-direction: column; } }
-  /* two-pane desktop: charts left, chain right — options mode only (.app.wide set by setMode) */
+  /* two-pane desktop, all modes: controls and tables left, charts pinned right */
   @media (min-width: 1100px) {
-    .app.wide { max-width: 1440px; }
-    .app.wide #quoteSection { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 14px; align-items: start; }
-    .app.wide #quoteSection > .card:first-child { grid-column: 1 / -1; }
-    .app.wide #quoteSection .chart-row { flex-direction: column; }
-    .app.wide #quoteSection .m-hide { display: none; } /* the chain pane is phone-width: compact columns */
-    .app.wide #quoteSection .m-hide.m-delta { display: table-cell; } /* but there's room for Δ here */
-    .app.wide #quoteSection #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11.5px; }
-    .app.wide #quoteSection #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
+    .app { max-width: 1500px; display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); column-gap: 16px; align-items: start; }
+    .app > * { grid-column: 1; min-width: 0; }
+    .app > .header { grid-column: 1 / -1; }
+    #quoteSection { display: contents; } /* its children join the app grid */
+    #quoteSection > * { grid-column: 1; min-width: 0; }
+    #chartWrap { grid-column: 2; grid-row: 2 / span 60; position: sticky; top: 42px; }
+    .chart-row { flex-direction: column; } /* daily above intraday in the chart column */
+    .m-hide { display: none; } /* left column is chain-pane width: compact columns */
+    .m-hide.m-delta { display: table-cell; } /* with room for Δ */
+    #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11.5px; }
+    #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
   }
   .chart-wrap canvas { width: 100%; display: block; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; }
   .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -1476,7 +1479,6 @@ function setView(v) {
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
-  document.querySelector('.app').classList.toggle('wide', mode === 'options');
   if (positionsView) { positionsView = false; setView('calc'); }
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
@@ -2635,7 +2637,7 @@ function sideCells(c, mirror) {
 }
 
 function twoPaneChain() {
-  return window.matchMedia('(min-width: 1100px)').matches && document.querySelector('.app').classList.contains('wide');
+  return window.matchMedia('(min-width: 1100px)').matches;
 }
 
 function chainColCount() {
@@ -2646,8 +2648,7 @@ function chainColCount() {
 
 function isMobileChain() {
   // phone, or the phone-width chain pane of the two-pane desktop layout
-  return window.matchMedia('(max-width: 500px)').matches
-    || (window.matchMedia('(min-width: 1100px)').matches && document.querySelector('.app').classList.contains('wide'));
+  return window.matchMedia('(max-width: 500px)').matches || window.matchMedia('(min-width: 1100px)').matches;
 }
 
 function renderChainHead() {
