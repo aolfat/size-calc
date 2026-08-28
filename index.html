@@ -1281,7 +1281,7 @@ function applyRiskOpen() {
   document.getElementById('riskBody').style.display = riskOpen ? 'block' : 'none';
   document.getElementById('riskToggle').classList.toggle('open', riskOpen);
 }
-function toggleRisk() { riskOpen = !riskOpen; applyRiskOpen(); }
+function toggleRisk() { riskOpen = !riskOpen; store.set('risk_open', riskOpen ? '1' : '0'); applyRiskOpen(); }
 
 function updateRiskStatus() {
   const pct = parseFloat(document.getElementById('riskPct').value) || 0;
@@ -3481,7 +3481,7 @@ initSimEvents();
 apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
 applyApiOpen();
 renderUsdPresets();
-riskOpen = !store.get('calc_account'); // collapse once configured
+riskOpen = store.get('risk_open') !== '0'; // open by default; remembers a manual collapse
 applyRiskOpen();
 updateRiskStatus();
 applyQuickOpen();
