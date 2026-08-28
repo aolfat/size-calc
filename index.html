@@ -394,6 +394,10 @@
       <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
       <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
       <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
+      <span style="color:var(--text3);">·</span>
+      <span id="riskUsdPresets" style="display:contents;"></span>
+      <button class="filter-btn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
+      <input type="text" id="usdPresetEdit" placeholder="100, 250, 500, 1000" style="display:none;width:170px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" onchange="saveUsdPresets(this)" onkeydown="if(event.key==='Enter')this.blur()" />
     </div>
     </div>
   </div>
@@ -1281,9 +1285,48 @@ function setRiskPct(pct) {
 
 function updateRiskPresets() {
   const pct = parseFloat(document.getElementById('riskPct').value);
-  document.querySelectorAll('#riskPresets .filter-btn').forEach(b => {
+  document.querySelectorAll('#riskPresets .filter-btn[data-pct]').forEach(b => {
     b.classList.toggle('active', parseFloat(b.dataset.pct) === pct);
   });
+  const usd = riskDollars();
+  document.querySelectorAll('#riskPresets .filter-btn[data-usd]').forEach(b => {
+    b.classList.toggle('active', Math.abs(parseFloat(b.dataset.usd) - usd) < 0.5);
+  });
+}
+
+// fixed dollar presets: your standard bets, editable via the pencil chip
+function getUsdPresets() {
+  try {
+    const a = JSON.parse(store.get('risk_usd_presets') || '[]');
+    if (Array.isArray(a) && a.length && a.every(v => v > 0)) return a;
+  } catch(e) {}
+  return [100, 250, 500, 1000];
+}
+
+function renderUsdPresets() {
+  document.getElementById('riskUsdPresets').innerHTML = getUsdPresets()
+    .map(v => `<button class="filter-btn" data-usd="${v}" onclick="setRiskUsd(${v})">$${v.toLocaleString()}</button>`)
+    .join('');
+  updateRiskPresets();
+}
+
+function setRiskUsd(v) {
+  document.getElementById('riskDollar').value = v;
+  syncFromDollar();
+}
+
+function toggleUsdEdit() {
+  const inp = document.getElementById('usdPresetEdit');
+  const show = inp.style.display === 'none';
+  inp.style.display = show ? 'inline-block' : 'none';
+  if (show) { inp.value = getUsdPresets().join(', '); inp.focus(); }
+}
+
+function saveUsdPresets(inp) {
+  const vals = [...new Set(inp.value.split(/[,\s$]+/).map(Number).filter(v => v > 0))].slice(0, 6);
+  if (vals.length) store.set('risk_usd_presets', JSON.stringify(vals));
+  inp.style.display = 'none';
+  renderUsdPresets();
 }
 function syncFromDollar() {
   const acct = parseFloat(document.getElementById('accountSize').value) || 0;
@@ -3422,6 +3465,7 @@ initShortcuts();
 initSimEvents();
 apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a key is saved
 applyApiOpen();
+renderUsdPresets();
 riskOpen = !store.get('calc_account'); // collapse once configured
 applyRiskOpen();
 updateRiskStatus();
