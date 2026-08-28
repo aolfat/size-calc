@@ -281,7 +281,7 @@
     .app > .header { grid-column: 1 / -1; }
     #quoteSection { display: contents; } /* its children join the app grid */
     #quoteSection > * { grid-column: 1; min-width: 0; }
-    #chartWrap { grid-column: 2; grid-row: 2 / span 60; } /* in normal flow: sticky made the charts shift against the page while scrolling */
+    #chartWrap { grid-column: 2; grid-row: 2 / span 60; margin-top: 0; } /* top aligned with the first left card; sticky made the charts shift while scrolling — don't re-add */
     .chart-row { flex-direction: column; }
     .chart-row #chartCol5 { order: -1; } /* stacked: the 5-min working chart leads, daily below for context */
     .m-hide { display: none; } /* left column is chain-pane width: compact columns */
