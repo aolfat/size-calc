@@ -1450,9 +1450,9 @@ function updateStopVisibility() {
     : tc === 'short' ? 'blank = HOD · click the chart to set it'
     : 'blank = LOD / HOD · click the chart: below price = long stop, above = short stop';
   document.getElementById('chartClickHint').textContent =
-    tc === 'long' ? 'click the chart = set your long stop'
-    : tc === 'short' ? 'click the chart = set your short stop'
-    : 'click to set a stop: below price = long, above = short';
+    tc === 'long' ? 'tap, or hold-aim-release, to set your long stop'
+    : tc === 'short' ? 'tap, or hold-aim-release, to set your short stop'
+    : 'tap or hold-aim-release to set a stop: below price = long, above = short';
 }
 
 function stopsChanged() {
@@ -2142,32 +2142,43 @@ function initDailyChartEvents() {
     dailyHover = toIdx(t.clientX);
     dailyHoverY = t.clientY - canvas.getBoundingClientRect().top;
     drawDailyChart();
-  }, () => { dailyHover = -1; dailyHoverY = -1; if (dailyBars.length) { drawDailyChart(); if (chartBars.length) drawChart(); } });
+  }, last => {
+    if (last && dailyBars.length) {
+      const rect = canvas.getBoundingClientRect();
+      if (last.clientY >= rect.top && last.clientY <= rect.bottom) setStopFromPrice(dailyPriceAtY(last.clientY));
+    }
+    dailyHover = -1; dailyHoverY = -1;
+    if (dailyBars.length) { drawDailyChart(); if (chartBars.length) drawChart(); }
+  });
   canvas.addEventListener('click', e => {
     if (!dailyBars.length) return;
-    const rect = canvas.getBoundingClientRect();
-    let dLo = Infinity, dHi = -Infinity;
-    for (const b of dailyBars) { if (b.low < dLo) dLo = b.low; if (b.high > dHi) dHi = b.high; }
-    const tc = tradeCtx();
-    if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
-    if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
-    { const s = rawStop('entryPrice'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
-    const pad = (dHi - dLo) * 0.05 || 0.5;
-    dLo -= pad; dHi += pad;
-    const yy = e.clientY - rect.top;
-    setStopFromPrice(dHi - (yy - 12) / (260 - 12 - 22) * (dHi - dLo));
+    setStopFromPrice(dailyPriceAtY(e.clientY));
   });
 }
 
+function dailyPriceAtY(clientY) {
+  const canvas = document.getElementById('dailyChart');
+  const rect = canvas.getBoundingClientRect();
+  let dLo = Infinity, dHi = -Infinity;
+  for (const b of dailyBars) { if (b.low < dLo) dLo = b.low; if (b.high > dHi) dHi = b.high; }
+  const tc = tradeCtx();
+  if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+  if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+  { const s = rawStop('entryPrice'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+  const pad = (dHi - dLo) * 0.05 || 0.5;
+  dLo -= pad; dHi += pad;
+  return dHi - (clientY - rect.top - 12) / (260 - 12 - 22) * (dHi - dLo);
+}
+
 function attachTouchCrosshair(canvas, onMove, onEnd) {
-  let armed = false, suppressClick = false, timer = null, sx = 0, sy = 0;
+  let armed = false, suppressClick = false, timer = null, sx = 0, sy = 0, last = null;
   canvas.style.touchAction = 'pan-y';
   canvas.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) return;
     sx = e.touches[0].clientX; sy = e.touches[0].clientY;
     armed = false;
     clearTimeout(timer);
-    timer = setTimeout(() => { armed = true; onMove(e.touches[0]); }, 220);
+    timer = setTimeout(() => { armed = true; last = { clientX: sx, clientY: sy }; onMove(last); }, 220);
   }, { passive: true });
   canvas.addEventListener('touchmove', e => {
     const t = e.touches[0];
@@ -2177,7 +2188,8 @@ function attachTouchCrosshair(canvas, onMove, onEnd) {
       return;
     }
     e.preventDefault(); // crosshair engaged: the chart owns the gesture, the page holds still
-    onMove(t);
+    last = { clientX: t.clientX, clientY: t.clientY };
+    onMove(last);
   }, { passive: false });
   const end = () => {
     clearTimeout(timer);
@@ -2185,12 +2197,12 @@ function attachTouchCrosshair(canvas, onMove, onEnd) {
       armed = false;
       suppressClick = true;
       setTimeout(() => { suppressClick = false; }, 350);
-      onEnd();
+      onEnd(last);
     }
   };
   canvas.addEventListener('touchend', end);
   canvas.addEventListener('touchcancel', end);
-  // releasing a long-press must not fire the tap action (set-stop)
+  // the release IS the action (onEnd sets the stop) — the trailing click must not fire too
   canvas.addEventListener('click', e => {
     if (suppressClick) { e.stopImmediatePropagation(); e.preventDefault(); }
   }, true);
@@ -2220,7 +2232,14 @@ function initChartEvents() {
     if (chartHover < 0 || chartHover >= chartBars.length) chartHover = -1;
     chartHoverY = t.clientY - rect.top;
     drawChart();
-  }, () => { chartHover = -1; chartHoverY = -1; if (chartBars.length) drawChart(); });
+  }, last => {
+    if (last && chartBars.length) {
+      const rect = canvas.getBoundingClientRect();
+      if (last.clientY >= rect.top && last.clientY <= rect.bottom) setStopFromPrice(chartPriceAtY(last.clientY));
+    }
+    chartHover = -1; chartHoverY = -1;
+    if (chartBars.length) drawChart();
+  });
   canvas.addEventListener('click', e => {
     if (!chartBars.length) return;
     setStopFromPrice(chartPriceAtY(e.clientY));
