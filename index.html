@@ -648,6 +648,7 @@ function bsPrice(isCall, S, K, T, sigma, r) {
 
 let simState = null;
 let simHover = -1;
+let simHoverY = -1;
 const simReg = {}; // chain detail rows park their sim params here by option symbol
 
 function openSim(o) {
@@ -794,6 +795,15 @@ function drawSim() {
     ctx.save();
     ctx.strokeStyle = cBorder; ctx.setLineDash([2, 3]);
     ctx.beginPath(); ctx.moveTo(x(idx), padT); ctx.lineTo(x(idx), h - padB); ctx.stroke();
+    if (simHoverY >= padT && simHoverY <= h - padB) {
+      const hv = hi - (simHoverY - padT) / plotH * (hi - lo);
+      ctx.beginPath(); ctx.moveTo(padL, simHoverY); ctx.lineTo(w - padR, simHoverY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#232a36';
+      ctx.fillRect(w - padR + 2, simHoverY - 8, padR - 4, 15);
+      ctx.fillStyle = '#e9ecf2';
+      ctx.fillText((hv > 0 ? '+' : '') + hv.toFixed(0) + '%', w - padR + 5, simHoverY + 3);
+    }
     ctx.restore();
   }
   // readout
@@ -853,10 +863,10 @@ function initSimEvents() {
     const frac = (clientX - rect.left - 8) / (rect.width - 8 - 58);
     return Math.max(0, Math.min(80, Math.round(frac * 80)));
   };
-  canvas.addEventListener('mousemove', e => { simHover = toIdx(e.clientX); drawSim(); });
-  canvas.addEventListener('mouseleave', () => { simHover = -1; drawSim(); });
+  canvas.addEventListener('mousemove', e => { simHover = toIdx(e.clientX); simHoverY = e.clientY - canvas.getBoundingClientRect().top; drawSim(); });
+  canvas.addEventListener('mouseleave', () => { simHover = -1; simHoverY = -1; drawSim(); });
   canvas.style.touchAction = 'pan-y';
-  canvas.addEventListener('touchmove', e => { if (e.touches.length) { simHover = toIdx(e.touches[0].clientX); drawSim(); } }, { passive: true });
+  canvas.addEventListener('touchmove', e => { if (e.touches.length) { simHover = toIdx(e.touches[0].clientX); simHoverY = e.touches[0].clientY - canvas.getBoundingClientRect().top; drawSim(); } }, { passive: true });
 }
 
 // ---------- share cards: hand-drawn PNG of a plan/position, copied to the clipboard ----------
@@ -1877,6 +1887,7 @@ function setStopFromPrice(price) {
 
 // ---------- daily chart: candles + 8 EMA over ~90 sessions ----------
 let dailyHover = -1;
+let dailyHoverY = -1;
 
 function drawDailyChart() {
   if (!dailyBars.length) return;
@@ -1969,6 +1980,15 @@ function drawDailyChart() {
     ctx.save();
     ctx.strokeStyle = cBorder; ctx.setLineDash([2, 3]);
     ctx.beginPath(); ctx.moveTo(x(dailyHover), padT); ctx.lineTo(x(dailyHover), h - padB); ctx.stroke();
+    if (dailyHoverY >= padT && dailyHoverY <= h - padB) {
+      const hp = hi - (dailyHoverY - padT) / plotH * (hi - lo);
+      ctx.beginPath(); ctx.moveTo(padL, dailyHoverY); ctx.lineTo(w - padR, dailyHoverY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#232a36';
+      ctx.fillRect(w - padR + 2, dailyHoverY - 8, padR - 4, 15);
+      ctx.fillStyle = '#e9ecf2';
+      ctx.fillText('$' + hp.toFixed(2), w - padR + 5, dailyHoverY + 3);
+    }
     ctx.restore();
     const chg = b.close - b.open;
     document.getElementById('chartOhlc').innerHTML =
@@ -1990,17 +2010,24 @@ function initDailyChartEvents() {
   canvas.addEventListener('mousemove', e => {
     if (!dailyBars.length) return;
     dailyHover = toIdx(e.clientX);
+    dailyHoverY = e.clientY - canvas.getBoundingClientRect().top;
     drawDailyChart();
   });
   canvas.addEventListener('mouseleave', () => {
     dailyHover = -1;
+    dailyHoverY = -1;
     drawDailyChart();
     if (chartBars.length) drawChart(); // restores the 5-min readout
   });
   canvas.style.touchAction = 'pan-y';
   canvas.addEventListener('touchmove', e => {
-    if (dailyBars.length && e.touches.length) { dailyHover = toIdx(e.touches[0].clientX); drawDailyChart(); }
+    if (dailyBars.length && e.touches.length) {
+      dailyHover = toIdx(e.touches[0].clientX);
+      dailyHoverY = e.touches[0].clientY - canvas.getBoundingClientRect().top;
+      drawDailyChart();
+    }
   }, { passive: true });
+  canvas.addEventListener('touchend', () => { dailyHover = -1; dailyHoverY = -1; if (dailyBars.length) drawDailyChart(); });
   canvas.addEventListener('click', e => {
     if (!dailyBars.length) return;
     const rect = canvas.getBoundingClientRect();
