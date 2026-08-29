@@ -327,7 +327,9 @@
     #riskDollar { font-size: 20px !important; } /* keep the max-loss figure prominent on mobile */
   }
   @media (max-width: 500px) {
-    .m-hide { display: none; } /* condensed chain: strike/cts/loss/vol/mid only */
+    .m-hide { display: none; } /* condensed chain */
+    .m-size { display: none; } /* Loss/Cts/Total live in the tap-in detail on a phone */
+    .m-hide.m-oi { display: table-cell; } /* Vol and OI are the phone columns that matter */
     #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11px; }
     /* table fits the screen here, so no scroll wrapper: header sticks to the page, under the context bar */
     .chain-scroll { overflow: visible; max-height: none; }
@@ -1727,29 +1729,7 @@ function percentileOf(value, arr) {
   return Math.round(arr.filter(v => v < value).length / arr.length * 100);
 }
 
-// per-ticker IV diary: one ATM-IV sample per day the chain is loaded → a true
-// IV rank against the ticker's own history once enough days accumulate
-function recordIvSample(symbol, iv) {
-  if (!(iv > 0) || !symbol) return;
-  try {
-    const key = 'ivh_' + symbol;
-    const hist = JSON.parse(store.get(key) || '{}');
-    hist[dateStr(new Date())] = +iv.toFixed(4);
-    const dates = Object.keys(hist).sort();
-    while (dates.length > 260) delete hist[dates.shift()];
-    store.set(key, JSON.stringify(hist));
-  } catch(e) {}
-}
-
 function ivRankInfo(symbol, iv) {
-  if (!(iv > 0)) return null;
-  let own = null;
-  try {
-    const hist = JSON.parse(store.get('ivh_' + symbol) || '{}');
-    const vals = Object.values(hist);
-    if (vals.length >= 20) own = { pct: percentileOf(iv, vals), n: vals.length };
-  } catch(e) {}
-  if (own && own.pct !== null) return { pct: own.pct, basis: `own IV, ${own.n}d recorded` };
   const p = percentileOf(iv, hvDist);
   return p === null ? null : { pct: p, basis: '1y realized vol' };
 }
@@ -2765,13 +2745,13 @@ function sideCells(c, mirror) {
   // mirror=true → calls side (reads right-to-left toward strike)
   if (!c) {
     // positions must mirror the cells below: OI (2) and Δ (4) hidden on mobile
-    const empties = [0,1,2,3,4,5].map(i => `<td class="empty-cell${i === 2 ? ' m-hide m-oi' : i === 4 ? ' m-hide m-delta' : ''}">—</td>`);
+    const empties = [0,1,2,3,4,5].map(i => `<td class="empty-cell${i <= 1 ? ' m-size' : i === 2 ? ' m-hide m-oi' : i === 4 ? ' m-hide m-delta' : ''}">—</td>`);
     return (mirror ? empties : empties.slice().reverse()).join('');
   }
   const volStyle = c.vol > c.oi && c.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--text);font-weight:600';
   const cells = [
-    `<td class="side-cell${c.itm ? ' itm-tint' : ''}" style="font-weight:600;color:var(--blue)">${c.contracts > 0 ? c.contracts : '—'}</td>`,
-    `<td class="side-cell${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
+    `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}" style="font-weight:600;color:var(--blue)">${c.contracts > 0 ? c.contracts : '—'}</td>`,
+    `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
     `<td class="side-cell voloi m-hide m-oi${c.itm ? ' itm-tint' : ''}" style="color:var(--text);font-weight:600">${fmtKM(c.oi)}</td>`,
     `<td class="side-cell voloi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${fmtKM(c.vol)}</td>`,
     `<td class="side-cell m-hide m-delta${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${fmtN(c.delta, 3)}</td>`,
@@ -2786,7 +2766,7 @@ function twoPaneChain() {
 
 function chainColCount() {
   if (twoPaneChain()) return chainSide === 'both' ? 13 : 8; // compact + Δ + OI
-  if (isMobileChain()) return chainSide === 'both' ? 9 : 6;
+  if (isMobileChain()) return chainSide === 'both' ? 7 : 4; // phone: OI/Vol/Mid per side
   return chainSide === 'both' ? 13 : 12;
 }
 
@@ -2798,19 +2778,19 @@ function isMobileChain() {
 function renderChainHead() {
   const head = document.getElementById('chainHead');
   const m = isMobileChain();
-  const sideSpan = twoPaneChain() ? 6 : m ? 4 : 6; // per-side visible columns: compact+Δ+OI / compact / full
+  const sideSpan = twoPaneChain() ? 6 : m ? 3 : 6; // per-side visible columns: two-pane / phone (OI Vol Mid) / full
   const lossH = m ? 'Loss' : 'Loss/ct';
   if (chainSide === 'both') {
     head.innerHTML = `<tr>
-      <th class="call-h">Cts</th><th class="call-h">${lossH}</th><th class="call-h m-hide m-oi">OI</th><th class="call-h">Vol</th><th class="call-h m-hide m-delta">Δ</th><th class="call-h">Mid</th>
+      <th class="call-h m-size">Cts</th><th class="call-h m-size">${lossH}</th><th class="call-h m-hide m-oi">OI</th><th class="call-h">Vol</th><th class="call-h m-hide m-delta">Δ</th><th class="call-h">Mid</th>
       <th class="strike-col" style="width:80px;">Strike</th>
-      <th class="put-h">Mid</th><th class="put-h m-hide m-delta">Δ</th><th class="put-h">Vol</th><th class="put-h m-hide m-oi">OI</th><th class="put-h">${lossH}</th><th class="put-h">Cts</th>
+      <th class="put-h">Mid</th><th class="put-h m-hide m-delta">Δ</th><th class="put-h">Vol</th><th class="put-h m-hide m-oi">OI</th><th class="put-h m-size">${lossH}</th><th class="put-h m-size">Cts</th>
     </tr>
     <tr><th colspan="${sideSpan}" class="call-h" style="text-align:center;border-bottom:none;padding:2px;">← CALLS (stop: call stop)</th><th class="strike-col" style="border-bottom:none;"></th><th colspan="${sideSpan}" class="put-h" style="text-align:center;border-bottom:none;padding:2px;">PUTS (stop: put stop) →</th></tr>`;
   } else {
     head.innerHTML = `<tr>
       <th class="strike-col" style="width:80px;">Strike</th>
-      <th class="m-hide">Bid</th><th class="m-hide">Ask</th><th>Mid</th><th class="m-hide m-delta">Δ</th><th class="m-hide">IV</th><th>Vol</th><th class="m-hide m-oi">OI</th><th class="m-hide">@ stop</th><th>Loss/ct</th><th>Cts</th><th>Total cost</th>
+      <th class="m-hide">Bid</th><th class="m-hide">Ask</th><th>Mid</th><th class="m-hide m-delta">Δ</th><th class="m-hide">IV</th><th>Vol</th><th class="m-hide m-oi">OI</th><th class="m-hide">@ stop</th><th class="m-size">Loss/ct</th><th class="m-size">Cts</th><th class="m-size">Total cost</th>
     </tr>`;
   }
 }
@@ -2868,7 +2848,6 @@ function renderChain() {
   }
   const ivEl = document.getElementById('ivInfo');
   if (atmIv > 0 && quoteData) {
-    recordIvSample(quoteData.symbol, atmIv);
     const rank = ivRankInfo(quoteData.symbol, atmIv);
     if (rank) {
       const col = rank.pct >= 80 ? 'var(--amber)' : rank.pct <= 20 ? 'var(--green)' : 'var(--text2)';
@@ -2953,9 +2932,9 @@ function renderChain() {
         <td class="voloi" style="${volStyle}">${fmtKM(one.vol)}</td>
         <td class="voloi m-hide m-oi" style="color:var(--text);font-weight:600">${fmtKM(one.oi)}</td>
         <td class="m-hide" style="color:var(--teal)">${fmt$(one.atStop)}</td>
-        <td class="loss-cell ${lossClass(one.lossOfCost)}">${one.lossPerContract > 0 ? fmt$M(one.lossPerContract) + `<div class="loss-pct ${lossClass(one.lossOfCost)}">${one.lossOfCost.toFixed(0)}%</div>` : '—'}</td>
-        <td style="font-weight:600;color:var(--blue)">${one.contracts > 0 ? one.contracts : '—'}</td>
-        <td style="color:var(--text2)">${one.contracts > 0 ? fmt$(one.totalCost) : '—'}</td>
+        <td class="loss-cell m-size ${lossClass(one.lossOfCost)}">${one.lossPerContract > 0 ? fmt$M(one.lossPerContract) + `<div class="loss-pct ${lossClass(one.lossOfCost)}">${one.lossOfCost.toFixed(0)}%</div>` : '—'}</td>
+        <td class="m-size" style="font-weight:600;color:var(--blue)">${one.contracts > 0 ? one.contracts : '—'}</td>
+        <td class="m-size" style="color:var(--text2)">${one.contracts > 0 ? fmt$(one.totalCost) : '—'}</td>
       `;
       tr.addEventListener('click', () => { if (spreadPending) completeSpread(one); else showDetail(tr, one, acct); });
     }
