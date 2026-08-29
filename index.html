@@ -103,6 +103,11 @@
   .seg.mode-big { width: 100%; padding: 4px; }
   .seg.mode-big button { flex: 1; font-size: 15px; padding: 11px 0; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 700; }
   .seg.mode-big button.active { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-bd); padding: 10px 0; box-shadow: 0 0 16px -6px rgba(91,157,255,0.5); }
+  /* the divider splits exploring (Shares/Options) from real money (Live/Watch) */
+  .seg-div { flex: 0 0 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+  .seg.mode-big #modeLive.active { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); box-shadow: 0 0 16px -6px rgba(47,214,123,0.5); }
+  @media (max-width: 480px) { .seg.mode-big button { font-size: 12.5px; letter-spacing: 0.02em; } }
+  .btn:disabled { opacity: 0.45; cursor: default; }
 
   .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; letter-spacing: 0.02em; }
   .tag.call { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); }
@@ -235,6 +240,12 @@
 
   .pinned-card { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px; box-shadow: 0 8px 24px -18px rgba(0,0,0,0.8); }
   .saved-card { box-shadow: inset 3px 0 0 var(--blue-bd), 0 8px 24px -18px rgba(0,0,0,0.8); }
+  .live-card { box-shadow: inset 3px 0 0 var(--green-bd), 0 8px 24px -18px rgba(0,0,0,0.8); }
+  .ord-done { opacity: 0.55; }
+  .ord-st { font-weight: 700; }
+  .ord-st.open, .ord-st.pending, .ord-st.partially_filled, .ord-st.held, .ord-st.calculated { color: var(--amber); }
+  .ord-st.filled { color: var(--green); }
+  .ord-st.canceled, .ord-st.rejected, .ord-st.expired, .ord-st.error { color: var(--text3); }
   .pinned-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .pinned-header .pinned-meta { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pinned-header > .tag, .pinned-header > .pinned-symbol, .pinned-header > .pinned-badge, .pinned-header > .card-act { flex: 0 0 auto; }
@@ -364,7 +375,7 @@
       <div class="kbd-group"><div class="kbd-h">views</div>
         <span><kbd>s</kbd> shares</span>
         <span><kbd>o</kbd> options</span>
-        <span><kbd>v</kbd> positions</span>
+        <span><kbd>v</kbd> cycle live / watch</span>
         <span><kbd>d</kbd> long / short</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">chain</div>
@@ -444,7 +455,9 @@
     <div class="seg mode-big" id="modeSeg">
       <button id="modeShares" class="active" onclick="setMode('shares')">Shares</button>
       <button id="modeOptions" onclick="setMode('options')">Options</button>
-      <button id="modePositions" onclick="setView('positions')">Positions <span id="posCount" style="font-size:11px;opacity:0.8;"></span></button>
+      <span class="seg-div" title="left: sizing · right: real money"></span>
+      <button id="modeLive" onclick="setView('live')" title="Broker truth: working orders and open positions (v cycles views)">Live <span id="liveCount" style="font-size:11px;opacity:0.8;"></span></button>
+      <button id="modeWatch" onclick="setView('watch')" title="Watched positions: saved cards, tracked manually">Watch <span id="posCount" style="font-size:11px;opacity:0.8;"></span></button>
     </div>
     <div id="sizingControls">
     <div class="section-title" style="margin-top:16px;">Ticker</div>
@@ -534,6 +547,9 @@
   <div id="savedBar"></div>
   <div id="savedSection"></div>
 
+  <div id="liveBar" style="display:none;"></div>
+  <div id="liveSection" style="display:none;"></div>
+
   <div id="errorBox" style="display:none;" class="error"></div>
 
   <div id="simOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:150;overflow-y:auto;" onclick="if(event.target===this)closeSim()">
@@ -558,6 +574,21 @@
     </div>
   </div>
 
+  <div id="ticketOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:160;overflow-y:auto;" onclick="if(event.target===this)closeTicket()">
+    <div class="card" style="max-width:480px;margin:10vh auto 40px;padding:16px 18px;">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px;">
+        <span class="pinned-symbol" id="ticketTitle"></span>
+        <button onclick="closeTicket()" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;">×</button>
+      </div>
+      <div id="ticketBody" style="font-size:13px;font-family:var(--mono);color:var(--text2);"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn" onclick="closeTicket()" style="flex:1;">Cancel</button>
+        <button class="btn primary" id="ticketSubmit" onclick="submitTicket()" style="flex:2;" disabled>Submit order</button>
+      </div>
+      <div class="hint">one OTO ticket: market entry (day) + protective stop (GTC) · the stop activates only after the entry fills · Esc closes</div>
+    </div>
+  </div>
+
   <div id="quoteSection" style="display:none;">
     <div class="card">
       <div class="quote-bar">
@@ -578,6 +609,7 @@
         <hr class="divider">
         <div class="section-title">Shares sizing<button class="filter-btn" style="margin-left:10px;" onclick="shareShares()" title="Copy this plan as an image">share</button><button class="filter-btn" style="margin-left:6px;" onclick="copyShares()" title="Copy as text: bought N shares of $X @ entry with stop at Y">copy</button></div>
         <div class="stat-grid" id="sharesStats"></div>
+        <div id="sharesTradeRow" style="display:none;margin-top:12px;align-items:center;gap:10px;flex-wrap:wrap;"></div>
       </div>
     </div>
 
@@ -639,12 +671,16 @@ let chartHoverY = -1;
 // safe localStorage (some sandboxed previews block it)
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch(e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch(e) {} }
+  set(k, v) { try { localStorage.setItem(k, v); } catch(e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch(e) {} }
 };
 
 function saveKey() {
   store.set('tradier_key', document.getElementById('apiKey').value.trim());
   store.set('tradier_env', document.getElementById('apiEnv').value);
+  // the cached account id belongs to a key — re-derive it on any key/env change
+  store.del('tradier_acct_production');
+  store.del('tradier_acct_sandbox');
   applyApiOpen();
 }
 function loadKey() {
@@ -1502,35 +1538,41 @@ function stopsChanged() {
   else if (dailyBars.length) drawDailyChart();
 }
 
-// positions is a view, not a sizing mode: currentMode stays shares/options underneath
-let positionsView = false;
+// Live/Watch are views, not sizing modes: currentMode stays shares/options underneath.
+// Live = broker truth (working orders + open positions), Watch = saved cards tracked manually.
+let appView = 'calc'; // calc | live | watch
 
 function setView(v) {
-  positionsView = v === 'positions';
-  document.getElementById('modeShares').classList.toggle('active', !positionsView && currentMode === 'shares');
-  document.getElementById('modeOptions').classList.toggle('active', !positionsView && currentMode === 'options');
-  document.getElementById('modePositions').classList.toggle('active', positionsView);
-  const hide = positionsView ? 'none' : '';
+  appView = (v === 'live' || v === 'watch') ? v : 'calc';
+  const sizing = appView === 'calc';
+  document.getElementById('modeShares').classList.toggle('active', sizing && currentMode === 'shares');
+  document.getElementById('modeOptions').classList.toggle('active', sizing && currentMode === 'options');
+  document.getElementById('modeLive').classList.toggle('active', appView === 'live');
+  document.getElementById('modeWatch').classList.toggle('active', appView === 'watch');
+  const hide = sizing ? '' : 'none';
   document.getElementById('sizingControls').style.display = hide;
   document.getElementById('quickCard').style.display = hide;
   document.getElementById('pinnedBar').style.display = hide;
   document.getElementById('pinnedSection').style.display = hide;
-  document.getElementById('quoteSection').style.display = positionsView ? 'none' : (quoteData ? '' : 'none');
-  document.getElementById('savedBar').style.display = positionsView ? '' : 'none';
+  document.getElementById('quoteSection').style.display = sizing ? (quoteData ? '' : 'none') : 'none';
+  document.getElementById('savedBar').style.display = appView === 'watch' ? '' : 'none';
   updateChartVisibility();
-  document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
-  if (positionsView) {
+  document.getElementById('savedSection').style.display = appView === 'watch' ? '' : 'none';
+  document.getElementById('liveBar').style.display = appView === 'live' ? '' : 'none';
+  document.getElementById('liveSection').style.display = appView === 'live' ? '' : 'none';
+  if (appView === 'watch') {
     updateSavedBar();
     // fresh P&L on open when a key is available
     if (document.getElementById('apiKey').value.trim() && Object.keys(savedData).length) refreshAllSaved();
   }
+  if (appView === 'live') refreshLive();
   updateStickyBar();
 }
 
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
-  if (positionsView) { positionsView = false; setView('calc'); }
+  if (appView !== 'calc') setView('calc');
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
   document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
@@ -1765,7 +1807,7 @@ function toggleDaily() {
 
 function updateChartVisibility() {
   const has5 = chartBars.length > 0, hasD = dailyBars.length > 0 && showDaily;
-  document.getElementById('chartWrap').style.display = !positionsView && (has5 || hasD) ? 'block' : 'none';
+  document.getElementById('chartWrap').style.display = appView === 'calc' && (has5 || hasD) ? 'block' : 'none';
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
   document.getElementById('dailyToggle').classList.toggle('active', showDaily);
@@ -2416,7 +2458,8 @@ async function livePoll() {
     if (liveTicks % 4 === 0) fetchChart(ticker);
     if (liveTicks % 4 === 2) {
       refreshAllPinned();
-      if (positionsView) refreshAllSaved();
+      if (appView === 'watch') refreshAllSaved();
+      if (appView === 'live') refreshLive();
     }
     liveTicks++;
     document.getElementById('lastUpdated').textContent = 'Live · updated ' + new Date().toLocaleTimeString();
@@ -2530,6 +2573,7 @@ function renderShares() {
       ? `Stop (${fmt$(stop)}) must be below entry (${fmt$(entry)}) for a long.`
       : `Stop (${fmt$(stop)}) must be above entry (${fmt$(entry)}) for a short.`;
     document.getElementById('sharesStats').innerHTML = `<div style="grid-column:1/-1;color:var(--amber);font-size:13px;padding:8px 0;">${msg}</div>`;
+    document.getElementById('sharesTradeRow').style.display = 'none';
     if (chartBars.length) drawChart();
     return;
   }
@@ -2545,8 +2589,23 @@ function renderShares() {
     <div class="stat"><div class="s-label">Position size</div><div class="s-val">${fmt$(posSize)}</div><div class="s-sub">${(posSize / acct * 100).toFixed(1)}% of acct</div></div>
     <div class="stat teal"><div class="s-label">Risk / share</div><div class="s-val">${fmt$(riskPerShare)}</div><div class="s-sub">${customEntry ? 'entry ' : ''}${fmt$(entry)} → ${fmt$(stop)}${usingDefault ? ' (' + defaultLabel + ')' : ''}${customEntry ? ' · now ' + fmt$(price) : ''}</div></div>
   `;
+  renderSharesTradeRow(shares, stop);
   withFlash(document.getElementById('sharesStats'));
   if (chartBars.length) drawChart();
+}
+
+// the place-order button lives where you size; the ticket re-reads the inputs on open
+function renderSharesTradeRow(shares, stop) {
+  const row = document.getElementById('sharesTradeRow');
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key || !(shares > 0) || !(stop > 0)) { row.style.display = 'none'; return; }
+  const isLong = direction === 'long';
+  const rth = isRTH();
+  row.style.display = 'flex';
+  row.innerHTML = `
+    <button class="btn primary" onclick="openTicket()" ${rth ? '' : 'disabled'} style="border-color:${isLong ? 'var(--green-bd)' : 'var(--red-bd)'};">${isLong ? 'Buy' : 'Short'} ${shares} · market + stop ${fmt$(stop)}</button>
+    <span style="font-size:11px;color:var(--text3);">${rth ? 'confirms before it sends · entry fills at market, stop rests GTC' : 'market orders are RTH only · 9:30 to 16:00 ET'}</span>
+  `;
 }
 
 function isMonthlyExp(expStr) {
@@ -3307,8 +3366,8 @@ function updateSavedBar() {
   const n = Object.keys(savedData).length;
   document.getElementById('posCount').textContent = n ? `(${n})` : '';
   document.getElementById('savedBar').innerHTML = n
-    ? `<div class="section-title" style="margin:4px 0 10px;">Saved positions (${n})<button class="btn" style="font-size:11px;padding:3px 10px;margin-left:10px;" onclick="refreshAllSaved()">↻ refresh</button></div>`
-    : '<div class="hint" style="margin:8px 4px;">no saved positions yet — press <b>save</b> on a quick lookup card to track one here</div>';
+    ? `<div class="section-title" style="margin:4px 0 10px;">Watching (${n})<button class="btn" style="font-size:11px;padding:3px 10px;margin-left:10px;" onclick="refreshAllSaved()">↻ refresh</button></div>`
+    : '<div class="hint" style="margin:8px 4px;">nothing watched yet — press <b>save</b> on a quick lookup card to track one here · broker positions live under <b>Live</b></div>';
 }
 
 function renderSavedCard(id) {
@@ -3357,6 +3416,306 @@ function loadSaved() {
     Object.keys(savedData).sort().forEach(id => { addSavedDiv(id); renderSavedCard(id); });
     updateSavedBar();
   } catch(e) {}
+}
+
+// ---------- order placement + Live view (Tradier brokerage) ----------
+// One order shape in v1: market entry (day) + protective stop (GTC) as an OTO
+// ticket, shares only, RTH only. The Live tab renders what the broker reports —
+// orders and positions are fetched fresh every time, never trusted from localStorage.
+
+const ORDER_DONE = ['filled', 'canceled', 'rejected', 'expired', 'error'];
+
+function isRTH() {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
+  const get = t => (parts.find(p => p.type === t) || {}).value;
+  if (get('weekday') === 'Sat' || get('weekday') === 'Sun') return false;
+  const mins = (+get('hour')) * 60 + (+get('minute'));
+  return mins >= 570 && mins < 960; // 9:30–16:00 ET; holidays are Tradier's reject to make
+}
+
+// account id, cached per environment, re-derived from /user/profile when missing
+async function ensureAccount() {
+  const env = document.getElementById('apiEnv').value;
+  const k = 'tradier_acct_' + env;
+  const cached = store.get(k);
+  if (cached) return cached;
+  const res = await fetch(`${baseUrl()}/user/profile`, { headers: headers() });
+  if (!res.ok) throw new Error(`profile HTTP ${res.status} — key may be market-data only`);
+  const j = await res.json();
+  let accts = j?.profile?.account;
+  if (!accts) throw new Error('no brokerage account on this key');
+  accts = Array.isArray(accts) ? accts : [accts];
+  const acct = (accts.find(a => a.status === 'active') || accts[0]).account_number;
+  store.set(k, acct);
+  return acct;
+}
+
+async function tradePost(path, params) {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, headers()),
+    body: new URLSearchParams(params).toString()
+  });
+  const j = await res.json().catch(() => null);
+  const errs = j?.errors?.error;
+  if (errs) throw new Error(Array.isArray(errs) ? errs.join(' · ') : errs);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return j;
+}
+
+// Tradier returns the string "null" for empty lists and an object for single items
+function tradierList(v) { return !v || v === 'null' ? [] : (Array.isArray(v) ? v : [v]); }
+
+let ticketData = null;
+
+async function openTicket() {
+  const q = quoteData;
+  if (!q) return;
+  if (!isRTH()) { showError('Market orders are RTH only (9:30 to 16:00 ET).'); return; }
+  const isLong = direction === 'long';
+  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
+  const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
+  const entry = entryVal(); // sizing anchor only — the market decides the fill
+  const riskPerShare = isLong ? entry - stop : stop - entry;
+  if (!(stop > 0) || riskPerShare <= 0) { showError('Set a valid stop first.'); return; }
+  const qty = unitsFor(riskDollars(), riskPerShare);
+  if (!(qty > 0)) { showError('Sized to zero shares — nothing to order.'); return; }
+  ticketData = { symbol: q.symbol, isLong, qty, stop, entry, riskPerShare };
+  document.getElementById('ticketTitle').textContent = `${isLong ? 'Buy' : 'Short'} ${qty} ${q.symbol}`;
+  document.getElementById('ticketSubmit').disabled = true;
+  document.getElementById('ticketBody').innerHTML = ticketLines('<span class="spinner" style="vertical-align:middle;"></span> previewing…');
+  document.getElementById('ticketOverlay').style.display = 'block';
+  try {
+    ticketData.account = await ensureAccount();
+    // preview the entry leg as a plain equity order: cost / commission / buying
+    // power is what the confirm needs, and preview support on advanced classes is shaky
+    const prev = await tradePost(`/accounts/${ticketData.account}/orders`, {
+      class: 'equity', symbol: ticketData.symbol,
+      side: isLong ? 'buy' : 'sell_short',
+      quantity: qty, type: 'market', duration: 'day', preview: 'true'
+    });
+    if (!ticketData) return; // closed while previewing
+    const o = prev?.order || {};
+    const bits = [];
+    if (o.cost != null) bits.push(`est cost ${fmt$(Math.abs(o.cost))}`);
+    if (o.commission != null) bits.push(`commission ${fmt$(o.commission)}`);
+    if (o.margin_change != null) bits.push(`margin ${fmt$(Math.abs(o.margin_change))}`);
+    document.getElementById('ticketBody').innerHTML = ticketLines(`<span style="color:var(--green);">✓ preview ok</span>${bits.length ? ' · ' + bits.join(' · ') : ''}`);
+    document.getElementById('ticketSubmit').disabled = false;
+  } catch(e) {
+    if (!ticketData) return;
+    document.getElementById('ticketBody').innerHTML = ticketLines(`<span style="color:var(--red);">preview failed: ${e.message}</span>`);
+  }
+}
+
+function ticketLines(statusHtml) {
+  const t = ticketData;
+  const maxLoss = t.qty * t.riskPerShare;
+  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  return `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;">
+      <span style="color:var(--text3);">entry</span><span style="color:var(--text);">${t.isLong ? 'BUY' : 'SELL SHORT'} ${t.qty} ${t.symbol} · market · day</span>
+      <span style="color:var(--text3);">stop</span><span style="color:var(--text);">${t.isLong ? 'SELL' : 'BUY TO COVER'} ${t.qty} · stop ${fmt$(t.stop)} · GTC</span>
+      <span style="color:var(--text3);">risk</span><span style="color:var(--red);font-weight:700;">≈ ${fmt$(maxLoss)} (${(maxLoss / acct * 100).toFixed(2)}% of acct) if stopped</span>
+      <span style="color:var(--text3);">ref</span><span>sized off ${fmt$(t.entry)} · your fill sets the real risk</span>
+    </div>
+    <div style="margin-top:10px;">${statusHtml}</div>`;
+}
+
+function closeTicket() {
+  document.getElementById('ticketOverlay').style.display = 'none';
+  ticketData = null;
+}
+
+async function submitTicket() {
+  const t = ticketData;
+  if (!t || !t.account) return;
+  const btn = document.getElementById('ticketSubmit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    const j = await tradePost(`/accounts/${t.account}/orders`, {
+      class: 'oto', duration: 'day',
+      'symbol[0]': t.symbol, 'side[0]': t.isLong ? 'buy' : 'sell_short', 'quantity[0]': t.qty, 'type[0]': 'market', 'duration[0]': 'day',
+      'symbol[1]': t.symbol, 'side[1]': t.isLong ? 'sell' : 'buy_to_cover', 'quantity[1]': t.qty, 'type[1]': 'stop', 'stop[1]': t.stop.toFixed(2), 'duration[1]': 'gtc'
+    });
+    const id = j?.order?.id;
+    closeTicket();
+    showToast(`Order #${id} submitted · ${t.isLong ? 'buy' : 'short'} ${t.qty} ${t.symbol} + stop ${fmt$(t.stop)}`);
+    setView('live');
+    if (id) watchOrder(t.account, id, t);
+  } catch(e) {
+    showError('Order rejected: ' + e.message);
+    btn.disabled = false;
+  } finally {
+    btn.textContent = 'Submit order';
+  }
+}
+
+// follow a just-placed order to its fill and toast the real numbers
+let watchTimer = null;
+function watchOrder(acct, id, t) {
+  clearInterval(watchTimer);
+  let ticks = 0;
+  watchTimer = setInterval(async () => {
+    if (++ticks > 40) { clearInterval(watchTimer); return; } // ~2 min, then Live refresh takes over
+    try {
+      const res = await fetch(`${baseUrl()}/accounts/${acct}/orders/${id}`, { headers: headers() });
+      const o = (await res.json())?.order;
+      if (!o) return;
+      const entryLeg = o.leg ? tradierList(o.leg)[0] : o;
+      if (entryLeg.status === 'filled') {
+        clearInterval(watchTimer);
+        const fill = entryLeg.avg_fill_price || 0;
+        showToast(`Filled ${entryLeg.exec_quantity || t.qty} ${t.symbol} @ ${fmt$(fill)} · stop ${fmt$(t.stop)} working · actual risk ${fmt$(Math.abs(fill - t.stop) * t.qty)}`);
+        refreshLive();
+      } else if (ORDER_DONE.includes(entryLeg.status)) {
+        clearInterval(watchTimer);
+        showError(`Order ${entryLeg.status}${o.reason_description ? ': ' + o.reason_description : ''}`);
+        refreshLive();
+      }
+    } catch(e) {}
+  }, 3000);
+}
+
+// ---------- Live view: broker orders + positions, marked to market ----------
+const liveData = { orders: [], positions: [], quotes: {}, asOf: '', err: '' };
+let liveLoading = false;
+
+async function refreshLive() {
+  if (liveLoading) return;
+  if (!document.getElementById('apiKey').value.trim()) { renderLive(); return; }
+  liveLoading = true;
+  try {
+    const acct = await ensureAccount();
+    const [oRes, pRes] = await Promise.all([
+      fetch(`${baseUrl()}/accounts/${acct}/orders`, { headers: headers() }),
+      fetch(`${baseUrl()}/accounts/${acct}/positions`, { headers: headers() })
+    ]);
+    if (!oRes.ok || !pRes.ok) throw new Error('HTTP ' + (oRes.ok ? pRes.status : oRes.status));
+    liveData.orders = tradierList((await oRes.json())?.orders?.order);
+    liveData.positions = tradierList((await pRes.json())?.positions?.position);
+    liveData.quotes = {};
+    const syms = [...new Set(liveData.positions.map(p => p.symbol))];
+    if (syms.length) {
+      const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${syms.join(',')}`, { headers: headers() });
+      tradierList((await qRes.json())?.quotes?.quote).forEach(q => { liveData.quotes[q.symbol] = q; });
+    }
+    liveData.err = '';
+    liveData.asOf = new Date().toLocaleTimeString();
+  } catch(e) {
+    liveData.err = e.message;
+  } finally {
+    liveLoading = false;
+    renderLive();
+  }
+}
+
+function occLabel(sym) {
+  const m = /^([A-Z]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(sym || '');
+  if (!m) return sym || '';
+  return `${m[1]} $${+m[6] / 1000} ${+m[3]}/${+m[4]}/${m[2]} ${m[5] === 'C' ? 'Call' : 'Put'}`;
+}
+
+function orderLegLine(l) {
+  const sideLbl = ({ buy: 'BUY', sell: 'SELL', sell_short: 'SELL SHORT', buy_to_cover: 'BUY TO COVER', buy_to_open: 'BUY TO OPEN', sell_to_close: 'SELL TO CLOSE', sell_to_open: 'SELL TO OPEN', buy_to_close: 'BUY TO CLOSE' })[l.side] || (l.side || '').toUpperCase();
+  const stopPx = l.stop_price || l.stop || 0;
+  const typeLbl = l.type === 'stop' ? `stop ${fmt$(stopPx)}` : l.type === 'limit' ? `limit ${fmt$(l.price || 0)}` : l.type === 'stop_limit' ? `stop-limit ${fmt$(stopPx)} / ${fmt$(l.price || 0)}` : 'market';
+  const fillBit = l.status === 'filled' ? ` · filled @ ${fmt$(l.avg_fill_price || 0)}`
+    : l.status === 'partially_filled' ? ` · ${l.exec_quantity || 0}/${+l.quantity} @ ${fmt$(l.avg_fill_price || 0)}` : '';
+  return `<div>${sideLbl} ${+l.quantity} ${occLabel(l.option_symbol || l.symbol)} · ${typeLbl} · ${(l.duration || '').toUpperCase()} · <span class="ord-st ${l.status}">${l.status}</span>${fillBit}</div>`;
+}
+
+function renderOrderCard(o) {
+  const legs = o.leg ? tradierList(o.leg) : [o];
+  const working = legs.some(l => !ORDER_DONE.includes(l.status));
+  const created = (o.create_date || '').replace('T', ' ').slice(5, 16);
+  return `<div class="pinned-card live-card${working ? '' : ' ord-done'}">
+    <div class="pinned-header">
+      <span class="pinned-symbol">${occLabel(o.symbol)}</span>
+      <span class="pinned-badge" style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);font-weight:600;letter-spacing:0.04em;">${working ? 'WORKING' : 'ORDER'}</span>
+      <span class="pinned-meta" style="font-size:12px;color:var(--text2);font-family:var(--mono);">#${o.id} · ${o.class || ''} · ${created}</span>
+      ${working ? `<button class="card-act" onclick="cancelLiveOrder(this, ${o.id})" title="Cancel this order (both legs) — tap twice" style="margin-left:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">cancel</button>` : ''}
+    </div>
+    <div style="font-size:12.5px;font-family:var(--mono);color:var(--text2);display:grid;gap:5px;">${legs.map(orderLegLine).join('')}</div>
+  </div>`;
+}
+
+function renderPositionCard(p) {
+  const q = liveData.quotes[p.symbol];
+  const isOpt = /\d{6}[CP]\d{8}$/.test(p.symbol);
+  const mult = isOpt ? 100 : 1;
+  const qty = +p.quantity;
+  const last = q ? (q.last || 0) : 0;
+  const mktVal = last * qty * mult;
+  const pnl = q ? mktVal - p.cost_basis : null; // sign-correct for shorts: qty and basis both negative
+  const pnlPct = pnl !== null && p.cost_basis ? pnl / Math.abs(p.cost_basis) * 100 : 0;
+  const avgCost = qty !== 0 ? p.cost_basis / (qty * mult) : 0;
+  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  return `<div class="pinned-card live-card">
+    <div class="pinned-header">
+      <span class="tag ${qty >= 0 ? 'call' : 'put'}">${qty >= 0 ? 'Long' : 'Short'}</span>
+      <span class="pinned-symbol">${occLabel(p.symbol)}</span>
+      <span class="pinned-meta" style="font-size:12px;color:var(--text2);font-family:var(--mono);">opened ${(p.date_acquired || '').slice(0, 10)}</span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat highlight"><div class="s-label">${isOpt ? 'Contracts' : 'Shares'}</div><div class="s-val">${Math.abs(qty)}</div><div class="s-sub">avg ${fmt$(Math.abs(avgCost))}</div></div>
+      <div class="stat"><div class="s-label">Market value</div><div class="s-val">${q ? fmt$(Math.abs(mktVal)) : '—'}</div><div class="s-sub">${q ? 'last ' + fmt$(last) : 'no quote'}</div></div>
+      <div class="stat ${pnl === null ? '' : pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L</div><div class="s-val">${pnl === null ? '—' : (pnl >= 0 ? '+' : '−') + fmt$(Math.abs(pnl))}</div><div class="s-sub">${pnl === null ? '' : (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(1) + '% · ' + (pnl / acct * 100).toFixed(2) + '% of acct'}</div></div>
+      <div class="stat"><div class="s-label">Cost basis</div><div class="s-val">${fmt$(Math.abs(p.cost_basis))}</div><div class="s-sub">${qty >= 0 ? 'paid' : 'short proceeds'}</div></div>
+    </div>
+  </div>`;
+}
+
+function renderLive() {
+  const bar = document.getElementById('liveBar');
+  const sec = document.getElementById('liveSection');
+  if (!document.getElementById('apiKey').value.trim()) {
+    bar.innerHTML = '<div class="hint" style="margin:8px 4px;">enter your Tradier API key above to see orders and positions</div>';
+    sec.innerHTML = '';
+    updateLiveCount(0, 0);
+    return;
+  }
+  if (liveData.err) {
+    bar.innerHTML = `<div class="hint" style="margin:8px 4px;color:var(--amber);">could not load broker data: ${liveData.err} · trading needs a brokerage account token (production) or a sandbox key</div>`;
+    sec.innerHTML = '';
+    updateLiveCount(0, 0);
+    return;
+  }
+  const working = [], done = [];
+  liveData.orders.forEach(o => {
+    const legs = o.leg ? tradierList(o.leg) : [o];
+    (legs.some(l => !ORDER_DONE.includes(l.status)) ? working : done).push(o);
+  });
+  updateLiveCount(working.length, liveData.positions.length);
+  bar.innerHTML = `<div class="section-title" style="margin:4px 0 10px;">Live · ${working.length} working · ${liveData.positions.length} open<button class="btn" style="font-size:11px;padding:3px 10px;margin-left:10px;" onclick="refreshLive()">↻ refresh</button><span style="font-weight:400;font-size:11px;color:var(--text3);margin-left:10px;text-transform:none;letter-spacing:0;">${liveData.asOf ? 'as of ' + liveData.asOf : ''}</span></div>`;
+  sec.innerHTML = (working.length + done.length + liveData.positions.length)
+    ? working.map(renderOrderCard).join('') + liveData.positions.map(renderPositionCard).join('') + done.map(renderOrderCard).join('')
+    : '<div class="hint" style="margin:8px 4px;">nothing live — place an order from the shares sizing card</div>';
+}
+
+function updateLiveCount(workingN, posN) {
+  const n = (workingN || 0) + (posN || 0);
+  document.getElementById('liveCount').textContent = n ? `(${n})` : '';
+}
+
+// canceling kills the protection leg too — make it a deliberate two-tap
+async function cancelLiveOrder(btn, id) {
+  if (btn.dataset.armed !== '1') {
+    btn.dataset.armed = '1';
+    btn.textContent = 'confirm cancel';
+    setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = 'cancel'; } }, 3000);
+    return;
+  }
+  try {
+    const acct = await ensureAccount();
+    const res = await fetch(`${baseUrl()}/accounts/${acct}/orders/${id}`, { method: 'DELETE', headers: headers() });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    showToast(`Order #${id} canceled.`);
+  } catch(e) {
+    showError('Cancel failed: ' + e.message);
+  }
+  refreshLive();
 }
 
 function updatePinnedBar() {
@@ -3578,6 +3937,7 @@ function initShortcuts() {
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
     if (e.key === 'Escape') {
+      if (ticketData) { closeTicket(); return; }
       if (simState) { closeSim(); return; }
       if (spreadPending) { cancelSpread(); return; }
       if (typing) { e.target.blur(); return; }
@@ -3592,7 +3952,7 @@ function initShortcuts() {
       case 'q': toggleQuick(true); focus('quickInput'); break;
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
-      case 'v': setView(positionsView ? 'calc' : 'positions'); break;
+      case 'v': setView(appView === 'calc' ? 'live' : appView === 'live' ? 'watch' : 'calc'); break;
       case 'r': refreshQuote(); break;
       case 'l': toggleLive(); break;
       case 'd': if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long'); break;
@@ -3626,7 +3986,7 @@ updateRiskStatus();
 applyQuickOpen();
 updateStopVisibility();
 loadSaved();
-setView('calc'); // saved cards live in the Positions tab
+setView('calc'); // saved cards live in the Watch tab, broker truth in Live
 updateIntervalChips();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // backgrounding the app ends a live session instead of polling blind
@@ -3645,6 +4005,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e) {}
 // pick up where you left off: auto-load the last ticker if a key is saved
 if (document.getElementById('apiKey').value.trim() && document.getElementById('ticker').value.trim()) fetchQuote();
+// rebuild working orders / open positions on load — resting stops must survive a reload
+if (document.getElementById('apiKey').value.trim()) refreshLive();
 </script>
 </body>
 </html>
