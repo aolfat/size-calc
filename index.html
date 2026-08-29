@@ -411,7 +411,7 @@
         </div>
         <div class="field" style="flex:2;">
           <label>Sync passphrase</label>
-          <input type="password" id="syncPass" placeholder="same phrase on every device" onkeydown="if(event.key==='Enter')toggleSync()" />
+          <input type="password" id="syncPass" placeholder="same phrase on every device" onkeydown="if(event.key==='Enter'&amp;&amp;!syncEnabled())toggleSync()" />
         </div>
         <div class="field" style="flex:0 0 auto;">
           <label>&nbsp;</label>
@@ -657,8 +657,11 @@ let chartHoverY = -1;
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch(e) { return null; } },
   set(k, v) {
-    try { localStorage.setItem(k, v); } catch(e) {}
-    if (!syncSuppress && BACKUP_KEYS.includes(k)) markSyncDirty(k);
+    const s = String(v);
+    const old = this.get(k);
+    try { localStorage.setItem(k, s); } catch(e) {}
+    // no-op rewrites (init, auto-loads) must not count as fresh edits
+    if (!syncSuppress && old !== s && BACKUP_KEYS.includes(k)) markSyncDirty(k);
   },
   del(k) { try { localStorage.removeItem(k); } catch(e) {} }
 };
@@ -1246,21 +1249,31 @@ function exportBackup() {
 function applyBackup(text) { // returns restored key count, throws on junk
   const j = JSON.parse(text);
   const payload = j && j.app === 'size-calc' && j.data ? j.data : j;
+  // validate before touching storage — a rejected import must not mutate anything
+  if (!payload || !BACKUP_KEYS.some(k => payload[k] !== undefined && payload[k] !== null)) throw new Error('no recognized keys');
+  return mergeBackupPayload(payload, new Set());
+}
+
+// shared by file import and live sync: tombstoned deletes first, positions merge per id,
+// scalars adopt the payload except keys in dirtySet (local edits the payload hasn't seen)
+function mergeBackupPayload(payload, dirtySet) {
+  const tombs = mergeTombstones(payload.deleted_positions);
   let n = 0;
-  const tombs = mergeTombstones(payload.deleted_positions); // deletions first so a merged-in position stays deleted
   BACKUP_KEYS.forEach(k => {
     if (k === 'deleted_positions' || payload[k] === undefined || payload[k] === null) return;
-    let v = String(payload[k]);
-    if (k === 'saved_positions') { // merge, don't clobber positions already on this device
-      const existing = JSON.parse(store.get('saved_positions') || '{}');
-      const merged = Object.assign(existing, JSON.parse(v));
+    if (k === 'saved_positions') {
+      let local = {}, remote = {};
+      try { local = JSON.parse(store.get(k) || '{}'); } catch(e) {}
+      try { remote = JSON.parse(String(payload[k])); } catch(e) {}
+      const merged = dirtySet.has(k) ? Object.assign({}, remote, local) : Object.assign({}, local, remote);
       Object.keys(tombs).forEach(id => delete merged[id]);
-      v = JSON.stringify(merged);
+      store.set(k, JSON.stringify(merged));
+      n++;
+    } else if (!dirtySet.has(k)) {
+      store.set(k, String(payload[k]));
+      n++;
     }
-    store.set(k, v);
-    n++;
   });
-  if (!n) throw new Error('no recognized keys');
   return n;
 }
 
@@ -1307,13 +1320,16 @@ function bytesFromB64(s) {
 }
 
 async function deriveSyncCreds(pass) {
+  // both halves come out of the slow KDF: the public sync_id must cost as much
+  // to brute-force as the key, or it becomes a fast offline cracking oracle
   const enc = new TextEncoder();
-  const idBuf = await crypto.subtle.digest('SHA-256', enc.encode('size-calc-id:' + pass));
-  const id = [...new Uint8Array(idBuf)].map(b => b.toString(16).padStart(2, '0')).join('');
   const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: enc.encode('size-calc-sync-v1'), iterations: 200000, hash: 'SHA-256' }, base, 256);
-  return { id, keyB64: b64FromBytes(new Uint8Array(bits)) };
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: enc.encode('size-calc-sync-v1'), iterations: 200000, hash: 'SHA-256' }, base, 512));
+  return {
+    id: [...bits.slice(32)].map(b => b.toString(16).padStart(2, '0')).join(''),
+    keyB64: b64FromBytes(bits.slice(0, 32))
+  };
 }
 
 async function getSyncAesKey() {
@@ -1368,22 +1384,8 @@ function syncApplyRemote(j) {
   const payload = j && j.data ? j.data : j;
   if (!payload) return;
   syncSuppress = true;
-  try {
-    const tombs = mergeTombstones(payload.deleted_positions);
-    BACKUP_KEYS.forEach(k => {
-      if (k === 'deleted_positions' || payload[k] === undefined || payload[k] === null) return;
-      if (k === 'saved_positions') {
-        let local = {}, remote = {};
-        try { local = JSON.parse(store.get(k) || '{}'); } catch(e) {}
-        try { remote = JSON.parse(String(payload[k])); } catch(e) {}
-        const merged = syncDirty.has(k) ? Object.assign({}, remote, local) : Object.assign({}, local, remote);
-        Object.keys(tombs).forEach(id => delete merged[id]);
-        store.set(k, JSON.stringify(merged));
-      } else if (!syncDirty.has(k)) {
-        store.set(k, String(payload[k]));
-      }
-    });
-  } finally { syncSuppress = false; }
+  try { mergeBackupPayload(payload, syncDirty); }
+  finally { syncSuppress = false; }
   syncRehydrate();
 }
 
@@ -1393,7 +1395,7 @@ function syncRehydrate() {
   try {
     const tick = document.getElementById('ticker').value;
     loadKey();
-    if (quoteData) document.getElementById('ticker').value = tick; // don't yank a loaded symbol out from under the user
+    if (tick.trim()) document.getElementById('ticker').value = tick; // never yank a symbol the user typed or loaded
     applyApiOpen();
     renderUsdPresets();
     Object.keys(savedData).forEach(id => { const el = document.getElementById(id); if (el) el.remove(); delete savedData[id]; });
@@ -1403,42 +1405,70 @@ function syncRehydrate() {
   } finally { syncSuppress = false; }
 }
 
-// pull-merge-push: a push can never clobber a change it hasn't seen
+// pull-merge-push: a push can never clobber a change it hasn't seen. The PUT carries the
+// timestamp we read (?ift=), so the worker rejects with 409 if another device wrote in between.
 async function syncPush() {
   if (!syncEnabled()) return;
   if (syncBusy) { scheduleSyncPush(); return; }
   syncBusy = true;
   setSyncUi('saving…');
+  let pushing = null; // dirty keys this push covers; edits landing mid-flight stay dirty for the next one
   try {
     const remote = await syncFetchRemote(false);
-    if (remote && remote.t > lastSyncT()) syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob)));
+    if (remote && remote.t > lastSyncT()) {
+      try { syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob))); }
+      catch(e) {} // unreadable cloud copy: our PUT below replaces it
+    }
+    pushing = [...syncDirty];
+    syncDirty.clear();
+    saveDirty();
     const blob = await syncEncrypt(buildBackup());
-    const res = await fetch(syncEndpoint(), { method: 'PUT', body: blob });
+    const res = await fetch(syncEndpoint() + '?ift=' + (remote ? remote.t : 0), { method: 'PUT', body: blob });
+    if (res.status === 409) { // another device pushed between our read and write: adopt it, then retry
+      pushing.forEach(k => syncDirty.add(k));
+      pushing = null;
+      saveDirty();
+      try {
+        const cur = await res.json();
+        if (cur && cur.blob) {
+          syncApplyRemote(JSON.parse(await syncDecrypt(cur.blob)));
+          store.set('last_sync_t', String(cur.t));
+        }
+      } catch(e) {}
+      scheduleSyncPush();
+      return;
+    }
     if (!res.ok) throw new Error('sync http ' + res.status);
     store.set('last_sync_t', String((await res.json()).t));
-    syncDirty.clear();
     saveDirty();
     setSyncUi('synced · ' + new Date().toLocaleTimeString());
   } catch(e) {
+    if (pushing) { pushing.forEach(k => syncDirty.add(k)); saveDirty(); }
     setSyncUi('offline · will retry'); // dirty set persists; the poll or the next edit retries
   } finally { syncBusy = false; }
 }
 
-async function syncPull(quiet) {
+async function syncPull() {
   if (!syncEnabled() || syncBusy) return;
   syncBusy = true;
   try {
     const meta = await syncFetchRemote(true); // timestamp-only poll, fetch the blob only when newer
     if (meta && meta.t > lastSyncT()) {
       const remote = await syncFetchRemote(false);
-      syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob)));
+      try {
+        syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob)));
+      } catch(e) {
+        store.set('last_sync_t', String(remote.t)); // don't re-download a blob we can't read
+        setSyncUi('cloud copy unreadable · the next save from this device replaces it');
+        return;
+      }
       store.set('last_sync_t', String(remote.t));
       setSyncUi('synced · ' + new Date().toLocaleTimeString());
       showToast('Synced changes from your other device.');
       if (syncDirty.size) scheduleSyncPush(); // local edits got merged in — publish them
     }
   } catch(e) {
-    if (!quiet) setSyncUi('offline · will retry');
+    setSyncUi('offline · will retry');
   } finally { syncBusy = false; }
 }
 
@@ -1501,13 +1531,13 @@ function initSync() {
   const url = store.get('sync_url');
   if (url) document.getElementById('syncUrl').value = url;
   setSyncUi('');
-  if (syncEnabled()) syncPull(true).then(() => { if (syncDirty.size) scheduleSyncPush(); });
+  if (syncEnabled()) syncPull().then(() => { if (syncDirty.size) scheduleSyncPush(); });
   // gentle poll keeps an open idle device current; pushes retry here too if one failed
   setInterval(() => {
     if (document.hidden || !syncEnabled() || syncBusy) return;
-    syncDirty.size ? syncPush() : syncPull(true);
+    syncDirty.size ? syncPush() : syncPull();
   }, 60000);
-  window.addEventListener('focus', () => syncPull(true));
+  window.addEventListener('focus', () => syncPull());
 }
 
 function showToast(msg) {
@@ -3889,7 +3919,7 @@ updateIntervalChips();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // backgrounding the app ends a live session instead of polling blind; foregrounding pulls fresh sync data
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(true); }
+  if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(); }
 });
 renderRecentTickers();
 initSync();

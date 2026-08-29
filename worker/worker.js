@@ -21,6 +21,16 @@ export default {
       if (blob.length > 200000) return json({ error: 'too big' }, 413);
       // app format: base64(iv).base64(ciphertext) — reject anything else
       if (!/^[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+$/.test(blob)) return json({ error: 'bad blob' }, 400);
+      // compare-and-swap: ?ift= carries the timestamp the client read; if another
+      // device wrote since, 409 with the current record so the client can merge and retry.
+      // (KV is eventually consistent across edges, so this is best-effort, not a hard lock —
+      // plenty for one user's devices.)
+      const ift = url.searchParams.get('ift');
+      const cur = await env.SYNC.get(id);
+      if (ift !== null) {
+        const curT = cur ? JSON.parse(cur).t : 0;
+        if (String(curT) !== ift) return new Response(cur || JSON.stringify({ t: 0 }), { status: 409, headers: { 'Content-Type': 'application/json', ...CORS } });
+      }
       const t = Date.now();
       // TTL refreshes on every write; a blob untouched for ~13 months evaporates
       await env.SYNC.put(id, JSON.stringify({ t, blob }), { expirationTtl: 60 * 60 * 24 * 400 });

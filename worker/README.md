@@ -26,3 +26,6 @@ same passphrase on each device.
   new passphrase on every device to start fresh.
 - Blobs untouched for ~13 months expire automatically (TTL refreshes on write).
 - `GET /<id>?meta=1` returns just the timestamp — the app polls with this.
+- `PUT /<id>?ift=<t>` is compare-and-swap: 409 with the current record if the
+  stored timestamp is not `<t>` — the app merges the 409 body and retries, so
+  two devices pushing at once cannot drop each other's edits.
