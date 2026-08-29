@@ -1,0 +1,7 @@
+name = "size-calc-sync"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+[[kv_namespaces]]
+binding = "SYNC"
+id = "PASTE_KV_NAMESPACE_ID_HERE"
