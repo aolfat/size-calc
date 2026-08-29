@@ -2752,7 +2752,7 @@ function sideCells(c, mirror) {
   const cells = [
     `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}" style="font-weight:600;color:var(--blue)">${c.contracts > 0 ? c.contracts : '—'}</td>`,
     `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
-    `<td class="side-cell voloi m-hide m-oi${c.itm ? ' itm-tint' : ''}" style="color:var(--text);font-weight:600">${fmtKM(c.oi)}</td>`,
+    `<td class="side-cell voloi m-hide m-oi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${fmtKM(c.oi)}</td>`,
     `<td class="side-cell voloi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${fmtKM(c.vol)}</td>`,
     `<td class="side-cell m-hide m-delta${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${fmtN(c.delta, 3)}</td>`,
     `<td class="side-cell${c.itm ? ' itm-tint' : ''}"${c.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${c.spreadPct.toFixed(0)}% of mid"` : ''}>${fmt$M(c.mid)}</td>`
@@ -2930,7 +2930,7 @@ function renderChain() {
         <td class="m-hide m-delta" style="color:var(--text2)">${fmtN(one.delta, 3)}</td>
         <td class="m-hide" style="color:var(--text2)">${one.iv > 0 ? (one.iv * 100).toFixed(1) + '%' : '—'}</td>
         <td class="voloi" style="${volStyle}">${fmtKM(one.vol)}</td>
-        <td class="voloi m-hide m-oi" style="color:var(--text);font-weight:600">${fmtKM(one.oi)}</td>
+        <td class="voloi m-hide m-oi" style="${volStyle}">${fmtKM(one.oi)}</td>
         <td class="m-hide" style="color:var(--teal)">${fmt$(one.atStop)}</td>
         <td class="loss-cell m-size ${lossClass(one.lossOfCost)}">${one.lossPerContract > 0 ? fmt$M(one.lossPerContract) + `<div class="loss-pct ${lossClass(one.lossOfCost)}">${one.lossOfCost.toFixed(0)}%</div>` : '—'}</td>
         <td class="m-size" style="font-weight:600;color:var(--blue)">${one.contracts > 0 ? one.contracts : '—'}</td>
