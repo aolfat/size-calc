@@ -316,6 +316,7 @@
     .btn-word { display: none; }
     /* entry & stops: direction on its own line, then entry + stop split evenly */
     #dirField { flex-basis: 100% !important; }
+    #dirSeg button { flex: 1 1 0; } /* the field stretches the seg frame full-width; split it evenly instead of leaving the buttons huddled left */
     #entryStopsRow .field:not(#dirField) { flex: 1 1 0 !important; min-width: 0; }
     #entryStopsRow > div:not(.field) { flex: 0 0 100%; } /* the hint gets its own line */
     /* the in-field parse preview overlaps the typed shorthand on a phone: give it its own line */
