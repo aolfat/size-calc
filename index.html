@@ -329,7 +329,7 @@
   @media (max-width: 500px) {
     .m-hide { display: none; } /* condensed chain */
     .m-size { display: none; } /* Loss/Cts/Total live in the tap-in detail on a phone */
-    .m-hide.m-oi { display: table-cell; } /* Vol and OI are the phone columns that matter */
+    .m-hide.m-oi, .m-hide.m-delta { display: table-cell; } /* Δ, Vol, OI are the phone columns that matter */
     #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11px; }
     /* table fits the screen here, so no scroll wrapper: header sticks to the page, under the context bar */
     .chain-scroll { overflow: visible; max-height: none; }
@@ -2766,7 +2766,7 @@ function twoPaneChain() {
 
 function chainColCount() {
   if (twoPaneChain()) return chainSide === 'both' ? 13 : 8; // compact + Δ + OI
-  if (isMobileChain()) return chainSide === 'both' ? 7 : 4; // phone: OI/Vol/Mid per side
+  if (isMobileChain()) return chainSide === 'both' ? 9 : 5; // phone: OI/Vol/Δ/Mid per side
   return chainSide === 'both' ? 13 : 12;
 }
 
@@ -2778,7 +2778,7 @@ function isMobileChain() {
 function renderChainHead() {
   const head = document.getElementById('chainHead');
   const m = isMobileChain();
-  const sideSpan = twoPaneChain() ? 6 : m ? 3 : 6; // per-side visible columns: two-pane / phone (OI Vol Mid) / full
+  const sideSpan = twoPaneChain() ? 6 : m ? 4 : 6; // per-side visible columns: two-pane / phone (OI Vol Δ Mid) / full
   const lossH = m ? 'Loss' : 'Loss/ct';
   if (chainSide === 'both') {
     head.innerHTML = `<tr>
