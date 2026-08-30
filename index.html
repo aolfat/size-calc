@@ -30,6 +30,7 @@
     --red-bg: #2a0f11;
     --red-bd: #532025;
     --amber: #f5b02e;
+    --gold: #d9b968; /* resting Vol/OI tone; full amber = vol>OI signal */
     --amber-bg: #2a1f08;
     --blue: #5b9dff;
     --blue-bg: #101c30;
@@ -3043,7 +3044,7 @@ function sideCells(c, mirror) {
     const empties = [0,1,2,3,4,5].map(i => `<td class="empty-cell${i <= 1 ? ' m-size' : i === 2 ? ' m-hide m-oi' : i === 4 ? ' m-hide m-delta' : ''}">—</td>`);
     return (mirror ? empties : empties.slice().reverse()).join('');
   }
-  const volStyle = c.vol > c.oi && c.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--text);font-weight:600';
+  const volStyle = c.vol > c.oi && c.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--gold);font-weight:600';
   const cells = [
     `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}" style="font-weight:600;color:var(--blue)">${c.contracts > 0 ? c.contracts : '—'}</td>`,
     `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
@@ -3224,7 +3225,7 @@ function renderChain() {
     } else {
       const one = chainSide === 'call' ? c : p;
       if (!one) return;
-      const volStyle = one.vol > one.oi && one.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--text);font-weight:600';
+      const volStyle = one.vol > one.oi && one.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--gold);font-weight:600';
       tr.innerHTML = `
         <td class="strike-col">${fmtStrikeM(strike)}${strike === atmAll ? '<span class="badge-itm" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);" title="ATM boundary strike — always shown in the ITM→ATM view, exempt from the Δ floor">ATM</span>' : one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
         <td class="m-hide">${fmt$(one.opt.bid || 0)}</td>
