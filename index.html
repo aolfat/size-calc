@@ -403,6 +403,22 @@
         <input type="file" id="importFile" accept=".json,application/json" style="display:none;" onchange="importBackup(this)" />
         <span class="hint" style="margin-top:0;">settings · API key · saved positions → JSON file · import merges positions · keep the file private</span>
       </div>
+      <hr class="divider">
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="flex:2;">
+          <label>Sync server</label>
+          <input type="text" id="syncUrl" placeholder="https://size-calc-sync.you.workers.dev" />
+        </div>
+        <div class="field" style="flex:2;">
+          <label>Sync passphrase</label>
+          <input type="password" id="syncPass" placeholder="same phrase on every device" onkeydown="if(event.key==='Enter'&amp;&amp;!syncEnabled())toggleSync()" />
+        </div>
+        <div class="field" style="flex:0 0 auto;">
+          <label>&nbsp;</label>
+          <button class="btn" id="syncBtn" onclick="toggleSync()" style="font-size:12px;padding:6px 12px;">⇄ Enable sync</button>
+        </div>
+      </div>
+      <p class="hint" id="syncStatus" style="margin-top:4px;"></p>
     </div>
   </div>
 
@@ -637,9 +653,17 @@ let chartHover = -1;
 let chartHoverY = -1;
 
 // safe localStorage (some sandboxed previews block it)
+// every write funnels through set(), so it doubles as the sync dirty-tracker
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch(e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch(e) {} }
+  set(k, v) {
+    const s = String(v);
+    const old = this.get(k);
+    try { localStorage.setItem(k, s); } catch(e) {}
+    // no-op rewrites (init, auto-loads) must not count as fresh edits
+    if (!syncSuppress && old !== s && BACKUP_KEYS.includes(k)) markSyncDirty(k);
+  },
+  del(k) { try { localStorage.removeItem(k); } catch(e) {} }
 };
 
 function saveKey() {
@@ -1201,7 +1225,8 @@ function copySaved(id) {
 }
 
 // ---------- backup: everything the app stores, as a JSON file ----------
-const BACKUP_KEYS = ['tradier_key', 'tradier_env', 'calc_account', 'calc_risk', 'last_ticker', 'saved_positions'];
+// also the sync payload — deleted_positions are tombstones so a delete beats a merge
+const BACKUP_KEYS = ['tradier_key', 'tradier_env', 'calc_account', 'calc_risk', 'last_ticker', 'saved_positions', 'risk_usd_presets', 'deleted_positions'];
 
 function buildBackup() {
   const out = { app: 'size-calc', exported: new Date().toISOString(), data: {} };
@@ -1224,18 +1249,31 @@ function exportBackup() {
 function applyBackup(text) { // returns restored key count, throws on junk
   const j = JSON.parse(text);
   const payload = j && j.app === 'size-calc' && j.data ? j.data : j;
+  // validate before touching storage — a rejected import must not mutate anything
+  if (!payload || !BACKUP_KEYS.some(k => payload[k] !== undefined && payload[k] !== null)) throw new Error('no recognized keys');
+  return mergeBackupPayload(payload, new Set());
+}
+
+// shared by file import and live sync: tombstoned deletes first, positions merge per id,
+// scalars adopt the payload except keys in dirtySet (local edits the payload hasn't seen)
+function mergeBackupPayload(payload, dirtySet) {
+  const tombs = mergeTombstones(payload.deleted_positions);
   let n = 0;
   BACKUP_KEYS.forEach(k => {
-    if (payload[k] === undefined || payload[k] === null) return;
-    let v = String(payload[k]);
-    if (k === 'saved_positions') { // merge, don't clobber positions already on this device
-      const existing = JSON.parse(store.get('saved_positions') || '{}');
-      v = JSON.stringify(Object.assign(existing, JSON.parse(v)));
+    if (k === 'deleted_positions' || payload[k] === undefined || payload[k] === null) return;
+    if (k === 'saved_positions') {
+      let local = {}, remote = {};
+      try { local = JSON.parse(store.get(k) || '{}'); } catch(e) {}
+      try { remote = JSON.parse(String(payload[k])); } catch(e) {}
+      const merged = dirtySet.has(k) ? Object.assign({}, remote, local) : Object.assign({}, local, remote);
+      Object.keys(tombs).forEach(id => delete merged[id]);
+      store.set(k, JSON.stringify(merged));
+      n++;
+    } else if (!dirtySet.has(k)) {
+      store.set(k, String(payload[k]));
+      n++;
     }
-    store.set(k, v);
-    n++;
   });
-  if (!n) throw new Error('no recognized keys');
   return n;
 }
 
@@ -1255,6 +1293,253 @@ function importBackup(input) {
   reader.readAsText(f);
 }
 
+// ---------- cross-device sync: passphrase-derived id + AES key, encrypted blob on a tiny KV worker ----------
+// the passphrase never leaves the device and is never stored — only its two derivations are:
+// sync_id (which mailbox on the worker is ours) and sync_key (AES-GCM, decrypts the blob).
+// pull-before-push + per-key dirty tracking means parallel edits merge instead of clobbering.
+let syncSuppress = false;      // true while applying remote data, so those writes don't re-mark dirty
+let syncBusy = false;
+let syncTimer = null;
+let syncKeyObj = null;         // cached CryptoKey
+const syncDirty = new Set();   // keys changed locally since the last successful push (persisted)
+
+function syncEnabled() { return !!(store.get('sync_url') && store.get('sync_id') && store.get('sync_key')); }
+function syncEndpoint() { return store.get('sync_url').replace(/\/+$/, '') + '/' + store.get('sync_id'); }
+function lastSyncT() { return Number(store.get('last_sync_t') || 0); }
+
+function b64FromBytes(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function bytesFromB64(s) {
+  const bin = atob(s);
+  const a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  return a;
+}
+
+async function deriveSyncCreds(pass) {
+  // both halves come out of the slow KDF: the public sync_id must cost as much
+  // to brute-force as the key, or it becomes a fast offline cracking oracle
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: enc.encode('size-calc-sync-v1'), iterations: 200000, hash: 'SHA-256' }, base, 512));
+  return {
+    id: [...bits.slice(32)].map(b => b.toString(16).padStart(2, '0')).join(''),
+    keyB64: b64FromBytes(bits.slice(0, 32))
+  };
+}
+
+async function getSyncAesKey() {
+  if (!syncKeyObj) syncKeyObj = await crypto.subtle.importKey('raw', bytesFromB64(store.get('sync_key')), 'AES-GCM', false, ['encrypt', 'decrypt']);
+  return syncKeyObj;
+}
+
+async function syncEncrypt(text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await getSyncAesKey(), new TextEncoder().encode(text));
+  return b64FromBytes(iv) + '.' + b64FromBytes(new Uint8Array(ct));
+}
+async function syncDecrypt(blob) {
+  const parts = String(blob).split('.');
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytesFromB64(parts[0]) }, await getSyncAesKey(), bytesFromB64(parts[1]));
+  return new TextDecoder().decode(pt);
+}
+
+// tombstones: deleted position ids, merged and pruned; a delete on one device beats a merge from another
+function mergeTombstones(extra) {
+  let t = {};
+  try { t = JSON.parse(store.get('deleted_positions') || '{}'); } catch(e) {}
+  try { Object.assign(t, typeof extra === 'string' ? JSON.parse(extra) : (extra || {})); } catch(e) {}
+  const cutoff = Date.now() - 1000 * 60 * 60 * 24 * 180;
+  Object.keys(t).forEach(id => { if (t[id] < cutoff) delete t[id]; });
+  store.set('deleted_positions', JSON.stringify(t));
+  return t;
+}
+
+function saveDirty() { store.set('sync_dirty', JSON.stringify([...syncDirty])); }
+
+function markSyncDirty(k) {
+  syncDirty.add(k);
+  saveDirty();
+  if (!syncEnabled()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncPush, 2500); // debounce: ten quick edits = one upload
+  setSyncUi('saving…');
+}
+function scheduleSyncPush() { clearTimeout(syncTimer); syncTimer = setTimeout(syncPush, 1000); }
+
+async function syncFetchRemote(metaOnly) {
+  const res = await fetch(syncEndpoint() + (metaOnly ? '?meta=1' : ''), { cache: 'no-store' });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('sync http ' + res.status);
+  return res.json();
+}
+
+// merge a decrypted remote payload into local storage. dirty keys = local edit the remote
+// hasn't seen yet, so local wins there; positions merge per id, tombstones prune deletes.
+function syncApplyRemote(j) {
+  const payload = j && j.data ? j.data : j;
+  if (!payload) return;
+  syncSuppress = true;
+  try { mergeBackupPayload(payload, syncDirty); }
+  finally { syncSuppress = false; }
+  syncRehydrate();
+}
+
+// re-read storage into the UI without a page reload (imports reload; live pulls shouldn't)
+function syncRehydrate() {
+  syncSuppress = true;
+  try {
+    const tick = document.getElementById('ticker').value;
+    loadKey();
+    if (tick.trim()) document.getElementById('ticker').value = tick; // never yank a symbol the user typed or loaded
+    applyApiOpen();
+    renderUsdPresets();
+    Object.keys(savedData).forEach(id => { const el = document.getElementById(id); if (el) el.remove(); delete savedData[id]; });
+    loadSaved();
+    updateSavedBar();
+    recalcAll();
+  } finally { syncSuppress = false; }
+}
+
+// pull-merge-push: a push can never clobber a change it hasn't seen. The PUT carries the
+// timestamp we read (?ift=), so the worker rejects with 409 if another device wrote in between.
+async function syncPush() {
+  if (!syncEnabled()) return;
+  if (syncBusy) { scheduleSyncPush(); return; }
+  syncBusy = true;
+  setSyncUi('saving…');
+  let pushing = null; // dirty keys this push covers; edits landing mid-flight stay dirty for the next one
+  try {
+    const remote = await syncFetchRemote(false);
+    if (remote && remote.t > lastSyncT()) {
+      try { syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob))); }
+      catch(e) {} // unreadable cloud copy: our PUT below replaces it
+    }
+    pushing = [...syncDirty];
+    syncDirty.clear();
+    saveDirty();
+    const blob = await syncEncrypt(buildBackup());
+    const res = await fetch(syncEndpoint() + '?ift=' + (remote ? remote.t : 0), { method: 'PUT', body: blob });
+    if (res.status === 409) { // another device pushed between our read and write: adopt it, then retry
+      pushing.forEach(k => syncDirty.add(k));
+      pushing = null;
+      saveDirty();
+      try {
+        const cur = await res.json();
+        if (cur && cur.blob) {
+          syncApplyRemote(JSON.parse(await syncDecrypt(cur.blob)));
+          store.set('last_sync_t', String(cur.t));
+        }
+      } catch(e) {}
+      scheduleSyncPush();
+      return;
+    }
+    if (!res.ok) throw new Error('sync http ' + res.status);
+    store.set('last_sync_t', String((await res.json()).t));
+    saveDirty();
+    setSyncUi('synced · ' + new Date().toLocaleTimeString());
+  } catch(e) {
+    if (pushing) { pushing.forEach(k => syncDirty.add(k)); saveDirty(); }
+    setSyncUi('offline · will retry'); // dirty set persists; the poll or the next edit retries
+  } finally { syncBusy = false; }
+}
+
+async function syncPull() {
+  if (!syncEnabled() || syncBusy) return;
+  syncBusy = true;
+  try {
+    const meta = await syncFetchRemote(true); // timestamp-only poll, fetch the blob only when newer
+    if (meta && meta.t > lastSyncT()) {
+      const remote = await syncFetchRemote(false);
+      try {
+        syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob)));
+      } catch(e) {
+        store.set('last_sync_t', String(remote.t)); // don't re-download a blob we can't read
+        setSyncUi('cloud copy unreadable · the next save from this device replaces it');
+        return;
+      }
+      store.set('last_sync_t', String(remote.t));
+      setSyncUi('synced · ' + new Date().toLocaleTimeString());
+      showToast('Synced changes from your other device.');
+      if (syncDirty.size) scheduleSyncPush(); // local edits got merged in — publish them
+    }
+  } catch(e) {
+    setSyncUi('offline · will retry');
+  } finally { syncBusy = false; }
+}
+
+async function toggleSync() {
+  if (syncEnabled()) {
+    ['sync_id', 'sync_key', 'sync_dirty', 'last_sync_t'].forEach(k => store.del(k));
+    syncDirty.clear();
+    syncKeyObj = null;
+    document.getElementById('syncPass').value = '';
+    setSyncUi('');
+    applyApiOpen();
+    showToast('Sync off. Local data stays put.');
+    return;
+  }
+  const url = document.getElementById('syncUrl').value.trim().replace(/\/+$/, '');
+  const pass = document.getElementById('syncPass').value;
+  if (!/^https:\/\//.test(url)) { showError('Sync server URL must start with https:// (deploy worker/ from the repo).'); return; }
+  if (pass.length < 8) { showError('Use a longer passphrase (8+ characters). It is the only lock on your data.'); return; }
+  if (!(window.crypto && crypto.subtle)) { showError('Sync needs a secure (https) page.'); return; }
+  setSyncUi('connecting…');
+  try {
+    const creds = await deriveSyncCreds(pass);
+    store.set('sync_url', url);
+    store.set('sync_id', creds.id);
+    store.set('sync_key', creds.keyB64);
+    store.set('last_sync_t', '0');
+    syncKeyObj = null;
+    document.getElementById('syncPass').value = '';
+    syncDirty.clear(); // enabling adopts the cloud copy as truth (positions still merge)
+    saveDirty();
+    const remote = await syncFetchRemote(false);
+    if (remote) {
+      syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob)));
+      store.set('last_sync_t', String(remote.t));
+      showToast('Sync on. Loaded the cloud copy.');
+    } else {
+      showToast('Sync on. This device seeded the cloud copy.');
+    }
+    await syncPush();
+    applyApiOpen();
+  } catch(e) {
+    ['sync_id', 'sync_key'].forEach(k => store.del(k));
+    syncKeyObj = null;
+    setSyncUi('');
+    showError('Could not reach the sync server. Check the URL.');
+  }
+}
+
+function setSyncUi(status) {
+  const on = syncEnabled();
+  document.getElementById('syncBtn').textContent = on ? '✕ Disable sync' : '⇄ Enable sync';
+  document.getElementById('syncPass').placeholder = on ? 'passphrase set' : 'same phrase on every device';
+  document.getElementById('syncStatus').textContent = on
+    ? 'sync ' + (status || 'on') + ' · encrypted on this device, the server only stores gibberish'
+    : 'syncs settings, key and positions across devices · encrypted with your passphrase before it leaves the browser · deploy worker/ from the repo for a free URL';
+}
+
+function initSync() {
+  try { JSON.parse(store.get('sync_dirty') || '[]').forEach(k => syncDirty.add(k)); } catch(e) {}
+  const url = store.get('sync_url');
+  if (url) document.getElementById('syncUrl').value = url;
+  setSyncUi('');
+  if (syncEnabled()) syncPull().then(() => { if (syncDirty.size) scheduleSyncPush(); });
+  // gentle poll keeps an open idle device current; pushes retry here too if one failed
+  setInterval(() => {
+    if (document.hidden || !syncEnabled() || syncBusy) return;
+    syncDirty.size ? syncPush() : syncPull();
+  }, 60000);
+  window.addEventListener('focus', () => syncPull());
+}
+
 function showToast(msg) {
   const b = document.getElementById('errorBox');
   b.textContent = msg;
@@ -1270,9 +1555,9 @@ function applyApiOpen() {
   document.getElementById('apiBody').style.display = apiOpen ? 'block' : 'none';
   document.getElementById('apiToggle').classList.toggle('open', apiOpen);
   const key = document.getElementById('apiKey').value.trim();
-  document.getElementById('apiStatus').innerHTML = key
+  document.getElementById('apiStatus').innerHTML = (key
     ? `<span style="color:var(--green)">●</span> key saved · ${document.getElementById('apiEnv').value}`
-    : '○ no key';
+    : '○ no key') + (syncEnabled() ? ' · <span style="color:var(--blue)">⇄ sync</span>' : '');
 }
 function toggleApi() { apiOpen = !apiOpen; applyApiOpen(); }
 
@@ -3255,6 +3540,7 @@ function removeSaved(id) {
   delete savedData[id];
   const el = document.getElementById(id);
   if (el) el.remove();
+  mergeTombstones({ [id]: Date.now() }); // so the delete propagates through sync/import merges
   persistSaved();
   updateSavedBar();
 }
@@ -3610,8 +3896,10 @@ function initShortcuts() {
   });
 }
 
+syncSuppress = true; // init reads back what storage already holds — nothing here is a fresh edit
 loadKey();
 syncRiskDollar();
+syncSuppress = false;
 initChartEvents();
 initDailyChartEvents();
 initShortcuts();
@@ -3629,9 +3917,12 @@ loadSaved();
 setView('calc'); // saved cards live in the Positions tab
 updateIntervalChips();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
-// backgrounding the app ends a live session instead of polling blind
-document.addEventListener('visibilitychange', () => { document.hidden ? pauseLive() : resumeLive(); });
+// backgrounding the app ends a live session instead of polling blind; foregrounding pulls fresh sync data
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(); }
+});
 renderRecentTickers();
+initSync();
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {
   const el = document.activeElement;
