@@ -609,6 +609,10 @@
             <button id="sCall" onclick="setSide('call')">Calls</button>
             <button id="sPut" onclick="setSide('put')">Puts</button>
           </div>
+          <div class="fgroup" id="bothCountGroup">
+            <span style="font-size:12px;color:var(--text2);">± strikes</span>
+            <input type="number" id="bothStrikes" value="8" min="2" max="40" step="1" style="width:56px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="store.set('both_strikes', this.value); renderChain();" title="How many strikes to show on each side of ATM in the Both view" />
+          </div>
           <div class="seg" id="zoneSeg">
             <button id="zOtm" class="active" onclick="setZoneMode('otm')" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
             <button id="zItm" onclick="setZoneMode('itm')" title="ITM between the ATM strike and your Δ depth limit — deeper is under All. Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
@@ -2928,12 +2932,9 @@ let zoneMode = 'otm';
 const zoneFilter = { otm: true, itm: false };
 
 function setZoneMode(m) {
-  // ITM is directional: in the mirrored Both view, "ITM both sides" = the strike
-  // extremes, which reads as the whole chain. Those modes need a side first.
-  if (chainSide === 'both' && (m === 'itm' || m === 'both')) {
-    setSide('call');
-    showToast('ITM→ATM filters one side — switched to Calls. Tap Puts if that’s your trade.');
-  }
+  // zones are per-side; the T-chart shows an ATM window instead. Picking a zone
+  // from Both view moves to Calls (tap Puts if that's the trade).
+  if (chainSide === 'both') setSide('call');
   zoneMode = m;
   zoneFilter.otm = m === 'otm' || m === 'both';
   zoneFilter.itm = m === 'itm' || m === 'both';
@@ -2946,12 +2947,20 @@ function setZoneMode(m) {
   renderChain();
 }
 
+function updateChainControls() {
+  const both = chainSide === 'both';
+  document.getElementById('bothCountGroup').style.display = both ? 'flex' : 'none';
+  document.getElementById('zoneSeg').style.display = both ? 'none' : '';
+  document.getElementById('otmFloorGroup').style.display = !both && zoneFilter.otm ? 'flex' : 'none';
+  document.getElementById('itmFloorGroup').style.display = !both && zoneFilter.itm ? 'flex' : 'none';
+}
+
 function setSide(s) {
   cancelSpread();
   chainSide = s;
+  updateChainControls();
   ['sBoth','sCall','sPut'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('s' + s.charAt(0).toUpperCase() + s.slice(1)).classList.add('active');
-  if (s === 'both' && (zoneMode === 'itm' || zoneMode === 'both')) setZoneMode('all'); // directional zones don't fit the T-chart
   pendingAtmScroll = true;
   updateStopVisibility();
   renderAdr();
@@ -3167,14 +3176,22 @@ function renderChain() {
     if (itm) return zoneFilter.itm && d <= itmCeil;
     return zoneFilter.otm && d >= otmFloor;
   };
-  // apply delta filter per side; drop strikes with nothing left to show
-  for (const [strike, pair] of byStrike) {
-    if (!passesDelta(pair.call)) delete pair.call;
-    if (!passesDelta(pair.put)) delete pair.put;
-    const wantCall = chainSide !== 'put', wantPut = chainSide !== 'call';
-    if (!(wantCall && pair.call) && !(wantPut && pair.put)) byStrike.delete(strike);
+  // Both view is a fixed window of strikes around ATM — no delta filtering there.
+  // Zones only apply once a side is chosen.
+  if (chainSide !== 'both') {
+    for (const [strike, pair] of byStrike) {
+      if (!passesDelta(pair.call)) delete pair.call;
+      if (!passesDelta(pair.put)) delete pair.put;
+      const wantCall = chainSide !== 'put', wantPut = chainSide !== 'call';
+      if (!(wantCall && pair.call) && !(wantPut && pair.put)) byStrike.delete(strike);
+    }
   }
-  const strikes = [...byStrike.keys()].sort((a, b) => a - b);
+  let strikes = [...byStrike.keys()].sort((a, b) => a - b);
+  if (chainSide === 'both') {
+    const n = Math.max(1, parseInt(document.getElementById('bothStrikes').value, 10) || 8);
+    const ai = strikes.indexOf(atmAll);
+    if (ai >= 0) strikes = strikes.slice(Math.max(0, ai - n), ai + n + 1);
+  }
 
   // nearest strike to spot for ATM highlight
   let atmStrike = null, atmDist = Infinity;
@@ -3908,6 +3925,8 @@ apiOpen = !document.getElementById('apiKey').value.trim(); // collapse once a ke
 applyApiOpen();
 renderUsdPresets();
 showDaily = store.get('show_daily') !== '0';
+if (store.get('both_strikes')) document.getElementById('bothStrikes').value = store.get('both_strikes');
+updateChainControls();
 riskOpen = store.get('risk_open') !== '0'; // open by default; remembers a manual collapse
 applyRiskOpen();
 updateRiskStatus();
