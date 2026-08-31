@@ -407,10 +407,6 @@
       <hr class="divider">
       <div class="row" style="align-items:flex-end;">
         <div class="field" style="flex:2;">
-          <label>Sync server</label>
-          <input type="text" id="syncUrl" placeholder="https://size-calc-sync.you.workers.dev" />
-        </div>
-        <div class="field" style="flex:2;">
           <label>Sync passphrase</label>
           <input type="password" id="syncPass" placeholder="same phrase on every device" onkeydown="if(event.key==='Enter'&amp;&amp;!syncEnabled())toggleSync()" />
         </div>
@@ -1308,8 +1304,10 @@ let syncTimer = null;
 let syncKeyObj = null;         // cached CryptoKey
 const syncDirty = new Set();   // keys changed locally since the last successful push (persisted)
 
-function syncEnabled() { return !!(store.get('sync_url') && store.get('sync_id') && store.get('sync_key')); }
-function syncEndpoint() { return store.get('sync_url').replace(/\/+$/, '') + '/' + store.get('sync_id'); }
+const SYNC_SERVER = 'https://size-calc-sync.aolfat.workers.dev'; // hardcoded for now
+
+function syncEnabled() { return !!(store.get('sync_id') && store.get('sync_key')); }
+function syncEndpoint() { return SYNC_SERVER + '/' + store.get('sync_id'); }
 function lastSyncT() { return Number(store.get('last_sync_t') || 0); }
 
 function b64FromBytes(bytes) {
@@ -1488,15 +1486,12 @@ async function toggleSync() {
     showToast('Sync off. Local data stays put.');
     return;
   }
-  const url = document.getElementById('syncUrl').value.trim().replace(/\/+$/, '');
   const pass = document.getElementById('syncPass').value;
-  if (!/^https:\/\//.test(url)) { showError('Sync server URL must start with https:// (deploy worker/ from the repo).'); return; }
   if (pass.length < 8) { showError('Use a longer passphrase (8+ characters). It is the only lock on your data.'); return; }
   if (!(window.crypto && crypto.subtle)) { showError('Sync needs a secure (https) page.'); return; }
   setSyncUi('connecting…');
   try {
     const creds = await deriveSyncCreds(pass);
-    store.set('sync_url', url);
     store.set('sync_id', creds.id);
     store.set('sync_key', creds.keyB64);
     store.set('last_sync_t', '0');
@@ -1528,13 +1523,11 @@ function setSyncUi(status) {
   document.getElementById('syncPass').placeholder = on ? 'passphrase set' : 'same phrase on every device';
   document.getElementById('syncStatus').textContent = on
     ? 'sync ' + (status || 'on') + ' · encrypted on this device, the server only stores gibberish'
-    : 'syncs settings, key and positions across devices · encrypted with your passphrase before it leaves the browser · deploy worker/ from the repo for a free URL';
+    : 'syncs settings, key and positions across devices · encrypted with your passphrase before it leaves the browser · same phrase on every device';
 }
 
 function initSync() {
   try { JSON.parse(store.get('sync_dirty') || '[]').forEach(k => syncDirty.add(k)); } catch(e) {}
-  const url = store.get('sync_url');
-  if (url) document.getElementById('syncUrl').value = url;
   setSyncUi('');
   if (syncEnabled()) syncPull().then(() => { if (syncDirty.size) scheduleSyncPush(); });
   // gentle poll keeps an open idle device current; pushes retry here too if one failed
