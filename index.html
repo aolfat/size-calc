@@ -349,9 +349,8 @@
 
   <div class="header">
     <span class="dot"></span>
-    <h1>Size <span>/ Calculator</span></h1>
+    <h1><span id="brandSize" onclick="setView('calc')" style="cursor:pointer;" title="The calculator (s/o/v views)">Size</span> <span id="brandTools" onclick="setView('utils')" style="cursor:pointer;" title="Small tools: % gain calculator (u)">/ Tools</span></h1>
     <span class="sub" id="lastUpdated"></span>
-    <button class="kbd-toggle" id="utilsToggle" onclick="setView(utilsView ? 'calc' : 'utils')" title="Small tools: % gain calculator (u)">⚙ utilities</button>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
   </div>
 
@@ -368,7 +367,7 @@
         <span><kbd>s</kbd> shares</span>
         <span><kbd>o</kbd> options</span>
         <span><kbd>v</kbd> positions</span>
-        <span><kbd>u</kbd> utilities · % gain</span>
+        <span><kbd>u</kbd> tools · % gain</span>
         <span><kbd>d</kbd> long / short</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">chain</div>
@@ -422,7 +421,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="riskCard">
     <div class="section-title card-toggle" id="riskToggle" onclick="toggleRisk()"><span class="chev">▶</span> Account &amp; Risk <span class="title-status" id="riskStatus"></span></div>
     <div id="riskBody">
     <div class="row" style="align-items:flex-end;">
@@ -551,7 +550,7 @@
   <div id="savedSection"></div>
 
   <div id="utilsSection" style="display:none;">
-    <div class="section-title" style="margin:4px 0 10px;">Utilities</div>
+    <div class="section-title" style="margin:4px 0 10px;">Tools</div>
     <div class="card">
       <div class="section-title">Percentage gain</div>
       <div class="row" style="align-items:flex-end;">
@@ -1836,7 +1835,10 @@ function setView(v) {
   document.getElementById('modeShares').classList.toggle('active', calc && currentMode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', calc && currentMode === 'options');
   document.getElementById('modePositions').classList.toggle('active', positionsView);
-  document.getElementById('utilsToggle').style.color = utilsView ? 'var(--blue)' : '';
+  document.getElementById('brandSize').style.color = utilsView ? 'var(--text3)' : '';
+  document.getElementById('brandTools').style.color = utilsView ? 'var(--text)' : '';
+  document.getElementById('apiKeySection').style.display = utilsView ? 'none' : '';
+  document.getElementById('riskCard').style.display = utilsView ? 'none' : '';
   const hide = calc ? '' : 'none';
   document.getElementById('sizingControls').style.display = hide;
   document.getElementById('quickCard').style.display = hide;
