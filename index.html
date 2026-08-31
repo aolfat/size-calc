@@ -351,6 +351,7 @@
     <span class="dot"></span>
     <h1>Size <span>/ Calculator</span></h1>
     <span class="sub" id="lastUpdated"></span>
+    <button class="kbd-toggle" id="utilsToggle" onclick="setView(utilsView ? 'calc' : 'utils')" title="Small tools: % gain calculator (u)">⚙ utilities</button>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
   </div>
 
@@ -367,7 +368,7 @@
         <span><kbd>s</kbd> shares</span>
         <span><kbd>o</kbd> options</span>
         <span><kbd>v</kbd> positions</span>
-        <span><kbd>g</kbd> % gain</span>
+        <span><kbd>u</kbd> utilities · % gain</span>
         <span><kbd>d</kbd> long / short</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">chain</div>
@@ -460,7 +461,6 @@
       <button id="modeShares" class="active" onclick="setMode('shares')">Shares</button>
       <button id="modeOptions" onclick="setMode('options')">Options</button>
       <button id="modePositions" onclick="setView('positions')">Positions <span id="posCount" style="font-size:11px;opacity:0.8;"></span></button>
-      <button id="modeGain" onclick="setView('gain')">% Gain</button>
     </div>
     <div id="sizingControls">
     <div class="section-title" style="margin-top:16px;">Ticker</div>
@@ -550,7 +550,8 @@
   <div id="savedBar"></div>
   <div id="savedSection"></div>
 
-  <div id="gainSection" style="display:none;">
+  <div id="utilsSection" style="display:none;">
+    <div class="section-title" style="margin:4px 0 10px;">Utilities</div>
     <div class="card">
       <div class="section-title">Percentage gain</div>
       <div class="row" style="align-items:flex-end;">
@@ -1808,7 +1809,7 @@ function stopsChanged() {
 
 // positions is a view, not a sizing mode: currentMode stays shares/options underneath
 let positionsView = false;
-let gainView = false;
+let utilsView = false;
 
 function renderGain() {
   const cost = parseFloat(document.getElementById('gainCost').value);
@@ -1830,12 +1831,12 @@ function renderGain() {
 
 function setView(v) {
   positionsView = v === 'positions';
-  gainView = v === 'gain';
-  const calc = !positionsView && !gainView;
+  utilsView = v === 'utils';
+  const calc = !positionsView && !utilsView;
   document.getElementById('modeShares').classList.toggle('active', calc && currentMode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', calc && currentMode === 'options');
   document.getElementById('modePositions').classList.toggle('active', positionsView);
-  document.getElementById('modeGain').classList.toggle('active', gainView);
+  document.getElementById('utilsToggle').style.color = utilsView ? 'var(--blue)' : '';
   const hide = calc ? '' : 'none';
   document.getElementById('sizingControls').style.display = hide;
   document.getElementById('quickCard').style.display = hide;
@@ -1845,8 +1846,8 @@ function setView(v) {
   document.getElementById('savedBar').style.display = positionsView ? '' : 'none';
   updateChartVisibility();
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
-  document.getElementById('gainSection').style.display = gainView ? '' : 'none';
-  if (gainView) { renderGain(); document.getElementById('gainCost').focus(); }
+  document.getElementById('utilsSection').style.display = utilsView ? '' : 'none';
+  if (utilsView) { renderGain(); document.getElementById('gainCost').focus(); }
   if (positionsView) {
     updateSavedBar();
     // fresh P&L on open when a key is available
@@ -1858,7 +1859,7 @@ function setView(v) {
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
-  if (positionsView || gainView) { positionsView = false; gainView = false; setView('calc'); }
+  if (positionsView || utilsView) { positionsView = false; utilsView = false; setView('calc'); }
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
   document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
@@ -3935,7 +3936,7 @@ function initShortcuts() {
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
       case 'v': setView(positionsView ? 'calc' : 'positions'); break;
-      case 'g': setView(gainView ? 'calc' : 'gain'); break;
+      case 'u': setView(utilsView ? 'calc' : 'utils'); break;
       case 'r': refreshQuote(); break;
       case 'l': toggleLive(); break;
       case 'd': if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long'); break;
