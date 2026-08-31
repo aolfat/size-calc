@@ -1835,8 +1835,8 @@ function setView(v) {
   document.getElementById('modeShares').classList.toggle('active', calc && currentMode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', calc && currentMode === 'options');
   document.getElementById('modePositions').classList.toggle('active', positionsView);
-  document.getElementById('brandSize').style.color = utilsView ? 'var(--text3)' : '';
-  document.getElementById('brandTools').style.color = utilsView ? 'var(--text)' : '';
+  document.getElementById('brandSize').style.color = utilsView ? 'var(--text3)' : 'var(--text)';
+  document.getElementById('brandTools').style.color = utilsView ? 'var(--text)' : 'var(--text3)';
   document.getElementById('apiKeySection').style.display = utilsView ? 'none' : '';
   document.getElementById('riskCard').style.display = utilsView ? 'none' : '';
   const hide = calc ? '' : 'none';
