@@ -303,6 +303,7 @@
     thead th, tbody td { padding: 7px 6px; }
     .quote-price { font-size: 24px; }
     input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
+    .seg.mode-big button { font-size: 12px; letter-spacing: 0.02em; } /* four views must fit */
     /* preset rows: equal-width chips, one line, everything visible */
     #riskPresets, #riskUsdRow { flex-wrap: nowrap !important; gap: 5px; }
     #riskPresets .filter-btn, #riskUsdRow .filter-btn, #riskUsdRow .usd-edit-box { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 11px; text-align: center; width: auto; }
@@ -366,6 +367,7 @@
         <span><kbd>s</kbd> shares</span>
         <span><kbd>o</kbd> options</span>
         <span><kbd>v</kbd> positions</span>
+        <span><kbd>g</kbd> % gain</span>
         <span><kbd>d</kbd> long / short</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">chain</div>
@@ -458,6 +460,7 @@
       <button id="modeShares" class="active" onclick="setMode('shares')">Shares</button>
       <button id="modeOptions" onclick="setMode('options')">Options</button>
       <button id="modePositions" onclick="setView('positions')">Positions <span id="posCount" style="font-size:11px;opacity:0.8;"></span></button>
+      <button id="modeGain" onclick="setView('gain')">% Gain</button>
     </div>
     <div id="sizingControls">
     <div class="section-title" style="margin-top:16px;">Ticker</div>
@@ -546,6 +549,24 @@
 
   <div id="savedBar"></div>
   <div id="savedSection"></div>
+
+  <div id="gainSection" style="display:none;">
+    <div class="card">
+      <div class="section-title">Percentage gain</div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="flex:0 0 170px;">
+          <label>Bought at</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="gainCost" step="0.01" min="0" placeholder="2.10" oninput="renderGain()" /></div>
+        </div>
+        <div class="field" style="flex:0 0 170px;">
+          <label>Current price</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="gainNow" step="0.01" min="0" placeholder="2.62" oninput="renderGain()" /></div>
+        </div>
+      </div>
+      <div class="stat-grid" style="margin-top:14px;" id="gainStats"></div>
+      <div class="hint">works for anything with two prices: shares, option premiums, whole positions</div>
+    </div>
+  </div>
 
   <div id="errorBox" style="display:none;" class="error"></div>
 
@@ -1787,21 +1808,45 @@ function stopsChanged() {
 
 // positions is a view, not a sizing mode: currentMode stays shares/options underneath
 let positionsView = false;
+let gainView = false;
+
+function renderGain() {
+  const cost = parseFloat(document.getElementById('gainCost').value);
+  const now = parseFloat(document.getElementById('gainNow').value);
+  const el = document.getElementById('gainStats');
+  if (!(cost > 0) || isNaN(now) || now < 0) {
+    el.innerHTML = '<div class="hint" style="margin:0;grid-column:1/-1;">enter what you paid and what it trades at now</div>';
+    return;
+  }
+  const pct = (now - cost) / cost * 100;
+  const up = pct >= 0;
+  const sign = up ? '+' : '−';
+  el.innerHTML = `
+    <div class="stat ${up ? 'good' : 'danger'}"><div class="s-label">${up ? 'Gain' : 'Loss'}</div><div class="s-val">${sign}${Math.abs(pct).toFixed(2)}%</div><div class="s-sub">${fmt$(cost)} → ${fmt$(now)}</div></div>
+    <div class="stat"><div class="s-label">Change</div><div class="s-val">${sign}${fmt$(Math.abs(now - cost))}</div><div class="s-sub">per unit</div></div>
+    <div class="stat teal"><div class="s-label">Multiple</div><div class="s-val">${(now / cost).toFixed(2)}×</div><div class="s-sub">of cost</div></div>
+  `;
+}
 
 function setView(v) {
   positionsView = v === 'positions';
-  document.getElementById('modeShares').classList.toggle('active', !positionsView && currentMode === 'shares');
-  document.getElementById('modeOptions').classList.toggle('active', !positionsView && currentMode === 'options');
+  gainView = v === 'gain';
+  const calc = !positionsView && !gainView;
+  document.getElementById('modeShares').classList.toggle('active', calc && currentMode === 'shares');
+  document.getElementById('modeOptions').classList.toggle('active', calc && currentMode === 'options');
   document.getElementById('modePositions').classList.toggle('active', positionsView);
-  const hide = positionsView ? 'none' : '';
+  document.getElementById('modeGain').classList.toggle('active', gainView);
+  const hide = calc ? '' : 'none';
   document.getElementById('sizingControls').style.display = hide;
   document.getElementById('quickCard').style.display = hide;
   document.getElementById('pinnedBar').style.display = hide;
   document.getElementById('pinnedSection').style.display = hide;
-  document.getElementById('quoteSection').style.display = positionsView ? 'none' : (quoteData ? '' : 'none');
+  document.getElementById('quoteSection').style.display = calc && quoteData ? '' : 'none';
   document.getElementById('savedBar').style.display = positionsView ? '' : 'none';
   updateChartVisibility();
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
+  document.getElementById('gainSection').style.display = gainView ? '' : 'none';
+  if (gainView) { renderGain(); document.getElementById('gainCost').focus(); }
   if (positionsView) {
     updateSavedBar();
     // fresh P&L on open when a key is available
@@ -1813,7 +1858,7 @@ function setView(v) {
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
-  if (positionsView) { positionsView = false; setView('calc'); }
+  if (positionsView || gainView) { positionsView = false; gainView = false; setView('calc'); }
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
   document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
@@ -3890,6 +3935,7 @@ function initShortcuts() {
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
       case 'v': setView(positionsView ? 'calc' : 'positions'); break;
+      case 'g': setView(gainView ? 'calc' : 'gain'); break;
       case 'r': refreshQuote(); break;
       case 'l': toggleLive(); break;
       case 'd': if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long'); break;
