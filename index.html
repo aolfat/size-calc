@@ -539,7 +539,7 @@
         <button class="btn primary" onclick="fetchQuickOption()" id="quickBtn"><span id="quickBtnText">Look up</span></button>
       </div>
     </div>
-    <div class="hint">ticker · strike · expiry in any order — m/d or m.d, year optional &nbsp;·&nbsp; calls by default, add "put" to flip &nbsp;·&nbsp; spreads: <b>rbrk 105/115 8/28 cds</b> (or pds) &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 9/18</b> · <b>9.18 300 aapl</b> · <b>SPY 580 put 6/18/26</b></div>
+    <div class="hint">ticker · strike · expiry in any order — m/d or m.d, year optional &nbsp;·&nbsp; calls by default, add "put" to flip &nbsp;·&nbsp; spreads: <b>rbrk 105/115 8/28 cds</b> (ccs for credit, pds/pcs for puts) &nbsp;·&nbsp; uses your stops if the ticker matches, else LOD / HOD &nbsp;·&nbsp; e.g. <b>AAPL 245 9/18</b> · <b>9.18 300 aapl</b> · <b>SPY 580 put 6/18/26</b></div>
     </div>
   </div>
 
@@ -782,7 +782,7 @@ function openSim(o) {
   simState = o;
   simHover = -1;
   document.getElementById('simTitle').textContent = o.label;
-  document.getElementById('simMeta').textContent = `entry ${fmt$(o.entry)}/ct · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant`;
+  document.getElementById('simMeta').textContent = `${o.credit ? 'credit' : 'entry'} ${fmt$(o.entry)}/ct · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant`;
   const sl = document.getElementById('simPrice');
   const span = Math.max(o.spot * 0.12, (adrValue || 0) * 2.5);
   sl.min = Math.max(0.01, o.spot - span).toFixed(2);
@@ -803,10 +803,11 @@ function simSetPrice(mult) { // chips: stop / current / 1R / 2R
   if (!o) return;
   // freshest price we have: the live quote when it matches this ticker, else the open-time snapshot
   const cur = (quoteData && quoteData.symbol === o.parsedTicker && effectivePrice(quoteData)) || o.spot;
-  const rDist = o.isCall ? o.spot - o.stop : o.stop - o.spot;
+  const bull = o.credit ? !o.isCall : o.isCall;
+  const rDist = bull ? o.spot - o.stop : o.stop - o.spot;
   const target = mult === 'stop' ? o.stop
     : mult === 'current' ? cur
-    : o.spot + (o.isCall ? 1 : -1) * rDist * mult;
+    : o.spot + (bull ? 1 : -1) * rDist * mult;
   const sl = document.getElementById('simPrice');
   if (target > +sl.max) sl.max = target.toFixed(2);
   if (target < +sl.min) sl.min = Math.max(0.01, target).toFixed(2);
@@ -848,7 +849,9 @@ function drawSim() {
   const priceInput = document.getElementById('simPriceInput');
   if (document.activeElement !== priceInput) priceInput.value = S.toFixed(2); // don't clobber mid-typing
   const pts = simCurve(S);
-  const ret = pts.map(p => (p.v - o.entry) / o.entry * 100);
+  // credit spreads: pts.v is the cost to close; P&L = credit − close, % measured against the max loss (width − credit)
+  const retBase = o.credit ? Math.max(0.01, (o.width || 0) - o.entry) : o.entry;
+  const ret = pts.map(p => (o.credit ? o.entry - p.v : p.v - o.entry) / retBase * 100);
 
   const canvas = document.getElementById('simChart');
   const w = canvas.clientWidth, h = 240;
@@ -934,7 +937,7 @@ function drawSim() {
   const d = new Date(pts[idx].t);
   const v = pts[idx].v;
   const pct = ret[idx];
-  const pnl = (v - o.entry) * 100 * o.qty;
+  const pnl = (o.credit ? o.entry - v : v - o.entry) * 100 * o.qty;
   const when = idx === 0 ? 'now' : (idx === pts.length - 1 ? 'at exp' : `${(d.getMonth() + 1)}/${d.getDate()}`);
   document.getElementById('simReadout').innerHTML =
     `<b>${when}</b> with ${o.parsedTicker || ''} at ${fmt$(S)}: ` +
@@ -947,8 +950,13 @@ function strikesLabel(d) {
 }
 
 function typeLabel(d) {
-  return `${d.isCall ? 'call' : 'put'}${d.kind === 'spread' ? ' debit spread' : ''}`;
+  return `${d.isCall ? 'call' : 'put'}${d.kind === 'spread' ? (d.credit ? ' credit spread' : ' debit spread') : ''}`;
 }
+
+// trade direction: long calls and put credit spreads win up, long puts and call credit spreads win down
+function isBull(d) { return d.credit ? !d.isCall : d.isCall; }
+
+function spreadWidth(d) { return d.legs ? Math.abs(d.legs[1].K - d.legs[0].K) : 0; }
 
 // net Black-Scholes value of a card at underlying S with T years left (legs-aware)
 function cardValueAt(d, S, T) {
@@ -960,14 +968,16 @@ function cardValueAt(d, S, T) {
 function simParamsFromCard(d, entry, qty) {
   return {
     isCall: d.isCall, K: d.parsed.strike, expStr: d.parsed.expStr, iv: d.iv, legs: d.legs,
+    credit: !!d.credit, width: spreadWidth(d),
     entry, qty: Math.max(1, qty), spot: d.underlyingPrice, stop: d.stopLevel,
     parsedTicker: d.parsed.ticker,
     label: `${d.parsed.ticker} ${strikesLabel(d)} ${typeLabel(d)} ${d.parsed.expStr}`
   };
 }
 
-function sizeUnit(d) { // $ risked per contract for sizing: full debit for spreads, loss@stop for singles
-  return d.kind === 'spread' ? d.mid * 100 : d.lossPerContract;
+function sizeUnit(d) { // $ risked per contract for sizing: defined risk for spreads (full debit, or width − credit), loss@stop for singles
+  if (d.kind === 'spread') return (d.credit ? spreadWidth(d) - d.mid : d.mid) * 100;
+  return d.lossPerContract;
 }
 
 function simFromPinned(cardId) {
@@ -1153,13 +1163,13 @@ function sharePinned(cardId) {
   const cts = unitsFor(riskDollars(), sizeUnit(d));
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   shareCanvasToClipboard(drawShareCard({
-    title: [{ t: `${d.parsed.ticker} ${strikesLabel(d)} ` }, { t: (d.isCall ? 'CALL' : 'PUT') + (d.kind === 'spread' ? ' SPREAD' : ''), c: d.isCall ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
+    title: [{ t: `${d.parsed.ticker} ${strikesLabel(d)} ` }, { t: typeLabel(d).toUpperCase(), c: isBull(d) ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
     sub: `underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
     stats: [
-      { label: 'Entry / ct', value: fmt$(d.mid), color: SC.blue, sub: `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
+      { label: d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct', value: fmt$(d.mid), color: SC.blue, sub: `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
       { label: 'Stop — underlying', value: fmt$(d.stopLevel), color: SC.red, sub: `${d.lodPct}% away · ${d.stopName}` },
-      { label: 'Loss @ stop', value: d.lossOfCost.toFixed(0) + '%', color: SC.red, sub: d.kind === 'spread' ? 'of debit' : 'of premium' },
-      { label: 'Max loss', value: cts > 0 ? (cts * sizeUnit(d) / acct * 100).toFixed(2) + '%' : '—', color: SC.red, sub: cts > 0 ? (d.kind === 'spread' ? 'of account · full debit' : 'of account') : '' }
+      { label: 'Loss @ stop', value: d.lossOfCost.toFixed(0) + '%', color: SC.red, sub: d.kind === 'spread' ? (d.credit ? 'of max loss' : 'of debit') : 'of premium' },
+      { label: 'Max loss', value: cts > 0 ? (cts * sizeUnit(d) / acct * 100).toFixed(2) + '%' : '—', color: SC.red, sub: cts > 0 ? (d.kind === 'spread' ? (d.credit ? 'of account · width − credit' : 'of account · full debit') : 'of account') : '' }
     ],
     footer: (() => {
       const unit = sizeUnit(d);
@@ -1177,14 +1187,15 @@ function shareSaved(id) {
   const d = savedData[id];
   if (!d) return;
   const qty = d.qty || 0;
-  const pnl = (d.mid - d.entry) * 100 * qty;
-  const lossAtStop = (d.entry - d.atLod) * 100 * qty;
+  const sgn = d.credit ? -1 : 1;
+  const pnl = sgn * (d.mid - d.entry) * 100 * qty;
+  const lossAtStop = sgn * (d.entry - d.atLod) * 100 * qty;
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   shareCanvasToClipboard(drawShareCard({
-    title: [{ t: `${d.parsed.ticker} $${d.parsed.strike} ` }, { t: d.isCall ? 'CALL' : 'PUT', c: d.isCall ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
+    title: [{ t: `${d.parsed.ticker} ${strikesLabel(d)} ` }, { t: typeLabel(d).toUpperCase(), c: isBull(d) ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
     sub: `POSITION · underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
     stats: [
-      { label: 'Entry / ct', value: fmt$(d.entry), color: SC.blue, sub: 'your fill' },
+      { label: d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct', value: fmt$(d.entry), color: SC.blue, sub: 'your fill' },
       { label: 'Stop — underlying', value: fmt$(d.stopLevel), color: SC.red, sub: `${d.lodPct}% away · ${d.stopName}` },
       { label: 'P&L now', value: `${pnl >= 0 ? '+' : '−'}${(d.entry > 0 ? Math.abs(pnl) / (d.entry * 100 * qty) * 100 : 0).toFixed(1)}%`, color: pnl >= 0 ? SC.green : SC.red, sub: `mid ${fmt$(d.mid)}` },
       { label: lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop', value: `${lossAtStop > 0 ? '−' : '+'}${(d.entry > 0 ? Math.abs(lossAtStop) / (d.entry * 100 * qty) * 100 : 0).toFixed(0)}%`, color: lossAtStop > 0 ? SC.red : SC.green, sub: `of cost · ${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct` }
@@ -1233,17 +1244,17 @@ function copyPinned(cardId) {
   if (!d) return;
   const cts = unitsFor(riskDollars(), sizeUnit(d));
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} debit spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
-  copyPlainText(`bought $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying · risk ${(Math.max(1, cts) * sizeUnit(d) / acct * 100).toFixed(2)}% of account`);
+  const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} ${d.credit ? 'credit' : 'debit'} spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
+  copyPlainText(`${d.credit ? 'sold' : 'bought'} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying · risk ${(Math.max(1, cts) * sizeUnit(d) / acct * 100).toFixed(2)}% of account`);
 }
 
 function copySaved(id) {
   const d = savedData[id];
   if (!d) return;
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  const lossPct = (d.entry - d.atLod) * 100 * (d.qty || 0) / acct * 100;
-  const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} debit spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
-  copyPlainText(`bought $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.entry, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying${lossPct > 0 ? ` · risk ${lossPct.toFixed(2)}% of account` : ''}`);
+  const lossPct = (d.credit ? -1 : 1) * (d.entry - d.atLod) * 100 * (d.qty || 0) / acct * 100;
+  const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} ${d.credit ? 'credit' : 'debit'} spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
+  copyPlainText(`${d.credit ? 'sold' : 'bought'} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.entry, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying${lossPct > 0 ? ` · risk ${lossPct.toFixed(2)}% of account` : ''}`);
 }
 
 // ---------- backup: everything the app stores, as a JSON file ----------
@@ -3336,7 +3347,7 @@ function showDetail(tr, c, acct) {
     <div style="font-size:12px;color:var(--text3);margin-top:8px;font-family:var(--mono);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
       <span>${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'}${c.iv > 0 && hv20 > 0 ? (c.iv > hv20 * 1.5 ? ` <span style="color:var(--amber)">vs HV20 ${(hv20*100).toFixed(1)}% — paying up for vol</span>` : ` vs HV20 ${(hv20*100).toFixed(1)}%`) : ''} · Est. via ${c.model === 'bs' ? 'Black-Scholes, IV const' : 'Δ + ½Γ·move² approx'}</span>
       <button class="filter-btn" style="margin-left:auto;" onclick="openSim(simReg['${c.opt.symbol}'])">simulate returns</button>
-      ${chainSide !== 'both' ? `<button class="filter-btn" onclick="startSpread('${c.opt.symbol}')" title="Buy this leg, then tap the strike to sell against it">+ debit spread</button>` : ''}
+      ${chainSide !== 'both' ? `<button class="filter-btn" onclick="startSpread('${c.opt.symbol}')" title="Buy this leg, then tap the strike to sell against it">+ debit spread</button><button class="filter-btn" onclick="startSpread('${c.opt.symbol}', true)" title="Sell this leg, then tap the strike to buy against it">+ credit spread</button>` : ''}
     </div>
   </div></td>`;
   tr.parentNode.insertBefore(dr, tr.nextSibling);
@@ -3354,12 +3365,12 @@ function parseQuickStr(str) {
     return m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31;
   };
   const alphaCount = tokens.filter(isAlpha).length;
-  let ticker = null, optType = null, dateTok = null, pair = null, spread = false;
+  let ticker = null, optType = null, dateTok = null, pair = null, spread = false, creditSpread = false;
   const nums = [];
   for (const raw of tokens) {
     const t = raw.replace(/^\$/, '');
     const low = t.toLowerCase();
-    if ((low === 'cds' || low === 'pds') && !spread) { spread = true; optType = low === 'cds' ? 'call' : 'put'; continue; }
+    if ((low === 'cds' || low === 'pds' || low === 'ccs' || low === 'pcs') && !spread) { spread = true; creditSpread = low[1] === 'c'; optType = low[0] === 'c' ? 'call' : 'put'; continue; }
     if ((low === 'call' || low === 'put') && !optType) { optType = low; continue; }
     // bare c/p means the type only when another word can be the ticker (C and P are real tickers)
     if ((low === 'c' || low === 'p') && alphaCount > 1 && !optType) { optType = low === 'c' ? 'call' : 'put'; continue; }
@@ -3382,8 +3393,8 @@ function parseQuickStr(str) {
     const pr = pair || (nums.length === 2 ? nums : null);
     if (!pr || pr[0] === pr[1] || !(pr[0] > 0) || !(pr[1] > 0)) return null;
     const lo = Math.min(pr[0], pr[1]), hi = Math.max(pr[0], pr[1]);
-    strike = optType === 'call' ? lo : hi;  // debit: buy the closer-to-the-money strike
-    strike2 = optType === 'call' ? hi : lo; // sell the further one
+    strike = optType === 'call' ? lo : hi;  // near leg first: debit buys it, credit sells it
+    strike2 = optType === 'call' ? hi : lo; // the further-out leg
   } else {
     if (pair) return null; // a strike pair needs cds/pds to say which spread
     if (!nums.length) return null;
@@ -3403,8 +3414,8 @@ function parseQuickStr(str) {
   const mkOcc = k => `${ticker}${yyyy.toString().slice(2)}${mm}${dd}${typeChar}${String(Math.round(k * 1000)).padStart(8, '0')}`;
   const occ = mkOcc(strike);
   if (spread) {
-    return { ticker, strike, strike2, optType, spread: true, expStr, occ, occ2: mkOcc(strike2),
-      display: `${ticker} $${strike}/$${strike2} ${optType} debit spread ${expStr}` };
+    return { ticker, strike, strike2, optType, spread: true, credit: creditSpread, expStr, occ, occ2: mkOcc(strike2),
+      display: `${ticker} $${strike}/$${strike2} ${optType} ${creditSpread ? 'credit' : 'debit'} spread ${expStr}` };
   }
   return { ticker, strike, optType, expStr, occ, display: `${ticker} $${strike} ${optType} ${expStr}` };
 }
@@ -3428,7 +3439,7 @@ function removePinned(cardId) {
 // everything derived from the card's stop level
 function recalcPinnedStop(d) {
   const drop = d.stopLevel - d.underlyingPrice;
-  const losing = d.isCall ? drop < 0 : drop > 0;
+  const losing = isBull(d) ? drop < 0 : drop > 0;
   const T = yearsToExp(d.parsed && d.parsed.expStr);
   let atStopEst, atStopEstON;
   if (d.iv > 0 && T > 0) {
@@ -3439,11 +3450,17 @@ function recalcPinnedStop(d) {
     atStopEst = d.mid + d.delta * drop + 0.5 * (d.gamma || 0) * drop * drop;
     atStopEstON = atStopEst;
   }
-  if (losing) { atStopEst = Math.min(atStopEst, d.mid); atStopEstON = Math.min(atStopEstON, d.mid); }
-  d.atLod = Math.max(0, atStopEst);
-  d.atLodON = Math.max(0, atStopEstON);
-  d.lossPerContract = (d.mid - d.atLod) * 100;
-  d.lossOfCost = d.mid > 0 ? ((d.mid - d.atLod) / d.mid * 100) : 0;
+  // a loss-direction move can't show a gain: cheaper for longs, pricier to buy back for credit spreads
+  if (losing) {
+    atStopEst = d.credit ? Math.max(atStopEst, d.mid) : Math.min(atStopEst, d.mid);
+    atStopEstON = d.credit ? Math.max(atStopEstON, d.mid) : Math.min(atStopEstON, d.mid);
+  }
+  const cap = d.kind === 'spread' ? spreadWidth(d) : Infinity; // a vertical is never worth more than its width
+  d.atLod = Math.min(cap, Math.max(0, atStopEst));
+  d.atLodON = Math.min(cap, Math.max(0, atStopEstON));
+  d.lossPerContract = (d.credit ? -1 : 1) * (d.mid - d.atLod) * 100;
+  const basis = d.credit ? sizeUnit(d) : d.mid * 100; // credit: % of max loss, debit/single: % of cost
+  d.lossOfCost = basis > 0 ? d.lossPerContract / basis * 100 : 0;
   d.lodPct = d.underlyingPrice > 0 ? (drop / d.underlyingPrice * 100).toFixed(2) : '0.00';
 }
 
@@ -3517,53 +3534,65 @@ function persistSaved() {
   store.set('saved_positions', JSON.stringify(savedData));
 }
 
-// ---------- debit spreads: pick the long leg in a detail row, then tap the short strike ----------
+// ---------- verticals: pick the near leg in a detail row, then tap the far strike ----------
+// a credit spread is stored as a SHORT debit spread: same legs (near +1, far −1), mid = the credit, credit: true
 const detailReg = {}; // full calcOpt results by OCC symbol, for spread legs
 let spreadPending = null;
+let spreadPendingCredit = false;
 
-function startSpread(sym) {
+function startSpread(sym, credit) {
   const c = detailReg[sym];
   if (!c) return;
   spreadPending = c;
+  spreadPendingCredit = !!credit;
   closeDetails();
   const b = document.getElementById('spreadBanner');
   b.style.display = 'block';
-  b.innerHTML = `debit spread · long ${quoteData.symbol} $${+c.opt.strike}${c.isCall ? 'C' : 'P'} @ ${fmt$(c.mid)} — tap the strike to SELL (${c.isCall ? 'higher' : 'lower'}) <button onclick="cancelSpread()" style="float:right;background:none;border:none;color:var(--blue);cursor:pointer;font-weight:700;font-size:13px;line-height:1;">✕</button>`;
+  const dir = c.isCall ? 'higher' : 'lower';
+  const leg = `${quoteData.symbol} $${+c.opt.strike}${c.isCall ? 'C' : 'P'} @ ${fmt$(c.mid)}`;
+  b.innerHTML = (credit
+    ? `credit spread · short ${leg} — tap the strike to BUY (${dir})`
+    : `debit spread · long ${leg} — tap the strike to SELL (${dir})`)
+    + ` <button onclick="cancelSpread()" style="float:right;background:none;border:none;color:var(--blue);cursor:pointer;font-weight:700;font-size:13px;line-height:1;">✕</button>`;
 }
 
 function cancelSpread() {
   spreadPending = null;
+  spreadPendingCredit = false;
   const b = document.getElementById('spreadBanner');
   if (b) b.style.display = 'none';
 }
 
-function completeSpread(shortC) {
+function completeSpread(farC) {
   const L = spreadPending;
   if (!L) return;
-  if (shortC.opt.symbol === L.opt.symbol) { showError('Pick a different strike for the short leg.'); return; }
-  const okDir = L.isCall ? shortC.opt.strike > L.opt.strike : shortC.opt.strike < L.opt.strike;
-  if (!okDir) { showError(`Debit ${L.isCall ? 'call' : 'put'} spread: sell a ${L.isCall ? 'higher' : 'lower'} strike than $${+L.opt.strike}.`); return; }
-  const debit = L.mid - shortC.mid;
-  if (!(debit > 0)) { showError('That combination is a credit, not a debit — pick a strike closer to the money.'); return; }
+  const credit = spreadPendingCredit;
+  if (farC.opt.symbol === L.opt.symbol) { showError(`Pick a different strike for the ${credit ? 'long' : 'short'} leg.`); return; }
+  const okDir = L.isCall ? farC.opt.strike > L.opt.strike : farC.opt.strike < L.opt.strike;
+  if (!okDir) { showError(`${credit ? 'Credit' : 'Debit'} ${L.isCall ? 'call' : 'put'} spread: ${credit ? 'buy' : 'sell'} a ${L.isCall ? 'higher' : 'lower'} strike than $${+L.opt.strike}.`); return; }
+  const net = L.mid - farC.mid; // debit paid, or credit received
+  if (!(net > 0)) { showError(credit ? 'No credit there — the far leg costs more than the one you are selling.' : 'That combination is a credit, not a debit — pick a strike closer to the money.'); return; }
   cancelSpread();
+  const bull = credit ? !L.isCall : L.isCall;
+  const rawS = rawStop(bull ? 'stopLong' : 'stopShort');
   const cardId = 'pinned_' + Date.now();
   const d = {
-    kind: 'spread',
+    kind: 'spread', credit,
     parsed: { ticker: quoteData.symbol, strike: L.opt.strike, expStr: selectedExp, occ: L.opt.symbol },
     legs: [
       { K: L.opt.strike, iv: L.iv, side: 1, occ: L.opt.symbol, mid: L.mid, delta: L.delta },
-      { K: shortC.opt.strike, iv: shortC.iv, side: -1, occ: shortC.opt.symbol, mid: shortC.mid, delta: shortC.delta }
+      { K: farC.opt.strike, iv: farC.iv, side: -1, occ: farC.opt.symbol, mid: farC.mid, delta: farC.delta }
     ],
     isCall: L.isCall, itm: L.itm,
     underlyingPrice: effectivePrice(quoteData),
-    stopName: rawStop(L.isCall ? 'stopLong' : 'stopShort') > 0 ? 'stop' : (L.isCall ? 'LOD' : 'HOD'),
-    stopLevel: L.stop,
-    mid: debit,
-    bid: (L.opt.bid || 0) - (shortC.opt.ask || 0),
-    ask: (L.opt.ask || 0) - (shortC.opt.bid || 0),
-    delta: L.delta - shortC.delta, gamma: (L.gamma || 0) - (shortC.gamma || 0), iv: L.iv,
-    vol: Math.min(L.vol, shortC.vol), oi: Math.min(L.oi, shortC.oi),
-    spreadPct: debit > 0 ? (((L.opt.ask || 0) - (shortC.opt.bid || 0)) - ((L.opt.bid || 0) - (shortC.opt.ask || 0))) / debit * 100 : 0,
+    stopName: rawS > 0 ? 'stop' : (bull ? 'LOD' : 'HOD'),
+    stopLevel: rawS > 0 ? rawS : (bull ? (quoteData.low || 0) : (quoteData.high || 0)),
+    mid: net,
+    bid: (L.opt.bid || 0) - (farC.opt.ask || 0),
+    ask: (L.opt.ask || 0) - (farC.opt.bid || 0),
+    delta: L.delta - farC.delta, gamma: (L.gamma || 0) - (farC.gamma || 0), iv: L.iv,
+    vol: Math.min(L.vol, farC.vol), oi: Math.min(L.oi, farC.oi),
+    spreadPct: net > 0 ? (((L.opt.ask || 0) - (farC.opt.bid || 0)) - ((L.opt.bid || 0) - (farC.opt.ask || 0))) / net * 100 : 0,
     asOf: new Date().toLocaleTimeString()
   };
   recalcPinnedStop(d);
@@ -3574,7 +3603,7 @@ function completeSpread(shortC) {
   document.getElementById('pinnedSection').prepend(div);
   renderPinnedCard(cardId);
   updatePinnedBar();
-  showToast(`Spread added: ${quoteData.symbol} ${strikesLabel(d)} ${typeLabel(d)} · ${fmt$(debit)} debit`);
+  showToast(`Spread added: ${quoteData.symbol} ${strikesLabel(d)} ${typeLabel(d)} · ${fmt$(net)} ${credit ? 'credit' : 'debit'}`);
 }
 
 function saveCard(cardId) {
@@ -3663,16 +3692,18 @@ function renderSavedCard(id) {
   if (!d || !el) return;
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const qty = d.qty || 0;
-  const pnl = (d.mid - d.entry) * 100 * qty;
-  const pnlPct = d.entry > 0 ? ((d.mid - d.entry) / d.entry * 100) : 0;
+  const sgn = d.credit ? -1 : 1; // credit spreads profit when the spread gets cheaper to buy back
+  const pnl = sgn * (d.mid - d.entry) * 100 * qty;
+  const pnlPct = d.entry > 0 ? (sgn * (d.mid - d.entry) / d.entry * 100) : 0;
   // what the stop-out is worth measured from YOUR entry, not from mid
-  const lossAtStop = (d.entry - d.atLod) * 100 * qty;
+  const lossAtStop = sgn * (d.entry - d.atLod) * 100 * qty;
+  const lossAtStopON = sgn * (d.entry - d.atLodON) * 100 * qty;
   const cost = d.entry * 100 * qty;
   el.innerHTML = `
     <div class="pinned-header">
-      <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
+      <span class="tag ${isBull(d) ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
       <span class="pinned-symbol">${d.parsed.ticker} ${strikesLabel(d)} ${d.parsed.expStr}</span>
-      <span class="pinned-badge" style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">${d.kind === 'spread' ? 'SPREAD POSITION' : 'POSITION'}</span>
+      <span class="pinned-badge" style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">${d.kind === 'spread' ? (d.credit ? 'CREDIT SPREAD POSITION' : 'SPREAD POSITION') : 'POSITION'}</span>
       <span class="pinned-meta" style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, position recalculates" onchange="savedStopChanged('${id}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
       <button class="card-act" onclick="copySaved('${id}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
       <button class="card-act" onclick="shareSaved('${id}')" title="Copy this position as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
@@ -3681,11 +3712,11 @@ function renderSavedCard(id) {
       <button class="card-act" onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">${d.kind === 'spread' ? 'Debit / spread' : 'Entry / ct'}</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
-      <div class="stat"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" value="${qty}" step="1" min="0" title="Contracts you hold (does not change risk $)" onchange="savedQtyChanged('${id}', this)" /></div><div class="s-sub">${fmt$(cost)} at entry</div></div>
+      <div class="stat highlight"><div class="s-label">${d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct'}</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
+      <div class="stat"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" value="${qty}" step="1" min="0" title="Contracts you hold (does not change risk $)" onchange="savedQtyChanged('${id}', this)" /></div><div class="s-sub">${fmt$(cost)} ${d.credit ? 'credit received' : 'at entry'}</div></div>
       <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</div><div class="s-sub">mid ${fmt$(d.mid)} · ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%</div></div>
-      <div class="stat ${lossAtStop > 0 ? 'danger' : 'good'}"><div class="s-label">${lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop'}</div><div class="s-val">${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}</div><div class="s-sub">${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct · from your entry${qty > 0 && (d.entry - d.atLodON) * 100 * qty > lossAtStop + 0.005 ? `<br>held overnight: −${fmt$((d.entry - d.atLodON) * 100 * qty)}` : ''}</div></div>
-      <div class="stat teal"><div class="s-label">${d.kind === 'spread' ? 'Value @ stop' : 'Premium @ stop'}</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">${d.kind === 'spread' ? 'BS both legs' : 'Δ × move'} to ${d.stopName}</div></div>
+      <div class="stat ${lossAtStop > 0 ? 'danger' : 'good'}"><div class="s-label">${lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop'}</div><div class="s-val">${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}</div><div class="s-sub">${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct · from your entry${qty > 0 && lossAtStopON > lossAtStop + 0.005 ? `<br>held overnight: −${fmt$(lossAtStopON)}` : ''}</div></div>
+      <div class="stat teal"><div class="s-label">${d.kind === 'spread' ? (d.credit ? 'Close @ stop' : 'Value @ stop') : 'Premium @ stop'}</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">${d.kind === 'spread' ? 'BS both legs' : 'Δ × move'} to ${d.stopName}</div></div>
     </div>
   `;
   withFlash(el);
@@ -3768,36 +3799,40 @@ function renderPinnedCard(cardId) {
 
 function renderSpreadCard(cardId, d, risk, acct, cts) {
   const el = document.getElementById(cardId);
-  const width = Math.abs(d.legs[1].K - d.legs[0].K);
-  const maxProfitCt = (width - d.mid) * 100;
-  const breakeven = d.isCall ? d.legs[0].K + d.mid : d.legs[0].K - d.mid;
-  const debitTotal = cts * d.mid * 100;
-  const lossStopCt = (d.mid - d.atLod) * 100;
+  const width = spreadWidth(d);
+  const credit = !!d.credit;
+  const maxProfitCt = (credit ? d.mid : width - d.mid) * 100;
+  const maxLossCt = sizeUnit(d); // full debit, or width − credit
+  const breakeven = d.isCall ? d.legs[0].K + d.mid : d.legs[0].K - d.mid; // near strike ± net, both kinds
+  const lossStopCt = (credit ? -1 : 1) * (d.mid - d.atLod) * 100;
+  const lossStopCtON = (credit ? -1 : 1) * (d.mid - d.atLodON) * 100;
+  // max profit lands where the far leg finishes ITM (debit) or the sold near leg finishes OTM (credit)
+  const profTarget = credit ? `${d.isCall ? '≤' : '≥'} $${+d.legs[0].K}` : `${d.isCall ? '≥' : '≤'} $${+d.legs[1].K}`;
   el.innerHTML = `
     <div class="pinned-header">
-      <span class="tag ${d.isCall ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
+      <span class="tag ${isBull(d) ? 'call' : 'put'}">${d.isCall ? 'Call' : 'Put'}</span>
       <span class="pinned-symbol">${d.parsed.ticker} ${strikesLabel(d)} ${d.parsed.expStr}</span>
-      <span class="pinned-badge" style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">DEBIT SPREAD</span>
+      <span class="pinned-badge" style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:600;letter-spacing:0.04em;">${credit ? 'CREDIT' : 'DEBIT'} SPREAD</span>
       <span class="pinned-meta" style="font-size:12px;color:var(--text2);margin-left:4px;font-family:var(--mono);">underlying ${fmt$(d.underlyingPrice)} &nbsp;·&nbsp; <span style="color:var(--red);">${d.stopName} $<input type="number" class="s-val-input" value="${d.stopLevel.toFixed(2)}" step="0.01" min="0" title="Edit the stop, card recalculates" onchange="pinnedStopChanged('${cardId}', this)" style="width:64px;font-size:12px;color:var(--red);" /> (${d.lodPct}%)</span> &nbsp;·&nbsp; ${d.asOf || ''}</span>
       <button class="card-act" onclick="copyPinned('${cardId}')" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
       <button class="card-act" onclick="sharePinned('${cardId}')" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
       <button class="card-act" onclick="simFromPinned('${cardId}')" title="Simulate spread returns over time (Black-Scholes, both legs)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
-      <button class="card-act" onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry debit and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
+      <button class="card-act" onclick="saveCard('${cardId}')" title="Save as a position: persists, with editable entry ${credit ? 'credit' : 'debit'} and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
       <button class="card-act" onclick="refreshPinned('${cardId}')" title="Refresh both legs" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button class="card-act" onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
-      <div class="stat"><div class="s-label">Net debit / spread</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">long $${+d.legs[0].K} @ ${fmt$(d.legs[0].mid)} · short $${+d.legs[1].K} @ ${fmt$(d.legs[1].mid)}${d.spreadPct > 15 ? ` · <span style="color:var(--amber)">wide fill risk</span>` : ''}</div></div>
-      <div class="stat good"><div class="s-label">Max profit / spread</div><div class="s-val">${fmt$(maxProfitCt)}</div><div class="s-sub">+${d.mid > 0 ? (maxProfitCt / (d.mid * 100) * 100).toFixed(0) : 0}% at ≥ $${+d.legs[1].K} by expiry</div></div>
+      <div class="stat"><div class="s-label">Net ${credit ? 'credit' : 'debit'} / spread</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">${credit ? 'short' : 'long'} $${+d.legs[0].K} @ ${fmt$(d.legs[0].mid)} · ${credit ? 'long' : 'short'} $${+d.legs[1].K} @ ${fmt$(d.legs[1].mid)}${d.spreadPct > 15 ? ` · <span style="color:var(--amber)">wide fill risk</span>` : ''}</div></div>
+      <div class="stat good"><div class="s-label">Max profit / spread</div><div class="s-val">${fmt$(maxProfitCt)}</div><div class="s-sub">+${maxLossCt > 0 ? (maxProfitCt / maxLossCt * 100).toFixed(0) : 0}% at ${profTarget} by expiry</div></div>
       <div class="stat teal"><div class="s-label">Breakeven</div><div class="s-val">${fmt$(breakeven)}</div><div class="s-sub">at expiry · width ${fmt$(width)}</div></div>
-      <div class="stat"><div class="s-label">Value @ stop</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">${lossStopCt > 0 ? `−${fmt$(lossStopCt)} (−${d.lossOfCost.toFixed(0)}%)` : 'holds value'} · BS both legs${(d.mid - d.atLodON) * 100 > lossStopCt + 0.005 ? `<br>held overnight: −${fmt$((d.mid - d.atLodON) * 100)}` : ''}</div></div>
+      <div class="stat"><div class="s-label">${credit ? 'Close @ stop' : 'Value @ stop'}</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">${lossStopCt > 0 ? `−${fmt$(lossStopCt)} (−${d.lossOfCost.toFixed(0)}%)` : (credit ? 'keeps the credit' : 'holds value')} · BS both legs${lossStopCtON > lossStopCt + 0.005 ? `<br>held overnight: −${fmt$(lossStopCtON)}` : ''}</div></div>
     </div>
     <div style="height:10px;"></div>
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">Spreads</div><div class="s-val">${d.mid > 0 ? `<input type="number" class="s-val-input" value="${cts}" min="0" step="1" title="Type a spread count, risk $ follows" onchange="contractsQtyChanged(this, ${d.mid * 100})" />` : '—'}</div><div class="s-sub">sized by full debit · edit to set risk</div></div>
-      <div class="stat danger"><div class="s-label">Max loss</div><div class="s-val">${cts > 0 ? fmt$(debitTotal) : '—'}</div><div class="s-sub">${cts > 0 ? (debitTotal / acct * 100).toFixed(2) + '% of acct · the full debit' : ''}</div></div>
+      <div class="stat highlight"><div class="s-label">Spreads</div><div class="s-val">${maxLossCt > 0 ? `<input type="number" class="s-val-input" value="${cts}" min="0" step="1" title="Type a spread count, risk $ follows" onchange="contractsQtyChanged(this, ${maxLossCt})" />` : '—'}</div><div class="s-sub">sized by ${credit ? 'max loss (width − credit)' : 'full debit'} · edit to set risk</div></div>
+      <div class="stat danger"><div class="s-label">Max loss</div><div class="s-val">${cts > 0 ? fmt$(cts * maxLossCt) : '—'}</div><div class="s-sub">${cts > 0 ? (cts * maxLossCt / acct * 100).toFixed(2) + '% of acct · ' + (credit ? 'width − credit' : 'the full debit') : ''}</div></div>
       <div class="stat good"><div class="s-label">Max profit total</div><div class="s-val">${cts > 0 ? fmt$(cts * maxProfitCt) : '—'}</div><div class="s-sub">${cts > 0 ? (cts * maxProfitCt / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
-      <div class="stat"><div class="s-label">Reward / risk</div><div class="s-val">${d.mid > 0 ? (maxProfitCt / (d.mid * 100)).toFixed(2) : '—'}</div><div class="s-sub">max profit ÷ debit</div></div>
+      <div class="stat"><div class="s-label">Reward / risk</div><div class="s-val">${maxLossCt > 0 ? (maxProfitCt / maxLossCt).toFixed(2) : '—'}</div><div class="s-sub">max profit ÷ ${credit ? 'max loss' : 'debit'}</div></div>
     </div>
   `;
   withFlash(el);
@@ -3837,11 +3872,12 @@ async function fetchQuickOption() {
     const lod = uq.low || 0;
     const hod = uq.high || 0;
     // same ticker as the loaded quote → use the global stop pair; else this underlying's LOD/HOD
+    const bull = parsed.credit ? !isCall : isCall; // credit spreads win the other way
     const sameTicker = quoteData && quoteData.symbol === parsed.ticker;
-    const raw = sameTicker ? rawStop(isCall ? 'stopLong' : 'stopShort') : 0;
+    const raw = sameTicker ? rawStop(bull ? 'stopLong' : 'stopShort') : 0;
     const usingDefault = raw <= 0;
-    const stopLevel = usingDefault ? (isCall ? lod : hod) : raw;
-    const stopName = usingDefault ? (isCall ? 'LOD' : 'HOD') : 'stop';
+    const stopLevel = usingDefault ? (bull ? lod : hod) : raw;
+    const stopName = usingDefault ? (bull ? 'LOD' : 'HOD') : 'stop';
     const itm = isCall ? parsed.strike < underlyingPrice : parsed.strike > underlyingPrice;
 
     const cardId = 'pinned_' + Date.now();
@@ -3857,15 +3893,15 @@ async function fetchQuickOption() {
         iv: q2x.greeks?.smv_vol || q2x.greeks?.mid_iv || 0, delta: q2x.greeks?.delta || 0
       });
       const lg = leg(q1, parsed.strike, 1), sh = leg(q2, parsed.strike2, -1);
-      const debit = lg.mid - sh.mid;
-      if (!(debit > 0)) throw new Error('That combination is a credit at current mids, not a debit.');
+      const net = lg.mid - sh.mid; // debit paid, or credit received
+      if (!(net > 0)) throw new Error(parsed.credit ? 'No credit at current mids — check the strikes.' : 'That combination is a credit at current mids, not a debit.');
       d = {
-        kind: 'spread', parsed, legs: [lg, sh],
+        kind: 'spread', credit: !!parsed.credit, parsed, legs: [lg, sh],
         isCall, itm, underlyingPrice, stopName, stopLevel,
-        mid: debit, bid: lg.bid - sh.ask, ask: lg.ask - sh.bid,
+        mid: net, bid: lg.bid - sh.ask, ask: lg.ask - sh.bid,
         delta: lg.delta - sh.delta, gamma: (q1.greeks?.gamma || 0) - (q2.greeks?.gamma || 0), iv: lg.iv,
         vol: Math.min(q1.volume || 0, q2.volume || 0), oi: Math.min(q1.open_interest || 0, q2.open_interest || 0),
-        spreadPct: debit > 0 ? ((lg.ask - sh.bid) - (lg.bid - sh.ask)) / debit * 100 : 0,
+        spreadPct: net > 0 ? ((lg.ask - sh.bid) - (lg.bid - sh.ask)) / net * 100 : 0,
         asOf: new Date().toLocaleTimeString()
       };
     } else {
