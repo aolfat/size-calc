@@ -1166,7 +1166,7 @@ function sharePinned(cardId) {
     title: [{ t: `${d.parsed.ticker} ${strikesLabel(d)} ` }, { t: typeLabel(d).toUpperCase(), c: isBull(d) ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
     sub: `underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
     stats: [
-      { label: d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct', value: fmt$(d.mid), color: SC.blue, sub: `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
+      { label: d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct', value: fmt$(d.mid), color: SC.blue, sub: d.credit && spreadWidth(d) > 0 ? `${(d.mid / spreadWidth(d) * 100).toFixed(0)}% of width · bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` : `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
       { label: 'Stop — underlying', value: fmt$(d.stopLevel), color: SC.red, sub: `${d.lodPct}% away · ${d.stopName}` },
       { label: 'Loss @ stop', value: d.lossOfCost.toFixed(0) + '%', color: SC.red, sub: d.kind === 'spread' ? (d.credit ? 'of max loss' : 'of debit') : 'of premium' },
       { label: 'Max loss', value: cts > 0 ? (cts * sizeUnit(d) / acct * 100).toFixed(2) + '%' : '—', color: SC.red, sub: cts > 0 ? (d.kind === 'spread' ? (d.credit ? 'of account · width − credit' : 'of account · full debit') : 'of account') : '' }
@@ -3712,7 +3712,7 @@ function renderSavedCard(id) {
       <button class="card-act" onclick="removeSaved('${id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">${d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct'}</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
+      <div class="stat highlight"><div class="s-label">${d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct'}</div><div class="s-val"><input type="number" class="s-val-input" value="${d.entry.toFixed(2)}" step="0.01" min="0" title="Your fill price" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill${d.credit && spreadWidth(d) > 0 ? ` · ${(d.entry / spreadWidth(d) * 100).toFixed(0)}% of width` : ''}</div></div>
       <div class="stat"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" value="${qty}" step="1" min="0" title="Contracts you hold (does not change risk $)" onchange="savedQtyChanged('${id}', this)" /></div><div class="s-sub">${fmt$(cost)} ${d.credit ? 'credit received' : 'at entry'}</div></div>
       <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${pnl >= 0 ? '+' : '−'}${fmt$(Math.abs(pnl))}</div><div class="s-sub">mid ${fmt$(d.mid)} · ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%</div></div>
       <div class="stat ${lossAtStop > 0 ? 'danger' : 'good'}"><div class="s-label">${lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop'}</div><div class="s-val">${lossAtStop > 0 ? '−' : '+'}${fmt$(Math.abs(lossAtStop))}</div><div class="s-sub">${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct · from your entry${qty > 0 && lossAtStopON > lossAtStop + 0.005 ? `<br>held overnight: −${fmt$(lossAtStopON)}` : ''}</div></div>
@@ -3822,8 +3822,10 @@ function renderSpreadCard(cardId, d, risk, acct, cts) {
       <button class="card-act" onclick="removePinned('${cardId}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
-      <div class="stat"><div class="s-label">Net ${credit ? 'credit' : 'debit'} / spread</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">${credit ? 'short' : 'long'} $${+d.legs[0].K} @ ${fmt$(d.legs[0].mid)} · ${credit ? 'long' : 'short'} $${+d.legs[1].K} @ ${fmt$(d.legs[1].mid)}${d.spreadPct > 15 ? ` · <span style="color:var(--amber)">wide fill risk</span>` : ''}</div></div>
-      <div class="stat good"><div class="s-label">Max profit / spread</div><div class="s-val">${fmt$(maxProfitCt)}</div><div class="s-sub">+${maxLossCt > 0 ? (maxProfitCt / maxLossCt * 100).toFixed(0) : 0}% at ${profTarget} by expiry</div></div>
+      <div class="stat"><div class="s-label">Net ${credit ? 'credit' : 'debit'} / spread</div><div class="s-val">${fmt$(d.mid)}</div><div class="s-sub">${credit && width > 0 ? `<b>${(d.mid / width * 100).toFixed(0)}% of width</b> · ` : ''}${credit ? 'short' : 'long'} $${+d.legs[0].K} @ ${fmt$(d.legs[0].mid)} · ${credit ? 'long' : 'short'} $${+d.legs[1].K} @ ${fmt$(d.legs[1].mid)}${d.spreadPct > 15 ? ` · <span style="color:var(--amber)">wide fill risk</span>` : ''}</div></div>
+      ${credit
+        ? `<div class="stat danger"><div class="s-label">Max loss / spread</div><div class="s-val">${fmt$(maxLossCt)}</div><div class="s-sub">width − credit · full loss at ${d.isCall ? '≥' : '≤'} $${+d.legs[1].K} by expiry</div></div>`
+        : `<div class="stat good"><div class="s-label">Max profit / spread</div><div class="s-val">${fmt$(maxProfitCt)}</div><div class="s-sub">+${maxLossCt > 0 ? (maxProfitCt / maxLossCt * 100).toFixed(0) : 0}% at ${profTarget} by expiry</div></div>`}
       <div class="stat teal"><div class="s-label">Breakeven</div><div class="s-val">${fmt$(breakeven)}</div><div class="s-sub">at expiry · width ${fmt$(width)}</div></div>
       <div class="stat"><div class="s-label">${credit ? 'Close @ stop' : 'Value @ stop'}</div><div class="s-val">${fmt$(d.atLod)}</div><div class="s-sub">${lossStopCt > 0 ? `−${fmt$(lossStopCt)} (−${d.lossOfCost.toFixed(0)}%)` : (credit ? 'keeps the credit' : 'holds value')} · BS both legs${lossStopCtON > lossStopCt + 0.005 ? `<br>held overnight: −${fmt$(lossStopCtON)}` : ''}</div></div>
     </div>
