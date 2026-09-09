@@ -1225,6 +1225,12 @@ function expChat(expStr) { // 2026-09-18 → 9/18
   return p.length === 3 ? +p[1] + '/' + +p[2] : expStr;
 }
 
+function ex100(unit, word) { // '· to risk $100: 3 contracts', or the one-unit cost when even one risks more
+  if (!(unit > 0)) return '';
+  const n = unitsFor(100, unit);
+  return n >= 1 ? ` · to risk $100: ${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}` : ` · 1 ${word} risks ${fmt$(unit)}`;
+}
+
 function copyShares() {
   const q = quoteData;
   if (!q) { showError('Load a ticker first.'); return; }
@@ -1236,7 +1242,7 @@ function copyShares() {
   if (rps <= 0) { showError('Stop is on the wrong side of entry.'); return; }
   const shares = unitsFor(riskDollars(), rps);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  copyPlainText(`${isLong ? 'bought' : 'shorted'} $${q.symbol} @ ${fmtN(entry, 2)} with stop at ${fmtN(stop, 2)} · risk ${(shares * rps / acct * 100).toFixed(2)}% · position ${(shares * entry / acct * 100).toFixed(1)}% of account`);
+  copyPlainText(`${isLong ? 'bought' : 'shorted'} $${q.symbol} @ ${fmtN(entry, 2)} with stop at ${fmtN(stop, 2)} · risk ${(shares * rps / acct * 100).toFixed(2)}% of account · position ${(shares * entry / acct * 100).toFixed(1)}%${ex100(rps, 'share')}`);
 }
 
 function copyPinned(cardId) {
@@ -1245,7 +1251,7 @@ function copyPinned(cardId) {
   const cts = unitsFor(riskDollars(), sizeUnit(d));
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} ${d.credit ? 'credit' : 'debit'} spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
-  copyPlainText(`${d.credit ? 'sold' : 'bought'} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying · risk ${(Math.max(1, cts) * sizeUnit(d) / acct * 100).toFixed(2)}% of account`);
+  copyPlainText(`${d.credit ? 'sold' : 'bought'} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying · risk ${(Math.max(1, cts) * sizeUnit(d) / acct * 100).toFixed(2)}% of account${ex100(sizeUnit(d), d.kind === 'spread' ? 'spread' : 'contract')}`);
 }
 
 function copySaved(id) {
