@@ -1242,7 +1242,7 @@ function copyShares() {
   if (rps <= 0) { showError('Stop is on the wrong side of entry.'); return; }
   const shares = unitsFor(riskDollars(), rps);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  copyPlainText(`${isLong ? 'bought' : 'shorted'} $${q.symbol} @ ${fmtN(entry, 2)} with stop at ${fmtN(stop, 2)} · risk ${(shares * rps / acct * 100).toFixed(2)}% of account · position ${(shares * entry / acct * 100).toFixed(1)}%${ex100(rps, 'share')}`);
+  copyPlainText(`${isLong ? 'bought' : 'shorted'} $${q.symbol} @ ${fmtN(entry, 2)} with stop at ${fmtN(stop, 2)} · risk ${(shares * rps / acct * 100).toFixed(2)}% of account${ex100(rps, 'share')}`);
 }
 
 function copyPinned(cardId) {
