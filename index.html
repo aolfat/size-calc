@@ -350,7 +350,7 @@
 
   <div class="header">
     <span class="dot"></span>
-    <h1><span id="brandSize" onclick="setView('calc')" style="cursor:pointer;" title="The calculator (s/o/v views)">Size</span> <span id="brandTools" onclick="setView('utils')" style="cursor:pointer;" title="Small tools: % gain calculator, leveraged ETF finder (u)">/ Tools</span></h1>
+    <h1><span id="brandSize" onclick="setView('calc')" style="cursor:pointer;" title="The calculator (s/o/v views)">Size</span> <span id="brandTools" onclick="setView('utils')" style="cursor:pointer;" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)">/ Tools</span></h1>
     <span class="sub" id="lastUpdated"></span>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
   </div>
@@ -368,7 +368,7 @@
         <span><kbd>s</kbd> shares</span>
         <span><kbd>o</kbd> options</span>
         <span><kbd>v</kbd> positions</span>
-        <span><kbd>u</kbd> tools · % gain, lev ETFs</span>
+        <span><kbd>t</kbd>/<kbd>u</kbd> tools ⇄ size</span>
         <span><kbd>d</kbd> long / short</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">chain</div>
@@ -1954,7 +1954,7 @@ const LEV_ETFS = {
   POET: [['POEL',2]],
   BTDR: [['BTDL',2]],
   CRML: [['CRMU',2]],
-  ARM:  [['ARMU',2]],
+  ARM:  [['ARMU',2],['ARMG',2]],
   RBLX: [['RBLU',2]],
   DJT:  [['DJTU',2]],
 };
@@ -2175,7 +2175,7 @@ function setView(v) {
   updateChartVisibility();
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
   document.getElementById('utilsSection').style.display = utilsView ? '' : 'none';
-  if (utilsView) { renderGain(); document.getElementById('gainCost').focus(); }
+  if (utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
   if (positionsView) {
     updateSavedBar();
     // fresh P&L on open when a key is available
@@ -4293,6 +4293,7 @@ function initShortcuts() {
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
       case 'v': setView(positionsView ? 'calc' : 'positions'); break;
+      case 't':
       case 'u': setView(utilsView ? 'calc' : 'utils'); break;
       case 'r': refreshQuote(); break;
       case 'l': toggleLive(); break;
