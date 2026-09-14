@@ -1933,19 +1933,40 @@ const LEV_ETFS = {
   OKLO: [['OKLL',2]],
   SOUN: [['SOUX',2]],
   CRCL: [['CRCG',2]],
+  BE:   [['BEX',2],['BEG',2],['BEC',2],['BEZ',-2]],
+  SMR:  [['SMUP',2],['SMU',2]],
+  SPCX: [['SPCM',2],['SPAL',2],['SPCG',-2],['SNK',-2]],
+  ORCL: [['ORCX',2]],
+  SOFI: [['SOFX',2],['SOFA',2]],
+  APP:  [['APPX',2],['APPC',2]],
+  RDDT: [['RDTL',2]],
+  CRWD: [['CRWL',2]],
+  SNOW: [['SNOU',2]],
+  GME:  [['GMEU',2]],
+  MARA: [['MRAL',2]],
+  AFRM: [['AFRU',2]],
+  AXON: [['AXUP',2]],
+  KTOS: [['KTUP',2]],
+  CLS:  [['CSEX',2]],
+  NNE:  [['NNEX',2]],
+  SNPS: [['SNPX',2]],
+  RCAT: [['RCAX',2]],
+  POET: [['POEL',2]],
+  BTDR: [['BTDL',2]],
+  CRML: [['CRMU',2]],
 };
 const LEV_NAMES = {
   SPY: 'S&P 500', QQQ: 'Nasdaq 100', IWM: 'Russell 2000', DIA: 'Dow 30', SMH: 'semiconductors',
   TLT: '20+ yr treasuries', GLD: 'gold', SLV: 'silver', USO: 'WTI crude', UNG: 'nat gas',
   GDX: 'gold miners', XLF: 'financials', XLE: 'energy', XBI: 'biotech', FXI: 'China large caps',
-  KWEB: 'China internet', IBIT: 'bitcoin', ETHA: 'ether', SKHY: 'SK Hynix',
+  KWEB: 'China internet', IBIT: 'bitcoin', ETHA: 'ether', SKHY: 'SK Hynix', SPCX: 'SpaceX',
 };
 const LEV_ALIASES = {
   SPX: 'SPY', ES: 'SPY', VOO: 'SPY', IVV: 'SPY', SPLG: 'SPY',
   NDX: 'QQQ', NQ: 'QQQ', QQQM: 'QQQ',
   RUT: 'IWM', RTY: 'IWM', DJI: 'DIA', DJX: 'DIA', YM: 'DIA', SOXX: 'SMH',
   GOOG: 'GOOGL', BTC: 'IBIT', BITO: 'IBIT', GBTC: 'IBIT', FBTC: 'IBIT',
-  ETH: 'ETHA', ETHE: 'ETHA', ETHW: 'ETHA', HYNIX: 'SKHY',
+  ETH: 'ETHA', ETHE: 'ETHA', ETHW: 'ETHA', HYNIX: 'SKHY', SPACEX: 'SPCX',
 };
 // typing a leveraged symbol itself resolves to its family (TQQQ → the QQQ set)
 const LEV_REVERSE = {};
