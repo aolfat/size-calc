@@ -587,6 +587,26 @@
       <div id="levResults" style="margin-top:14px;"></div>
       <div class="hint">covers the big single names plus index / sector / commodity ETFs · ranked by dollars traded per day · wide spreads flagged amber · tap a row to load it in the calculator</div>
     </div>
+    <div class="card">
+      <div class="section-title">Lev ETF price target</div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="flex:0 0 130px;">
+          <label>Lev ETF</label>
+          <input type="text" id="levTgtSymbol" placeholder="NVDL" style="text-transform:uppercase;" autocomplete="off" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" />
+        </div>
+        <div class="field" style="flex:0 0 150px;">
+          <label>Underlying target</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="levTgtPrice" step="0.01" min="0" placeholder="200" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" /></div>
+        </div>
+        <div class="field" style="flex:0 0 90px;">
+          <label>Days</label>
+          <input type="number" id="levTgtDays" step="1" min="1" value="1" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" />
+        </div>
+        <button class="btn primary" onclick="levTarget()" id="levTgtBtn"><span id="levTgtBtnText">Estimate</span></button>
+      </div>
+      <div id="levTgtResults" style="margin-top:14px;"></div>
+      <div class="hint">daily reset estimate · past day 1, decay uses the underlying's 20-day realized vol · IV crush, fees and borrow ignored · chop costs more than this</div>
+    </div>
   </div>
 
   <div id="errorBox" style="display:none;" class="error"></div>
@@ -2030,6 +2050,77 @@ function levLoad(sym) {
   else document.getElementById('ticker').focus();
 }
 
+// ---- Lev ETF price target ----
+// one daily reset is exact: lev × underlying move. Past that, GBM drag off the underlying's HV20:
+// expected = etfNow × gross^lev × exp((lev − lev²)/2 · σ² · days/252)
+async function levTarget() {
+  const out = document.getElementById('levTgtResults');
+  const sym = document.getElementById('levTgtSymbol').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!sym) { out.innerHTML = ''; return; }
+  const r = LEV_REVERSE[sym];
+  if (!r) {
+    const fam = LEV_ETFS[LEV_ALIASES[sym] || sym];
+    out.innerHTML = fam
+      ? `<div class="hint" style="margin:0;">${sym} is the underlying · pick one of its leveraged ETFs: ${fam.map(x => x[0]).join(', ')}</div>`
+      : `<div class="hint" style="margin:0;">nothing tracked for ${sym} · type a leveraged ETF from the finder above (NVDL, TQQQ, SOXL, TSLL...)</div>`;
+    return;
+  }
+  const target = parseFloat(document.getElementById('levTgtPrice').value);
+  if (!(target > 0)) { out.innerHTML = `<div class="hint" style="margin:0;">enter a target price for ${r.under}</div>`; return; }
+  if (!document.getElementById('apiKey').value.trim()) {
+    out.innerHTML = '<div class="hint" style="margin:0;">needs a Tradier key · add one in the API card on the Size side</div>';
+    return;
+  }
+  const days = Math.max(1, Math.round(parseFloat(document.getElementById('levTgtDays').value) || 1));
+  document.getElementById('levTgtBtnText').innerHTML = '<span class="spinner"></span>';
+  try {
+    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${sym},${r.under}`, { headers: headers() });
+    let qs = (await res.json())?.quotes?.quote || [];
+    if (!Array.isArray(qs)) qs = [qs];
+    const etfNow = qs.find(q => q.symbol === sym)?.last;
+    const underNow = qs.find(q => q.symbol === r.under)?.last;
+    if (!(etfNow > 0) || !(underNow > 0)) { showError(`No quote for ${sym} / ${r.under}.`); return; }
+    const gross = target / underNow;
+    let expected, noDrag = 0, hvNote = '';
+    if (days <= 1) {
+      expected = Math.max(0, etfNow * (1 + r.lev * (gross - 1)));
+    } else {
+      noDrag = etfNow * Math.pow(gross, r.lev);
+      let hv = 0;
+      try {
+        const from = new Date(); from.setDate(from.getDate() - 60);
+        const hres = await fetch(`${baseUrl()}/markets/history?symbol=${r.under}&interval=daily&start=${dateStr(from)}&end=${dateStr(new Date())}`, { headers: headers() });
+        let hdays = (await hres.json())?.history?.day || [];
+        if (!Array.isArray(hdays)) hdays = [hdays];
+        const closes = hdays.map(d => d.close).filter(c => c > 0);
+        if (closes.length >= 21) hv = hv20At(closes, closes.length - 1);
+      } catch (e) {}
+      expected = Math.max(0, noDrag * Math.exp((r.lev - r.lev * r.lev) / 2 * hv * hv * days / 252));
+      hvNote = hv > 0 ? `HV20 ${(hv * 100).toFixed(0)}% · ${days} days` : 'no history · drag skipped';
+    }
+    renderLevTarget(sym, r, etfNow, underNow, target, days, expected, noDrag, hvNote);
+  } catch (e) {
+    showError('Target estimate failed: ' + e.message);
+  } finally {
+    document.getElementById('levTgtBtnText').textContent = 'Estimate';
+  }
+}
+
+function renderLevTarget(sym, r, etfNow, underNow, target, days, expected, noDrag, hvNote) {
+  const uPct = (target / underNow - 1) * 100;
+  const ePct = (expected / etfNow - 1) * 100;
+  const up = ePct >= 0;
+  const sign = p => (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1) + '%';
+  const drag = days > 1 && noDrag > 0 ? Math.max(0, noDrag - expected) : 0;
+  document.getElementById('levTgtResults').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat ${up ? 'good' : 'danger'}"><div class="s-label">${sym} at target</div><div class="s-val">${fmt$(expected)}</div><div class="s-sub">${fmt$(etfNow)} → ${fmt$(expected)}</div></div>
+      <div class="stat"><div class="s-label">${sym} move</div><div class="s-val">${sign(ePct)}</div><div class="s-sub">${sym} is ${fmtLev(r.lev)} ${r.under}</div></div>
+      <div class="stat"><div class="s-label">${r.under} move</div><div class="s-val">${sign(uPct)}</div><div class="s-sub">${fmt$(underNow)} → ${fmt$(target)}</div></div>
+      ${days > 1 ? `<div class="stat"><div class="s-label">Decay cost</div><div class="s-val">−${fmt$(drag)}</div><div class="s-sub">${noDrag > 0 ? '−' + (drag / noDrag * 100).toFixed(1) + '% · ' : ''}${hvNote}</div></div>` : ''}
+    </div>`;
+}
+
 function setView(v) {
   positionsView = v === 'positions';
   utilsView = v === 'utils';
@@ -2247,16 +2338,18 @@ function applyDailyHistory(list) {
   const last = done[done.length - 1];
   prevDay = last ? { h: last.high, l: last.low, c: last.close } : null;
   const closes = done.map(x => x.close);
-  const hvAt = end => { // annualized 20-day HV ending at index `end` (exclusive)
-    const rets = [];
-    for (let i = end - 19; i < end; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
-    const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
-    const v = rets.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (rets.length - 1);
-    return Math.sqrt(v * 252);
-  };
   hvDist = [];
-  for (let end = 20; end < closes.length; end++) hvDist.push(hvAt(end));
-  if (closes.length >= 21) hv20 = hvAt(closes.length - 1);
+  for (let end = 20; end < closes.length; end++) hvDist.push(hv20At(closes, end));
+  if (closes.length >= 21) hv20 = hv20At(closes, closes.length - 1);
+}
+
+// annualized 20-day HV ending at index `end` (exclusive); shared with the lev ETF target tool
+function hv20At(closes, end) {
+  const rets = [];
+  for (let i = end - 19; i < end; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
+  const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+  const v = rets.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (rets.length - 1);
+  return Math.sqrt(v * 252);
 }
 
 function percentileOf(value, arr) {
