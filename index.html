@@ -1925,19 +1925,27 @@ const LEV_ETFS = {
   PLTR: [['PLTU',2],['PTIR',2],['PLTD',-1]],
   SMCI: [['SMCX',2]],
   BABA: [['BABX',2]],
+  SKHY: [['SKUU',2],['SKHA',2],['SKHU',2],['SKHX',2],['SKDD',-2],['SKHN',-2],['SKHZ',-1]],
+  HOOD: [['ROBN',2],['HOOX',2],['HOOG',2]],
+  HIMS: [['HIMZ',2]],
+  RKLB: [['RKLX',2]],
+  IONQ: [['IONX',2],['IONZ',-2]],
+  OKLO: [['OKLL',2]],
+  SOUN: [['SOUX',2]],
+  CRCL: [['CRCG',2]],
 };
 const LEV_NAMES = {
   SPY: 'S&P 500', QQQ: 'Nasdaq 100', IWM: 'Russell 2000', DIA: 'Dow 30', SMH: 'semiconductors',
   TLT: '20+ yr treasuries', GLD: 'gold', SLV: 'silver', USO: 'WTI crude', UNG: 'nat gas',
   GDX: 'gold miners', XLF: 'financials', XLE: 'energy', XBI: 'biotech', FXI: 'China large caps',
-  KWEB: 'China internet', IBIT: 'bitcoin', ETHA: 'ether',
+  KWEB: 'China internet', IBIT: 'bitcoin', ETHA: 'ether', SKHY: 'SK Hynix',
 };
 const LEV_ALIASES = {
   SPX: 'SPY', ES: 'SPY', VOO: 'SPY', IVV: 'SPY', SPLG: 'SPY',
   NDX: 'QQQ', NQ: 'QQQ', QQQM: 'QQQ',
   RUT: 'IWM', RTY: 'IWM', DJI: 'DIA', DJX: 'DIA', YM: 'DIA', SOXX: 'SMH',
   GOOG: 'GOOGL', BTC: 'IBIT', BITO: 'IBIT', GBTC: 'IBIT', FBTC: 'IBIT',
-  ETH: 'ETHA', ETHE: 'ETHA', ETHW: 'ETHA',
+  ETH: 'ETHA', ETHE: 'ETHA', ETHW: 'ETHA', HYNIX: 'SKHY',
 };
 // typing a leveraged symbol itself resolves to its family (TQQQ → the QQQ set)
 const LEV_REVERSE = {};
