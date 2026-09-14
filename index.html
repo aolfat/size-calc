@@ -574,6 +574,14 @@
           <label>Stock or index</label>
           <input type="text" id="levSymbol" placeholder="NVDA" style="text-transform:uppercase;" autocomplete="off" onkeydown="if(event.key==='Enter'){this.blur();findLevEtfs();}" />
         </div>
+        <div class="field" style="flex:0 0 auto;">
+          <label>Direction</label>
+          <div class="seg dir" id="levDirSeg">
+            <button id="levDirBoth" class="active" onclick="setLevDir('both')">Both</button>
+            <button id="levDirLong" class="long" onclick="setLevDir('long')">Long</button>
+            <button id="levDirShort" class="short" onclick="setLevDir('short')">Short</button>
+          </div>
+        </div>
         <button class="btn primary" onclick="findLevEtfs()" id="levBtn"><span id="levBtnText">Find</span></button>
       </div>
       <div id="levResults" style="margin-top:14px;"></div>
@@ -1915,6 +1923,18 @@ const LEV_ALIASES = {
 const LEV_REVERSE = {};
 for (const [u, list] of Object.entries(LEV_ETFS)) for (const [s, l] of list) LEV_REVERSE[s] = { under: u, lev: l };
 
+let levDir = 'both'; // both | long | short — a display filter, re-renders the last result
+let levLast = null;
+
+function setLevDir(d) {
+  levDir = d;
+  document.getElementById('levDirBoth').classList.toggle('active', d === 'both');
+  document.getElementById('levDirLong').classList.toggle('active', d === 'long');
+  document.getElementById('levDirShort').classList.toggle('active', d === 'short');
+  if (levLast) renderLevTable(levLast.under, levLast.rows, levLast.note, levLast.live);
+  else if (document.getElementById('levSymbol').value.trim()) findLevEtfs();
+}
+
 function fmtLev(l) { return (l < 0 ? '−' : '') + Math.abs(l) + 'x'; }
 function fmtDayVol(v) {
   if (!(v > 0)) return '—';
@@ -1926,7 +1946,7 @@ function fmtDayVol(v) {
 async function findLevEtfs() {
   const raw = document.getElementById('levSymbol').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   const out = document.getElementById('levResults');
-  if (!raw) { out.innerHTML = ''; return; }
+  if (!raw) { levLast = null; out.innerHTML = ''; return; }
   let under = LEV_ALIASES[raw] || raw;
   let note = '';
   if (!LEV_ETFS[under] && LEV_REVERSE[under]) {
@@ -1936,6 +1956,7 @@ async function findLevEtfs() {
   }
   const fam = LEV_ETFS[under];
   if (!fam) {
+    levLast = null;
     out.innerHTML = `<div class="hint" style="margin:0;">nothing tracked for ${raw} · coverage is the popular single-stock names plus major index, sector and commodity ETFs</div>`;
     return;
   }
@@ -1969,15 +1990,21 @@ async function findLevEtfs() {
 }
 
 function renderLevTable(under, rows, note, live) {
+  levLast = { under, rows, note, live };
   const out = document.getElementById('levResults');
   const name = LEV_NAMES[under];
-  const bestLong = live ? rows.find(r => r.lev > 0 && r.dayVol > 0) : null;
-  const bestShort = live ? rows.find(r => r.lev < 0 && r.dayVol > 0) : null;
+  const shown = levDir === 'both' ? rows : rows.filter(r => levDir === 'long' ? r.lev > 0 : r.lev < 0);
+  if (!shown.length) {
+    out.innerHTML = `<div class="hint" style="margin:0;">no ${levDir} leveraged ETF tracked for ${under}</div>`;
+    return;
+  }
+  const bestLong = live ? shown.find(r => r.lev > 0 && r.dayVol > 0) : null;
+  const bestShort = live ? shown.find(r => r.lev < 0 && r.dayVol > 0) : null;
   const badge = r => r === bestLong
     ? '<span class="lev-badge" style="background:var(--green-bg);color:var(--green);">best long</span>'
     : r === bestShort
     ? '<span class="lev-badge" style="background:var(--red-bg);color:var(--red);">best short</span>' : '';
-  const body = rows.map(r => `
+  const body = shown.map(r => `
     <tr onclick="levLoad('${r.sym}')" title="load ${r.sym} in the calculator">
       <td><b>${r.sym}</b>${badge(r)}</td>
       <td style="color:${r.lev > 0 ? 'var(--green)' : 'var(--red)'};font-weight:600;">${fmtLev(r.lev)}</td>
