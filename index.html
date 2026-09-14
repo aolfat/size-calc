@@ -156,6 +156,7 @@
 
   .badge-itm { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--amber-bg); color: var(--amber); font-weight: 600; margin-left: 6px; vertical-align: middle; }
   .badge-otm { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--bg4); color: var(--text3); font-weight: 600; margin-left: 6px; vertical-align: middle; }
+  .lev-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; margin-left: 6px; vertical-align: middle; white-space: nowrap; }
 
   .error { background: var(--red-bg); border: 1px solid var(--red-bd); border-radius: var(--radius); padding: 10px 14px; color: var(--red); font-size: 13px; position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 120; max-width: min(90vw, 640px); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.8); }
   .error.ok { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
@@ -349,7 +350,7 @@
 
   <div class="header">
     <span class="dot"></span>
-    <h1><span id="brandSize" onclick="setView('calc')" style="cursor:pointer;" title="The calculator (s/o/v views)">Size</span> <span id="brandTools" onclick="setView('utils')" style="cursor:pointer;" title="Small tools: % gain calculator (u)">/ Tools</span></h1>
+    <h1><span id="brandSize" onclick="setView('calc')" style="cursor:pointer;" title="The calculator (s/o/v views)">Size</span> <span id="brandTools" onclick="setView('utils')" style="cursor:pointer;" title="Small tools: % gain calculator, leveraged ETF finder (u)">/ Tools</span></h1>
     <span class="sub" id="lastUpdated"></span>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
   </div>
@@ -367,7 +368,7 @@
         <span><kbd>s</kbd> shares</span>
         <span><kbd>o</kbd> options</span>
         <span><kbd>v</kbd> positions</span>
-        <span><kbd>u</kbd> tools · % gain</span>
+        <span><kbd>u</kbd> tools · % gain, lev ETFs</span>
         <span><kbd>d</kbd> long / short</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">chain</div>
@@ -565,6 +566,46 @@
       </div>
       <div class="stat-grid" style="margin-top:14px;" id="gainStats"></div>
       <div class="hint">works for anything with two prices: shares, option premiums, whole positions</div>
+    </div>
+    <div class="card">
+      <div class="section-title">Leveraged ETF finder</div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="flex:0 0 170px;">
+          <label>Stock or index</label>
+          <input type="text" id="levSymbol" placeholder="NVDA" style="text-transform:uppercase;" autocomplete="off" onkeydown="if(event.key==='Enter'){this.blur();findLevEtfs();}" />
+        </div>
+        <div class="field" style="flex:0 0 auto;">
+          <label>Direction</label>
+          <div class="seg dir" id="levDirSeg">
+            <button id="levDirBoth" class="active" onclick="setLevDir('both')">Both</button>
+            <button id="levDirLong" class="long" onclick="setLevDir('long')">Long</button>
+            <button id="levDirShort" class="short" onclick="setLevDir('short')">Short</button>
+          </div>
+        </div>
+        <button class="btn primary" onclick="findLevEtfs()" id="levBtn"><span id="levBtnText">Find</span></button>
+      </div>
+      <div id="levResults" style="margin-top:14px;"></div>
+      <div class="hint">covers the big single names plus index / sector / commodity ETFs · ranked by dollars traded per day · wide spreads flagged amber · tap a row to load it in the calculator</div>
+    </div>
+    <div class="card">
+      <div class="section-title">Lev ETF price target</div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="flex:0 0 130px;">
+          <label>Lev ETF</label>
+          <input type="text" id="levTgtSymbol" placeholder="NVDL" style="text-transform:uppercase;" autocomplete="off" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" />
+        </div>
+        <div class="field" style="flex:0 0 150px;">
+          <label>Underlying target</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="levTgtPrice" step="0.01" min="0" placeholder="200" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" /></div>
+        </div>
+        <div class="field" style="flex:0 0 90px;">
+          <label>Days</label>
+          <input type="number" id="levTgtDays" step="1" min="1" value="1" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" />
+        </div>
+        <button class="btn primary" onclick="levTarget()" id="levTgtBtn"><span id="levTgtBtnText">Estimate</span></button>
+      </div>
+      <div id="levTgtResults" style="margin-top:14px;"></div>
+      <div class="hint">daily reset estimate · past day 1, decay uses the underlying's 20-day realized vol · IV crush, fees and borrow ignored · chop costs more than this</div>
     </div>
   </div>
 
@@ -1845,6 +1886,241 @@ function renderGain() {
   `;
 }
 
+// ---- Leveraged ETF finder ----
+// curated map: underlying → [symbol, daily leverage factor], longs first.
+// Leverage labels are static (issuers do change them); prices/volume/spread come live from quotes.
+const LEV_ETFS = {
+  SPY:  [['SSO',2],['UPRO',3],['SPXL',3],['SH',-1],['SDS',-2],['SPXU',-3],['SPXS',-3]],
+  QQQ:  [['QLD',2],['TQQQ',3],['PSQ',-1],['QID',-2],['SQQQ',-3]],
+  IWM:  [['UWM',2],['TNA',3],['RWM',-1],['TWM',-2],['TZA',-3]],
+  DIA:  [['DDM',2],['UDOW',3],['DOG',-1],['DXD',-2],['SDOW',-3]],
+  SMH:  [['USD',2],['SOXL',3],['SSG',-2],['SOXS',-3]],
+  TLT:  [['UBT',2],['TMF',3],['TBF',-1],['TBT',-2],['TMV',-3]],
+  GLD:  [['UGL',2],['GLL',-2]],
+  SLV:  [['AGQ',2],['ZSL',-2]],
+  USO:  [['UCO',2],['SCO',-2]],
+  UNG:  [['BOIL',2],['KOLD',-2]],
+  GDX:  [['NUGT',2],['DUST',-2]],
+  XLF:  [['FAS',3],['FAZ',-3]],
+  XLE:  [['ERX',2],['ERY',-2]],
+  XBI:  [['LABU',3],['LABD',-3]],
+  FXI:  [['YINN',3],['YANG',-3]],
+  KWEB: [['CWEB',2]],
+  IBIT: [['BITX',2],['BITU',2],['BITI',-1],['SBIT',-2]],
+  ETHA: [['ETHU',2],['ETHT',2],['ETHD',-2]],
+  NVDA: [['NVDL',2],['NVDU',2],['NVDX',2],['NVDD',-1],['NVD',-2],['NVDQ',-2],['NVDS',-2]],
+  TSLA: [['TSLL',2],['TSLT',2],['TSLR',2],['TSLS',-1],['TSLQ',-2],['TSLZ',-2],['TSDD',-2]],
+  AAPL: [['AAPU',2],['AAPB',2],['AAPD',-1]],
+  MSFT: [['MSFU',2],['MSFL',2],['MSFD',-1]],
+  AMZN: [['AMZU',2],['AMZZ',2],['AMZD',-1]],
+  GOOGL:[['GGLL',2],['GGLS',-1]],
+  META: [['METU',2],['FBL',2],['METD',-1]],
+  AMD:  [['AMDL',2],['AMUU',2],['AMDD',-1],['AMDS',-2]],
+  AVGO: [['AVL',2],['AVGX',2],['AVS',-2]],
+  NFLX: [['NFXL',2],['NFXS',-1]],
+  MU:   [['MUU',2],['MUD',-1]],
+  TSM:  [['TSMX',2],['TSMZ',-1]],
+  COIN: [['CONL',2]],
+  MSTR: [['MSTU',2],['MSTX',2],['MSTZ',-2],['SMST',-2]],
+  PLTR: [['PLTU',2],['PTIR',2],['PLTD',-1]],
+  SMCI: [['SMCX',2]],
+  BABA: [['BABX',2]],
+};
+const LEV_NAMES = {
+  SPY: 'S&P 500', QQQ: 'Nasdaq 100', IWM: 'Russell 2000', DIA: 'Dow 30', SMH: 'semiconductors',
+  TLT: '20+ yr treasuries', GLD: 'gold', SLV: 'silver', USO: 'WTI crude', UNG: 'nat gas',
+  GDX: 'gold miners', XLF: 'financials', XLE: 'energy', XBI: 'biotech', FXI: 'China large caps',
+  KWEB: 'China internet', IBIT: 'bitcoin', ETHA: 'ether',
+};
+const LEV_ALIASES = {
+  SPX: 'SPY', ES: 'SPY', VOO: 'SPY', IVV: 'SPY', SPLG: 'SPY',
+  NDX: 'QQQ', NQ: 'QQQ', QQQM: 'QQQ',
+  RUT: 'IWM', RTY: 'IWM', DJI: 'DIA', DJX: 'DIA', YM: 'DIA', SOXX: 'SMH',
+  GOOG: 'GOOGL', BTC: 'IBIT', BITO: 'IBIT', GBTC: 'IBIT', FBTC: 'IBIT',
+  ETH: 'ETHA', ETHE: 'ETHA', ETHW: 'ETHA',
+};
+// typing a leveraged symbol itself resolves to its family (TQQQ → the QQQ set)
+const LEV_REVERSE = {};
+for (const [u, list] of Object.entries(LEV_ETFS)) for (const [s, l] of list) LEV_REVERSE[s] = { under: u, lev: l };
+
+let levDir = 'both'; // both | long | short — a display filter, re-renders the last result
+let levLast = null;
+
+function setLevDir(d) {
+  levDir = d;
+  document.getElementById('levDirBoth').classList.toggle('active', d === 'both');
+  document.getElementById('levDirLong').classList.toggle('active', d === 'long');
+  document.getElementById('levDirShort').classList.toggle('active', d === 'short');
+  if (levLast) renderLevTable(levLast.under, levLast.rows, levLast.note, levLast.live);
+  else if (document.getElementById('levSymbol').value.trim()) findLevEtfs();
+}
+
+function fmtLev(l) { return (l < 0 ? '−' : '') + Math.abs(l) + 'x'; }
+function fmtDayVol(v) {
+  if (!(v > 0)) return '—';
+  if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return '$' + (v / 1e6).toFixed(0) + 'M';
+  return '$' + (v / 1e3).toFixed(0) + 'k';
+}
+
+async function findLevEtfs() {
+  const raw = document.getElementById('levSymbol').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const out = document.getElementById('levResults');
+  if (!raw) { levLast = null; out.innerHTML = ''; return; }
+  let under = LEV_ALIASES[raw] || raw;
+  let note = '';
+  if (!LEV_ETFS[under] && LEV_REVERSE[under]) {
+    const r = LEV_REVERSE[under];
+    note = `${under} is already leveraged: ${fmtLev(r.lev)} ${r.under} daily · showing the whole family`;
+    under = r.under;
+  }
+  const fam = LEV_ETFS[under];
+  if (!fam) {
+    levLast = null;
+    out.innerHTML = `<div class="hint" style="margin:0;">nothing tracked for ${raw} · coverage is the popular single-stock names plus major index, sector and commodity ETFs</div>`;
+    return;
+  }
+  const rows = fam.map(([sym, lev]) => ({ sym, lev }));
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) { renderLevTable(under, rows, note, false); return; }
+  document.getElementById('levBtnText').innerHTML = '<span class="spinner"></span>';
+  try {
+    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${rows.map(r => r.sym).join(',')}`, { headers: headers() });
+    const json = await res.json();
+    let qs = json?.quotes?.quote || [];
+    if (!Array.isArray(qs)) qs = [qs];
+    const bySym = {};
+    for (const q of qs) bySym[q.symbol] = q;
+    for (const r of rows) {
+      const q = bySym[r.sym];
+      if (!q || !(q.last > 0)) continue; // delisted or renamed since the map was written — sinks to the bottom
+      r.last = q.last;
+      const vol = q.average_volume > 0 ? q.average_volume : q.volume;
+      r.dayVol = vol > 0 ? vol * q.last : 0;
+      if (q.bid > 0 && q.ask > 0 && q.ask >= q.bid) r.spread = (q.ask - q.bid) / ((q.ask + q.bid) / 2) * 100;
+    }
+    rows.sort((a, b) => (b.dayVol || 0) - (a.dayVol || 0));
+    renderLevTable(under, rows, note, true);
+  } catch (e) {
+    showError('Leveraged ETF lookup failed: ' + e.message);
+    renderLevTable(under, rows, note, false);
+  } finally {
+    document.getElementById('levBtnText').textContent = 'Find';
+  }
+}
+
+function renderLevTable(under, rows, note, live) {
+  levLast = { under, rows, note, live };
+  const out = document.getElementById('levResults');
+  const name = LEV_NAMES[under];
+  const shown = levDir === 'both' ? rows : rows.filter(r => levDir === 'long' ? r.lev > 0 : r.lev < 0);
+  if (!shown.length) {
+    out.innerHTML = `<div class="hint" style="margin:0;">no ${levDir} leveraged ETF tracked for ${under}</div>`;
+    return;
+  }
+  const bestLong = live ? shown.find(r => r.lev > 0 && r.dayVol > 0) : null;
+  const bestShort = live ? shown.find(r => r.lev < 0 && r.dayVol > 0) : null;
+  const badge = r => r === bestLong
+    ? '<span class="lev-badge" style="background:var(--green-bg);color:var(--green);">best long</span>'
+    : r === bestShort
+    ? '<span class="lev-badge" style="background:var(--red-bg);color:var(--red);">best short</span>' : '';
+  const body = shown.map(r => `
+    <tr onclick="levLoad('${r.sym}')" title="load ${r.sym} in the calculator">
+      <td><b>${r.sym}</b>${badge(r)}</td>
+      <td style="color:${r.lev > 0 ? 'var(--green)' : 'var(--red)'};font-weight:600;">${fmtLev(r.lev)}</td>
+      <td>${r.last ? fmt$(r.last) : '—'}</td>
+      <td${r.spread > 0.25 ? ' style="color:var(--amber);font-weight:600;"' : ''}>${r.spread != null ? r.spread.toFixed(2) + '%' : '—'}</td>
+      <td>${live ? fmtDayVol(r.dayVol) : '—'}</td>
+    </tr>`).join('');
+  out.innerHTML = `
+    ${note ? `<div class="hint" style="margin:0 0 8px;">${note}</div>` : ''}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">leveraged plays on <b style="color:var(--text);">${under}</b>${name ? ' · ' + name : ''} · daily reset, they decay on chop</div>
+    <table>
+      <thead><tr><th style="width:30%;">ETF</th><th>Lev</th><th>Price</th><th>Spread</th><th>$ / day</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    ${live ? '' : '<div class="hint" style="margin-top:8px;">add a Tradier key on the Size side to rank these by live volume and spread</div>'}
+  `;
+}
+
+function levLoad(sym) {
+  document.getElementById('ticker').value = sym;
+  setView('calc');
+  if (document.getElementById('apiKey').value.trim()) fetchQuote();
+  else document.getElementById('ticker').focus();
+}
+
+// ---- Lev ETF price target ----
+// one daily reset is exact: lev × underlying move. Past that, GBM drag off the underlying's HV20:
+// expected = etfNow × gross^lev × exp((lev − lev²)/2 · σ² · days/252)
+async function levTarget() {
+  const out = document.getElementById('levTgtResults');
+  const sym = document.getElementById('levTgtSymbol').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!sym) { out.innerHTML = ''; return; }
+  const r = LEV_REVERSE[sym];
+  if (!r) {
+    const fam = LEV_ETFS[LEV_ALIASES[sym] || sym];
+    out.innerHTML = fam
+      ? `<div class="hint" style="margin:0;">${sym} is the underlying · pick one of its leveraged ETFs: ${fam.map(x => x[0]).join(', ')}</div>`
+      : `<div class="hint" style="margin:0;">nothing tracked for ${sym} · type a leveraged ETF from the finder above (NVDL, TQQQ, SOXL, TSLL...)</div>`;
+    return;
+  }
+  const target = parseFloat(document.getElementById('levTgtPrice').value);
+  if (!(target > 0)) { out.innerHTML = `<div class="hint" style="margin:0;">enter a target price for ${r.under}</div>`; return; }
+  if (!document.getElementById('apiKey').value.trim()) {
+    out.innerHTML = '<div class="hint" style="margin:0;">needs a Tradier key · add one in the API card on the Size side</div>';
+    return;
+  }
+  const days = Math.max(1, Math.round(parseFloat(document.getElementById('levTgtDays').value) || 1));
+  document.getElementById('levTgtBtnText').innerHTML = '<span class="spinner"></span>';
+  try {
+    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${sym},${r.under}`, { headers: headers() });
+    let qs = (await res.json())?.quotes?.quote || [];
+    if (!Array.isArray(qs)) qs = [qs];
+    const etfNow = qs.find(q => q.symbol === sym)?.last;
+    const underNow = qs.find(q => q.symbol === r.under)?.last;
+    if (!(etfNow > 0) || !(underNow > 0)) { showError(`No quote for ${sym} / ${r.under}.`); return; }
+    const gross = target / underNow;
+    let expected, noDrag = 0, hvNote = '';
+    if (days <= 1) {
+      expected = Math.max(0, etfNow * (1 + r.lev * (gross - 1)));
+    } else {
+      noDrag = etfNow * Math.pow(gross, r.lev);
+      let hv = 0;
+      try {
+        const from = new Date(); from.setDate(from.getDate() - 60);
+        const hres = await fetch(`${baseUrl()}/markets/history?symbol=${r.under}&interval=daily&start=${dateStr(from)}&end=${dateStr(new Date())}`, { headers: headers() });
+        let hdays = (await hres.json())?.history?.day || [];
+        if (!Array.isArray(hdays)) hdays = [hdays];
+        const closes = hdays.map(d => d.close).filter(c => c > 0);
+        if (closes.length >= 21) hv = hv20At(closes, closes.length - 1);
+      } catch (e) {}
+      expected = Math.max(0, noDrag * Math.exp((r.lev - r.lev * r.lev) / 2 * hv * hv * days / 252));
+      hvNote = hv > 0 ? `HV20 ${(hv * 100).toFixed(0)}% · ${days} days` : 'no history · drag skipped';
+    }
+    renderLevTarget(sym, r, etfNow, underNow, target, days, expected, noDrag, hvNote);
+  } catch (e) {
+    showError('Target estimate failed: ' + e.message);
+  } finally {
+    document.getElementById('levTgtBtnText').textContent = 'Estimate';
+  }
+}
+
+function renderLevTarget(sym, r, etfNow, underNow, target, days, expected, noDrag, hvNote) {
+  const uPct = (target / underNow - 1) * 100;
+  const ePct = (expected / etfNow - 1) * 100;
+  const up = ePct >= 0;
+  const sign = p => (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1) + '%';
+  const drag = days > 1 && noDrag > 0 ? Math.max(0, noDrag - expected) : 0;
+  document.getElementById('levTgtResults').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat ${up ? 'good' : 'danger'}"><div class="s-label">${sym} at target</div><div class="s-val">${fmt$(expected)}</div><div class="s-sub">${fmt$(etfNow)} → ${fmt$(expected)}</div></div>
+      <div class="stat"><div class="s-label">${sym} move</div><div class="s-val">${sign(ePct)}</div><div class="s-sub">${sym} is ${fmtLev(r.lev)} ${r.under}</div></div>
+      <div class="stat"><div class="s-label">${r.under} move</div><div class="s-val">${sign(uPct)}</div><div class="s-sub">${fmt$(underNow)} → ${fmt$(target)}</div></div>
+      ${days > 1 ? `<div class="stat"><div class="s-label">Decay cost</div><div class="s-val">−${fmt$(drag)}</div><div class="s-sub">${noDrag > 0 ? '−' + (drag / noDrag * 100).toFixed(1) + '% · ' : ''}${hvNote}</div></div>` : ''}
+    </div>`;
+}
+
 function setView(v) {
   positionsView = v === 'positions';
   utilsView = v === 'utils';
@@ -2062,16 +2338,18 @@ function applyDailyHistory(list) {
   const last = done[done.length - 1];
   prevDay = last ? { h: last.high, l: last.low, c: last.close } : null;
   const closes = done.map(x => x.close);
-  const hvAt = end => { // annualized 20-day HV ending at index `end` (exclusive)
-    const rets = [];
-    for (let i = end - 19; i < end; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
-    const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
-    const v = rets.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (rets.length - 1);
-    return Math.sqrt(v * 252);
-  };
   hvDist = [];
-  for (let end = 20; end < closes.length; end++) hvDist.push(hvAt(end));
-  if (closes.length >= 21) hv20 = hvAt(closes.length - 1);
+  for (let end = 20; end < closes.length; end++) hvDist.push(hv20At(closes, end));
+  if (closes.length >= 21) hv20 = hv20At(closes, closes.length - 1);
+}
+
+// annualized 20-day HV ending at index `end` (exclusive); shared with the lev ETF target tool
+function hv20At(closes, end) {
+  const rets = [];
+  for (let i = end - 19; i < end; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
+  const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+  const v = rets.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (rets.length - 1);
+  return Math.sqrt(v * 252);
 }
 
 function percentileOf(value, arr) {
