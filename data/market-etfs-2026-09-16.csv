@@ -1,0 +1,147 @@
+ticker,name,group,performance_today,performance_1w,performance_1m,performance_3m,performance_6m,performance_ytd,performance_open,performance_1y,category
+AGG,iShares Core U.S. Aggregate Bond ETF,Group ETFs,-0.04,-0.86,-1.44,-3.08,-2.85,,0.0,-4.86,group-etfs
+AIA,iShares Asia 50 ETF,Group ETFs,-0.11,-4.03,-2.52,-8.08,29.21,,-0.64,47.59,group-etfs
+AIQ,Global X Artificial Intelligence & Technology ETF,Group ETFs,-0.8,-1.79,-1.62,-5.75,32.91,,-0.47,30.65,group-etfs
+ARKG,ARK Genomic Revolution ETF,Group ETFs,1.94,3.02,8.33,29.44,83.15,,2.14,79.7,group-etfs
+ARKK,ARK Innovation ETF,Group ETFs,-1.45,-1.27,2.13,4.12,20.74,,-0.49,3.04,group-etfs
+ASHR,Xtrackers Harvest CSI 300 China A-Shares ETF,Group ETFs,-0.63,-2.35,-5.57,-8.53,2.69,,-0.24,3.17,group-etfs
+BBH,VanEck Biotech ETF,Group ETFs,-0.57,-0.22,3.79,22.95,27.13,,0.0,39.38,group-etfs
+BLOK,Amplify Blockchain Technology ETF,Group ETFs,-3.66,-5.11,-0.16,-8.68,18.53,,-2.22,-6.28,group-etfs
+BOTZ,Global X Funds Global X Robotics & Artificial Intelligence ETF,Group ETFs,-0.37,-1.56,-8.43,-9.75,3.07,,-0.14,0.49,group-etfs
+BOUT,Innovator IBD(R) Breakout Opportunities ETF,Group ETFs,-1.45,-2.78,-4.93,-10.66,11.37,,0.06,11.01,group-etfs
+BTF,CoinShares Bitcoin and Ether ETF,Group ETFs,-4.02,-3.38,21.58,27.63,6.74,,0.01,-77.02,group-etfs
+BUZZ,VanEck Social Sentiment ETF,Group ETFs,-1.56,-2.69,-1.27,-3.89,23.09,,-1.35,6.63,group-etfs
+CIBR,First Trust NASDAQ Cybersecurity ETF,Group ETFs,0.95,6.9,3.28,19.47,57.74,,1.79,33.88,group-etfs
+CLOU,Global X Cloud Computing ETF,Group ETFs,-0.56,3.03,1.11,29.61,43.39,,0.68,20.78,group-etfs
+COPX,Global X Copper Miners ETF,Group ETFs,-1.2,-11.21,-3.15,-1.04,22.45,,-1.08,57.44,group-etfs
+DBA,Invesco DB Agriculture Fund,Group ETFs,-0.28,-0.41,2.63,8.45,7.56,,0.1,4.03,group-etfs
+DBC,Invesco DB Commodity Index Tracking Fund,Group ETFs,1.6,2.53,10.21,21.9,16.38,,0.96,47.85,group-etfs
+DRAM,Roundhill Memory ETF,Group ETFs,0.38,-10.67,-8.91,-28.29,,,-1.47,,group-etfs
+DRIV,Global X Autonomous & Electric Vehicles ETF,Group ETFs,-0.53,-3.83,-8.0,-17.21,13.28,,-0.53,22.35,group-etfs
+EMLC,VanEck J.P. Morgan EM Local Currency Bond ETF,Group ETFs,-0.2,-1.56,-1.72,-1.52,1.04,,-0.08,-1.95,group-etfs
+ESPO,VanEck Video Gaming and eSports ETF,Group ETFs,-1.3,1.99,-0.04,10.98,10.55,,-0.69,-19.37,group-etfs
+EUV,Corgi Lithography & Semiconductor Photonics ETF,Group ETFs,-0.18,-9.55,-20.94,-27.1,,,-1.43,,group-etfs
+FDN,First Trust Dow Jones Internet Index Fund,Group ETFs,-0.96,0.68,1.03,9.12,21.93,,-0.29,2.42,group-etfs
+FFTY,Innovator IBD 50 ETF,Group ETFs,-1.02,-3.4,-9.32,-19.65,2.34,,0.1,-6.45,group-etfs
+FOTO,Tuttle Capital Pure Play Photonics ETF,Group ETFs,-0.06,-9.76,-24.43,-30.02,,,-0.48,,group-etfs
+FXI,iShares China Large-Cap ETF,Group ETFs,-1.26,-0.43,-1.99,3.3,-2.16,,-0.33,-16.2,group-etfs
+GDX,VanEck Gold Miners ETF,Group ETFs,-0.01,-5.37,2.44,14.08,17.49,,-0.52,36.38,group-etfs
+GDXJ,VanEck Junior Gold Miners ETF,Group ETFs,-0.48,-6.92,-0.06,12.21,14.83,,-0.82,35.41,group-etfs
+GLD,SPDR Gold Shares,Group ETFs,0.33,-2.28,-2.8,1.82,-4.65,,0.26,16.07,group-etfs
+HACK,Amplify Cybersecurity ETF,Group ETFs,1.71,8.68,4.35,25.61,57.65,,2.47,40.5,group-etfs
+HYG,iShares iBoxx USD High Yield Corporate Bond ETF,Group ETFs,-0.19,-0.76,-1.55,-2.04,-0.68,,-0.17,-3.39,group-etfs
+IBUY,Amplify Online Retail ETF,Group ETFs,-1.31,0.94,-4.92,-0.23,12.36,,-0.95,-10.93,group-etfs
+IDNA,iShares Genomics Immunology and Healthcare ETF,Group ETFs,-0.39,-0.03,7.61,26.27,36.45,,-0.16,69.65,group-etfs
+IDRV,iShares Self-Driving EV and Tech ETF,Group ETFs,-0.65,-3.47,-6.74,-13.25,-2.91,,-0.43,-3.51,group-etfs
+IEF,iShares 7-10 Year Treasury Bond ETF,Group ETFs,-0.12,-1.17,-2.18,-3.75,-4.28,,-0.02,-6.56,group-etfs
+IEI,iShares 3-7 Year Treasury Bond ETF,Group ETFs,-0.07,-0.87,-1.85,-2.41,-3.14,,-0.03,-4.74,group-etfs
+IGV,iShares Expanded Tech-Software Sector ETF,Group ETFs,-1.02,3.65,3.49,18.48,27.18,,0.31,-6.36,group-etfs
+IHI,iShares U.S. Medical Devices ETF,Group ETFs,-0.15,0.58,-5.99,5.52,-4.89,,0.52,-14.2,group-etfs
+IPO,Renaissance IPO ETF,Group ETFs,-1.25,-3.53,-10.03,-14.17,20.15,,-0.48,-3.27,group-etfs
+ITA,iShares U.S. Aerospace & Defense ETF,Group ETFs,-1.28,-2.48,-14.81,-10.46,-3.85,,-1.38,6.0,group-etfs
+ITB,iShares U.S. Home Construction ETF,Group ETFs,-1.03,-1.32,-8.91,-10.21,0.96,,-0.17,-20.14,group-etfs
+IWO,iShares Russell 2000 Growth ETF,Group ETFs,-1.2,-2.63,-8.48,-7.15,16.69,,-0.92,14.99,group-etfs
+IXC,iShares Global Energy ETF,Group ETFs,2.16,1.17,5.72,21.57,8.88,,1.78,44.65,group-etfs
+IYT,iShares U.S. Transportation ETF,Group ETFs,-0.99,0.13,-6.3,-2.53,11.96,,-0.56,15.29,group-etfs
+JETS,ESS U.S.Global Jets ETF,Group ETFs,-1.06,-0.5,-9.63,-10.06,15.73,,-1.27,8.48,group-etfs
+KBE,State Street SPDR S&P Bank ETF,Group ETFs,-0.28,0.41,-4.38,3.41,17.46,,-0.23,13.5,group-etfs
+KIE,State Street SPDR S&P Insurance ETF,Group ETFs,-0.46,1.68,-0.16,8.42,16.16,,-0.06,9.24,group-etfs
+KRE,State Street SPDR S&P Regional Banking ETF,Group ETFs,-0.08,0.82,-4.32,3.25,17.47,,-0.04,16.27,group-etfs
+KWEB,KraneShares CSI China Internet ETF,Group ETFs,-1.01,-1.21,-9.17,-3.01,-13.28,,-0.69,-40.91,group-etfs
+LIT,Global X Lithium & Battery Tech ETF,Group ETFs,0.07,-5.08,-8.16,-14.77,4.54,,0.03,35.04,group-etfs
+LQD,iShares iBoxx USD Investment Grade Corporate Bond ETF,Group ETFs,-0.02,-0.98,-1.34,-4.39,-3.31,,0.08,-7.11,group-etfs
+MAGS,Roundhill Magnificent Seven ETF,Group ETFs,-0.71,0.4,3.34,6.36,19.24,,-0.29,8.04,group-etfs
+MOO,VanEck Agribusiness ETF,Group ETFs,0.22,-1.35,6.55,12.41,7.88,,0.64,16.37,group-etfs
+MSOS,AdvisorShares Pure US Cannabis ETF,Group ETFs,0.2,-2.38,8.59,-1.2,36.94,,0.0,11.79,group-etfs
+NANR,State Street SPDR S&P North American Natural Resources ETF,Group ETFs,1.46,-1.63,3.11,15.01,14.36,,1.08,41.63,group-etfs
+NLR,VanEck Uranium Nuclear Energy ETF,Group ETFs,-1.05,-11.9,-8.47,-14.67,-15.26,,-1.37,-14.74,group-etfs
+OIH,VanEck Oil Services ETF,Group ETFs,2.35,-4.16,-3.54,6.75,6.34,,1.78,58.15,group-etfs
+OUNZ,VanEck Merk Gold ETF,Group ETFs,0.32,-2.34,-2.8,1.82,-4.64,,0.22,16.18,group-etfs
+PAVE,Global X U.S. Infrastructure Development ETF,Group ETFs,-0.34,-2.49,-10.03,-9.77,7.79,,-0.6,13.68,group-etfs
+PBW,Invesco WilderHill Clean Energy ETF,Group ETFs,-0.79,-4.1,-12.91,-27.4,-2.27,,-0.79,13.94,group-etfs
+PHO,Invesco Water Resources ETF,Group ETFs,-0.26,-0.42,-3.76,1.74,4.07,,0.01,-4.22,group-etfs
+PPH,VanEck Pharmaceutical ETF,Group ETFs,-0.55,0.38,-0.49,7.81,9.73,,-0.38,25.01,group-etfs
+QTUM,Defiance Quantum ETF,Group ETFs,-0.04,-3.43,-9.78,-15.02,31.84,,0.25,41.68,group-etfs
+REMX,VanEck Rare Earth/Strategic Metals ETF,Group ETFs,-0.91,-10.53,-13.47,-28.52,-13.65,,-1.0,12.72,group-etfs
+SHV,iShares 0-1 Year Treasury Bond ETF,Group ETFs,0.01,0.03,-0.06,-0.08,-0.1,,0.0,-0.15,group-etfs
+SKYY,First Trust Cloud Computing ETF,Group ETFs,-0.25,2.67,0.08,23.12,45.7,,0.39,20.5,group-etfs
+SLV,iShares Silver Trust,Group ETFs,1.21,-5.25,-3.42,-3.33,-6.49,,0.09,49.04,group-etfs
+SMH,VanEck Semiconductor ETF,Group ETFs,0.11,-5.6,-8.75,-17.85,40.9,,-0.82,76.46,group-etfs
+SPPP,Sprott Physical Platinum and Palladium Trust,Group ETFs,1.06,-6.03,0.56,6.7,-2.38,,0.14,15.56,group-etfs
+TAN,Invesco Solar ETF,Group ETFs,-2.44,-5.55,-11.45,-25.57,-18.24,,-0.99,5.67,group-etfs
+TLT,iShares 20+ Year Treasury Bond ETF,Group ETFs,-0.27,-1.25,-0.79,-6.96,-5.97,,0.1,-10.67,group-etfs
+UFO,Procure Space ETF,Group ETFs,-0.16,-0.39,-11.49,-14.68,-5.45,,-0.33,24.75,group-etfs
+UNG,United States Natural Gas Fund,Group ETFs,2.03,4.46,7.22,-10.22,-14.93,,-0.19,-20.27,group-etfs
+URA,Global X Uranium ETF,Group ETFs,-1.0,-10.86,-7.69,-12.58,-10.06,,-1.16,-5.84,group-etfs
+USO,United States Oil Fund,Group ETFs,3.32,7.93,24.23,40.91,33.29,,2.22,113.9,group-etfs
+UUP,Invesco DB US Dollar Index Bullish Fund,Group ETFs,0.18,0.86,0.43,-0.28,1.95,,0.04,4.02,group-etfs
+VGIT,Vanguard Intermediate-Term Treasury ETF,Group ETFs,-0.07,-0.9,-1.95,-2.72,-3.43,,-0.02,-5.17,group-etfs
+WEAT,Teucrium Wheat Fund,Group ETFs,0.57,0.15,5.28,14.73,15.19,,1.7,22.7,group-etfs
+WGMI,CoinShares Bitcoin Mining ETF,Group ETFs,-4.01,-9.95,-14.08,-40.26,14.3,,-3.21,8.05,group-etfs
+XAR,State Street SPDR S&P Aerospace & Defense ETF,Group ETFs,-0.54,-2.1,-18.09,-15.04,-6.7,,-0.76,7.58,group-etfs
+XBI,State Street SPDR S&P Biotech ETF,Group ETFs,-2.27,-3.36,-3.45,9.46,28.03,,-1.94,64.32,group-etfs
+XHB,State Street SPDR S&P Homebuilders ETF,Group ETFs,-0.52,-1.48,-9.64,-11.96,1.55,,-0.55,-15.01,group-etfs
+XHS,State Street SPDR S&P Health Care Services ETF,Group ETFs,-0.62,1.64,2.86,13.04,36.93,,-0.74,41.82,group-etfs
+XME,State Street SPDR S&P Metals & Mining ETF,Group ETFs,-0.66,-8.18,-7.33,-6.48,7.58,,-0.96,24.03,group-etfs
+XOP,State Street SPDR S&P Oil & Gas Exploration & Production ETF,Group ETFs,3.22,2.41,8.92,30.22,12.75,,2.55,49.68,group-etfs
+XRT,State Street SPDR S&P Retail ETF,Group ETFs,-2.69,-1.28,-4.93,-3.67,5.81,,-2.6,-4.87,group-etfs
+XSD,State Street SPDR S&P Semiconductor ETF,Group ETFs,1.24,-3.06,-12.53,-24.49,48.94,,0.33,57.0,group-etfs
+XSW,State Street SPDR S&P Software & Services ETF,Group ETFs,-1.24,3.73,2.94,23.99,36.76,,-0.14,2.26,group-etfs
+IJJ,iShares S&P Mid-Cap 400 Value ETF,S&P Sectors,-0.68,-1.14,-4.93,-0.97,11.96,,-0.33,10.27,sectors
+IJK,iShares S&P Mid-Cap 400 Growth ETF,S&P Sectors,-0.69,-2.27,-8.23,-5.49,10.73,,-0.74,13.78,sectors
+IJS,iShares S&P Small-Cap 600 Value ETF,S&P Sectors,-0.71,-1.37,-4.71,-0.11,16.23,,-0.33,21.2,sectors
+IJT,iShares S&P Small-Cap 600 Growth ETF,S&P Sectors,-1.02,-2.39,-8.4,-4.38,16.12,,-0.56,16.23,sectors
+IVE,iShares S&P 500 Value ETF,S&P Sectors,-0.73,-0.32,-1.43,3.03,12.29,,-0.19,14.95,sectors
+IVW,iShares S&P 500 Growth ETF,S&P Sectors,-0.64,-1.36,-2.86,-0.38,20.42,,-0.51,14.78,sectors
+XLB,Materials Select Sector SPDR ETF,S&P Sectors,0.48,-1.28,-2.89,-2.08,7.98,,0.36,11.91,sectors
+XLC,Communication Services Select Sector SPDR ETF,S&P Sectors,-0.9,2.89,2.9,4.18,1.6,,-0.19,-3.79,sectors
+XLE,Energy Select Sector SPDR ETF,S&P Sectors,2.17,0.95,5.35,22.61,11.16,,1.62,46.87,sectors
+XLF,Financial Select Sector SPDR ETF,S&P Sectors,-0.32,-0.37,-1.27,6.12,15.83,,-0.21,6.14,sectors
+XLI,Industrial Select Sector SPDR ETF,S&P Sectors,-0.64,-1.71,-9.38,-6.67,4.44,,-0.95,11.21,sectors
+XLK,Technology Select Sector SPDR ETF,S&P Sectors,-0.29,-2.2,-3.46,-4.02,35.81,,-0.41,34.92,sectors
+XLP,Consumer Staples Select Sector SPDR ETF,S&P Sectors,-0.82,0.82,-1.12,0.52,3.0,,-0.32,4.98,sectors
+XLRE,Real Estate Select Sector SPDR ETF,S&P Sectors,-0.12,-0.78,-3.93,-1.8,6.11,,-0.09,2.43,sectors
+XLU,Utilities Select Sector SPDR ETF,S&P Sectors,-1.2,-3.77,-6.47,-7.69,-7.46,,-1.43,-1.78,sectors
+XLV,Health Care Select Sector SPDR ETF,S&P Sectors,-0.05,0.65,0.37,12.22,15.37,,-0.08,22.44,sectors
+XLY,Consumer Discretionary Select Sector SPDR ETF,S&P Sectors,-1.75,-1.4,-5.03,-5.36,2.91,,-1.47,-8.43,sectors
+QQQE,Direxion NASDAQ-100 Equal Weighted Index Shares,Equal Weight,-1.06,-1.72,-5.8,-4.04,18.06,,-0.81,17.63,equal-weight
+RSP,Invesco S&P 500 Equal Weight ETF,Equal Weight,-0.49,-0.32,-3.09,1.91,12.33,,-0.34,13.73,equal-weight
+RSPC,Invesco S&P 500 Equal Weight Communication Services ETF,Equal Weight,-1.01,3.14,0.96,4.5,0.07,,-0.28,-7.91,equal-weight
+RSPD,Invesco S&P 500 Equal Weight Consumer Discretionary ETF,Equal Weight,-1.95,-0.97,-6.73,-5.2,0.29,,-1.22,-9.05,equal-weight
+RSPF,Invesco S&P 500 Equal Weight Financials ETF,Equal Weight,-0.94,-0.37,-2.16,6.83,16.47,,-0.71,6.86,equal-weight
+RSPG,Invesco S&P 500 Equal Weight Energy ETF,Equal Weight,2.09,0.27,4.31,20.4,9.98,,1.53,48.71,equal-weight
+RSPH,Invesco S&P 500 Equal Weight Health Care ETF,Equal Weight,0.33,1.1,2.63,16.47,22.17,,0.58,26.81,equal-weight
+RSPM,Invesco S&P 500 Equal Weight Materials ETF,Equal Weight,0.67,-1.14,-2.52,-1.01,8.31,,0.62,17.57,equal-weight
+RSPN,Invesco S&P 500 Equal Weight Industrials ETF,Equal Weight,-0.71,-0.88,-8.07,-5.25,3.0,,-0.91,6.27,equal-weight
+RSPR,Invesco S&P 500 Equal Weight Real Estate ETF,Equal Weight,-0.35,-0.68,-3.84,-2.93,6.23,,0.16,-1.37,equal-weight
+RSPS,Invesco S&P 500 Equal Weight Consumer Staples ETF,Equal Weight,-0.87,-0.02,-2.48,0.89,2.5,,-0.48,1.06,equal-weight
+RSPT,Invesco S&P 500 Equal Weight Technology ETF,Equal Weight,-0.19,-0.34,-3.22,-0.22,39.43,,-0.05,48.14,equal-weight
+RSPU,Invesco S&P 500 Equal Weight Utilities ETF,Equal Weight,-1.19,-3.67,-6.55,-7.9,-7.22,,-1.47,-0.66,equal-weight
+ACWI,iShares MSCI ACWI ETF,Country ETFs,-0.48,-1.22,-2.24,0.29,15.86,,-0.45,15.39,countries
+ARGT,Global X MSCI Argentina ETF,Country ETFs,-1.0,-1.69,3.47,-2.68,10.46,,-0.89,30.4,countries
+ECH,iShares MSCI Chile ETF,Country ETFs,-0.13,-3.95,-3.43,-3.76,2.81,,-0.33,15.91,countries
+EEM,iShares MSCI Emerging Markets ETF,Country ETFs,-0.35,-3.97,-2.32,-7.11,18.19,,-0.54,24.01,countries
+EFA,iShares MSCI EAFE ETF,Country ETFs,-0.43,-1.09,-2.81,0.95,12.62,,-0.08,12.91,countries
+EPOL,iShares MSCI Poland ETF,Country ETFs,-0.62,-1.51,2.05,12.86,30.1,,0.18,37.99,countries
+EUFN,iShares MSCI Europe Financials ETF,Country ETFs,-0.86,-1.21,-2.17,7.31,25.52,,-0.44,22.09,countries
+EWA,iShares MSCI Australia ETF,Country ETFs,-0.58,-2.46,-2.23,1.16,5.82,,0.14,5.51,countries
+EWC,iShares MSCI Canada ETF,Country ETFs,-0.35,-1.15,-3.04,4.18,13.31,,-0.2,20.39,countries
+EWD,iShares MSCI Sweden ETF,Country ETFs,-0.52,-2.16,-2.33,1.81,9.53,,0.16,7.99,countries
+EWG,iShares MSCI Germany ETF,Country ETFs,-0.42,-1.18,-3.25,2.43,11.34,,-0.12,3.35,countries
+EWI,iShares MSCI Italy ETF,Country ETFs,-0.26,-0.82,-3.69,0.25,19.82,,-0.15,16.49,countries
+EWL,iShares MSCI Switzerland ETF,Country ETFs,-0.4,-0.84,-4.24,-1.76,7.0,,0.03,8.6,countries
+EWP,iShares MSCI Spain ETF,Country ETFs,0.18,-0.8,-2.08,3.54,18.34,,0.07,24.82,countries
+EWQ,iShares MSCI France ETF,Country ETFs,-0.49,-1.34,-6.05,-3.32,6.26,,0.09,1.07,countries
+EWS,iShares MSCI Singapore ETF,Country ETFs,-1.52,-1.9,-2.33,11.21,21.09,,-0.57,14.56,countries
+EWW,iShares MSCI Mexico ETF,Country ETFs,-1.06,-3.23,-1.17,-4.27,5.95,,-1.31,10.82,countries
+EWY,iShares MSCI South Korea ETF,Country ETFs,0.15,-7.49,-4.65,-19.48,40.32,,-1.31,118.73,countries
+EWZ,iShares MSCI Brazil ETF,Country ETFs,0.16,-0.76,11.22,12.01,7.76,,0.49,23.1,countries
+EZA,iShares MSCI South Africa ETF,Country ETFs,0.63,-3.35,1.07,3.27,10.13,,0.35,12.98,countries
+EZU,iShares MSCI EMU ETF,Country ETFs,-0.28,-1.87,-4.94,-1.41,13.52,,-0.2,12.0,countries
+GREK,Global X MSCI Greece ETF,Country ETFs,-0.17,-0.53,3.54,11.5,37.93,,-0.17,32.89,countries
+IEUR,iShares Core MSCI Europe ETF,Country ETFs,-0.25,-1.4,-3.63,0.7,11.42,,0.01,10.98,countries
+IEV,iShares Europe ETF,Country ETFs,-0.26,-1.21,-3.62,0.4,11.49,,-0.3,11.71,countries
+INDA,iShares MSCI India ETF,Country ETFs,-1.73,-2.22,-4.01,-4.01,2.15,,-0.4,-11.66,countries
+MCHI,iShares MSCI China ETF,Country ETFs,-0.77,-0.81,-3.9,0.27,-4.17,,-0.26,-18.42,countries
+THD,iShares MSCI Thailand ETF,Country ETFs,-1.39,-3.26,-2.02,0.11,11.03,,-0.37,17.33,countries
+TUR,iShares MSCI Turkey ETF,Country ETFs,-2.59,-5.0,-1.76,-5.42,0.94,,-0.82,11.26,countries
