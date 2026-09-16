@@ -342,6 +342,113 @@
     thead th, tbody td { padding: 7px 3px; }
     td.strike-col, th.strike-col { width: auto !important; }
   }
+  /* Market shares the app's terminal palette and stays full-width on desktop. */
+  .header h1 { display:flex; align-items:center; gap:0.65rem; }
+  .brand-nav { background:none; border:0; padding:0.25rem 0; color:var(--text3); font:inherit; letter-spacing:inherit; text-transform:inherit; cursor:pointer; }
+  .brand-nav[aria-current="page"] { color:var(--text); }
+  .brand-nav:hover { color:var(--text2); }
+  .brand-separator { opacity:0.5; }
+  .brand-nav:focus-visible, #marketSection button:focus-visible, #marketSection a:focus-visible { outline:2px solid var(--blue); outline-offset:4px; }
+  .app.market-view { display:block; max-width:1500px; }
+  #marketSection { grid-column:1 / -1; }
+  #marketSection [hidden] { display:none !important; }
+  .market-heading { display:flex; justify-content:space-between; gap:1rem; align-items:center; margin:0.5rem 0 1.5rem; }
+  .market-eyebrow { color:var(--teal); text-transform:uppercase; letter-spacing:0.13em; font:0.65rem var(--mono); margin-bottom:0.5rem; }
+  .market-heading h2 { font-size:1.9rem; font-weight:600; letter-spacing:-0.04em; }
+  .market-heading p { color:var(--text2); margin-top:0.45rem; font-size:0.8rem; line-height:1.5; }
+  .market-tabs { display:flex; gap:0.25rem; overflow-x:auto; border-bottom:1px solid var(--border2); margin-bottom:1.25rem; padding-bottom:1px; scrollbar-width:thin; }
+  .market-tabs button { flex:1 0 auto; white-space:nowrap; border:0; border-bottom:2px solid transparent; border-radius:8px 8px 0 0; padding:0.95rem 1.1rem; background:none; color:var(--text2); font:inherit; font-size:0.85rem; font-weight:500; cursor:pointer; }
+  .market-tabs button:hover { background:var(--bg2); color:var(--text); }
+  .market-tabs button[aria-selected="true"] { color:var(--amber); background:var(--amber-bg); border-bottom-color:var(--amber); }
+  .market-tabs button:focus-visible { outline-offset:-3px !important; }
+  .market-tabs small { margin-left:0.5rem; font:0.6rem var(--mono); opacity:0.7; }
+  .market-actions { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
+  .market-actions .btn { white-space:nowrap; }
+  .market-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0.75rem; margin-bottom:1.25rem; }
+  .market-stat { text-align:left; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.1rem; color:var(--text); min-width:0; }
+  button.market-stat { cursor:pointer; }
+  button.market-stat:hover { border-color:var(--border2); background:var(--bg3); }
+  .market-stat-label { color:var(--text2); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.08em; display:block; margin-bottom:0.55rem; }
+  .market-stat-value { font:600 1.35rem var(--mono); display:block; }
+  .market-stat-note { font-size:0.72rem; color:var(--text2); display:block; margin-top:0.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .market-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem; padding:0.9rem 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+  .market-search { min-width:12rem; flex:1; max-width:22rem; position:relative; }
+  .market-search input { width:100%; padding:0.6rem 2rem 0.6rem 0.8rem; font-family:inherit; font-size:0.8rem; color:var(--text); background:var(--bg2); border:1px solid var(--border2); border-radius:var(--radius); outline:none; }
+  .market-search input:focus { border-color:var(--blue); }
+  .market-search button { position:absolute; right:0.5rem; top:0.5rem; color:var(--text2); background:none; border:0; cursor:pointer; font-size:1rem; }
+  .market-search input::placeholder { color:var(--text2); }
+  .market-view-switch { margin-left:auto; }
+  .market-periods { display:flex; gap:0.25rem; flex-wrap:wrap; }
+  .market-periods button { padding:0.45rem 0.65rem; border:1px solid transparent; border-radius:6px; background:none; color:var(--text2); cursor:pointer; font:0.72rem var(--mono); }
+  .market-periods button.active { color:var(--teal); background:rgba(45,212,191,0.09); border-color:rgba(45,212,191,0.25); }
+  .market-context { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.6rem; margin:1.1rem 0 0.75rem; min-height:1.5rem; }
+  .market-breadcrumb { display:flex; gap:0.6rem; align-items:center; font-size:0.8rem; min-width:0; flex-wrap:wrap; }
+  .market-breadcrumb button { background:none; border:0; color:var(--text2); cursor:pointer; font:inherit; }
+  .market-breadcrumb strong { font-weight:500; }
+  .market-count { color:var(--text2); font:0.65rem var(--mono); }
+  .market-legend { display:flex; align-items:center; gap:0.5rem; color:var(--text2); font:0.65rem var(--mono); }
+  .market-legend i { width:4.5rem; height:4px; border-radius:4px; background:linear-gradient(90deg,#7a2937,var(--bg3),#246b52); }
+  .market-table-wrap { overflow:auto; max-height:70vh; border:1px solid var(--border); border-radius:var(--radius); }
+  .market-table { min-width:720px; width:100%; border-collapse:separate; border-spacing:0; font-size:0.78rem; }
+  .market-table thead { position:sticky; top:0; z-index:2; }
+  .market-table th { background:var(--bg2); padding:0; font-weight:500; text-transform:none; letter-spacing:0; color:var(--text2); text-align:right; border-bottom:1px solid var(--border2); }
+  .market-table th button { color:inherit; background:none; border:0; font:0.7rem var(--mono); width:100%; padding:0.9rem 1rem; cursor:pointer; text-align:right; }
+  .market-table th[aria-sort] button { color:var(--teal); }
+  .market-table th:first-child { text-align:left; padding:0.9rem 1rem; width:25%; }
+  .market-table th:first-child button { text-align:left; padding:0; }
+  .market-table.market-etf-table { min-width:860px; }
+  .market-table td { padding:0.8rem 1rem; text-align:right; border-bottom:1px solid var(--border); font-family:var(--mono); }
+  .market-table tr:last-child td { border-bottom:0; }
+  .market-table td:first-child, .market-table th:first-child { position:sticky; left:0; background:var(--bg2); min-width:200px; max-width:320px; z-index:1; }
+  .market-table th:first-child { z-index:3; }
+  .market-table tbody tr { background:var(--bg); }
+  .market-table tbody tr:hover, .market-table tbody tr:hover td:first-child { background:var(--bg3); }
+  .market-table .market-name { text-align:left; font-family:inherit; }
+  .market-name button { color:var(--text); border:0; background:none; font:inherit; text-align:left; cursor:pointer; max-width:100%; }
+  .market-name button:hover { color:var(--teal); }
+  .market-name small { display:block; color:var(--text2); margin-top:0.25rem; font:0.65rem var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .market-name .market-stock-symbol { font-family:var(--mono); font-weight:600; }
+  .market-positive { color:var(--green); }
+  .market-negative { color:var(--red); }
+  .market-neutral { color:var(--text2); }
+  .market-table .market-selected-period { background:rgba(45,212,191,0.035); }
+  .market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(165px,1fr)); gap:0.5rem; }
+  .market-tile { min-height:112px; padding:0.9rem; display:flex; flex-direction:column; justify-content:space-between; gap:0.65rem; text-align:left; border:1px solid rgba(255,255,255,0.08); border-radius:var(--radius); color:var(--text); cursor:pointer; transition:transform 0.12s,border-color 0.12s; }
+  .market-tile:hover { transform:translateY(-2px); border-color:rgba(255,255,255,0.35); }
+  .market-tile-name { font-size:0.78rem; line-height:1.35; font-weight:500; }
+  .market-tile-bottom { display:flex; align-items:baseline; justify-content:space-between; gap:0.3rem; }
+  .market-tile small { color:#c5d0d5; font:0.6rem var(--mono); }
+  .market-tile strong { font:600 1.1rem var(--mono); color:#fff; }
+  .market-footer { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; padding:1rem 0; color:var(--text2); font-size:0.7rem; line-height:1.6; }
+  .market-footer a { color:var(--text2); text-decoration:underline; text-underline-offset:3px; }
+  .market-empty { padding:3rem 1rem; text-align:center; color:var(--text2); line-height:1.8; border:1px dashed var(--border2); border-radius:var(--radius); }
+  .market-notice { color:var(--amber); background:var(--amber-bg); border:1px solid #594016; border-radius:var(--radius); padding:0.75rem 1rem; margin-bottom:1rem; font-size:0.75rem; line-height:1.5; }
+  .market-data-source { color:var(--text2); font-size:0.7rem; line-height:1.6; margin-bottom:1rem; }
+  .market-data-source b { color:var(--amber); font-weight:500; }
+  .market-more { display:block; margin:1rem auto 0; }
+  @media (max-width:600px) {
+    .header { gap:0.4rem; flex-wrap:wrap; margin-bottom:1.4rem; }
+    .header h1 { font-size:0.8rem; gap:0.5rem; }
+    .header .sub { font-size:0.6rem; }
+    .header .kbd-toggle { display:none; }
+    .market-heading { align-items:flex-start; flex-direction:column; margin-bottom:1rem; }
+    .market-heading h2 { font-size:1.65rem; }
+    .market-actions { width:100%; }
+    .market-stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.5rem; }
+    .market-stat { padding:0.85rem; }
+    .market-stat-value { font-size:1.1rem; }
+    .market-search { flex-basis:100%; max-width:none; order:-1; }
+    .market-toolbar { gap:0.6rem; }
+    .market-periods { width:100%; order:3; justify-content:space-between; }
+    .market-periods button { padding:0.45rem; font-size:0.66rem; }
+    .market-view-switch { margin-left:auto; }
+    .market-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.4rem; }
+    .market-tile { min-height:108px; padding:0.8rem; }
+    .market-table td:first-child, .market-table th:first-child { min-width:155px; max-width:155px; }
+    .market-table th:first-child { width:155px; }
+    .market-table td, .market-table th:first-child { padding:0.75rem; }
+    .market-table { min-width:660px; }
+  }
 </style>
 </head>
 <body>
@@ -350,7 +457,7 @@
 
   <div class="header">
     <span class="dot"></span>
-    <h1><span id="brandSize" onclick="setView('calc')" style="cursor:pointer;" title="The calculator (s/o/v views)">Size</span> <span id="brandTools" onclick="setView('utils')" style="cursor:pointer;" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)">/ Tools</span></h1>
+    <h1><button class="brand-nav" id="brandMarket" onclick="setView('market')" title="Market performance (m)">Market</button><span class="brand-separator">/</span><button class="brand-nav" id="brandSize" onclick="setView('calc')" aria-current="page" title="The calculator (s/o/v views)">Size</button><span class="brand-separator">/</span><button class="brand-nav" id="brandTools" onclick="setView('utils')" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)">Tools</button></h1>
     <span class="sub" id="lastUpdated"></span>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
   </div>
@@ -369,6 +476,7 @@
         <span><kbd>o</kbd> options</span>
         <span><kbd>v</kbd> positions</span>
         <span><kbd>t</kbd>/<kbd>u</kbd> tools ⇄ size</span>
+        <span><kbd>m</kbd> market · / to search</span>
         <span><kbd>d</kbd> long / short</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">chain</div>
@@ -550,6 +658,35 @@
   <div id="savedBar"></div>
   <div id="savedSection"></div>
 
+  <section id="marketSection" style="display:none;" aria-labelledby="marketTitle">
+    <div class="market-heading">
+      <div><div class="market-eyebrow">Market pulse</div><h2 id="marketTitle">Find the strength.</h2><p>Themes, sectors and global markets, from the big picture to your next ticker.</p></div>
+      <div class="market-actions"><button class="btn" id="marketSnapshotBtn" onclick="marketUseSnapshot()" hidden>Use imported Today</button><button class="btn primary" id="marketRefreshBtn" onclick="marketRefreshToday()">↻ Refresh Today</button><button class="btn" id="marketCancelBtn" onclick="marketCancelRefresh()" hidden>Cancel</button></div>
+    </div>
+    <div class="market-tabs" role="tablist" aria-label="Market Pulse categories" id="marketTabs">
+      <button role="tab" id="marketTab-themes" data-market-category="themes" aria-controls="marketPanel" aria-selected="true">Theme Tracker</button>
+      <button role="tab" id="marketTab-group-etfs" data-market-category="group-etfs" aria-controls="marketPanel" aria-selected="false" tabindex="-1">Group ETFs</button>
+      <button role="tab" id="marketTab-sectors" data-market-category="sectors" aria-controls="marketPanel" aria-selected="false" tabindex="-1">S&amp;P Sectors</button>
+      <button role="tab" id="marketTab-equal-weight" data-market-category="equal-weight" aria-controls="marketPanel" aria-selected="false" tabindex="-1">Equal Weight</button>
+      <button role="tab" id="marketTab-countries" data-market-category="countries" aria-controls="marketPanel" aria-selected="false" tabindex="-1">Country ETFs</button>
+    </div>
+    <div role="tabpanel" id="marketPanel" aria-labelledby="marketTab-themes" tabindex="0">
+    <div class="market-data-source" id="marketSource" aria-live="polite">Loading the imported universe…</div>
+    <div class="market-notice" id="marketNotice" role="status" hidden></div>
+    <div class="market-stats" id="marketStats"></div>
+    <div class="market-toolbar">
+      <div class="seg" id="marketScope" aria-label="Market universe"><button id="marketGroupsBtn" class="active" onclick="marketSetScope('groups')" aria-pressed="true">Groups</button><button id="marketStocksBtn" onclick="marketSetScope('stocks')" aria-pressed="false">Stocks</button></div>
+      <div class="market-search"><input id="marketSearch" type="search" aria-label="Search market" placeholder="Search ticker, company or industry" oninput="marketSearchChanged()" /><button id="marketClearBtn" aria-label="Clear market search" onclick="marketClearSearch()" hidden>×</button></div>
+      <div class="market-periods" id="marketPeriods" aria-label="Performance period"></div>
+      <div class="seg market-view-switch" aria-label="Market display"><button id="marketTableBtn" class="active" onclick="marketSetDisplay('table')" aria-pressed="true">Table</button><button id="marketHeatmapBtn" onclick="marketSetDisplay('heatmap')" aria-pressed="false">Heatmap</button></div>
+    </div>
+    <div class="market-context"><div class="market-breadcrumb" id="marketBreadcrumb"></div><div class="market-legend"><span>Weak</span><i aria-hidden="true"></i><span>Strong</span></div></div>
+    <div id="marketContent" aria-busy="false"><div class="market-empty">Loading market data…</div></div>
+    <button class="btn market-more" id="marketMoreBtn" onclick="marketShowMore()" hidden>Show more stocks</button>
+    <div class="market-footer"><span id="marketFootnote">Groups are equally weighted. Missing returns are excluded.<br>Open a group to explore its stocks. Select a ticker to size a trade.</span><a id="marketDownload" href="data/market-universe-2026-09-16.csv" download>Download stock universe CSV ↗</a></div>
+    </div>
+  </section>
+
   <div id="utilsSection" style="display:none;">
     <div class="section-title" style="margin:4px 0 10px;">Tools</div>
     <div class="card">
@@ -704,6 +841,138 @@
 
 </div>
 
+<script id="marketLogic">
+// Pure market-data operations also exercised by node --test.
+const MarketData = (() => {
+  const periods = ['today', '1w', '1m', '3m', '6m', 'ytd'];
+  const number = value => value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+  function parseCsv(text) {
+    const records = [];
+    let row = [], field = '', quoted = false;
+    text = text.replace(/^\uFEFF/, '');
+    for (let i = 0; i <= text.length; i++) {
+      const ch = text[i];
+      if (ch === '"') {
+        if (quoted && text[i + 1] === '"') { field += '"'; i++; }
+        else quoted = !quoted;
+      } else if (!quoted && (ch === ',' || ch === '\n' || ch === undefined)) {
+        row.push(field.replace(/\r$/, '')); field = '';
+        if (ch !== ',') { if (row.some(value => value.trim())) records.push(row); row = []; }
+      } else field += ch === undefined ? '' : ch;
+    }
+    if (quoted) throw new Error('Unclosed quote in the market CSV.');
+    const columns = records.shift() || [];
+    const required = ['ticker', 'name', 'group', ...periods.map(p => 'performance_' + p)];
+    const indices = required.map(key => columns.indexOf(key));
+    if (indices.some(i => i < 0)) throw new Error('Market CSV is missing required columns.');
+    const categoryIndex = columns.indexOf('category');
+    const extras = ['performance_open', 'performance_1y'].map(key => columns.indexOf(key));
+    if (categoryIndex >= 0 && extras.some(i => i < 0)) throw new Error('ETF CSV is missing required columns.');
+    const seen = new Set();
+    return records.map(record => {
+      const [ticker, name, group, ...values] = indices.map(i => (record[i] || '').trim());
+      if (!ticker || !name || !group) throw new Error('Market CSV contains an incomplete stock mapping.');
+      if (seen.has(ticker)) throw new Error('Duplicate ticker in market CSV: ' + ticker);
+      seen.add(ticker);
+      const result = { ticker, name, group, returns: values.map(number) };
+      if (categoryIndex >= 0) {
+        result.category = (record[categoryIndex] || '').trim();
+        if (!['group-etfs', 'sectors', 'equal-weight', 'countries'].includes(result.category)) throw new Error('Unknown ETF category: ' + result.category);
+        result.returns.push(...extras.map(i => number(record[i])));
+      }
+      return result;
+    });
+  }
+  function groups(rows) {
+    const buckets = new Map();
+    rows.forEach(row => {
+      if (!buckets.has(row.group)) buckets.set(row.group, []);
+      buckets.get(row.group).push(row);
+    });
+    return [...buckets].map(([name, stocks]) => {
+      const coverage = periods.map((_, i) => stocks.filter(s => Number.isFinite(s.returns[i])).length);
+      return {
+        name, stocks, count: stocks.length, coverage,
+        returns: periods.map((_, i) => coverage[i] ? stocks.reduce((sum, s) => sum + (s.returns[i] ?? 0), 0) / coverage[i] : null),
+      };
+    });
+  }
+  function filter(rows, query) {
+    const text = query.trim().toLowerCase();
+    if (!text) return rows;
+    const matches = row => [row.name, row.ticker, row.group].some(value => value && value.toLowerCase().includes(text));
+    return rows.filter(row => matches(row) || row.stocks?.some(matches));
+  }
+  function sort(rows, period, direction) {
+    return [...rows].sort((a, b) => {
+      if (period === 'ticker') return (a.ticker || a.name).localeCompare(b.ticker || b.name) * (direction === 'asc' ? 1 : -1);
+      const x = a.returns[period] ?? null, y = b.returns[period] ?? null;
+      if (x === null && y !== null) return 1;
+      if (y === null && x !== null) return -1;
+      return (x !== null && y !== null ? (x - y) * (direction === 'asc' ? 1 : -1) : 0)
+        || (a.ticker || a.name).localeCompare(b.ticker || b.name);
+    });
+  }
+  function quoteRows(payload) {
+    const raw = payload?.quotes?.quote;
+    const result = Object.create(null);
+    (Array.isArray(raw) ? raw : raw ? [raw] : []).forEach(q => {
+      const price = number(q.last), previous = number(q.prevclose);
+      const change = number(q.change_percentage) ?? (price > 0 && previous > 0 ? (price / previous - 1) * 100 : null);
+      if (typeof q.symbol !== 'string' || !(price > 0) || change === null || q.type === 'option') return;
+      const open = number(q.open);
+      result[q.symbol] = { price, change, fromOpen: open > 0 ? (price / open - 1) * 100 : null,
+        volume: number(q.volume), tradeDate: number(q.trade_date) };
+    });
+    return result;
+  }
+  function withQuotes(rows, quotes) {
+    return rows.map(row => {
+      const quote = quotes[row.ticker];
+      const returns = [quote?.change ?? null, ...row.returns.slice(1)];
+      if (returns.length > 6) returns[6] = Number.isFinite(quote?.fromOpen) ? quote.fromOpen : null;
+      return { ...row, price: quote?.price ?? null, volume: quote?.volume ?? null,
+        returns };
+    });
+  }
+  async function fetchQuotes(symbols, { base, auth, signal, onProgress = () => {}, fetchImpl = fetch,
+    pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+    const result = Object.create(null);
+    for (let i = 0; i < symbols.length; i += 100) {
+      if (signal?.aborted) throw new Error('Refresh cancelled.');
+      const controller = new AbortController();
+      const cancel = () => controller.abort();
+      signal?.addEventListener('abort', cancel, { once: true });
+      const timeout = setTimeout(cancel, 20000);
+      try {
+        const response = await fetchImpl(base + '/markets/quotes', {
+          method: 'POST', headers: { ...auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ symbols: symbols.slice(i, i + 100).join(','), greeks: 'false' }).toString(),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(response.status === 429 ? 'Tradier rate limit reached. Try again in a minute.'
+          : response.status === 401 || response.status === 403 ? 'Check your Tradier API key and environment in Size.'
+          : 'Tradier could not refresh quotes (' + response.status + ').');
+        const payload = await response.json();
+        if (payload?.errors || !payload?.quotes) throw new Error('Tradier returned an invalid quote response.');
+        Object.assign(result, quoteRows(payload));
+      } catch (error) {
+        if (signal?.aborted) throw new Error('Refresh cancelled.');
+        if (controller.signal.aborted) throw new Error('Tradier timed out. Try refreshing again.');
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', cancel);
+      }
+      onProgress(Math.min(i + 100, symbols.length), symbols.length);
+      if (i + 100 < symbols.length) await pause(1250);
+    }
+    if (signal?.aborted) throw new Error('Refresh cancelled.');
+    return result;
+  }
+  return { parseCsv, groups, filter, sort, quoteRows, withQuotes, fetchQuotes };
+})();
+</script>
 <script>
 let quoteData = null;
 let chainData = [];
@@ -1864,9 +2133,276 @@ function stopsChanged() {
   else if (dailyBars.length) drawDailyChart();
 }
 
+// ---------- market pulse ----------
+const MARKET_FILE = 'data/market-universe-2026-09-16.csv';
+const MARKET_ETF_FILE = 'data/market-etfs-2026-09-16.csv';
+const MARKET_PERIODS = ['Today', '1W', '1M', '3M', '6M', 'YTD', 'From open', '1Y'];
+const MARKET_CATEGORIES = [
+  { id:'themes', name:'Theme Tracker', description:'146 industry groups' },
+  { id:'group-etfs', name:'Group ETFs', description:'Thematic, industry and asset class funds' },
+  { id:'sectors', name:'S&P Sectors', description:'Sector, growth and value funds' },
+  { id:'equal-weight', name:'Equal Weight', description:'Equal-weight index and sector funds' },
+  { id:'countries', name:'Country ETFs', description:'Country, regional and global funds' },
+];
+const marketState = { stocks: [], etfs: [], category:'themes', loading: false, error: '', scope: 'groups', group: '', display: 'table',
+  period: 2, sort:'performance', direction: 'desc', limit: 100, quoteSnapshot: null, quoteMode: false, environment: '', refresh: null };
+
+function marketEscape(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+}
+function marketPct(value) { return value === null ? '—' : (value > 0 ? '+' : '') + (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) + '%'; }
+function marketTone(value) { return value === null || Math.abs(value) < 0.005 ? 'market-neutral' : value > 0 ? 'market-positive' : 'market-negative'; }
+function marketAllRows() { return [...marketState.stocks, ...marketState.etfs]; }
+function marketQuoteSymbols() { return [...new Set(marketAllRows().map(row => row.ticker))]; }
+function marketColumns() { return marketState.category === 'themes' ? [0,1,2,3,4,5] : [6,0,1,2,3,4,7]; }
+function marketRows() {
+  const rows = marketState.category === 'themes' ? marketState.stocks : marketState.etfs.filter(row => row.category === marketState.category);
+  return marketState.quoteMode && marketState.quoteSnapshot ? MarketData.withQuotes(rows, marketState.quoteSnapshot.quotes) : rows;
+}
+function marketCacheKey() { return 'market_quotes_v2_' + document.getElementById('apiEnv').value; }
+
+function marketSetCategory(category) {
+  if (!MARKET_CATEGORIES.some(item => item.id === category)) return;
+  marketState.category = category; marketState.scope = 'groups'; marketState.group = ''; marketState.limit = 100;
+  if (!marketColumns().includes(marketState.period)) marketState.period = 2;
+  document.getElementById('marketNotice').hidden = true;
+  marketClearSearch();
+}
+
+function marketReadCache() {
+  marketState.environment = document.getElementById('apiEnv').value;
+  marketState.quoteSnapshot = null;
+  marketState.quoteMode = false;
+  try {
+    const cached = JSON.parse(store.get(marketCacheKey()) || 'null');
+    if (!cached || !Number.isFinite(cached.fetchedAt) || !cached.quotes || typeof cached.quotes !== 'object') return;
+    const quotes = Object.create(null);
+    marketAllRows().forEach(({ ticker }) => {
+      const q = cached.quotes[ticker];
+      if (q && Number.isFinite(q.price) && q.price > 0 && Number.isFinite(q.change)) quotes[ticker] = q;
+    });
+    if (Object.keys(quotes).length) { marketState.quoteSnapshot = { fetchedAt: cached.fetchedAt, quotes }; marketState.quoteMode = true; }
+  } catch(e) {}
+}
+
+async function loadMarket() {
+  if (marketState.loading) return;
+  if (marketState.stocks.length) {
+    if (marketState.environment !== document.getElementById('apiEnv').value) marketReadCache();
+    renderMarket(); return;
+  }
+  marketState.loading = true; marketState.error = '';
+  renderMarket();
+  try {
+    const [stocks, etfs] = await Promise.all([MARKET_FILE, MARKET_ETF_FILE].map(async file => {
+      const response = await fetch(file);
+      if (!response.ok) throw new Error('Could not load the market universe. Check your connection and retry.');
+      return MarketData.parseCsv(await response.text());
+    }));
+    if (!stocks.length || MARKET_CATEGORIES.slice(1).some(category => !etfs.some(row => row.category === category.id))) throw new Error('The market universe is incomplete.');
+    marketState.stocks = stocks; marketState.etfs = etfs;
+    marketReadCache();
+  } catch(error) { marketState.error = error.message || 'Could not load market data.'; }
+  finally { marketState.loading = false; renderMarket(); }
+}
+
+function marketSetScope(scope) {
+  marketState.scope = scope; marketState.group = ''; marketState.limit = 100;
+  marketClearSearch();
+}
+function marketOpenGroup(name) {
+  marketState.scope = 'stocks'; marketState.group = name; marketState.limit = 100;
+  marketClearSearch();
+  document.getElementById('marketContent').scrollIntoView({ block:'nearest', behavior:'smooth' });
+}
+function marketSearchChanged() { marketState.limit = 100; renderMarket(); }
+function marketClearSearch() { document.getElementById('marketSearch').value = ''; renderMarket(); }
+function marketSetDisplay(display) { marketState.display = display; renderMarket(); }
+function marketSetPeriod(period, toggle) {
+  if (!marketColumns().includes(period)) return;
+  marketState.direction = toggle && marketState.sort === 'performance' && marketState.period === period && marketState.direction === 'desc' ? 'asc' : 'desc';
+  marketState.sort = 'performance';
+  marketState.period = period; marketState.limit = 100; renderMarket();
+}
+function marketSortTicker() {
+  marketState.direction = marketState.sort === 'ticker' && marketState.direction === 'asc' ? 'desc' : 'asc';
+  marketState.sort = 'ticker'; renderMarket();
+}
+function marketShowMore() { marketState.limit += 100; renderMarket(); }
+function marketUseSnapshot() { marketState.quoteMode = false; renderMarket(); }
+function marketCancelRefresh() { marketState.refresh?.abort(); }
+
+function marketSizeTrade(ticker) {
+  if (!marketAllRows().some(row => row.ticker === ticker)) return;
+  if (liveInterval || livePausedRemaining > 0) stopLive();
+  setView('calc');
+  // Hide the previous symbol while the selected ticker loads, including without a key.
+  quoteData = null; chainData = []; chartBars = []; dailyBars = []; selectedExp = null;
+  document.getElementById('quoteSection').style.display = 'none';
+  document.getElementById('ticker').value = ticker;
+  ['entryPrice', 'stopLong', 'stopShort'].forEach(id => { document.getElementById(id).value = ''; });
+  updateChartVisibility(); updateStickyBar();
+  window.scrollTo({ top:0, behavior:'smooth' });
+  if (document.getElementById('apiKey').value.trim()) fetchQuote();
+  else {
+    apiOpen = true; applyApiOpen();
+    document.getElementById('apiKey').focus();
+    showToast(ticker + ' selected. Add your Tradier key to load its quote and size the trade.');
+  }
+}
+
+async function marketRefreshToday() {
+  if (marketState.refresh || !marketState.stocks.length) return;
+  const notice = document.getElementById('marketNotice');
+  if (!document.getElementById('apiKey').value.trim()) {
+    notice.textContent = 'Add your Tradier key in Size to refresh Today. The imported snapshot is available without a key.';
+    notice.hidden = false; return;
+  }
+  const controller = new AbortController();
+  marketState.refresh = controller;
+  const environment = document.getElementById('apiEnv').value;
+  const refreshBase = baseUrl(), refreshAuth = headers();
+  notice.hidden = true;
+  renderMarket();
+  try {
+    const quotes = await MarketData.fetchQuotes(marketQuoteSymbols(), {
+      base: refreshBase, auth: refreshAuth, signal: controller.signal,
+      onProgress(done, total) { document.getElementById('marketRefreshBtn').textContent = 'Refreshing ' + done.toLocaleString() + ' / ' + total.toLocaleString(); },
+    });
+    if (environment !== document.getElementById('apiEnv').value) throw new Error('API environment changed. Refresh again using the selected environment.');
+    if (!marketQuoteSymbols().some(ticker => quotes[ticker])) throw new Error('Tradier returned no usable quotes. Your previous data is still shown.');
+    // Commit only a completed refresh; cancellation or errors leave previous data intact.
+    marketState.quoteSnapshot = { fetchedAt: Date.now(), quotes };
+    marketState.quoteMode = true; marketState.environment = environment;
+    marketState.period = 0; marketState.sort = 'performance'; marketState.direction = 'desc';
+    store.set(marketCacheKey(), JSON.stringify(marketState.quoteSnapshot));
+  } catch(error) {
+    notice.textContent = (controller.signal.aborted ? 'Refresh cancelled.' : error.message || 'Could not refresh quotes.') + ' Previous data kept.';
+    notice.hidden = false;
+  } finally { marketState.refresh = null; renderMarket(); }
+}
+
+function renderMarket() {
+  const state = marketState, period = state.period;
+  const isTheme = state.category === 'themes';
+  const category = MARKET_CATEGORIES.find(item => item.id === state.category);
+  const columns = marketColumns();
+  const unit = isTheme ? 'stock' : 'ETF';
+  MARKET_CATEGORIES.forEach(item => {
+    const tab = document.getElementById('marketTab-' + item.id), active = item.id === state.category;
+    tab.setAttribute('aria-selected', String(active)); tab.setAttribute('tabindex', active ? '0' : '-1');
+    const count = item.id === 'themes' ? MarketData.groups(state.stocks).length : state.etfs.filter(row => row.category === item.id).length;
+    tab.innerHTML = marketEscape(item.name) + (count ? '<small aria-hidden="true">' + count + '</small>' : '');
+  });
+  document.getElementById('marketPanel').setAttribute('aria-labelledby', 'marketTab-' + state.category);
+  document.getElementById('marketScope').hidden = !isTheme;
+  document.getElementById('marketSearch').placeholder = isTheme ? 'Search ticker, company or industry' : 'Search ticker or fund name';
+  document.getElementById('marketFootnote').innerHTML = isTheme
+    ? 'Groups are equally weighted. Missing returns are excluded.<br>Open a group to explore its stocks. Select a ticker to size a trade.'
+    : 'From open measures the change from the session open. 1Y is the reference’s Perf Year, separate from YTD.<br>Select a ticker to size a trade.';
+  const download = document.getElementById('marketDownload');
+  download.href = isTheme ? MARKET_FILE : MARKET_ETF_FILE;
+  download.textContent = isTheme ? 'Download stock universe CSV ↗' : 'Download all ETF universes CSV ↗';
+  const source = document.getElementById('marketSource');
+  const content = document.getElementById('marketContent');
+  const refresh = document.getElementById('marketRefreshBtn');
+  refresh.disabled = !!state.refresh || state.loading || !state.stocks.length;
+  if (!state.refresh) refresh.textContent = '↻ Refresh Today';
+  else if (!refresh.textContent.startsWith('Refreshing')) refresh.textContent = 'Refreshing…';
+  document.getElementById('marketCancelBtn').hidden = !state.refresh;
+  document.getElementById('marketSnapshotBtn').hidden = !state.quoteMode;
+  content.setAttribute('aria-busy', String(state.loading));
+  if (!state.stocks.length) {
+    source.textContent = 'Universe exported Sep 16, 2026';
+    content.innerHTML = state.error
+      ? '<div class="market-empty">' + marketEscape(state.error) + '<br><button class="btn" data-market-retry>Retry loading</button></div>'
+      : '<div class="market-empty"><span class="spinner"></span> Loading market data…</div>';
+    return;
+  }
+  const rows = marketRows(), groups = isTheme ? MarketData.groups(rows) : [];
+  const query = document.getElementById('marketSearch').value;
+  const isGroups = isTheme && state.scope === 'groups';
+  const universe = isGroups ? groups : state.group ? rows.filter(row => row.group === state.group) : rows;
+  const filtered = MarketData.sort(MarketData.filter(universe, query), state.sort === 'ticker' ? 'ticker' : period, state.direction);
+  const visible = isGroups ? filtered : filtered.slice(0, state.limit);
+  const up = universe.filter(row => row.returns[period] > 0).length;
+  const down = universe.filter(row => row.returns[period] < 0).length;
+  const ranked = MarketData.sort(universe.filter(row => row.returns[period] !== null), period, 'desc');
+  const leader = ranked[0], laggard = ranked[ranked.length - 1];
+  const quoteCount = state.quoteMode ? rows.filter(row => row.returns[0] !== null).length : 0;
+  source.innerHTML = state.quoteMode
+    ? '<b>Today: Tradier ' + marketEscape(state.environment) + '</b> · fetched ' + marketEscape(new Date(state.quoteSnapshot.fetchedAt).toLocaleString())
+      + ' · ' + quoteCount.toLocaleString() + '/' + rows.length.toLocaleString() + ' quotes. <b>' + (isTheme ? '1W–YTD' : '1W–1Y') + ': imported Sep 16, 2026.</b> '
+      + (isTheme ? '' : 'From open also uses refreshed quotes. ') + 'Quote delays depend on your feed.'
+    : '<b>Imported snapshot · Sep 16, 2026</b> · All periods are from the reference ' + (isTheme ? 'export' : 'ETF tables') + '; quote timestamps were not provided. Refresh Today for Tradier quotes.';
+  const stat = (label, value, note, tone = '', action = '') => '<' + (action ? 'button type="button" ' + action : 'div') + ' class="market-stat">'
+    + '<span class="market-stat-label">' + label + '</span><span class="market-stat-value ' + tone + '">' + value + '</span><span class="market-stat-note">' + marketEscape(note) + '</span></' + (action ? 'button' : 'div') + '>';
+  const action = row => isGroups ? 'data-market-group="' + marketEscape(row.name) + '"' : 'data-market-ticker="' + marketEscape(row.ticker) + '"';
+  document.getElementById('marketStats').innerHTML =
+    stat(state.group ? 'Group universe' : isTheme ? 'Tracked universe' : category.name, (isGroups ? rows.length : universe.length).toLocaleString(), isGroups ? groups.length + ' industry groups' : state.group || (isTheme ? 'Across all industry groups' : category.description))
+    + stat((isGroups ? 'Groups' : isTheme ? 'Stocks' : 'ETFs') + ' · ' + MARKET_PERIODS[period], '<span class="market-positive">' + up + ' ↑</span> <span class="market-negative">' + down + ' ↓</span>', 'Advancing / declining')
+    + (leader ? stat('Leading · ' + MARKET_PERIODS[period], marketPct(leader.returns[period]), leader.ticker || leader.name, marketTone(leader.returns[period]), action(leader)) : stat('Leading', '—', 'No returns available'))
+    + (laggard ? stat('Lagging · ' + MARKET_PERIODS[period], marketPct(laggard.returns[period]), laggard.ticker || laggard.name, marketTone(laggard.returns[period]), action(laggard)) : stat('Lagging', '—', 'No returns available'));
+  [['marketGroupsBtn', isGroups], ['marketStocksBtn', !isGroups], ['marketTableBtn', state.display === 'table'], ['marketHeatmapBtn', state.display === 'heatmap']].forEach(([id, active]) => {
+    const button = document.getElementById(id); button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
+  });
+  document.getElementById('marketClearBtn').hidden = !query;
+  document.getElementById('marketPeriods').innerHTML = columns.map(i => '<button class="' + (period === i ? 'active' : '') + '" aria-pressed="' + (period === i) + '" data-market-period="' + i + '">' + MARKET_PERIODS[i] + '</button>').join('');
+  document.getElementById('marketBreadcrumb').innerHTML = (state.group ? '<button data-market-home>All groups</button><span class="market-neutral">/</span>' : '')
+    + '<strong>' + marketEscape(state.group || (isTheme ? isGroups ? 'Industry groups' : 'All stocks' : category.name)) + '</strong><span class="market-count">' + filtered.length.toLocaleString() + (isGroups ? ' group' : ' ' + unit) + (filtered.length === 1 ? '' : 's') + (query ? ' found' : '') + '</span>';
+  const coverageText = (row, i) => isGroups ? row.coverage[i] + '/' + row.count + ' stocks with returns' : '';
+  if (!visible.length) {
+    content.innerHTML = '<div class="market-empty">No matches for “' + marketEscape(query) + '”.<br><button class="btn" data-market-clear>Clear search</button></div>';
+  } else if (state.display === 'heatmap') {
+    // Log scaling preserves differences between small moves without letting outliers wash out the map.
+    const max = Math.max(1, ...filtered.map(row => Math.abs(row.returns[period] || 0)));
+    content.innerHTML = '<div class="market-grid">' + visible.map(row => {
+      const value = row.returns[period];
+      const strength = value === null ? 0 : Math.log1p(Math.abs(value)) / Math.log1p(max);
+      const bg = value === null || value === 0 ? 'var(--bg3)' : 'hsl(' + (value > 0 ? '151' : '350') + ' 42% ' + (13 + strength * 18).toFixed(1) + '%)';
+      const label = isGroups ? row.name : row.ticker;
+      return '<button class="market-tile" style="background:' + bg + '" ' + action(row) + ' title="' + marketEscape((isGroups ? row.name : row.name + ' · Size this trade') + ' · ' + coverageText(row, period)) + '">'
+        + '<span class="market-tile-name">' + marketEscape(label) + '</span><span class="market-tile-bottom"><small>' + (isGroups ? row.count + ' stocks' : 'Size trade ↗') + '</small><strong>' + marketPct(value) + '</strong></span></button>';
+    }).join('') + '</div>';
+  } else {
+    content.innerHTML = '<div class="market-table-wrap"><table class="market-table' + (isTheme ? '' : ' market-etf-table') + '" aria-label="' + (isGroups ? 'Industry group' : isTheme ? 'Stock' : category.name) + ' performance"><thead><tr><th scope="col"' + (state.sort === 'ticker' ? ' aria-sort="' + (state.direction === 'asc' ? 'ascending' : 'descending') + '"' : '') + '><button data-market-ticker-sort>' + (isGroups ? 'Industry group' : isTheme ? 'Ticker / company' : 'Ticker / fund') + (state.sort === 'ticker' ? state.direction === 'asc' ? ' ↑' : ' ↓' : '') + '</button></th>'
+      + columns.map(i => '<th scope="col"' + (state.sort === 'performance' && period === i ? ' aria-sort="' + (state.direction === 'desc' ? 'descending' : 'ascending') + '"' : '') + '><button data-market-sort="' + i + '">' + MARKET_PERIODS[i] + (state.sort === 'performance' && period === i ? state.direction === 'desc' ? ' ↓' : ' ↑' : '') + '</button></th>').join('')
+      + '</tr></thead><tbody>' + visible.map(row => '<tr><td class="market-name"><button ' + action(row) + ' title="' + (isGroups ? 'Open group' : 'Size this trade') + '"><span class="' + (!isGroups ? 'market-stock-symbol' : '') + '">' + marketEscape(isGroups ? row.name : row.ticker) + '</span><small>' + marketEscape(isGroups ? row.count + ' stocks' : row.name) + '</small></button></td>'
+        + columns.map(i => '<td class="' + marketTone(row.returns[i]) + (period === i ? ' market-selected-period' : '') + '" title="' + coverageText(row, i) + '">' + marketPct(row.returns[i]) + (isGroups && row.coverage[i] < row.count ? '<sup aria-label="Partial coverage">*</sup>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
+  }
+  document.getElementById('marketMoreBtn').hidden = visible.length >= filtered.length;
+  document.getElementById('marketMoreBtn').textContent = 'Show more · ' + visible.length + ' of ' + filtered.length.toLocaleString();
+}
+
+document.getElementById('marketSection').addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  const data = button.dataset;
+  if (data.marketCategory !== undefined) marketSetCategory(data.marketCategory);
+  else if (data.marketTickerSort !== undefined) marketSortTicker();
+  else if (data.marketGroup !== undefined) marketOpenGroup(data.marketGroup);
+  else if (data.marketTicker !== undefined) marketSizeTrade(data.marketTicker);
+  else if (data.marketPeriod !== undefined) marketSetPeriod(+data.marketPeriod, false);
+  else if (data.marketSort !== undefined) marketSetPeriod(+data.marketSort, true);
+  else if (data.marketHome !== undefined) marketSetScope('groups');
+  else if (data.marketClear !== undefined) marketClearSearch();
+  else if (data.marketRetry !== undefined) loadMarket();
+});
+
+document.getElementById('marketTabs').addEventListener('keydown', event => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const index = MARKET_CATEGORIES.findIndex(item => item.id === marketState.category);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? MARKET_CATEGORIES.length - 1
+    : (index + (event.key === 'ArrowRight' ? 1 : -1) + MARKET_CATEGORIES.length) % MARKET_CATEGORIES.length;
+  event.preventDefault();
+  marketSetCategory(MARKET_CATEGORIES[next].id);
+  document.getElementById('marketTab-' + marketState.category).focus();
+});
+
 // positions is a view, not a sizing mode: currentMode stays shares/options underneath
 let positionsView = false;
 let utilsView = false;
+let marketView = false;
 
 function renderGain() {
   const cost = parseFloat(document.getElementById('gainCost').value);
@@ -2273,15 +2809,20 @@ function renderLevTarget(sym, r, etfNow, underNow, target, days, expected, noDra
 function setView(v) {
   positionsView = v === 'positions';
   utilsView = v === 'utils';
-  const calc = !positionsView && !utilsView;
+  marketView = v === 'market';
+  const calc = !positionsView && !utilsView && !marketView;
   document.getElementById('modeShares').classList.toggle('active', calc && currentMode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', calc && currentMode === 'options');
   document.getElementById('modePositions').classList.toggle('active', positionsView);
-  document.getElementById('brandSize').style.color = utilsView ? 'var(--text3)' : 'var(--text)';
-  document.getElementById('brandTools').style.color = utilsView ? 'var(--text)' : 'var(--text3)';
-  document.getElementById('apiKeySection').style.display = utilsView ? 'none' : '';
-  document.getElementById('riskCard').style.display = utilsView ? 'none' : '';
-  document.getElementById('modeCard').style.display = utilsView ? 'none' : '';
+  [['brandSize', !utilsView && !marketView], ['brandTools', utilsView], ['brandMarket', marketView]].forEach(([id, active]) => {
+    const button = document.getElementById(id);
+    if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+  });
+  document.querySelector('.app').classList.toggle('market-view', marketView);
+  document.getElementById('lastUpdated').style.display = marketView || utilsView ? 'none' : '';
+  document.getElementById('apiKeySection').style.display = utilsView || marketView ? 'none' : '';
+  document.getElementById('riskCard').style.display = utilsView || marketView ? 'none' : '';
+  document.getElementById('modeCard').style.display = utilsView || marketView ? 'none' : '';
   const hide = calc ? '' : 'none';
   document.getElementById('sizingControls').style.display = hide;
   document.getElementById('quickCard').style.display = hide;
@@ -2292,6 +2833,9 @@ function setView(v) {
   updateChartVisibility();
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
   document.getElementById('utilsSection').style.display = utilsView ? '' : 'none';
+  document.getElementById('marketSection').style.display = marketView ? '' : 'none';
+  if (marketView) { pauseLive(); loadMarket(); }
+  else if (calc && !document.hidden) resumeLive();
   if (utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
   if (positionsView) {
     updateSavedBar();
@@ -2304,7 +2848,7 @@ function setView(v) {
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
-  if (positionsView || utilsView) { positionsView = false; utilsView = false; setView('calc'); }
+  if (positionsView || utilsView || marketView) setView('calc');
   document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
   document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
@@ -2356,6 +2900,7 @@ async function fetchQuote() {
   try {
     const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${ticker}&greeks=true`, { headers: headers() });
     const qJson = await qRes.json();
+    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
     const q = qJson?.quotes?.quote;
     if (!q || q.type === 'option') throw new Error('Symbol not found or invalid.');
 
@@ -2376,6 +2921,7 @@ async function fetchQuote() {
     if (currentMode === 'options') {
       const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${ticker}&includeAllRoots=true`, { headers: headers() });
       const expJson = await expRes.json();
+      if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
       const exps = expJson?.expirations?.date;
       if (!exps) throw new Error('No options expirations found.');
       const expList = Array.isArray(exps) ? exps : [exps];
@@ -2386,12 +2932,13 @@ async function fetchQuote() {
       await fetchChain(ticker, selectedExp, true);
     }
 
-    document.getElementById('quoteSection').style.display = '';
+    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
+    document.getElementById('quoteSection').style.display = positionsView || utilsView || marketView ? 'none' : '';
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch(e) {
-    showError('Error: ' + e.message);
+    if (ticker === document.getElementById('ticker').value.trim().toUpperCase()) showError('Error: ' + e.message);
   } finally {
-    document.getElementById('fetchBtnText').innerHTML = currentMode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
+    if (ticker === document.getElementById('ticker').value.trim().toUpperCase()) document.getElementById('fetchBtnText').innerHTML = currentMode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
   }
 }
 
@@ -2401,6 +2948,7 @@ async function refreshQuote() {
   try {
     const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${ticker}`, { headers: headers() });
     const qJson = await qRes.json();
+    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
     const q = qJson?.quotes?.quote;
     if (q) { quoteData = q; renderQuote(); renderChain(); fetchChart(ticker); }
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
@@ -2460,6 +3008,7 @@ async function fetchChart(ticker) {
     const url = `${baseUrl()}/markets/timesales?symbol=${ticker}&interval=5min&start=${encodeURIComponent(dateStr(from) + ' 09:30')}&end=${encodeURIComponent(dateStr(new Date()) + ' 16:00')}&session_filter=open`;
     const res = await fetch(url, { headers: headers() });
     const data = (await res.json())?.series?.data;
+    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
     if (data) {
       const raw = (Array.isArray(data) ? data : [data]).map(b => ({ t: b.time, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume }));
       const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
@@ -2522,6 +3071,7 @@ async function fetchAdr(ticker) {
     const url = `${baseUrl()}/markets/history?symbol=${ticker}&interval=daily&start=${dateStr(from)}&end=${dateStr(new Date())}`;
     const res = await fetch(url, { headers: headers() });
     const days = (await res.json())?.history?.day;
+    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
     if (days) applyDailyHistory(Array.isArray(days) ? days : [days]);
   } catch(e) {}
   renderAdr();
@@ -2541,7 +3091,7 @@ function toggleDaily() {
 
 function updateChartVisibility() {
   const has5 = chartBars.length > 0, hasD = dailyBars.length > 0 && showDaily;
-  document.getElementById('chartWrap').style.display = !positionsView && (has5 || hasD) ? 'block' : 'none';
+  document.getElementById('chartWrap').style.display = !positionsView && !utilsView && !marketView && (has5 || hasD) ? 'block' : 'none';
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
   document.getElementById('dailyToggle').classList.toggle('active', showDaily);
@@ -3157,7 +3707,7 @@ function pauseLive() { // backgrounded: keep the session, stop the polling
 }
 
 function resumeLive() {
-  if (!(livePausedRemaining > 0) || liveInterval) return;
+  if (!(livePausedRemaining > 0) || liveInterval || marketView) return;
   liveEnd = Date.now() + livePausedRemaining;
   livePausedRemaining = 0;
   livePoll();
@@ -3183,6 +3733,7 @@ async function livePoll() {
   try {
     const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${ticker}`, { headers: headers() });
     const qJson = await qRes.json();
+    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
     const q = qJson?.quotes?.quote;
     if (q) { quoteData = q; renderQuote(); }
     if (currentMode === 'options' && selectedExp) {
@@ -3378,11 +3929,16 @@ async function selectExp(exp) {
 }
 
 let chainLoading = false;
+let chainLoadingFor = '';
+let chainRequestId = 0;
 let pendingAtmScroll = false; // set on user-driven chain loads, never on live polls
 
 async function fetchChain(ticker, exp, scrollAtm) {
-  if (chainLoading) return;
+  const target = ticker + '/' + exp;
+  if (chainLoading && chainLoadingFor === target) return;
+  const requestId = ++chainRequestId;
   chainLoading = true;
+  chainLoadingFor = target;
   document.getElementById('chainStatus').innerHTML = '<span class="spinner" style="vertical-align:middle;"></span> loading ' + exp;
   const tbody = document.getElementById('chainBody');
   if (!chainData.length) {
@@ -3393,6 +3949,7 @@ async function fetchChain(ticker, exp, scrollAtm) {
   try {
     const res = await fetch(`${baseUrl()}/markets/options/chains?symbol=${ticker}&expiration=${exp}&greeks=true`, { headers: headers() });
     const json = await res.json();
+    if (requestId !== chainRequestId || ticker !== document.getElementById('ticker').value.trim().toUpperCase() || exp !== selectedExp) return;
     const opts = json?.options?.option;
     if (!opts) {
       chainData = [];
@@ -3406,10 +3963,9 @@ async function fetchChain(ticker, exp, scrollAtm) {
     pendingAtmScroll = !!scrollAtm;
     renderChain();
   } catch(e) {
-    document.getElementById('chainStatus').textContent = 'Error loading chain — check key/network';
+    if (requestId === chainRequestId) document.getElementById('chainStatus').textContent = 'Error loading chain — check key/network';
   } finally {
-    chainLoading = false;
-    tbody.style.opacity = '1';
+    if (requestId === chainRequestId) { chainLoading = false; tbody.style.opacity = '1'; }
   }
 }
 
@@ -4398,21 +4954,27 @@ function initShortcuts() {
       if (simState) { closeSim(); return; }
       if (spreadPending) { cancelSpread(); return; }
       if (typing) { e.target.blur(); return; }
+      if (marketView && marketState.group) { marketSetScope('groups'); return; }
       closeDetails();
       return;
     }
     if (typing && e.key === '/' && e.target.id === 'ticker') { e.preventDefault(); e.target.select(); return; } // '/' re-selects even from inside the field
     if (typing) return; // never hijack keys while filling a field
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
+    if (marketView && !['/', 'm', 's', 'o', 'v', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
-      case '/': focus('ticker'); document.getElementById('ticker').select(); break;
+      case '/': {
+        const id = marketView ? 'marketSearch' : 'ticker';
+        focus(id); document.getElementById(id).select(); break;
+      }
       case 'q': toggleQuick(true); focus('quickInput'); break;
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
       case 'v': setView(positionsView ? 'calc' : 'positions'); break;
       case 't':
       case 'u': setView(utilsView ? 'calc' : 'utils'); break;
-      case 'r': refreshQuote(); break;
+      case 'm': setView(marketView ? 'calc' : 'market'); break;
+      case 'r': if (marketView) marketRefreshToday(); else refreshQuote(); break;
       case 'l': toggleLive(); break;
       case 'd': if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long'); break;
       case 'b': if (currentMode === 'options') setSide('both'); break;
@@ -4449,7 +5011,7 @@ updateRiskStatus();
 applyQuickOpen();
 updateStopVisibility();
 loadSaved();
-setView('calc'); // saved cards live in the Positions tab
+setView(location.hash === '#market' ? 'market' : 'calc'); // direct link to Market; sizing remains the default
 updateIntervalChips();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // backgrounding the app ends a live session instead of polling blind; foregrounding pulls fresh sync data
@@ -4470,7 +5032,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 // ask the browser to protect this origin's storage from eviction (key + saved positions live here)
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e) {}
 // pick up where you left off: auto-load the last ticker if a key is saved
-if (document.getElementById('apiKey').value.trim() && document.getElementById('ticker').value.trim()) fetchQuote();
+if (!marketView && document.getElementById('apiKey').value.trim() && document.getElementById('ticker').value.trim()) fetchQuote();
 </script>
 </body>
 </html>
