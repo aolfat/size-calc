@@ -181,6 +181,14 @@
   #stopLong { border-left: 3px solid var(--red); }
   #stopShort { border-left: 3px solid var(--green); }
   #entryPrice { border-left: 3px solid var(--amber); }
+  #futuresEntry { border-left: 3px solid var(--amber); }
+  #futuresStop { border-left: 3px solid var(--red); }
+  .futures-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+  .futures-grid .field { min-width: 0; }
+  #futuresDirSeg button { flex: 1; }
+  #futuresControls input[readonly] { color: var(--text2); }
+  #futuresMessage { grid-column: 1 / -1; color: var(--amber); font-size: 13px; }
+  #futuresCopy:disabled { opacity: 0.4; cursor: default; }
 
   /* Risk $ is the number that matters: the money you're willing to lose */
   #riskDollar { font-size: 20px; font-weight: 700; color: var(--red); border-color: var(--red-bd); }
@@ -279,6 +287,7 @@
   /* two-pane desktop, all modes: controls and tables left, charts pinned right */
   @media (min-width: 1100px) {
     .app { max-width: 1500px; display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); column-gap: 16px; align-items: start; }
+    .app.futures-view { max-width: 920px; display: block; }
     .app > * { grid-column: 1; min-width: 0; }
     .app > .header { grid-column: 1 / -1; }
     #quoteSection { display: contents; } /* its children join the app grid */
@@ -453,11 +462,11 @@
 </head>
 <body>
 <div id="stickyBar" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top"></div>
-<div class="app">
+<div class="app" id="app">
 
   <div class="header">
     <span class="dot"></span>
-    <h1><button class="brand-nav" id="brandMarket" onclick="setView('market')" title="Market performance (m)">Market</button><span class="brand-separator">/</span><button class="brand-nav" id="brandSize" onclick="setView('calc')" aria-current="page" title="The calculator (s/o/v views)">Size</button><span class="brand-separator">/</span><button class="brand-nav" id="brandTools" onclick="setView('utils')" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)">Tools</button></h1>
+    <h1><button class="brand-nav" id="brandMarket" onclick="setView('market')" title="Market performance (m)">Market</button><span class="brand-separator">/</span><button class="brand-nav" id="brandSize" onclick="setView('calc')" aria-current="page" title="The calculator (s/o/f/v views)">Size</button><span class="brand-separator">/</span><button class="brand-nav" id="brandTools" onclick="setView('utils')" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)">Tools</button></h1>
     <span class="sub" id="lastUpdated"></span>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
   </div>
@@ -474,6 +483,7 @@
       <div class="kbd-group"><div class="kbd-h">views</div>
         <span><kbd>s</kbd> shares</span>
         <span><kbd>o</kbd> options</span>
+        <span><kbd>f</kbd> futures</span>
         <span><kbd>v</kbd> positions</span>
         <span><kbd>t</kbd>/<kbd>u</kbd> tools ⇄ size</span>
         <span><kbd>m</kbd> market · / to search</span>
@@ -568,6 +578,7 @@
     <div class="seg mode-big" id="modeSeg">
       <button id="modeShares" class="active" onclick="setMode('shares')">Shares</button>
       <button id="modeOptions" onclick="setMode('options')">Options</button>
+      <button id="modeFutures" onclick="setMode('futures')">Futures</button>
       <button id="modePositions" onclick="setView('positions')">Positions <span id="posCount" style="font-size:11px;opacity:0.8;"></span></button>
     </div>
     <div id="sizingControls">
@@ -619,6 +630,54 @@
       <div style="font-size:11px;color:var(--text3);padding-bottom:11px;" id="stopsHint"></div>
     </div>
     </div>
+    <div id="futuresControls" style="display:none;">
+      <div class="section-title" style="margin-top:16px;">Futures contract</div>
+      <div class="field">
+        <label for="futuresContract">Contract</label>
+        <select id="futuresContract" onchange="futuresContractChanged()"></select>
+      </div>
+      <div class="hint">Manual prices · no API key needed</div>
+      <div class="futures-grid" style="margin-top:14px;">
+        <div class="field">
+          <label for="futuresTickSize">Tick size · points</label>
+          <input type="number" id="futuresTickSize" value="0.25" step="any" min="0" readonly oninput="futuresSpecsChanged()" />
+        </div>
+        <div class="field">
+          <label for="futuresTickValue">Tick value · $ / contract</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresTickValue" value="1.25" step="any" min="0" readonly oninput="futuresSpecsChanged()" /></div>
+        </div>
+      </div>
+      <div class="hint" id="futuresSpecInfo"></div>
+      <div class="section-title" style="margin-top:16px;">Entry &amp; stop</div>
+      <div class="futures-grid">
+        <div class="field" style="grid-column:1/-1;">
+          <label>Direction</label>
+          <div class="seg dir" id="futuresDirSeg">
+            <button id="futuresLong" class="active long" onclick="setFuturesDirection('long')">Long</button>
+            <button id="futuresShort" onclick="setFuturesDirection('short')">Short</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="futuresEntry">Entry price</label>
+          <input type="number" id="futuresEntry" placeholder="Enter price" step="0.25" oninput="renderFutures()" />
+        </div>
+        <div class="field">
+          <label for="futuresStop">Stop price</label>
+          <input type="number" id="futuresStop" placeholder="Below entry" step="0.25" oninput="renderFutures()" />
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label for="futuresFees">Round-trip fees · $ / contract</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresFees" placeholder="0" step="0.01" min="0" oninput="renderFutures()" /></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="futuresSection" style="display:none;">
+    <div class="section-title">Futures sizing<button class="filter-btn" id="futuresCopy" style="margin-left:10px;" onclick="copyFutures()" disabled title="Copy this futures plan as text">copy</button></div>
+    <div class="stat-grid" id="futuresStats" aria-live="polite"></div>
+    <div id="futuresMessage" role="status"></div>
+    <div class="hint">Risk at your stop, including entered fees · slippage can increase loss · broker margin is separate</div>
   </div>
 
   <div class="card chart-wrap" id="chartWrap" style="display:none;">
@@ -1966,7 +2025,7 @@ function clearError() {
 function syncRiskDollar() {
   const acct = parseFloat(document.getElementById('accountSize').value) || 0;
   const pct = parseFloat(document.getElementById('riskPct').value) || 0;
-  document.getElementById('riskDollar').value = Math.round(acct * pct / 100);
+  document.getElementById('riskDollar').value = +(acct * pct / 100).toFixed(2);
   store.set('calc_account', acct);
   store.set('calc_risk', pct);
   updateRiskPresets();
@@ -2052,13 +2111,15 @@ function syncFromDollar() {
   const acct = parseFloat(document.getElementById('accountSize').value) || 0;
   const d = parseFloat(document.getElementById('riskDollar').value) || 0;
   if (acct > 0) {
-    document.getElementById('riskPct').value = (d / acct * 100).toFixed(2);
+    // Keep cents when a small futures position is converted to % and back.
+    document.getElementById('riskPct').value = +(d / acct * 100).toFixed(10);
   }
   store.set('calc_account', acct);
   store.set('calc_risk', document.getElementById('riskPct').value);
   updateRiskPresets();
   updateRiskStatus();
   flashNext = true;
+  renderFutures();
   if (quoteData) { renderShares(); renderChain(); }
   renderPinnedCards();
   renderSavedCards();
@@ -2068,6 +2129,7 @@ function syncFromDollar() {
 function recalcAll() {
   syncRiskDollar();
   flashNext = true;
+  renderFutures();
   if (quoteData) {
     renderShares();
     renderChain();
@@ -2110,6 +2172,153 @@ function riskForQty(qty, perUnit) {
 function unitsFor(risk, perUnit) {
   // float-noise-tolerant floor: 11.999999999999998 units is 12, not 11
   return perUnit > 0 ? Math.floor(risk / perUnit + 1e-9) : 0;
+}
+
+// ---------- futures: manual prices, risk per tick, no market-data dependency ----------
+// Outright contract specs (CME, checked September 2026):
+// https://www.cmegroup.com/trading/equity-index/files/cme-micro-e-mini-futures-fact-card.pdf
+// https://www.cmegroup.com/education/modules/files/EQ240_EQ_for_AIT.pdf
+// https://www.cmegroup.com/education/courses/futures-vs-etfs/reasons-to-trade-e-mini-russell-2000-futures-over-russell-2000-etf
+// https://www.cmegroup.com/education/articles-and-reports/micro-wti-crude-oil-futures-faq
+// https://www.cmegroup.com/education/lessons/micro-gold-and-micro-silver-futures-product-overview
+// https://www.cmegroup.com/trading/metals/files/fact-card-gold-futures-options.pdf
+const FUTURES_CONTRACTS = {
+  MES: { name: 'Micro E-mini S&P 500', tickSize: 0.25, tickValue: 1.25 },
+  ES:  { name: 'E-mini S&P 500', tickSize: 0.25, tickValue: 12.5 },
+  MNQ: { name: 'Micro E-mini Nasdaq-100', tickSize: 0.25, tickValue: 0.5 },
+  NQ:  { name: 'E-mini Nasdaq-100', tickSize: 0.25, tickValue: 5 },
+  MYM: { name: 'Micro E-mini Dow', tickSize: 1, tickValue: 0.5 },
+  YM:  { name: 'E-mini Dow', tickSize: 1, tickValue: 5 },
+  M2K: { name: 'Micro E-mini Russell 2000', tickSize: 0.1, tickValue: 0.5 },
+  RTY: { name: 'E-mini Russell 2000', tickSize: 0.1, tickValue: 5 },
+  MCL: { name: 'Micro WTI Crude Oil', tickSize: 0.01, tickValue: 1 },
+  CL:  { name: 'WTI Crude Oil', tickSize: 0.01, tickValue: 10 },
+  MGC: { name: 'Micro Gold', tickSize: 0.1, tickValue: 1 },
+  GC:  { name: 'Gold', tickSize: 0.1, tickValue: 10 }
+};
+let futuresDirection = 'long';
+
+function calcFutures({ risk, entry, stop, direction, tickSize, tickValue, fees = 0 }) {
+  if (![tickSize, tickValue].every(v => Number.isFinite(v) && v > 0)) return { error: 'Enter a positive tick size and dollar tick value.' };
+  if (![entry, stop].every(Number.isFinite)) return { error: 'Enter your futures entry and stop prices.' };
+  if (!Number.isFinite(risk) || risk < 0) return { error: 'Enter a valid risk budget of zero or more.' };
+  if (!Number.isFinite(fees) || fees < 0) return { error: 'Fees must be zero or more.' };
+  if (direction !== 'long' && direction !== 'short') return { error: 'Choose Long or Short.' };
+  if ((direction === 'long' ? entry - stop : stop - entry) <= 0) {
+    return { error: `Stop must be ${direction === 'long' ? 'below' : 'above'} entry for a ${direction}.` };
+  }
+  const entryTicks = entry / tickSize, stopTicks = stop / tickSize;
+  // Check both prices, not just their distance. Tolerance only absorbs binary float noise.
+  if ([entryTicks, stopTicks].some(v => !Number.isSafeInteger(Math.round(v)) || Math.abs(v - Math.round(v)) > 1e-7)) {
+    return { error: `Entry and stop must use ${tickSize}-point tick increments.` };
+  }
+  const ticks = Math.abs(Math.round(entryTicks) - Math.round(stopTicks));
+  const riskPerContract = ticks * tickValue + fees;
+  const contracts = unitsFor(risk, riskPerContract);
+  if (!Number.isSafeInteger(ticks) || ticks < 1 || !Number.isFinite(riskPerContract) || !(riskPerContract > 0) || !Number.isSafeInteger(contracts)) {
+    return { error: 'These values are outside the supported sizing range.' };
+  }
+  return { ticks, points: ticks * tickSize, riskPerContract, contracts, totalRisk: contracts * riskPerContract };
+}
+
+function initFutures() {
+  const select = document.getElementById('futuresContract');
+  select.innerHTML = Object.entries(FUTURES_CONTRACTS)
+    .map(([symbol, d]) => `<option value="${symbol}">${symbol} · ${d.name}</option>`).join('')
+    + '<option value="custom">Custom contract</option>';
+  const saved = store.get('futures_contract');
+  select.value = Object.hasOwn(FUTURES_CONTRACTS, saved) || saved === 'custom' ? saved : 'MES';
+  applyFuturesContract();
+}
+
+function applyFuturesContract() {
+  const symbol = document.getElementById('futuresContract').value;
+  const preset = Object.hasOwn(FUTURES_CONTRACTS, symbol) ? FUTURES_CONTRACTS[symbol] : null;
+  const size = document.getElementById('futuresTickSize');
+  const value = document.getElementById('futuresTickValue');
+  size.readOnly = value.readOnly = !!preset;
+  size.value = preset ? preset.tickSize : (store.get('futures_custom_tick_size') || '');
+  value.value = preset ? preset.tickValue : (store.get('futures_custom_tick_value') || '');
+  renderFutures();
+}
+
+function futuresContractChanged() {
+  store.set('futures_contract', document.getElementById('futuresContract').value);
+  // Prices and commissions belong to the selected instrument, never the next one.
+  ['futuresEntry', 'futuresStop', 'futuresFees'].forEach(id => document.getElementById(id).value = '');
+  applyFuturesContract();
+}
+
+function futuresSpecsChanged() {
+  if (document.getElementById('futuresContract').value === 'custom') {
+    store.set('futures_custom_tick_size', document.getElementById('futuresTickSize').value);
+    store.set('futures_custom_tick_value', document.getElementById('futuresTickValue').value);
+  }
+  renderFutures();
+}
+
+function setFuturesDirection(dir) {
+  futuresDirection = dir;
+  document.getElementById('futuresLong').className = dir === 'long' ? 'active long' : '';
+  document.getElementById('futuresShort').className = dir === 'short' ? 'active short' : '';
+  document.getElementById('futuresStop').placeholder = dir === 'long' ? 'Below entry' : 'Above entry';
+  renderFutures();
+}
+
+function futuresInputs() {
+  const number = id => parseFloat(document.getElementById(id).value);
+  return {
+    risk: number('riskDollar'), entry: number('futuresEntry'), stop: number('futuresStop'),
+    direction: futuresDirection, tickSize: number('futuresTickSize'), tickValue: number('futuresTickValue'),
+    fees: document.getElementById('futuresFees').value === '' ? 0 : number('futuresFees')
+  };
+}
+
+function fmtFuturesPrice(v) { return Number(v).toLocaleString('en-US', { maximumFractionDigits: 10 }); }
+
+function renderFutures() {
+  const input = futuresInputs();
+  const result = calcFutures(input);
+  const validSpec = Number.isFinite(input.tickSize) && input.tickSize > 0 && Number.isFinite(input.tickValue) && input.tickValue > 0;
+  document.getElementById('futuresSpecInfo').textContent = validSpec
+    ? `${fmt$(input.tickValue / input.tickSize)} per point per contract`
+    : 'Custom contract: enter its tick size and dollar value per tick.';
+  ['futuresEntry', 'futuresStop'].forEach(id => document.getElementById(id).step = validSpec ? input.tickSize : 'any');
+  const el = document.getElementById('futuresStats');
+  document.getElementById('futuresCopy').disabled = !!result.error || result.contracts < 1;
+  if (result.error) {
+    el.innerHTML = '';
+    document.getElementById('futuresMessage').textContent = result.error;
+    return;
+  }
+  document.getElementById('futuresMessage').textContent = result.contracts === 0
+    ? `Budget is below one contract's ${fmt$(result.riskPerContract)} risk.` : '';
+  const acct = parseFloat(document.getElementById('accountSize').value);
+  const acctPct = acct > 0 ? `${(result.totalRisk / acct * 100).toFixed(2)}% of acct` : 'set account size for %';
+  el.innerHTML = `
+    <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" aria-label="Futures contracts" value="${result.contracts}" min="0" step="1" title="Type a contract count, risk $ follows" onchange="futuresQtyChanged(this)" /></div><div class="s-sub">to ${input.direction === 'long' ? 'buy' : 'short'} · edit to set risk</div></div>
+    <div class="stat danger"><div class="s-label">Risk @ stop</div><div class="s-val">${fmt$(result.totalRisk)}</div><div class="s-sub">${acctPct}</div></div>
+    <div class="stat teal"><div class="s-label">Risk / contract</div><div class="s-val">${fmt$(result.riskPerContract)}</div><div class="s-sub">${result.ticks} ticks × ${fmt$(input.tickValue)}${input.fees > 0 ? ' + ' + fmt$(input.fees) + ' fees' : ''}</div></div>
+    <div class="stat"><div class="s-label">Stop distance</div><div class="s-val">${fmtFuturesPrice(result.points)} pts</div><div class="s-sub">${fmtFuturesPrice(input.entry)} → ${fmtFuturesPrice(input.stop)}</div></div>
+  `;
+  withFlash(el);
+}
+
+function futuresQtyChanged(el) {
+  const qty = Math.floor(parseFloat(el.value));
+  const result = calcFutures(futuresInputs());
+  if (result.error || !Number.isSafeInteger(qty) || qty < 0) { renderFutures(); return; }
+  document.getElementById('riskDollar').value = riskForQty(qty, result.riskPerContract);
+  syncFromDollar();
+}
+
+function copyFutures() {
+  const input = futuresInputs();
+  const result = calcFutures(input);
+  if (result.error || result.contracts < 1) return;
+  const symbol = document.getElementById('futuresContract').value;
+  const label = symbol === 'custom' ? 'custom futures' : symbol;
+  copyPlainText(`${input.direction === 'long' ? 'Long' : 'Short'} ${result.contracts} ${label} contract${result.contracts === 1 ? '' : 's'} @ ${fmtFuturesPrice(input.entry)} · stop ${fmtFuturesPrice(input.stop)} · ${result.ticks} ticks × ${fmt$(input.tickValue)}/tick · risk @ stop ${fmt$(result.totalRisk)}${input.fees > 0 ? ` incl. ${fmt$(input.fees)}/ct round-trip fees` : ' before fees'} · excludes slippage`);
 }
 
 function setDirection(dir) {
@@ -2311,12 +2520,12 @@ function marketCancelRefresh() { marketSetAuto(false); }
 function marketSizeTrade(ticker) {
   if (!marketAllRows().some(row => row.ticker === ticker)) return;
   if (liveInterval || livePausedRemaining > 0) stopLive();
-  setView('calc');
   // Hide the previous symbol while the selected ticker loads, including without a key.
   quoteData = null; chainData = []; chartBars = []; dailyBars = []; selectedExp = null;
   document.getElementById('quoteSection').style.display = 'none';
   document.getElementById('ticker').value = ticker;
   ['entryPrice', 'stopLong', 'stopShort'].forEach(id => { document.getElementById(id).value = ''; });
+  if (currentMode === 'futures') setMode('shares'); else setView('calc');
   updateChartVisibility(); updateStickyBar();
   window.scrollTo({ top:0, behavior:'smooth' });
   if (document.getElementById('apiKey').value.trim()) fetchQuote();
@@ -2571,7 +2780,7 @@ document.getElementById('marketTabs').addEventListener('keydown', event => {
   document.getElementById('marketTab-' + marketState.category).focus();
 });
 
-// positions is a view, not a sizing mode: currentMode stays shares/options underneath
+// positions is a view, not a sizing mode: the selected instrument stays underneath
 let positionsView = false;
 let utilsView = false;
 let marketView = false;
@@ -2983,24 +3192,30 @@ function setView(v) {
   utilsView = v === 'utils';
   marketView = v === 'market';
   const calc = !positionsView && !utilsView && !marketView;
+  const futures = calc && currentMode === 'futures';
+  document.getElementById('app').classList.toggle('futures-view', futures);
   document.getElementById('modeShares').classList.toggle('active', calc && currentMode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', calc && currentMode === 'options');
+  document.getElementById('modeFutures').classList.toggle('active', futures);
   document.getElementById('modePositions').classList.toggle('active', positionsView);
   [['brandSize', !utilsView && !marketView], ['brandTools', utilsView], ['brandMarket', marketView]].forEach(([id, active]) => {
     const button = document.getElementById(id);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   document.querySelector('.app').classList.toggle('market-view', marketView);
-  document.getElementById('lastUpdated').style.display = marketView || utilsView ? 'none' : '';
-  document.getElementById('apiKeySection').style.display = utilsView || marketView ? 'none' : '';
+  document.getElementById('lastUpdated').style.display = marketView || utilsView || futures ? 'none' : '';
+  document.getElementById('apiKeySection').style.display = utilsView || marketView || futures ? 'none' : '';
   document.getElementById('riskCard').style.display = utilsView || marketView ? 'none' : '';
   document.getElementById('modeCard').style.display = utilsView || marketView ? 'none' : '';
-  const hide = calc ? '' : 'none';
+  const hide = calc && !futures ? '' : 'none';
+  document.getElementById('futuresControls').style.display = futures ? '' : 'none';
+  document.getElementById('futuresSection').style.display = futures ? '' : 'none';
+  if (futures) renderFutures();
   document.getElementById('sizingControls').style.display = hide;
   document.getElementById('quickCard').style.display = hide;
   document.getElementById('pinnedBar').style.display = hide;
   document.getElementById('pinnedSection').style.display = hide;
-  document.getElementById('quoteSection').style.display = calc && quoteData ? '' : 'none';
+  document.getElementById('quoteSection').style.display = calc && !futures && quoteData ? '' : 'none';
   document.getElementById('savedBar').style.display = positionsView ? '' : 'none';
   updateChartVisibility();
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
@@ -3021,9 +3236,8 @@ function setView(v) {
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
-  if (positionsView || utilsView || marketView) setView('calc');
-  document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
-  document.getElementById('modeOptions').classList.toggle('active', mode === 'options');
+  if (mode === 'futures') stopLive();
+  setView('calc');
   document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
   updateStopVisibility();
   renderAdr();
@@ -3061,6 +3275,7 @@ function fmt$(v) { return '$' + Number(v).toLocaleString('en-US', {minimumFracti
 function fmtN(v, d=2) { return Number(v).toFixed(d); }
 
 async function fetchQuote() {
+  if (currentMode === 'futures') return;
   const ticker = document.getElementById('ticker').value.trim().toUpperCase();
   if (!ticker) { showError('Enter a ticker symbol.'); return; }
   const key = document.getElementById('apiKey').value.trim();
@@ -3106,7 +3321,7 @@ async function fetchQuote() {
     }
 
     if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
-    document.getElementById('quoteSection').style.display = positionsView || utilsView || marketView ? 'none' : '';
+    document.getElementById('quoteSection').style.display = positionsView || utilsView || marketView || currentMode === 'futures' ? 'none' : '';
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch(e) {
     if (ticker === document.getElementById('ticker').value.trim().toUpperCase()) showError('Error: ' + e.message);
@@ -3116,6 +3331,7 @@ async function fetchQuote() {
 }
 
 async function refreshQuote() {
+  if (currentMode === 'futures') return;
   const ticker = document.getElementById('ticker').value.trim().toUpperCase();
   if (!ticker || !quoteData) return;
   try {
@@ -3264,7 +3480,7 @@ function toggleDaily() {
 
 function updateChartVisibility() {
   const has5 = chartBars.length > 0, hasD = dailyBars.length > 0 && showDaily;
-  document.getElementById('chartWrap').style.display = !positionsView && !utilsView && !marketView && (has5 || hasD) ? 'block' : 'none';
+  document.getElementById('chartWrap').style.display = !positionsView && !utilsView && !marketView && currentMode !== 'futures' && (has5 || hasD) ? 'block' : 'none';
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
   document.getElementById('dailyToggle').classList.toggle('active', showDaily);
@@ -3837,6 +4053,7 @@ function startLiveTimers() {
 }
 
 function toggleLive() {
+  if (currentMode === 'futures') return;
   if (liveInterval || livePausedRemaining > 0) {
     // running (or paused): climb to the next rung, or stop past the last one
     if (liveModeIdx + 1 >= LIVE_MODES.length) { stopLive(); return; }
@@ -3900,7 +4117,7 @@ function updateLiveBtn() {
 }
 
 async function livePoll() {
-  if (livePolling) return;
+  if (livePolling || currentMode === 'futures') return;
   livePolling = true;
   const ticker = document.getElementById('ticker').value.trim().toUpperCase();
   try {
@@ -4311,7 +4528,7 @@ function renderChain() {
     document.getElementById('sharesSection').style.display = currentMode === 'shares' ? 'block' : 'none';
     document.getElementById('optionsSection').style.display = currentMode === 'options' ? 'block' : 'none';
   }
-  if (currentMode === 'shares') return;
+  if (currentMode !== 'options') return;
 
   const q = quoteData;
   if (!q || !chainData.length) return;
@@ -5134,22 +5351,27 @@ function initShortcuts() {
     if (typing && e.key === '/' && e.target.id === 'ticker') { e.preventDefault(); e.target.select(); return; } // '/' re-selects even from inside the field
     if (typing) return; // never hijack keys while filling a field
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
-    if (marketView && !['/', 'm', 's', 'o', 'v', 't', 'u', 'r', '?'].includes(e.key)) return;
+    if (marketView && !['/', 'm', 's', 'o', 'f', 'v', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
       case '/': {
+        if (!marketView && currentMode === 'futures') { setView('calc'); focus('futuresContract'); break; }
         const id = marketView ? 'marketSearch' : 'ticker';
         focus(id); document.getElementById(id).select(); break;
       }
-      case 'q': toggleQuick(true); focus('quickInput'); break;
+      case 'q': if (currentMode !== 'futures') { toggleQuick(true); focus('quickInput'); } break;
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
+      case 'f': setMode('futures'); break;
       case 'v': setView(positionsView ? 'calc' : 'positions'); break;
       case 't':
       case 'u': setView(utilsView ? 'calc' : 'utils'); break;
       case 'm': setView(marketView ? 'calc' : 'market'); break;
       case 'r': if (marketView) marketRefreshToday(); else refreshQuote(); break;
       case 'l': toggleLive(); break;
-      case 'd': if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long'); break;
+      case 'd':
+        if (currentMode === 'futures') setFuturesDirection(futuresDirection === 'long' ? 'short' : 'long');
+        else if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long');
+        break;
       case 'b': if (currentMode === 'options') setSide('both'); break;
       case 'c': if (currentMode === 'options') setSide('call'); break;
       case 'p': if (currentMode === 'options') setSide('put'); break;
@@ -5167,6 +5389,7 @@ function initShortcuts() {
 syncSuppress = true; // init reads back what storage already holds — nothing here is a fresh edit
 loadKey();
 syncRiskDollar();
+initFutures();
 syncSuppress = false;
 initChartEvents();
 initDailyChartEvents();
