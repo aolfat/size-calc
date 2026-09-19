@@ -661,7 +661,7 @@
   <section id="marketSection" style="display:none;" aria-labelledby="marketTitle">
     <div class="market-heading">
       <div><div class="market-eyebrow">Market pulse</div><h2 id="marketTitle">Find the strength.</h2><p>Themes, sectors and global markets, from the big picture to your next ticker.</p></div>
-      <div class="market-actions"><button class="btn" id="marketSnapshotBtn" onclick="marketUseSnapshot()" hidden>Use imported Today</button><button class="btn primary" id="marketRefreshBtn" onclick="marketRefreshToday()">↻ Refresh Today</button><button class="btn" id="marketCancelBtn" onclick="marketCancelRefresh()" hidden>Cancel</button></div>
+      <div class="market-actions"><button class="btn" id="marketAutoBtn" onclick="marketToggleAuto()" aria-pressed="true">Auto: on</button><button class="btn" id="marketSnapshotBtn" onclick="marketUseSnapshot()" hidden>Use snapshot</button><button class="btn primary" id="marketRefreshBtn" onclick="marketRefreshToday()">↻ Refresh quotes</button><button class="btn" id="marketCancelBtn" onclick="marketCancelRefresh()" hidden>Cancel</button></div>
     </div>
     <div class="market-tabs" role="tablist" aria-label="Market Pulse categories" id="marketTabs">
       <button role="tab" id="marketTab-themes" data-market-category="themes" aria-controls="marketPanel" aria-selected="true">Theme Tracker</button>
@@ -671,7 +671,8 @@
       <button role="tab" id="marketTab-countries" data-market-category="countries" aria-controls="marketPanel" aria-selected="false" tabindex="-1">Country ETFs</button>
     </div>
     <div role="tabpanel" id="marketPanel" aria-labelledby="marketTab-themes" tabindex="0">
-    <div class="market-data-source" id="marketSource" aria-live="polite">Loading the imported universe…</div>
+    <div class="market-data-source" id="marketSource">Loading the imported universe…</div>
+    <div class="market-data-source" id="marketRefreshStatus" role="status"></div>
     <div class="market-notice" id="marketNotice" role="status" hidden></div>
     <div class="market-stats" id="marketStats"></div>
     <div class="market-toolbar">
@@ -935,37 +936,64 @@ const MarketData = (() => {
         returns };
     });
   }
-  async function fetchQuotes(symbols, { base, auth, signal, onProgress = () => {}, fetchImpl = fetch,
-    pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+  function waitForRefresh(ms, signal) {
+    return new Promise((resolve, reject) => {
+      const finish = () => { signal?.removeEventListener('abort', cancel); resolve(); };
+      const timer = setTimeout(finish, ms);
+      const cancel = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancel); reject(new Error('Refresh cancelled.')); };
+      if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once:true});
+    });
+  }
+  async function fetchQuotes(symbols, { base, auth, signal, onProgress = () => {}, onRetry = () => {}, fetchImpl = fetch,
+    retries = 2, pause = waitForRefresh }) {
     const result = Object.create(null);
     for (let i = 0; i < symbols.length; i += 100) {
-      if (signal?.aborted) throw new Error('Refresh cancelled.');
-      const controller = new AbortController();
-      const cancel = () => controller.abort();
-      signal?.addEventListener('abort', cancel, { once: true });
-      const timeout = setTimeout(cancel, 20000);
-      try {
-        const response = await fetchImpl(base + '/markets/quotes', {
-          method: 'POST', headers: { ...auth, 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ symbols: symbols.slice(i, i + 100).join(','), greeks: 'false' }).toString(),
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(response.status === 429 ? 'Tradier rate limit reached. Try again in a minute.'
-          : response.status === 401 || response.status === 403 ? 'Check your Tradier API key and environment in Size.'
-          : 'Tradier could not refresh quotes (' + response.status + ').');
-        const payload = await response.json();
-        if (payload?.errors || !payload?.quotes) throw new Error('Tradier returned an invalid quote response.');
-        Object.assign(result, quoteRows(payload));
-      } catch (error) {
+      for (let attempt = 0; ; attempt++) {
         if (signal?.aborted) throw new Error('Refresh cancelled.');
-        if (controller.signal.aborted) throw new Error('Tradier timed out. Try refreshing again.');
-        throw error;
-      } finally {
-        clearTimeout(timeout);
-        signal?.removeEventListener('abort', cancel);
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        signal?.addEventListener('abort', cancel, {once:true});
+        const timeout = setTimeout(cancel, 20000);
+        let failure;
+        try {
+          const response = await fetchImpl(base + '/markets/quotes', {
+            method: 'POST', headers: { ...auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ symbols: symbols.slice(i, i + 100).join(','), greeks: 'false' }).toString(),
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            const error = new Error(response.status === 429 ? 'Tradier rate limit reached.'
+              : response.status === 401 || response.status === 403 ? 'Check your Tradier API key and environment in Size.'
+              : 'Tradier could not refresh quotes (' + response.status + ').');
+            error.status = response.status;
+            if (response.status === 429) {
+              const retry = response.headers?.get('Retry-After');
+              const expiry = Number(response.headers?.get('X-Ratelimit-Expiry'));
+              const after = retry ? Number.isFinite(Number(retry)) ? Number(retry) * 1000 : Date.parse(retry) - Date.now() : 0;
+              const reset = expiry > Date.now() ? expiry - Date.now() : 60000;
+              error.retryAfter = Math.max(1000, Number.isFinite(after) && after > 0 ? after : reset);
+            }
+            throw error;
+          }
+          const payload = await response.json();
+          if (payload?.errors || !payload?.quotes) throw Object.assign(new Error('Tradier returned an invalid quote response.'), {status:422});
+          if (signal?.aborted) throw new Error('Refresh cancelled.');
+          Object.assign(result, quoteRows(payload));
+        } catch (error) {
+          if (signal?.aborted) throw new Error('Refresh cancelled.');
+          failure = controller.signal.aborted ? new Error('Tradier timed out. Try refreshing again.') : error;
+        } finally {
+          clearTimeout(timeout);
+          signal?.removeEventListener('abort', cancel);
+        }
+        if (!failure) break;
+        if (attempt >= retries || (failure.status && failure.status !== 429 && failure.status < 500)) throw failure;
+        const delay = failure.retryAfter || 1000 * 2 ** attempt;
+        onRetry({delay, status:failure.status, attempt:attempt + 1});
+        await pause(delay, signal);
       }
       onProgress(Math.min(i + 100, symbols.length), symbols.length);
-      if (i + 100 < symbols.length) await pause(1250);
+      if (i + 100 < symbols.length) await pause(1250, signal);
     }
     if (signal?.aborted) throw new Error('Refresh cancelled.');
     return result;
@@ -2145,7 +2173,9 @@ const MARKET_CATEGORIES = [
   { id:'countries', name:'Country ETFs', description:'Country, regional and global funds' },
 ];
 const marketState = { stocks: [], etfs: [], category:'themes', loading: false, error: '', scope: 'groups', group: '', display: 'table',
-  period: 2, sort:'performance', direction: 'desc', limit: 100, quoteSnapshot: null, quoteMode: false, environment: '', refresh: null };
+  period: 2, sort:'performance', direction: 'desc', limit: 100, snapshots: Object.create(null), quoteMode: true,
+  environment: '', key: '', refresh: null, timer: null, auto: store.get('market_auto_refresh') !== '0',
+  failures: 0, retryAt: 0, authBlocked: false };
 
 function marketEscape(value) {
   return String(value).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
@@ -2153,13 +2183,26 @@ function marketEscape(value) {
 function marketPct(value) { return value === null ? '—' : (value > 0 ? '+' : '') + (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) + '%'; }
 function marketTone(value) { return value === null || Math.abs(value) < 0.005 ? 'market-neutral' : value > 0 ? 'market-positive' : 'market-negative'; }
 function marketAllRows() { return [...marketState.stocks, ...marketState.etfs]; }
-function marketQuoteSymbols() { return [...new Set(marketAllRows().map(row => row.ticker))]; }
+function marketRefreshScope() {
+  const category = MARKET_CATEGORIES.find(item => item.id === marketState.category);
+  const theme = category.id === 'themes';
+  const rows = theme ? marketState.group ? marketState.stocks.filter(row => row.group === marketState.group) : marketState.stocks
+    : marketState.etfs.filter(row => row.category === category.id);
+  return {id:theme && marketState.group ? 'group:' + marketState.group : category.id,
+    label:marketState.group || category.name, rows, interval:theme && !marketState.group ? 180000 : 30000};
+}
+function marketQuoteSymbols() { return [...new Set(marketRefreshScope().rows.map(row => row.ticker))]; }
+function marketCachedSnapshot(scope = marketRefreshScope()) {
+  const own = marketState.snapshots[scope.id];
+  const parent = scope.id.startsWith('group:') ? marketState.snapshots.themes : null;
+  return parent && (!own || parent.fetchedAt > own.fetchedAt) ? parent : own || null;
+}
 function marketColumns() { return marketState.category === 'themes' ? [0,1,2,3,4,5] : [6,0,1,2,3,4,7]; }
 function marketRows() {
-  const rows = marketState.category === 'themes' ? marketState.stocks : marketState.etfs.filter(row => row.category === marketState.category);
-  return marketState.quoteMode && marketState.quoteSnapshot ? MarketData.withQuotes(rows, marketState.quoteSnapshot.quotes) : rows;
+  const scope = marketRefreshScope(), cached = marketCachedSnapshot(scope);
+  return marketState.quoteMode && cached ? MarketData.withQuotes(scope.rows, cached.quotes) : scope.rows;
 }
-function marketCacheKey() { return 'market_quotes_v2_' + document.getElementById('apiEnv').value; }
+function marketCacheKey() { return 'market_quotes_v3_' + document.getElementById('apiEnv').value; }
 
 function marketSetCategory(category) {
   if (!MARKET_CATEGORIES.some(item => item.id === category)) return;
@@ -2167,21 +2210,29 @@ function marketSetCategory(category) {
   if (!marketColumns().includes(marketState.period)) marketState.period = 2;
   document.getElementById('marketNotice').hidden = true;
   marketClearSearch();
+  marketScheduleRefresh();
 }
 
 function marketReadCache() {
   marketState.environment = document.getElementById('apiEnv').value;
-  marketState.quoteSnapshot = null;
-  marketState.quoteMode = false;
+  marketState.key = document.getElementById('apiKey').value.trim();
+  marketState.snapshots = Object.create(null);
+  marketState.retryAt = 0; marketState.failures = 0; marketState.authBlocked = false;
   try {
-    const cached = JSON.parse(store.get(marketCacheKey()) || 'null');
-    if (!cached || !Number.isFinite(cached.fetchedAt) || !cached.quotes || typeof cached.quotes !== 'object') return;
-    const quotes = Object.create(null);
-    marketAllRows().forEach(({ ticker }) => {
-      const q = cached.quotes[ticker];
-      if (q && Number.isFinite(q.price) && q.price > 0 && Number.isFinite(q.change)) quotes[ticker] = q;
+    const cached = JSON.parse(store.get(marketCacheKey()) || store.get('market_quotes_v2_' + marketState.environment) || 'null');
+    if (!cached || (!cached.scopes && !cached.quotes)) return;
+    const scopes = MARKET_CATEGORIES.map(category => [category.id, category.id === 'themes' ? marketState.stocks : marketState.etfs.filter(row => row.category === category.id)]);
+    MarketData.groups(marketState.stocks).forEach(group => scopes.push(['group:' + group.name, group.stocks]));
+    scopes.forEach(([id, rows]) => {
+      const snapshot = cached.scopes ? cached.scopes[id] : id.startsWith('group:') ? null : cached;
+      if (!snapshot || !Number.isFinite(snapshot.fetchedAt) || snapshot.fetchedAt <= 0 || snapshot.fetchedAt > Date.now() || !snapshot.quotes) return;
+      const quotes = Object.create(null);
+      rows.forEach(({ticker}) => {
+        const q = snapshot.quotes[ticker];
+        if (q && Number.isFinite(q.price) && q.price > 0 && Number.isFinite(q.change)) quotes[ticker] = q;
+      });
+      if (Object.keys(quotes).length) marketState.snapshots[id] = {fetchedAt:snapshot.fetchedAt, quotes};
     });
-    if (Object.keys(quotes).length) { marketState.quoteSnapshot = { fetchedAt: cached.fetchedAt, quotes }; marketState.quoteMode = true; }
   } catch(e) {}
 }
 
@@ -2189,7 +2240,7 @@ async function loadMarket() {
   if (marketState.loading) return;
   if (marketState.stocks.length) {
     if (marketState.environment !== document.getElementById('apiEnv').value) marketReadCache();
-    renderMarket(); return;
+    renderMarket(); marketScheduleRefresh(); return;
   }
   marketState.loading = true; marketState.error = '';
   renderMarket();
@@ -2203,16 +2254,18 @@ async function loadMarket() {
     marketState.stocks = stocks; marketState.etfs = etfs;
     marketReadCache();
   } catch(error) { marketState.error = error.message || 'Could not load market data.'; }
-  finally { marketState.loading = false; renderMarket(); }
+  finally { marketState.loading = false; renderMarket(); marketScheduleRefresh(); }
 }
 
 function marketSetScope(scope) {
   marketState.scope = scope; marketState.group = ''; marketState.limit = 100;
   marketClearSearch();
+  marketScheduleRefresh();
 }
 function marketOpenGroup(name) {
   marketState.scope = 'stocks'; marketState.group = name; marketState.limit = 100;
   marketClearSearch();
+  marketScheduleRefresh();
   document.getElementById('marketContent').scrollIntoView({ block:'nearest', behavior:'smooth' });
 }
 function marketSearchChanged() { marketState.limit = 100; renderMarket(); }
@@ -2229,8 +2282,17 @@ function marketSortTicker() {
   marketState.sort = 'ticker'; renderMarket();
 }
 function marketShowMore() { marketState.limit += 100; renderMarket(); }
-function marketUseSnapshot() { marketState.quoteMode = false; renderMarket(); }
-function marketCancelRefresh() { marketState.refresh?.abort(); }
+function marketSetAuto(enabled) {
+  marketState.auto = enabled;
+  store.set('market_auto_refresh', enabled ? '1' : '0');
+  if (!enabled) marketAbortRefresh();
+  else { marketState.quoteMode = true; marketState.authBlocked = false; }
+  renderMarket(); marketScheduleRefresh();
+}
+function marketToggleAuto() { marketSetAuto(!marketState.auto); }
+function marketUseSnapshot() { marketState.quoteMode = false; marketSetAuto(false); }
+function marketAbortRefresh() { marketState.refresh?.controller.abort(); }
+function marketCancelRefresh() { marketSetAuto(false); }
 
 function marketSizeTrade(ticker) {
   if (!marketAllRows().some(row => row.ticker === ticker)) return;
@@ -2251,38 +2313,135 @@ function marketSizeTrade(ticker) {
   }
 }
 
-async function marketRefreshToday() {
-  if (marketState.refresh || !marketState.stocks.length) return;
-  const notice = document.getElementById('marketNotice');
-  if (!document.getElementById('apiKey').value.trim()) {
-    notice.textContent = 'Add your Tradier key in Size to refresh Today. The imported snapshot is available without a key.';
-    notice.hidden = false; return;
-  }
-  const controller = new AbortController();
-  marketState.refresh = controller;
-  const environment = document.getElementById('apiEnv').value;
-  const refreshBase = baseUrl(), refreshAuth = headers();
-  notice.hidden = true;
-  renderMarket();
-  try {
-    const quotes = await MarketData.fetchQuotes(marketQuoteSymbols(), {
-      base: refreshBase, auth: refreshAuth, signal: controller.signal,
-      onProgress(done, total) { document.getElementById('marketRefreshBtn').textContent = 'Refreshing ' + done.toLocaleString() + ' / ' + total.toLocaleString(); },
-    });
-    if (environment !== document.getElementById('apiEnv').value) throw new Error('API environment changed. Refresh again using the selected environment.');
-    if (!marketQuoteSymbols().some(ticker => quotes[ticker])) throw new Error('Tradier returned no usable quotes. Your previous data is still shown.');
-    // Commit only a completed refresh; cancellation or errors leave previous data intact.
-    marketState.quoteSnapshot = { fetchedAt: Date.now(), quotes };
-    marketState.quoteMode = true; marketState.environment = environment;
-    marketState.period = 0; marketState.sort = 'performance'; marketState.direction = 'desc';
-    store.set(marketCacheKey(), JSON.stringify(marketState.quoteSnapshot));
-  } catch(error) {
-    notice.textContent = (controller.signal.aborted ? 'Refresh cancelled.' : error.message || 'Could not refresh quotes.') + ' Previous data kept.';
-    notice.hidden = false;
-  } finally { marketState.refresh = null; renderMarket(); }
+function marketRefreshDue(scope = marketRefreshScope()) {
+  const cached = marketCachedSnapshot(scope);
+  return Math.max(cached ? cached.fetchedAt + scope.interval : 0, marketState.retryAt);
 }
 
-function renderMarket() {
+function marketScheduleRefresh() {
+  clearTimeout(marketState.timer); marketState.timer = null;
+  if (!marketView || document.hidden || navigator.onLine === false) {
+    marketAbortRefresh();
+    if (marketView) marketRenderRefreshStatus();
+    return;
+  }
+  const key = document.getElementById('apiKey').value.trim();
+  if (marketState.environment !== document.getElementById('apiEnv').value || marketState.key !== key) {
+    marketAbortRefresh(); marketReadCache(); renderMarket();
+  }
+  const scope = marketRefreshScope();
+  if (marketState.refresh && marketState.refresh.scope.id !== scope.id) marketAbortRefresh();
+  marketRenderRefreshStatus();
+  if (marketState.refresh || marketState.loading || !scope.rows.length) return;
+  const canRefresh = marketState.auto && key && !marketState.authBlocked;
+  const delay = canRefresh ? Math.min(5000, Math.max(0, marketRefreshDue(scope) - Date.now())) : 5000;
+  marketState.timer = setTimeout(() => {
+    marketState.timer = null;
+    if (canRefresh && marketRefreshDue() <= Date.now()) return marketRefreshToday(true);
+    marketScheduleRefresh();
+  }, delay);
+}
+
+function marketRenderRefreshStatus() {
+  const state = marketState, scope = marketRefreshScope(), cached = marketCachedSnapshot(scope);
+  const usingQuotes = state.quoteMode && cached;
+  const refresh = document.getElementById('marketRefreshBtn');
+  refresh.disabled = !!state.refresh || state.loading || !scope.rows.length || state.retryAt > Date.now() || navigator.onLine === false;
+  refresh.textContent = state.refresh ? state.refresh.status : '↻ Refresh quotes';
+  refresh.title = 'Refresh ' + scope.label + ' (' + scope.rows.length.toLocaleString() + ' symbols)';
+  document.getElementById('marketCancelBtn').hidden = !state.refresh;
+  document.getElementById('marketSnapshotBtn').hidden = !usingQuotes;
+  const auto = document.getElementById('marketAutoBtn');
+  auto.textContent = 'Auto: ' + (state.auto ? 'on' : 'off');
+  auto.setAttribute('aria-pressed', String(state.auto));
+  auto.classList.toggle('primary', state.auto);
+  const interval = scope.interval === 180000 ? '3 min' : '30 sec';
+  const wait = Math.max(0, Math.ceil((state.retryAt - Date.now()) / 1000));
+  const status = navigator.onLine === false ? 'Offline · cached data kept'
+    : state.authBlocked ? 'Auto paused · check your Tradier key in Size'
+    : !document.getElementById('apiKey').value.trim() ? 'Add a Tradier key in Size to refresh quotes.'
+    : wait ? (state.refresh ? 'Waiting to retry' : (state.auto ? 'Retrying in ' : 'Refresh available in ') + wait + ' sec') + ' · previous data kept'
+    : (state.auto ? 'Auto every ' + interval : 'Auto paused') + ' · ' + scope.label + ' · ' + scope.rows.length.toLocaleString() + ' symbols';
+  const statusElement = document.getElementById('marketRefreshStatus');
+  if (statusElement.textContent !== status) statusElement.textContent = status;
+  if (!state.stocks.length) return;
+  const source = document.getElementById('marketSource');
+  const history = state.category === 'themes' ? '1W–YTD' : '1W–1Y';
+  if (usingQuotes) {
+    const age = Math.max(0, Math.floor((Date.now() - cached.fetchedAt) / 1000));
+    const ageText = age < 60 ? age + ' sec ago' : age < 3600 ? Math.floor(age / 60) + ' min ago' : new Date(cached.fetchedAt).toLocaleString();
+    const count = scope.rows.filter(row => cached.quotes[row.ticker]).length;
+    source.innerHTML = '<b>Today' + (state.category === 'themes' ? '' : ' / from open') + ': Tradier ' + marketEscape(state.environment)
+      + '</b> · fetched ' + marketEscape(ageText) + (Date.now() - cached.fetchedAt >= scope.interval ? ' · <b>stale cache</b>' : '')
+      + ' · ' + count.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' quotes available. Prices may be delayed. '
+      + '<b>' + history + ': snapshot Sep 16, 2026.</b>';
+  } else {
+    source.innerHTML = '<b>Imported snapshot · Sep 16, 2026</b> · All periods are from the reference '
+      + (state.category === 'themes' ? 'export' : 'ETF tables') + '; quote timestamps were not provided. Longer periods stay imported when quotes refresh.';
+  }
+}
+
+async function marketRefreshToday(automatic = false) {
+  if (marketState.refresh || !marketState.stocks.length || !marketView || document.hidden || navigator.onLine === false) return;
+  const notice = document.getElementById('marketNotice');
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) {
+    if (!automatic) { notice.textContent = 'Add your Tradier key in Size to refresh quotes. The imported snapshot is available without a key.'; notice.hidden = false; }
+    return;
+  }
+  if (marketState.environment !== document.getElementById('apiEnv').value || marketState.key !== key) marketReadCache();
+  if (marketState.retryAt > Date.now() || (automatic && (!marketState.auto || marketState.authBlocked))) { marketScheduleRefresh(); return; }
+  const scope = marketRefreshScope(), symbols = marketQuoteSymbols();
+  if (!symbols.length) return;
+  if (automatic && marketRefreshDue(scope) > Date.now()) { marketScheduleRefresh(); return; }
+  clearTimeout(marketState.timer); marketState.timer = null;
+  const context = {controller:new AbortController(), scope, environment:marketState.environment,
+    status:'Refreshing ' + scope.label + '…'};
+  marketState.refresh = context;
+  notice.hidden = true;
+  marketRenderRefreshStatus();
+  try {
+    const quotes = await MarketData.fetchQuotes(symbols, {
+      base:baseUrl(), auth:headers(), signal:context.controller.signal,
+      onProgress(done, total) {
+        context.status = 'Refreshing ' + done.toLocaleString() + ' / ' + total.toLocaleString();
+        marketRenderRefreshStatus();
+      },
+      onRetry({delay, status}) {
+        context.status = 'Waiting to retry batch…';
+        if (status === 429) marketState.retryAt = Date.now() + delay;
+        marketRenderRefreshStatus();
+      },
+    });
+    if (context.controller.signal.aborted || context.environment !== document.getElementById('apiEnv').value || key !== document.getElementById('apiKey').value.trim()) return;
+    const scopedQuotes = Object.create(null);
+    symbols.forEach(symbol => { if (quotes[symbol]) scopedQuotes[symbol] = quotes[symbol]; });
+    if (!Object.keys(scopedQuotes).length) throw new Error('Tradier returned no usable quotes.');
+    // Replace only this complete scope. Other tabs keep their own data and timestamps.
+    marketState.snapshots[scope.id] = {fetchedAt:Date.now(), quotes:scopedQuotes};
+    marketState.quoteMode = true; marketState.failures = 0; marketState.retryAt = 0; marketState.authBlocked = false;
+    store.set(marketCacheKey(), JSON.stringify({scopes:marketState.snapshots}));
+  } catch(error) {
+    if (!context.controller.signal.aborted) {
+      marketState.failures++;
+      marketState.authBlocked = error.status === 401 || error.status === 403;
+      marketState.retryAt = Date.now() + Math.max(error.retryAfter || 0, Math.min(180000, 30000 * 2 ** Math.min(3, marketState.failures - 1)));
+      notice.textContent = (error.message || 'Could not refresh quotes.') + ' Previous data kept.';
+      notice.hidden = false;
+    }
+  } finally {
+    marketState.refresh = null;
+    renderMarket(true); marketScheduleRefresh();
+  }
+}
+
+function renderMarket(preservePosition = false) {
+  const section = document.getElementById('marketSection');
+  const oldTable = preservePosition ? section.querySelector('.market-table-wrap') : null;
+  const position = oldTable ? {top:oldTable.scrollTop, left:oldTable.scrollLeft} : null;
+  const focused = preservePosition && section.contains(document.activeElement) ? document.activeElement : null;
+  const focusAttribute = focused ? [...focused.attributes].find(attr => attr.name.startsWith('data-market-')) : null;
+  const focusContainer = focused?.closest('#marketContent, #marketStats, #marketPeriods, #marketBreadcrumb');
   const state = marketState, period = state.period;
   const isTheme = state.category === 'themes';
   const category = MARKET_CATEGORIES.find(item => item.id === state.category);
@@ -2305,12 +2464,7 @@ function renderMarket() {
   download.textContent = isTheme ? 'Download stock universe CSV ↗' : 'Download all ETF universes CSV ↗';
   const source = document.getElementById('marketSource');
   const content = document.getElementById('marketContent');
-  const refresh = document.getElementById('marketRefreshBtn');
-  refresh.disabled = !!state.refresh || state.loading || !state.stocks.length;
-  if (!state.refresh) refresh.textContent = '↻ Refresh Today';
-  else if (!refresh.textContent.startsWith('Refreshing')) refresh.textContent = 'Refreshing…';
-  document.getElementById('marketCancelBtn').hidden = !state.refresh;
-  document.getElementById('marketSnapshotBtn').hidden = !state.quoteMode;
+  marketRenderRefreshStatus();
   content.setAttribute('aria-busy', String(state.loading));
   if (!state.stocks.length) {
     source.textContent = 'Universe exported Sep 16, 2026';
@@ -2329,12 +2483,6 @@ function renderMarket() {
   const down = universe.filter(row => row.returns[period] < 0).length;
   const ranked = MarketData.sort(universe.filter(row => row.returns[period] !== null), period, 'desc');
   const leader = ranked[0], laggard = ranked[ranked.length - 1];
-  const quoteCount = state.quoteMode ? rows.filter(row => row.returns[0] !== null).length : 0;
-  source.innerHTML = state.quoteMode
-    ? '<b>Today: Tradier ' + marketEscape(state.environment) + '</b> · fetched ' + marketEscape(new Date(state.quoteSnapshot.fetchedAt).toLocaleString())
-      + ' · ' + quoteCount.toLocaleString() + '/' + rows.length.toLocaleString() + ' quotes. <b>' + (isTheme ? '1W–YTD' : '1W–1Y') + ': imported Sep 16, 2026.</b> '
-      + (isTheme ? '' : 'From open also uses refreshed quotes. ') + 'Quote delays depend on your feed.'
-    : '<b>Imported snapshot · Sep 16, 2026</b> · All periods are from the reference ' + (isTheme ? 'export' : 'ETF tables') + '; quote timestamps were not provided. Refresh Today for Tradier quotes.';
   const stat = (label, value, note, tone = '', action = '') => '<' + (action ? 'button type="button" ' + action : 'div') + ' class="market-stat">'
     + '<span class="market-stat-label">' + label + '</span><span class="market-stat-value ' + tone + '">' + value + '</span><span class="market-stat-note">' + marketEscape(note) + '</span></' + (action ? 'button' : 'div') + '>';
   const action = row => isGroups ? 'data-market-group="' + marketEscape(row.name) + '"' : 'data-market-ticker="' + marketEscape(row.ticker) + '"';
@@ -2372,6 +2520,13 @@ function renderMarket() {
   }
   document.getElementById('marketMoreBtn').hidden = visible.length >= filtered.length;
   document.getElementById('marketMoreBtn').textContent = 'Show more · ' + visible.length + ' of ' + filtered.length.toLocaleString();
+  if (focusAttribute && focusContainer) {
+    // Row order may change with prices; restore focus by ticker/group, not row index.
+    const target = [...focusContainer.querySelectorAll('[' + focusAttribute.name + ']')].find(element => element.getAttribute(focusAttribute.name) === focusAttribute.value);
+    target?.focus({preventScroll:true});
+  }
+  const table = position ? section.querySelector('.market-table-wrap') : null;
+  if (table) { table.scrollTop = position.top; table.scrollLeft = position.left; }
 }
 
 document.getElementById('marketSection').addEventListener('click', event => {
@@ -2834,6 +2989,7 @@ function setView(v) {
   document.getElementById('savedSection').style.display = positionsView ? '' : 'none';
   document.getElementById('utilsSection').style.display = utilsView ? '' : 'none';
   document.getElementById('marketSection').style.display = marketView ? '' : 'none';
+  marketScheduleRefresh();
   if (marketView) { pauseLive(); loadMarket(); }
   else if (calc && !document.hidden) resumeLive();
   if (utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
@@ -5016,8 +5172,11 @@ updateIntervalChips();
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
 // backgrounding the app ends a live session instead of polling blind; foregrounding pulls fresh sync data
 document.addEventListener('visibilitychange', () => {
+  marketScheduleRefresh();
   if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(); }
 });
+window.addEventListener('online', marketScheduleRefresh);
+window.addEventListener('offline', marketScheduleRefresh);
 renderRecentTickers();
 initSync();
 // scrolling over a focused number input should scroll the page, not spin the value
