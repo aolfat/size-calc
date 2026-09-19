@@ -312,6 +312,33 @@ test('an ETF opens sizing, clearing the previous symbol and stop values', () => 
   assert.equal(app.run('quoteData'), null);
 });
 
+test('sizing an ETF from Market exits a previously selected Futures mode', async () => {
+  const app = appContext();
+  app.run('marketState.etfs = ' + JSON.stringify(etfFixture()) + '; fetchQuote = () => {};');
+  await app.run("setMode('futures')");
+  app.run("setView('market'); marketSizeTrade('XLK');");
+  assert.equal(app.run('currentMode'), 'shares');
+  assert.equal(app.element('futuresSection').style.display, 'none');
+  assert.equal(app.element('sizingControls').style.display, '');
+  assert.equal(app.element('ticker').value, 'XLK');
+});
+
+test('Futures shortcut works from Market and Market search keeps its focus behavior', async () => {
+  const app = appContext();
+  let selectedSearch = false;
+  app.element('marketSearch').select = () => { selectedSearch = true; };
+  app.run('initShortcuts();');
+  await app.run("setMode('futures')");
+  app.run("setView('market');");
+  app.dispatch('keydown', {key:'/', target:{tagName:'BUTTON'}, preventDefault() {}});
+  assert.equal(selectedSearch, true);
+  assert.equal(app.run('marketView'), true);
+  app.dispatch('keydown', {key:'f', target:{tagName:'BUTTON'}, preventDefault() {}});
+  assert.equal(app.run('marketView'), false);
+  assert.equal(app.run('currentMode'), 'futures');
+  assert.equal(app.element('futuresSection').style.display, '');
+});
+
 test('both Tools shortcuts work from Market without moving focus into a text field', () => {
   const app = appContext();
   let focusedGain = false;
