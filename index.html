@@ -661,7 +661,12 @@
   <section id="marketSection" style="display:none;" aria-labelledby="marketTitle">
     <div class="market-heading">
       <div><div class="market-eyebrow">Market pulse</div><h2 id="marketTitle">Find the strength.</h2><p>Themes, sectors and global markets, from the big picture to your next ticker.</p></div>
-      <div class="market-actions"><button class="btn" id="marketAutoBtn" onclick="marketToggleAuto()" aria-pressed="true">Auto: on</button><button class="btn" id="marketSnapshotBtn" onclick="marketUseSnapshot()" hidden>Use snapshot</button><button class="btn primary" id="marketRefreshBtn" onclick="marketRefreshToday()">↻ Refresh quotes</button><button class="btn" id="marketCancelBtn" onclick="marketCancelRefresh()" hidden>Cancel</button></div>
+      <div class="market-actions">
+        <button class="btn" id="marketAutoBtn" onclick="marketToggleAuto()" aria-pressed="true">Auto: on</button>
+        <button class="btn" id="marketSnapshotBtn" onclick="marketUseSnapshot()" title="Show the imported Sep 16, 2026 data for every period, including Today, and pause Auto. Refresh quotes or turn Auto on to return to Tradier quotes." hidden>Use snapshot</button>
+        <button class="btn primary" id="marketRefreshBtn" onclick="marketRefreshToday()">↻ Refresh quotes</button>
+        <button class="btn" id="marketCancelBtn" onclick="marketCancelRefresh()" title="Cancel the current refresh and turn Auto off. Keep the previously displayed data." hidden>Cancel</button>
+      </div>
     </div>
     <div class="market-tabs" role="tablist" aria-label="Market Pulse categories" id="marketTabs">
       <button role="tab" id="marketTab-themes" data-market-category="themes" aria-controls="marketPanel" aria-selected="true">Theme Tracker</button>
@@ -676,10 +681,10 @@
     <div class="market-notice" id="marketNotice" role="status" hidden></div>
     <div class="market-stats" id="marketStats"></div>
     <div class="market-toolbar">
-      <div class="seg" id="marketScope" aria-label="Market universe"><button id="marketGroupsBtn" class="active" onclick="marketSetScope('groups')" aria-pressed="true">Groups</button><button id="marketStocksBtn" onclick="marketSetScope('stocks')" aria-pressed="false">Stocks</button></div>
+      <div class="seg" id="marketScope" aria-label="Market universe"><button id="marketGroupsBtn" class="active" onclick="marketSetScope('groups')" aria-pressed="true" title="Compare industry groups using an equal-weight average of their stocks. Missing returns are excluded.">Groups</button><button id="marketStocksBtn" onclick="marketSetScope('stocks')" aria-pressed="false" title="Show individual stocks across all industry groups. Select a ticker to size a trade.">Stocks</button></div>
       <div class="market-search"><input id="marketSearch" type="search" aria-label="Search market" placeholder="Search ticker, company or industry" oninput="marketSearchChanged()" /><button id="marketClearBtn" aria-label="Clear market search" onclick="marketClearSearch()" hidden>×</button></div>
       <div class="market-periods" id="marketPeriods" aria-label="Performance period"></div>
-      <div class="seg market-view-switch" aria-label="Market display"><button id="marketTableBtn" class="active" onclick="marketSetDisplay('table')" aria-pressed="true">Table</button><button id="marketHeatmapBtn" onclick="marketSetDisplay('heatmap')" aria-pressed="false">Heatmap</button></div>
+      <div class="seg market-view-switch" aria-label="Market display"><button id="marketTableBtn" class="active" onclick="marketSetDisplay('table')" aria-pressed="true" title="Compare returns across all periods. Select a column heading to sort.">Table</button><button id="marketHeatmapBtn" onclick="marketSetDisplay('heatmap')" aria-pressed="false" title="Compare the selected period using colored tiles: green for gains, red for losses, and gray for flat or unavailable returns.">Heatmap</button></div>
     </div>
     <div class="market-context"><div class="market-breadcrumb" id="marketBreadcrumb"></div><div class="market-legend"><span>Weak</span><i aria-hidden="true"></i><span>Strong</span></div></div>
     <div id="marketContent" aria-busy="false"><div class="market-empty">Loading market data…</div></div>
@@ -2198,6 +2203,15 @@ function marketCachedSnapshot(scope = marketRefreshScope()) {
   return parent && (!own || parent.fetchedAt > own.fetchedAt) ? parent : own || null;
 }
 function marketColumns() { return marketState.category === 'themes' ? [0,1,2,3,4,5] : [6,0,1,2,3,4,7]; }
+function marketPeriodHelp(period) {
+  const meanings = ['Change from the previous session close', 'One-week return', 'One-month return', 'Three-month return',
+    'Six-month return', 'Year-to-date return', 'Change from the session open', 'One-year return, separate from year to date'];
+  const quotePeriod = period === 0 || period === 6;
+  const source = quotePeriod && marketState.quoteMode && marketCachedSnapshot()
+    ? 'Uses the latest fetched Tradier quotes; prices may be delayed.'
+    : 'Uses the imported Sep 16, 2026 snapshot.';
+  return meanings[period] + '. ' + source + (quotePeriod ? '' : ' Quote refreshes do not update this period.');
+}
 function marketRows() {
   const scope = marketRefreshScope(), cached = marketCachedSnapshot(scope);
   return marketState.quoteMode && cached ? MarketData.withQuotes(scope.rows, cached.quotes) : scope.rows;
@@ -2348,7 +2362,8 @@ function marketRenderRefreshStatus() {
   const refresh = document.getElementById('marketRefreshBtn');
   refresh.disabled = !!state.refresh || state.loading || !scope.rows.length || state.retryAt > Date.now() || navigator.onLine === false;
   refresh.textContent = state.refresh ? state.refresh.status : '↻ Refresh quotes';
-  refresh.title = 'Refresh ' + scope.label + ' (' + scope.rows.length.toLocaleString() + ' symbols)';
+  refresh.title = 'Fetch quotes for ' + scope.label + ' (' + scope.rows.length.toLocaleString() + ' symbols). Updates Today'
+    + (state.category === 'themes' ? '' : ' and From open') + '; longer periods stay at the Sep 16, 2026 snapshot.';
   document.getElementById('marketCancelBtn').hidden = !state.refresh;
   document.getElementById('marketSnapshotBtn').hidden = !usingQuotes;
   const auto = document.getElementById('marketAutoBtn');
@@ -2356,6 +2371,8 @@ function marketRenderRefreshStatus() {
   auto.setAttribute('aria-pressed', String(state.auto));
   auto.classList.toggle('primary', state.auto);
   const interval = scope.interval === 180000 ? '3 min' : '30 sec';
+  auto.title = (state.auto ? 'Pause automatic quote refresh. ' : 'Resume automatic quote refresh. ')
+    + scope.label + ' refreshes every ' + interval + ' while Market is visible and online. Requires a Tradier key in Size.';
   const wait = Math.max(0, Math.ceil((state.retryAt - Date.now()) / 1000));
   const status = navigator.onLine === false ? 'Offline · cached data kept'
     : state.authBlocked ? 'Auto paused · check your Tradier key in Size'
@@ -2495,7 +2512,7 @@ function renderMarket(preservePosition = false) {
     const button = document.getElementById(id); button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
   });
   document.getElementById('marketClearBtn').hidden = !query;
-  document.getElementById('marketPeriods').innerHTML = columns.map(i => '<button class="' + (period === i ? 'active' : '') + '" aria-pressed="' + (period === i) + '" data-market-period="' + i + '">' + MARKET_PERIODS[i] + '</button>').join('');
+  document.getElementById('marketPeriods').innerHTML = columns.map(i => '<button class="' + (period === i ? 'active' : '') + '" aria-pressed="' + (period === i) + '" title="' + marketEscape(marketPeriodHelp(i)) + '" data-market-period="' + i + '">' + MARKET_PERIODS[i] + '</button>').join('');
   document.getElementById('marketBreadcrumb').innerHTML = (state.group ? '<button data-market-home>All groups</button><span class="market-neutral">/</span>' : '')
     + '<strong>' + marketEscape(state.group || (isTheme ? isGroups ? 'Industry groups' : 'All stocks' : category.name)) + '</strong><span class="market-count">' + filtered.length.toLocaleString() + (isGroups ? ' group' : ' ' + unit) + (filtered.length === 1 ? '' : 's') + (query ? ' found' : '') + '</span>';
   const coverageText = (row, i) => isGroups ? row.coverage[i] + '/' + row.count + ' stocks with returns' : '';
@@ -2514,7 +2531,7 @@ function renderMarket(preservePosition = false) {
     }).join('') + '</div>';
   } else {
     content.innerHTML = '<div class="market-table-wrap"><table class="market-table' + (isTheme ? '' : ' market-etf-table') + '" aria-label="' + (isGroups ? 'Industry group' : isTheme ? 'Stock' : category.name) + ' performance"><thead><tr><th scope="col"' + (state.sort === 'ticker' ? ' aria-sort="' + (state.direction === 'asc' ? 'ascending' : 'descending') + '"' : '') + '><button data-market-ticker-sort>' + (isGroups ? 'Industry group' : isTheme ? 'Ticker / company' : 'Ticker / fund') + (state.sort === 'ticker' ? state.direction === 'asc' ? ' ↑' : ' ↓' : '') + '</button></th>'
-      + columns.map(i => '<th scope="col"' + (state.sort === 'performance' && period === i ? ' aria-sort="' + (state.direction === 'desc' ? 'descending' : 'ascending') + '"' : '') + '><button data-market-sort="' + i + '">' + MARKET_PERIODS[i] + (state.sort === 'performance' && period === i ? state.direction === 'desc' ? ' ↓' : ' ↑' : '') + '</button></th>').join('')
+      + columns.map(i => '<th scope="col"' + (state.sort === 'performance' && period === i ? ' aria-sort="' + (state.direction === 'desc' ? 'descending' : 'ascending') + '"' : '') + '><button title="' + marketEscape(marketPeriodHelp(i) + ' Click to sort; click again to reverse.') + '" data-market-sort="' + i + '">' + MARKET_PERIODS[i] + (state.sort === 'performance' && period === i ? state.direction === 'desc' ? ' ↓' : ' ↑' : '') + '</button></th>').join('')
       + '</tr></thead><tbody>' + visible.map(row => '<tr><td class="market-name"><button ' + action(row) + ' title="' + (isGroups ? 'Open group' : 'Size this trade') + '"><span class="' + (!isGroups ? 'market-stock-symbol' : '') + '">' + marketEscape(isGroups ? row.name : row.ticker) + '</span><small>' + marketEscape(isGroups ? row.count + ' stocks' : row.name) + '</small></button></td>'
         + columns.map(i => '<td class="' + marketTone(row.returns[i]) + (period === i ? ' market-selected-period' : '') + '" title="' + coverageText(row, i) + '">' + marketPct(row.returns[i]) + (isGroups && row.coverage[i] < row.count ? '<sup aria-label="Partial coverage">*</sup>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
   }
