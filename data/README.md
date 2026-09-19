@@ -44,16 +44,45 @@ period selection. Tabs support arrow keys, Home and End. Tables sort by ticker
 or any performance column in either direction. The ETF download includes all
 four ETF categories; the stock download is the unmodified original export.
 
-**Refresh Today** requests all 3,006 stock and ETF symbols via Tradier's batch
-quote endpoint in batches of 100 with 1.25 seconds between requests. The whole
-refresh is committed after completion, including when the user switches tabs;
-cancellation or failure preserves the previous data. Missing quotes become
-unavailable, and group averages exclude them with a coverage marker. Quotes are
-cached locally per API environment, outside encrypted position sync. The UI
-shows the fetch time and environment. ETF From open is calculated as
-`(last / open - 1) * 100`; an absent or invalid open stays unavailable. Longer
-periods (1W–YTD for stocks, 1W–1Y for ETFs) remain imported values. The v2 quote
-cache includes From open; older v1 caches are ignored.
+**Auto** is on by default when a Tradier key is configured. Refreshes cover only
+the active ETF category or opened industry group every 30 seconds. The complete
+Theme Tracker overview (Groups or all Stocks) refreshes its 2,860 stocks every
+three minutes. These intervals start when a refresh completes. Search filters
+do not reduce the quote universe, so group averages keep their full membership.
+**Refresh quotes** requests the same active scope immediately, subject to any
+failure cooldown. The selected period, sort, search, table scroll and keyboard
+focus are preserved when quotes arrive.
+
+Cached quotes display immediately, with their fetch age, environment, coverage
+and a stale label once the scope's interval has elapsed. Each category and
+opened group has its own cache and timestamp. Groups can reuse newer full-theme
+quotes; refreshing one group never marks the full overview fresh. Caches use
+`market_quotes_v3_<environment>` in local storage, outside encrypted position
+sync. Existing v2 caches are read into scopes with their original timestamps;
+v1 caches are ignored. The Auto preference is also local to this browser.
+
+Requests use Tradier's POST quote endpoint in batches of 100, with 1.25 seconds
+between batches and at most one refresh in flight. Leaving Market, hiding the
+browser tab, going offline or changing scope cancels unnecessary requests.
+Returning reuses fresh cached data and refreshes only when stale. Turning Auto
+off or pressing Cancel pauses automatic requests. **Use snapshot** also pauses
+Auto and displays the imported CSV values. Turning Auto on restores cached
+quotes and resumes the schedule.
+
+Network errors, timeouts, HTTP 429 and server errors retry only the failed batch
+up to twice. Rate limits honor Retry-After or X-Ratelimit-Expiry when available,
+otherwise waiting a minute. Exhausted retries keep the previous complete scope
+and back off subsequent attempts from 30 seconds to three minutes. Invalid
+credentials pause Auto until the key/environment changes or the user retries.
+Only a completed scope replaces its cache; cancellations and failures preserve
+the previous data. Missing quotes become unavailable, and group averages
+exclude them with a coverage marker.
+
+ETF From open is calculated as `(last / open - 1) * 100`; an absent or invalid
+open stays unavailable. Longer periods (1W–YTD for stocks, 1W–1Y for ETFs) remain
+explicitly labeled imported values. Fetch age is not an exchange timestamp, and
+provider prices may be delayed. Historical-price ingestion remains a future
+backend concern; no server or new data service is required for these refreshes.
 
 To update the snapshots, add new stock/ETF CSVs and update `MARKET_FILE`,
 `MARKET_ETF_FILE`, the initial download link, and visible dates in `index.html`.

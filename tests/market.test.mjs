@@ -85,7 +85,7 @@ test('quote refresh batches symbols and accepts both single and multiple quote r
 
 test('failed or cancelled refreshes reject instead of returning partial results', async () => {
   await assert.rejects(data.fetchQuotes(['A'], {
-    base: 'https://api.tradier.com/v1', auth: {},
+    base: 'https://api.tradier.com/v1', auth: {}, retries: 0,
     fetchImpl: async () => ({ok: false, status: 429}),
   }), /rate limit/i);
   const controller = new AbortController();
@@ -99,16 +99,23 @@ test('failed or cancelled refreshes reject instead of returning partial results'
 function appContext(fetchImpl = async () => { throw new Error('Unexpected request'); }, skipMarketLoad = true) {
   const elements = new Map();
   const listeners = new Map();
+  const timers = new Map(), storage = new Map();
+  let now = Date.now(), nextTimer = 0;
+  class Clock extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const element = id => {
     if (!elements.has(id)) elements.set(id, { value: '', style: {}, dataset: {}, innerHTML: '', textContent: '',
       classList: { toggle() {}, add() {}, remove() {} },
       setAttribute() {}, removeAttribute() {}, addEventListener() {}, focus() {}, scrollIntoView() {},
+      querySelector: () => null, querySelectorAll: () => [], contains: () => false,
     });
     return elements.get(id);
   };
   element('apiEnv').value = 'production';
   element('ticker').value = 'A';
-  const sandbox = vm.createContext({ URLSearchParams, AbortController, setTimeout, clearTimeout,
+  const sandbox = vm.createContext({ URLSearchParams, AbortController, Date: Clock,
+    setTimeout: (callback, ms) => { const id = ++nextTimer; timers.set(id, {callback, at:now + ms}); return id; },
+    clearTimeout: id => timers.delete(id),
+    localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
     setInterval, clearInterval, fetch: fetchImpl, navigator: {},
     window: { scrollY: 0, scrollTo() {} },
     document: { hidden: false, getElementById: element, querySelector: element, querySelectorAll: () => [],
@@ -119,7 +126,16 @@ function appContext(fetchImpl = async () => { throw new Error('Unexpected reques
   vm.runInContext(scripts[0], sandbox);
   vm.runInContext(scripts[1].split('syncSuppress = true; // init reads back')[0], sandbox);
   vm.runInContext((skipMarketLoad ? 'loadMarket = async () => {}; ' : '') + 'renderQuote = () => {}; pushRecentTicker = () => {}; fetchChart = async () => {}; fetchAdr = async () => {}; markSyncDirty = () => {};', sandbox);
-  return { run: code => vm.runInContext(code, sandbox), element, dispatch: (type, event) => listeners.get(type)(event) };
+  return { run: code => vm.runInContext(code, sandbox), element, storage,
+    dispatch: (type, event) => listeners.get(type)(event),
+    advance: async ms => {
+      now += ms;
+      for (const [id, timer] of [...timers].filter(([,t]) => t.at <= now)) {
+        if (!timers.delete(id)) continue;
+        await timer.callback();
+      }
+    },
+  };
 }
 
 test('Market and Tools keep calculator charts hidden even after a pending quote finishes', async () => {
@@ -172,7 +188,7 @@ test('switching tickers can load a new options chain while the previous chain is
 test('a failure after a successful batch still rejects the whole refresh', async () => {
   let calls = 0;
   await assert.rejects(data.fetchQuotes(Array.from({length:101}, (_, i) => 'S' + i), {
-    base: 'https://api.tradier.com/v1', auth: {}, pause: async () => {},
+    base: 'https://api.tradier.com/v1', auth: {}, pause: async () => {}, retries: 0,
     fetchImpl: async () => ++calls === 1
       ? {ok:true, json: async () => ({quotes: {quote: {symbol:'S0', last:10, change_percentage:1}}})}
       : {ok:false, status:503},
@@ -232,12 +248,18 @@ test('switching categories clears a stock drilldown and uses the correct ETF uni
   assert.doesNotMatch(app.element('marketContent').innerHTML, /XLK/);
 });
 
-test('ticker sorting works in both directions and quote requests include stocks and every ETF once', () => {
+test('refresh scopes cover the active ETF tab, opened group, or complete theme overview', () => {
   assert.equal(data.sort(etfFixture(), 'ticker', 'asc').map(row => row.ticker).join(), 'RSP,XLK');
   assert.equal(data.sort(etfFixture(), 'ticker', 'desc').map(row => row.ticker).join(), 'XLK,RSP');
   const app = appContext();
   app.run('marketState.stocks = ' + JSON.stringify(fixture()) + '; marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
-  assert.equal(app.run('marketQuoteSymbols().sort().join()'), 'A,B,C,RSP,XLK');
+  assert.equal(app.run('marketQuoteSymbols().sort().join()'), 'A,B,C');
+  assert.equal(app.run('marketRefreshScope().interval'), 180000);
+  app.run("marketOpenGroup('Tech');");
+  assert.equal(app.run('marketQuoteSymbols().sort().join()'), 'A,B');
+  assert.equal(app.run('marketRefreshScope().interval'), 30000);
+  app.run("marketSetCategory('sectors');");
+  assert.equal(app.run('marketQuoteSymbols().join()'), 'XLK');
 });
 
 test('an ETF file failure can be retried without leaving half of the Market universes loaded', async () => {
@@ -250,35 +272,32 @@ test('an ETF file failure can be retried without leaving half of the Market univ
   assert.match(app.element('marketContent').innerHTML, /Retry loading/);
   failEtfs = false;
   await app.run('loadMarket()');
-  assert.equal(app.run('marketQuoteSymbols().length'), 3006);
+  assert.equal(app.run('marketAllRows().length'), 3006);
   assert.equal(app.run('marketState.error'), '');
 });
 
-test('refresh covers all universes even when the category changes during the request', async () => {
-  let resolveQuote, requested;
+test('switching categories cancels the old scope and prevents its late response being committed', async () => {
+  let resolveQuote, requested, signal;
   const app = appContext((url, options) => {
     requested = new URLSearchParams(options.body).get('symbols');
+    signal = options.signal;
     return new Promise(resolve => { resolveQuote = resolve; });
   });
   app.element('apiKey').value = 'test';
   app.run('marketState.stocks = ' + JSON.stringify(fixture()) + '; marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
-  app.run("marketSetCategory('sectors');");
+  app.run("marketView = true; marketSetCategory('sectors');");
   const refresh = app.run('marketRefreshToday()');
-  assert.equal(requested, 'A,B,C,XLK,RSP');
+  assert.equal(requested, 'XLK');
   app.run("marketSetCategory('equal-weight');");
+  assert.equal(signal.aborted, true);
   resolveQuote({ok:true, json: async () => ({quotes:{quote:[
     {symbol:'XLK', last:110, open:100, change_percentage:5},
     {symbol:'RSP', last:51, open:50, change_percentage:1},
   ]}})});
   await refresh;
   assert.equal(app.run('marketRows()[0].ticker'), 'RSP');
-  assert.equal(app.run('marketRows()[0].returns[0]'), 1);
-  assert.ok(Math.abs(app.run('marketRows()[0].returns[6]') - 2) < 1e-10);
-  app.run("marketSetCategory('sectors');");
-  assert.equal(app.run('marketRows()[0].returns[0]'), 5);
-  assert.equal(app.run('marketRows()[0].returns[7]'), 30);
-  app.run("marketSetCategory('themes');");
-  assert.equal(app.run('marketRows()[0].returns[0]'), null);
+  assert.equal(app.run('marketCachedSnapshot()'), null);
+  assert.equal(app.run('Object.keys(marketState.snapshots).length'), 0);
 });
 
 test('an ETF opens sizing, clearing the previous symbol and stop values', () => {
@@ -307,4 +326,236 @@ test('both Tools shortcuts work from Market without moving focus into a text fie
     app.dispatch('keydown', {key, target:{tagName:'BUTTON'}, preventDefault() {}});
     assert.equal(app.run('utilsView'), false);
   }
+});
+
+function seedMarket(app) {
+  app.run('marketState.stocks = ' + JSON.stringify(fixture()) + '; marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
+  app.element('apiKey').value = 'test';
+  app.run("marketView = true; marketSetCategory('sectors');");
+}
+const quoteResponse = (symbol, change = 2) => ({ok:true, json: async () => ({quotes:{quote:{symbol, last:102, open:100, change_percentage:change}}})});
+
+test('a scoped refresh preserves selected period, sort, unrelated caches and historical returns', async () => {
+  const requested = [];
+  const app = appContext(async (url, options) => {
+    const symbol = new URLSearchParams(options.body).get('symbols'); requested.push(symbol);
+    return quoteResponse(symbol);
+  });
+  seedMarket(app);
+  app.run('marketSetPeriod(7); marketSortTicker();');
+  await app.run('marketRefreshToday()');
+  assert.equal(app.run('marketState.period'), 7);
+  assert.equal(app.run('marketState.sort'), 'ticker');
+  assert.equal(app.run('marketState.direction'), 'asc');
+  assert.equal(app.run('marketRows()[0].returns[7]'), 30);
+  app.run("marketSetCategory('equal-weight');");
+  assert.equal(app.run('marketCachedSnapshot()'), null);
+  await app.run('marketRefreshToday()');
+  app.run("marketSetCategory('sectors');");
+  assert.equal(app.run('marketRows()[0].returns[0]'), 2);
+  assert.equal(requested.join(), 'XLK,RSP');
+  app.run('marketState.snapshots = {}; marketReadCache();');
+  assert.equal(app.run('marketRows()[0].returns[0]'), 2);
+  app.element('apiEnv').value = 'sandbox';
+  app.run('marketReadCache();');
+  assert.equal(app.run('marketCachedSnapshot()'), null);
+});
+
+test('automatic refresh respects cache age, pauses when hidden and resumes only when stale', async () => {
+  let calls = 0;
+  const app = appContext(async () => { calls++; return quoteResponse('XLK'); });
+  seedMarket(app);
+  await app.advance(0);
+  assert.equal(calls, 1);
+  await app.advance(29000);
+  assert.equal(calls, 1);
+  await app.advance(1000);
+  assert.equal(calls, 2);
+  app.run('document.hidden = true; marketScheduleRefresh();');
+  await app.advance(60000);
+  assert.equal(calls, 2);
+  app.run('document.hidden = false; marketScheduleRefresh();');
+  await app.advance(0);
+  assert.equal(calls, 3);
+  app.run("setView('calc');");
+  await app.advance(60000);
+  assert.equal(calls, 3);
+});
+
+test('a group reuses the full overview cache but a group-only refresh cannot mark the overview fresh', async () => {
+  const app = appContext(async (url, options) => ({ok:true, json:async () => ({quotes:{quote:
+    new URLSearchParams(options.body).get('symbols').split(',').map(symbol => ({symbol,last:100,change_percentage:2}))}})}));
+  seedMarket(app);
+  app.run("marketSetCategory('themes');");
+  await app.run('marketRefreshToday()');
+  app.run("marketOpenGroup('Tech');");
+  assert.equal(app.run('marketCachedSnapshot().quotes.A.change'), 2);
+  app.run('marketState.snapshots = {};');
+  await app.run('marketRefreshToday()');
+  app.run("marketSetScope('groups');");
+  assert.equal(app.run('marketCachedSnapshot()'), null);
+});
+
+test('snapshot mode pauses auto-refresh, and turning auto back on restores cached quotes', async () => {
+  let calls = 0;
+  const app = appContext(async () => { calls++; return quoteResponse('XLK', 9); });
+  seedMarket(app);
+  await app.run('marketRefreshToday()');
+  app.run('marketUseSnapshot();');
+  await app.advance(60000);
+  assert.equal(calls, 1);
+  assert.equal(app.run('marketRows()[0].returns[0]'), 1);
+  app.run('marketToggleAuto();');
+  assert.equal(app.run('marketRows()[0].returns[0]'), 9);
+  await app.advance(0);
+  assert.equal(calls, 2);
+});
+
+test('leaving Market aborts in-flight requests and keeps the previous cache', async () => {
+  let resolve, signal;
+  const app = appContext((url, options) => { signal = options.signal; return new Promise(done => { resolve = done; }); });
+  seedMarket(app);
+  const request = app.run('marketRefreshToday()');
+  app.run("setView('utils');");
+  assert.equal(signal.aborted, true);
+  resolve(quoteResponse('XLK'));
+  await request;
+  assert.equal(app.run('marketCachedSnapshot()'), null);
+});
+
+test('a failed batch is retried without requesting earlier successful batches again', async () => {
+  const calls = [], waits = [];
+  const symbols = Array.from({length:101}, (_, i) => 'S' + i);
+  const quotes = await data.fetchQuotes(symbols, {base:'',auth:{},pause:async ms => waits.push(ms),
+    fetchImpl:async (url, options) => {
+      const batch = new URLSearchParams(options.body).get('symbols').split(','); calls.push(batch);
+      if (calls.length === 2) return {ok:false,status:503};
+      return {ok:true,json:async () => ({quotes:{quote:batch.map(symbol => ({symbol,last:10,change_percentage:1}))}})};
+    }});
+  assert.equal(calls.length, 3);
+  assert.equal(calls[1].join(), calls[2].join());
+  assert.equal(Object.keys(quotes).length, 101);
+  assert.ok(waits.includes(1000));
+});
+
+test('rate-limit retries honor Retry-After and authentication errors are never retried', async () => {
+  let attempts = 0;
+  const waits = [];
+  await data.fetchQuotes(['XLK'], {base:'',auth:{},pause:async ms => waits.push(ms),
+    fetchImpl:async () => ++attempts === 1 ? {ok:false,status:429,headers:{get:key => key === 'Retry-After' ? '60' : null}} : quoteResponse('XLK')});
+  assert.equal(waits[0], 60000);
+  attempts = 0;
+  await assert.rejects(data.fetchQuotes(['XLK'], {base:'',auth:{},pause:async () => {},
+    fetchImpl:async () => { attempts++; return {ok:false,status:401}; }}), /API key/);
+  assert.equal(attempts, 1);
+});
+
+test('invalid rate-limit headers use a conservative fallback wait', async () => {
+  let attempts = 0;
+  const waits = [];
+  await data.fetchQuotes(['XLK'], {base:'',auth:{},pause:async ms => waits.push(ms),
+    fetchImpl:async () => ++attempts === 1 ? {ok:false,status:429,headers:{get:() => 'invalid'}} : quoteResponse('XLK')});
+  assert.equal(waits[0], 60000);
+});
+
+test('refresh preserves table scroll and keyboard focus when price changes reorder rows', async () => {
+  const app = appContext(async () => quoteResponse('XLK'));
+  seedMarket(app);
+  const section = app.element('marketSection');
+  const oldTable = {scrollTop:250,scrollLeft:120}, newTable = {scrollTop:0,scrollLeft:0};
+  let tableReads = 0, focusOptions;
+  section.querySelector = () => ++tableReads === 1 ? oldTable : newTable;
+  section.contains = () => true;
+  app.run("document.activeElement = {attributes:[{name:'data-market-ticker',value:'XLK'}], closest:() => document.getElementById('marketContent')};");
+  const rows = [
+    {getAttribute: () => 'RSP', focus:() => assert.fail('must focus the same ticker')},
+    {getAttribute: () => 'XLK', focus:options => { focusOptions = options; }},
+  ];
+  app.element('marketContent').querySelectorAll = () => rows;
+  section.querySelectorAll = () => [
+    {getAttribute: () => 'XLK', focus:() => assert.fail('must not move focus to a summary card')}, ...rows,
+  ];
+  await app.run('marketRefreshToday()');
+  assert.equal(newTable.scrollTop, 250);
+  assert.equal(newTable.scrollLeft, 120);
+  assert.equal(focusOptions.preventScroll, true);
+});
+
+test('existing v2 quotes migrate into scoped caches with their original timestamp', () => {
+  const app = appContext();
+  seedMarket(app);
+  app.storage.set('market_quotes_v2_production', JSON.stringify({fetchedAt:app.run('Date.now() - 60000'),quotes:{
+    A:{price:10,change:5}, XLK:{price:100,change:6,fromOpen:2}, RSP:{price:50,change:3}
+  }}));
+  app.run('marketReadCache();');
+  assert.equal(app.run('marketRows()[0].returns[0]'), 6);
+  assert.equal(app.run('Date.now() - marketCachedSnapshot().fetchedAt'), 60000);
+  app.run("marketSetCategory('equal-weight');");
+  assert.equal(app.run('marketRows()[0].returns[0]'), 3);
+  app.run("marketSetCategory('themes');");
+  assert.equal(app.run('marketRows()[1].returns[0]'), null);
+});
+
+test('authentication failure pauses auto-refresh until credentials change', async () => {
+  let calls = 0;
+  const app = appContext(async () => ++calls === 1 ? {ok:false,status:401} : quoteResponse('XLK'));
+  seedMarket(app);
+  await app.advance(0);
+  assert.equal(calls, 1);
+  await app.advance(180000);
+  assert.equal(calls, 1);
+  assert.match(app.element('marketRefreshStatus').textContent, /check your Tradier key/);
+  app.element('apiKey').value = 'new-test-key';
+  app.run('marketScheduleRefresh();');
+  await app.advance(0);
+  assert.equal(calls, 2);
+});
+
+test('failed refresh keeps cached values and backs off; missing quotes clear only the refreshed scope', async () => {
+  let calls = 0;
+  const app = appContext(async () => {
+    calls++;
+    if (calls === 2) return {ok:false,status:422};
+    return {ok:true,json:async () => ({quotes:{quote: calls === 1
+      ? [{symbol:'A',last:10,change_percentage:5},{symbol:'B',last:20,change_percentage:6}]
+      : {symbol:'A',last:10,change_percentage:7}}})};
+  });
+  seedMarket(app);
+  app.run("marketSetCategory('themes'); marketOpenGroup('Tech');");
+  await app.run('marketRefreshToday()');
+  await app.run('marketRefreshToday()');
+  assert.equal(app.run('marketRows()[1].returns[0]'), 6);
+  await app.advance(29000);
+  assert.equal(calls, 2);
+  await app.advance(1000);
+  assert.equal(calls, 3);
+  assert.equal(app.run('marketRows()[0].returns[0]'), 7);
+  assert.equal(app.run('marketRows()[1].returns[0]'), null);
+});
+
+test('offline and missing-key states never request quotes', async () => {
+  let calls = 0;
+  const app = appContext(async () => { calls++; return quoteResponse('XLK'); });
+  seedMarket(app);
+  app.element('apiKey').value = '';
+  app.run('marketScheduleRefresh();');
+  await app.advance(180000);
+  assert.equal(calls, 0);
+  app.element('apiKey').value = 'test';
+  app.run('navigator.onLine = false; marketScheduleRefresh();');
+  await app.advance(180000);
+  assert.equal(calls, 0);
+  app.run('navigator.onLine = true; marketScheduleRefresh();');
+  await app.advance(0);
+  assert.equal(calls, 1);
+});
+
+test('cancelling during rate-limit backoff rejects promptly without another request', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const request = data.fetchQuotes(['XLK'], {base:'',auth:{},signal:controller.signal,
+    onRetry: () => controller.abort(),
+    fetchImpl: async () => { calls++; return {ok:false,status:429}; }});
+  await assert.rejects(request, /cancel/i);
+  assert.equal(calls, 1);
 });
