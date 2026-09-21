@@ -52,6 +52,69 @@ test('existing shares sizing works for both directions', () => {
   assert.match(elements.get('sharesStats').innerHTML, /to short/);
 });
 
+test('shares card identifies default and custom stops independently of the price', () => {
+  const { run, elements } = app();
+  run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 }; renderShares();");
+  assert.match(elements.get('sharesStats').innerHTML, /Stop price/);
+  assert.match(elements.get('sharesStats').innerHTML, /Low of day/);
+  elements.get('stopLong').value = '98';
+  run('renderShares()');
+  assert.match(elements.get('sharesStats').innerHTML, /Custom stop/);
+  assert.doesNotMatch(elements.get('sharesStats').innerHTML, /Low of day/);
+  run("setDirection('short')");
+  assert.match(elements.get('sharesStats').innerHTML, /High of day/);
+  elements.get('stopShort').value = '103';
+  run('renderShares()');
+  assert.match(elements.get('sharesStats').innerHTML, /Custom stop/);
+  assert.match(elements.get('sharesStats').innerHTML, /\$103\.00/);
+});
+
+test('shares card retains planned entry and reverse sizing with a custom stop', () => {
+  const { run, elements } = app();
+  run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 };");
+  elements.get('entryPrice').value = '101';
+  elements.get('stopLong').value = '99.73';
+  run("sharesQtyChanged({ value: '12' })");
+  assert.equal(+elements.get('riskDollar').value, 15.24);
+  const card = elements.get('sharesStats').innerHTML;
+  assert.match(card, /value="12"/);
+  assert.match(card, /Entry.*\$101\.00/);
+  assert.match(card, /Custom stop/);
+  assert.match(card, /\$1,212\.00/);
+});
+
+test('invalid stops disable both share actions and valid stops enable them again', () => {
+  const { run, elements } = app();
+  run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 }; renderShares();");
+  for (const id of ['sharesImage', 'sharesCopy']) assert.equal(elements.get(id).disabled, false);
+  elements.get('stopLong').value = '101';
+  run('renderShares()');
+  assert.match(elements.get('sharesStats').innerHTML, /must be below entry/);
+  for (const id of ['sharesImage', 'sharesCopy']) assert.equal(elements.get(id).disabled, true);
+  elements.get('stopLong').value = '';
+  run('renderShares()');
+  for (const id of ['sharesImage', 'sharesCopy']) assert.equal(elements.get(id).disabled, false);
+});
+
+test('image and compact summary share the selected stop without exposing the account balance', () => {
+  const { run, elements } = app();
+  run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 }; var sharedSpec, copiedText; drawShareCard = spec => { sharedSpec = spec; return {}; }; shareCanvasToClipboard = () => {}; copyPlainText = text => { copiedText = text; };");
+  elements.get('accountSize').value = '123456';
+  elements.get('stopLong').value = '98';
+  run('shareShares(); copyShares();');
+  assert.equal(run("sharedSpec.stats.find(stat => stat.label === 'Stop').value"), '$98.00');
+  assert.match(run("sharedSpec.stats.find(stat => stat.label === 'Stop').sub"), /Custom stop/);
+  assert.match(run('copiedText'), /bought \$TEST @ 100\.00 with stop at 98\.00/);
+  assert.match(run('copiedText'), /risk .*% of account.*to risk \$100: 50 shares/);
+  assert.doesNotMatch(run('JSON.stringify(sharedSpec) + copiedText'), /123,?456/);
+  elements.get('stopLong').value = '';
+  run('shareShares();');
+  assert.match(run("sharedSpec.stats.find(stat => stat.label === 'Stop').sub"), /LOD/);
+  run("setDirection('short'); shareShares(); copyShares();");
+  assert.match(run("sharedSpec.stats.find(stat => stat.label === 'Stop').sub"), /HOD/);
+  assert.match(run('copiedText'), /shorted \$TEST @ 100\.00 with stop at 102\.00/);
+});
+
 const specs = [
   ['ES', 0.25, 12.5], ['MES', 0.25, 1.25],
   ['NQ', 0.25, 5], ['MNQ', 0.25, 0.5],

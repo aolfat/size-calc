@@ -131,6 +131,37 @@
   .s-val-input:focus { border-bottom: 1px solid var(--blue); }
   .s-val-input::-webkit-outer-spin-button, .s-val-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
+  /* Shares and the selected stop lead; supporting metrics share a quieter row. */
+  .shares-primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .shares-primary > div { min-width: 0; }
+  .shares-label { display: block; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px; }
+  .shares-primary .s-val { font: 600 clamp(28px, 4vw, 44px)/1.15 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; margin-bottom: 8px; }
+  .shares-quantity .s-val { color: var(--blue); }
+  .shares-primary .s-val-input { width: 100%; max-width: 100%; font-size: inherit !important; }
+  .shares-primary .s-val-input:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; border-radius: 2px; }
+  .shares-stop { border-left: 1px solid var(--border); padding-left: 24px; }
+  .shares-stop .s-val { color: var(--red); }
+  .shares-detail { color: var(--text2); font-size: 12px; line-height: 1.5; }
+  .shares-detail strong { font-family: var(--mono); font-weight: 500; color: var(--text); }
+  .shares-edit-hint { font-size: 11px; color: var(--text2); margin-top: 4px; }
+  .shares-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 20px; }
+  .shares-metrics dt { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+  .shares-metrics dd { font: 600 19px/1.25 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .shares-metrics .shares-loss { color: var(--red); }
+  .shares-metrics .shares-detail { display: block; font: 11px/1.5 var(--mono); color: var(--text2); margin-top: 4px; }
+  .shares-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border); margin-top: 18px; padding-top: 14px; }
+  .shares-actions .filter-btn { padding: 8px 12px; }
+  .shares-actions .filter-btn:disabled { opacity: 0.4; cursor: default; }
+  .shares-actions .filter-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+  .shares-error { color: var(--amber); font-size: 13px; padding: 8px 0; }
+  .quote-levels { display: flex; gap: 8px 16px; align-items: center; flex-wrap: wrap; }
+  @media (max-width: 600px) {
+    .shares-primary { gap: 14px; }
+    .shares-stop { padding-left: 14px; }
+    .shares-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .shares-actions .filter-btn { flex: 1; min-height: 44px; }
+  }
+
   .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; font-variant-numeric: tabular-nums; }
@@ -836,7 +867,7 @@
   </div>
 
   <div id="quoteSection" style="display:none;">
-    <div class="card">
+    <div class="card" id="quoteCard">
       <div class="quote-bar">
         <div>
           <span class="quote-ticker" id="qTicker"></span>
@@ -844,7 +875,7 @@
           <span class="quote-chg" id="qChg"></span>
           <span id="qExt" style="font-size:13px;font-family:var(--mono);margin-left:4px;"></span>
         </div>
-        <div style="display:flex;gap:16px;align-items:center;">
+        <div class="quote-levels">
           <span class="quote-lod">▼ LOD <span id="qLod"></span> <span class="lod-pct" id="qLodPct"></span></span>
           <span class="quote-hod">▲ HOD <span id="qHod"></span> <span class="lod-pct" id="qHodPct"></span></span>
           <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="qVol"></span>
@@ -853,8 +884,11 @@
 
       <div id="sharesSection" style="display:none;">
         <hr class="divider">
-        <div class="section-title">Shares sizing<button class="filter-btn" style="margin-left:10px;" onclick="shareShares()" title="Copy this plan as an image">share</button><button class="filter-btn" style="margin-left:6px;" onclick="copyShares()" title="Copy as text: bought N shares of $X @ entry with stop at Y">copy</button></div>
-        <div class="stat-grid" id="sharesStats"></div>
+        <div id="sharesStats"></div>
+        <div class="shares-actions" role="group" aria-label="Share trade plan">
+          <button type="button" class="filter-btn" id="sharesImage" onclick="shareShares()" title="Copy a PNG card, or download it if image copying is unavailable" disabled>Copy card image</button>
+          <button type="button" class="filter-btn" id="sharesCopy" onclick="copyShares()" title="Copy a compact text summary with entry, stop, risk percentage, and a $100-risk example" disabled>Copy summary</button>
+        </div>
       </div>
     </div>
 
@@ -1548,7 +1582,7 @@ function shareShares() {
     sub: `${isLong ? 'LONG' : 'SHORT'} · risk ${(risk / acct * 100).toFixed(2)}% of account · ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
     stats: [
       { label: isLong ? 'Entry — long' : 'Entry — short', value: fmt$(entry), color: SC.blue, sub: rawStop('entryPrice') > 0 ? 'planned entry' : 'current price' },
-      { label: 'Stop', value: fmt$(stop), color: SC.red, sub: `${(entry > 0 ? rps / entry * 100 : 0).toFixed(1)}% away${raw > 0 ? '' : (isLong ? ' · LOD' : ' · HOD')}` },
+      { label: 'Stop', value: fmt$(stop), color: SC.red, sub: `${(entry > 0 ? rps / entry * 100 : 0).toFixed(1)}% away · ${raw > 0 ? 'Custom stop' : (isLong ? 'LOD' : 'HOD')}` },
       { label: 'Max loss', value: (shares * rps / acct * 100).toFixed(2) + '%', color: SC.red, sub: 'of account' },
       { label: 'Position', value: (shares * entry / acct * 100).toFixed(1) + '%', sub: 'of account' }
     ],
@@ -4231,7 +4265,6 @@ function renderShares() {
   const hod = q.high || 0;
   const isLong = direction === 'long';
   const defaultStop = isLong ? lod : hod;
-  const defaultLabel = isLong ? 'LOD' : 'HOD';
 
   const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
   const stop = raw > 0 ? raw : defaultStop;
@@ -4241,26 +4274,41 @@ function renderShares() {
   const risk = riskDollars();
   const riskPerShare = isLong ? (entry - stop) : (stop - entry);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  const valid = riskPerShare > 0;
+  document.getElementById('sharesImage').disabled = !valid;
+  document.getElementById('sharesCopy').disabled = !valid;
 
-  if (riskPerShare <= 0) {
+  if (!valid) {
     const msg = isLong
       ? `Stop (${fmt$(stop)}) must be below entry (${fmt$(entry)}) for a long.`
       : `Stop (${fmt$(stop)}) must be above entry (${fmt$(entry)}) for a short.`;
-    document.getElementById('sharesStats').innerHTML = `<div style="grid-column:1/-1;color:var(--amber);font-size:13px;padding:8px 0;">${msg}</div>`;
+    document.getElementById('sharesStats').innerHTML = `<div class="shares-error" role="status">${msg}</div>`;
     if (chartBars.length) drawChart();
     return;
   }
   const shares = unitsFor(risk, riskPerShare);
   const posSize = shares * entry;
-  const dirTag = isLong
-    ? '<span class="tag call" style="margin-left:6px;">Long</span>'
-    : '<span class="tag put" style="margin-left:6px;">Short</span>';
+  const stopSource = usingDefault ? (isLong ? 'Low of day (LOD)' : 'High of day (HOD)') : 'Custom stop';
 
   document.getElementById('sharesStats').innerHTML = `
-    <div class="stat highlight"><div class="s-label">Shares</div><div class="s-val"><input type="number" class="s-val-input" value="${shares}" min="0" step="1" title="Type a share count, risk $ follows" onchange="sharesQtyChanged(this)" /></div><div class="s-sub">to ${isLong ? 'buy' : 'short'} · edit to set risk</div></div>
-    <div class="stat danger"><div class="s-label">Max loss</div><div class="s-val">${fmt$(shares * riskPerShare)}</div><div class="s-sub">${(shares * riskPerShare / acct * 100).toFixed(2)}% of acct</div></div>
-    <div class="stat"><div class="s-label">Position size</div><div class="s-val">${fmt$(posSize)}</div><div class="s-sub">${(posSize / acct * 100).toFixed(1)}% of acct</div></div>
-    <div class="stat teal"><div class="s-label">Risk / share</div><div class="s-val">${fmt$(riskPerShare)}</div><div class="s-sub">${customEntry ? 'entry ' : ''}${fmt$(entry)} → ${fmt$(stop)}${usingDefault ? ' (' + defaultLabel + ')' : ''}${customEntry ? ' · now ' + fmt$(price) : ''}</div></div>
+    <div class="shares-primary">
+      <div class="shares-quantity">
+        <label class="shares-label" for="sharesQty">Shares to ${isLong ? 'buy' : 'short'}</label>
+        <div class="s-val"><input id="sharesQty" type="number" class="s-val-input" value="${shares}" min="0" step="1" title="Type a share count, risk $ follows" aria-describedby="sharesQtyHint" onchange="sharesQtyChanged(this)" /></div>
+        <div class="shares-detail">Entry <strong>${fmt$(entry)}</strong>${customEntry ? ' · planned' : ''}</div>
+        <div class="shares-edit-hint" id="sharesQtyHint">Edit shares to set risk</div>
+      </div>
+      <div class="shares-stop">
+        <div class="shares-label">Stop price</div>
+        <div class="s-val">${fmt$(stop)}</div>
+        <div class="shares-detail">${stopSource}</div>
+      </div>
+    </div>
+    <dl class="shares-metrics">
+      <div><dt>Risk at stop</dt><dd class="shares-loss">${fmt$(shares * riskPerShare)}<span class="shares-detail">${(shares * riskPerShare / acct * 100).toFixed(2)}% of account</span></dd></div>
+      <div><dt>Position value</dt><dd>${fmt$(posSize)}<span class="shares-detail">${(posSize / acct * 100).toFixed(1)}% of account</span></dd></div>
+      <div><dt>Risk per share</dt><dd>${fmt$(riskPerShare)}${customEntry ? `<span class="shares-detail">Now ${fmt$(price)}</span>` : ''}</dd></div>
+    </dl>
   `;
   withFlash(document.getElementById('sharesStats'));
   if (chartBars.length) drawChart();
