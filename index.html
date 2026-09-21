@@ -277,6 +277,8 @@
   .pinned-card { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px; box-shadow: 0 8px 24px -18px rgba(0,0,0,0.8); }
   .saved-card { box-shadow: inset 3px 0 0 var(--blue-bd), 0 8px 24px -18px rgba(0,0,0,0.8); }
   .pinned-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .allocation-header { flex-wrap: wrap !important; }
+  .allocation-header .pinned-meta { flex-basis: 100%; font-size: 0.75rem; color: var(--text2); }
   .pinned-header .pinned-meta { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pinned-header > .tag, .pinned-header > .pinned-symbol, .pinned-header > .pinned-badge, .pinned-header > .card-act { flex: 0 0 auto; }
   @media (min-width: 601px) { .pinned-header { flex-wrap: nowrap; } } /* shrink the meta instead of wrapping */
@@ -572,21 +574,35 @@
   </div>
 
   <div class="card" id="riskCard">
-    <div class="section-title card-toggle" id="riskToggle" onclick="toggleRisk()"><span class="chev">▶</span> Account &amp; Risk <span class="title-status" id="riskStatus"></span></div>
+    <div class="section-title card-toggle" id="riskToggle" onclick="toggleRisk()"><span class="chev">▶</span> Account &amp; Sizing <span class="title-status" id="riskStatus"></span></div>
     <div id="riskBody">
+    <div class="seg" style="margin-bottom:12px;" aria-label="Sizing method">
+      <button id="sizingRisk" class="active" aria-pressed="true" onclick="setSizingMode('risk')">Risk</button>
+      <button id="sizingAllocation" aria-pressed="false" onclick="setSizingMode('allocation')">Allocation</button>
+    </div>
     <div class="row" style="align-items:flex-end;">
       <div class="field">
         <label>Account size</label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="accountSize" value="50000" min="1" step="1000" oninput="recalcAll()" /></div>
       </div>
-      <div class="field">
+      <div class="field" id="riskPctField">
         <label>Risk %</label>
         <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" oninput="recalcAll()" />
       </div>
-      <div class="field">
+      <div class="field" id="riskDollarField">
         <label style="color:var(--red);">Risk $ — max loss</label>
         <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" oninput="syncFromDollar()" title="The dollar amount you're willing to lose on this trade" /></div>
       </div>
+    </div>
+    <div id="allocationControls" style="display:none;margin-top:12px;">
+      <div class="row">
+        <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" oninput="allocationChanged()" /></div>
+        <div class="field"><label for="existingExposure">Existing exposure $ <span id="exposureSymbol"></span></label><input type="number" id="existingExposure" value="0" min="0" step="100" oninput="allocationChanged()" /></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <button class="filter-btn" onclick="setAllocationPct(2)">2%</button><button class="filter-btn" onclick="setAllocationPct(5)">5%</button><button class="filter-btn" onclick="setAllocationPct(10)">10%</button>
+      </div>
+      <p class="hint">Exposure in this name: shares at current value + full strike notional of open short puts + long-option debit. Manual, remembered per symbol for this session. Allocation is a per-name cap, not a cash-balance check.</p>
     </div>
     <div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap;" id="riskPresets">
       <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Presets</span>
@@ -637,7 +653,12 @@
       </div>
     </div>
     <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
-    <div class="section-title" style="margin-top:16px;">Entry &amp; stops</div>
+    <div id="optionTradeControls" style="display:none;margin-top:16px;">
+      <div class="section-title">Option trade</div>
+      <div class="seg"><button id="optionBuy" class="active" aria-pressed="true" onclick="setOptionTradeSide('buy')">Buy options</button><button id="optionSellPut" aria-pressed="false" onclick="setOptionTradeSide('sell-put')">Sell put</button></div>
+      <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
+    </div>
+    <div class="section-title" id="entryStopsTitle" style="margin-top:16px;">Entry &amp; stops</div>
     <div class="row" id="entryStopsRow" style="align-items:flex-end;">
       <div class="field" style="flex:0 0 auto;" id="dirField">
         <label>Direction</label>
@@ -1106,6 +1127,9 @@ let selectedExp = null;
 
 let currentMode = 'shares';
 let direction = 'long';
+let sizingMode = 'risk';
+let optionTradeSide = 'buy';
+const exposureBySymbol = Object.create(null);
 let chartBars = [];
 let chartHover = -1;
 let chartHoverY = -1;
@@ -1136,6 +1160,8 @@ function loadKey() {
   const risk = store.get('calc_risk');
   if (acct) document.getElementById('accountSize').value = acct;
   if (risk) document.getElementById('riskPct').value = risk;
+  const allocation = store.get('calc_allocation');
+  if (allocation !== null) document.getElementById('allocationPct').value = allocation;
   const lastTicker = store.get('last_ticker');
   if (lastTicker) document.getElementById('ticker').value = lastTicker;
   syncRiskDollar();
@@ -1215,10 +1241,12 @@ function openSim(o) {
   if (!o) return;
   if (!(o.iv > 0)) { showError('No IV on this contract — cannot simulate.'); return; }
   if (!(o.entry > 0)) { showError('No entry price to measure returns from.'); return; }
+  if (o.sizing === 'allocation' && o.qty < 1) { showError('No contracts fit this allocation.'); return; }
+  document.querySelectorAll('#simOverlay button').forEach(b => { if (['stop', '1R', '2R'].includes(b.textContent.trim())) b.style.display = o.sizing === 'allocation' ? 'none' : ''; });
   simState = o;
   simHover = -1;
   document.getElementById('simTitle').textContent = o.label;
-  document.getElementById('simMeta').textContent = `${o.credit ? 'credit' : 'entry'} ${fmt$(o.entry)}/ct · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant`;
+  document.getElementById('simMeta').textContent = `${o.credit ? 'credit' : 'entry'} ${fmt$(o.entry)}/${o.sizing === 'allocation' ? 'share' : 'ct'} · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant${o.shortPut ? ' · return on assignment notional' : ''}`;
   const sl = document.getElementById('simPrice');
   const span = Math.max(o.spot * 0.12, (adrValue || 0) * 2.5);
   sl.min = Math.max(0.01, o.spot - span).toFixed(2);
@@ -1286,7 +1314,7 @@ function drawSim() {
   if (document.activeElement !== priceInput) priceInput.value = S.toFixed(2); // don't clobber mid-typing
   const pts = simCurve(S);
   // credit spreads: pts.v is the cost to close; P&L = credit − close, % measured against the max loss (width − credit)
-  const retBase = o.credit ? Math.max(0.01, (o.width || 0) - o.entry) : o.entry;
+  const retBase = simReturnBase(o);
   const ret = pts.map(p => (o.credit ? o.entry - p.v : p.v - o.entry) / retBase * 100);
 
   const canvas = document.getElementById('simChart');
@@ -1386,6 +1414,7 @@ function strikesLabel(d) {
 }
 
 function typeLabel(d) {
+  if (d.sizing === 'allocation') return d.shortPut ? 'short put' : 'long ' + (d.isCall ? 'call' : 'put');
   return `${d.isCall ? 'call' : 'put'}${d.kind === 'spread' ? (d.credit ? ' credit spread' : ' debit spread') : ''}`;
 }
 
@@ -1404,8 +1433,8 @@ function cardValueAt(d, S, T) {
 function simParamsFromCard(d, entry, qty) {
   return {
     isCall: d.isCall, K: d.parsed.strike, expStr: d.parsed.expStr, iv: d.iv, legs: d.legs,
-    credit: !!d.credit, width: spreadWidth(d),
-    entry, qty: Math.max(1, qty), spot: d.underlyingPrice, stop: d.stopLevel,
+    credit: !!d.credit, shortPut: !!d.shortPut, sizing: d.sizing, width: spreadWidth(d),
+    entry, qty: d.sizing === 'allocation' ? qty : Math.max(1, qty), spot: d.underlyingPrice, stop: d.stopLevel,
     parsedTicker: d.parsed.ticker,
     label: `${d.parsed.ticker} ${strikesLabel(d)} ${typeLabel(d)} ${d.parsed.expStr}`
   };
@@ -1418,7 +1447,7 @@ function sizeUnit(d) { // $ risked per contract for sizing: defined risk for spr
 
 function simFromPinned(cardId) {
   const d = pinnedData[cardId];
-  if (d) openSim(simParamsFromCard(d, d.mid, unitsFor(riskDollars(), sizeUnit(d))));
+  if (d && (d.sizing !== 'allocation' || quantityForCard(d) > 0)) openSim(simParamsFromCard(d, d.mid, quantityForCard(d)));
 }
 
 function simFromSaved(id) {
@@ -1566,6 +1595,14 @@ function shareCanvasToClipboard(canvas, name) {
 function shareShares() {
   const q = quoteData;
   if (!q) { showError('Load a ticker first.'); return; }
+  if (sizingMode === 'allocation') {
+    const r = calcAllocation({ ...allocationInputs(q.symbol), unitCost: entryVal() });
+    if (r.error) return;
+    shareCanvasToClipboard(drawShareCard({ title: [{ t: q.symbol + ' LONG SHARES' }], sub: 'Allocation plan · before fees',
+      stats: [{ label: 'Shares', value: String(r.units) }, { label: 'Entry', value: fmt$(entryVal()) },
+        { label: 'New commitment', value: fmt$(r.commitment) }, { label: 'Total allocation', value: r.actualPct.toFixed(2) + '%' }] }), q.symbol + '-allocation');
+    return;
+  }
   const price = effectivePrice(q);
   const isLong = direction === 'long';
   const entry = entryVal();
@@ -1596,6 +1633,10 @@ function shareShares() {
 function sharePinned(cardId) {
   const d = pinnedData[cardId];
   if (!d) return;
+  if (d.sizing === 'allocation') {
+    const r = allocationForCard(d); if (r.error) return; const qty = r.units; const entry = d.mid;
+    shareAllocation(d, qty, entry, r); return;
+  }
   const cts = unitsFor(riskDollars(), sizeUnit(d));
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   shareCanvasToClipboard(drawShareCard({
@@ -1622,6 +1663,10 @@ function sharePinned(cardId) {
 function shareSaved(id) {
   const d = savedData[id];
   if (!d) return;
+  if (d.sizing === 'allocation') {
+    const r = null; const qty = d.qty; const entry = d.entry;
+    shareAllocation(d, qty, entry, r); return;
+  }
   const qty = d.qty || 0;
   const sgn = d.credit ? -1 : 1;
   const pnl = sgn * (d.mid - d.entry) * 100 * qty;
@@ -1670,6 +1715,12 @@ function ex100(unit, word) { // '· to risk $100: 3 contracts', or the one-unit 
 function copyShares() {
   const q = quoteData;
   if (!q) { showError('Load a ticker first.'); return; }
+  if (sizingMode === 'allocation') {
+    const r = calcAllocation({ ...allocationInputs(q.symbol), unitCost: entryVal() });
+    if (r.error) return;
+    copyPlainText(`Buy ${r.units} $${q.symbol} shares @ ${fmtN(entryVal(), 2)} · commitment ${fmt$(r.commitment)} · total allocation ${r.actualPct.toFixed(2)}% · before fees`);
+    return;
+  }
   const isLong = direction === 'long';
   const entry = entryVal();
   const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
@@ -1684,6 +1735,10 @@ function copyShares() {
 function copyPinned(cardId) {
   const d = pinnedData[cardId];
   if (!d) return;
+  if (d.sizing === 'allocation') {
+    const r = allocationForCard(d); if (r.error) return; const qty = r.units; const entry = d.mid;
+    copyPlainText(allocationSummary(d, qty, entry, r)); return;
+  }
   const cts = unitsFor(riskDollars(), sizeUnit(d));
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} ${d.credit ? 'credit' : 'debit'} spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
@@ -1693,6 +1748,10 @@ function copyPinned(cardId) {
 function copySaved(id) {
   const d = savedData[id];
   if (!d) return;
+  if (d.sizing === 'allocation') {
+    const r = null; const qty = d.qty; const entry = d.entry;
+    copyPlainText(allocationSummary(d, qty, entry, r)); return;
+  }
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const lossPct = (d.credit ? -1 : 1) * (d.entry - d.atLod) * 100 * (d.qty || 0) / acct * 100;
   const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} ${d.credit ? 'credit' : 'debit'} spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
@@ -1701,7 +1760,7 @@ function copySaved(id) {
 
 // ---------- backup: everything the app stores, as a JSON file ----------
 // also the sync payload — deleted_positions are tombstones so a delete beats a merge
-const BACKUP_KEYS = ['tradier_key', 'tradier_env', 'calc_account', 'calc_risk', 'last_ticker', 'saved_positions', 'risk_usd_presets', 'deleted_positions'];
+const BACKUP_KEYS = ['tradier_key', 'tradier_env', 'calc_account', 'calc_risk', 'calc_allocation', 'last_ticker', 'saved_positions', 'risk_usd_presets', 'deleted_positions'];
 
 function buildBackup() {
   const out = { app: 'size-calc', exported: new Date().toISOString(), data: {} };
@@ -2074,6 +2133,7 @@ function applyRiskOpen() {
 function toggleRisk() { riskOpen = !riskOpen; store.set('risk_open', riskOpen ? '1' : '0'); applyRiskOpen(); }
 
 function updateRiskStatus() {
+  if (sizingMode === 'allocation') { document.getElementById('riskStatus').textContent = document.getElementById('allocationPct').value + '% allocation'; return; }
   const pct = parseFloat(document.getElementById('riskPct').value) || 0;
   document.getElementById('riskStatus').innerHTML =
     `<span style="color:var(--red);font-weight:600;">${fmt$(riskDollars())}</span> · ${pct}%`;
@@ -2161,6 +2221,7 @@ function syncFromDollar() {
   updateStickyBar();
 }
 function recalcAll() {
+  updateSizingControls();
   syncRiskDollar();
   flashNext = true;
   renderFutures();
@@ -2176,6 +2237,7 @@ function recalcAll() {
 
 // reverse sizing: type a share/contract count, risk $ follows
 function sharesQtyChanged(el) {
+  if (sizingMode === 'allocation' && quoteData) { allocationQtyChanged(Math.floor(Number(el.value)), entryVal(), quoteData.symbol); renderShares(); return; }
   const qty = Math.floor(parseFloat(el.value) || 0);
   if (!quoteData || qty <= 0) { renderShares(); return; }
   const q = quoteData;
@@ -2206,6 +2268,230 @@ function riskForQty(qty, perUnit) {
 function unitsFor(risk, perUnit) {
   // float-noise-tolerant floor: 11.999999999999998 units is 12, not 11
   return perUnit > 0 ? Math.floor(risk / perUnit + 1e-9) : 0;
+}
+
+// Allocation is a capital cap; it never uses stops or estimated broker margin.
+function calcAllocation({ account, pct, existing, unitCost }) {
+  if (![account, pct, existing, unitCost].every(Number.isFinite) || account <= 0 || pct < 0 || pct > 100 || existing < 0 || unitCost <= 0) {
+    return { units: 0, error: 'Enter a positive account and unit price, 0–100% allocation, and nonnegative exposure.' };
+  }
+  const target = account * pct / 100;
+  const budget = Math.max(0, target - existing);
+  // Tolerate only arithmetic noise at an exact boundary, never a material overspend.
+  const ratio = budget / unitCost;
+  const units = Math.floor(ratio + Number.EPSILON * Math.max(1, ratio) * 4);
+  if (!Number.isSafeInteger(units)) return { units: 0, error: 'Position size is too large.' };
+  const commitment = units * unitCost;
+  const totalExposure = existing + commitment;
+  const reason = existing > target ? 'Existing exposure exceeds allocation.'
+    : existing === target ? 'Allocation already used.'
+    : units === 0 ? 'Remaining budget cannot fit one unit.' : '';
+  return { units, target, budget, commitment, totalExposure, existing, actualPct: totalExposure / account * 100, reason };
+}
+
+function allocationInputs(symbol) {
+  return { account: parseFloat(document.getElementById('accountSize').value),
+    pct: parseFloat(document.getElementById('allocationPct').value), existing: exposureBySymbol[symbol] ?? 0 };
+}
+
+function allocationSymbol() { return quoteData?.symbol || document.getElementById('ticker').value.trim().toUpperCase(); }
+
+function allocationChanged() {
+  const symbol = allocationSymbol();
+  if (symbol) exposureBySymbol[symbol] = parseFloat(document.getElementById('existingExposure').value);
+  store.set('calc_allocation', document.getElementById('allocationPct').value);
+  recalcAll();
+}
+
+function setAllocationPct(pct) {
+  document.getElementById('allocationPct').value = pct;
+  allocationChanged();
+}
+
+function updateSizingControls() {
+  const alloc = sizingMode === 'allocation';
+  for (const id of ['riskPctField', 'riskDollarField', 'riskPresets', 'riskUsdRow']) document.getElementById(id).style.display = alloc ? 'none' : '';
+  document.getElementById('allocationControls').style.display = alloc ? '' : 'none';
+  document.getElementById('optionTradeControls').style.display = alloc && currentMode === 'options' ? '' : 'none';
+  for (const [id, active] of [['sizingRisk', !alloc], ['sizingAllocation', alloc], ['optionBuy', optionTradeSide === 'buy'], ['optionSellPut', optionTradeSide === 'sell-put']]) {
+    document.getElementById(id).classList.toggle('active', active);
+    document.getElementById(id).setAttribute('aria-pressed', String(active));
+  }
+  document.getElementById('sizingAllocation').disabled = currentMode === 'futures';
+  const symbol = allocationSymbol();
+  document.getElementById('exposureSymbol').textContent = symbol;
+  document.getElementById('existingExposure').disabled = !symbol;
+  if (document.activeElement !== document.getElementById('existingExposure')) document.getElementById('existingExposure').value = exposureBySymbol[symbol] ?? 0;
+  updateStopVisibility();
+}
+
+function setSizingMode(mode) {
+  const next = mode === 'allocation' && currentMode !== 'futures' ? 'allocation' : 'risk';
+  if (next !== sizingMode) optionTradeSide = 'buy';
+  sizingMode = next;
+  cancelSpread();
+  if (sizingMode === 'allocation' && direction === 'short') setDirection('long');
+  updateSizingControls();
+  recalcAll();
+}
+
+function setOptionTradeSide(side) {
+  optionTradeSide = sizingMode === 'allocation' && side === 'sell-put' ? 'sell-put' : 'buy';
+  if (optionTradeSide === 'sell-put') setSide('put');
+  updateSizingControls();
+  renderChain();
+}
+
+function allocationQtyChanged(qty, unitCost, symbol) {
+  const input = allocationInputs(symbol);
+  if (!Number.isSafeInteger(qty) || qty < 0 || !(unitCost > 0) || !Number.isFinite(unitCost) || !Number.isFinite(input.existing) || input.existing < 0 || !(input.account > 0)) return;
+  const pct = (input.existing + qty * unitCost) / input.account * 100;
+  if (pct > 100) { showError('That quantity exceeds 100% of the account.'); return; }
+  document.getElementById('allocationPct').value = pct;
+  store.set('calc_allocation', pct);
+  recalcAll();
+}
+
+function shortPutMetrics(strike, credit, contracts, dte) {
+  const basis = strike - credit;
+  const returnOnNotional = credit / strike;
+  return { basis, notional: strike * 100 * contracts, premium: credit * 100 * contracts,
+    maxLoss: basis * 100 * contracts, returnOnNotional, annualized: dte > 0 ? returnOnNotional * 365 / dte : null };
+}
+
+function optionDte(exp, now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  const part = type => parts.find(p => p.type === type).value;
+  return Math.round((Date.parse(exp + 'T00:00:00Z') - Date.UTC(+part('year'), +part('month') - 1, +part('day'))) / 864e5);
+}
+
+function allocationQuoteError(d) {
+  // Tradier quote type, contract_size and root_symbol identify the supported scope.
+  // https://docs.tradier.com/docs/quotes
+  if (!['stock', 'etf'].includes(d.underlyingType)) return 'Allocation options require a stock or ETF underlying.';
+  if (d.rootSymbol !== d.parsed.ticker) return 'Adjusted or unverified option roots are not supported.';
+  if (d.contractSize !== 100) return 'Only standard 100-share contracts are supported.';
+  if (![d.bid, d.ask, d.mid, d.parsed.strike].every(Number.isFinite) || d.bid <= 0 || d.ask < d.bid || d.mid <= 0 || d.parsed.strike <= 0) return 'A valid two-sided quote is required.';
+  if (!Number.isFinite(optionDte(d.parsed.expStr)) || optionDte(d.parsed.expStr) < 0) return 'This contract has expired or has an invalid expiration.';
+  if (d.shortPut && (d.isCall || d.mid >= d.parsed.strike)) return 'Select a put with credit below its strike.';
+  return '';
+}
+
+function allocationForCard(d) {
+  const error = allocationQuoteError(d);
+  if (error) return { units: 0, error };
+  return calcAllocation({ ...allocationInputs(d.parsed.ticker), unitCost: (d.shortPut ? d.parsed.strike : d.mid) * 100 });
+}
+
+function quantityForCard(d) { return d.sizing === 'allocation' ? allocationForCard(d).units : unitsFor(riskDollars(), sizeUnit(d)); }
+function optionPnl(d, entry, close, qty) { return (d.credit ? entry - close : close - entry) * 100 * qty; }
+function simReturnBase(o) { return o.shortPut ? o.K : o.credit ? Math.max(0.01, (o.width || 0) - o.entry) : o.entry; }
+
+function calcAllocationOption(opt, price) {
+  const isCall = opt.option_type === 'call';
+  const shortPut = optionTradeSide === 'sell-put';
+  const mid = Number.isFinite(opt.bid) && Number.isFinite(opt.ask) ? (opt.bid + opt.ask) / 2 : NaN;
+  const d = { sizing: 'allocation', shortPut, credit: shortPut, isCall,
+    parsed: { ticker: quoteData.symbol, strike: opt.strike, expStr: selectedExp, occ: opt.symbol },
+    contractSize: opt.contract_size, rootSymbol: opt.root_symbol, underlyingType: quoteData.type, mid, bid: opt.bid, ask: opt.ask,
+    delta: opt.greeks?.delta ?? null, iv: opt.greeks?.smv_vol || opt.greeks?.mid_iv || 0,
+    underlyingPrice: price, asOf: new Date().toLocaleTimeString() };
+  const allocation = allocationForCard(d);
+  return { opt, card: d, allocation, shortPut, isCall, mid, entryPrem: mid,
+    delta: d.delta, iv: d.iv, contracts: allocation.units, unitCost: (shortPut ? opt.strike : mid) * 100,
+    totalCost: allocation.commitment || 0, itm: isCall ? opt.strike < price : opt.strike > price,
+    vol: opt.volume || 0, oi: opt.open_interest || 0, spreadPct: mid > 0 ? (opt.ask - opt.bid) / mid * 100 : 0,
+    wideSpread: mid > 0 && (opt.ask - opt.bid) / mid > 0.1 };
+}
+
+function allocationStats(r, unitCost, symbol, word) {
+  if (r.error) return `<p class="shares-error" role="status">${r.error}</p>`;
+  return `<div class="stat-grid">
+    <div class="stat highlight"><div class="s-label">${word}</div><div class="s-val"><input class="s-val-input" type="number" aria-label="${word}" value="${r.units}" min="0" step="1" onchange="allocationQtyChanged(Math.floor(Number(this.value)), ${unitCost}, '${marketEscape(symbol)}')" /></div><div class="s-sub">edit to set allocation</div></div>
+    <div class="stat"><div class="s-label">New commitment</div><div class="s-val">${fmt$(r.commitment)}</div><div class="s-sub">${fmt$(r.budget)} available before trade</div></div>
+    <div class="stat"><div class="s-label">Existing exposure</div><div class="s-val">${fmt$(r.existing)}</div><div class="s-sub">in this name</div></div>
+    <div class="stat teal"><div class="s-label">Total allocation</div><div class="s-val">${r.actualPct.toFixed(2)}%</div><div class="s-sub">${fmt$(r.totalExposure)} after trade</div></div>
+    </div>${r.reason ? `<p class="hint" role="status">${r.reason}</p>` : ''}`;
+}
+
+function allocationOptionBody(d, qty, entry = d.mid, r = null) {
+  const remaining = optionDte(d.parsed.expStr);
+  const dte = r ? remaining : d.entryDte; // saved entry premium must not annualize over a shrinking window
+  const duration = r ? `${Math.max(0, remaining)} DTE` : `${dte ?? 'n/a'} DTE at save · ${Math.max(0, remaining)} remaining`;
+  const m = d.shortPut ? shortPutMetrics(d.parsed.strike, entry, qty, dte) : null;
+  const delta = Number.isFinite(d.delta) ? d.delta.toFixed(3) : 'n/a';
+  const spread = d.mid > 0 && Number.isFinite(d.bid) && Number.isFinite(d.ask) && d.ask >= d.bid ? ((d.ask - d.bid) / d.mid * 100).toFixed(1) + '%' : 'n/a';
+  return `${r ? allocationStats(r, (d.shortPut ? d.parsed.strike : entry) * 100, d.parsed.ticker, 'Contracts') : ''}
+    <div class="stat-grid" style="margin-top:12px;">
+      ${m ? `<div class="stat highlight"><div class="s-label">Assignment notional</div><div class="s-val">${fmt$(m.notional)}</div><div class="s-sub">${qty * 100} shares at ${fmt$(d.parsed.strike)}</div></div>
+      <div class="stat"><div class="s-label">Premium received</div><div class="s-val">${fmt$(m.premium)}</div><div class="s-sub">${fmt$(entry)} per share</div></div>
+      <div class="stat teal"><div class="s-label">Breakeven / basis</div><div class="s-val">${fmt$(m.basis)}</div><div class="s-sub">at expiration, before fees</div></div>
+      <div class="stat danger"><div class="s-label">Maximum loss</div><div class="s-val">${fmt$(m.maxLoss)}</div><div class="s-sub">if underlying reaches $0</div></div>
+      <div class="stat"><div class="s-label">Return on notional</div><div class="s-val">${(m.returnOnNotional * 100).toFixed(2)}%</div><div class="s-sub">${duration} · ${m.annualized === null ? 'annualized n/a' : (m.annualized * 100).toFixed(1) + '% simple annualized'}</div></div>`
+      : `<div class="stat"><div class="s-label">Debit / share</div><div class="s-val">${fmt$(entry)}</div><div class="s-sub">${fmt$(entry * 100)} per contract</div></div><div class="stat danger"><div class="s-label">Maximum loss</div><div class="s-val">${fmt$(entry * 100 * qty)}</div><div class="s-sub">full debit, before fees</div></div>`}
+    </div>
+    <p class="hint">${remaining < 0 ? 'Expired · ' : ''}Quote Δ ${delta} · spread ${spread} of mid · bid ${Number.isFinite(d.bid) ? fmt$(d.bid) : 'n/a'} / ask ${Number.isFinite(d.ask) ? fmt$(d.ask) : 'n/a'}. ${m ? 'Return assumes the full premium is retained; annualization is an extrapolation, not a forecast.' : 'Sized by full debit.'}</p>`;
+}
+
+function pinAllocation(symbol) {
+  const d = detailReg[symbol]?.card;
+  if (!d || allocationForCard(d).error) return;
+  const id = 'pinned_' + Date.now();
+  pinnedData[id] = { ...d, parsed: { ...d.parsed } };
+  const div = document.createElement('div');
+  div.className = 'pinned-card'; div.id = id;
+  document.getElementById('pinnedSection').prepend(div);
+  renderPinnedCard(id); updatePinnedBar();
+}
+
+function renderAllocationCard(id, d, saved = false) {
+  const r = saved ? null : allocationForCard(d);
+  const qty = saved ? d.qty : r.units;
+  const entry = saved ? d.entry : d.mid;
+  const error = allocationQuoteError(d);
+  const pnl = optionPnl(d, entry, d.mid, qty);
+  const unitBase = d.shortPut ? d.parsed.strike : entry;
+  const pnlPct = unitBase > 0 ? optionPnl(d, entry, d.mid, 1) / (unitBase * 100) * 100 : 0;
+  const el = document.getElementById(id);
+  el.innerHTML = `<div class="pinned-header allocation-header">
+    <span class="tag ${isBull(d) ? 'call' : 'put'}">${d.shortPut ? 'Short put' : 'Long ' + (d.isCall ? 'call' : 'put')}</span>
+    <span class="pinned-symbol">${marketEscape(d.parsed.ticker)} $${d.parsed.strike} ${marketEscape(d.parsed.expStr)}</span>
+    <span class="pinned-meta">${saved ? 'POSITION' : 'ALLOCATION'} · ${marketEscape(d.asOf || '')}</span>
+    <button class="filter-btn" onclick="${saved ? 'copySaved' : 'copyPinned'}('${id}')">copy</button>
+    <button class="filter-btn" onclick="${saved ? 'shareSaved' : 'sharePinned'}('${id}')">share</button>
+    <button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} onclick="${saved ? 'simFromSaved' : 'simFromPinned'}('${id}')">sim</button>
+    ${saved ? '' : `<button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} onclick="saveCard('${id}')">save</button>`}
+    <button class="filter-btn" onclick="${saved ? 'refreshSaved' : 'refreshPinned'}('${id}')">↻</button>
+    <button class="filter-btn" aria-label="Remove card" onclick="${saved ? 'removeSaved' : 'removePinned'}('${id}')">×</button>
+    </div>
+    ${saved ? `<div class="stat-grid">
+      <div class="stat"><div class="s-label">${d.shortPut ? 'Entry credit' : 'Entry debit'} / share</div><div class="s-val"><input aria-label="Entry premium" class="s-val-input" type="number" value="${entry}" min="0.01" step="0.01" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
+      <div class="stat"><div class="s-label">Contracts held</div><div class="s-val"><input aria-label="Contracts held" class="s-val-input" type="number" value="${qty}" min="0" step="1" onchange="savedQtyChanged('${id}', this)" /></div></div>
+      <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${error ? '—' : fmt$(pnl)}</div><div class="s-sub">${error ? marketEscape(error) : `${pnlPct.toFixed(2)}% on ${d.shortPut ? 'notional' : 'debit'} · at mid`}</div></div>
+    </div>` : ''}
+    ${!saved && error ? `<p class="shares-error">${error}</p>` : allocationOptionBody(d, qty, entry, r)}`;
+  withFlash(el);
+}
+
+function allocationSummary(d, qty, entry, r = null) {
+  const total = d.shortPut ? d.parsed.strike * 100 * qty : entry * 100 * qty;
+  const metrics = d.shortPut ? shortPutMetrics(d.parsed.strike, entry, qty, optionDte(d.parsed.expStr)) : null;
+  return `${d.shortPut ? 'Sell' : 'Buy'} ${qty} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} $${d.parsed.strike} ${d.isCall ? 'call' : 'put'} @ ${fmtN(entry, 2)} · ${d.shortPut ? 'assignment notional' : 'debit'} ${fmt$(total)}${metrics ? ` · breakeven ${fmt$(metrics.basis)} · maximum loss ${fmt$(metrics.maxLoss)} · return on notional ${(metrics.returnOnNotional * 100).toFixed(2)}%` : ''}${r ? ` · total allocation ${r.actualPct.toFixed(2)}%` : ''} · before fees`;
+}
+
+function shareAllocation(d, qty, entry, r = null) {
+  if (!Number.isFinite(entry) || entry <= 0 || (r && r.error)) return;
+  const m = d.shortPut ? shortPutMetrics(d.parsed.strike, entry, qty, optionDte(d.parsed.expStr)) : null;
+  shareCanvasToClipboard(drawShareCard({
+    title: [{ t: `${d.parsed.ticker} $${d.parsed.strike} ${typeLabel(d).toUpperCase()} ${d.parsed.expStr}` }],
+    sub: `${qty} contracts · ${r ? 'allocation plan' : 'position'} · before fees`,
+    stats: [
+      { label: m ? 'Assignment notional' : 'Full debit', value: fmt$(m ? m.notional : entry * 100 * qty) },
+      { label: m ? 'Premium received' : 'Entry premium', value: fmt$(m ? m.premium : entry) },
+      { label: m ? 'Breakeven' : 'Maximum loss', value: fmt$(m ? m.basis : entry * 100 * qty) },
+      { label: m ? 'Maximum loss' : 'Contracts', value: m ? fmt$(m.maxLoss) : String(qty) }
+    ], footer: m ? `Return on notional ${(m.returnOnNotional * 100).toFixed(2)}%${r ? ` · total allocation ${r.actualPct.toFixed(2)}%` : ''}` : ''
+  }), `${d.parsed.ticker}-allocation`);
 }
 
 // ---------- futures: manual prices, risk per tick, no market-data dependency ----------
@@ -2357,6 +2643,7 @@ function copyFutures() {
 
 function setDirection(dir) {
   direction = dir;
+  if (dir === 'short' && sizingMode === 'allocation') setSizingMode('risk');
   const l = document.getElementById('dirLong');
   const s = document.getElementById('dirShort');
   l.className = dir === 'long' ? 'active long' : '';
@@ -2386,6 +2673,15 @@ function tradeCtx() {
 
 // only show the stop that matches the trade you're taking
 function updateStopVisibility() {
+  document.getElementById('entryStopsTitle').textContent = sizingMode === 'allocation' ? 'Entry' : 'Entry & stops';
+  document.getElementById('entryStopsRow').style.display = sizingMode === 'allocation' && currentMode === 'options' ? 'none' : '';
+  document.getElementById('entryStopsTitle').style.display = sizingMode === 'allocation' && currentMode === 'options' ? 'none' : '';
+  if (sizingMode === 'allocation') {
+    for (const id of ['dirField', 'stopLongField', 'stopShortField']) document.getElementById(id).style.display = 'none';
+    document.getElementById('stopsHint').textContent = 'Sized by capital allocation';
+    document.getElementById('chartClickHint').textContent = 'Allocation sizing does not use stops';
+    return;
+  }
   const tc = tradeCtx();
   // the Long/Short toggle is the shares-mode direction; chain side plays that role in options
   document.getElementById('dirField').style.display = currentMode === 'shares' ? 'flex' : 'none';
@@ -3270,6 +3566,8 @@ function setView(v) {
 async function setMode(mode) {
   cancelSpread();
   currentMode = mode;
+  if (mode !== 'options') optionTradeSide = 'buy';
+  if (mode === 'futures') { sizingMode = 'risk'; optionTradeSide = 'buy'; }
   if (mode === 'futures') stopLive();
   setView('calc');
   document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
@@ -3561,7 +3859,7 @@ function renderStickyBar() {
     `<span style="color:var(--red)">▼ ${fmtN(q.low || 0, 2)}</span>` +
     `<span style="color:var(--green)">▲ ${fmtN(q.high || 0, 2)}</span>` +
     (adrTxt ? `<span style="color:var(--text2)">${adrTxt}</span>` : '') +
-    `<span style="color:var(--blue);margin-left:auto;">risk ${fmt$(riskDollars())}</span>` +
+    `<span style="color:var(--blue);margin-left:auto;">${sizingMode === 'allocation' ? document.getElementById('allocationPct').value + '% allocation' : 'risk ' + fmt$(riskDollars())}</span>` +
     `<span class="sb-live sb-jump" title="Jump to the charts" onclick="event.stopPropagation();jumpTo('chartWrap')">chart</span>` +
     (currentMode === 'options' ? `<span class="sb-live sb-jump" title="Jump to the option chain" onclick="event.stopPropagation();jumpTo('optionsSection')">chain</span>` : '') +
     `<span id="sbLive" class="sb-live" title="Live: tap to start, tap again to extend (1m→5m→30m→stop)" onclick="event.stopPropagation();toggleLive()"></span>`;
@@ -3805,6 +4103,7 @@ function chartPriceAtY(clientY) {
 
 // clicks on either chart set the active context's stop; in Both view, below price = long, above = short
 function setStopFromPrice(price) {
+  if (sizingMode === 'allocation') return;
   if (!(price > 0)) return;
   const tc = tradeCtx();
   const spot = effectivePrice(quoteData);
@@ -4229,6 +4528,7 @@ function effectivePrice(q) {
 }
 
 function renderQuote() {
+  updateSizingControls();
   const q = quoteData;
   const price = q.last || q.ask || 0;
   const lod = q.low || 0;
@@ -4260,6 +4560,14 @@ function renderQuote() {
 function renderShares() {
   const q = quoteData;
   if (!q) return;
+  if (sizingMode === 'allocation') {
+    const entry = entryVal();
+    const r = calcAllocation({ ...allocationInputs(q.symbol), unitCost: entry });
+    document.getElementById('sharesStats').innerHTML = `<div class="section-title">Long shares · allocation</div>${allocationStats(r, entry, q.symbol, 'Shares')}<p class="hint">Entry ${fmt$(entry)} · before fees</p>`;
+    document.getElementById('sharesImage').disabled = !!r.error;
+    document.getElementById('sharesCopy').disabled = !!r.error;
+    return;
+  }
   const price = effectivePrice(q);
   const lod = q.low || 0;
   const hod = q.high || 0;
@@ -4437,6 +4745,7 @@ function updateChainControls() {
 }
 
 function setSide(s) {
+  if (sizingMode === 'allocation' && optionTradeSide === 'sell-put' && s !== 'put') { optionTradeSide = 'buy'; updateSizingControls(); }
   cancelSpread();
   chainSide = s;
   updateChainControls();
@@ -4463,6 +4772,7 @@ function yearsToExp(expStr, daysLess = 0) {
 
 function calcOpt(opt, price, callStop, putStop, risk, Texp, entryU) {
   if (!opt) return null;
+  if (sizingMode === 'allocation') return calcAllocationOption(opt, price);
   const mid = ((opt.bid || 0) + (opt.ask || 0)) / 2;
   const delta = opt.greeks?.delta || 0;
   const gamma = opt.greeks?.gamma || 0;
@@ -4527,11 +4837,11 @@ function sideCells(c, mirror) {
   const volStyle = c.vol > c.oi && c.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--gold);font-weight:600';
   const cells = [
     `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}" style="font-weight:600;color:var(--blue)">${c.contracts > 0 ? c.contracts : '—'}</td>`,
-    `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}">${c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
+    `<td class="side-cell m-size${c.itm ? ' itm-tint' : ''}">${c.allocation ? (c.allocation.error ? '—' : fmt$M(c.unitCost)) : c.lossPerContract > 0 ? `<span class="loss-cell ${lossClass(c.lossOfCost)}">${fmt$M(c.lossPerContract)}</span><div class="loss-pct ${lossClass(c.lossOfCost)}">${c.lossOfCost.toFixed(0)}%</div>` : '—'}</td>`,
     `<td class="side-cell voloi m-hide m-oi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${fmtKM(c.oi)}</td>`,
     `<td class="side-cell voloi${c.itm ? ' itm-tint' : ''}" style="${volStyle}">${fmtKM(c.vol)}</td>`,
-    `<td class="side-cell m-hide m-delta${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${fmtN(c.delta, 3)}</td>`,
-    `<td class="side-cell${c.itm ? ' itm-tint' : ''}"${c.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${c.spreadPct.toFixed(0)}% of mid"` : ''}>${fmt$M(c.mid)}</td>`
+    `<td class="side-cell m-hide m-delta${c.itm ? ' itm-tint' : ''}" style="color:var(--text2)">${Number.isFinite(c.delta) ? fmtN(c.delta, 3) : '—'}</td>`,
+    `<td class="side-cell${c.itm ? ' itm-tint' : ''}"${c.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${c.spreadPct.toFixed(0)}% of mid"` : ''}>${Number.isFinite(c.mid) ? fmt$M(c.mid) : '—'}</td>`
   ];
   return (mirror ? cells : cells.slice().reverse()).join('');
 }
@@ -4555,18 +4865,19 @@ function renderChainHead() {
   const head = document.getElementById('chainHead');
   const m = isMobileChain();
   const sideSpan = twoPaneChain() ? 6 : m ? 4 : 6; // per-side visible columns: two-pane / phone (OI Vol Δ Mid) / full
-  const lossH = m ? 'Loss' : 'Loss/ct';
+  const alloc = sizingMode === 'allocation';
+  const lossH = alloc ? 'Commit/ct' : m ? 'Loss' : 'Loss/ct';
   if (chainSide === 'both') {
     head.innerHTML = `<tr>
       <th class="call-h m-size">Cts</th><th class="call-h m-size">${lossH}</th><th class="call-h m-hide m-oi">OI</th><th class="call-h">Vol</th><th class="call-h m-hide m-delta">Δ</th><th class="call-h">Mid</th>
       <th class="strike-col" style="width:80px;">Strike</th>
       <th class="put-h">Mid</th><th class="put-h m-hide m-delta">Δ</th><th class="put-h">Vol</th><th class="put-h m-hide m-oi">OI</th><th class="put-h m-size">${lossH}</th><th class="put-h m-size">Cts</th>
     </tr>
-    <tr><th colspan="${sideSpan}" class="call-h" style="text-align:center;border-bottom:none;padding:2px;">← CALLS (stop: call stop)</th><th class="strike-col" style="border-bottom:none;"></th><th colspan="${sideSpan}" class="put-h" style="text-align:center;border-bottom:none;padding:2px;">PUTS (stop: put stop) →</th></tr>`;
+    <tr><th colspan="${sideSpan}" class="call-h" style="text-align:center;border-bottom:none;padding:2px;">← CALLS (${alloc ? 'buy · full debit' : 'stop: call stop'})</th><th class="strike-col" style="border-bottom:none;"></th><th colspan="${sideSpan}" class="put-h" style="text-align:center;border-bottom:none;padding:2px;">PUTS (${alloc ? 'buy · full debit' : 'stop: put stop'}) →</th></tr>`;
   } else {
     head.innerHTML = `<tr>
       <th class="strike-col" style="width:80px;">Strike</th>
-      <th class="m-hide">Bid</th><th class="m-hide">Ask</th><th>Mid</th><th class="m-hide m-delta">Δ</th><th class="m-hide">IV</th><th>Vol</th><th class="m-hide m-oi">OI</th><th class="m-hide">@ stop</th><th class="m-size">Loss/ct</th><th class="m-size">Cts</th><th class="m-size">Total cost</th>
+      <th class="m-hide">Bid</th><th class="m-hide">Ask</th><th>Mid</th><th class="m-hide m-delta">Δ</th><th class="m-hide">IV</th><th>Vol</th><th class="m-hide m-oi">OI</th><th class="m-hide">${alloc ? 'Trade' : '@ stop'}</th><th class="m-size">${lossH}</th><th class="m-size">Cts</th><th class="m-size">${alloc ? 'Commitment' : 'Total cost'}</th>
     </tr>`;
   }
 }
@@ -4710,13 +5021,13 @@ function renderChain() {
         <td class="strike-col">${fmtStrikeM(strike)}${strike === atmAll ? '<span class="badge-itm" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);" title="ATM boundary strike — always shown in the ITM→ATM view, exempt from the Δ floor">ATM</span>' : one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
         <td class="m-hide">${fmt$(one.opt.bid || 0)}</td>
         <td class="m-hide">${fmt$(one.opt.ask || 0)}</td>
-        <td${one.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${one.spreadPct.toFixed(0)}% of mid"` : ''}>${fmt$M(one.mid)}</td>
-        <td class="m-hide m-delta" style="color:var(--text2)">${fmtN(one.delta, 3)}</td>
+        <td${one.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${one.spreadPct.toFixed(0)}% of mid"` : ''}>${Number.isFinite(one.mid) ? fmt$M(one.mid) : '—'}</td>
+        <td class="m-hide m-delta" style="color:var(--text2)">${Number.isFinite(one.delta) ? fmtN(one.delta, 3) : '—'}</td>
         <td class="m-hide" style="color:var(--text2)">${one.iv > 0 ? (one.iv * 100).toFixed(1) + '%' : '—'}</td>
         <td class="voloi" style="${volStyle}">${fmtKM(one.vol)}</td>
         <td class="voloi m-hide m-oi" style="${volStyle}">${fmtKM(one.oi)}</td>
-        <td class="m-hide" style="color:var(--teal)">${fmt$(one.atStop)}</td>
-        <td class="loss-cell m-size ${lossClass(one.lossOfCost)}">${one.lossPerContract > 0 ? fmt$M(one.lossPerContract) + `<div class="loss-pct ${lossClass(one.lossOfCost)}">${one.lossOfCost.toFixed(0)}%</div>` : '—'}</td>
+        <td class="m-hide" style="color:var(--teal)">${one.allocation ? (one.shortPut ? 'Sell put' : 'Buy') : fmt$(one.atStop)}</td>
+        <td class="m-size ${one.allocation ? '' : 'loss-cell ' + lossClass(one.lossOfCost)}">${one.allocation ? (one.allocation.error ? '—' : fmt$M(one.unitCost)) : one.lossPerContract > 0 ? fmt$M(one.lossPerContract) + `<div class="loss-pct ${lossClass(one.lossOfCost)}">${one.lossOfCost.toFixed(0)}%</div>` : '—'}</td>
         <td class="m-size" style="font-weight:600;color:var(--blue)">${one.contracts > 0 ? one.contracts : '—'}</td>
         <td class="m-size" style="color:var(--text2)">${one.contracts > 0 ? fmt$(one.totalCost) : '—'}</td>
       `;
@@ -4749,6 +5060,16 @@ function showDetail(tr, c, acct) {
   document.querySelectorAll('tbody tr').forEach(r => r.classList.remove('selected'));
   if (sameSymbol) return; // toggle off
   tr.classList.add('selected');
+
+  if (c.allocation) {
+    detailReg[c.opt.symbol] = c;
+    simReg[c.opt.symbol] = simParamsFromCard(c.card, c.mid, c.contracts);
+    const dr = document.createElement('tr');
+    dr.className = 'detail-row'; dr.dataset.sym = c.opt.symbol;
+    dr.innerHTML = `<td colspan="${chainColCount()}"><div class="detail-inner"><div class="section-title">${c.shortPut ? 'Sell put' : 'Buy ' + (c.isCall ? 'call' : 'put')} · allocation</div>${c.allocation.error ? `<p class="shares-error">${c.allocation.error}</p>` : allocationOptionBody(c.card, c.contracts, c.mid, c.allocation)}<button class="filter-btn" ${c.allocation.error ? 'disabled' : ''} onclick="pinAllocation('${c.opt.symbol}')">pin trade</button><button class="filter-btn" ${c.allocation.error || c.contracts < 1 ? 'disabled' : ''} onclick="openSim(simReg['${c.opt.symbol}'])">simulate returns</button></div></td>`;
+    tr.parentNode.insertBefore(dr, tr.nextSibling);
+    return;
+  }
 
   simReg[c.opt.symbol] = {
     isCall: c.isCall, K: c.opt.strike, expStr: selectedExp, iv: c.iv,
@@ -4865,6 +5186,7 @@ function removePinned(cardId) {
 
 // everything derived from the card's stop level
 function recalcPinnedStop(d) {
+  if (d.sizing === 'allocation') return;
   const drop = d.stopLevel - d.underlyingPrice;
   const losing = isBull(d) ? drop < 0 : drop > 0;
   const T = yearsToExp(d.parsed && d.parsed.expStr);
@@ -4920,10 +5242,12 @@ async function refreshCardData(d) {
     d.spreadPct = d.mid > 0 ? (d.ask - d.bid) / d.mid * 100 : 0;
   } else {
     const oq = oqRaw;
-    d.bid = oq.bid || 0;
-    d.ask = oq.ask || 0;
-    d.mid = (d.bid + d.ask) / 2;
-    d.delta = oq.greeks?.delta || 0;
+    d.bid = d.sizing === 'allocation' ? oq.bid : oq.bid || 0;
+    d.ask = d.sizing === 'allocation' ? oq.ask : oq.ask || 0;
+    d.contractSize = oq.contract_size;
+    d.rootSymbol = oq.root_symbol; d.underlyingType = uq.type;
+    d.mid = Number.isFinite(d.bid) && Number.isFinite(d.ask) ? (d.bid + d.ask) / 2 : NaN;
+    d.delta = oq.greeks?.delta ?? (d.sizing === 'allocation' ? null : 0);
     d.gamma = oq.greeks?.gamma || 0;
     d.iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
     d.vol = oq.volume || 0;
@@ -5037,8 +5361,9 @@ function saveCard(cardId) {
   const d = pinnedData[cardId];
   if (!d) return;
   const id = 'saved_' + Date.now();
+  if (d.sizing === 'allocation' && quantityForCard(d) < 1) return;
   // entry defaults to the current mid; qty to the risk-sized count — edit both to your real fill
-  savedData[id] = Object.assign({}, d, { entry: d.mid, qty: Math.max(1, unitsFor(riskDollars(), sizeUnit(d))) });
+  savedData[id] = Object.assign({}, d, { ...(d.sizing === 'allocation' ? { entryDte: optionDte(d.parsed.expStr) } : {}), entry: d.mid, qty: d.sizing === 'allocation' ? quantityForCard(d) : Math.max(1, quantityForCard(d)) });
   addSavedDiv(id);
   renderSavedCard(id);
   persistSaved();
@@ -5064,14 +5389,14 @@ function removeSaved(id) {
 function savedEntryChanged(id, el) {
   const d = savedData[id];
   const v = parseFloat(el.value);
-  if (d && !isNaN(v) && v > 0) { d.entry = v; persistSaved(); }
+  if (d && Number.isFinite(v) && v > 0 && (!d.shortPut || v < d.parsed.strike)) { d.entry = v; persistSaved(); }
   flashNext = true; renderSavedCard(id); flashNext = false;
 }
 
 function savedQtyChanged(id, el) {
   const d = savedData[id];
   const v = Math.floor(parseFloat(el.value) || 0);
-  if (d && v >= 0) { d.qty = v; persistSaved(); }
+  if (d && Number.isSafeInteger(v) && v >= 0) { d.qty = v; persistSaved(); }
   flashNext = true; renderSavedCard(id); flashNext = false;
 }
 
@@ -5117,6 +5442,7 @@ function renderSavedCard(id) {
   const d = savedData[id];
   const el = document.getElementById(id);
   if (!d || !el) return;
+  if (d.sizing === 'allocation') { renderAllocationCard(id, d, true); return; }
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const qty = d.qty || 0;
   const sgn = d.credit ? -1 : 1; // credit spreads profit when the spread gets cheaper to buy back
@@ -5188,6 +5514,7 @@ function renderPinnedCard(cardId) {
   const d = pinnedData[cardId];
   const el = document.getElementById(cardId);
   if (!d || !el) return;
+  if (d.sizing === 'allocation') { renderAllocationCard(cardId, d); return; }
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const contracts = unitsFor(risk, sizeUnit(d));
@@ -5275,6 +5602,9 @@ async function fetchQuickOption() {
   const val = document.getElementById('quickInput').value;
   const parsed = parseQuickStr(val);
   if (!parsed) { showError('Could not parse — try: AAPL 245 6/20  or  SPY 580 put 6/20'); return; }
+  const allocationTrade = sizingMode === 'allocation' && !parsed.spread;
+  const shortPutTrade = allocationTrade && optionTradeSide === 'sell-put';
+  if (shortPutTrade && parsed.optType !== 'put') { showError('Sell put requires a put contract.'); return; }
   const key = document.getElementById('apiKey').value.trim();
   if (!key) { showError('Enter your Tradier API key above.'); return; }
   clearError();
@@ -5339,8 +5669,9 @@ async function fetchQuickOption() {
       const mid = ((oq.bid || 0) + (oq.ask || 0)) / 2;
       d = {
         parsed, isCall, itm, underlyingPrice, stopName, stopLevel,
-        mid, bid: oq.bid || 0, ask: oq.ask || 0,
-        delta: oq.greeks?.delta || 0, gamma: oq.greeks?.gamma || 0,
+        ...(allocationTrade ? { sizing: 'allocation', shortPut: shortPutTrade, credit: shortPutTrade, contractSize: oq.contract_size, rootSymbol: oq.root_symbol, underlyingType: uq.type } : {}),
+        mid, bid: allocationTrade ? oq.bid : oq.bid || 0, ask: allocationTrade ? oq.ask : oq.ask || 0,
+        delta: oq.greeks?.delta ?? (allocationTrade ? null : 0), gamma: oq.greeks?.gamma || 0,
         iv: oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0,
         vol: oq.volume || 0, oi: oq.open_interest || 0,
         spreadPct: mid > 0 ? ((oq.ask || 0) - (oq.bid || 0)) / mid * 100 : 0,
@@ -5438,6 +5769,7 @@ syncSuppress = true; // init reads back what storage already holds — nothing h
 loadKey();
 syncRiskDollar();
 initFutures();
+updateSizingControls();
 syncSuppress = false;
 initChartEvents();
 initDailyChartEvents();
