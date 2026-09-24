@@ -70,15 +70,15 @@
   .row { display: flex; gap: 12px; flex-wrap: wrap; }
   .field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 120px; }
   .field label { font-size: 10.5px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
-  .field input, .field select {
+  .field input, .field select, .stop-buffer input, .stop-buffer select {
     background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
     color: var(--text); font-size: 14px; padding: 9px 11px; outline: none; width: 100%;
     transition: border-color 0.15s, box-shadow 0.15s;
     font-family: var(--mono);
   }
-  .field input:focus, .field select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(91,157,255,0.12); }
+  .field input:focus, .field select:focus, .stop-buffer input:focus, .stop-buffer select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(91,157,255,0.12); }
   .field input::placeholder { color: var(--text3); }
-  .field select option { background: var(--bg3); }
+  .field select option, .stop-buffer select option { background: var(--bg3); }
 
   .prefix-wrap { position: relative; }
   .prefix-wrap .prefix { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text3); pointer-events: none; font-size: 13px; font-family: var(--mono); }
@@ -211,6 +211,17 @@
   /* stop inputs carry their chart line color: long stop lives at the LOD side (red), short at the HOD side (green) */
   #stopLong { border-left: 3px solid var(--red); }
   #stopShort { border-left: 3px solid var(--green); }
+  .stop-buffer { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+  .stop-buffer-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .stop-buffer-label { font-size: 0.75rem; color: var(--text2); }
+  .stop-presets { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+  .stop-buffer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  #stopStrategy { width: auto; font-size: 0.75rem; padding: 0.375rem 0.5rem; }
+  #percentControls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+  #percentControls label { font-size: 0.6875rem; color: var(--text2); }
+  #stopPercent { width: 5.5rem; padding: 0.375rem 0.5rem; font-size: 0.75rem; }
+  #stopPercent[aria-invalid="true"] { border-color: var(--red); }
+  #stopBufferInfo { font: 0.6875rem var(--mono); color: var(--text2); margin-top: 0.5rem; line-height: 1.6; }
   #entryPrice { border-left: 3px solid var(--amber); }
   #futuresEntry { border-left: 3px solid var(--amber); }
   #futuresStop { border-left: 3px solid var(--red); }
@@ -680,6 +691,36 @@
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopShort" placeholder="HOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
       </div>
       <div style="font-size:11px;color:var(--text3);padding-bottom:11px;" id="stopsHint"></div>
+    </div>
+    <div class="stop-buffer" id="stopAdjustment">
+      <div class="stop-buffer-controls">
+        <label class="stop-buffer-label" for="stopStrategy">Stop adjustment</label>
+        <select id="stopStrategy" onchange="setStopStrategy(this.value)" aria-describedby="stopBufferInfo">
+          <option value="none">None</option>
+          <option value="atr">5m ATR</option>
+          <option value="percent">Percentage</option>
+        </select>
+        <div id="atrPresets" class="stop-presets" role="group" aria-label="ATR multiplier" style="display:none;">
+          <button type="button" class="filter-btn" data-atr="0.25" aria-pressed="false" onclick="setAtrMultiplier(0.25)">0.25×</button>
+          <button type="button" class="filter-btn" data-atr="0.5" aria-pressed="false" onclick="setAtrMultiplier(0.5)">0.5×</button>
+          <button type="button" class="filter-btn" data-atr="1" aria-pressed="false" onclick="setAtrMultiplier(1)">1×</button>
+          <button type="button" class="filter-btn" data-atr="1.5" aria-pressed="false" onclick="setAtrMultiplier(1.5)">1.5×</button>
+          <button type="button" class="filter-btn" data-atr="2" aria-pressed="false" onclick="setAtrMultiplier(2)">2×</button>
+        </div>
+      </div>
+      <div id="percentControls" style="display:none;">
+        <label for="stopPercent">Wiggle room %</label>
+        <input id="stopPercent" type="number" value="0.05" min="0" step="any" inputmode="decimal" aria-describedby="stopBufferInfo" oninput="setStopPercent(this.value, true)" />
+        <div id="percentPresets" class="stop-presets" role="group" aria-label="Percentage presets">
+          <button type="button" class="filter-btn" data-percent="0.025" aria-pressed="false" onclick="setStopPercent(0.025)">0.025%</button>
+          <button type="button" class="filter-btn" data-percent="0.05" aria-pressed="false" onclick="setStopPercent(0.05)">0.05%</button>
+          <button type="button" class="filter-btn" data-percent="0.1" aria-pressed="false" onclick="setStopPercent(0.1)">0.1%</button>
+          <button type="button" class="filter-btn" data-percent="0.25" aria-pressed="false" onclick="setStopPercent(0.25)">0.25%</button>
+          <button type="button" class="filter-btn" data-percent="0.5" aria-pressed="false" onclick="setStopPercent(0.5)">0.5%</button>
+        </div>
+      </div>
+      <div id="stopBufferInfo" role="status"></div>
+      <div class="hint">Below LOD for longs, above HOD for shorts. Manual stops override. Price trigger; no 5m close confirmation. Presets are untested.</div>
     </div>
     </div>
     <div id="futuresControls" style="display:none;">
@@ -1164,6 +1205,14 @@ function loadKey() {
   if (allocation !== null) document.getElementById('allocationPct').value = allocation;
   const lastTicker = store.get('last_ticker');
   if (lastTicker) document.getElementById('ticker').value = lastTicker;
+  atrMultiplier = normalizeAtrMultiplier(store.get('atr_multiplier'));
+  const strategy = store.get('stop_strategy');
+  stopStrategy = strategy === null ? (atrMultiplier ? 'atr' : 'none') : normalizeStopStrategy(strategy);
+  if (stopStrategy === 'atr' && !atrMultiplier) atrMultiplier = 0.5;
+  const percent = parseStopPercent(store.get('stop_percent'));
+  stopPercent = Number.isFinite(percent) ? percent : 0.05;
+  document.getElementById('stopPercent').value = String(stopPercent);
+  updateStopVisibility();
   syncRiskDollar();
 }
 
@@ -1606,10 +1655,9 @@ function shareShares() {
   const price = effectivePrice(q);
   const isLong = direction === 'long';
   const entry = entryVal();
-  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
-  const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
+  const stop = isLong ? stopLongVal() : stopShortVal();
   const rps = isLong ? entry - stop : stop - entry;
-  if (rps <= 0) { showError('Stop is on the wrong side of entry — nothing to share.'); return; }
+  if (!(rps > 0) || !Number.isFinite(stop)) { showError('Stop is on the wrong side of entry — nothing to share.'); return; }
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const shares = unitsFor(risk, rps);
@@ -1619,7 +1667,7 @@ function shareShares() {
     sub: `${isLong ? 'LONG' : 'SHORT'} · risk ${(risk / acct * 100).toFixed(2)}% of account · ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
     stats: [
       { label: isLong ? 'Entry — long' : 'Entry — short', value: fmt$(entry), color: SC.blue, sub: rawStop('entryPrice') > 0 ? 'planned entry' : 'current price' },
-      { label: 'Stop', value: fmt$(stop), color: SC.red, sub: `${(entry > 0 ? rps / entry * 100 : 0).toFixed(1)}% away · ${raw > 0 ? 'Custom stop' : (isLong ? 'LOD' : 'HOD')}` },
+      { label: 'Stop', value: fmt$(stop), color: SC.red, sub: `${(entry > 0 ? rps / entry * 100 : 0).toFixed(1)}% away · ${stopSourceName(isLong)}` },
       { label: 'Max loss', value: (shares * rps / acct * 100).toFixed(2) + '%', color: SC.red, sub: 'of account' },
       { label: 'Position', value: (shares * entry / acct * 100).toFixed(1) + '%', sub: 'of account' }
     ],
@@ -1723,10 +1771,9 @@ function copyShares() {
   }
   const isLong = direction === 'long';
   const entry = entryVal();
-  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
-  const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
+  const stop = isLong ? stopLongVal() : stopShortVal();
   const rps = isLong ? entry - stop : stop - entry;
-  if (rps <= 0) { showError('Stop is on the wrong side of entry.'); return; }
+  if (!(rps > 0) || !Number.isFinite(stop)) { showError('Stop is on the wrong side of entry.'); return; }
   const shares = unitsFor(riskDollars(), rps);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   copyPlainText(`${isLong ? 'bought' : 'shorted'} $${q.symbol} @ ${fmtN(entry, 2)} with stop at ${fmtN(stop, 2)} · risk ${(shares * rps / acct * 100).toFixed(2)}% of account${ex100(rps, 'share')}`);
@@ -1760,7 +1807,7 @@ function copySaved(id) {
 
 // ---------- backup: everything the app stores, as a JSON file ----------
 // also the sync payload — deleted_positions are tombstones so a delete beats a merge
-const BACKUP_KEYS = ['tradier_key', 'tradier_env', 'calc_account', 'calc_risk', 'calc_allocation', 'last_ticker', 'saved_positions', 'risk_usd_presets', 'deleted_positions'];
+const BACKUP_KEYS = ['tradier_key', 'tradier_env', 'calc_account', 'calc_risk', 'calc_allocation', 'last_ticker', 'saved_positions', 'risk_usd_presets', 'deleted_positions', 'atr_multiplier', 'stop_strategy', 'stop_percent'];
 
 function buildBackup() {
   const out = { app: 'size-calc', exported: new Date().toISOString(), data: {} };
@@ -2240,13 +2287,11 @@ function sharesQtyChanged(el) {
   if (sizingMode === 'allocation' && quoteData) { allocationQtyChanged(Math.floor(Number(el.value)), entryVal(), quoteData.symbol); renderShares(); return; }
   const qty = Math.floor(parseFloat(el.value) || 0);
   if (!quoteData || qty <= 0) { renderShares(); return; }
-  const q = quoteData;
   const entry = entryVal();
   const isLong = direction === 'long';
-  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
-  const stop = raw > 0 ? raw : (isLong ? (q.low || 0) : (q.high || 0));
+  const stop = isLong ? stopLongVal() : stopShortVal();
   const rps = isLong ? entry - stop : stop - entry;
-  if (rps <= 0) { renderShares(); return; }
+  if (!(rps > 0) || !Number.isFinite(stop)) { renderShares(); return; }
   document.getElementById('riskDollar').value = riskForQty(qty, rps);
   syncFromDollar();
 }
@@ -2659,8 +2704,112 @@ function rawStop(id) { // 0 = input blank, fall back to LOD/HOD
   const v = parseFloat(document.getElementById(id).value);
   return (!isNaN(v) && v > 0) ? v : 0;
 }
-function stopLongVal() { return rawStop('stopLong') || (quoteData ? (quoteData.low || 0) : 0); }
-function stopShortVal() { return rawStop('stopShort') || (quoteData ? (quoteData.high || 0) : 0); }
+const ATR_MULTIPLIERS = [0, 0.25, 0.5, 1, 1.5, 2];
+let stopStrategy = 'none';
+let stopPercent = 0.05;
+let atrMultiplier = 0;
+let atr5 = null; // { symbol, value, asOf }: completed native five-minute bars only
+function normalizeStopStrategy(value) { return ['none', 'atr', 'percent'].includes(value) ? value : 'none'; }
+function parseStopPercent(value) {
+  const n = value === null || String(value).trim() === '' ? NaN : Number(value);
+  return Number.isFinite(n) && n >= 0 && n < 100 ? n : NaN;
+}
+function normalizeAtrMultiplier(value) {
+  const n = Number(value);
+  return ATR_MULTIPLIERS.includes(n) ? n : 0;
+}
+function currentAtr5() { return atr5 && atr5.symbol === quoteData?.symbol ? atr5 : null; }
+function adjustedStop(level, isLong, atr) {
+  if (!(level > 0) || !Number.isFinite(level)) return NaN;
+  if (stopStrategy === 'none') return level;
+  let buffer;
+  if (stopStrategy === 'percent') {
+    if (!Number.isFinite(stopPercent)) return NaN;
+    buffer = level * stopPercent / 100;
+  } else {
+    if (!atr || !Number.isFinite(atr.value) || atr.value < 0) return NaN;
+    buffer = atrMultiplier * atr.value;
+  }
+  if (!buffer) return level;
+  const price = level + (isLong ? -1 : 1) * buffer;
+  // Round outward so the displayed, orderable stop matches the sizing calculation.
+  const rounded = (isLong ? Math.floor(price * 100 + 1e-8) : Math.ceil(price * 100 - 1e-8)) / 100;
+  return rounded > 0 ? rounded : NaN;
+}
+function stopLongVal() { return rawStop('stopLong') || adjustedStop(quoteData?.low, true, currentAtr5()); }
+function stopShortVal() { return rawStop('stopShort') || adjustedStop(quoteData?.high, false, currentAtr5()); }
+function autoStopName(isLong) {
+  const level = isLong ? 'LOD' : 'HOD';
+  if (stopStrategy === 'none') return level;
+  const amount = stopStrategy === 'atr' ? `${atrMultiplier}× ATR(5m)` : `${Number.isFinite(stopPercent) ? stopPercent : '?'}%`;
+  return `${level} ${isLong ? '−' : '+'} ${amount}`;
+}
+function stopSourceName(isLong, full = false) {
+  if (rawStop(isLong ? 'stopLong' : 'stopShort')) return 'Custom stop';
+  return stopStrategy === 'none' && full ? (isLong ? 'Low of day (LOD)' : 'High of day (HOD)') : autoStopName(isLong);
+}
+function chartStopVal(isLong) {
+  if (sizingMode === 'allocation') return 0;
+  return rawStop(isLong ? 'stopLong' : 'stopShort') || (stopStrategy !== 'none' ? (isLong ? stopLongVal() : stopShortVal()) : 0);
+}
+function saveStopAdjustment() {
+  store.set('stop_strategy', stopStrategy);
+  store.set('atr_multiplier', atrMultiplier);
+  if (Number.isFinite(stopPercent)) store.set('stop_percent', stopPercent);
+}
+function setStopStrategy(value) {
+  stopStrategy = normalizeStopStrategy(value);
+  if (stopStrategy === 'atr' && !atrMultiplier) atrMultiplier = 0.5;
+  saveStopAdjustment();
+  stopsChanged();
+}
+function setAtrMultiplier(value) {
+  atrMultiplier = normalizeAtrMultiplier(value);
+  stopStrategy = atrMultiplier ? 'atr' : 'none';
+  saveStopAdjustment();
+  stopsChanged();
+}
+function setStopPercent(value, fromInput = false) {
+  stopPercent = parseStopPercent(value);
+  stopStrategy = 'percent';
+  if (!fromInput) document.getElementById('stopPercent').value = String(value);
+  saveStopAdjustment();
+  stopsChanged();
+}
+function updateStopAdjustment() {
+  document.getElementById('stopStrategy').value = stopStrategy;
+  document.getElementById('atrPresets').style.display = stopStrategy === 'atr' ? 'flex' : 'none';
+  document.getElementById('percentControls').style.display = stopStrategy === 'percent' ? 'flex' : 'none';
+  document.getElementById('stopPercent').setAttribute('aria-invalid', String(!Number.isFinite(stopPercent)));
+  document.querySelectorAll('#atrPresets button').forEach(b => {
+    const active = Number(b.dataset.atr) === atrMultiplier;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
+  document.querySelectorAll('#percentPresets button').forEach(b => {
+    const active = Number(b.dataset.percent) === stopPercent;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
+  const tc = tradeCtx();
+  const info = document.getElementById('stopBufferInfo');
+  if (stopStrategy === 'none') { info.textContent = 'No adjustment · blank stops use the exact LOD / HOD.'; return; }
+  if (stopStrategy === 'percent') {
+    if (!Number.isFinite(stopPercent)) { info.textContent = 'Enter a percentage from 0% to less than 100%.'; return; }
+    const preview = isLong => {
+      const level = isLong ? quoteData?.low : quoteData?.high;
+      const stop = adjustedStop(level, isLong, null);
+      return Number.isFinite(stop) ? `${isLong ? 'LOD' : 'HOD'} ${fmt$(level)} → ${fmt$(stop)}` : '';
+    };
+    const prices = [tc !== 'short' && preview(true), tc !== 'long' && preview(false)].filter(Boolean).join(' · ');
+    info.textContent = `${stopPercent}% of the LOD / HOD price${prices ? ` · ${prices}` : ' · load a ticker to see the adjusted stop'} · rounded outward to cents`;
+    return;
+  }
+  const atr = currentAtr5();
+  if (!atr) { info.textContent = '5m ATR(14) unavailable · load or refresh intraday data, enter a manual stop, or choose None.'; return; }
+  const asOf = new Date((atr.asOf + 300) * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  info.textContent = `5m ATR(14) ${fmt$(atr.value)} × ${atrMultiplier} = ${fmt$(atr.value * atrMultiplier)} buffer · bar closed ${asOf}`;
+}
 function entryVal() { return rawStop('entryPrice') || effectivePrice(quoteData); } // blank = current (incl. pre/after-hours) price
 
 // the active trade direction: shares follow the Long/Short toggle,
@@ -2673,6 +2822,7 @@ function tradeCtx() {
 
 // only show the stop that matches the trade you're taking
 function updateStopVisibility() {
+  document.getElementById('stopAdjustment').style.display = sizingMode === 'allocation' ? 'none' : '';
   document.getElementById('entryStopsTitle').textContent = sizingMode === 'allocation' ? 'Entry' : 'Entry & stops';
   document.getElementById('entryStopsRow').style.display = sizingMode === 'allocation' && currentMode === 'options' ? 'none' : '';
   document.getElementById('entryStopsTitle').style.display = sizingMode === 'allocation' && currentMode === 'options' ? 'none' : '';
@@ -2683,14 +2833,15 @@ function updateStopVisibility() {
     return;
   }
   const tc = tradeCtx();
+  updateStopAdjustment();
   // the Long/Short toggle is the shares-mode direction; chain side plays that role in options
   document.getElementById('dirField').style.display = currentMode === 'shares' ? 'flex' : 'none';
   document.getElementById('stopLongField').style.display = tc !== 'short' ? 'flex' : 'none';
   document.getElementById('stopShortField').style.display = tc !== 'long' ? 'flex' : 'none';
   document.getElementById('stopsHint').textContent =
-    tc === 'long' ? 'blank = LOD · click the chart to set it'
-    : tc === 'short' ? 'blank = HOD · click the chart to set it'
-    : 'blank = LOD / HOD · click the chart: below price = long stop, above = short stop';
+    tc === 'long' ? `blank = ${autoStopName(true)} · click the chart to set it`
+    : tc === 'short' ? `blank = ${autoStopName(false)} · click the chart to set it`
+    : `blank = ${stopStrategy !== 'none' ? 'buffered LOD / HOD' : 'LOD / HOD'} · click the chart: below price = long stop, above = short stop`;
   document.getElementById('chartClickHint').textContent =
     tc === 'long' ? 'tap, or hold-aim-release, to set your long stop'
     : tc === 'short' ? 'tap, or hold-aim-release, to set your short stop'
@@ -2698,6 +2849,7 @@ function updateStopVisibility() {
 }
 
 function stopsChanged() {
+  updateStopVisibility();
   flashNext = true;
   if (quoteData) { renderShares(); renderChain(); }
   flashNext = false;
@@ -3720,25 +3872,49 @@ function aggregateBars(bars5, iv) {
   return out;
 }
 
+// Seed with 14 true ranges, then Wilder smoothing. Use the API's epoch timestamps
+// rather than interpreting exchange-local strings in the browser's time zone.
+function calculateAtr5(bars, nowMs = Date.now()) {
+  const done = bars.filter(b => Number.isFinite(b.ts) && (b.ts + 300) * 1000 <= nowMs
+    && [b.h, b.l, b.c].every(v => Number.isFinite(v) && v > 0) && b.h >= b.l)
+    .slice().sort((a, b) => a.ts - b.ts)
+    .filter((b, i, sorted) => i === 0 || b.ts !== sorted[i - 1].ts);
+  if (done.length < 15) return null; // previous close plus 14 true ranges
+  let value = 0;
+  for (let i = 1; i < done.length; i++) {
+    const b = done[i], prev = done[i - 1].c;
+    const tr = Math.max(b.h - b.l, Math.abs(b.h - prev), Math.abs(b.l - prev));
+    if (i <= 14) { value += tr; if (i === 14) value /= 14; }
+    else value = (value * 13 + tr) / 14;
+  }
+  return { value, asOf: done[done.length - 1].ts };
+}
+
+async function fetchFiveMinuteBars(ticker) {
+  const from = new Date();
+  // Fixed history keeps the ATR seed independent of the visible chart interval.
+  from.setDate(from.getDate() - 14);
+  const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(ticker)}&interval=5min&start=${encodeURIComponent(dateStr(from) + ' 09:30')}&end=${encodeURIComponent(dateStr(new Date()) + ' 16:00')}&session_filter=open`;
+  const res = await fetch(url, { headers: headers() });
+  if (!res.ok) throw new Error('Intraday data unavailable');
+  const data = (await res.json())?.series?.data;
+  return data ? (Array.isArray(data) ? data : [data]).map(b => ({ t: b.time, ts: b.timestamp, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume })) : [];
+}
+
+let chartRequestId = 0;
 async function fetchChart(ticker) {
-  chartBars = [];
-  try {
-    const sessions = CHART_SESSIONS[chartInterval] || 1;
-    const from = new Date();
-    from.setDate(from.getDate() - Math.ceil(sessions * 1.7 + 4)); // weekend/holiday buffer
-    const url = `${baseUrl()}/markets/timesales?symbol=${ticker}&interval=5min&start=${encodeURIComponent(dateStr(from) + ' 09:30')}&end=${encodeURIComponent(dateStr(new Date()) + ' 16:00')}&session_filter=open`;
-    const res = await fetch(url, { headers: headers() });
-    const data = (await res.json())?.series?.data;
-    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
-    if (data) {
-      const raw = (Array.isArray(data) ? data : [data]).map(b => ({ t: b.time, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume }));
-      const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
-      const keep = new Set(days.slice(-sessions));
-      chartBars = aggregateBars(raw.filter(b => keep.has((b.t || '').slice(0, 10))), chartInterval);
-    }
-  } catch(e) {}
+  const requestId = ++chartRequestId;
+  let raw = [];
+  try { raw = await fetchFiveMinuteBars(ticker); } catch(e) {}
+  if (requestId !== chartRequestId || ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
+  const sessions = CHART_SESSIONS[chartInterval] || 1;
+  const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
+  const keep = new Set(days.slice(-sessions));
+  chartBars = aggregateBars(raw.filter(b => keep.has((b.t || '').slice(0, 10))), chartInterval);
+  const result = calculateAtr5(raw);
+  atr5 = result ? { symbol: ticker, ...result } : null;
   updateChartVisibility();
-  if (chartBars.length) drawChart();
+  stopsChanged();
 }
 
 // ---------- daily history: ADR14, prior-day levels, HV20, daily chart ----------
@@ -3910,11 +4086,11 @@ function chartGeom(canvas) {
 function chartRange() {
   let lo = Infinity, hi = -Infinity;
   for (const b of chartBars) { if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h; }
-  // include explicitly-set stop lines in range (only the ones the context draws)
+  // Include manual and buffered stop lines in range (only the active direction).
   const tc = tradeCtx();
   const inRange = [rawStop('entryPrice')];
-  if (tc !== 'short') inRange.push(rawStop('stopLong'));
-  if (tc !== 'long') inRange.push(rawStop('stopShort'));
+  if (tc !== 'short') inRange.push(chartStopVal(true));
+  if (tc !== 'long') inRange.push(chartStopVal(false));
   for (const s of inRange) {
     if (s > 0) { if (s < lo) lo = s; if (s > hi) hi = s; }
   }
@@ -4011,7 +4187,7 @@ function drawChart() {
     pdLine(prevDay.c, 'PDC');
   }
 
-  // stop lines: red = long stop (LOD side), green = short stop (HOD side); drawn only when explicitly set
+  // Stop overlays include manual stops and buffered stops; unbuffered LOD/HOD have their own lines.
   const stopLine = (price, color, label) => {
     if (!(price > 0)) return;
     ctx.save();
@@ -4022,8 +4198,8 @@ function drawChart() {
     ctx.restore();
   };
   const tc = tradeCtx();
-  if (tc !== 'short') stopLine(rawStop('stopLong'), cRed, 'long stop');
-  if (tc !== 'long') stopLine(rawStop('stopShort'), cGreen, 'short stop');
+  if (tc !== 'short') stopLine(chartStopVal(true), cRed, 'long stop');
+  if (tc !== 'long') stopLine(chartStopVal(false), cGreen, 'short stop');
   stopLine(rawStop('entryPrice'), cBlue, 'entry');
 
   // candles
@@ -4134,8 +4310,8 @@ function drawDailyChart() {
   let lo = Infinity, hi = -Infinity;
   for (const b of dailyBars) { if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; }
   const tc = tradeCtx();
-  if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
-  if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
+  if (tc !== 'short') { const s = chartStopVal(true); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
+  if (tc !== 'long') { const s = chartStopVal(false); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
   { const s = rawStop('entryPrice'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
   const pad = (hi - lo) * 0.05 || 0.5;
   lo -= pad; hi += pad;
@@ -4177,8 +4353,8 @@ function drawDailyChart() {
     ctx.fillText(label + ' ' + price.toFixed(2), w - padR - 84, y(price) - 4);
     ctx.restore();
   };
-  if (tc !== 'short') stopLine(rawStop('stopLong'), cRed, 'long stop');
-  if (tc !== 'long') stopLine(rawStop('stopShort'), cGreen, 'short stop');
+  if (tc !== 'short') stopLine(chartStopVal(true), cRed, 'long stop');
+  if (tc !== 'long') stopLine(chartStopVal(false), cGreen, 'short stop');
   stopLine(rawStop('entryPrice'), css.getPropertyValue('--blue').trim(), 'entry');
 
   // candles
@@ -4273,8 +4449,8 @@ function dailyPriceAtY(clientY) {
   let dLo = Infinity, dHi = -Infinity;
   for (const b of dailyBars) { if (b.low < dLo) dLo = b.low; if (b.high > dHi) dHi = b.high; }
   const tc = tradeCtx();
-  if (tc !== 'short') { const s = rawStop('stopLong'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
-  if (tc !== 'long') { const s = rawStop('stopShort'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+  if (tc !== 'short') { const s = chartStopVal(true); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
+  if (tc !== 'long') { const s = chartStopVal(false); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
   { const s = rawStop('entryPrice'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
   const pad = (dHi - dLo) * 0.05 || 0.5;
   dLo -= pad; dHi += pad;
@@ -4569,25 +4745,22 @@ function renderShares() {
     return;
   }
   const price = effectivePrice(q);
-  const lod = q.low || 0;
-  const hod = q.high || 0;
   const isLong = direction === 'long';
-  const defaultStop = isLong ? lod : hod;
-
-  const raw = rawStop(isLong ? 'stopLong' : 'stopShort');
-  const stop = raw > 0 ? raw : defaultStop;
-  const usingDefault = raw <= 0;
+  const stop = isLong ? stopLongVal() : stopShortVal();
+  updateStopAdjustment();
   const entry = entryVal();
   const customEntry = rawStop('entryPrice') > 0;
   const risk = riskDollars();
   const riskPerShare = isLong ? (entry - stop) : (stop - entry);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  const valid = riskPerShare > 0;
+  const valid = Number.isFinite(stop) && stop > 0 && Number.isFinite(entry) && riskPerShare > 0;
   document.getElementById('sharesImage').disabled = !valid;
   document.getElementById('sharesCopy').disabled = !valid;
 
   if (!valid) {
-    const msg = isLong
+    const msg = !Number.isFinite(stop)
+      ? (stopStrategy === 'percent' && !Number.isFinite(stopPercent) ? 'Enter a percentage from 0% to less than 100%.' : stopStrategy === 'atr' && !currentAtr5() ? '5m ATR(14) unavailable. Refresh intraday data, enter a manual stop, or choose None.' : 'No valid stop price. Check the LOD / HOD, reduce the buffer, or enter a manual stop.')
+      : isLong
       ? `Stop (${fmt$(stop)}) must be below entry (${fmt$(entry)}) for a long.`
       : `Stop (${fmt$(stop)}) must be above entry (${fmt$(entry)}) for a short.`;
     document.getElementById('sharesStats').innerHTML = `<div class="shares-error" role="status">${msg}</div>`;
@@ -4596,7 +4769,7 @@ function renderShares() {
   }
   const shares = unitsFor(risk, riskPerShare);
   const posSize = shares * entry;
-  const stopSource = usingDefault ? (isLong ? 'Low of day (LOD)' : 'High of day (HOD)') : 'Custom stop';
+  const stopSource = stopSourceName(isLong, true);
 
   document.getElementById('sharesStats').innerHTML = `
     <div class="shares-primary">
@@ -4779,6 +4952,7 @@ function calcOpt(opt, price, callStop, putStop, risk, Texp, entryU) {
   const iv = opt.greeks?.smv_vol || opt.greeks?.mid_iv || 0;
   const isCall = opt.option_type === 'call';
   const stop = isCall ? callStop : putStop;
+  if (!Number.isFinite(stop) || !(stop > 0)) return null;
   const entry = entryU > 0 ? entryU : price; // planned underlying entry, blank = spot
   const losing = isCall ? stop < entry : stop > entry;
   // premiums at the entry and the stop: Black-Scholes moves applied to the market mid
@@ -4893,10 +5067,8 @@ function renderChain() {
   if (!q || !chainData.length) return;
 
   const price = effectivePrice(q);
-  const lod = q.low || 0;
-  const hod = q.high || 0;
-  const callStop = stopLongVal() || lod;
-  const putStop = stopShortVal() || hod;
+  const callStop = stopLongVal();
+  const putStop = stopShortVal();
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
 
@@ -5326,6 +5498,8 @@ function completeSpread(farC) {
   cancelSpread();
   const bull = credit ? !L.isCall : L.isCall;
   const rawS = rawStop(bull ? 'stopLong' : 'stopShort');
+  const stopLevel = bull ? stopLongVal() : stopShortVal();
+  if (!Number.isFinite(stopLevel)) { showError('Stop unavailable. Check the selected adjustment and price data, enter a manual stop, or choose None.'); return; }
   const cardId = 'pinned_' + Date.now();
   const d = {
     kind: 'spread', credit,
@@ -5336,8 +5510,8 @@ function completeSpread(farC) {
     ],
     isCall: L.isCall, itm: L.itm,
     underlyingPrice: effectivePrice(quoteData),
-    stopName: rawS > 0 ? 'stop' : (bull ? 'LOD' : 'HOD'),
-    stopLevel: rawS > 0 ? rawS : (bull ? (quoteData.low || 0) : (quoteData.high || 0)),
+    stopName: rawS > 0 ? 'stop' : autoStopName(bull) + (stopStrategy !== 'none' ? ' · fixed' : ''),
+    stopLevel,
     mid: net,
     bid: (L.opt.bid || 0) - (farC.opt.ask || 0),
     ask: (L.opt.ask || 0) - (farC.opt.bid || 0),
@@ -5628,15 +5802,16 @@ async function fetchQuickOption() {
 
     const underlyingPrice = effectivePrice(uq);
     const isCall = parsed.optType === 'call';
-    const lod = uq.low || 0;
-    const hod = uq.high || 0;
-    // same ticker as the loaded quote → use the global stop pair; else this underlying's LOD/HOD
+    // Risk sizing uses the loaded ticker's stop, or this underlying's own ATR.
     const bull = parsed.credit ? !isCall : isCall; // credit spreads win the other way
     const sameTicker = quoteData && quoteData.symbol === parsed.ticker;
     const raw = sameTicker ? rawStop(bull ? 'stopLong' : 'stopShort') : 0;
     const usingDefault = raw <= 0;
-    const stopLevel = usingDefault ? (bull ? lod : hod) : raw;
-    const stopName = usingDefault ? (bull ? 'LOD' : 'HOD') : 'stop';
+    const ownAtr = !allocationTrade && !sameTicker && stopStrategy === 'atr' ? calculateAtr5(await fetchFiveMinuteBars(parsed.ticker)) : null;
+    const stopLevel = allocationTrade ? 0 : sameTicker ? (bull ? stopLongVal() : stopShortVal()) : adjustedStop(bull ? uq.low : uq.high, bull, ownAtr);
+    if (!allocationTrade && !Number.isFinite(stopLevel)) throw new Error('Stop unavailable. Check the selected adjustment and price data, enter a manual stop, or choose None.');
+    // Buffered plans freeze their numeric stop; future quotes must not widen it.
+    const stopName = allocationTrade ? '' : usingDefault ? autoStopName(bull) + (stopStrategy !== 'none' ? ' · fixed' : '') : 'stop';
     const itm = isCall ? parsed.strike < underlyingPrice : parsed.strike > underlyingPrice;
 
     const cardId = 'pinned_' + Date.now();
