@@ -332,8 +332,9 @@
 
   /* Phone and tablet: one column in trade order. Inputs, quote, the answer, the chart to set stops, ideas, then the chain.
      The pane wrappers are display:contents here, so every card is a flex item of .app and `order` places it. */
-  #appHeader { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #modeCard { order: 3; } #futuresSection { order: 4; }
-  #quoteCard { order: 5; } #sharesSection { order: 6; } #optionTicket { order: 7; } #chartWrap { order: 8; }
+  #appHeader { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #modeCard { order: 3; } #quoteCard { order: 4; }
+  #riskStrip { order: 5; } #sharesSection, #futuresSection { order: 6; } /* risk sits right above whichever answer it changes */
+  #optionTicket { order: 7; } #chartWrap { order: 8; }
   #quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #savedBar { order: 12; } #savedSection { order: 13; }
   #optionsSection { order: 14; } #marketSection, #utilsSection { order: 15; }
 
@@ -366,6 +367,9 @@
     #entryStopsRow > div:not(.field) { flex: 0 0 100%; }
     #quickInput { padding-right: 12px !important; }
     #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
+    #riskStrip .chip-row { flex-wrap: nowrap; gap: 5px; }
+    #riskStrip .chip-row .filter-btn, #riskStrip .usd-edit-box { flex: 1 1 0; min-width: 0; padding: 6px 2px; text-align: center; width: auto; }
+    #riskStrip .chip-label { display: none; }
     #sharesSection .shares-primary { gap: 16px; }
     #sharesSection .shares-stop { padding-left: 16px; }
     #sharesSection .shares-primary .s-val { font-size: 30px; }
@@ -418,7 +422,7 @@
     .seg.mode-big button { font-size: 14px; }
     /* preset rows: equal-width chips, one line, everything visible */
     #riskPresets, #riskUsdRow { flex-wrap: nowrap !important; gap: 5px; }
-    #riskPresets .filter-btn, #riskUsdRow .filter-btn, #riskUsdRow .usd-edit-box { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 11px; text-align: center; width: auto; }
+    #riskPresets .filter-btn, #riskUsdRow .filter-btn, #riskUsdRow .usd-edit-box { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 6px 2px; font-size: 12px; text-align: center; width: auto; } /* thumb-sized: these are the quick risk changes */
     #riskPresets > span:first-child, #riskUsdRow > span:first-child { display: none; } /* % and $ make the labels redundant */
     /* recent tickers: unbounded list, keep the side-swipe */
     #recentTickers { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -461,10 +465,7 @@
   .brand-nav:hover { color:var(--text); }
   .count-badge { font:600 11px/16px var(--mono); color:var(--blue); background:var(--blue-bg); border:1px solid var(--blue-bd); border-radius:999px; padding:0 6px; }
   .count-badge:empty { display:none; }
-  .brand-nav:focus-visible, #marketSection button:focus-visible, #marketSection a:focus-visible, .risk-pill:focus-visible, .icon-btn:focus-visible { outline:2px solid var(--blue); outline-offset:4px; }
-  .risk-pill { background:var(--red-bg); border:1px solid var(--red-bd); color:var(--text2); border-radius:999px; padding:6px 12px; font:13px var(--mono); cursor:pointer; white-space:nowrap; }
-  .risk-pill:hover { border-color:var(--red); }
-  .app.market-view .risk-pill, .app.utils-view .risk-pill { display:none; }
+  .brand-nav:focus-visible, #marketSection button:focus-visible, #marketSection a:focus-visible, .icon-btn:focus-visible, .link-btn:focus-visible { outline:2px solid var(--blue); outline-offset:4px; }
   .icon-btn { position:relative; flex:0 0 auto; width:36px; height:34px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:var(--radius); color:var(--text2); cursor:pointer; }
   .icon-btn:hover { color:var(--text); border-color:var(--blue); }
   .icon-btn .key-dot { display:none; position:absolute; top:-4px; right:-4px; width:10px; height:10px; border-radius:50%; background:var(--amber); border:2px solid var(--bg); }
@@ -483,6 +484,18 @@
   .chip-row { display:flex; gap:6px; align-items:center; margin-top:14px; flex-wrap:wrap; }
   .chip-row + .chip-row { margin-top:8px; }
   .chip-label { font-size:12px; font-weight:500; color:var(--text2); min-width:56px; }
+
+  /* risk strip: the amount per trade sits right above the answer, one tap per change */
+  .risk-strip { padding:14px 16px; }
+  .risk-strip-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
+  .strip-title { font-size:13px; font-weight:600; color:var(--red); }
+  .risk-strip.alloc .strip-title { color:var(--text2); }
+  .link-btn { background:none; border:0; padding:2px 0; color:var(--text2); font:12px var(--mono); cursor:pointer; white-space:nowrap; }
+  .link-btn:hover { color:var(--text); text-decoration:underline; }
+  .risk-strip .chip-row { margin-top:10px; }
+  .risk-strip .chip-row + .chip-row { margin-top:6px; }
+  .risk-strip .filter-btn.active { background:var(--red-bg); border-color:var(--red-bd); color:var(--text); }
+  #allocationControls .row { margin-top:2px; }
 
   /* friendly empty states */
   .setup-card { border-color:var(--blue-bd); background:linear-gradient(180deg, rgba(91,157,255,0.07), transparent 70%), var(--bg2); }
@@ -613,7 +626,6 @@
     <span class="dot"></span>
     <nav class="brand-tabs" aria-label="Views"><button class="brand-nav" id="brandMarket" onclick="setView('market')" title="Market performance (m)">Market</button><button class="brand-nav" id="brandSize" onclick="setView('calc')" aria-current="page" title="Size a trade: shares, options, futures (s / o / f)">Size</button><button class="brand-nav" id="brandPositions" onclick="setView('positions')" title="Saved positions (v)">Positions<span class="count-badge" id="posCount"></span></button><button class="brand-nav" id="brandTools" onclick="setView('utils')" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)">Tools</button></nav>
     <span class="sub" id="lastUpdated"></span>
-    <button class="risk-pill" id="riskPill" onclick="openSheet('risk')" title="Account and risk per trade"><span id="riskStatus"></span></button>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
     <button class="icon-btn" id="settingsBtn" onclick="openSheet('settings')" aria-label="Settings" title="Settings: API key, backup, sync"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="key-dot"></span></button>
   </header>
@@ -761,6 +773,40 @@
     </div>
   </div>
 
+  <div class="card risk-strip" id="riskStrip">
+    <div class="risk-strip-head">
+      <span class="strip-title" id="riskStripTitle">Max loss per trade</span>
+      <button class="link-btn" onclick="openSheet('risk')" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button>
+    </div>
+    <div class="field" id="riskDollarField">
+      <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" oninput="syncFromDollar()" title="The dollar amount you're willing to lose on this trade. - and = step through your presets" /></div>
+    </div>
+    <div class="chip-row" id="riskPresets">
+      <span class="chip-label">Percent</span>
+      <button class="filter-btn" data-pct="0.125" onclick="setRiskPct(0.125)">.125%</button>
+      <button class="filter-btn" data-pct="0.25" onclick="setRiskPct(0.25)">.25%</button>
+      <button class="filter-btn" data-pct="0.5" onclick="setRiskPct(0.5)">.50%</button>
+      <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
+      <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
+      <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
+    </div>
+    <div class="chip-row" id="riskUsdRow">
+      <span class="chip-label">Dollars</span>
+      <span id="riskUsdPresets" style="display:contents;"></span>
+      <button class="filter-btn" id="usdEditBtn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
+    </div>
+    <div id="allocationControls" style="display:none;">
+      <div class="row">
+        <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" oninput="allocationChanged()" /></div>
+        <div class="field"><label for="existingExposure">Existing exposure $ <span id="exposureSymbol"></span></label><input type="number" id="existingExposure" value="0" min="0" step="100" oninput="allocationChanged()" /></div>
+      </div>
+      <div class="chip-row">
+        <button class="filter-btn" onclick="setAllocationPct(2)">2%</button><button class="filter-btn" onclick="setAllocationPct(5)">5%</button><button class="filter-btn" onclick="setAllocationPct(10)">10%</button>
+      </div>
+      <details class="hint-details"><summary>What counts as exposure</summary>Shares in this name at current value, plus the full strike notional of open short puts, plus long-option debit. Manual, and remembered per symbol for this session. Allocation is a per-name cap, not a cash-balance check.</details>
+    </div>
+  </div>
+
   <div class="card shares-card" id="sharesSection" style="display:none;">
     <div id="sharesStats"></div>
     <div class="shares-actions" role="group" aria-label="Share trade plan">
@@ -833,6 +879,7 @@
       <div class="kbd-group"><div class="kbd-h">Data</div>
         <span><kbd>r</kbd> refresh quote</span>
         <span><kbd>l</kbd> live · again extends 1m→5m→30m</span>
+        <span><kbd>-</kbd> <kbd>=</kbd> step risk down / up</span>
       </div>
     </div>
   </div>
@@ -1102,34 +1149,7 @@
           <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" oninput="recalcAll()" />
         </div>
       </div>
-      <div class="field" id="riskDollarField" style="margin-top:12px;">
-        <label for="riskDollar" style="color:var(--red);">Max loss per trade</label>
-        <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" oninput="syncFromDollar()" title="The dollar amount you're willing to lose on this trade" /></div>
-      </div>
-      <div id="allocationControls" style="display:none;margin-top:12px;">
-        <div class="row">
-          <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" oninput="allocationChanged()" /></div>
-          <div class="field"><label for="existingExposure">Existing exposure $ <span id="exposureSymbol"></span></label><input type="number" id="existingExposure" value="0" min="0" step="100" oninput="allocationChanged()" /></div>
-        </div>
-        <div style="display:flex;gap:6px;margin-top:10px;">
-          <button class="filter-btn" onclick="setAllocationPct(2)">2%</button><button class="filter-btn" onclick="setAllocationPct(5)">5%</button><button class="filter-btn" onclick="setAllocationPct(10)">10%</button>
-        </div>
-        <p class="hint">Exposure in this name: shares at current value, plus the full strike notional of open short puts, plus long-option debit. Manual, and remembered per symbol for this session. Allocation is a per-name cap, not a cash-balance check.</p>
-      </div>
-      <div class="chip-row" id="riskPresets">
-        <span class="chip-label">Percent</span>
-        <button class="filter-btn" data-pct="0.125" onclick="setRiskPct(0.125)">.125%</button>
-        <button class="filter-btn" data-pct="0.25" onclick="setRiskPct(0.25)">.25%</button>
-        <button class="filter-btn" data-pct="0.5" onclick="setRiskPct(0.5)">.50%</button>
-        <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
-        <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
-        <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
-      </div>
-      <div class="chip-row" id="riskUsdRow">
-        <span class="chip-label">Dollars</span>
-        <span id="riskUsdPresets" style="display:contents;"></span>
-        <button class="filter-btn" id="usdEditBtn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
-      </div>
+      <p class="hint">Change the amount per trade with the chips above your answer.</p>
     </div>
   </div>
 
@@ -2338,10 +2358,27 @@ function syncRiskDollar() {
 }
 
 function updateRiskStatus() {
-  if (sizingMode === 'allocation') { document.getElementById('riskStatus').textContent = document.getElementById('allocationPct').value + '% allocation'; return; }
-  const pct = parseFloat(document.getElementById('riskPct').value) || 0;
-  document.getElementById('riskStatus').innerHTML =
-    `<span style="color:var(--red);font-weight:600;">${fmt$(riskDollars())}</span> · ${pct}%`;
+  const alloc = sizingMode === 'allocation';
+  const acct = parseFloat(document.getElementById('accountSize').value) || 0;
+  const pct = alloc ? document.getElementById('allocationPct').value : +(parseFloat(document.getElementById('riskPct').value) || 0).toFixed(4);
+  document.getElementById('riskStripTitle').textContent = alloc ? 'Allocation' : 'Max loss per trade';
+  document.getElementById('riskStrip').classList.toggle('alloc', alloc);
+  document.getElementById('riskStatus').textContent = `${pct}% of $${Math.round(acct).toLocaleString('en-US')}`;
+}
+
+// - and = walk one ladder of every preset you have: the % chips at this account size plus your $ chips
+function riskLadder() {
+  const acct = parseFloat(document.getElementById('accountSize').value) || 0;
+  const pcts = [...document.querySelectorAll('#riskPresets .filter-btn[data-pct]')].map(b => +b.dataset.pct);
+  const levels = [...(pcts.length ? pcts : [0.125, 0.25, 0.5, 1, 2, 3]).map(p => +(acct * p / 100).toFixed(2)), ...getUsdPresets()];
+  return [...new Set(levels.filter(v => v > 0))].sort((a, b) => a - b);
+}
+function stepRisk(dir) {
+  if (sizingMode === 'allocation') return;
+  const cur = riskDollars();
+  const ladder = riskLadder();
+  const next = dir > 0 ? ladder.find(v => v > cur + 0.005) : [...ladder].reverse().find(v => v < cur - 0.005);
+  if (next !== undefined) setRiskUsd(next);
 }
 
 function setRiskPct(pct) {
@@ -3847,6 +3884,7 @@ function setView(v) {
   document.querySelector('.app').classList.toggle('market-view', marketView);
   document.getElementById('lastUpdated').style.display = marketView || utilsView || futures ? 'none' : '';
   document.getElementById('modeCard').style.display = calc ? '' : 'none';
+  document.getElementById('riskStrip').style.display = calc ? '' : 'none';
   updateSetupNotice();
   const hide = calc && !futures ? '' : 'none';
   document.getElementById('futuresControls').style.display = futures ? '' : 'none';
@@ -6129,6 +6167,9 @@ function initShortcuts() {
       case 'm': setView(marketView ? 'calc' : 'market'); break;
       case 'r': if (marketView) marketRefreshToday(); else refreshQuote(); break;
       case 'l': toggleLive(); break;
+      case '-': stepRisk(-1); break;
+      case '=':
+      case '+': stepRisk(1); break;
       case 'd':
         if (currentMode === 'futures') setFuturesDirection(futuresDirection === 'long' ? 'short' : 'long');
         else if (currentMode === 'shares') setDirection(direction === 'long' ? 'short' : 'long');

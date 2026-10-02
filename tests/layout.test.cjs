@@ -77,22 +77,63 @@ function app({ width = 1400, fetch } = {}) {
 
 const shown = el => el.style.display !== 'none';
 
-test('header carries the view nav with Positions, the risk pill and the settings button', () => {
+test('header carries the view nav with Positions and the settings button', () => {
   const header = block('appHeader');
-  for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandTools', 'riskPill', 'settingsBtn']) {
+  for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandTools', 'settingsBtn']) {
     assert.match(header, new RegExp(`id="${id}"`), id);
   }
-  assert.match(block('riskPill'), /id="riskStatus"/);
+  assert.doesNotMatch(header, /id="riskPill"/, 'risk is adjusted in the page, not behind a pill');
   assert.match(block('brandPositions'), /id="posCount"/);
   assert.doesNotMatch(block('modeSeg'), /Positions/, 'Positions is a view, not a sizing mode');
 });
 
-test('setup lives in sheets: settings holds the key, backup and sync; risk holds the account', () => {
+test('setup lives in sheets: settings holds the key, backup and sync; the risk sheet holds the account', () => {
   const settings = block('settingsSheet');
   for (const id of ['apiKey', 'apiEnv', 'importFile', 'syncPass', 'syncBtn', 'apiStatus']) assert.match(settings, new RegExp(`id="${id}"`), id);
   const risk = block('riskSheet');
-  for (const id of ['accountSize', 'riskPct', 'riskDollar', 'riskPresets', 'riskUsdRow', 'allocationControls']) assert.match(risk, new RegExp(`id="${id}"`), id);
+  for (const id of ['accountSize', 'riskPct', 'sizingRisk', 'sizingAllocation']) assert.match(risk, new RegExp(`id="${id}"`), id);
   assert.doesNotMatch(html, /id="apiToggle"|id="riskToggle"/, 'no collapsible setup cards left behind');
+});
+
+test('the risk amount and its chips sit in the rail right above the answer, one tap away', () => {
+  const strip = block('riskStrip');
+  for (const id of ['riskDollar', 'riskPresets', 'riskUsdRow', 'usdEditBtn', 'allocationControls', 'riskStatus']) assert.match(strip, new RegExp(`id="${id}"`), id);
+  const rail = block('railPane');
+  assert.ok(rail.indexOf('id="modeCard"') < rail.indexOf('id="riskStrip"') && rail.indexOf('id="riskStrip"') < rail.indexOf('id="sharesSection"'));
+  assert.doesNotMatch(block('riskSheet'), /id="riskDollar"|id="riskPresets"/, 'one copy of each control');
+});
+
+test('the risk strip shows wherever risk sizes a trade', async () => {
+  const { run, elements } = app();
+  const strip = elements.get('riskStrip');
+  for (const mode of ['shares', 'options', 'futures']) {
+    await run(`setMode('${mode}')`);
+    assert.ok(shown(strip), mode);
+  }
+  for (const view of ['positions', 'utils', 'market']) {
+    run(`setView('${view}')`);
+    assert.ok(!shown(strip), view);
+  }
+});
+
+test('risk steps through your presets from the keyboard', () => {
+  const { run, elements, listeners } = app();
+  elements.get('accountSize').value = '50000';
+  elements.get('riskPct').value = '1';
+  run('recalcAll(); initShortcuts()');
+  const key = k => listeners.get('keydown')({ key: k, target: { tagName: 'BODY' }, preventDefault() {} });
+  const risk = () => +elements.get('riskDollar').value;
+  // ladder for $50k: .125% 62.5, $100, .25% 125, .5% / $250, 1% / $500, 2% / $1000, 3% 1500
+  key('='); assert.equal(risk(), 1000);
+  key('+'); assert.equal(risk(), 1500);
+  key('='); assert.equal(risk(), 1500, 'stays at the top preset');
+  key('-'); key('-'); key('-'); assert.equal(risk(), 250);
+  assert.equal(+elements.get('riskPct').value, 0.5, 'percent follows the dollar step');
+  elements.get('riskDollar').value = '600';
+  run('syncFromDollar()');
+  key('-'); assert.equal(risk(), 500, 'an off-ladder amount steps to the nearest preset below');
+  run("setSizingMode('allocation')");
+  key('='); assert.equal(risk(), 500, 'allocation sizing ignores risk steps');
 });
 
 test('sheets open one at a time and close back to the page', () => {
@@ -114,14 +155,18 @@ test('Escape closes an open sheet even from inside a field', () => {
   assert.ok(!shown(elements.get('settingsSheet')));
 });
 
-test('the risk pill tracks risk dollars and allocation', () => {
+test('the risk strip summary tracks percent of account and allocation', () => {
   const { run, elements } = app();
   elements.get('accountSize').value = '50000';
   elements.get('riskPct').value = '1';
   run('recalcAll()');
-  assert.match(elements.get('riskStatus').innerHTML, /\$500\.00/);
+  assert.equal(elements.get('riskStatus').textContent, '1% of $50,000');
+  assert.equal(elements.get('riskStripTitle').textContent, 'Max loss per trade');
+  run('setRiskPct(0.125)');
+  assert.equal(elements.get('riskStatus').textContent, '0.125% of $50,000');
   run("setSizingMode('allocation')");
-  assert.match(elements.get('riskStatus').textContent, /allocation/);
+  assert.equal(elements.get('riskStripTitle').textContent, 'Allocation');
+  assert.equal(elements.get('riskStatus').textContent, '5% of $50,000');
 });
 
 test('setup notice invites a key in the calculator and goes away once one is saved', () => {
