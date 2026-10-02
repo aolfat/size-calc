@@ -332,8 +332,8 @@
 
   /* Phone and tablet: one column in trade order. Inputs, quote, the answer, the chart to set stops, ideas, then the chain.
      The pane wrappers are display:contents here, so every card is a flex item of .app and `order` places it. */
-  #appHeader { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #modeCard { order: 3; } #quoteCard { order: 4; }
-  #riskStrip { order: 5; } #sharesSection, #futuresSection { order: 6; } /* risk sits right above whichever answer it changes */
+  #appHeader { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #riskStrip { order: 3; } /* risk first: the max loss frames the trade */
+  #modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection, #futuresSection { order: 6; }
   #optionTicket { order: 7; } #chartWrap { order: 8; }
   #quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #savedBar { order: 12; } #savedSection { order: 13; }
   #optionsSection { order: 14; } #marketSection, #utilsSection { order: 15; }
@@ -485,7 +485,7 @@
   .chip-row + .chip-row { margin-top:8px; }
   .chip-label { font-size:12px; font-weight:500; color:var(--text2); min-width:56px; }
 
-  /* risk strip: the amount per trade sits right above the answer, one tap per change */
+  /* risk strip: the amount per trade comes first, one tap per change */
   .risk-strip { padding:14px 16px; }
   .risk-strip-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
   .strip-title { font-size:13px; font-weight:600; color:var(--red); }
@@ -641,6 +641,40 @@
     </div>
   </div>
 
+  <div class="card risk-strip" id="riskStrip">
+    <div class="risk-strip-head">
+      <span class="strip-title" id="riskStripTitle">Max loss per trade</span>
+      <button class="link-btn" onclick="openSheet('risk')" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button>
+    </div>
+    <div class="field" id="riskDollarField">
+      <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" oninput="syncFromDollar()" title="The dollar amount you're willing to lose on this trade. - and = step through your presets" /></div>
+    </div>
+    <div class="chip-row" id="riskPresets">
+      <span class="chip-label">Percent</span>
+      <button class="filter-btn" data-pct="0.125" onclick="setRiskPct(0.125)">.125%</button>
+      <button class="filter-btn" data-pct="0.25" onclick="setRiskPct(0.25)">.25%</button>
+      <button class="filter-btn" data-pct="0.5" onclick="setRiskPct(0.5)">.50%</button>
+      <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
+      <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
+      <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
+    </div>
+    <div class="chip-row" id="riskUsdRow">
+      <span class="chip-label">Dollars</span>
+      <span id="riskUsdPresets" style="display:contents;"></span>
+      <button class="filter-btn" id="usdEditBtn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
+    </div>
+    <div id="allocationControls" style="display:none;">
+      <div class="row">
+        <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" oninput="allocationChanged()" /></div>
+        <div class="field"><label for="existingExposure">Existing exposure $ <span id="exposureSymbol"></span></label><input type="number" id="existingExposure" value="0" min="0" step="100" oninput="allocationChanged()" /></div>
+      </div>
+      <div class="chip-row">
+        <button class="filter-btn" onclick="setAllocationPct(2)">2%</button><button class="filter-btn" onclick="setAllocationPct(5)">5%</button><button class="filter-btn" onclick="setAllocationPct(10)">10%</button>
+      </div>
+      <details class="hint-details"><summary>What counts as exposure</summary>Shares in this name at current value, plus the full strike notional of open short puts, plus long-option debit. Manual, and remembered per symbol for this session. Allocation is a per-name cap, not a cash-balance check.</details>
+    </div>
+  </div>
+
   <div class="card" id="modeCard">
     <div class="seg mode-big" id="modeSeg" aria-label="Instrument">
       <button id="modeShares" class="active" onclick="setMode('shares')">Shares</button>
@@ -770,40 +804,6 @@
           <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresFees" placeholder="0" step="0.01" min="0" oninput="renderFutures()" /></div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <div class="card risk-strip" id="riskStrip">
-    <div class="risk-strip-head">
-      <span class="strip-title" id="riskStripTitle">Max loss per trade</span>
-      <button class="link-btn" onclick="openSheet('risk')" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button>
-    </div>
-    <div class="field" id="riskDollarField">
-      <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" oninput="syncFromDollar()" title="The dollar amount you're willing to lose on this trade. - and = step through your presets" /></div>
-    </div>
-    <div class="chip-row" id="riskPresets">
-      <span class="chip-label">Percent</span>
-      <button class="filter-btn" data-pct="0.125" onclick="setRiskPct(0.125)">.125%</button>
-      <button class="filter-btn" data-pct="0.25" onclick="setRiskPct(0.25)">.25%</button>
-      <button class="filter-btn" data-pct="0.5" onclick="setRiskPct(0.5)">.50%</button>
-      <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
-      <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
-      <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
-    </div>
-    <div class="chip-row" id="riskUsdRow">
-      <span class="chip-label">Dollars</span>
-      <span id="riskUsdPresets" style="display:contents;"></span>
-      <button class="filter-btn" id="usdEditBtn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
-    </div>
-    <div id="allocationControls" style="display:none;">
-      <div class="row">
-        <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" oninput="allocationChanged()" /></div>
-        <div class="field"><label for="existingExposure">Existing exposure $ <span id="exposureSymbol"></span></label><input type="number" id="existingExposure" value="0" min="0" step="100" oninput="allocationChanged()" /></div>
-      </div>
-      <div class="chip-row">
-        <button class="filter-btn" onclick="setAllocationPct(2)">2%</button><button class="filter-btn" onclick="setAllocationPct(5)">5%</button><button class="filter-btn" onclick="setAllocationPct(10)">10%</button>
-      </div>
-      <details class="hint-details"><summary>What counts as exposure</summary>Shares in this name at current value, plus the full strike notional of open short puts, plus long-option debit. Manual, and remembered per symbol for this session. Allocation is a per-name cap, not a cash-balance check.</details>
     </div>
   </div>
 
@@ -1149,7 +1149,7 @@
           <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" oninput="recalcAll()" />
         </div>
       </div>
-      <p class="hint">Change the amount per trade with the chips above your answer.</p>
+      <p class="hint">Change the amount per trade with the chips at the top of the calculator.</p>
     </div>
   </div>
 
