@@ -1,18 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
+import { MarketData as data } from '../src/core/market-data.js';
+import { app as harness } from './helpers/app.mjs';
 
-const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const script = html.match(/<script id="marketLogic">([\s\S]*?)<\/script>/)?.[1];
-const context = vm.createContext({ URLSearchParams, AbortController, setTimeout, clearTimeout });
-if (script) vm.runInContext(script, context);
-const data = script ? vm.runInContext('MarketData', context) : {};
 const csv = fs.readFileSync(new URL('../data/market-universe-2026-09-16.csv', import.meta.url), 'utf8');
+const realEtfCsv = fs.readFileSync(new URL('../data/market-etfs-2026-09-16.csv', import.meta.url), 'utf8');
 const header = 'ticker,name,group,performance_today,performance_1w,performance_1m,performance_3m,performance_6m,performance_ytd';
 const fixture = () => data.parseCsv(header + '\nA,"Alpha, Inc.",Tech,0,2,4,6,8,10\nB,Beta,Tech,-2,,8,10,12,14\nC,Gamma,Energy,3,4,5,6,7,8');
 
-test('imports all 2,860 tickers and 146 groups without duplicates', () => {
+test('imports all 2,860 tickers and 146 groups without duplicates', async () => {
   assert.equal(typeof data.parseCsv, 'function');
   const rows = data.parseCsv(csv);
   assert.equal(rows.length, 2860);
@@ -20,7 +17,7 @@ test('imports all 2,860 tickers and 146 groups without duplicates', () => {
   assert.equal(data.groups(rows).length, 146);
 });
 
-test('CSV preserves quoted names, blank vs zero, and rejects invalid schemas/duplicates', () => {
+test('CSV preserves quoted names, blank vs zero, and rejects invalid schemas/duplicates', async () => {
   const rows = fixture();
   assert.equal(rows[0].name, 'Alpha, Inc.');
   assert.equal(rows[0].returns[0], 0);
@@ -29,7 +26,7 @@ test('CSV preserves quoted names, blank vs zero, and rejects invalid schemas/dup
   assert.throws(() => data.parseCsv(header + '\nA,Alpha,Tech,1,2,3,4,5,6\nA,Again,Tech,1,2,3,4,5,6'), /duplicate/i);
 });
 
-test('groups use equal-weight averages, exclude missing returns and retain coverage', () => {
+test('groups use equal-weight averages, exclude missing returns and retain coverage', async () => {
   const group = data.groups(fixture()).find(r => r.name === 'Tech');
   assert.equal(group.count, 2);
   assert.equal(group.returns[0], -1);
@@ -38,7 +35,7 @@ test('groups use equal-weight averages, exclude missing returns and retain cover
   assert.equal(group.returns[2], 6);
 });
 
-test('searching a ticker finds its full group without changing its average', () => {
+test('searching a ticker finds its full group without changing its average', async () => {
   const groups = data.groups(fixture());
   const results = data.filter(groups, 'alpha');
   assert.equal(results.length, 1);
@@ -47,14 +44,14 @@ test('searching a ticker finds its full group without changing its average', () 
   assert.equal(data.filter(fixture(), 'ENERGY')[0].ticker, 'C');
 });
 
-test('sorting puts unavailable values last in either direction, without mutating rows', () => {
+test('sorting puts unavailable values last in either direction, without mutating rows', async () => {
   const rows = fixture();
   assert.equal(data.sort(rows, 1, 'desc').map(r => r.ticker).join(), 'C,A,B');
   assert.equal(data.sort(rows, 1, 'asc').map(r => r.ticker).join(), 'A,C,B');
   assert.equal(rows.map(r => r.ticker).join(), 'A,B,C');
 });
 
-test('fresh quotes replace Today only; missing symbols never silently retain old returns', () => {
+test('fresh quotes replace Today only; missing symbols never silently retain old returns', async () => {
   const rows = fixture();
   const quotes = data.quoteRows({quotes: {quote: {symbol: 'A', last: 100, prevclose: 100, change_percentage: 0, volume: 1200}}});
   const updated = data.withQuotes(rows, quotes);
@@ -96,58 +93,35 @@ test('failed or cancelled refreshes reject instead of returning partial results'
   }), /cancel/i);
 });
 
-function appContext(fetchImpl = async () => { throw new Error('Unexpected request'); }, skipMarketLoad = true) {
-  const elements = new Map();
-  const listeners = new Map();
-  const timers = new Map(), storage = new Map();
-  let now = Date.now(), nextTimer = 0;
-  class Clock extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
-  const element = id => {
-    if (!elements.has(id)) elements.set(id, { value: '', style: {}, dataset: {}, innerHTML: '', textContent: '',
-      classList: { toggle() {}, add() {}, remove() {} },
-      setAttribute() {}, removeAttribute() {}, addEventListener() {}, focus() {}, scrollIntoView() {},
-      querySelector: () => null, querySelectorAll: () => [], contains: () => false,
-    });
-    return elements.get(id);
+// Market cases run on a lenient fake page with fake timers and clock. Requests the calculator makes on
+// the side (intraday bars, daily history, and the CSV universe unless a test loads it itself) get canned
+// answers here, so each test's fake only sees the Market and quote traffic it is about.
+const sideBars = [0, 1].map(i => ({ time: `2026-09-18T09:${30 + i * 5}:00`, timestamp: 1789738200 + i * 300, open: 10, high: 10.5, low: 9.5, close: 10, volume: 1 }));
+const sideDays = [{ date: '2026-09-17', open: 10, high: 11, low: 9, close: 10 }, { date: '2026-09-18', open: 10, high: 11, low: 9, close: 10 }];
+async function appContext(fetchImpl = async () => { throw new Error('Unexpected request'); }, skipMarketLoad = true) {
+  const side = url => {
+    if (url.includes('/markets/timesales')) return { ok: true, json: async () => ({ series: { data: sideBars } }) };
+    if (url.includes('/markets/history')) return { ok: true, json: async () => ({ history: { day: sideDays } }) };
+    if (skipMarketLoad && /data\/market-.*\.csv$/.test(url)) return { ok: true, text: async () => url.includes('market-etfs') ? realEtfCsv : csv };
+    return null;
   };
-  element('apiEnv').value = 'production';
-  element('ticker').value = 'A';
-  const sandbox = vm.createContext({ URLSearchParams, AbortController, Date: Clock,
-    setTimeout: (callback, ms) => { const id = ++nextTimer; timers.set(id, {callback, at:now + ms}); return id; },
-    clearTimeout: id => timers.delete(id),
-    localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
-    setInterval, clearInterval, fetch: fetchImpl, navigator: {},
-    window: { scrollY: 0, scrollTo() {} },
-    document: { hidden: false, getElementById: element, querySelector: element, querySelectorAll: () => [],
-      addEventListener: (type, listener) => listeners.set(type, listener),
-      documentElement: { style: { setProperty() {} } } },
-  });
-  const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(match => match[1]);
-  vm.runInContext(scripts[0], sandbox);
-  vm.runInContext(scripts[1].split('syncSuppress = true; // init reads back')[0], sandbox);
-  vm.runInContext((skipMarketLoad ? 'loadMarket = async () => {}; ' : '') + 'renderQuote = () => {}; pushRecentTicker = () => {}; fetchChart = async () => {}; fetchAdr = async () => {}; markSyncDirty = () => {};', sandbox);
-  return { run: code => vm.runInContext(code, sandbox), element, storage,
-    dispatch: (type, event) => listeners.get(type)(event),
-    advance: async ms => {
-      now += ms;
-      for (const [id, timer] of [...timers].filter(([,t]) => t.at <= now)) {
-        if (!timers.delete(id)) continue;
-        await timer.callback();
-      }
-    },
-  };
+  const app = await harness({ lenient: true, timers: 'fake', clock: true, fetch: (url, options) => side(String(url)) || fetchImpl(url, options) });
+  app.element('apiEnv').value = 'production';
+  app.element('ticker').value = 'A';
+  return app;
 }
 
 test('Market and Tools keep calculator charts hidden even after a pending quote finishes', async () => {
   let resolveQuote;
   const response = new Promise(resolve => { resolveQuote = resolve; });
-  const app = appContext(() => response);
+  const app = await appContext(() => response);
   app.element('apiKey').value = 'test';
   const request = app.run('fetchQuote()');
   app.run("chartBars = [{}]; dailyBars = [{}]; setView('market'); updateChartVisibility();");
   assert.equal(app.element('chartWrap').style.display, 'none');
   resolveQuote({json: async () => ({quotes: {quote: {symbol:'A', type:'stock', last:10}}})});
   await request;
+  await new Promise(resolve => setImmediate(resolve)); // the intraday and daily loads that follow the quote
   assert.equal(app.element('quoteSection').style.display, 'none');
   app.run("setView('utils'); updateChartVisibility();");
   assert.equal(app.element('chartWrap').style.display, 'none');
@@ -158,7 +132,7 @@ test('Market and Tools keep calculator charts hidden even after a pending quote 
 
 test('a late quote for a previous ticker cannot overwrite the symbol selected from Market', async () => {
   const pending = {};
-  const app = appContext(url => new Promise(resolve => { pending[url.includes('symbols=A&') ? 'A' : 'B'] = resolve; }));
+  const app = await appContext(url => new Promise(resolve => { pending[url.includes('symbols=A&') ? 'A' : 'B'] = resolve; }));
   app.element('apiKey').value = 'test';
   const oldRequest = app.run('fetchQuote()');
   app.element('ticker').value = 'B';
@@ -172,8 +146,8 @@ test('a late quote for a previous ticker cannot overwrite the symbol selected fr
 
 test('switching tickers can load a new options chain while the previous chain is pending', async () => {
   const pending = {};
-  const app = appContext(url => new Promise(resolve => { pending[url.includes('symbol=A&') ? 'A' : 'B'] = resolve; }));
-  app.run("selectedExp = '2026-10-16'; renderChain = () => {}; cancelSpread = () => {};");
+  const app = await appContext(url => new Promise(resolve => { pending[url.includes('symbol=A&') ? 'A' : 'B'] = resolve; }));
+  app.run("selectedExp = '2026-10-16';");
   const oldRequest = app.run("fetchChain('A', selectedExp, true)");
   app.element('ticker').value = 'B';
   const newRequest = app.run("fetchChain('B', selectedExp, true)");
@@ -198,7 +172,7 @@ test('a failure after a successful batch still rejects the whole refresh', async
 
 const etfFixture = () => data.parseCsv(header + ',performance_open,performance_1y,category\nXLK,Technology Select Sector SPDR ETF,S&P Sectors,1,2,3,4,5,,0.5,30,sectors\nRSP,Invesco S&P 500 Equal Weight ETF,Equal Weight,-1,-2,-3,-4,-5,,-0.5,10,equal-weight');
 
-test('ETF import keeps from-open and one-year returns separate from YTD', () => {
+test('ETF import keeps from-open and one-year returns separate from YTD', async () => {
   const rows = etfFixture();
   assert.equal(rows[0].category, 'sectors');
   assert.equal(rows[0].returns[5], null);
@@ -207,7 +181,7 @@ test('ETF import keeps from-open and one-year returns separate from YTD', () => 
   assert.equal(fixture()[0].returns.length, 6);
 });
 
-test('ETF quote refresh replaces from-open and Today, preserving the one-year snapshot', () => {
+test('ETF quote refresh replaces from-open and Today, preserving the one-year snapshot', async () => {
   const quotes = data.quoteRows({quotes: {quote: {symbol:'XLK', last:110, open:100, prevclose:105}}});
   const rows = data.withQuotes(etfFixture(), quotes);
   assert.ok(Math.abs(rows[0].returns[6] - 10) < 1e-10);
@@ -217,7 +191,7 @@ test('ETF quote refresh replaces from-open and Today, preserving the one-year sn
   assert.equal(data.withQuotes(etfFixture(), noOpen)[0].returns[6], null);
 });
 
-test('all four ETF universes match the reference and contain distinct tickers', () => {
+test('all four ETF universes match the reference and contain distinct tickers', async () => {
   const etfs = data.parseCsv(fs.readFileSync(new URL('../data/market-etfs-2026-09-16.csv', import.meta.url), 'utf8'));
   assert.equal(etfs.length, 146);
   assert.equal(new Set(etfs.map(row => row.ticker)).size, 146);
@@ -228,8 +202,8 @@ test('all four ETF universes match the reference and contain distinct tickers', 
   assert.equal(etfs.find(row => row.ticker === 'EWY').returns[7], 118.73);
 });
 
-test('switching categories clears a stock drilldown and uses the correct ETF universe and periods', () => {
-  const app = appContext();
+test('switching categories clears a stock drilldown and uses the correct ETF universe and periods', async () => {
+  const app = await appContext();
   app.run('marketState.stocks = ' + JSON.stringify(fixture()) + '; marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
   app.run("marketOpenGroup('Tech'); marketSetCategory('sectors');");
   assert.equal(app.run('marketState.group'), '');
@@ -248,10 +222,10 @@ test('switching categories clears a stock drilldown and uses the correct ETF uni
   assert.doesNotMatch(app.element('marketContent').innerHTML, /XLK/);
 });
 
-test('refresh scopes cover the active ETF tab, opened group, or complete theme overview', () => {
+test('refresh scopes cover the active ETF tab, opened group, or complete theme overview', async () => {
   assert.equal(data.sort(etfFixture(), 'ticker', 'asc').map(row => row.ticker).join(), 'RSP,XLK');
   assert.equal(data.sort(etfFixture(), 'ticker', 'desc').map(row => row.ticker).join(), 'XLK,RSP');
-  const app = appContext();
+  const app = await appContext();
   app.run('marketState.stocks = ' + JSON.stringify(fixture()) + '; marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
   assert.equal(app.run('marketQuoteSymbols().sort().join()'), 'A,B,C');
   assert.equal(app.run('marketRefreshScope().interval'), 180000);
@@ -265,7 +239,7 @@ test('refresh scopes cover the active ETF tab, opened group, or complete theme o
 test('an ETF file failure can be retried without leaving half of the Market universes loaded', async () => {
   let failEtfs = true;
   const etfCsv = fs.readFileSync(new URL('../data/market-etfs-2026-09-16.csv', import.meta.url), 'utf8');
-  const app = appContext(async url => ({ok: !(failEtfs && url.includes('market-etfs')), text: async () => url.includes('market-etfs') ? etfCsv : csv}), false);
+  const app = await appContext(async url => ({ok: !(failEtfs && url.includes('market-etfs')), text: async () => url.includes('market-etfs') ? etfCsv : csv}), false);
   await app.run('loadMarket()');
   assert.equal(app.run('marketState.stocks.length'), 0);
   assert.equal(app.run('marketState.etfs.length'), 0);
@@ -278,7 +252,7 @@ test('an ETF file failure can be retried without leaving half of the Market univ
 
 test('switching categories cancels the old scope and prevents its late response being committed', async () => {
   let resolveQuote, requested, signal;
-  const app = appContext((url, options) => {
+  const app = await appContext((url, options) => {
     requested = new URLSearchParams(options.body).get('symbols');
     signal = options.signal;
     return new Promise(resolve => { resolveQuote = resolve; });
@@ -300,11 +274,11 @@ test('switching categories cancels the old scope and prevents its late response 
   assert.equal(app.run('Object.keys(marketState.snapshots).length'), 0);
 });
 
-test('an ETF opens sizing, clearing the previous symbol and stop values', () => {
-  const app = appContext();
+test('an ETF opens sizing, clearing the previous symbol and stop values', async () => {
+  const app = await appContext();
   app.element('apiKey').value = 'test';
   app.element('stopLong').value = '90';
-  app.run('marketState.etfs = ' + JSON.stringify(etfFixture()) + '; fetchQuote = () => {};');
+  app.run('marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
   app.run("setView('market'); marketSizeTrade('XLK');");
   assert.equal(app.element('ticker').value, 'XLK');
   assert.equal(app.element('stopLong').value, '');
@@ -313,8 +287,8 @@ test('an ETF opens sizing, clearing the previous symbol and stop values', () => 
 });
 
 test('sizing an ETF from Market exits a previously selected Futures mode', async () => {
-  const app = appContext();
-  app.run('marketState.etfs = ' + JSON.stringify(etfFixture()) + '; fetchQuote = () => {};');
+  const app = await appContext();
+  app.run('marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
   await app.run("setMode('futures')");
   app.run("setView('market'); marketSizeTrade('XLK');");
   assert.equal(app.run('currentMode'), 'shares');
@@ -324,7 +298,7 @@ test('sizing an ETF from Market exits a previously selected Futures mode', async
 });
 
 test('Futures shortcut works from Market and Market search keeps its focus behavior', async () => {
-  const app = appContext();
+  const app = await appContext();
   let selectedSearch = false;
   app.element('marketSearch').select = () => { selectedSearch = true; };
   app.run('initShortcuts();');
@@ -339,8 +313,8 @@ test('Futures shortcut works from Market and Market search keeps its focus behav
   assert.equal(app.element('futuresSection').style.display, '');
 });
 
-test('both Tools shortcuts work from Market without moving focus into a text field', () => {
-  const app = appContext();
+test('both Tools shortcuts work from Market without moving focus into a text field', async () => {
+  const app = await appContext();
   let focusedGain = false;
   app.element('gainCost').focus = () => { focusedGain = true; };
   app.run('initShortcuts();');
@@ -364,7 +338,7 @@ const quoteResponse = (symbol, change = 2) => ({ok:true, json: async () => ({quo
 
 test('a scoped refresh preserves selected period, sort, unrelated caches and historical returns', async () => {
   const requested = [];
-  const app = appContext(async (url, options) => {
+  const app = await appContext(async (url, options) => {
     const symbol = new URLSearchParams(options.body).get('symbols'); requested.push(symbol);
     return quoteResponse(symbol);
   });
@@ -390,7 +364,7 @@ test('a scoped refresh preserves selected period, sort, unrelated caches and his
 
 test('automatic refresh respects cache age, pauses when hidden and resumes only when stale', async () => {
   let calls = 0;
-  const app = appContext(async () => { calls++; return quoteResponse('XLK'); });
+  const app = await appContext(async () => { calls++; return quoteResponse('XLK'); });
   seedMarket(app);
   await app.advance(0);
   assert.equal(calls, 1);
@@ -410,7 +384,7 @@ test('automatic refresh respects cache age, pauses when hidden and resumes only 
 });
 
 test('a group reuses the full overview cache but a group-only refresh cannot mark the overview fresh', async () => {
-  const app = appContext(async (url, options) => ({ok:true, json:async () => ({quotes:{quote:
+  const app = await appContext(async (url, options) => ({ok:true, json:async () => ({quotes:{quote:
     new URLSearchParams(options.body).get('symbols').split(',').map(symbol => ({symbol,last:100,change_percentage:2}))}})}));
   seedMarket(app);
   app.run("marketSetCategory('themes');");
@@ -425,7 +399,7 @@ test('a group reuses the full overview cache but a group-only refresh cannot mar
 
 test('snapshot mode pauses auto-refresh, and turning auto back on restores cached quotes', async () => {
   let calls = 0;
-  const app = appContext(async () => { calls++; return quoteResponse('XLK', 9); });
+  const app = await appContext(async () => { calls++; return quoteResponse('XLK', 9); });
   seedMarket(app);
   await app.run('marketRefreshToday()');
   app.run('marketUseSnapshot();');
@@ -440,7 +414,7 @@ test('snapshot mode pauses auto-refresh, and turning auto back on restores cache
 
 test('leaving Market aborts in-flight requests and keeps the previous cache', async () => {
   let resolve, signal;
-  const app = appContext((url, options) => { signal = options.signal; return new Promise(done => { resolve = done; }); });
+  const app = await appContext((url, options) => { signal = options.signal; return new Promise(done => { resolve = done; }); });
   seedMarket(app);
   const request = app.run('marketRefreshToday()');
   app.run("setView('utils');");
@@ -486,7 +460,7 @@ test('invalid rate-limit headers use a conservative fallback wait', async () => 
 });
 
 test('refresh preserves table scroll and keyboard focus when price changes reorder rows', async () => {
-  const app = appContext(async () => quoteResponse('XLK'));
+  const app = await appContext(async () => quoteResponse('XLK'));
   seedMarket(app);
   const section = app.element('marketSection');
   const oldTable = {scrollTop:250,scrollLeft:120}, newTable = {scrollTop:0,scrollLeft:0};
@@ -508,8 +482,8 @@ test('refresh preserves table scroll and keyboard focus when price changes reord
   assert.equal(focusOptions.preventScroll, true);
 });
 
-test('existing v2 quotes migrate into scoped caches with their original timestamp', () => {
-  const app = appContext();
+test('existing v2 quotes migrate into scoped caches with their original timestamp', async () => {
+  const app = await appContext();
   seedMarket(app);
   app.storage.set('market_quotes_v2_production', JSON.stringify({fetchedAt:app.run('Date.now() - 60000'),quotes:{
     A:{price:10,change:5}, XLK:{price:100,change:6,fromOpen:2}, RSP:{price:50,change:3}
@@ -525,7 +499,7 @@ test('existing v2 quotes migrate into scoped caches with their original timestam
 
 test('authentication failure pauses auto-refresh until credentials change', async () => {
   let calls = 0;
-  const app = appContext(async () => ++calls === 1 ? {ok:false,status:401} : quoteResponse('XLK'));
+  const app = await appContext(async () => ++calls === 1 ? {ok:false,status:401} : quoteResponse('XLK'));
   seedMarket(app);
   await app.advance(0);
   assert.equal(calls, 1);
@@ -540,7 +514,7 @@ test('authentication failure pauses auto-refresh until credentials change', asyn
 
 test('failed refresh keeps cached values and backs off; missing quotes clear only the refreshed scope', async () => {
   let calls = 0;
-  const app = appContext(async () => {
+  const app = await appContext(async () => {
     calls++;
     if (calls === 2) return {ok:false,status:422};
     return {ok:true,json:async () => ({quotes:{quote: calls === 1
@@ -562,7 +536,7 @@ test('failed refresh keeps cached values and backs off; missing quotes clear onl
 
 test('offline and missing-key states never request quotes', async () => {
   let calls = 0;
-  const app = appContext(async () => { calls++; return quoteResponse('XLK'); });
+  const app = await appContext(async () => { calls++; return quoteResponse('XLK'); });
   seedMarket(app);
   app.element('apiKey').value = '';
   app.run('marketScheduleRefresh();');

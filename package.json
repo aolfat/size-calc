@@ -1,0 +1,10 @@
+{
+  "name": "size-calc",
+  "private": true,
+  "description": "Trade position sizing off dollar risk. Static site: no build step, no dependencies.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python3 -m http.server 8765"
+  }
+}

@@ -1,54 +1,16 @@
 // Run with: node --test
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { join } = require('node:path');
-const vm = require('node:vm');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { app } from './helpers/app.mjs';
 
-const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const init = script.indexOf('syncSuppress = true; // init');
-assert.ok(init > 0, 'Locate initialization separately from the app functions');
-
-function app(overrides = {}) {
-  const elements = new Map();
-  const makeElement = () => ({ value: '', style: {}, classList: { toggle() {}, add() {}, remove() {} }, innerHTML: '', textContent: '',
-    focus() {}, addEventListener() {}, setAttribute() {}, removeAttribute() {},
-    prepend(child) { elements.set(child.id, child); }, appendChild(child) { if (child.id) elements.set(child.id, child); },
-    querySelector() { return null; }, remove() { elements.delete(this.id); } });
-  for (const match of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)) {
-    const attrs = match[0];
-    elements.set(match[1], {
-      ...makeElement(), value: attrs.match(/\bvalue="([^"]*)"/)?.[1] || '',
-    });
-  }
-  const storage = new Map();
-  const context = vm.createContext({
-    document: {
-      createElement: makeElement,
-      getElementById: id => { assert.ok(elements.has(id), `Missing #${id}`); return elements.get(id); },
-      querySelector: selector => selector === '.app' ? elements.get('app') : null,
-      querySelectorAll: () => [],
-      documentElement: { style: { setProperty() {} } },
-    },
-    localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
-    window: { scrollY: 0 },
-    navigator: {},
-    setTimeout() {}, clearTimeout() {}, clearInterval() {},
-    ...overrides,
-  });
-  vm.runInContext(script.slice(0, init), context);
-  return { run: code => vm.runInContext(code, context), elements, storage };
-}
-
-test('existing quantity rounding and reverse sizing stay consistent', () => {
-  const { run } = app();
+test('existing quantity rounding and reverse sizing stay consistent', async () => {
+  const { run } = await app();
   assert.equal(run('unitsFor(0.3, 0.1)'), 3);
   assert.equal(run('unitsFor(riskForQty(12, 1.27), 1.27)'), 12);
 });
 
-test('existing shares sizing works for both directions', () => {
-  const { run, elements } = app();
+test('existing shares sizing works for both directions', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 }; renderShares();");
   assert.match(elements.get('sharesStats').innerHTML, /value="250"/);
   run("setDirection('short')");
@@ -56,8 +18,8 @@ test('existing shares sizing works for both directions', () => {
   assert.match(elements.get('sharesStats').innerHTML, /to short/);
 });
 
-test('shares card identifies default and custom stops independently of the price', () => {
-  const { run, elements } = app();
+test('shares card identifies default and custom stops independently of the price', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 }; renderShares();");
   assert.match(elements.get('sharesStats').innerHTML, /Stop price/);
   assert.match(elements.get('sharesStats').innerHTML, /Low of day/);
@@ -73,8 +35,8 @@ test('shares card identifies default and custom stops independently of the price
   assert.match(elements.get('sharesStats').innerHTML, /\$103\.00/);
 });
 
-test('shares card retains planned entry and reverse sizing with a custom stop', () => {
-  const { run, elements } = app();
+test('shares card retains planned entry and reverse sizing with a custom stop', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 };");
   elements.get('entryPrice').value = '101';
   elements.get('stopLong').value = '99.73';
@@ -87,8 +49,8 @@ test('shares card retains planned entry and reverse sizing with a custom stop', 
   assert.match(card, /\$1,212\.00/);
 });
 
-test('invalid stops disable both share actions and valid stops enable them again', () => {
-  const { run, elements } = app();
+test('invalid stops disable both share actions and valid stops enable them again', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 }; renderShares();");
   for (const id of ['sharesImage', 'sharesCopy']) assert.equal(elements.get(id).disabled, false);
   elements.get('stopLong').value = '101';
@@ -100,8 +62,8 @@ test('invalid stops disable both share actions and valid stops enable them again
   for (const id of ['sharesImage', 'sharesCopy']) assert.equal(elements.get(id).disabled, false);
 });
 
-test('image and compact summary share the selected stop without exposing the account balance', () => {
-  const { run, elements } = app();
+test('image and compact summary share the selected stop without exposing the account balance', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 }; var sharedSpec, copiedText; drawShareCard = spec => { sharedSpec = spec; return {}; }; shareCanvasToClipboard = () => {}; copyPlainText = text => { copiedText = text; };");
   elements.get('accountSize').value = '123456';
   elements.get('stopLong').value = '98';
@@ -119,8 +81,8 @@ test('image and compact summary share the selected stop without exposing the acc
   assert.match(run('copiedText'), /shorted \$TEST @ 100\.00 with stop at 102\.00/);
 });
 
-test('ATR uses 14 true ranges, Wilder smoothing, gaps, and only completed five-minute bars', () => {
-  const { run } = app();
+test('ATR uses 14 true ranges, Wilder smoothing, gaps, and only completed five-minute bars', async () => {
+  const { run } = await app();
   run(`var bars = Array.from({ length: 16 }, (_, i) => ({ ts: 1751376600 + i * 300, h: 101, l: 99, c: 100 }));`);
   assert.equal(run('calculateAtr5(bars.slice(0, 14), Infinity)'), null);
   assert.equal(run('calculateAtr5(bars.slice(0, 15), Infinity).value'), 2);
@@ -131,8 +93,8 @@ test('ATR uses 14 true ranges, Wilder smoothing, gaps, and only completed five-m
   assert.equal(run('calculateAtr5([{ ts: NaN, h: 1, l: 0, c: 1 }], Infinity)'), null);
 });
 
-test('missing ATR blocks sizing without falling back and manual stops still work', () => {
-  const { run, elements } = app();
+test('missing ATR blocks sizing without falling back and manual stops still work', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 99, high: 102 }; atr5 = { symbol: 'OTHER', value: 0.5 }; setAtrMultiplier(0.5);");
   assert.ok(Number.isNaN(run('stopLongVal()')));
   assert.equal(elements.get('sharesCopy').disabled, true);
@@ -147,8 +109,8 @@ test('missing ATR blocks sizing without falling back and manual stops still work
   assert.equal(run('stopLongVal()'), 99);
 });
 
-test('five-minute ATR buffer moves the stop and keeps the dollar risk budget', () => {
-  const { run, elements, storage } = app();
+test('five-minute ATR buffer moves the stop and keeps the dollar risk budget', async () => {
+  const { run, elements, storage } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 99, high: 102 }; atr5 = { symbol: 'TEST', value: 0.5, asOf: 1751376600 }; setAtrMultiplier(0.5);");
   assert.equal(run('stopLongVal()'), 98.75);
   assert.equal(run('stopShortVal()'), 102.25);
@@ -163,8 +125,8 @@ test('five-minute ATR buffer moves the stop and keeps the dollar risk budget', (
   assert.equal(+elements.get('riskDollar').value, 27);
 });
 
-test('ATR buffer rounds outward independently of entry and manual stops override it', () => {
-  const { run, elements } = app();
+test('ATR buffer rounds outward independently of entry and manual stops override it', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 99.73, high: 102 }; atr5 = { symbol: 'TEST', value: 0.27, asOf: 1751376600 }; setAtrMultiplier(0.5);");
   assert.equal(run('stopLongVal()'), 99.59);
   elements.get('entryPrice').value = '101';
@@ -183,8 +145,8 @@ test('ATR buffer rounds outward independently of entry and manual stops override
   assert.equal(run('stopLongVal()'), 99.73);
 });
 
-test('buffered stop is shared by chart overlays, images, summaries and option estimates', () => {
-  const { run, elements } = app();
+test('buffered stop is shared by chart overlays, images, summaries and option estimates', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 99, high: 102 }; atr5 = { symbol: 'TEST', value: 0.5, asOf: 1751376600 }; setAtrMultiplier(0.5); var sharedSpec, copiedText; drawShareCard = spec => { sharedSpec = spec; return {}; }; shareCanvasToClipboard = () => {}; copyPlainText = text => { copiedText = text; }; shareShares(); copyShares();");
   assert.equal(run('chartStopVal(true)'), 98.75);
   assert.equal(run("sharedSpec.stats.find(stat => stat.label === 'Stop').value"), '$98.75');
@@ -199,8 +161,8 @@ test('buffered stop is shared by chart overlays, images, summaries and option es
   assert.equal(run('chartStopVal(true)'), 98);
 });
 
-test('invalid levels and nonpositive buffered prices cannot produce share sizing', () => {
-  const { run, elements } = app();
+test('invalid levels and nonpositive buffered prices cannot produce share sizing', async () => {
+  const { run, elements } = await app();
   for (const quote of [
     { symbol: 'TEST', last: 100, low: 0, high: 102 },
     { symbol: 'TEST', last: 100, low: 0.1, high: 102 },
@@ -212,8 +174,8 @@ test('invalid levels and nonpositive buffered prices cannot produce share sizing
   }
 });
 
-test('multiplier preference restores safely and is included in backups', () => {
-  const { run, storage } = app();
+test('multiplier preference restores safely and is included in backups', async () => {
+  const { run, storage } = await app();
   storage.set('atr_multiplier', '1.5');
   run('loadKey()');
   assert.equal(run('atrMultiplier'), 1.5);
@@ -227,7 +189,7 @@ test('multiplier preference restores safely and is included in backups', () => {
 
 test('ATR stays on five-minute data across chart intervals, ignores stale requests, and clears on failure', async () => {
   const pending = [];
-  const { run, elements } = app({ fetch: () => new Promise(resolve => pending.push(resolve)) });
+  const { run, elements } = await app({ fetch: () => new Promise(resolve => pending.push(resolve)) });
   elements.get('ticker').value = 'TEST';
   run("quoteData = { symbol: 'TEST', last: 100, low: 99, high: 102 }; drawChart = () => {}; setAtrMultiplier(0.5);");
   const bars = Array.from({ length: 16 }, (_, i) => ({ timestamp: 1751376600 + i * 300, time: `2025-07-01T${String(9 + Math.floor((30 + i * 5) / 60)).padStart(2, '0')}:${String((30 + i * 5) % 60).padStart(2, '0')}:00`, open: 100, high: 100.25, low: 99.75, close: 100, volume: 1 }));
@@ -256,7 +218,7 @@ test('ATR stays on five-minute data across chart intervals, ignores stale reques
 
 test('quick lookup snapshots the buffered stop and quote refresh preserves that price', async () => {
   let underlying = { symbol: 'TEST', last: 100, low: 99, high: 102 };
-  const { run, elements } = app({ fetch: async url => ({ ok: true, json: async () => ({ quotes: { quote: url.includes('greeks=true')
+  const { run, elements } = await app({ fetch: async url => ({ ok: true, json: async () => ({ quotes: { quote: url.includes('greeks=true')
     ? { type: 'option', bid: 5, ask: 5, greeks: { delta: 0.5 } } : underlying } }) }) });
   elements.get('apiKey').value = 'test-only';
   elements.get('quickInput').value = 'TEST 100 12/18/26';
@@ -270,8 +232,8 @@ test('quick lookup snapshots the buffered stop and quote refresh preserves that 
   assert.equal(run('Object.values(pinnedData)[0].stopLevel'), 98.75);
 });
 
-test('percentage wiggle room uses the level price, works without ATR, and preserves risk sizing', () => {
-  const { run, elements } = app();
+test('percentage wiggle room uses the level price, works without ATR, and preserves risk sizing', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 101, low: 100, high: 102 }; setStopPercent(0.05);");
   assert.equal(run('stopLongVal()'), 99.95);
   assert.equal(run('stopShortVal()'), 102.06); // 102.051 rounds outward to a cent
@@ -290,8 +252,8 @@ test('percentage wiggle room uses the level price, works without ATR, and preser
   assert.match(elements.get('sharesStats').innerHTML, /Custom stop/);
 });
 
-test('strategy switching keeps ATR and percentage amounts independent', () => {
-  const { run, elements } = app();
+test('strategy switching keeps ATR and percentage amounts independent', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 101, low: 100, high: 102 }; atr5 = { symbol: 'TEST', value: 0.5, asOf: 1751376600 }; setAtrMultiplier(1.5); setStopPercent(0.075);");
   assert.equal(run('stopLongVal()'), 99.92);
   run("setStopStrategy('atr')");
@@ -308,8 +270,8 @@ test('strategy switching keeps ATR and percentage amounts independent', () => {
   assert.equal(run('stopLongVal()'), 99.92);
 });
 
-test('percentage values are validated without silently sizing an unbuffered trade', () => {
-  const { run, elements } = app();
+test('percentage values are validated without silently sizing an unbuffered trade', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 101, low: 100, high: 102 };");
   for (const value of ['', '-0.05', '100', 'Infinity', '0.05oops']) {
     run(`setStopPercent(${JSON.stringify(value)})`);
@@ -322,8 +284,8 @@ test('percentage values are validated without silently sizing an unbuffered trad
   assert.equal(elements.get('sharesCopy').disabled, false);
 });
 
-test('strategy preferences restore including migration from existing ATR settings', () => {
-  const { run, storage, elements } = app();
+test('strategy preferences restore including migration from existing ATR settings', async () => {
+  const { run, storage, elements } = await app();
   storage.set('atr_multiplier', '1.5');
   run('loadKey()');
   assert.equal(run('stopStrategy'), 'atr');
@@ -342,8 +304,8 @@ test('strategy preferences restore including migration from existing ATR setting
   assert.equal(run('stopPercent'), 0.05);
 });
 
-test('percentage adjustment reaches share images, summaries, and option loss estimates', () => {
-  const { run } = app();
+test('percentage adjustment reaches share images, summaries, and option loss estimates', async () => {
+  const { run } = await app();
   run("quoteData = { symbol: 'TEST', last: 101, low: 100, high: 102 }; setStopPercent(0.05); var spec, summary; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = () => {}; copyPlainText = s => { summary = s; }; shareShares(); copyShares();");
   assert.equal(run("spec.stats.find(s => s.label === 'Stop').value"), '$99.95');
   assert.match(run("spec.stats.find(s => s.label === 'Stop').sub"), /LOD.*0\.05%/);
@@ -354,7 +316,7 @@ test('percentage adjustment reaches share images, summaries, and option loss est
 
 test('other-ticker percentage lookup skips ATR requests and freezes its own buffered stop', async () => {
   const requests = [];
-  const { run, elements } = app({ fetch: async url => {
+  const { run, elements } = await app({ fetch: async url => {
     requests.push(url);
     if (url.includes('timesales')) throw new Error('Percentage adjustment must not fetch ATR');
     return { ok: true, json: async () => ({ quotes: { quote: url.includes('greeks=true')
@@ -381,8 +343,8 @@ const specs = [
   ['GC', 0.1, 10], ['MGC', 0.1, 1],
 ];
 for (const [symbol, tickSize, tickValue] of specs) {
-  test(`${symbol}: ten-tick stop uses the correct dollar risk and whole contracts`, () => {
-    const { run } = app();
+  test(`${symbol}: ten-tick stop uses the correct dollar risk and whole contracts`, async () => {
+    const { run } = await app();
     assert.equal(run(`FUTURES_CONTRACTS.${symbol}.tickSize`), tickSize);
     assert.equal(run(`FUTURES_CONTRACTS.${symbol}.tickValue`), tickValue);
     const result = run(`calcFutures({ risk: 500, entry: 100, stop: ${100 - tickSize * 10}, direction: 'long', ...FUTURES_CONTRACTS.${symbol}, fees: 0 })`);
@@ -394,16 +356,16 @@ for (const [symbol, tickSize, tickValue] of specs) {
   });
 }
 
-test('fees count toward risk and a short stop is above entry', () => {
-  const { run } = app();
+test('fees count toward risk and a short stop is above entry', async () => {
+  const { run } = await app();
   const result = run("calcFutures({ risk: 500, entry: 6000, stop: 6005, direction: 'short', ...FUTURES_CONTRACTS.ES, fees: 5 })");
   assert.equal(result.contracts, 1);
   assert.equal(result.riskPerContract, 255);
   assert.equal(result.totalRisk, 255);
 });
 
-test('insufficient and zero budgets return zero contracts', () => {
-  const { run } = app();
+test('insufficient and zero budgets return zero contracts', async () => {
+  const { run } = await app();
   for (const risk of [0, 249.99]) {
     const result = run(`calcFutures({ risk: ${risk}, entry: 6000, stop: 5995, direction: 'long', ...FUTURES_CONTRACTS.ES, fees: 0 })`);
     assert.equal(result.contracts, 0);
@@ -411,16 +373,16 @@ test('insufficient and zero budgets return zero contracts', () => {
   }
 });
 
-test('custom tick sizes work, including negative futures prices', () => {
-  const { run } = app();
+test('custom tick sizes work, including negative futures prices', async () => {
+  const { run } = await app();
   const result = run("calcFutures({ risk: 100, entry: -10, stop: -10.03125, direction: 'long', tickSize: 0.015625, tickValue: 15.625, fees: 0 })");
   assert.equal(result.ticks, 2);
   assert.equal(result.contracts, 3);
   assert.equal(result.totalRisk, 93.75);
 });
 
-test('invalid inputs cannot produce a position size', () => {
-  const { run } = app();
+test('invalid inputs cannot produce a position size', async () => {
+  const { run } = await app();
   const invalid = [
     "entry: NaN", "stop: NaN", "entry: Infinity", "stop: 6000", "stop: 6001",
     "direction: 'short'", "direction: 'other'", "tickSize: 0", "tickValue: -1",
@@ -435,7 +397,7 @@ test('invalid inputs cannot produce a position size', () => {
 });
 
 test('futures reverse sizing and shared risk changes update without a quote', async () => {
-  const { run, elements } = app();
+  const { run, elements } = await app();
   elements.get('futuresContract').value = 'MES';
   run('futuresContractChanged()');
   elements.get('futuresEntry').value = '6000';
@@ -452,7 +414,7 @@ test('futures reverse sizing and shared risk changes update without a quote', as
 });
 
 test('futures view hides equity surfaces and survives Positions and Tools navigation', async () => {
-  const { run, elements } = app();
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 };");
   await run("setMode('futures')");
   assert.notEqual(elements.get('futuresSection').style.display, 'none');
@@ -471,7 +433,7 @@ test('futures view hides equity surfaces and survives Positions and Tools naviga
 });
 
 test('fractional-dollar futures risk survives mode switches and rehydration', async () => {
-  const { run, elements } = app();
+  const { run, elements } = await app();
   elements.get('futuresContract').value = 'MES';
   run('futuresContractChanged()');
   elements.get('futuresEntry').value = '6000';
@@ -487,8 +449,8 @@ test('fractional-dollar futures risk survives mode switches and rehydration', as
   assert.equal(+elements.get('riskDollar').value, 62.5);
 });
 
-test('allocation sizes full assignment notional and includes existing exposure', () => {
-  const { run } = app();
+test('allocation sizes full assignment notional and includes existing exposure', async () => {
+  const { run } = await app();
   const size = extra => run(`calcAllocation({ account: 150000, pct: 10, existing: 0, unitCost: 6500, ${extra} })`);
   const r = size('');
   assert.equal(r.units, 2);
@@ -507,8 +469,8 @@ test('allocation sizes full assignment notional and includes existing exposure',
   assert.equal(size('unitCost: 6500.01, account: 13000.01, pct: 100').units, 1);
 });
 
-test('invalid allocation inputs never produce a tradable quantity', () => {
-  const { run } = app();
+test('invalid allocation inputs never produce a tradable quantity', async () => {
+  const { run } = await app();
   for (const bad of ['account: 0', 'account: NaN', 'pct: -1', 'pct: 101', 'existing: -1', 'existing: Infinity', 'unitCost: 0', 'unitCost: NaN']) {
     const r = run(`calcAllocation({ account: 150000, pct: 10, existing: 0, unitCost: 6500, ${bad} })`);
     assert.ok(r.error, bad);
@@ -516,8 +478,8 @@ test('invalid allocation inputs never produce a tradable quantity', () => {
   }
 });
 
-test('short put metrics distinguish commitment, premium, maximum loss and simple annualization', () => {
-  const { run } = app();
+test('short put metrics distinguish commitment, premium, maximum loss and simple annualization', async () => {
+  const { run } = await app();
   const r = run('shortPutMetrics(65, 2.1, 2, 18)');
   assert.equal(r.notional, 13000);
   assert.equal(r.premium, 420);
@@ -529,7 +491,7 @@ test('short put metrics distinguish commitment, premium, maximum loss and simple
 });
 
 test('allocation shares ignore stops, reverse-size allocation only, and preserve risk on mode changes', async () => {
-  const { run, elements } = app();
+  const { run, elements } = await app();
   elements.get('accountSize').value = '150000';
   elements.get('allocationPct').value = '5';
   run("quoteData = { symbol: 'TEST', last: 30, low: 30, high: 30 }; setSizingMode('allocation');");
@@ -544,8 +506,8 @@ test('allocation shares ignore stops, reverse-size allocation only, and preserve
   assert.equal(+elements.get('riskDollar').value, risk);
 });
 
-test('allocation option selection validates quotes and does not require Greeks or a stop', () => {
-  const { run, elements } = app();
+test('allocation option selection validates quotes and does not require Greeks or a stop', async () => {
+  const { run, elements } = await app();
   elements.get('accountSize').value = '150000';
   elements.get('allocationPct').value = '10';
   run("sizingMode = 'allocation'; optionTradeSide = 'sell-put'; quoteData = { symbol: 'RKLB', type: 'stock', last: 68 }; selectedExp = '2099-01-16';");
@@ -564,8 +526,8 @@ test('allocation option selection validates quotes and does not require Greeks o
   assert.equal(calc('').contracts, 0);
 });
 
-test('short put payoff and simulator use credit minus close with assignment notional as return basis', () => {
-  const { run } = app();
+test('short put payoff and simulator use credit minus close with assignment notional as return basis', async () => {
+  const { run } = await app();
   run("var put = { sizing: 'allocation', shortPut: true, credit: true, isCall: false, parsed: { ticker: 'RKLB', strike: 65, expStr: '2099-01-16' }, mid: 2.1, iv: 0.5, underlyingPrice: 68 }; var sim = simParamsFromCard(put, 2.1, 2);");
   assert.equal(run('simReturnBase(sim)'), 65);
   assert.equal(run('optionPnl(put, 2.1, 1.1, 2)'), 200);
@@ -576,8 +538,8 @@ test('short put payoff and simulator use credit minus close with assignment noti
   assert.equal(run('simReturnBase({ credit: true, width: 10, entry: 2 })'), 8);
 });
 
-test('allocation settings are backed up and exposure stays scoped to its ticker', () => {
-  const { run, elements, storage } = app();
+test('allocation settings are backed up and exposure stays scoped to its ticker', async () => {
+  const { run, elements, storage } = await app();
   run("quoteData = { symbol: 'RKLB', last: 68 }; setSizingMode('allocation');");
   elements.get('existingExposure').value = '5000';
   run('allocationChanged()');
@@ -597,8 +559,8 @@ function setupAllocationPut(run) {
     var copiedText, sharedSpec; copyPlainText = text => { copiedText = text; }; drawShareCard = spec => { sharedSpec = spec; return {}; }; shareCanvasToClipboard = () => {};`);
 }
 
-test('pinned and saved allocation trades retain side, quantities, payoff and sharing after mode changes', () => {
-  const { run, elements, storage } = app();
+test('pinned and saved allocation trades retain side, quantities, payoff and sharing after mode changes', async () => {
+  const { run, elements, storage } = await app();
   setupAllocationPut(run);
   assert.match(elements.get(run('pinnedId')).innerHTML, /Short put/);
   run("setSizingMode('risk'); copyPinned(pinnedId); sharePinned(pinnedId);");
@@ -615,8 +577,8 @@ test('pinned and saved allocation trades retain side, quantities, payoff and sha
   assert.equal(run('savedData[savedId].qty'), 2);
 });
 
-test('allocation does not save or simulate a phantom contract when no contracts fit', () => {
-  const { run } = app();
+test('allocation does not save or simulate a phantom contract when no contracts fit', async () => {
+  const { run } = await app();
   setupAllocationPut(run);
   run("exposureBySymbol.RKLB = 10000; saveCard(pinnedId); var simulated = false; openSim = () => { simulated = true; }; simFromPinned(pinnedId); copyPinned(pinnedId);");
   assert.equal(run('Object.keys(savedData).length'), 0);
@@ -624,8 +586,8 @@ test('allocation does not save or simulate a phantom contract when no contracts 
   assert.match(run('copiedText'), /Sell 0/);
 });
 
-test('allocation shares copy quantity and exposure without reintroducing stop-based risk', () => {
-  const { run, elements } = app();
+test('allocation shares copy quantity and exposure without reintroducing stop-based risk', async () => {
+  const { run, elements } = await app();
   elements.get('accountSize').value = '150000';
   elements.get('allocationPct').value = '5';
   run("quoteData = { symbol: 'TEST', last: 30, low: 30, high: 30 }; setSizingMode('allocation'); var copiedText, sharedSpec; copyPlainText = t => { copiedText = t; }; drawShareCard = s => { sharedSpec = s; return {}; }; shareCanvasToClipboard = () => {}; copyShares(); shareShares();");
@@ -634,8 +596,8 @@ test('allocation shares copy quantity and exposure without reintroducing stop-ba
   assert.equal(run("sharedSpec.stats.find(s => s.label === 'Shares').value"), '250');
 });
 
-test('allocation hides stop adjustments and preserves them when risk sizing resumes', () => {
-  const { run, elements } = app();
+test('allocation hides stop adjustments and preserves them when risk sizing resumes', async () => {
+  const { run, elements } = await app();
   run("quoteData = { symbol: 'TEST', last: 100, low: 99, high: 102 }; setAtrMultiplier(0.5); setSizingMode('allocation');");
   assert.equal(elements.get('stopAdjustment')?.style.display, 'none');
   assert.equal(elements.get('sharesCopy').disabled, false);
@@ -652,7 +614,7 @@ test('allocation hides stop adjustments and preserves them when risk sizing resu
 
 test('allocation quick lookup ignores unavailable ATR even when the mode changes during fetch', async () => {
   for (const symbol of ['RKLB', 'OTHER']) {
-    const { run, elements } = app();
+    const { run, elements } = await app();
     elements.get('apiKey').value = 'fixture';
     elements.get('accountSize').value = '150000';
     elements.get('allocationPct').value = '10';
@@ -675,14 +637,14 @@ test('allocation quick lookup ignores unavailable ATR even when the mode changes
   }
 });
 
-test('DTE uses the New York calendar and zero DTE has no annualization', () => {
-  const { run } = app();
+test('DTE uses the New York calendar and zero DTE has no annualization', async () => {
+  const { run } = await app();
   assert.equal(run("optionDte('2026-09-21', new Date('2026-09-22T01:00:00Z'))"), 0);
   assert.equal(run("optionDte('2026-10-09', new Date('2026-09-21T16:00:00Z'))"), 18);
 });
 
 test('saved annualization retains the original holding window and refresh validates standard contracts', async () => {
-  const { run, elements } = app();
+  const { run, elements } = await app();
   setupAllocationPut(run);
   run("saveCard(pinnedId); var savedId = Object.keys(savedData)[0]; savedData[savedId].entryDte = 18; renderSavedCard(savedId);");
   assert.match(elements.get(run('savedId')).innerHTML, /65\.5% simple annualized/);
@@ -695,7 +657,7 @@ test('saved annualization retains the original holding window and refresh valida
 });
 
 test('leaving Options clears sell intent and selecting the active sizing mode preserves it', async () => {
-  const { run } = app();
+  const { run } = await app();
   run("currentMode = 'options'; sizingMode = 'allocation'; optionTradeSide = 'sell-put'; setSizingMode('allocation');");
   assert.equal(run('optionTradeSide'), 'sell-put');
   await run("setMode('shares')");
@@ -703,7 +665,7 @@ test('leaving Options clears sell intent and selecting the active sizing mode pr
 });
 
 test('quick lookup captures sell intent before fetching and spreads retain risk sizing', async () => {
-  const { run, elements } = app();
+  const { run, elements } = await app();
   elements.get('apiKey').value = 'fixture';
   elements.get('accountSize').value = '150000';
   elements.get('allocationPct').value = '10';
