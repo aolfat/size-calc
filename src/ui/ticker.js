@@ -26,7 +26,7 @@ export function renderRecentTickers() {
   const cur = document.getElementById('ticker').value.trim().toUpperCase();
   document.getElementById('recentTickers').innerHTML = arr
     .filter(t => t !== cur)
-    .map(t => `<button class="filter-btn" onclick="loadTicker('${t}')">${t}</button>`)
+    .map(t => `<button class="filter-btn" data-action="loadTicker" data-arg="${t}">${t}</button>`)
     .join('');
 }
 

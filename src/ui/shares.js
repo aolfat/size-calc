@@ -129,7 +129,7 @@ export function renderShares() {
     <div class="shares-primary">
       <div class="shares-quantity">
         <label class="shares-label" for="sharesQty">Shares to ${isLong ? 'buy' : 'short'}</label>
-        <div class="s-val"><input id="sharesQty" type="number" class="s-val-input" value="${shares}" min="0" step="1" title="Type a share count, risk $ follows" aria-describedby="sharesQtyHint" onchange="sharesQtyChanged(this)" /></div>
+        <div class="s-val"><input id="sharesQty" type="number" class="s-val-input" value="${shares}" min="0" step="1" title="Type a share count, risk $ follows" aria-describedby="sharesQtyHint" data-change="sharesQtyChanged" /></div>
         <div class="shares-detail">Entry <strong>${fmt$(entry)}</strong>${customEntry ? ' · planned' : ''}</div>
         <div class="shares-edit-hint" id="sharesQtyHint">Edit shares to set risk</div>
       </div>

@@ -75,12 +75,12 @@ export function renderUsdPresets() {
   if (state.editingUsd) {
     // the chips themselves become editable; a blank box deletes that preset, the trailing box adds one
     el.innerHTML = getUsdPresets()
-      .map(v => `<input type="number" class="usd-edit-box" value="${v}" min="0" inputmode="decimal" onkeydown="if(event.key==='Enter')toggleUsdEdit()" />`)
+      .map(v => `<input type="number" class="usd-edit-box" value="${v}" min="0" inputmode="decimal" data-enter="toggleUsdEdit" />`)
       .join('')
-      + `<input type="number" class="usd-edit-box" placeholder="+" min="0" inputmode="decimal" onkeydown="if(event.key==='Enter')toggleUsdEdit()" />`;
+      + `<input type="number" class="usd-edit-box" placeholder="+" min="0" inputmode="decimal" data-enter="toggleUsdEdit" />`;
   } else {
     el.innerHTML = getUsdPresets()
-      .map(v => `<button class="filter-btn" data-usd="${v}" onclick="setRiskUsd(${v})">$${v.toLocaleString()}</button>`)
+      .map(v => `<button class="filter-btn" data-usd="${v}" data-action="setRiskUsd" data-arg="${v}">$${v.toLocaleString()}</button>`)
       .join('');
   }
   const btn = document.getElementById('usdEditBtn');

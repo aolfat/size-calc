@@ -22,10 +22,10 @@ export function renderExpTabs(exps) {
   let html = show.map(e => {
     const monthly = isMonthlyExp(e);
     const dte = Math.max(0, Math.ceil((new Date(e + 'T16:00:00') - Date.now()) / 864e5));
-    return `<button class="exp-tab${monthly ? ' monthly' : ''}" onclick="selectExp('${e}')" id="exp_${e.replace(/-/g,'_')}" title="${monthly ? 'Monthly expiration' : 'Weekly expiration'}">${e}<span class="dte">${dte}d</span></button>`;
+    return `<button class="exp-tab${monthly ? ' monthly' : ''}" data-action="selectExp" data-arg="${e}" id="exp_${e.replace(/-/g,'_')}" title="${monthly ? 'Monthly expiration' : 'Weekly expiration'}">${e}<span class="dte">${dte}d</span></button>`;
   }).join('');
   if (exps.length > 12) {
-    html += `<button class="exp-tab" style="color:var(--text3);" onclick="toggleExps()">${state.expsExpanded ? 'Show fewer' : '+' + (exps.length - 12) + ' more'}</button>`;
+    html += `<button class="exp-tab" style="color:var(--text3);" data-action="toggleExps">${state.expsExpanded ? 'Show fewer' : '+' + (exps.length - 12) + ' more'}</button>`;
   }
   el.innerHTML = html;
   if (state.selectedExp) markActiveExp(state.selectedExp);

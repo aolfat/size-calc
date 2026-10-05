@@ -28,9 +28,9 @@ export function renderStickyBar() {
     `<span style="color:var(--green)">▲ ${fmtN(q.high || 0, 2)}</span>` +
     (adrTxt ? `<span style="color:var(--text2)">${adrTxt}</span>` : '') +
     `<span style="color:var(--blue);margin-left:auto;">${state.sizingMode === 'allocation' ? document.getElementById('allocationPct').value + '% allocation' : 'risk ' + fmt$(riskDollars())}</span>` +
-    `<span class="sb-live sb-jump" title="Jump to the charts" onclick="event.stopPropagation();jumpTo('chartWrap')">chart</span>` +
-    (state.currentMode === 'options' ? `<span class="sb-live sb-jump" title="Jump to the option chain" onclick="event.stopPropagation();jumpTo('optionsSection')">chain</span>` : '') +
-    `<span id="sbLive" class="sb-live" title="Live: tap to start, tap again to extend (1m→5m→30m→stop)" onclick="event.stopPropagation();toggleLive()"></span>`;
+    `<span class="sb-live sb-jump" title="Jump to the charts" data-action="jumpTo" data-arg="chartWrap">chart</span>` +
+    (state.currentMode === 'options' ? `<span class="sb-live sb-jump" title="Jump to the option chain" data-action="jumpTo" data-arg="optionsSection">chain</span>` : '') +
+    `<span id="sbLive" class="sb-live" title="Live: tap to start, tap again to extend (1m→5m→30m→stop)" data-action="toggleLive"></span>`;
   syncSbLive();
 }
 

@@ -291,3 +291,23 @@ test('pinning from the search box puts the loaded symbol back in the field', asy
   assert.equal(run('Object.keys(pinnedData).length'), 1);
   assert.equal(elements.get('ticker').value, 'TEST');
 });
+
+// ---------- event delegation: no inline handlers, every named action has a handler ----------
+
+test('markup and templates use data-action attributes, and every action name has a handler', async () => {
+  const { readFileSync, readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const walk = dir => readdirSync(dir).flatMap(n => statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : n.endsWith('.js') ? [join(dir, n)] : []);
+  const sources = [html, ...walk(new URL('../src', import.meta.url).pathname).map(f => readFileSync(f, 'utf8'))];
+  for (const text of sources) assert.doesNotMatch(text, /\son(click|input|change|keydown)="/, 'no inline on* handlers');
+  const named = new Set();
+  for (const text of sources) for (const m of text.matchAll(/data-(action|input|change|enter)="([^"]+)"/g)) {
+    // a template may pick the name: data-action="${saved ? 'copySaved' : 'copyPinned'}"
+    const names = m[2].startsWith('${') ? [...m[2].matchAll(/'(\w+)'/g)].map(x => x[1]) : [m[2]];
+    names.forEach(n => named.add(n));
+  }
+  const { api } = await app();
+  const handlers = new Set(Object.keys(api.actions));
+  assert.deepEqual([...named].filter(n => !handlers.has(n)), [], 'names without a handler');
+  assert.deepEqual([...handlers].filter(n => !named.has(n)), [], 'handlers nothing uses');
+});

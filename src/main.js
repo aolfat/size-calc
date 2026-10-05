@@ -1,5 +1,6 @@
-import './legacy-globals.js';
 import { state } from './state.js';
+import { delegate } from './lib/delegate.js';
+import { actions } from './ui/actions.js';
 import { store } from './lib/store.js';
 import { syncPull } from './services/sync.js';
 import { updateSizingControls } from './ui/allocation.js';
@@ -19,6 +20,8 @@ import { updateStickyBar } from './ui/sticky-bar.js';
 import { updateStopVisibility } from './ui/stops.js';
 import { fetchQuote, renderRecentTickers } from './ui/ticker.js';
 import { setView } from './ui/views.js';
+
+delegate(document, actions); // every data-action / data-input / data-change / data-enter in the page
 
 state.syncSuppress = true; // init reads back what storage already holds — nothing here is a fresh edit
 

@@ -115,7 +115,7 @@ export function calcAllocationOption(opt, price) {
 export function allocationStats(r, unitCost, symbol, word) {
   if (r.error) return `<p class="shares-error" role="status">${r.error}</p>`;
   return `<div class="stat-grid">
-    <div class="stat highlight"><div class="s-label">${word}</div><div class="s-val"><input class="s-val-input" type="number" aria-label="${word}" value="${r.units}" min="0" step="1" onchange="allocationQtyChanged(Math.floor(Number(this.value)), ${unitCost}, '${marketEscape(symbol)}')" /></div><div class="s-sub">edit to set allocation</div></div>
+    <div class="stat highlight"><div class="s-label">${word}</div><div class="s-val"><input class="s-val-input" type="number" aria-label="${word}" value="${r.units}" min="0" step="1" data-change="allocationQtyChanged" data-arg="${unitCost}" data-arg2="${marketEscape(symbol)}" /></div><div class="s-sub">edit to set allocation</div></div>
     <div class="stat"><div class="s-label">New commitment</div><div class="s-val">${fmt$(r.commitment)}</div><div class="s-sub">${fmt$(r.budget)} available before trade</div></div>
     <div class="stat"><div class="s-label">Existing exposure</div><div class="s-val">${fmt$(r.existing)}</div><div class="s-sub">in this name</div></div>
     <div class="stat teal"><div class="s-label">Total allocation</div><div class="s-val">${r.actualPct.toFixed(2)}%</div><div class="s-sub">${fmt$(r.totalExposure)} after trade</div></div>
@@ -165,16 +165,16 @@ export function renderAllocationCard(id, d, saved = false) {
     <span class="tag ${isBull(d) ? 'call' : 'put'}">${d.shortPut ? 'Short put' : 'Long ' + (d.isCall ? 'call' : 'put')}</span>
     <span class="pinned-symbol">${marketEscape(d.parsed.ticker)} $${d.parsed.strike} ${marketEscape(d.parsed.expStr)}</span>
     <span class="pinned-meta">${saved ? 'POSITION' : 'ALLOCATION'} · ${marketEscape(d.asOf || '')}</span>
-    <button class="filter-btn" onclick="${saved ? 'copySaved' : 'copyPinned'}('${id}')">copy</button>
-    <button class="filter-btn" onclick="${saved ? 'shareSaved' : 'sharePinned'}('${id}')">share</button>
-    <button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} onclick="${saved ? 'simFromSaved' : 'simFromPinned'}('${id}')">sim</button>
-    ${saved ? '' : `<button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} onclick="saveCard('${id}')">save</button>`}
-    <button class="filter-btn" onclick="${saved ? 'refreshSaved' : 'refreshPinned'}('${id}')">↻</button>
-    <button class="filter-btn" aria-label="Remove card" onclick="${saved ? 'removeSaved' : 'removePinned'}('${id}')">×</button>
+    <button class="filter-btn" data-action="${saved ? 'copySaved' : 'copyPinned'}" data-arg="${id}">copy</button>
+    <button class="filter-btn" data-action="${saved ? 'shareSaved' : 'sharePinned'}" data-arg="${id}">share</button>
+    <button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} data-action="${saved ? 'simFromSaved' : 'simFromPinned'}" data-arg="${id}">sim</button>
+    ${saved ? '' : `<button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} data-action="saveCard" data-arg="${id}">save</button>`}
+    <button class="filter-btn" data-action="${saved ? 'refreshSaved' : 'refreshPinned'}" data-arg="${id}">↻</button>
+    <button class="filter-btn" aria-label="Remove card" data-action="${saved ? 'removeSaved' : 'removePinned'}" data-arg="${id}">×</button>
     </div>
     ${saved ? `<div class="stat-grid">
-      <div class="stat"><div class="s-label">${d.shortPut ? 'Entry credit' : 'Entry debit'} / share</div><div class="s-val"><input aria-label="Entry premium" class="s-val-input" type="number" value="${entry}" min="0.01" step="0.01" onchange="savedEntryChanged('${id}', this)" /></div><div class="s-sub">edit to your fill</div></div>
-      <div class="stat"><div class="s-label">Contracts held</div><div class="s-val"><input aria-label="Contracts held" class="s-val-input" type="number" value="${qty}" min="0" step="1" onchange="savedQtyChanged('${id}', this)" /></div></div>
+      <div class="stat"><div class="s-label">${d.shortPut ? 'Entry credit' : 'Entry debit'} / share</div><div class="s-val"><input aria-label="Entry premium" class="s-val-input" type="number" value="${entry}" min="0.01" step="0.01" data-change="savedEntryChanged" data-arg="${id}" /></div><div class="s-sub">edit to your fill</div></div>
+      <div class="stat"><div class="s-label">Contracts held</div><div class="s-val"><input aria-label="Contracts held" class="s-val-input" type="number" value="${qty}" min="0" step="1" data-change="savedQtyChanged" data-arg="${id}" /></div></div>
       <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${error ? '—' : fmt$(pnl)}</div><div class="s-sub">${error ? marketEscape(error) : `${pnlPct.toFixed(2)}% on ${d.shortPut ? 'notional' : 'debit'} · at mid`}</div></div>
     </div>` : ''}
     ${!saved && error ? `<p class="shares-error">${error}</p>` : allocationOptionBody(d, qty, entry, r)}`;

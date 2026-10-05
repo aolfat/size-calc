@@ -22,16 +22,16 @@
 <link rel="stylesheet" href="styles/layout.css">
 </head>
 <body>
-<div id="stickyBar" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top"></div>
+<div id="stickyBar" data-action="scrollToTop" title="Back to top"></div>
 <div class="app" id="app">
 
   <header class="header" id="appHeader">
     <span class="dot"></span>
     <span class="view-title" id="viewTitle">Size</span>
-    <nav class="brand-tabs" aria-label="Views"><button class="brand-nav" id="brandMarket" onclick="setView('market')" title="Market performance (m)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg><span class="tab-label">Market</span></button><button class="brand-nav" id="brandSize" onclick="setView('calc')" aria-current="page" title="Size a trade: shares, options, futures (s / o / f)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01M8.5 15h.01M12 15h.01M15.5 15h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg><span class="tab-label">Size</span></button><button class="brand-nav" id="brandPositions" onclick="setView('positions')" title="Saved positions (v)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 13h18"/></svg><span class="tab-label">Positions</span><span class="count-badge" id="posCount"></span></button><button class="brand-nav" id="brandTools" onclick="setView('utils')" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="tab-label">Tools</span></button></nav>
+    <nav class="brand-tabs" aria-label="Views"><button class="brand-nav" id="brandMarket" data-action="setView" data-arg="market" title="Market performance (m)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg><span class="tab-label">Market</span></button><button class="brand-nav" id="brandSize" data-action="setView" data-arg="calc" aria-current="page" title="Size a trade: shares, options, futures (s / o / f)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01M8.5 15h.01M12 15h.01M15.5 15h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg><span class="tab-label">Size</span></button><button class="brand-nav" id="brandPositions" data-action="setView" data-arg="positions" title="Saved positions (v)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 13h18"/></svg><span class="tab-label">Positions</span><span class="count-badge" id="posCount"></span></button><button class="brand-nav" id="brandTools" data-action="setView" data-arg="utils" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="tab-label">Tools</span></button></nav>
     <span class="sub" id="lastUpdated"></span>
-    <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
-    <button class="icon-btn" id="settingsBtn" onclick="openSheet('settings')" aria-label="Settings" title="Settings: API key, backup, sync"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="key-dot"></span></button>
+    <button class="kbd-toggle" data-action="toggleKbdHelp" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
+    <button class="icon-btn" id="settingsBtn" data-action="openSheet" data-arg="settings" aria-label="Settings" title="Settings: API key, backup, sync"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="key-dot"></span></button>
   </header>
 
   <div id="sidePane" class="pane">
@@ -40,40 +40,40 @@
     <div class="setup-title">Connect Tradier to load quotes</div>
     <p>Add your Tradier API key in Settings to load quotes, charts, and option chains. Futures sizing works without one.</p>
     <div class="setup-actions">
-      <button class="btn primary" onclick="openSheet('settings')">Add API key</button>
-      <button class="btn" onclick="openSheet('risk')">Set account and risk</button>
+      <button class="btn primary" data-action="openSheet" data-arg="settings">Add API key</button>
+      <button class="btn" data-action="openSheet" data-arg="risk">Set account and risk</button>
     </div>
   </div>
 
   <div class="card risk-strip" id="riskStrip">
     <div class="risk-strip-head">
       <span class="strip-title" id="riskStripTitle">Max loss per trade</span>
-      <button class="link-btn" onclick="openSheet('risk')" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button>
+      <button class="link-btn" data-action="openSheet" data-arg="risk" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button>
     </div>
     <div class="field" id="riskDollarField">
-      <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" oninput="syncFromDollar()" title="The dollar amount you're willing to lose on this trade. - and = step through your presets" /></div>
+      <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" data-input="syncFromDollar" title="The dollar amount you're willing to lose on this trade. - and = step through your presets" /></div>
     </div>
     <div class="chip-row" id="riskPresets">
       <span class="chip-label">Percent</span>
-      <button class="filter-btn" data-pct="0.125" onclick="setRiskPct(0.125)">.125%</button>
-      <button class="filter-btn" data-pct="0.25" onclick="setRiskPct(0.25)">.25%</button>
-      <button class="filter-btn" data-pct="0.5" onclick="setRiskPct(0.5)">.50%</button>
-      <button class="filter-btn" data-pct="1" onclick="setRiskPct(1)">1%</button>
-      <button class="filter-btn" data-pct="2" onclick="setRiskPct(2)">2%</button>
-      <button class="filter-btn" data-pct="3" onclick="setRiskPct(3)">3%</button>
+      <button class="filter-btn" data-pct="0.125" data-action="setRiskPct" data-arg="0.125">.125%</button>
+      <button class="filter-btn" data-pct="0.25" data-action="setRiskPct" data-arg="0.25">.25%</button>
+      <button class="filter-btn" data-pct="0.5" data-action="setRiskPct" data-arg="0.5">.50%</button>
+      <button class="filter-btn" data-pct="1" data-action="setRiskPct" data-arg="1">1%</button>
+      <button class="filter-btn" data-pct="2" data-action="setRiskPct" data-arg="2">2%</button>
+      <button class="filter-btn" data-pct="3" data-action="setRiskPct" data-arg="3">3%</button>
     </div>
     <div class="chip-row" id="riskUsdRow">
       <span class="chip-label">Dollars</span>
       <span id="riskUsdPresets" style="display:contents;"></span>
-      <button class="filter-btn" id="usdEditBtn" onclick="toggleUsdEdit()" title="Edit the dollar presets">✎</button>
+      <button class="filter-btn" id="usdEditBtn" data-action="toggleUsdEdit" title="Edit the dollar presets">✎</button>
     </div>
     <div id="allocationControls" style="display:none;">
       <div class="row">
-        <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" oninput="allocationChanged()" /></div>
-        <div class="field"><label for="existingExposure">Existing exposure $ <span id="exposureSymbol"></span></label><input type="number" id="existingExposure" value="0" min="0" step="100" oninput="allocationChanged()" /></div>
+        <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" data-input="allocationChanged" /></div>
+        <div class="field"><label for="existingExposure">Existing exposure $ <span id="exposureSymbol"></span></label><input type="number" id="existingExposure" value="0" min="0" step="100" data-input="allocationChanged" /></div>
       </div>
       <div class="chip-row">
-        <button class="filter-btn" onclick="setAllocationPct(2)">2%</button><button class="filter-btn" onclick="setAllocationPct(5)">5%</button><button class="filter-btn" onclick="setAllocationPct(10)">10%</button>
+        <button class="filter-btn" data-action="setAllocationPct" data-arg="2">2%</button><button class="filter-btn" data-action="setAllocationPct" data-arg="5">5%</button><button class="filter-btn" data-action="setAllocationPct" data-arg="10">10%</button>
       </div>
       <details class="hint-details"><summary>What counts as exposure</summary>Shares in this name at current value, plus the full strike notional of open short puts, plus long-option debit. Manual, and remembered per symbol for this session. Allocation is a per-name cap, not a cash-balance check.</details>
     </div>
@@ -81,38 +81,38 @@
 
   <div class="card" id="modeCard">
     <div class="seg mode-big" id="modeSeg" aria-label="Instrument">
-      <button id="modeShares" class="active" onclick="setMode('shares')">Shares</button>
-      <button id="modeOptions" onclick="setMode('options')">Options</button>
-      <button id="modeFutures" onclick="setMode('futures')">Futures</button>
+      <button id="modeShares" class="active" data-action="setMode" data-arg="shares">Shares</button>
+      <button id="modeOptions" data-action="setMode" data-arg="options">Options</button>
+      <button id="modeFutures" data-action="setMode" data-arg="futures">Futures</button>
     </div>
     <div id="sizingControls">
     <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
       <div class="field" id="symbolField" style="flex:0 0 140px;">
         <label for="ticker">Ticker</label>
-        <input type="text" id="ticker" placeholder="AAPL" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" oninput="tickerInputChanged()" onkeydown="if(event.key==='Enter'){this.blur();submitTicker();}" />
+        <input type="text" id="ticker" placeholder="AAPL" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn primary" onclick="submitTicker()" id="fetchBtn">
+        <button class="btn primary" data-action="submitTicker" id="fetchBtn">
           <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
         </button>
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" onclick="refreshQuote()" title="Refresh quote (r) · press ? for all shortcuts">
+        <button class="btn" data-action="refreshQuote" title="Refresh quote (r) · press ? for all shortcuts">
           ↻<span class="btn-word"> Refresh</span>
         </button>
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" onclick="toggleLive()" id="liveBtn" title="Live quotes: tap for 1m (5s ticks), tap again for 5m (10s), again for 30m (20s), again to stop. Pauses while backgrounded (l)">⚡ Live</button>
+        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: tap for 1m (5s ticks), tap again for 5m (10s), again for 30m (20s), again to stop. Pauses while backgrounded (l)">⚡ Live</button>
       </div>
     </div>
     <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
     <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
     <div id="optionTradeControls" style="display:none;margin-top:16px;">
       <div class="section-title">Option trade</div>
-      <div class="seg"><button id="optionBuy" class="active" aria-pressed="true" onclick="setOptionTradeSide('buy')">Buy options</button><button id="optionSellPut" aria-pressed="false" onclick="setOptionTradeSide('sell-put')">Sell put</button></div>
+      <div class="seg"><button id="optionBuy" class="active" aria-pressed="true" data-action="setOptionTradeSide" data-arg="buy">Buy options</button><button id="optionSellPut" aria-pressed="false" data-action="setOptionTradeSide" data-arg="sell-put">Sell put</button></div>
       <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
     </div>
     <div class="section-title" id="entryStopsTitle" style="margin-top:16px;">Entry &amp; stops</div>
@@ -120,49 +120,49 @@
       <div class="field" style="flex:0 0 auto;" id="dirField">
         <label>Direction</label>
         <div class="seg dir" id="dirSeg">
-          <button id="dirLong" class="active long" onclick="setDirection('long')">Long</button>
-          <button id="dirShort" onclick="setDirection('short')">Short</button>
+          <button id="dirLong" class="active long" data-action="setDirection" data-arg="long">Long</button>
+          <button id="dirShort" data-action="setDirection" data-arg="short">Short</button>
         </div>
       </div>
       <div class="field" style="flex:0 0 150px;">
         <label for="entryPrice">Entry</label>
-        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="entryPrice" placeholder="now" step="0.01" min="0" title="The underlying price you plan to enter at. Blank uses the current price" oninput="stopsChanged()" /></div>
+        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="entryPrice" placeholder="now" step="0.01" min="0" title="The underlying price you plan to enter at. Blank uses the current price" data-input="stopsChanged" /></div>
       </div>
       <div class="field" style="flex:0 0 150px;" id="stopLongField">
         <label for="stopLong">Long stop<span class="lbl-extra"> · calls</span></label>
-        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopLong" placeholder="LOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
+        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopLong" placeholder="LOD" step="0.01" min="0" data-input="stopsChanged" /></div>
       </div>
       <div class="field" style="flex:0 0 150px;" id="stopShortField">
         <label for="stopShort">Short stop<span class="lbl-extra"> · puts</span></label>
-        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopShort" placeholder="HOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
+        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopShort" placeholder="HOD" step="0.01" min="0" data-input="stopsChanged" /></div>
       </div>
       <div class="stops-hint" id="stopsHint"></div>
     </div>
     <div class="stop-buffer" id="stopAdjustment">
       <div class="stop-buffer-controls">
         <label class="stop-buffer-label" for="stopStrategy">Stop adjustment</label>
-        <select id="stopStrategy" onchange="setStopStrategy(this.value)" aria-describedby="stopBufferInfo">
+        <select id="stopStrategy" data-change="setStopStrategy" aria-describedby="stopBufferInfo">
           <option value="none">None</option>
           <option value="atr">5m ATR</option>
           <option value="percent">Percentage</option>
         </select>
         <div id="atrPresets" class="stop-presets" role="group" aria-label="ATR multiplier" style="display:none;">
-          <button type="button" class="filter-btn" data-atr="0.25" aria-pressed="false" onclick="setAtrMultiplier(0.25)">0.25×</button>
-          <button type="button" class="filter-btn" data-atr="0.5" aria-pressed="false" onclick="setAtrMultiplier(0.5)">0.5×</button>
-          <button type="button" class="filter-btn" data-atr="1" aria-pressed="false" onclick="setAtrMultiplier(1)">1×</button>
-          <button type="button" class="filter-btn" data-atr="1.5" aria-pressed="false" onclick="setAtrMultiplier(1.5)">1.5×</button>
-          <button type="button" class="filter-btn" data-atr="2" aria-pressed="false" onclick="setAtrMultiplier(2)">2×</button>
+          <button type="button" class="filter-btn" data-atr="0.25" aria-pressed="false" data-action="setAtrMultiplier" data-arg="0.25">0.25×</button>
+          <button type="button" class="filter-btn" data-atr="0.5" aria-pressed="false" data-action="setAtrMultiplier" data-arg="0.5">0.5×</button>
+          <button type="button" class="filter-btn" data-atr="1" aria-pressed="false" data-action="setAtrMultiplier" data-arg="1">1×</button>
+          <button type="button" class="filter-btn" data-atr="1.5" aria-pressed="false" data-action="setAtrMultiplier" data-arg="1.5">1.5×</button>
+          <button type="button" class="filter-btn" data-atr="2" aria-pressed="false" data-action="setAtrMultiplier" data-arg="2">2×</button>
         </div>
       </div>
       <div id="percentControls" style="display:none;">
         <label for="stopPercent">Wiggle room %</label>
-        <input id="stopPercent" type="number" value="0.05" min="0" step="any" inputmode="decimal" aria-describedby="stopBufferInfo" oninput="setStopPercent(this.value, true)" />
+        <input id="stopPercent" type="number" value="0.05" min="0" step="any" inputmode="decimal" aria-describedby="stopBufferInfo" data-input="stopPercentTyped" />
         <div id="percentPresets" class="stop-presets" role="group" aria-label="Percentage presets">
-          <button type="button" class="filter-btn" data-percent="0.025" aria-pressed="false" onclick="setStopPercent(0.025)">0.025%</button>
-          <button type="button" class="filter-btn" data-percent="0.05" aria-pressed="false" onclick="setStopPercent(0.05)">0.05%</button>
-          <button type="button" class="filter-btn" data-percent="0.1" aria-pressed="false" onclick="setStopPercent(0.1)">0.1%</button>
-          <button type="button" class="filter-btn" data-percent="0.25" aria-pressed="false" onclick="setStopPercent(0.25)">0.25%</button>
-          <button type="button" class="filter-btn" data-percent="0.5" aria-pressed="false" onclick="setStopPercent(0.5)">0.5%</button>
+          <button type="button" class="filter-btn" data-percent="0.025" aria-pressed="false" data-action="setStopPercent" data-arg="0.025">0.025%</button>
+          <button type="button" class="filter-btn" data-percent="0.05" aria-pressed="false" data-action="setStopPercent" data-arg="0.05">0.05%</button>
+          <button type="button" class="filter-btn" data-percent="0.1" aria-pressed="false" data-action="setStopPercent" data-arg="0.1">0.1%</button>
+          <button type="button" class="filter-btn" data-percent="0.25" aria-pressed="false" data-action="setStopPercent" data-arg="0.25">0.25%</button>
+          <button type="button" class="filter-btn" data-percent="0.5" aria-pressed="false" data-action="setStopPercent" data-arg="0.5">0.5%</button>
         </div>
       </div>
       <div id="stopBufferInfo" role="status"></div>
@@ -173,17 +173,17 @@
       <div class="section-title" style="margin-top:16px;">Futures contract</div>
       <div class="field">
         <label for="futuresContract">Contract</label>
-        <select id="futuresContract" onchange="futuresContractChanged()"></select>
+        <select id="futuresContract" data-change="futuresContractChanged"></select>
       </div>
       <div class="hint">Manual prices · no API key needed</div>
       <div class="futures-grid" style="margin-top:14px;">
         <div class="field">
           <label for="futuresTickSize">Tick size · points</label>
-          <input type="number" id="futuresTickSize" value="0.25" step="any" min="0" readonly oninput="futuresSpecsChanged()" />
+          <input type="number" id="futuresTickSize" value="0.25" step="any" min="0" readonly data-input="futuresSpecsChanged" />
         </div>
         <div class="field">
           <label for="futuresTickValue">Tick value · $ / contract</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresTickValue" value="1.25" step="any" min="0" readonly oninput="futuresSpecsChanged()" /></div>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresTickValue" value="1.25" step="any" min="0" readonly data-input="futuresSpecsChanged" /></div>
         </div>
       </div>
       <div class="hint" id="futuresSpecInfo"></div>
@@ -192,21 +192,21 @@
         <div class="field" style="grid-column:1/-1;">
           <label>Direction</label>
           <div class="seg dir" id="futuresDirSeg">
-            <button id="futuresLong" class="active long" onclick="setFuturesDirection('long')">Long</button>
-            <button id="futuresShort" onclick="setFuturesDirection('short')">Short</button>
+            <button id="futuresLong" class="active long" data-action="setFuturesDirection" data-arg="long">Long</button>
+            <button id="futuresShort" data-action="setFuturesDirection" data-arg="short">Short</button>
           </div>
         </div>
         <div class="field">
           <label for="futuresEntry">Entry price</label>
-          <input type="number" id="futuresEntry" placeholder="Enter price" step="0.25" oninput="renderFutures()" />
+          <input type="number" id="futuresEntry" placeholder="Enter price" step="0.25" data-input="renderFutures" />
         </div>
         <div class="field">
           <label for="futuresStop">Stop price</label>
-          <input type="number" id="futuresStop" placeholder="Below entry" step="0.25" oninput="renderFutures()" />
+          <input type="number" id="futuresStop" placeholder="Below entry" step="0.25" data-input="renderFutures" />
         </div>
         <div class="field" style="grid-column:1/-1;">
           <label for="futuresFees">Round-trip fees · $ / contract</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresFees" placeholder="0" step="0.01" min="0" oninput="renderFutures()" /></div>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresFees" placeholder="0" step="0.01" min="0" data-input="renderFutures" /></div>
         </div>
       </div>
     </div>
@@ -215,15 +215,15 @@
   <div class="card shares-card" id="sharesSection" style="display:none;">
     <div id="sharesStats"></div>
     <div class="shares-actions" role="group" aria-label="Share trade plan">
-      <button type="button" class="filter-btn" id="sharesImage" onclick="shareShares()" title="Copy a PNG card, or download it if image copying is unavailable" disabled>Copy card image</button>
-      <button type="button" class="filter-btn" id="sharesCopy" onclick="copyShares()" title="Copy a compact text summary with entry, stop, risk percentage, and a $100-risk example" disabled>Copy summary</button>
+      <button type="button" class="filter-btn" id="sharesImage" data-action="shareShares" title="Copy a PNG card, or download it if image copying is unavailable" disabled>Copy card image</button>
+      <button type="button" class="filter-btn" id="sharesCopy" data-action="copyShares" title="Copy a compact text summary with entry, stop, risk percentage, and a $100-risk example" disabled>Copy summary</button>
     </div>
   </div>
 
   <div class="card option-ticket" id="optionTicket" style="display:none;" aria-live="polite"></div>
 
   <div class="card" id="futuresSection" style="display:none;">
-    <div class="section-title">Futures sizing<button class="filter-btn" id="futuresCopy" style="margin-left:10px;" onclick="copyFutures()" disabled title="Copy this futures plan as text">copy</button></div>
+    <div class="section-title">Futures sizing<button class="filter-btn" id="futuresCopy" style="margin-left:10px;" data-action="copyFutures" disabled title="Copy this futures plan as text">copy</button></div>
     <div class="stat-grid" id="futuresStats" aria-live="polite"></div>
     <div id="futuresMessage" role="status"></div>
     <div class="hint">Risk at your stop, including entered fees · slippage can increase loss · broker margin is separate</div>
@@ -233,17 +233,17 @@
 
   <div id="trayPane" class="pane">
   <div class="card" id="quickCard">
-    <div class="section-title card-toggle" id="quickToggle" onclick="toggleQuick()"><span class="chev">▶</span> Quick lookup <span class="title-status">pin a contract by shorthand · q</span></div>
+    <div class="section-title card-toggle" id="quickToggle" data-action="toggleQuick"><span class="chev">▶</span> Quick lookup <span class="title-status">pin a contract by shorthand · q</span></div>
     <div id="quickBody">
     <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
       <div class="field" style="flex:2;min-width:220px;position:relative;">
         <label for="quickInput">Option shorthand</label>
-        <input type="text" id="quickInput" placeholder="AAPL 245 6/20  or  SPY 580 put 6/20" oninput="parseQuick()" onkeydown="if(event.key==='Enter')fetchQuickOption()" style="padding-right:120px;" />
+        <input type="text" id="quickInput" placeholder="AAPL 245 6/20  or  SPY 580 put 6/20" data-input="parseQuick" data-enter="fetchQuickOption" style="padding-right:120px;" />
         <span id="quickParsed" style="position:absolute;right:10px;top:35px;font-size:11px;color:var(--teal);pointer-events:none;white-space:nowrap;font-family:var(--mono);"></span>
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn primary" onclick="fetchQuickOption()" id="quickBtn"><span id="quickBtnText">Look up</span></button>
+        <button class="btn primary" data-action="fetchQuickOption" id="quickBtn"><span id="quickBtnText">Look up</span></button>
       </div>
     </div>
     <div class="hint">Type a ticker, strike, and expiry in any order, like <b>AAPL 245 9/18</b>. Calls by default; add <b>put</b> for puts.</div>
@@ -312,27 +312,27 @@
         <div class="exp-tabs" id="expTabs"></div>
         <div class="filter-row">
           <div class="seg" id="sideSeg">
-            <button id="sBoth" class="active" onclick="setSide('both')">Both</button>
-            <button id="sCall" onclick="setSide('call')">Calls</button>
-            <button id="sPut" onclick="setSide('put')">Puts</button>
+            <button id="sBoth" class="active" data-action="setSide" data-arg="both">Both</button>
+            <button id="sCall" data-action="setSide" data-arg="call">Calls</button>
+            <button id="sPut" data-action="setSide" data-arg="put">Puts</button>
           </div>
           <div class="fgroup" id="bothCountGroup">
             <span style="font-size:12px;color:var(--text2);">± strikes</span>
-            <input type="number" id="bothStrikes" value="8" min="2" max="40" step="1" style="width:56px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="store.set('both_strikes', this.value); renderChain();" title="How many strikes to show on each side of ATM in the Both view" />
+            <input type="number" id="bothStrikes" value="8" min="2" max="40" step="1" style="width:56px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="bothStrikesChanged" title="How many strikes to show on each side of ATM in the Both view" />
           </div>
           <div class="seg" id="zoneSeg">
-            <button id="zOtm" class="active" onclick="setZoneMode('otm')" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
-            <button id="zItm" onclick="setZoneMode('itm')" title="ITM between the ATM strike and your Δ depth limit — deeper is under All. Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
-            <button id="zBoth" onclick="setZoneMode('both')" title="OTM and ITM→ATM together. Needs a side — switches to Calls from the T-chart · key 3">Both</button>
-            <button id="zAll" onclick="setZoneMode('all')" title="Full chain, no filter · key 4">All</button>
+            <button id="zOtm" class="active" data-action="setZoneMode" data-arg="otm" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
+            <button id="zItm" data-action="setZoneMode" data-arg="itm" title="ITM between the ATM strike and your Δ depth limit — deeper is under All. Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
+            <button id="zBoth" data-action="setZoneMode" data-arg="both" title="OTM and ITM→ATM together. Needs a side — switches to Calls from the T-chart · key 3">Both</button>
+            <button id="zAll" data-action="setZoneMode" data-arg="all" title="Full chain, no filter · key 4">All</button>
           </div>
           <div class="fgroup" id="otmFloorGroup">
             <span style="font-size:12px;color:var(--text2);">OTM |Δ|≥</span>
-            <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Δ floor for the OTM zone" />
+            <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="renderChain" title="Δ floor for the OTM zone" />
           </div>
           <div class="fgroup" id="itmFloorGroup" style="display:none;">
             <span style="font-size:12px;color:var(--text2);">ITM |Δ|≤</span>
-            <input type="number" id="itmDelta" value="0.80" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" oninput="renderChain()" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
+            <input type="number" id="itmDelta" value="0.80" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="renderChain" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
           </div>
           <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
           <span style="font-size:12px;color:var(--text2);font-family:var(--mono);" id="ivInfo"></span>
@@ -357,8 +357,8 @@
       <span class="ohlc" id="chartOhlc"></span>
     </div>
     <div class="chart-row">
-      <div id="chartColD"><div class="chart-cap" onclick="toggleDaily()" style="cursor:pointer;" title="Tap to hide the daily chart (bring it back with the D1 chip)">Daily <span class="cap-note">· tap to hide</span></div><canvas id="dailyChart" height="260"></canvas></div>
-      <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">Intraday</span><button class="filter-btn" data-iv="5" onclick="setChartInterval(5)" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" onclick="setChartInterval(15)" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" onclick="setChartInterval(30)" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" onclick="setChartInterval(65)" style="padding:2px 8px;font-size:11px;">65m</button><button class="filter-btn active" id="dailyToggle" onclick="toggleDaily()" style="padding:2px 8px;font-size:11px;margin-left:10px;" title="Show / hide the daily chart">D1</button></div><canvas id="chart" height="260"></canvas></div>
+      <div id="chartColD"><div class="chart-cap" data-action="toggleDaily" style="cursor:pointer;" title="Tap to hide the daily chart (bring it back with the D1 chip)">Daily <span class="cap-note">· tap to hide</span></div><canvas id="dailyChart" height="260"></canvas></div>
+      <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">Intraday</span><button class="filter-btn" data-iv="5" data-action="setChartInterval" data-arg="5" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" data-action="setChartInterval" data-arg="15" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" data-action="setChartInterval" data-arg="30" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" data-action="setChartInterval" data-arg="65" style="padding:2px 8px;font-size:11px;">65m</button><button class="filter-btn active" id="dailyToggle" data-action="toggleDaily" style="padding:2px 8px;font-size:11px;margin-left:10px;" title="Show / hide the daily chart">D1</button></div><canvas id="chart" height="260"></canvas></div>
     </div>
     <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span></div>
   </div>
@@ -370,10 +370,10 @@
     <div class="market-heading">
       <div><div class="market-eyebrow">Market pulse</div><h2 id="marketTitle">Find the strength.</h2><p>Themes, sectors and global markets, from the big picture to your next ticker.</p></div>
       <div class="market-actions">
-        <button class="btn" id="marketAutoBtn" onclick="marketToggleAuto()" aria-pressed="true">Auto: on</button>
-        <button class="btn" id="marketSnapshotBtn" onclick="marketUseSnapshot()" title="Show the imported Sep 16, 2026 data for every period, including Today, and pause Auto. Refresh quotes or turn Auto on to return to Tradier quotes." hidden>Use snapshot</button>
-        <button class="btn primary" id="marketRefreshBtn" onclick="marketRefreshToday()">↻ Refresh quotes</button>
-        <button class="btn" id="marketCancelBtn" onclick="marketCancelRefresh()" title="Cancel the current refresh and turn Auto off. Keep the previously displayed data." hidden>Cancel</button>
+        <button class="btn" id="marketAutoBtn" data-action="marketToggleAuto" aria-pressed="true">Auto: on</button>
+        <button class="btn" id="marketSnapshotBtn" data-action="marketUseSnapshot" title="Show the imported Sep 16, 2026 data for every period, including Today, and pause Auto. Refresh quotes or turn Auto on to return to Tradier quotes." hidden>Use snapshot</button>
+        <button class="btn primary" id="marketRefreshBtn" data-action="marketRefreshToday">↻ Refresh quotes</button>
+        <button class="btn" id="marketCancelBtn" data-action="marketCancelRefresh" title="Cancel the current refresh and turn Auto off. Keep the previously displayed data." hidden>Cancel</button>
       </div>
     </div>
     <div class="market-tabs" role="tablist" aria-label="Market Pulse categories" id="marketTabs">
@@ -389,14 +389,14 @@
     <div class="market-notice" id="marketNotice" role="status" hidden></div>
     <div class="market-stats" id="marketStats"></div>
     <div class="market-toolbar">
-      <div class="seg" id="marketScope" aria-label="Market universe"><button id="marketGroupsBtn" class="active" onclick="marketSetScope('groups')" aria-pressed="true" title="Compare industry groups using an equal-weight average of their stocks. Missing returns are excluded.">Groups</button><button id="marketStocksBtn" onclick="marketSetScope('stocks')" aria-pressed="false" title="Show individual stocks across all industry groups. Select a ticker to size a trade.">Stocks</button></div>
-      <div class="market-search"><input id="marketSearch" type="search" aria-label="Search market" placeholder="Search ticker, company or industry" oninput="marketSearchChanged()" /><button id="marketClearBtn" aria-label="Clear market search" onclick="marketClearSearch()" hidden>×</button></div>
+      <div class="seg" id="marketScope" aria-label="Market universe"><button id="marketGroupsBtn" class="active" data-action="marketSetScope" data-arg="groups" aria-pressed="true" title="Compare industry groups using an equal-weight average of their stocks. Missing returns are excluded.">Groups</button><button id="marketStocksBtn" data-action="marketSetScope" data-arg="stocks" aria-pressed="false" title="Show individual stocks across all industry groups. Select a ticker to size a trade.">Stocks</button></div>
+      <div class="market-search"><input id="marketSearch" type="search" aria-label="Search market" placeholder="Search ticker, company or industry" data-input="marketSearchChanged" /><button id="marketClearBtn" aria-label="Clear market search" data-action="marketClearSearch" hidden>×</button></div>
       <div class="market-periods" id="marketPeriods" aria-label="Performance period"></div>
-      <div class="seg market-view-switch" aria-label="Market display"><button id="marketTableBtn" class="active" onclick="marketSetDisplay('table')" aria-pressed="true" title="Compare returns across all periods. Select a column heading to sort.">Table</button><button id="marketHeatmapBtn" onclick="marketSetDisplay('heatmap')" aria-pressed="false" title="Compare the selected period using colored tiles: green for gains, red for losses, and gray for flat or unavailable returns.">Heatmap</button></div>
+      <div class="seg market-view-switch" aria-label="Market display"><button id="marketTableBtn" class="active" data-action="marketSetDisplay" data-arg="table" aria-pressed="true" title="Compare returns across all periods. Select a column heading to sort.">Table</button><button id="marketHeatmapBtn" data-action="marketSetDisplay" data-arg="heatmap" aria-pressed="false" title="Compare the selected period using colored tiles: green for gains, red for losses, and gray for flat or unavailable returns.">Heatmap</button></div>
     </div>
     <div class="market-context"><div class="market-breadcrumb" id="marketBreadcrumb"></div><div class="market-legend"><span>Weak</span><i aria-hidden="true"></i><span>Strong</span></div></div>
     <div id="marketContent" aria-busy="false"><div class="market-empty">Loading market data…</div></div>
-    <button class="btn market-more" id="marketMoreBtn" onclick="marketShowMore()" hidden>Show more stocks</button>
+    <button class="btn market-more" id="marketMoreBtn" data-action="marketShowMore" hidden>Show more stocks</button>
     <div class="market-footer"><span id="marketFootnote">Groups are equally weighted. Missing returns are excluded.<br>Open a group to explore its stocks. Select a ticker to size a trade.</span><a id="marketDownload" href="data/market-universe-2026-09-16.csv" download>Download stock universe CSV ↗</a></div>
     </div>
   </section>
@@ -408,11 +408,11 @@
       <div class="row" style="align-items:flex-end;">
         <div class="field" style="flex:0 0 170px;">
           <label>Bought at</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="gainCost" step="0.01" min="0" placeholder="2.10" oninput="renderGain()" /></div>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="gainCost" step="0.01" min="0" placeholder="2.10" data-input="renderGain" /></div>
         </div>
         <div class="field" style="flex:0 0 170px;">
           <label>Current price</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="gainNow" step="0.01" min="0" placeholder="2.62" oninput="renderGain()" /></div>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="gainNow" step="0.01" min="0" placeholder="2.62" data-input="renderGain" /></div>
         </div>
       </div>
       <div class="stat-grid" style="margin-top:14px;" id="gainStats"></div>
@@ -423,17 +423,17 @@
       <div class="row" style="align-items:flex-end;">
         <div class="field" style="flex:0 0 170px;">
           <label>Stock or index</label>
-          <input type="text" id="levSymbol" placeholder="NVDA" style="text-transform:uppercase;" autocomplete="off" onkeydown="if(event.key==='Enter'){this.blur();findLevEtfs();}" />
+          <input type="text" id="levSymbol" placeholder="NVDA" style="text-transform:uppercase;" autocomplete="off" data-enter="findLevEtfs" />
         </div>
         <div class="field" style="flex:0 0 auto;">
           <label>Direction</label>
           <div class="seg dir" id="levDirSeg">
-            <button id="levDirBoth" class="active" onclick="setLevDir('both')">Both</button>
-            <button id="levDirLong" class="long" onclick="setLevDir('long')">Long</button>
-            <button id="levDirShort" class="short" onclick="setLevDir('short')">Short</button>
+            <button id="levDirBoth" class="active" data-action="setLevDir" data-arg="both">Both</button>
+            <button id="levDirLong" class="long" data-action="setLevDir" data-arg="long">Long</button>
+            <button id="levDirShort" class="short" data-action="setLevDir" data-arg="short">Short</button>
           </div>
         </div>
-        <button class="btn primary" onclick="findLevEtfs()" id="levBtn"><span id="levBtnText">Find</span></button>
+        <button class="btn primary" data-action="findLevEtfs" id="levBtn"><span id="levBtnText">Find</span></button>
       </div>
       <div id="levResults" style="margin-top:14px;"></div>
       <div class="hint">covers the big single names plus index / sector / commodity ETFs · ranked by dollars traded per day · wide spreads flagged amber · tap a row to load it in the calculator</div>
@@ -443,17 +443,17 @@
       <div class="row" style="align-items:flex-end;">
         <div class="field" style="flex:0 0 130px;">
           <label>Lev ETF</label>
-          <input type="text" id="levTgtSymbol" placeholder="NVDL" style="text-transform:uppercase;" autocomplete="off" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" />
+          <input type="text" id="levTgtSymbol" placeholder="NVDL" style="text-transform:uppercase;" autocomplete="off" data-enter="levTarget" />
         </div>
         <div class="field" style="flex:0 0 150px;">
           <label>Underlying target</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="levTgtPrice" step="0.01" min="0" placeholder="200" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" /></div>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="levTgtPrice" step="0.01" min="0" placeholder="200" data-enter="levTarget" /></div>
         </div>
         <div class="field" style="flex:0 0 90px;">
           <label>Days</label>
-          <input type="number" id="levTgtDays" step="1" min="1" value="1" onkeydown="if(event.key==='Enter'){this.blur();levTarget();}" />
+          <input type="number" id="levTgtDays" step="1" min="1" value="1" data-enter="levTarget" />
         </div>
-        <button class="btn primary" onclick="levTarget()" id="levTgtBtn"><span id="levTgtBtnText">Estimate</span></button>
+        <button class="btn primary" data-action="levTarget" id="levTgtBtn"><span id="levTgtBtnText">Estimate</span></button>
       </div>
       <div id="levTgtResults" style="margin-top:14px;"></div>
       <div class="hint">daily reset estimate · past day 1, decay uses the underlying's 20-day realized vol · IV crush, fees and borrow ignored · chop costs more than this</div>
@@ -463,46 +463,46 @@
 
   <div id="errorBox" style="display:none;" class="error"></div>
 
-  <div id="simOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:150;overflow-y:auto;" onclick="if(event.target===this)closeSim()">
+  <div id="simOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:150;overflow-y:auto;" data-action="closeSimBackdrop">
     <div class="card" style="max-width:600px;margin:7vh auto 40px;padding:16px 18px;">
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:2px;">
         <span class="pinned-symbol" id="simTitle"></span>
-        <button onclick="closeSim()" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;">×</button>
+        <button data-action="closeSim" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;">×</button>
       </div>
       <div class="hint" id="simMeta" style="margin:0 0 10px;"></div>
       <canvas id="simChart" height="240" style="width:100%;display:block;border-radius:10px;background:var(--bg3);border:1px solid var(--border);cursor:crosshair;"></canvas>
       <div style="font-size:12.5px;color:var(--text2);font-family:var(--mono);margin:10px 2px;" id="simReadout"></div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <span class="chip-label">Underlying</span>
-        <input type="range" id="simPrice" style="flex:1;min-width:160px;" oninput="drawSim()" />
-        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--mono);outline:none;" onchange="simPriceTyped(this)" /></div>
-        <button class="filter-btn" onclick="simSetPrice('stop')">stop</button>
-        <button class="filter-btn" onclick="simSetPrice('current')" title="Jump to the current underlying price">current</button>
-        <button class="filter-btn" onclick="simSetPrice(1)">1R</button>
-        <button class="filter-btn" onclick="simSetPrice(2)">2R</button>
+        <input type="range" id="simPrice" style="flex:1;min-width:160px;" data-input="drawSim" />
+        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--mono);outline:none;" data-change="simPriceTyped" /></div>
+        <button class="filter-btn" data-action="simSetPrice" data-arg="stop">stop</button>
+        <button class="filter-btn" data-action="simSetPrice" data-arg="current" title="Jump to the current underlying price">current</button>
+        <button class="filter-btn" data-action="simSetPrice" data-arg="1">1R</button>
+        <button class="filter-btn" data-action="simSetPrice" data-arg="2">2R</button>
       </div>
       <div class="hint">theoretical Black-Scholes value, IV held constant · drag the chart for a date · slide or tap chips for a price</div>
     </div>
   </div>
 
-  <div id="sheetBackdrop" class="sheet-backdrop" style="display:none;" onclick="closeSheet()"></div>
+  <div id="sheetBackdrop" class="sheet-backdrop" style="display:none;" data-action="closeSheet"></div>
 
   <div class="sheet" id="settingsSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
     <div class="sheet-head">
       <h2 id="settingsTitle">Settings</h2>
       <span class="sheet-status" id="apiStatus"></span>
-      <button class="sheet-close" onclick="closeSheet()" aria-label="Close settings">×</button>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close settings">×</button>
     </div>
     <div id="apiKeySection">
       <div class="sheet-section">
         <div class="row">
           <div class="field" style="flex:2;">
             <label for="apiKey">Tradier API key</label>
-            <input type="password" id="apiKey" placeholder="Paste your Tradier access token" autocomplete="off" oninput="saveKey()" />
+            <input type="password" id="apiKey" placeholder="Paste your Tradier access token" autocomplete="off" data-input="saveKey" />
           </div>
           <div class="field" style="flex:0 0 auto;">
             <label for="apiEnv">Account</label>
-            <select id="apiEnv" onchange="saveKey()" style="width:140px;">
+            <select id="apiEnv" data-change="saveKey" style="width:140px;">
               <option value="production">Production</option>
               <option value="sandbox">Sandbox</option>
             </select>
@@ -513,9 +513,9 @@
       <div class="sheet-section">
         <div class="sheet-label">Backup</div>
         <div class="row" style="align-items:center;gap:8px;">
-          <button class="btn" onclick="exportBackup()">⬇ Export backup</button>
-          <button class="btn" onclick="document.getElementById('importFile').click()">⬆ Import backup</button>
-          <input type="file" id="importFile" accept=".json,application/json" style="display:none;" onchange="importBackup(this)" />
+          <button class="btn" data-action="exportBackup">⬇ Export backup</button>
+          <button class="btn" data-action="pickImportFile">⬆ Import backup</button>
+          <input type="file" id="importFile" accept=".json,application/json" style="display:none;" data-change="importBackup" />
         </div>
         <p class="hint">Saves your settings, API key, and positions to a file. Keep it private. Importing merges positions.</p>
       </div>
@@ -523,10 +523,10 @@
         <div class="row" style="align-items:flex-end;">
           <div class="field" style="flex:2;">
             <label for="syncPass">Sync passphrase</label>
-            <input type="password" id="syncPass" placeholder="Same phrase on every device" onkeydown="if(event.key==='Enter'&amp;&amp;!syncEnabled())toggleSync()" />
+            <input type="password" id="syncPass" placeholder="Same phrase on every device" data-enter="syncPassEnter" />
           </div>
           <div class="field" style="flex:0 0 auto;">
-            <button class="btn" id="syncBtn" onclick="toggleSync()">⇄ Enable sync</button>
+            <button class="btn" id="syncBtn" data-action="toggleSync">⇄ Enable sync</button>
           </div>
         </div>
         <p class="hint" id="syncStatus"></p>
@@ -537,21 +537,21 @@
   <div class="sheet" id="riskSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="riskTitle" tabindex="-1">
     <div class="sheet-head">
       <h2 id="riskTitle">Account and risk</h2>
-      <button class="sheet-close" onclick="closeSheet()" aria-label="Close account and risk">×</button>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close account and risk">×</button>
     </div>
     <div id="riskCard">
       <div class="seg" style="margin-bottom:14px;" aria-label="Sizing method">
-        <button id="sizingRisk" class="active" aria-pressed="true" onclick="setSizingMode('risk')">Risk</button>
-        <button id="sizingAllocation" aria-pressed="false" onclick="setSizingMode('allocation')">Allocation</button>
+        <button id="sizingRisk" class="active" aria-pressed="true" data-action="setSizingMode" data-arg="risk">Risk</button>
+        <button id="sizingAllocation" aria-pressed="false" data-action="setSizingMode" data-arg="allocation">Allocation</button>
       </div>
       <div class="row" style="align-items:flex-end;">
         <div class="field">
           <label for="accountSize">Account size</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="accountSize" value="50000" min="1" step="1000" oninput="recalcAll()" /></div>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="accountSize" value="50000" min="1" step="1000" data-input="recalcAll" /></div>
         </div>
         <div class="field" id="riskPctField">
           <label for="riskPct">Risk %</label>
-          <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" oninput="recalcAll()" />
+          <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" data-input="recalcAll" />
         </div>
       </div>
       <p class="hint">Change the amount per trade with the chips at the top of the calculator.</p>

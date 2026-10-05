@@ -96,7 +96,7 @@ export function renderLevTable(under, rows, note, live) {
     : r === bestShort
     ? '<span class="lev-badge" style="background:var(--red-bg);color:var(--red);">best short</span>' : '';
   const body = shown.map(r => `
-    <tr onclick="levLoad('${r.sym}')" title="load ${r.sym} in the calculator">
+    <tr data-action="levLoad" data-arg="${r.sym}" title="load ${r.sym} in the calculator">
       <td><b>${r.sym}</b>${badge(r)}</td>
       <td style="color:${r.lev > 0 ? 'var(--green)' : 'var(--red)'};font-weight:600;">${fmtLev(r.lev)}</td>
       <td>${r.last ? fmt$(r.last) : '—'}</td>

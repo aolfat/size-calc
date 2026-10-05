@@ -81,7 +81,7 @@ export function renderFutures() {
   const acct = parseFloat(document.getElementById('accountSize').value);
   const acctPct = acct > 0 ? `${(result.totalRisk / acct * 100).toFixed(2)}% of acct` : 'set account size for %';
   el.innerHTML = `
-    <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" aria-label="Futures contracts" value="${result.contracts}" min="0" step="1" title="Type a contract count, risk $ follows" onchange="futuresQtyChanged(this)" /></div><div class="s-sub">to ${input.direction === 'long' ? 'buy' : 'short'} · edit to set risk</div></div>
+    <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val"><input type="number" class="s-val-input" aria-label="Futures contracts" value="${result.contracts}" min="0" step="1" title="Type a contract count, risk $ follows" data-change="futuresQtyChanged" /></div><div class="s-sub">to ${input.direction === 'long' ? 'buy' : 'short'} · edit to set risk</div></div>
     <div class="stat danger"><div class="s-label">Risk @ stop</div><div class="s-val">${fmt$(result.totalRisk)}</div><div class="s-sub">${acctPct}</div></div>
     <div class="stat teal"><div class="s-label">Risk / contract</div><div class="s-val">${fmt$(result.riskPerContract)}</div><div class="s-sub">${result.ticks} ticks × ${fmt$(input.tickValue)}${input.fees > 0 ? ' + ' + fmt$(input.fees) + ' fees' : ''}</div></div>
     <div class="stat"><div class="s-label">Stop distance</div><div class="s-val">${fmtFuturesPrice(result.points)} pts</div><div class="s-sub">${fmtFuturesPrice(input.entry)} → ${fmtFuturesPrice(input.stop)}</div></div>

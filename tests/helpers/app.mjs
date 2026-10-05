@@ -22,7 +22,7 @@ const sources = [html];
 function moduleFiles(dir) {
   return readdirSync(dir).flatMap(name => {
     const path = join(dir, name);
-    return statSync(path).isDirectory() ? moduleFiles(path) : name.endsWith('.js') && name !== 'main.js' && name !== 'legacy-globals.js' ? [path] : [];
+    return statSync(path).isDirectory() ? moduleFiles(path) : name.endsWith('.js') && name !== 'main.js' ? [path] : [];
   });
 }
 for (const file of moduleFiles(join(ROOT, 'src'))) sources.push(readFileSync(file, 'utf8'));

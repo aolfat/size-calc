@@ -20,7 +20,7 @@ export function startSpread(sym, credit) {
   b.innerHTML = (credit
     ? `credit spread · short ${leg} — tap the strike to BUY (${dir})`
     : `debit spread · long ${leg} — tap the strike to SELL (${dir})`)
-    + ` <button onclick="cancelSpread()" style="float:right;background:none;border:none;color:var(--blue);cursor:pointer;font-weight:700;font-size:13px;line-height:1;">✕</button>`;
+    + ` <button data-action="cancelSpread" style="float:right;background:none;border:none;color:var(--blue);cursor:pointer;font-weight:700;font-size:13px;line-height:1;">✕</button>`;
 }
 
 export function cancelSpread() {

@@ -18,11 +18,11 @@ export function clearRailDetail() {
 
 export function detailBody(c, acct) {
   if (c.allocation) {
-    return `<div class="section-title">${c.shortPut ? 'Sell put' : 'Buy ' + (c.isCall ? 'call' : 'put')} · allocation</div>${c.allocation.error ? `<p class="shares-error">${c.allocation.error}</p>` : allocationOptionBody(c.card, c.contracts, c.mid, c.allocation)}<button class="filter-btn" ${c.allocation.error ? 'disabled' : ''} onclick="pinAllocation('${c.opt.symbol}')">pin trade</button><button class="filter-btn" ${c.allocation.error || c.contracts < 1 ? 'disabled' : ''} onclick="openSim(simReg['${c.opt.symbol}'])">simulate returns</button>`;
+    return `<div class="section-title">${c.shortPut ? 'Sell put' : 'Buy ' + (c.isCall ? 'call' : 'put')} · allocation</div>${c.allocation.error ? `<p class="shares-error">${c.allocation.error}</p>` : allocationOptionBody(c.card, c.contracts, c.mid, c.allocation)}<button class="filter-btn" ${c.allocation.error ? 'disabled' : ''} data-action="pinAllocation" data-arg="${c.opt.symbol}">pin trade</button><button class="filter-btn" ${c.allocation.error || c.contracts < 1 ? 'disabled' : ''} data-action="openSimFor" data-arg="${c.opt.symbol}">simulate returns</button>`;
   }
   return `
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${c.lossPerContract > 0 ? `<input type="number" class="s-val-input" value="${c.contracts}" min="0" step="1" title="Type a contract count, risk $ follows" onchange="contractsQtyChanged(this, ${c.lossPerContract})" />` : '—'}</div><div class="s-sub">${c.contracts > 0 ? fmt$(c.totalCost) + ' outlay · edit to set risk' : 'stop too wide'}</div></div>
+      <div class="stat highlight"><div class="s-label">Contracts</div><div class="s-val">${c.lossPerContract > 0 ? `<input type="number" class="s-val-input" value="${c.contracts}" min="0" step="1" title="Type a contract count, risk $ follows" data-change="contractsQtyChanged" data-arg="${c.lossPerContract}" />` : '—'}</div><div class="s-sub">${c.contracts > 0 ? fmt$(c.totalCost) + ' outlay · edit to set risk' : 'stop too wide'}</div></div>
       <div class="stat danger"><div class="s-label">Max loss @ stop</div><div class="s-val">${c.lossPerContract > 0 ? fmt$(c.contracts * c.lossPerContract) : '—'}</div><div class="s-sub">${c.lossPerContract > 0 ? (c.contracts * c.lossPerContract / acct * 100).toFixed(2) + '% of acct' : ''}</div></div>
       <div class="stat teal"><div class="s-label">Premium @ stop</div><div class="s-val">${fmt$(c.atStop)}</div><div class="s-sub">${c.customEntry ? `est ${fmt$(c.entryPrem)} @ your ${fmt$(c.entryU)} entry` : `was ${fmt$(c.mid)} mid`} · stop ${fmt$(c.stop)}</div></div>
       <div class="stat"><div class="s-label">Loss of premium</div><div class="s-val">${c.lossOfCost.toFixed(1)}%</div><div class="s-sub">per contract</div></div>
@@ -31,8 +31,8 @@ export function detailBody(c, acct) {
     ${c.lossPerContractON > c.lossPerContract + 0.005 && c.lossPerContractON > 0 ? `<div style="font-size:11.5px;color:var(--text3);margin-top:8px;font-family:var(--mono);">held overnight: −${fmt$(c.lossPerContractON)}/ct (−${c.lossOfCostON.toFixed(0)}%) · a stop hit tomorrow costs one more day of theta</div>` : ''}
     <div class="detail-meta">
       <span>${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'}${c.iv > 0 && state.hv20 > 0 ? (c.iv > state.hv20 * 1.5 ? ` <span style="color:var(--amber)">vs HV20 ${(state.hv20*100).toFixed(1)}% — paying up for vol</span>` : ` vs HV20 ${(state.hv20*100).toFixed(1)}%`) : ''} · Est. via ${c.model === 'bs' ? 'Black-Scholes, IV const' : 'Δ + ½Γ·move² approx'}</span>
-      <button class="filter-btn" style="margin-left:auto;" onclick="openSim(simReg['${c.opt.symbol}'])">simulate returns</button>
-      ${state.chainSide !== 'both' ? `<button class="filter-btn" onclick="startSpread('${c.opt.symbol}')" title="Buy this leg, then tap the strike to sell against it">+ debit spread</button><button class="filter-btn" onclick="startSpread('${c.opt.symbol}', true)" title="Sell this leg, then tap the strike to buy against it">+ credit spread</button>` : ''}
+      <button class="filter-btn" style="margin-left:auto;" data-action="openSimFor" data-arg="${c.opt.symbol}">simulate returns</button>
+      ${state.chainSide !== 'both' ? `<button class="filter-btn" data-action="startSpread" data-arg="${c.opt.symbol}" title="Buy this leg, then tap the strike to sell against it">+ debit spread</button><button class="filter-btn" data-action="startSpread" data-arg="${c.opt.symbol}" data-arg2="credit" title="Sell this leg, then tap the strike to buy against it">+ credit spread</button>` : ''}
     </div>`;
 }
 
@@ -56,7 +56,7 @@ export function showDetail(tr, c, acct) {
   if (rail) {
     state.railDetailSym = c.opt.symbol;
     const ticket = document.getElementById('optionTicket');
-    ticket.innerHTML = `<div class="ticket-head"><span class="tag ${c.isCall ? 'call' : 'put'}">${c.isCall ? 'Call' : 'Put'}</span><span class="pinned-symbol">${state.quoteData.symbol} $${+c.opt.strike} ${expChat(state.selectedExp)}</span><button class="sheet-close" onclick="closeDetails()" aria-label="Clear the selected contract">×</button></div>${detailBody(c, acct)}`;
+    ticket.innerHTML = `<div class="ticket-head"><span class="tag ${c.isCall ? 'call' : 'put'}">${c.isCall ? 'Call' : 'Put'}</span><span class="pinned-symbol">${state.quoteData.symbol} $${+c.opt.strike} ${expChat(state.selectedExp)}</span><button class="sheet-close" data-action="closeDetails" aria-label="Clear the selected contract">×</button></div>${detailBody(c, acct)}`;
     ticket.style.display = '';
     withFlash(ticket);
     return;
