@@ -1,7 +1,9 @@
-// ---- Leveraged ETF finder ----
+// @ts-check
+// Leveraged ETF families for the Tools finder and price target.
 // curated map: underlying → [symbol, daily leverage factor], longs first.
 // Leverage labels are static (issuers do change them); prices/volume/spread come live from quotes.
 
+/** @type {Record<string, [string, number][]>} */
 export const LEV_ETFS = {
   // indexes / sectors / commodities
   SPY:  [['SSO',2],['UPRO',3],['SPXL',3],['SH',-1],['SDS',-2],['SPXU',-3],['SPXS',-3]],
@@ -184,6 +186,7 @@ export const LEV_ETFS = {
   LRCX: [['LRCC',2]],
 };
 
+/** @type {Record<string, string>} */
 export const LEV_NAMES = {
   SPY: 'S&P 500', QQQ: 'Nasdaq 100', IWM: 'Russell 2000', DIA: 'Dow 30', SMH: 'semiconductors',
   MAGS: 'Mag 7', ARKK: 'ARK Innovation', XLK: 'tech sector', XLF: 'financials', XLE: 'energy',
@@ -195,6 +198,7 @@ export const LEV_NAMES = {
   SKHY: 'SK Hynix', SPCX: 'SpaceX', BRKB: 'Berkshire B', P: 'Everpure', B: 'Barrick', INFQ: 'Infleqtion', CART: 'Instacart', LRN: 'Stride', LASR: 'nLIGHT',
 };
 
+/** @type {Record<string, string>} */
 export const LEV_ALIASES = {
   SPX: 'SPY', ES: 'SPY', VOO: 'SPY', IVV: 'SPY', SPLG: 'SPY',
   NDX: 'QQQ', NQ: 'QQQ', QQQM: 'QQQ',
@@ -206,6 +210,7 @@ export const LEV_ALIASES = {
 
 // typing a leveraged symbol itself resolves to its family (TQQQ → the QQQ set)
 
+/** @type {Record<string, { under: string, lev: number }>} */
 export const LEV_REVERSE = {};
 
 for (const [u, list] of Object.entries(LEV_ETFS)) for (const [s, l] of list) LEV_REVERSE[s] = { under: u, lev: l };

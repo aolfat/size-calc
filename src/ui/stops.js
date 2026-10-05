@@ -1,3 +1,4 @@
+// Direction, the global stop pair, and stop adjustments.
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
@@ -22,7 +23,7 @@ export function setDirection(dir) {
   if (state.chartBars.length) drawChart();
 }
 
-// ---------- global stop pair: one long stop (calls), one short stop (puts) ----------
+// ---------- the global stop pair: one long stop (shares long, calls), one short stop (shares short, puts) ----------
 
 export function rawStop(id) { // 0 = input blank, fall back to LOD/HOD
   const v = parseFloat(document.getElementById(id).value);

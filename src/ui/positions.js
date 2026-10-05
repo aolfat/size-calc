@@ -1,9 +1,10 @@
+// Saved positions: persisted cards with your fill, quantity and stop, P&L, and refresh.
 import { state } from '../state.js';
 import { fmt$ } from '../core/format.js';
 import { isBull, spreadWidth, strikesLabel } from '../core/options.js';
 import { optionDte } from '../core/sizing.js';
 import { store } from '../lib/store.js';
-import { mergeTombstones } from '../services/sync.js';
+import { mergeTombstones } from '../services/backup.js';
 import { quantityForCard, renderAllocationCard } from './allocation.js';
 import { recalcPinnedStop, refreshCardData } from './cards.js';
 import { showError, withFlash } from './feedback.js';

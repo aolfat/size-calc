@@ -1,3 +1,4 @@
+// Keyboard shortcuts: one keydown listener, ignored while typing or while a sheet is open.
 import { state } from '../state.js';
 import { cycleExp, setSide, setZoneMode } from './chain.js';
 import { closeDetails } from './detail.js';

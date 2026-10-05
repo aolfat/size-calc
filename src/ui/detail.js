@@ -1,3 +1,4 @@
+// Contract detail: the inline row on phones and tablets, the rail ticket in the desktop shell.
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { expChat, fmt$ } from '../core/format.js';

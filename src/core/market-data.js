@@ -101,6 +101,13 @@ export const MarketData = (() => {
       if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once:true});
     });
   }
+  /**
+   * POST quotes in batches of 100, retrying timeouts, 429s and 5xx with backoff (Retry-After honored).
+   * @param {string[]} symbols
+   * @param {{ base: string, auth: Record<string, string>, signal?: AbortSignal, onProgress?: (done: number, total: number) => void,
+   *   onRetry?: (info: { delay: number, status?: number, attempt: number }) => void, fetchImpl?: typeof fetch, retries?: number,
+   *   pause?: (ms: number, signal?: AbortSignal) => Promise<unknown> }} options
+   */
   async function fetchQuotes(symbols, { base, auth, signal, onProgress = () => {}, onRetry = () => {}, fetchImpl = fetch,
     retries = 2, pause = waitForRefresh }) {
     const result = Object.create(null);
@@ -119,9 +126,9 @@ export const MarketData = (() => {
             signal: controller.signal,
           });
           if (!response.ok) {
-            const error = new Error(response.status === 429 ? 'Tradier rate limit reached.'
+            const error = /** @type {Error & { status?: number, retryAfter?: number }} */ (new Error(response.status === 429 ? 'Tradier rate limit reached.'
               : response.status === 401 || response.status === 403 ? 'Check your Tradier API key and environment in Size.'
-              : 'Tradier could not refresh quotes (' + response.status + ').');
+              : 'Tradier could not refresh quotes (' + response.status + ').'));
             error.status = response.status;
             if (response.status === 429) {
               const retry = response.headers?.get('Retry-After');

@@ -1,7 +1,9 @@
-// ---------- simulate returns: Black-Scholes value over time at a chosen price ----------
+// @ts-check
+// Black-Scholes pricing, shared by the option loss model, card values and the returns simulator.
 
 export const RISK_FREE = 0.04;
 
+/** @param {number} x @returns {number} */
 export function normCdf(x) {
   // Abramowitz-Stegun approximation, |error| < 7.5e-8
   const t = 1 / (1 + 0.2316419 * Math.abs(x));
@@ -10,6 +12,12 @@ export function normCdf(x) {
   return x > 0 ? 1 - p : p;
 }
 
+/**
+ * European option value; at or past expiry (or with no vol) it is intrinsic.
+ * @param {boolean} isCall @param {number} S spot @param {number} K strike @param {number} T years left
+ * @param {number} sigma annualized IV @param {number} r risk-free rate
+ * @returns {number}
+ */
 export function bsPrice(isCall, S, K, T, sigma, r) {
   if (T <= 0 || sigma <= 0 || S <= 0) return Math.max(0, isCall ? S - K : K - S);
   const sqT = Math.sqrt(T);

@@ -1,6 +1,7 @@
+// @ts-check
+// Futures sizing: manual prices and risk per tick, no market-data dependency.
 import { unitsFor } from './sizing.js';
 
-// ---------- futures: manual prices, risk per tick, no market-data dependency ----------
 // Outright contract specs (CME, checked September 2026):
 // https://www.cmegroup.com/trading/equity-index/files/cme-micro-e-mini-futures-fact-card.pdf
 // https://www.cmegroup.com/education/modules/files/EQ240_EQ_for_AIT.pdf
@@ -9,6 +10,7 @@ import { unitsFor } from './sizing.js';
 // https://www.cmegroup.com/education/lessons/micro-gold-and-micro-silver-futures-product-overview
 // https://www.cmegroup.com/trading/metals/files/fact-card-gold-futures-options.pdf
 
+/** @type {Record<string, { name: string, tickSize: number, tickValue: number }>} */
 export const FUTURES_CONTRACTS = {
   MES: { name: 'Micro E-mini S&P 500', tickSize: 0.25, tickValue: 1.25 },
   ES:  { name: 'E-mini S&P 500', tickSize: 0.25, tickValue: 12.5 },
@@ -24,6 +26,11 @@ export const FUTURES_CONTRACTS = {
   GC:  { name: 'Gold', tickSize: 0.1, tickValue: 10 }
 };
 
+/**
+ * Contracts that fit the risk budget between entry and stop, on whole ticks.
+ * @param {{ risk: number, entry: number, stop: number, direction: string, tickSize: number, tickValue: number, fees?: number }} input
+ * @returns {{ error: string } | { ticks: number, points: number, riskPerContract: number, contracts: number, totalRisk: number }}
+ */
 export function calcFutures({ risk, entry, stop, direction, tickSize, tickValue, fees = 0 }) {
   if (![tickSize, tickValue].every(v => Number.isFinite(v) && v > 0)) return { error: 'Enter a positive tick size and dollar tick value.' };
   if (![entry, stop].every(Number.isFinite)) return { error: 'Enter your futures entry and stop prices.' };

@@ -1,3 +1,4 @@
+// Tools view: % gain card, leveraged ETF finder, and the leveraged ETF price target.
 import { state } from '../state.js';
 import { hv20At } from '../core/bars.js';
 import { dateStr, fmt$, fmtDayVol, fmtLev } from '../core/format.js';

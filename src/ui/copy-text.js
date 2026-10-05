@@ -1,3 +1,4 @@
+// Copy as text: one-liners for the live chat.
 import { state } from '../state.js';
 import { expChat, fmt$, fmtN } from '../core/format.js';
 import { sizeUnit } from '../core/options.js';
@@ -7,8 +8,6 @@ import { showError, showToast } from './feedback.js';
 import { riskDollars } from './risk.js';
 import { entryVal, stopLongVal, stopShortVal } from './stops.js';
 import { effects } from './effects.js';
-
-// ---------- copy as text: one-liners for the live chat ----------
 
 export function copyPlainText(text) {
   const ok = () => showToast('Copied: ' + text);

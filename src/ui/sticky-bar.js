@@ -1,10 +1,9 @@
+// Sticky context bar (phones): symbol, price, size, levels, ADR used, risk, jump chips, live chip.
 import { state } from '../state.js';
 import { extSession } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
 import { adrUsage } from './daily.js';
 import { riskDollars } from './risk.js';
-
-// ---------- sticky context bar ----------
 
 export function renderStickyBar() {
   const q = state.quoteData;

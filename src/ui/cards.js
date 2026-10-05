@@ -1,3 +1,4 @@
+// Pinned cards: chain and quick-lookup results and spreads, stop edits, requotes (shared with saved positions).
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';

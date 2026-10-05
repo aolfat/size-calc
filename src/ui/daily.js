@@ -1,3 +1,4 @@
+// Daily history: ADR14, HV20, prior-day levels, IV percentile, and the daily chart pane.
 import { state } from '../state.js';
 import { hv20At, percentileOf } from '../core/bars.js';
 import { effectivePrice } from '../core/extended-hours.js';

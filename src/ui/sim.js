@@ -1,3 +1,4 @@
+// Returns simulator modal: Black-Scholes return % from now to expiry at a chosen underlying price.
 import { state } from '../state.js';
 import { RISK_FREE, bsPrice } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';

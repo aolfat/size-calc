@@ -1,3 +1,9 @@
+// @ts-check
+// Bar math: client-side interval aggregation, HV20 from daily closes, percentile ranks.
+
+/** @typedef {{ t: string, o: number, h: number, l: number, c: number, v?: number }} Bar */
+
+/** Roll 5-minute bars up to `iv` minutes; buckets never cross a session. @param {Bar[]} bars5 @param {number} iv @returns {Bar[]} */
 export function aggregateBars(bars5, iv) {
   if (iv <= 5) return bars5;
   const chunk = Math.round(iv / 5);
@@ -21,6 +27,7 @@ export function aggregateBars(bars5, iv) {
 
 // annualized 20-day HV ending at index `end` (exclusive); shared with the lev ETF target tool
 
+/** @param {number[]} closes @param {number} end @returns {number} */
 export function hv20At(closes, end) {
   const rets = [];
   for (let i = end - 19; i < end; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
@@ -29,6 +36,7 @@ export function hv20At(closes, end) {
   return Math.sqrt(v * 252);
 }
 
+/** Rank of `value` within `arr` (0–100), or null without 20 samples. @param {number} value @param {number[]} arr @returns {number | null} */
 export function percentileOf(value, arr) {
   if (!(value > 0) || arr.length < 20) return null;
   return Math.round(arr.filter(v => v < value).length / arr.length * 100);

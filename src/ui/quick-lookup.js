@@ -1,3 +1,4 @@
+// Quick lookup: the shorthand box, its parse preview, and fetch-and-pin.
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { parseQuickStr } from '../core/shorthand.js';

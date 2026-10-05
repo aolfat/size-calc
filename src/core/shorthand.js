@@ -1,3 +1,12 @@
+// @ts-check
+// Quick lookup shorthand: order-free tokens (ticker, strike, date, call/put, spread) parsed into a contract or spread.
+
+/**
+ * @typedef {{ ticker: string, strike: number, strike2?: number, optType: string, spread?: boolean, credit?: boolean,
+ *   expStr: string, occ: string, occ2?: string, display: string }} QuickParse
+ */
+
+/** @param {string} str @returns {QuickParse | null} */
 export function parseQuickStr(str) {
   const s = str.trim();
   if (!s) return null;
@@ -73,4 +82,5 @@ export function parseQuickStr(str) {
 
 // the ticker field is the one search box: a symbol loads its quote, shorthand pins a contract
 
+/** @param {string} v @returns {boolean} */
 export function isShorthand(v) { return v.trim().split(/\s+/).length > 1; }

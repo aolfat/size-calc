@@ -1,5 +1,7 @@
+// Market view: category tabs, tables and heatmap, drilldown, and cached quote refresh. Data logic is core/market-data.js.
 import { state } from '../state.js';
 import { marketEscape } from '../core/format.js';
+import { MarketData } from '../core/market-data.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { updateChartVisibility } from './daily.js';
@@ -10,9 +12,6 @@ import { openSheet } from './sheets.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { fetchQuote } from './ticker.js';
 import { setMode, setView } from './views.js';
-import { MarketData } from '../core/market-data.js';
-
-// ---------- market pulse ----------
 
 export const MARKET_FILE = 'data/market-universe-2026-09-16.csv';
 

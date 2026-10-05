@@ -1,3 +1,4 @@
+// Ticker: load a symbol (or send shorthand to quick lookup), fetch the quote, recent ticker chips.
 import { state } from '../state.js';
 import { isShorthand, parseQuickStr } from '../core/shorthand.js';
 import { store } from '../lib/store.js';
@@ -9,8 +10,6 @@ import { clearError, showError } from './feedback.js';
 import { fetchQuickOption } from './quick-lookup.js';
 import { requireKey } from './settings.js';
 import { renderQuote, setQuoteVisible } from './shares.js';
-
-// ---------- recent tickers: last five symbols as one-tap chips ----------
 
 export function pushRecentTicker(t) {
   let arr = [];

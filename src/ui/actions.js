@@ -1,7 +1,6 @@
 // The action registry: every data-action / data-input / data-change / data-enter name in the markup
 // and in rendered templates maps to one call here. Adapters turn data-arg strings into arguments.
 import { store } from '../lib/store.js';
-import { exportBackup, importBackup } from '../services/backup.js';
 import { syncEnabled } from '../services/sync.js';
 import { state } from '../state.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
@@ -18,7 +17,7 @@ import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearc
 import { refreshAllSaved, refreshSaved, removeSaved, saveCard, savedEntryChanged, savedQtyChanged, savedStopChanged } from './positions.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
-import { saveKey, toggleSync } from './settings.js';
+import { exportBackup, importBackup, saveKey, toggleSync } from './settings.js';
 import { sharePinned, shareSaved, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
 import { closeSheet, openSheet } from './sheets.js';

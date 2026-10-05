@@ -1,3 +1,4 @@
+// Top-level views (Market, Size, Positions, Tools) and the Shares / Options / Futures switch.
 import { state } from '../state.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { fetchChain, markActiveExp, renderExpTabs } from './chain.js';

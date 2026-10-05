@@ -1,10 +1,16 @@
+// Cross-device sync: passphrase-derived id and AES key, encrypted blob in a tiny KV worker.
+// Pull-merge-push with compare-and-swap, so a push never clobbers a change it hasn't seen.
 import { state } from '../state.js';
 import { store, onStoreWrite } from '../lib/store.js';
 import { BACKUP_KEYS, buildBackup, mergeBackupPayload } from './backup.js';
-import { showToast } from '../ui/feedback.js';
-import { setSyncUi, syncRehydrate } from '../ui/settings.js';
 
 export const SYNC_SERVER = 'https://size-calc-sync.aolfat.workers.dev'; // hardcoded for now
+
+// the settings sheet shows status and re-reads storage after a remote apply; sync never touches the page
+let view = { status: (/** @type {string} */ text) => {}, applied: () => {}, pulled: () => {} };
+
+/** @param {{ status: (text: string) => void, applied: () => void, pulled: () => void }} handlers */
+export function onSyncView(handlers) { view = handlers; }
 
 export function syncEnabled() { return !!(store.get('sync_id') && store.get('sync_key')); }
 
@@ -55,18 +61,6 @@ export async function syncDecrypt(blob) {
   return new TextDecoder().decode(pt);
 }
 
-// tombstones: deleted position ids, merged and pruned; a delete on one device beats a merge from another
-
-export function mergeTombstones(extra) {
-  let t = {};
-  try { t = JSON.parse(store.get('deleted_positions') || '{}'); } catch(e) {}
-  try { Object.assign(t, typeof extra === 'string' ? JSON.parse(extra) : (extra || {})); } catch(e) {}
-  const cutoff = Date.now() - 1000 * 60 * 60 * 24 * 180;
-  Object.keys(t).forEach(id => { if (t[id] < cutoff) delete t[id]; });
-  store.set('deleted_positions', JSON.stringify(t));
-  return t;
-}
-
 // every value-changing write to a synced key marks it dirty, except while a remote apply is in progress
 onStoreWrite(k => { if (!state.syncSuppress && BACKUP_KEYS.includes(k)) markSyncDirty(k); });
 
@@ -78,7 +72,7 @@ export function markSyncDirty(k) {
   if (!syncEnabled()) return;
   clearTimeout(state.syncTimer);
   state.syncTimer = setTimeout(syncPush, 2500); // debounce: ten quick edits = one upload
-  setSyncUi('saving…');
+  view.status('saving…');
 }
 
 export function scheduleSyncPush() { clearTimeout(state.syncTimer); state.syncTimer = setTimeout(syncPush, 1000); }
@@ -99,7 +93,7 @@ export function syncApplyRemote(j) {
   state.syncSuppress = true;
   try { mergeBackupPayload(payload, state.syncDirty); }
   finally { state.syncSuppress = false; }
-  syncRehydrate();
+  view.applied();
 }
 
 // pull-merge-push: a push can never clobber a change it hasn't seen. The PUT carries the
@@ -109,7 +103,7 @@ export async function syncPush() {
   if (!syncEnabled()) return;
   if (state.syncBusy) { scheduleSyncPush(); return; }
   state.syncBusy = true;
-  setSyncUi('saving…');
+  view.status('saving…');
   let pushing = null; // dirty keys this push covers; edits landing mid-flight stay dirty for the next one
   try {
     const remote = await syncFetchRemote(false);
@@ -139,10 +133,10 @@ export async function syncPush() {
     if (!res.ok) throw new Error('sync http ' + res.status);
     store.set('last_sync_t', String((await res.json()).t));
     saveDirty();
-    setSyncUi('synced · ' + new Date().toLocaleTimeString());
+    view.status('synced · ' + new Date().toLocaleTimeString());
   } catch(e) {
     if (pushing) { pushing.forEach(k => state.syncDirty.add(k)); saveDirty(); }
-    setSyncUi('offline · will retry'); // dirty set persists; the poll or the next edit retries
+    view.status('offline · will retry'); // dirty set persists; the poll or the next edit retries
   } finally { state.syncBusy = false; }
 }
 
@@ -157,15 +151,15 @@ export async function syncPull() {
         syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob)));
       } catch(e) {
         store.set('last_sync_t', String(remote.t)); // don't re-download a blob we can't read
-        setSyncUi('cloud copy unreadable · the next save from this device replaces it');
+        view.status('cloud copy unreadable · the next save from this device replaces it');
         return;
       }
       store.set('last_sync_t', String(remote.t));
-      setSyncUi('synced · ' + new Date().toLocaleTimeString());
-      showToast('Synced changes from your other device.');
+      view.status('synced · ' + new Date().toLocaleTimeString());
+      view.pulled();
       if (state.syncDirty.size) scheduleSyncPush(); // local edits got merged in — publish them
     }
   } catch(e) {
-    setSyncUi('offline · will retry');
+    view.status('offline · will retry');
   } finally { state.syncBusy = false; }
 }

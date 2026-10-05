@@ -1,3 +1,4 @@
+// Sheets: settings and account & risk, a panel under the header on desktop and a bottom sheet on phones.
 import { state } from '../state.js';
 
 export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet' };

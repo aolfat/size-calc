@@ -1,3 +1,4 @@
+// Futures ticket: contract picker, entry and stop, contracts, copy.
 import { state } from '../state.js';
 import { fmt$, fmtFuturesPrice } from '../core/format.js';
 import { FUTURES_CONTRACTS, calcFutures } from '../core/futures.js';

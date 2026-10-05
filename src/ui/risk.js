@@ -1,3 +1,4 @@
+// Risk strip: max loss input, % and $ chips (editable $ presets), the step ladder, and recalculation.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { updateSizingControls } from './allocation.js';

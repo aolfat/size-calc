@@ -1,3 +1,4 @@
+// Allocation sizing: target % of account less existing exposure, for long shares, long options and sold puts.
 import { state } from '../state.js';
 import { expChat, fmt$, fmtN, marketEscape } from '../core/format.js';
 import { isBull, sizeUnit, typeLabel } from '../core/options.js';

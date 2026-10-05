@@ -1,3 +1,4 @@
+// Live mode: polls quote, chain, chart and cards on a duration ladder; pauses while the app is backgrounded.
 import { state } from '../state.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { refreshAllPinned } from './cards.js';
@@ -8,7 +9,6 @@ import { refreshAllSaved } from './positions.js';
 import { renderQuote } from './shares.js';
 import { syncSbLive } from './sticky-bar.js';
 
-// ---------- live mode: duration ladder, tap to extend ----------
 // each tap climbs a rung; longer sessions poll slower to stay well inside API limits
 
 export const LIVE_MODES = [

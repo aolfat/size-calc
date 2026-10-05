@@ -1,3 +1,4 @@
+// Feedback: self-dismissing error and success toasts, and the pulse on recalculated stats.
 import { state } from '../state.js';
 
 export function showError(msg) {

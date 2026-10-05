@@ -1,3 +1,4 @@
+// @ts-check
 // Event delegation: markup names an action, and one listener per event type on the root runs it.
 //
 //   click     <button data-action="setMode" data-arg="options">

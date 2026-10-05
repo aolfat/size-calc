@@ -1,3 +1,4 @@
+// Share cards: hand-drawn PNG of a plan or position, copied to the clipboard (download fallback).
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
@@ -8,8 +9,6 @@ import { showError, showToast } from './feedback.js';
 import { riskDollars } from './risk.js';
 import { entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName } from './stops.js';
 import { effects } from './effects.js';
-
-// ---------- share cards: hand-drawn PNG of a plan/position, copied to the clipboard ----------
 
 export const SC = { bg: '#0b0d12', card1: '#161c28', card2: '#0e1118', border: '#323a4a', text: '#e9ecf2', text2: '#97a0b3', text3: '#5b6478', green: '#2fd67b', red: '#ff5d5d', blue: '#5b9dff', teal: '#2dd4bf' };
 

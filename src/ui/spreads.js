@@ -1,3 +1,4 @@
+// Vertical spread builder: mark the near leg, tap the far strike, pin the spread card.
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';

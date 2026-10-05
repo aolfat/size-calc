@@ -1,7 +1,14 @@
+// @ts-check
 // pre/after-hours detection. Tradier's last trade print often freezes at the 15:59
 // closing print, but the extended-session NBBO (bid/ask + their timestamps) keeps
 // ticking — so consider both and use the fresher signal. Null during RTH / stale data.
 
+/**
+ * The Tradier quote fields extended-hours detection reads (epoch-ms dates).
+ * @typedef {{ last?: number, bid?: number, ask?: number, trade_date?: number, bid_date?: number, ask_date?: number, close?: number, prevclose?: number }} Quote
+ */
+
+/** @param {Quote} q @returns {{ label: string, price: number, chg: number, chgPct: number } | null} */
 export function extSession(q) {
   const day = ms => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(ms));
   const minsOf = ms => {
@@ -36,6 +43,7 @@ export function extSession(q) {
 
 // what sizing anchors on: the extended-session price when live, else the last print
 
+/** @param {Quote | null | undefined} q @returns {number} */
 export function effectivePrice(q) {
   if (!q) return 0;
   const ext = extSession(q);

@@ -1,3 +1,4 @@
+// Intraday chart: 5-minute timesales, aggregated intervals, canvas candles, VWAP and EMA, stop lines, touch crosshair.
 import { state } from '../state.js';
 import { aggregateBars } from '../core/bars.js';
 import { effectivePrice } from '../core/extended-hours.js';

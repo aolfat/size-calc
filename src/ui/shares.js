@@ -1,3 +1,4 @@
+// Quote bar and the shares answer card; editable quantities write risk back.
 import { state } from '../state.js';
 import { effectivePrice, extSession } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';

@@ -1,3 +1,4 @@
+// Option chain: expiration tabs, zone filter, both-sides T-chart and single-side tables, ATM scroll.
 import { state } from '../state.js';
 import { RISK_FREE, bsPrice, normCdf } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';
@@ -415,8 +416,7 @@ export function renderChain() {
   if (state.chartBars.length) drawChart();
 }
 
-// ---------- keyboard shortcuts ----------
-
+// [ and ] step through expirations
 export function cycleExp(dir) {
   if (state.currentMode !== 'options' || !state.allExps.length || !state.selectedExp) return;
   const i = state.allExps.indexOf(state.selectedExp);

@@ -1,7 +1,9 @@
+// Settings sheet: API key and environment, backup file, and the sync switch and status line.
 import { state } from '../state.js';
 import { normalizeAtrMultiplier, normalizeStopStrategy, parseStopPercent } from '../core/stops.js';
 import { store } from '../lib/store.js';
-import { deriveSyncCreds, saveDirty, scheduleSyncPush, syncApplyRemote, syncDecrypt, syncEnabled, syncFetchRemote, syncPull, syncPush } from '../services/sync.js';
+import { applyBackup, buildBackup } from '../services/backup.js';
+import { deriveSyncCreds, onSyncView, saveDirty, scheduleSyncPush, syncApplyRemote, syncDecrypt, syncEnabled, syncFetchRemote, syncPull, syncPush } from '../services/sync.js';
 import { showError, showToast } from './feedback.js';
 import { loadSaved, updateSavedBar } from './positions.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
@@ -95,6 +97,9 @@ export async function toggleSync() {
   }
 }
 
+// sync reports here: status line, re-read storage after a remote apply, a toast when another device's edits land
+onSyncView({ status: setSyncUi, applied: syncRehydrate, pulled: () => showToast('Synced changes from your other device.') });
+
 export function setSyncUi(status) {
   const on = syncEnabled();
   document.getElementById('syncBtn').textContent = on ? '✕ Disable sync' : '⇄ Enable sync';
@@ -116,7 +121,37 @@ export function initSync() {
   window.addEventListener('focus', () => syncPull());
 }
 
-// ---------- setup sheets: settings (key, backup, sync) and account & risk ----------
+// backup file: download (and copy) everything, or merge one back in and reload
+
+export function exportBackup() {
+  const json = buildBackup();
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'size-calc-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  if (navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
+  showToast('Backup downloaded (and copied to clipboard). Keep it private — it includes your API key.');
+}
+
+export function importBackup(input) {
+  const f = input.files && input.files[0];
+  input.value = '';
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      applyBackup(reader.result);
+      location.reload(); // rehydrate everything from storage
+    } catch(e) {
+      showError('Import failed — not a Size Calc backup file.');
+    }
+  };
+  reader.readAsText(f);
+}
+
+// setup status: the key line in Settings, the settings button's dot, and the first-run notice
 
 export function updateApiStatus() {
   const key = document.getElementById('apiKey').value.trim();
