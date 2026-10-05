@@ -1,0 +1,16 @@
+/* Pinned idea cards and saved position cards. */
+.pinned-card { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px; box-shadow: 0 8px 24px -18px rgba(0,0,0,0.8); }
+.saved-card { box-shadow: inset 3px 0 0 var(--blue-bd), 0 8px 24px -18px rgba(0,0,0,0.8); }
+.pinned-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.allocation-header { flex-wrap: wrap !important; }
+.allocation-header .pinned-meta { flex-basis: 100%; font-size: 0.75rem; color: var(--text2); }
+.pinned-header .pinned-meta { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinned-header > .tag, .pinned-header > .pinned-symbol, .pinned-header > .pinned-badge, .pinned-header > .card-act { flex: 0 0 auto; }
+@media (min-width: 601px) { .pinned-header { flex-wrap: nowrap; } } /* shrink the meta instead of wrapping */
+@media (max-width: 600px) {
+  .pinned-header { row-gap: 8px; }
+  .pinned-header .pinned-badge { display: none; } /* redundant on a phone: the label carries it */
+  .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
+  .pinned-header .card-act { order: 3; }
+}
+.pinned-symbol { font-size: 13px; font-weight: 600; color: var(--text); font-family: var(--mono); }

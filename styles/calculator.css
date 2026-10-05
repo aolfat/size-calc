@@ -1,0 +1,142 @@
+/* Calculator: risk strip, ticket (instrument, search, entry and stops), shares answer, quote bar, futures, setup notice. */
+/* risk strip: the amount per trade comes first, one tap per change */
+.risk-strip { padding:14px 16px; }
+.risk-strip-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.strip-title { font-size:13px; font-weight:600; color:var(--red); }
+.risk-strip.alloc .strip-title { color:var(--text2); }
+.link-btn { background:none; border:0; padding:2px 0; color:var(--text2); font:12px var(--mono); cursor:pointer; white-space:nowrap; }
+.link-btn:hover { color:var(--text); text-decoration:underline; }
+.risk-strip .chip-row { margin-top:10px; }
+.risk-strip .chip-row + .chip-row { margin-top:6px; }
+.risk-strip .filter-btn.active { background:var(--red-bg); border-color:var(--red-bd); color:var(--text); }
+#allocationControls .row { margin-top:2px; }
+
+/* Risk $ is the number that matters: the money you're willing to lose */
+#riskDollar { font-size: 20px; font-weight: 700; color: var(--red); border-color: var(--red-bd); }
+#riskDollar:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,93,93,0.12); }
+.risk-wrap .prefix { color: var(--red); font-weight: 700; }
+
+.usd-edit-box { width: 68px; padding: 5px 4px; font-size: 12px; background: var(--bg3); border: 1px solid var(--blue-bd); border-radius: var(--radius); color: var(--text); font-family: var(--mono); text-align: center; outline: none; }
+.usd-edit-box:focus { border-color: var(--blue); }
+
+.seg.mode-big { width: 100%; padding: 4px; }
+.seg.mode-big button { flex: 1; font-size: 15px; padding: 10px 0; font-weight: 600; }
+.seg.mode-big button.active { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-bd); padding: 9px 0; box-shadow: 0 0 16px -6px rgba(91,157,255,0.5); }
+
+.setup-card { border-color:var(--blue-bd); background:linear-gradient(180deg, rgba(91,157,255,0.07), transparent 70%), var(--bg2); }
+.setup-title { font-size:15px; font-weight:600; margin-bottom:6px; }
+
+.setup-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+
+.stops-hint { font-size:11.5px; color:var(--text3); padding-bottom:11px; }
+.ticker-hint { font:11.5px var(--mono); color:var(--text3); margin-top:6px; min-height:16px; }
+.ticker-hint.ok { color:var(--teal); }
+.ticker-hint.wait { color:var(--amber); }
+#stopBufferInfo:empty { display:none; }
+
+/* stop inputs carry their chart line color: long stop lives at the LOD side (red), short at the HOD side (green) */
+#stopLong { border-left: 3px solid var(--red); }
+#stopShort { border-left: 3px solid var(--green); }
+.stop-buffer { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.stop-buffer-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.stop-buffer-label { font-size: 0.75rem; color: var(--text2); }
+.stop-presets { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.stop-buffer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+#stopStrategy { width: auto; font-size: 0.75rem; padding: 0.375rem 0.5rem; }
+#percentControls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+#percentControls label { font-size: 0.6875rem; color: var(--text2); }
+#stopPercent { width: 5.5rem; padding: 0.375rem 0.5rem; font-size: 0.75rem; }
+#stopPercent[aria-invalid="true"] { border-color: var(--red); }
+#stopBufferInfo { font: 0.6875rem var(--mono); color: var(--text2); margin-top: 0.5rem; line-height: 1.6; }
+#entryPrice { border-left: 3px solid var(--amber); }
+#futuresEntry { border-left: 3px solid var(--amber); }
+#futuresStop { border-left: 3px solid var(--red); }
+.futures-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.futures-grid .field { min-width: 0; }
+#futuresDirSeg button { flex: 1; }
+#futuresControls input[readonly] { color: var(--text2); }
+#futuresMessage { grid-column: 1 / -1; color: var(--amber); font-size: 13px; }
+#futuresCopy:disabled { opacity: 0.4; cursor: default; }
+
+/* Shares and the selected stop lead; supporting metrics share a quieter row. */
+.shares-primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.shares-primary > div { min-width: 0; }
+.shares-label { display: block; font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 8px; }
+.shares-primary .s-val { font: 600 clamp(28px, 4vw, 44px)/1.15 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; margin-bottom: 8px; }
+.shares-quantity .s-val { color: var(--blue); }
+.shares-primary .s-val-input { width: 100%; max-width: 100%; font-size: inherit !important; }
+.shares-primary .s-val-input:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; border-radius: 2px; }
+.shares-stop { border-left: 1px solid var(--border); padding-left: 24px; }
+.shares-stop .s-val { color: var(--red); }
+.shares-detail { color: var(--text2); font-size: 12px; line-height: 1.5; }
+.shares-detail strong { font-family: var(--mono); font-weight: 500; color: var(--text); }
+.shares-edit-hint { font-size: 11px; color: var(--text2); margin-top: 4px; }
+.shares-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 20px; }
+.shares-metrics dt { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+.shares-metrics dd { font: 600 19px/1.25 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.shares-metrics .shares-loss { color: var(--red); }
+.shares-metrics .shares-detail { display: block; font: 11px/1.5 var(--mono); color: var(--text2); margin-top: 4px; }
+.shares-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border); margin-top: 18px; padding-top: 14px; }
+.shares-actions .filter-btn { padding: 8px 12px; }
+.shares-actions .filter-btn:disabled { opacity: 0.4; cursor: default; }
+.shares-actions .filter-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.shares-error { color: var(--amber); font-size: 13px; padding: 8px 0; }
+.quote-levels { display: flex; gap: 8px 16px; align-items: center; flex-wrap: wrap; }
+
+@media (max-width: 600px) {
+  .shares-primary { gap: 14px; }
+  .shares-stop { padding-left: 14px; }
+  .shares-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shares-actions .filter-btn { flex: 1; min-height: 44px; }
+}
+
+.quote-bar { display: flex; gap: 20px; align-items: baseline; margin-bottom: 4px; flex-wrap: wrap; }
+.quote-price { font-size: 30px; font-weight: 600; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.quote-lod { font-size: 13px; color: var(--red); font-family: var(--mono); }
+.quote-hod { font-size: 13px; color: var(--green); font-family: var(--mono); }
+.quote-chg { font-size: 14px; font-family: var(--mono); }
+.quote-chg.up { color: var(--green); }
+.quote-chg.dn { color: var(--red); }
+.quote-ticker { font-size: 13px; color: var(--text2); font-weight: 600; letter-spacing: 0.04em; }
+
+.lod-pct { font-size: 11px; color: var(--text3); margin-left: 4px; }
+
+.btn.live-on { background: var(--red-bg); border-color: var(--red-bd); color: var(--red); }
+.btn.live-on:hover { border-color: var(--red); }
+
+.btn.live-on .pulse { display:inline-block; width:7px; height:7px; border-radius:50%; background: var(--red); animation: livePulse 1.2s ease-in-out infinite; }
+
+@media (max-width: 600px) {
+  .quote-price { font-size: 24px; }
+  .seg.mode-big button { font-size: 14px; }
+  /* preset rows: equal-width chips, one line, everything visible */
+  #riskPresets, #riskUsdRow { flex-wrap: nowrap !important; gap: 5px; }
+  #riskPresets .filter-btn, #riskUsdRow .filter-btn, #riskUsdRow .usd-edit-box { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 6px 2px; font-size: 12px; text-align: center; width: auto; } /* thumb-sized: these are the quick risk changes */
+  #riskPresets > span:first-child, #riskUsdRow > span:first-child { display: none; } /* % and $ make the labels redundant */
+  /* recent tickers: unbounded list, keep the side-swipe */
+  #recentTickers { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #recentTickers::-webkit-scrollbar { display: none; }
+  #recentTickers > * { flex: 0 0 auto; }
+  /* ticker row on one line: the symbol field flexes, refresh goes icon-only */
+  #symbolField { flex: 1 1 90px !important; min-width: 0; }
+  #tickerRow .btn { padding: 9px 11px; }
+  .btn-word { display: none; }
+  /* entry & stops: direction, entry and stop as one row of tiles (Both view: entry and the two stops) */
+  #entryStopsTitle { display: none !important; } /* the tiles label themselves */
+  #entryStopsRow { gap: 8px; margin-top: 14px; }
+  #entryStopsRow .field { flex: 1 1 0 !important; min-width: 0; }
+  #dirSeg { width: 100%; padding: 2px; }
+  #dirSeg button { flex: 1 1 0; min-width: 0; padding: 0 2px; min-height: 40px; font-size: 13px; }
+  #dirSeg button.active.long, #dirSeg button.active.short { padding: 0 1px; }
+  #entryStopsRow .prefix { display: none; } /* the label says it's a price; the room goes to the number */
+  #entryStopsRow .prefix-wrap input { padding-left: 10px; padding-right: 6px; text-overflow: ellipsis; min-height: 46px; } /* thumb-sized, level with the direction switch */
+  .lbl-extra { display: none; }
+  #entryStopsRow > div:not(.field) { flex: 0 0 100%; padding-bottom: 0; } /* the hint gets its own line */
+  #quickCard { display: none !important; } /* the ticker field takes contract shorthand on a phone */
+  /* the in-field parse preview overlaps the typed shorthand on a phone: give it its own line */
+  #quickInput { padding-right: 12px !important; }
+  #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
+  #tickerRow { gap: 8px; }
+  #tickerRow .field { min-width: 0; }
+  #riskDollar { font-size: 20px !important; } /* keep the max-loss figure prominent on mobile */
+}
