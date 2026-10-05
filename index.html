@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Size Calc">
@@ -50,7 +50,7 @@
     font-size: 14px; min-height: 100vh;
   }
 
-  .app { max-width: 920px; margin: 0 auto; padding: 20px 16px 60px; display: flex; flex-direction: column; }
+  .app { max-width: 920px; margin: 0 auto; padding: max(20px, calc(env(safe-area-inset-top) + 8px)) max(16px, env(safe-area-inset-right)) 60px max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; }
   .app > *, .pane > * { min-width: 0; }
   .pane, #quoteSection { display: contents; } /* layout wrappers: real boxes only in the desktop shell */
 
@@ -193,7 +193,7 @@
   .error.ok { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
 
   /* sticky context bar: appears once you scroll past the quote card */
-  #stickyBar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 90; align-items: center; gap: 14px; padding: 7px 16px; background: rgba(18,21,28,0.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2); font-family: var(--mono); font-size: 12.5px; cursor: pointer; white-space: nowrap; overflow-x: auto; }
+  #stickyBar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 90; align-items: center; gap: 14px; padding: calc(7px + env(safe-area-inset-top)) 16px 7px; background: rgba(18,21,28,0.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2); font-family: var(--mono); font-size: 12.5px; cursor: pointer; white-space: nowrap; overflow-x: auto; }
   #stickyBar .sb-sym { font-weight: 700; color: var(--text); }
   .sb-live { border: 1px solid var(--border2); border-radius: 6px; padding: 2px 9px; cursor: pointer; color: var(--text3); font-size: 11.5px; user-select: none; }
   .sb-live.on { color: var(--red); border-color: var(--red-bd); background: var(--red-bg); }
@@ -432,11 +432,18 @@
     #symbolField { flex: 1 1 90px !important; min-width: 0; }
     #tickerRow .btn { padding: 9px 11px; }
     .btn-word { display: none; }
-    /* entry & stops: direction on its own line, then entry + stop split evenly */
-    #dirField { flex-basis: 100% !important; }
-    #dirSeg button { flex: 1 1 0; } /* the field stretches the seg frame full-width; split it evenly instead of leaving the buttons huddled left */
-    #entryStopsRow .field:not(#dirField) { flex: 1 1 130px !important; min-width: 0; } /* two per row; a third (Both view) wraps */
-    #entryStopsRow > div:not(.field) { flex: 0 0 100%; } /* the hint gets its own line */
+    /* entry & stops: direction, entry and stop as one row of tiles (Both view: entry and the two stops) */
+    #entryStopsTitle { display: none !important; } /* the tiles label themselves */
+    #entryStopsRow { gap: 8px; margin-top: 14px; }
+    #entryStopsRow .field { flex: 1 1 0 !important; min-width: 0; }
+    #dirSeg { width: 100%; padding: 2px; }
+    #dirSeg button { flex: 1 1 0; min-width: 0; padding: 0 2px; min-height: 40px; font-size: 13px; }
+    #dirSeg button.active.long, #dirSeg button.active.short { padding: 0 1px; }
+    #entryStopsRow .prefix { display: none; } /* the label says it's a price; the room goes to the number */
+    #entryStopsRow .prefix-wrap input { padding-left: 10px; padding-right: 6px; text-overflow: ellipsis; min-height: 46px; } /* thumb-sized, level with the direction switch */
+    .lbl-extra { display: none; }
+    #entryStopsRow > div:not(.field) { flex: 0 0 100%; padding-bottom: 0; } /* the hint gets its own line */
+    #quickCard { display: none !important; } /* the ticker field takes contract shorthand on a phone */
     /* the in-field parse preview overlaps the typed shorthand on a phone: give it its own line */
     #quickInput { padding-right: 12px !important; }
     #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
@@ -465,6 +472,7 @@
   .brand-nav:hover { color:var(--text); }
   .count-badge { font:600 11px/16px var(--mono); color:var(--blue); background:var(--blue-bg); border:1px solid var(--blue-bd); border-radius:999px; padding:0 6px; }
   .count-badge:empty { display:none; }
+  .tab-icon, .view-title { display:none; }
   .brand-nav:focus-visible, #marketSection button:focus-visible, #marketSection a:focus-visible, .icon-btn:focus-visible, .link-btn:focus-visible { outline:2px solid var(--blue); outline-offset:4px; }
   .icon-btn { position:relative; flex:0 0 auto; width:36px; height:34px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:var(--radius); color:var(--text2); cursor:pointer; }
   .icon-btn:hover { color:var(--text); border-color:var(--blue); }
@@ -506,6 +514,9 @@
   .hint-details summary { cursor:pointer; color:var(--text2); width:fit-content; }
   .hint-details[open] summary { margin-bottom:4px; }
   .stops-hint { font-size:11.5px; color:var(--text3); padding-bottom:11px; }
+  .ticker-hint { font:11.5px var(--mono); color:var(--text3); margin-top:6px; min-height:16px; }
+  .ticker-hint.ok { color:var(--teal); }
+  .ticker-hint.wait { color:var(--amber); }
   #stopBufferInfo:empty { display:none; }
   .detail-meta { font-size:12px; color:var(--text3); margin-top:8px; font-family:var(--mono); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .ticket-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
@@ -590,12 +601,20 @@
   .market-data-source b { color:var(--amber); font-weight:500; }
   .market-more { display:block; margin:1rem auto 0; }
   @media (max-width:600px) {
-    .header { gap:8px; row-gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+    .header { gap:10px; margin-bottom:14px; }
     .header .dot { display:none; }
-    .brand-tabs { flex:1 0 100%; margin-right:0; justify-content:space-between; }
-    .brand-nav { font-size:14px; padding:6px 10px; }
-    .header .sub { font-size:0.6rem; margin-right:auto; }
+    .view-title { display:block; margin-right:auto; font-size:22px; font-weight:700; letter-spacing:-0.01em; }
+    .header .sub { font-size:0.6rem; }
     .header .kbd-toggle { display:none; }
+    /* the main switches live at the bottom, under the thumb */
+    .brand-tabs { position:fixed; left:0; right:0; bottom:0; z-index:95; margin:0; display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:0; padding:4px max(8px, env(safe-area-inset-left)) calc(4px + env(safe-area-inset-bottom)); background:rgba(14,17,23,0.96); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); border-top:1px solid var(--border2); }
+    .brand-nav { position:relative; flex-direction:column; gap:3px; padding:7px 0 5px; font-size:11px; font-weight:600; border-radius:10px; color:var(--text3); }
+    .brand-nav[aria-current="page"] { background:none; color:var(--blue); }
+    .tab-icon { display:block; }
+    .brand-nav .count-badge { position:absolute; top:2px; left:calc(50% + 7px); font-size:10px; line-height:14px; padding:0 5px; }
+    .app { padding-bottom:calc(88px + env(safe-area-inset-bottom)); }
+    .error { bottom:calc(78px + env(safe-area-inset-bottom)); }
+    .app:has(input:focus, select:focus, textarea:focus) .brand-tabs { display:none; } /* the keyboard owns the bottom while typing */
     .sheet { top:auto; left:0; right:0; bottom:0; width:100%; max-height:85vh; border-radius:18px 18px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); }
     .sheet-backdrop { background:rgba(0,0,0,0.5); }
     .market-heading { align-items:flex-start; flex-direction:column; margin-bottom:1rem; }
@@ -624,7 +643,8 @@
 
   <header class="header" id="appHeader">
     <span class="dot"></span>
-    <nav class="brand-tabs" aria-label="Views"><button class="brand-nav" id="brandMarket" onclick="setView('market')" title="Market performance (m)">Market</button><button class="brand-nav" id="brandSize" onclick="setView('calc')" aria-current="page" title="Size a trade: shares, options, futures (s / o / f)">Size</button><button class="brand-nav" id="brandPositions" onclick="setView('positions')" title="Saved positions (v)">Positions<span class="count-badge" id="posCount"></span></button><button class="brand-nav" id="brandTools" onclick="setView('utils')" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)">Tools</button></nav>
+    <span class="view-title" id="viewTitle">Size</span>
+    <nav class="brand-tabs" aria-label="Views"><button class="brand-nav" id="brandMarket" onclick="setView('market')" title="Market performance (m)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg><span class="tab-label">Market</span></button><button class="brand-nav" id="brandSize" onclick="setView('calc')" aria-current="page" title="Size a trade: shares, options, futures (s / o / f)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01M8.5 15h.01M12 15h.01M15.5 15h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg><span class="tab-label">Size</span></button><button class="brand-nav" id="brandPositions" onclick="setView('positions')" title="Saved positions (v)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 13h18"/></svg><span class="tab-label">Positions</span><span class="count-badge" id="posCount"></span></button><button class="brand-nav" id="brandTools" onclick="setView('utils')" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="tab-label">Tools</span></button></nav>
     <span class="sub" id="lastUpdated"></span>
     <button class="kbd-toggle" onclick="toggleKbdHelp()" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
     <button class="icon-btn" id="settingsBtn" onclick="openSheet('settings')" aria-label="Settings" title="Settings: API key, backup, sync"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="key-dot"></span></button>
@@ -685,11 +705,11 @@
     <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
       <div class="field" id="symbolField" style="flex:0 0 140px;">
         <label for="ticker">Ticker</label>
-        <input type="text" id="ticker" placeholder="AAPL" style="text-transform:uppercase;" onkeydown="if(event.key==='Enter'){this.blur();fetchQuote();}" />
+        <input type="text" id="ticker" placeholder="AAPL" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" oninput="tickerInputChanged()" onkeydown="if(event.key==='Enter'){this.blur();submitTicker();}" />
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn primary" onclick="fetchQuote()" id="fetchBtn">
+        <button class="btn primary" onclick="submitTicker()" id="fetchBtn">
           <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
         </button>
       </div>
@@ -704,6 +724,7 @@
         <button class="btn" onclick="toggleLive()" id="liveBtn" title="Live quotes: tap for 1m (5s ticks), tap again for 5m (10s), again for 30m (20s), again to stop. Pauses while backgrounded (l)">⚡ Live</button>
       </div>
     </div>
+    <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
     <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
     <div id="optionTradeControls" style="display:none;margin-top:16px;">
       <div class="section-title">Option trade</div>
@@ -724,11 +745,11 @@
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="entryPrice" placeholder="now" step="0.01" min="0" title="The underlying price you plan to enter at. Blank uses the current price" oninput="stopsChanged()" /></div>
       </div>
       <div class="field" style="flex:0 0 150px;" id="stopLongField">
-        <label for="stopLong">Long stop · calls</label>
+        <label for="stopLong">Long stop<span class="lbl-extra"> · calls</span></label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopLong" placeholder="LOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
       </div>
       <div class="field" style="flex:0 0 150px;" id="stopShortField">
-        <label for="stopShort">Short stop · puts</label>
+        <label for="stopShort">Short stop<span class="lbl-extra"> · puts</span></label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="stopShort" placeholder="HOD" step="0.01" min="0" oninput="stopsChanged()" /></div>
       </div>
       <div class="stops-hint" id="stopsHint"></div>
@@ -3881,6 +3902,7 @@ function setView(v) {
     const button = document.getElementById(id);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
+  document.getElementById('viewTitle').textContent = marketView ? 'Market' : positionsView ? 'Positions' : utilsView ? 'Tools' : 'Size';
   document.querySelector('.app').classList.toggle('market-view', marketView);
   document.getElementById('lastUpdated').style.display = marketView || utilsView || futures ? 'none' : '';
   document.getElementById('modeCard').style.display = calc ? '' : 'none';
@@ -5542,6 +5564,13 @@ function parseQuickStr(str) {
     // a strike pair (105/115) is anything slashed that can't be a date
     if (!pair && /^\d+(\.\d+)?\/\d+(\.\d+)?$/.test(t) && !isDate(t)) { pair = t.split('/').map(Number); continue; }
     if (isAlpha(t) && !ticker) { ticker = t.toUpperCase(); continue; }
+    // a strike can carry its type: 245c, 580.5p
+    const suffixed = t.match(/^(\d+(?:\.\d+)?)([cp])$/i);
+    if (suffixed && nums.length < 2) {
+      const type = suffixed[2].toLowerCase() === 'c' ? 'call' : 'put';
+      if (optType && optType !== type) return null;
+      optType = type; nums.push(parseFloat(suffixed[1])); continue;
+    }
     if (/^\d+(\.\d+)?$/.test(t)) {
       // a dotted number (9.18) is a date unless one is already set, then it's a strike
       if (t.includes('.') && !dateTok && isDate(t)) { dateTok = t; continue; }
@@ -6016,8 +6045,23 @@ function renderPinnedCards() {
   Object.keys(pinnedData).forEach(renderPinnedCard);
 }
 
-async function fetchQuickOption() {
-  const val = document.getElementById('quickInput').value;
+// the ticker field is the one search box: a symbol loads its quote, shorthand pins a contract
+function isShorthand(v) { return v.trim().split(/\s+/).length > 1; }
+function submitTicker() {
+  const v = document.getElementById('ticker').value.trim();
+  return isShorthand(v) ? fetchQuickOption(v, true) : fetchQuote();
+}
+const TICKER_HINT = 'Or pin a contract: AAPL 245c 6/20';
+function tickerInputChanged() {
+  const v = document.getElementById('ticker').value;
+  const el = document.getElementById('tickerParsed');
+  const parsed = isShorthand(v) ? parseQuickStr(v) : null;
+  el.textContent = !isShorthand(v) ? TICKER_HINT : parsed ? 'Pin ' + parsed.display : 'Keep typing: ticker, strike, and expiry';
+  el.className = 'ticker-hint' + (!isShorthand(v) ? '' : parsed ? ' ok' : ' wait');
+}
+
+async function fetchQuickOption(str, fromSearch = false) {
+  const val = typeof str === 'string' ? str : document.getElementById('quickInput').value;
   const parsed = parseQuickStr(val);
   if (!parsed) { showError('Could not parse — try: AAPL 245 6/20  or  SPY 580 put 6/20'); return; }
   const allocationTrade = sizingMode === 'allocation' && !parsed.spread;
@@ -6026,7 +6070,9 @@ async function fetchQuickOption() {
   if (!requireKey()) return;
   clearError();
 
-  document.getElementById('quickBtnText').innerHTML = '<span class="spinner"></span>';
+  const busyEl = document.getElementById(fromSearch ? 'fetchBtnText' : 'quickBtnText'); // spin whichever button started it
+  const idleLabel = busyEl.innerHTML;
+  busyEl.innerHTML = '<span class="spinner"></span>';
 
   try {
     const optSyms = parsed.spread ? `${parsed.occ},${parsed.occ2}` : parsed.occ;
@@ -6104,13 +6150,20 @@ async function fetchQuickOption() {
     document.getElementById('pinnedSection').prepend(newCard);
     renderPinnedCard(cardId);
     updatePinnedBar();
-    document.getElementById('quickInput').value = '';
-    document.getElementById('quickParsed').textContent = '';
+    if (fromSearch) {
+      // the field goes back to the symbol the stops and chart belong to
+      document.getElementById('ticker').value = quoteData?.symbol || parsed.ticker;
+      tickerInputChanged();
+      if (mq('(max-width: 600px)')) newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      document.getElementById('quickInput').value = '';
+      document.getElementById('quickParsed').textContent = '';
+    }
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch(e) {
     showError('Error: ' + e.message);
   } finally {
-    document.getElementById('quickBtnText').textContent = 'Look up';
+    busyEl.innerHTML = idleLabel;
   }
 }
 

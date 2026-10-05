@@ -273,3 +273,70 @@ test('closing details clears the rail ticket too', () => {
   assert.ok(!shown(elements.get('optionTicket')));
   assert.equal(run('railDetailSym'), null);
 });
+
+// ---------- phone layout: bottom tabs, screen title, one search box ----------
+
+test('phones get the view tabs as a bottom bar with icons, clear of the home indicator', () => {
+  for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandTools']) {
+    assert.match(block(id), /<svg class="tab-icon"/, `${id} has an icon for the bottom bar`);
+  }
+  assert.match(html, /name="viewport" content="[^"]*viewport-fit=cover/, 'safe-area insets need viewport-fit=cover');
+  const phone = [...html.matchAll(/@media \(max-width:600px\) \{([\s\S]*?)\n  \}/g)].map(m => m[1]).join('\n');
+  assert.match(phone, /\.brand-tabs \{ position:fixed;[^}]*bottom:0;[^}]*safe-area-inset-bottom/);
+});
+
+test('the header names the current screen', () => {
+  const { run, elements } = app();
+  const title = elements.get('viewTitle');
+  for (const [view, name] of [['market', 'Market'], ['positions', 'Positions'], ['utils', 'Tools'], ['calc', 'Size']]) {
+    run(`setView('${view}')`);
+    assert.equal(title.textContent, name, view);
+  }
+});
+
+test('shorthand reads a strike with a c or p suffix', () => {
+  const { run } = app();
+  const call = run("parseQuickStr('AAPL 245c 6/20/27')");
+  assert.equal(call.strike, 245);
+  assert.equal(call.optType, 'call');
+  assert.equal(call.occ, 'AAPL270620C00245000');
+  const put = run("parseQuickStr('spy 580.5p 6/18/26')");
+  assert.equal(put.strike, 580.5);
+  assert.equal(put.optType, 'put');
+  assert.equal(run("parseQuickStr('AAPL 245c put 6/20')"), null, 'conflicting types are rejected');
+});
+
+test('the ticker field is one search box: a symbol loads a quote, a contract pins a card', async () => {
+  const { run, elements } = app();
+  run('globalThis.__calls = []; fetchQuote = async () => __calls.push(["quote"]); fetchQuickOption = async s => __calls.push(["pin", s]);');
+  elements.get('ticker').value = 'aapl';
+  await run('submitTicker()');
+  elements.get('ticker').value = 'AAPL 245c 6/20';
+  await run('submitTicker()');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(__calls)')), [['quote'], ['pin', 'AAPL 245c 6/20']]);
+});
+
+test('typing a contract in the search box previews what it will pin', () => {
+  const { run, elements } = app();
+  const preview = elements.get('tickerParsed');
+  elements.get('ticker').value = 'AAPL';
+  run('tickerInputChanged()');
+  assert.match(preview.textContent, /AAPL 245c 6\/20/, 'a plain symbol shows the shorthand hint');
+  elements.get('ticker').value = 'AAPL 245c 6/20/27';
+  run('tickerInputChanged()');
+  assert.equal(preview.textContent, 'Pin AAPL $245 call 2027-06-20');
+  elements.get('ticker').value = 'AAPL 245';
+  run('tickerInputChanged()');
+  assert.match(preview.textContent, /expiry/, 'an incomplete contract says what is missing');
+});
+
+test('pinning from the search box puts the loaded symbol back in the field', async () => {
+  const { run, elements } = app({ fetch: async url => ({ ok: true, json: async () => ({ quotes: { quote: url.includes('greeks=true')
+    ? { type: 'option', symbol: 'TEST261218C00100000', bid: 5, ask: 5, greeks: { delta: 0.5 } } : { symbol: 'TEST', last: 100, low: 99, high: 102 } } }) }) });
+  elements.get('apiKey').value = 'test-only';
+  run("quoteData = { symbol: 'TEST', last: 100, low: 99, high: 102 }");
+  elements.get('ticker').value = 'TEST 100c 12/18/26';
+  await run('submitTicker()');
+  assert.equal(run('Object.keys(pinnedData).length'), 1);
+  assert.equal(elements.get('ticker').value, 'TEST');
+});
