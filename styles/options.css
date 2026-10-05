@@ -1,0 +1,71 @@
+/* Options: expirations, filters, the chain table and its cells, detail rows, and the desktop rail ticket. */
+/* locked chain header: sticky inside the scroll panel (desktop) or against the page (mobile) */
+#chainTable thead { position: sticky; top: 0; z-index: 5; box-shadow: 0 1px 0 var(--border2); }
+.chain-scroll { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 110px); }
+
+.loss-cell { font-weight: 600; }
+.loss-pct { font-size: 10px; opacity: 0.75; line-height: 1.2; font-weight: 500; }
+.loss-low { color: var(--green); }
+.loss-mid { color: var(--amber); }
+.loss-high { color: var(--red); }
+
+.detail-row td { padding: 0 !important; }
+.detail-inner { padding: 14px 16px; background: var(--bg3); }
+
+.fgroup { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+.exp-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.exp-tab { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text2); transition: all 0.12s; font-family: var(--mono); position: relative; }
+.exp-tab.active { background: var(--blue-bg); border-color: var(--blue-bd); color: var(--blue); }
+.exp-tab:hover:not(.active) { border-color: var(--border2); color: var(--text); }
+.exp-tab.monthly { border-color: var(--amber); border-style: solid; background: linear-gradient(180deg, rgba(245,176,46,0.08), transparent), var(--bg3); }
+.exp-tab.monthly::after { content: 'M'; font-size: 8.5px; font-weight: 700; color: var(--bg); background: var(--amber); border-radius: 3px; padding: 0px 3px; position: absolute; top: -6px; right: -5px; line-height: 1.4; }
+.exp-tab.monthly.active { border-color: var(--amber); color: var(--amber); background: var(--amber-bg); }
+.exp-tab .dte { display: block; font-size: 9px; color: var(--text3); margin-top: 1px; text-align: center; }
+
+.filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+
+td.strike-col, th.strike-col { background: var(--bg3); font-weight: 600 !important; text-align: center !important; border-left: 1px solid var(--border2); border-right: 1px solid var(--border2); color: var(--text) !important; }
+td.itm-tint { background: rgba(245,176,46,0.045); }
+tr.atm-row td.strike-col { color: var(--blue) !important; box-shadow: 0 0 0 1px var(--blue-bd) inset; }
+td.side-cell { cursor: pointer; }
+td.empty-cell { color: var(--text3) !important; }
+th.call-h { color: #3f7a58; }
+th.put-h { color: #8f4a4e; }
+
+td.voloi { background: rgba(91,157,255,0.05); }
+td.voloi.itm-tint { background: linear-gradient(rgba(245,176,46,0.045), rgba(245,176,46,0.045)), rgba(91,157,255,0.05); }
+
+.detail-meta { font-size:12px; color:var(--text3); margin-top:8px; font-family:var(--mono); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.ticket-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.option-ticket .detail-meta button { margin-left:0 !important; }
+
+@media (min-width: 1100px) and (max-width: 1439.98px) {
+  .m-hide { display: none; }
+  .m-hide.m-delta, .m-hide.m-oi { display: table-cell; } /* with room for Δ and OI */
+  #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11.5px; }
+  #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
+  #chainTable thead th, #chainTable tbody td { padding-left: 3px; padding-right: 3px; } /* 13 compact columns need the phone's cell padding */
+}
+
+@media (min-width: 1440px) {
+  .app.calc-view #chainTable { min-width: 0 !important; }
+}
+
+@media (max-width: 600px) {
+  table { font-size: 12px; }
+  thead th, tbody td { padding: 7px 6px; }
+}
+
+@media (max-width: 500px) {
+  .m-hide { display: none; } /* condensed chain */
+  .m-size { display: none; } /* Loss/Cts/Total live in the tap-in detail on a phone */
+  .m-hide.m-oi, .m-hide.m-delta { display: table-cell; } /* Δ, Vol, OI are the phone columns that matter */
+  #chainTable { min-width: 0 !important; table-layout: auto; font-size: 11px; }
+  /* table fits the screen here, so no scroll wrapper: header sticks to the page, under the context bar */
+  .chain-scroll { overflow: visible; max-height: none; }
+  #chainTable thead { top: var(--sbh, 0px); }
+  #chainTable thead th { font-size: 9.5px; letter-spacing: 0; }
+  thead th, tbody td { padding: 7px 3px; }
+  td.strike-col, th.strike-col { width: auto !important; }
+}

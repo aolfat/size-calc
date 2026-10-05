@@ -2,11 +2,13 @@
 // Layout shell: header nav, settings/risk sheets, the shares answer card and the desktop rail.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
+const { readFileSync, readdirSync } = require('node:fs');
 const { join } = require('node:path');
 const vm = require('node:vm');
 
 const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
+const stylesDir = join(__dirname, '..', 'styles');
+const css = readdirSync(stylesDir).filter(f => f.endsWith('.css')).map(f => readFileSync(join(stylesDir, f), 'utf8')).join('\n');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const init = script.indexOf('syncSuppress = true; // init');
 assert.ok(init > 0, 'Locate initialization separately from the app functions');
@@ -101,7 +103,7 @@ test('the risk amount and its chips come first, ahead of the ticket, one tap awa
   const rail = block('railPane');
   assert.ok(rail.indexOf('id="riskStrip"') < rail.indexOf('id="modeCard"'), 'desktop rail: risk above the ticket');
   // phones and tablets place cards with CSS order: risk must come before the ticket there too
-  const order = id => +html.match(new RegExp(`#${id} \\{ order: (\\d+); \\}`))[1];
+  const order = id => +css.match(new RegExp(`#${id}(?:, [^{]+)? \\{ order: (\\d+); \\}`))[1];
   assert.ok(order('riskStrip') < order('modeCard'), 'phone order: risk above the ticket');
   assert.ok(order('setupNotice') <= order('riskStrip'));
   assert.doesNotMatch(block('riskSheet'), /id="riskDollar"|id="riskPresets"/, 'one copy of each control');
@@ -281,7 +283,7 @@ test('phones get the view tabs as a bottom bar with icons, clear of the home ind
     assert.match(block(id), /<svg class="tab-icon"/, `${id} has an icon for the bottom bar`);
   }
   assert.match(html, /name="viewport" content="[^"]*viewport-fit=cover/, 'safe-area insets need viewport-fit=cover');
-  const phone = [...html.matchAll(/@media \(max-width:600px\) \{([\s\S]*?)\n  \}/g)].map(m => m[1]).join('\n');
+  const phone = [...css.matchAll(/@media \(max-width: ?600px\) \{([\s\S]*?)\n\}/g)].map(m => m[1]).join('\n');
   assert.match(phone, /\.brand-tabs \{ position:fixed;[^}]*bottom:0;[^}]*safe-area-inset-bottom/);
 });
 

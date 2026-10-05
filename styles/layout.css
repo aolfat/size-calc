@@ -1,0 +1,75 @@
+/* Layout, loaded last: the app container, phone card order, and the desktop shell (rail, main, tray). */
+.app { max-width: 920px; margin: 0 auto; padding: max(20px, calc(env(safe-area-inset-top) + 8px)) max(16px, env(safe-area-inset-right)) 60px max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; }
+.app > *, .pane > * { min-width: 0; }
+.pane, #quoteSection { display: contents; } /* layout wrappers: real boxes only in the desktop shell */
+
+.app.market-view { display:block; max-width:1500px; }
+
+/* Phone and tablet: one column in trade order. Inputs, quote, the answer, the chart to set stops, ideas, then the chain.
+   The pane wrappers are display:contents here, so every card is a flex item of .app and `order` places it. */
+#appHeader { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #riskStrip { order: 3; } /* risk first: the max loss frames the trade */
+#modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection, #futuresSection { order: 6; }
+#optionTicket { order: 7; } #chartWrap { order: 8; }
+#quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #savedBar { order: 12; } #savedSection { order: 13; }
+#optionsSection { order: 14; } #marketSection, #utilsSection { order: 15; }
+
+/* Desktop shell (calculator and positions): the page holds still and each pane scrolls on its own.
+   Rail = the ticket (inputs + answer), main = quote, charts, chain. Nothing is position:sticky. */
+@media (min-width: 1100px) {
+  .app.calc-view, .app.positions-view {
+    max-width: none; height: 100vh; height: 100dvh; padding: 0 20px; overflow: hidden;
+    display: grid; grid-template-columns: 360px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 20px;
+  }
+  .app.calc-view > .header, .app.positions-view > .header { grid-column: 1 / -1; margin: 0; padding: 14px 2px; }
+  .app.calc-view #sidePane { display: block; grid-column: 1; grid-row: 2; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
+  .app.calc-view #railPane, .app.calc-view #trayPane { display: block; }
+  .app.calc-view #mainPane, .app.positions-view #mainPane { display: flex; flex-direction: column; grid-column: 2; grid-row: 2; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
+  .app.positions-view #sidePane { display: none; }
+  .app.positions-view #mainPane { grid-column: 1 / -1; }
+  .app.positions-view #savedSection { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 14px; align-items: start; }
+  .app.positions-view #savedSection > .pinned-card { margin-bottom: 0; }
+
+  /* the rail is phone-width: reuse the phone's compact ticket rows */
+  #railPane .seg.mode-big button { font-size: 14px; }
+  #tickerRow { gap: 8px; }
+  #tickerRow .field { min-width: 0; }
+  #symbolField { flex: 1 1 90px !important; }
+  #tickerRow .btn { padding: 9px 11px; }
+  #railPane .btn-word { display: none; }
+  #dirField { flex-basis: 100% !important; }
+  #dirSeg button { flex: 1 1 0; }
+  #entryStopsRow .field:not(#dirField) { flex: 1 1 130px !important; min-width: 0; } /* two per row; a third (Both view) wraps */
+  #entryStopsRow > div:not(.field) { flex: 0 0 100%; }
+  #quickInput { padding-right: 12px !important; }
+  #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
+  #riskStrip .chip-row { flex-wrap: nowrap; gap: 5px; }
+  #riskStrip .chip-row .filter-btn, #riskStrip .usd-edit-box { flex: 1 1 0; min-width: 0; padding: 6px 2px; text-align: center; width: auto; }
+  #riskStrip .chip-label { display: none; }
+  #sharesSection .shares-primary { gap: 16px; }
+  #sharesSection .shares-stop { padding-left: 16px; }
+  #sharesSection .shares-primary .s-val { font-size: 30px; }
+  #sharesSection .shares-metrics { grid-template-columns: 1fr; gap: 10px; }
+  #sharesSection .shares-metrics > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  #sharesSection .shares-metrics dt { margin: 0; }
+  #sharesSection .shares-metrics dd { text-align: right; font-size: 16px; }
+  #sidePane .stat-grid, #trayPane .stat-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
+  #sidePane .stat, #trayPane .stat { padding: 10px 12px; }
+  #sidePane .stat .s-val, #trayPane .stat .s-val { font-size: 18px; }
+  /* narrow card columns (rail, tray, positions grid): the meta line with the editable stop gets its own row instead of an ellipsis */
+  #sidePane .pinned-header, #trayPane .pinned-header, #savedSection .pinned-header { flex-wrap: wrap; row-gap: 8px; }
+  #sidePane .pinned-header .pinned-badge, #trayPane .pinned-header .pinned-badge { display: none; }
+  #sidePane .pinned-header .pinned-meta, #trayPane .pinned-header .pinned-meta, #savedSection .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
+  #sidePane .pinned-header .card-act, #trayPane .pinned-header .card-act { order: 3; }
+}
+
+/* very wide screens: pinned ideas get their own tray column on the right */
+@media (min-width: 1800px) {
+  .app.calc-view { grid-template-columns: 360px minmax(0, 1fr) 340px; }
+  .app.calc-view #sidePane { display: contents; }
+  .app.calc-view #railPane { grid-column: 1; grid-row: 2; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
+  .app.calc-view #trayPane { grid-column: 3; grid-row: 2; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
+}
+
+@media (max-width:600px) {
+  .app { padding-bottom:calc(88px + env(safe-area-inset-bottom)); }
+}
