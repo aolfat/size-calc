@@ -7,9 +7,14 @@
 .chart-row { display: flex; gap: 12px; }
 .chart-row > div { min-width: 0; }
 #chartCol5 { flex: 1.55; }
-#chartColD { flex: 1; }
+#chartColD { flex: 1; position: relative; }
 .chart-cap { font-size: 12px; color: var(--text2); font-weight: 500; margin-bottom: 4px; }
 .cap-note { color: var(--text3); font-weight: 400; }
+/* range chips keep their size; on a narrow pane the hide hint truncates instead of wrapping */
+#dailyCap .filter-btn { flex: none; }
+.daily-toggle { cursor: pointer; margin-right: 2px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* panned back in time: a way home in the plot's bottom-right corner, clear of the price and date axes */
+#dailyToday { position: absolute; right: 58px; bottom: 28px; }
 @media (max-width: 700px) { .chart-row { flex-direction: column; } .chart-row #chartCol5 { order: -1; } } /* stacked: the 5-min working chart leads */
 
 @media (min-width: 1100px) and (max-width: 1439.98px) {

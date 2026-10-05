@@ -1,6 +1,7 @@
-// Daily history: ADR14, HV20, prior-day levels, IV percentile, and the daily chart pane.
+// Daily history: ADR14, HV20, prior-day levels, IV percentile, and the daily chart pane (range chips, zoom and pan).
 import { state } from '../state.js';
 import { hv20At, percentileOf } from '../core/bars.js';
+import { clampView, panView, viewRange, zoomView } from '../core/chart-view.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { dateStr, fmtN } from '../core/format.js';
 import { store } from '../lib/store.js';
@@ -29,6 +30,8 @@ export function ivRankInfo(symbol, iv) {
 }
 
 export async function fetchAdr(ticker) {
+  // a new symbol opens on the chosen range; reloading the same one keeps the zoom
+  if (ticker !== state.dailySymbol) { state.dailySymbol = ticker; state.dailyView = { count: state.dailyRange, offset: 0 }; }
   state.adrValue = 0;
   state.prevDay = null;
   state.hv20 = 0;
@@ -53,6 +56,31 @@ export function toggleDaily() {
   store.set('show_daily', state.showDaily ? '1' : '0');
   updateChartVisibility();
   if (state.showDaily && state.dailyBars.length) drawDailyChart(); // canvas needs a paint after re-display
+}
+
+export function setDailyRange(count) {
+  state.dailyRange = count;
+  store.set('daily_range', String(count));
+  state.dailyView = { count, offset: 0 }; // tapping the lit chip again is the reset
+  drawDailyChart();
+}
+
+export function dailyToday() {
+  state.dailyView = { count: state.dailyView.count, offset: 0 };
+  drawDailyChart();
+}
+
+// the lit range chip: the chosen one while the view still shows that many sessions, none after a zoom
+export function activeDailyRange() {
+  const n = state.dailyBars.length;
+  return Math.round(clampView(state.dailyView, n).count) === Math.min(state.dailyRange, n) ? state.dailyRange : 0;
+}
+
+function updateDailyControls() {
+  const active = activeDailyRange();
+  document.querySelectorAll('#chartColD [data-action="setDailyRange"]').forEach(b => b.classList.toggle('active', +b.dataset.arg === active));
+  const n = state.dailyBars.length;
+  document.getElementById('dailyToday').style.display = viewRange(state.dailyView, n).end < n ? '' : 'none';
 }
 
 export function updateChartVisibility() {
@@ -86,32 +114,43 @@ export function renderAdr() {
   updateStickyBar();
 }
 
-export function drawDailyChart() {
-  if (!state.dailyBars.length) return;
-  const canvas = document.getElementById('dailyChart');
-  const w = canvas.clientWidth, h = 260;
-  if (!w) return;
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = w * dpr; canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, w, h);
-  const padL = 6, padR = 52, padT = 12, padB = 22;
-  const plotW = w - padL - padR, plotH = h - padT - padB;
-
+// one scale for the candles, the hover and click-to-stop: the visible window, fitted to its bars plus the stop and entry lines
+export function dailyGeom(w) {
+  const { start, end } = viewRange(state.dailyView, state.dailyBars.length);
   let lo = Infinity, hi = -Infinity;
-  for (const b of state.dailyBars) { if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; }
+  for (let i = start; i < end; i++) { const b = state.dailyBars[i]; if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; }
   const tc = tradeCtx();
   if (tc !== 'short') { const s = chartStopVal(true); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
   if (tc !== 'long') { const s = chartStopVal(false); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
   { const s = rawStop('entryPrice'); if (s > 0) { lo = Math.min(lo, s); hi = Math.max(hi, s); } }
   const pad = (hi - lo) * 0.05 || 0.5;
   lo -= pad; hi += pad;
-  const y = p => padT + (hi - p) / (hi - lo) * plotH;
-  const n = state.dailyBars.length;
-  const slot = plotW / n;
-  const bw = Math.max(1.5, Math.min(7, slot * 0.65));
-  const x = i => padL + i * slot + slot / 2;
+  const h = 260, padL = 6, padR = 52, padT = 12, padB = 22;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const slot = plotW / Math.max(1, end - start);
+  return {
+    w, h, padL, padR, padT, padB, plotW, plotH, start, end, slot, lo, hi,
+    x: i => padL + (i - start) * slot + slot / 2,
+    y: p => padT + (hi - p) / (hi - lo) * plotH,
+    price: yy => hi - (yy - padT) / plotH * (hi - lo),
+    index: xx => { const i = start + Math.floor((xx - padL) / slot); return i >= start && i < end ? i : -1; },
+  };
+}
+
+export function drawDailyChart() {
+  updateDailyControls();
+  if (!state.dailyBars.length) return;
+  const canvas = document.getElementById('dailyChart');
+  const w = canvas.clientWidth;
+  if (!w) return;
+  const { h, padL, padR, padT, padB, plotW, plotH, start, end, slot, lo, hi, x, y } = dailyGeom(w);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  const tc = tradeCtx();
+  const bw = Math.max(1.5, Math.min(14, slot * 0.65));
 
   const css = getComputedStyle(document.documentElement);
   const cGreen = css.getPropertyValue('--green').trim();
@@ -129,10 +168,11 @@ export function drawDailyChart() {
     ctx.beginPath(); ctx.moveTo(padL, y(p)); ctx.lineTo(w - padR, y(p)); ctx.stroke();
     ctx.fillText('$' + p.toFixed(2), w - padR + 5, y(p) + 3);
   }
-  const tickEvery = Math.max(1, Math.round(n / 5));
-  for (let i = 0; i < n; i += tickEvery) {
+  // date ticks sit on fixed bars so they ride along with a pan instead of reshuffling
+  const tickEvery = Math.max(1, Math.round((end - start) / 5));
+  for (let i = Math.ceil(start / tickEvery) * tickEvery; i < end; i += tickEvery) {
     const parts = (state.dailyBars[i].date || '').split('-');
-    if (parts.length === 3) ctx.fillText(+parts[1] + '/' + +parts[2], x(i) - 10, h - 8);
+    if (parts.length === 3 && x(i) - 10 >= 0 && x(i) + 14 <= w - padR) ctx.fillText(+parts[1] + '/' + +parts[2], x(i) - 10, h - 8);
   }
 
   // stop lines follow the same context rules as the 5-min chart
@@ -150,7 +190,7 @@ export function drawDailyChart() {
   stopLine(rawStop('entryPrice'), css.getPropertyValue('--blue').trim(), 'entry');
 
   // candles
-  for (let i = 0; i < n; i++) {
+  for (let i = start; i < end; i++) {
     const b = state.dailyBars[i];
     const col = b.close >= b.open ? cGreen : cRed;
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
@@ -159,20 +199,21 @@ export function drawDailyChart() {
     ctx.fillRect(x(i) - bw / 2, top, bw, Math.max(1, bot - top));
   }
 
-  // 8 EMA of daily closes
+  // 8 EMA of daily closes, warmed up on the full history and clipped to the plot (it can lag outside the window's range)
   const k = 2 / 9;
   let e = state.dailyBars[0].close;
   ctx.save();
+  ctx.beginPath(); ctx.rect(padL, padT, plotW, plotH); ctx.clip();
   ctx.strokeStyle = cPurple; ctx.lineWidth = 1.25; ctx.globalAlpha = 0.9;
   ctx.beginPath();
-  state.dailyBars.forEach((b, i) => {
-    e = b.close * k + e * (1 - k);
-    i ? ctx.lineTo(x(i), y(e)) : ctx.moveTo(x(i), y(e));
-  });
+  for (let i = 0; i < end; i++) {
+    e = state.dailyBars[i].close * k + e * (1 - k);
+    if (i > start) ctx.lineTo(x(i), y(e)); else if (i === start) ctx.moveTo(x(i), y(e));
+  }
   ctx.stroke(); ctx.restore();
 
   // hover crosshair shares the OHLC readout with the 5-min chart
-  if (state.dailyHover >= 0 && state.dailyHover < n) {
+  if (state.dailyHover >= start && state.dailyHover < end) {
     const b = state.dailyBars[state.dailyHover];
     ctx.save();
     ctx.strokeStyle = cBorder; ctx.setLineDash([2, 3]);
@@ -195,56 +236,100 @@ export function drawDailyChart() {
 
 export function initDailyChartEvents() {
   const canvas = document.getElementById('dailyChart');
-  const geom = () => {
-    const rect = canvas.getBoundingClientRect();
-    return { rect, plotW: rect.width - 6 - 52 };
-  };
-  const toIdx = clientX => {
-    const g = geom();
-    const i = Math.floor((clientX - g.rect.left - 6) / (g.plotW / state.dailyBars.length));
-    return i >= 0 && i < state.dailyBars.length ? i : -1;
-  };
-  canvas.addEventListener('mousemove', e => {
-    if (!state.dailyBars.length) return;
-    state.dailyHover = toIdx(e.clientX);
-    state.dailyHoverY = e.clientY - canvas.getBoundingClientRect().top;
+  const n = () => state.dailyBars.length;
+  const geom = () => dailyGeom(canvas.getBoundingClientRect().width);
+  const localX = clientX => clientX - canvas.getBoundingClientRect().left;
+  // where a zoom pivots: 0 = the plot's left edge, 1 = its right (today's side)
+  const anchorAt = clientX => { const g = geom(), a = (localX(clientX) - g.padL) / g.plotW; return Number.isFinite(a) ? a : 1; };
+  const show = view => { if (!n()) return; state.dailyView = view; drawDailyChart(); };
+  const hoverAt = (clientX, clientY) => {
+    state.dailyHover = geom().index(localX(clientX));
+    state.dailyHoverY = clientY - canvas.getBoundingClientRect().top;
     drawDailyChart();
-  });
+  };
+  canvas.addEventListener('mousemove', e => { if (n()) hoverAt(e.clientX, e.clientY); });
   canvas.addEventListener('mouseleave', () => {
     state.dailyHover = -1;
     state.dailyHoverY = -1;
     drawDailyChart();
     if (state.chartBars.length) drawChart(); // restores the 5-min readout
   });
+
+  // zoom: a trackpad pinch (Chrome and Firefox send it as ctrl+wheel) or ctrl/cmd+scroll; sideways swipes and
+  // shift+scroll pan. A plain vertical scroll is left alone so the page or pane still scrolls past the chart
+  canvas.addEventListener('wheel', e => {
+    if (!n()) return;
+    const px = e.deltaMode === 1 ? 16 : 1; // Firefox can report lines
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const dy = Math.max(-50, Math.min(50, e.deltaY * px));
+      show(zoomView(state.dailyView, n(), Math.exp(-dy * 0.01), anchorAt(e.clientX)));
+      return;
+    }
+    if (!e.shiftKey && Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    const dx = (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * px;
+    e.preventDefault();
+    show(panView(state.dailyView, n(), -dx / geom().slot));
+  }, { passive: false });
+
+  // mouse drag pans; a drag is not a click, so letting go never sets a stop
+  let drag = null, dragged = false;
+  const endDrag = () => { dragged = drag.moved; drag = null; canvas.style.cursor = ''; };
+  canvas.addEventListener('mousedown', e => {
+    dragged = false;
+    if (e.button === 0 && n()) drag = { x: e.clientX, from: state.dailyView, moved: false };
+  });
+  window.addEventListener('mousemove', e => {
+    if (!drag) return;
+    if (e.buttons === 0) { endDrag(); return; } // released outside the window
+    const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < 4) return;
+    drag.moved = true;
+    canvas.style.cursor = 'grabbing';
+    show(panView(drag.from, n(), dx / geom().slot));
+  });
+  window.addEventListener('mouseup', () => { if (drag) endDrag(); });
+
+  // touch: long-press crosshair as on the 5-min, plus sideways swipe to pan and two-finger pinch to zoom
+  let from = state.dailyView, touching = false;
   attachTouchCrosshair(canvas, t => {
-    if (!state.dailyBars.length) return;
-    state.dailyHover = toIdx(t.clientX);
-    state.dailyHoverY = t.clientY - canvas.getBoundingClientRect().top;
-    drawDailyChart();
+    if (n()) hoverAt(t.clientX, t.clientY);
   }, last => {
-    if (last && state.dailyBars.length) {
+    if (last && n()) {
       const rect = canvas.getBoundingClientRect();
       if (last.clientY >= rect.top && last.clientY <= rect.bottom) setStopFromPrice(dailyPriceAtY(last.clientY));
     }
     state.dailyHover = -1; state.dailyHoverY = -1;
-    if (state.dailyBars.length) { drawDailyChart(); if (state.chartBars.length) drawChart(); }
+    if (n()) { drawDailyChart(); if (state.chartBars.length) drawChart(); }
+  }, {
+    start: () => { from = state.dailyView; },
+    pan: dx => show(panView(from, n(), dx / geom().slot)),
+    pinch: (scale, mid0, dMid) => {
+      const z = zoomView(from, n(), scale, anchorAt(mid0));
+      const { start, end } = viewRange(z, n());
+      show(panView(z, n(), dMid / (geom().plotW / Math.max(1, end - start))));
+    },
   });
+  // Safari sends a trackpad pinch as gesture events instead of ctrl+wheel. On iOS the touch pinch above is
+  // already zooming, so there they only stop the page from zooming too
+  const fingers = e => { touching = e.touches.length > 0; };
+  canvas.addEventListener('touchstart', fingers, { passive: true });
+  canvas.addEventListener('touchend', fingers);
+  canvas.addEventListener('touchcancel', fingers);
+  canvas.addEventListener('gesturestart', e => { e.preventDefault(); if (!touching) from = state.dailyView; });
+  canvas.addEventListener('gesturechange', e => {
+    e.preventDefault();
+    if (!touching) show(zoomView(from, n(), e.scale, anchorAt(e.clientX)));
+  });
+
   canvas.addEventListener('click', e => {
-    if (!state.dailyBars.length) return;
+    if (dragged) { dragged = false; return; }
+    if (!n()) return;
     setStopFromPrice(dailyPriceAtY(e.clientY));
   });
 }
 
 export function dailyPriceAtY(clientY) {
-  const canvas = document.getElementById('dailyChart');
-  const rect = canvas.getBoundingClientRect();
-  let dLo = Infinity, dHi = -Infinity;
-  for (const b of state.dailyBars) { if (b.low < dLo) dLo = b.low; if (b.high > dHi) dHi = b.high; }
-  const tc = tradeCtx();
-  if (tc !== 'short') { const s = chartStopVal(true); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
-  if (tc !== 'long') { const s = chartStopVal(false); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
-  { const s = rawStop('entryPrice'); if (s > 0) { dLo = Math.min(dLo, s); dHi = Math.max(dHi, s); } }
-  const pad = (dHi - dLo) * 0.05 || 0.5;
-  dLo -= pad; dHi += pad;
-  return dHi - (clientY - rect.top - 12) / (260 - 12 - 22) * (dHi - dLo);
+  const rect = document.getElementById('dailyChart').getBoundingClientRect();
+  return dailyGeom(rect.width).price(clientY - rect.top);
 }
