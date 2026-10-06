@@ -267,29 +267,62 @@ export function setStopFromPrice(price) {
   stopsChanged();
 }
 
-export function attachTouchCrosshair(canvas, onMove, onEnd) {
+// gestures (optional): { start(), pan(dx), pinch(scale, mid0X, dMidX) } — a quick horizontal swipe pans
+// and two fingers pinch, both measured from where the gesture began; vertical swipes still scroll the page
+export function attachTouchCrosshair(canvas, onMove, onEnd, gestures = null) {
   let armed = false, suppressClick = false, timer = null, sx = 0, sy = 0, last = null;
+  let moved = false, mode = null, d0 = 0, m0 = 0;
   canvas.style.touchAction = 'pan-y';
+  const pair = ts => ({ d: Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY), m: (ts[0].clientX + ts[1].clientX) / 2 });
   canvas.addEventListener('touchstart', e => {
-    if (e.touches.length !== 1) return;
+    if (e.touches.length !== 1) {
+      clearTimeout(timer); // a second finger is never a long-press
+      if (armed) { armed = false; onEnd(null); } // drop the crosshair without setting a stop
+      if (gestures && e.touches.length === 2) {
+        ({ d: d0, m: m0 } = pair(e.touches));
+        mode = 'pinch';
+        gestures.start();
+      }
+      return;
+    }
     sx = e.touches[0].clientX; sy = e.touches[0].clientY;
-    armed = false;
+    armed = false; moved = false; mode = null;
     clearTimeout(timer);
     timer = setTimeout(() => { armed = true; last = { clientX: sx, clientY: sy }; onMove(last); }, 220);
   }, { passive: true });
   canvas.addEventListener('touchmove', e => {
+    if (mode === 'pinch') {
+      e.preventDefault();
+      if (e.touches.length === 2) { const p = pair(e.touches); gestures.pinch(p.d / d0, m0, p.m - m0); }
+      return;
+    }
     const t = e.touches[0];
+    if (mode === 'pan') { e.preventDefault(); gestures.pan(t.clientX - sx); return; }
     if (!armed) {
-      // moved before the hold completed → the user is scrolling, not aiming
-      if (Math.abs(t.clientY - sy) > 8 || Math.abs(t.clientX - sx) > 8) clearTimeout(timer);
+      // moved before the hold completed → the user is scrolling (or, sideways with gestures, panning), not aiming
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (!moved && (Math.abs(dy) > 8 || Math.abs(dx) > 8)) {
+        moved = true;
+        clearTimeout(timer);
+        if (gestures && Math.abs(dx) > Math.abs(dy)) {
+          mode = 'pan';
+          e.preventDefault();
+          gestures.start();
+          gestures.pan(dx);
+        }
+      }
       return;
     }
     e.preventDefault(); // crosshair engaged: the chart owns the gesture, the page holds still
     last = { clientX: t.clientX, clientY: t.clientY };
     onMove(last);
   }, { passive: false });
-  const end = () => {
+  const end = e => {
     clearTimeout(timer);
+    if (mode) {
+      if (!e.touches.length) mode = null; // a pinch holds until every finger lifts
+      return;
+    }
     if (armed) {
       armed = false;
       suppressClick = true;

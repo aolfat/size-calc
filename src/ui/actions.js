@@ -8,7 +8,7 @@ import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from
 import { renderChain, selectExp, setSide, setZoneMode, toggleExps } from './chain.js';
 import { setChartInterval } from './chart.js';
 import { copyPinned, copySaved, copyShares } from './copy-text.js';
-import { toggleDaily } from './daily.js';
+import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
 import { effects } from './effects.js';
 import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsChanged, renderFutures, setFuturesDirection } from './futures.js';
@@ -107,6 +107,8 @@ export const actions = {
   // ---------- charts ----------
   setChartInterval: el => setChartInterval(num(el)),
   toggleDaily: () => toggleDaily(),
+  setDailyRange: el => setDailyRange(num(el)),
+  dailyToday: () => dailyToday(),
 
   // ---------- option chain and details ----------
   selectExp: el => selectExp(arg(el)),

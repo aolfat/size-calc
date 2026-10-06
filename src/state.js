@@ -2,7 +2,10 @@
 // UI modules read and write state.* directly; tests call resetState() for a clean slate.
 import { store } from './lib/store.js';
 
+export const DAILY_RANGES = [21, 63, 126, 252]; // 1M / 3M / 6M / 1Y range chips, in sessions
+
 export function createState() {
+  const dailyRange = DAILY_RANGES.includes(+store.get('daily_range')) ? +store.get('daily_range') : 63;
   return {
     quoteData: null,
     chainData: [],
@@ -54,6 +57,9 @@ export function createState() {
     hvDist: [], // rolling HV20 over the past year, for the IV percentile
     dailyBars: [], // full history incl. today's forming bar, for the daily chart
     showDaily: true,
+    dailyRange, // the chosen range chip
+    dailyView: { count: dailyRange, offset: 0 }, // what's on screen, after pinches and drags
+    dailySymbol: '', // the view resets when this changes
     dailyHover: -1,
     dailyHoverY: -1,
     liveInterval: null,
