@@ -80,6 +80,9 @@
 .shares-actions .filter-btn { padding: 8px 12px; }
 .shares-actions .filter-btn:disabled { opacity: 0.4; cursor: default; }
 .shares-actions .filter-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.shares-actions .trade-btn { flex: 1 1 100%; justify-content: center; min-height: 40px; font-weight: 600; background: linear-gradient(180deg, #16294a, #101f39); border-color: var(--blue-bd); color: var(--blue); }
+.shares-actions .trade-btn:hover { border-color: var(--blue); }
+.shares-actions .trade-btn:disabled { opacity: 0.4; cursor: default; border-color: var(--blue-bd); }
 .shares-error { color: var(--amber); font-size: 13px; padding: 8px 0; }
 .quote-levels { display: flex; gap: 8px 16px; align-items: center; flex-wrap: wrap; }
 
@@ -88,6 +91,7 @@
   .shares-stop { padding-left: 14px; }
   .shares-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shares-actions .filter-btn { flex: 1; min-height: 44px; }
+  .shares-actions .trade-btn { min-height: 46px; }
 }
 
 .quote-bar { display: flex; gap: 20px; align-items: baseline; margin-bottom: 4px; flex-wrap: wrap; }

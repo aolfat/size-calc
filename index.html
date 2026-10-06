@@ -215,6 +215,7 @@
   <div class="card shares-card" id="sharesSection" style="display:none;">
     <div id="sharesStats"></div>
     <div class="shares-actions" role="group" aria-label="Share trade plan">
+      <button type="button" class="btn trade-btn" id="sharesTrade" data-action="openTrade" style="display:none;" title="Review a market order with this stop, then send it to Schwab" disabled>Trade at Schwab</button>
       <button type="button" class="filter-btn" id="sharesImage" data-action="shareShares" title="Copy a PNG card, or download it if image copying is unavailable" disabled>Copy card image</button>
       <button type="button" class="filter-btn" id="sharesCopy" data-action="copyShares" title="Copy a compact text summary with entry, stop, risk percentage, and a $100-risk example" disabled>Copy summary</button>
     </div>
@@ -510,6 +511,42 @@
         </div>
         <p class="api-notice">Stored in this browser. Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.</p>
       </div>
+      <div class="sheet-section" id="schwabSection">
+        <div class="sheet-label">Schwab trading <span class="sheet-status" id="schwabStatus"></span></div>
+        <div class="field">
+          <label for="schwabProxy">Schwab worker URL</label>
+          <input type="url" id="schwabProxy" placeholder="https://size-calc-schwab.you.workers.dev" autocomplete="off" spellcheck="false" data-input="schwabProxyChanged" />
+        </div>
+        <div id="schwabLogin">
+          <div class="row" style="align-items:center;gap:8px;">
+            <button class="btn" id="schwabConnect" data-action="connectSchwab">Log in to Schwab</button>
+          </div>
+          <p class="hint" id="schwabNote" role="status" style="display:none;"></p>
+          <div class="row" style="align-items:flex-end;">
+            <div class="field" style="flex:2;">
+              <label for="schwabRedirect">Address you landed on</label>
+              <input type="text" id="schwabRedirect" placeholder="https://127.0.0.1/?code=…" autocomplete="off" spellcheck="false" data-enter="finishSchwab" />
+            </div>
+            <div class="field" style="flex:0 0 auto;">
+              <button class="btn" data-action="finishSchwab">Connect</button>
+            </div>
+          </div>
+        </div>
+        <div id="schwabAccountRow" style="display:none;">
+          <div class="row" style="align-items:flex-end;">
+            <div class="field" style="flex:2;">
+              <label for="schwabAccount">Account</label>
+              <select id="schwabAccount" data-change="schwabAccountChanged"></select>
+            </div>
+            <div class="field" style="flex:0 0 auto;flex-direction:row;gap:8px;">
+              <button class="btn" data-action="reloadSchwabAccounts" title="Reload accounts" aria-label="Reload accounts">↻</button>
+              <button class="btn" data-action="disconnectSchwab">Disconnect</button>
+            </div>
+          </div>
+        </div>
+        <p class="hint">Sends shares orders from the shares card: a market entry, then your stop once it fills. The login stays in this browser, never in backups or sync. Schwab asks you to log in again every 7 days.</p>
+        <details class="hint-details"><summary>Setup</summary>Deploy the worker in <b>worker/schwab</b> with your app key, secret, and callback URL (its README has the steps), then paste its URL above. Log in to Schwab. If your callback is https://127.0.0.1, the page you land on won't load: copy its whole address and paste it here within about 30 seconds.</details>
+      </div>
       <div class="sheet-section">
         <div class="sheet-label">Backup</div>
         <div class="row" style="align-items:center;gap:8px;">
@@ -532,6 +569,15 @@
         <p class="hint" id="syncStatus"></p>
       </div>
     </div>
+  </div>
+
+  <div class="sheet trade-sheet" id="tradeSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="tradeTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="tradeTitle">Review order</h2>
+      <span class="sheet-status" id="tradeAccount"></span>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close order review">×</button>
+    </div>
+    <div id="tradeBody" aria-live="polite"></div>
   </div>
 
   <div class="sheet" id="riskSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="riskTitle" tabindex="-1">
