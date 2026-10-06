@@ -28,6 +28,7 @@ import { jumpTo } from './sticky-bar.js';
 import { setAtrMultiplier, setDirection, setStopPercent, setStopStrategy, stopsChanged } from './stops.js';
 import { loadTicker, refreshQuote, submitTicker, tickerInputChanged } from './ticker.js';
 import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.js';
+import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, setTradeStopDuration } from './trade.js';
 import { setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
@@ -51,6 +52,14 @@ export const actions = {
   importBackup: el => importBackup(el),
   toggleSync: () => toggleSync(),
   syncPassEnter: () => { if (!syncEnabled()) toggleSync(); },
+
+  // ---------- settings: Schwab login ----------
+  schwabProxyChanged: () => schwabProxyChanged(),
+  connectSchwab: () => connectSchwab(),
+  finishSchwab: el => { if (el.tagName === 'INPUT') el.blur(); finishSchwab(); },
+  reloadSchwabAccounts: () => reloadSchwabAccounts(),
+  schwabAccountChanged: () => schwabAccountChanged(),
+  disconnectSchwab: () => disconnectSchwab(),
 
   // ---------- account and risk ----------
   setSizingMode: el => setSizingMode(arg(el)),
@@ -80,6 +89,12 @@ export const actions = {
   sharesQtyChanged: el => sharesQtyChanged(el),
   shareShares: () => shareShares(),
   copyShares: () => copyShares(),
+
+  // ---------- Schwab order review ----------
+  openTrade: () => openTrade(),
+  setTradeStopDuration: el => setTradeStopDuration(arg(el)),
+  placeTrade: () => placeTrade(),
+  checkTradeStatus: () => checkTradeStatus(),
 
   // ---------- futures ----------
   futuresContractChanged: () => futuresContractChanged(),

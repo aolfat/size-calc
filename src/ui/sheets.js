@@ -1,7 +1,7 @@
-// Sheets: settings and account & risk, a panel under the header on desktop and a bottom sheet on phones.
+// Sheets: settings, account & risk, and the Schwab order review, a panel under the header on desktop and a bottom sheet on phones.
 import { state } from '../state.js';
 
-export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet' };
+export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet' };
 
 export function openSheet(name) {
   if (!SHEETS[name]) return;

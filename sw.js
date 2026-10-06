@@ -13,8 +13,9 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // only handle same-origin GETs; Tradier API calls pass straight through
+  // only handle same-origin GETs; Tradier and Schwab worker calls pass straight through
   if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) return;
+  if (new URL(e.request.url).searchParams.has('code')) return; // a Schwab login callback: never cache the code
   e.respondWith(
     fetch(e.request)
       .then(res => {

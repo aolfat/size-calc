@@ -20,6 +20,8 @@ Then in the app: Tradier API card → Sync → paste the URL, pick a passphrase
 (8+ chars, it is the only lock on your data), Enable sync. Repeat the URL +
 same passphrase on each device.
 
+The Schwab trading worker is separate, in `schwab/` (its own README).
+
 ## Notes
 
 - Wrong passphrase = different id = empty mailbox. There is no reset; pick a
