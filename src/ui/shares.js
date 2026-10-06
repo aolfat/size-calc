@@ -12,6 +12,7 @@ import { withFlash } from './feedback.js';
 import { riskDollars, syncFromDollar } from './risk.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { currentAtr5, entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName, updateStopAdjustment } from './stops.js';
+import { updateTradeButton } from './trade.js';
 
 // reverse sizing: type a share/contract count, risk $ follows
 
@@ -87,6 +88,17 @@ export function renderQuote() {
   updateModeSections();
 }
 
+// the risk-mode shares answer: direction, stop, entry, and the share count they size to (the card and the Schwab ticket both read it)
+
+export function sharesPlan() {
+  const isLong = state.direction === 'long';
+  const stop = isLong ? stopLongVal() : stopShortVal();
+  const entry = entryVal();
+  const riskPerShare = isLong ? (entry - stop) : (stop - entry);
+  const valid = !!state.quoteData && Number.isFinite(stop) && stop > 0 && Number.isFinite(entry) && riskPerShare > 0;
+  return { isLong, stop, entry, riskPerShare, valid, shares: valid ? unitsFor(riskDollars(), riskPerShare) : 0 };
+}
+
 export function renderShares() {
   const q = state.quoteData;
   if (!q) return;
@@ -96,20 +108,17 @@ export function renderShares() {
     document.getElementById('sharesStats').innerHTML = `<div class="section-title">Long shares · allocation</div>${allocationStats(r, entry, q.symbol, 'Shares')}<p class="hint">Entry ${fmt$(entry)} · before fees</p>`;
     document.getElementById('sharesImage').disabled = !!r.error;
     document.getElementById('sharesCopy').disabled = !!r.error;
+    updateTradeButton();
     return;
   }
   const price = effectivePrice(q);
-  const isLong = state.direction === 'long';
-  const stop = isLong ? stopLongVal() : stopShortVal();
   updateStopAdjustment();
-  const entry = entryVal();
+  const { isLong, stop, entry, riskPerShare, valid, shares } = sharesPlan();
   const customEntry = rawStop('entryPrice') > 0;
-  const risk = riskDollars();
-  const riskPerShare = isLong ? (entry - stop) : (stop - entry);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  const valid = Number.isFinite(stop) && stop > 0 && Number.isFinite(entry) && riskPerShare > 0;
   document.getElementById('sharesImage').disabled = !valid;
   document.getElementById('sharesCopy').disabled = !valid;
+  updateTradeButton();
 
   if (!valid) {
     const msg = !Number.isFinite(stop)
@@ -122,7 +131,6 @@ export function renderShares() {
     updateStickyBar();
     return;
   }
-  const shares = unitsFor(risk, riskPerShare);
   const posSize = shares * entry;
   const stopSource = stopSourceName(isLong, true);
 

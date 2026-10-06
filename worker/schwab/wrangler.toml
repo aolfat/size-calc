@@ -1,0 +1,13 @@
+name = "size-calc-schwab"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+[vars]
+# must match the callback URL in your Schwab app exactly (scheme, host, port, path, trailing slash)
+SCHWAB_CALLBACK_URL = "https://127.0.0.1"
+# pages allowed to call this worker from a browser, comma separated
+ALLOWED_ORIGINS = "https://aolfat.github.io,http://localhost:8765"
+
+# secrets, never in this file:
+#   npx wrangler secret put SCHWAB_APP_KEY
+#   npx wrangler secret put SCHWAB_APP_SECRET

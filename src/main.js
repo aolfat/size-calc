@@ -1,5 +1,5 @@
 // Boot: one delegated listener set, stored settings restored without marking sync dirty, first render, then
-// page listeners, sync, and an auto-load of the last ticker when a key is saved.
+// page listeners, sync, the Schwab login, and an auto-load of the last ticker when a key is saved.
 import { state } from './state.js';
 import { delegate } from './lib/delegate.js';
 import { actions } from './ui/actions.js';
@@ -21,6 +21,7 @@ import { initSimEvents } from './ui/sim.js';
 import { updateStickyBar } from './ui/sticky-bar.js';
 import { updateStopVisibility } from './ui/stops.js';
 import { fetchQuote, renderRecentTickers } from './ui/ticker.js';
+import { initSchwab } from './ui/trade.js';
 import { setView } from './ui/views.js';
 
 delegate(document, actions); // every data-action / data-input / data-change / data-enter in the page
@@ -65,6 +66,7 @@ window.addEventListener('offline', marketScheduleRefresh);
 
 renderRecentTickers();
 initSync();
+initSchwab(); // also finishes a Schwab login when this page is the callback
 
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {

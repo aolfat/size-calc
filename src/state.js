@@ -84,6 +84,10 @@ export function createState() {
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,
     spreadPendingCredit: false,
+    schwabRefreshing: null, // the one in-flight token refresh, shared by concurrent calls
+    tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent
+    tradeBusy: false,
+    tradeLast: null, // { symbol, at } of the last order placed, to flag a quick repeat
   };
 }
 

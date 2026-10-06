@@ -42,6 +42,26 @@
 .sheet-label { font-size:12px; font-weight:500; color:var(--text2); margin-bottom:8px; }
 
 .api-notice { font-size: 12px; color: var(--text3); margin-top: 8px; }
+#schwabStatus { margin-left:8px; }
+#schwabLogin { display:grid; gap:12px; }
+#schwabNote { margin-top:0; }
+#schwabSection .field + #schwabLogin, #schwabSection .field + #schwabAccountRow { margin-top:12px; }
+.trade-legs { display:grid; gap:10px; margin:0 0 12px; }
+.trade-legs > div { display:grid; grid-template-columns:92px 1fr; gap:10px; align-items:baseline; }
+.trade-legs dt { font-size:12px; color:var(--text2); }
+.trade-legs dd { margin:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; font:13px var(--mono); font-variant-numeric:tabular-nums; color:var(--text); }
+.trade-legs dd strong { font-size:15px; font-weight:600; }
+.trade-legs .shares-loss { color:var(--red); font-size:15px; font-weight:600; }
+.trade-legs .shares-detail { font-family:inherit; }
+.trade-warn { color:var(--amber); background:var(--amber-bg); border:1px solid #594016; border-radius:var(--radius); padding:8px 10px; font-size:12.5px; line-height:1.45; margin:8px 0; }
+.trade-json { font:11px/1.45 var(--mono); color:var(--text2); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:8px; margin-top:6px; overflow:auto; max-height:220px; }
+.trade-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.trade-confirm { background:linear-gradient(180deg, #16294a, #101f39); border-color:var(--blue-bd); color:var(--blue); font-weight:600; }
+.trade-confirm:disabled { opacity:0.5; cursor:default; }
+.trade-result { font:12.5px/1.45 var(--mono); margin-top:10px; color:var(--text2); }
+.trade-result:empty { display:none; }
+.trade-result.ok { color:var(--green); }
+.trade-result.bad { color:var(--red); }
 
 .kbd-toggle { background: none; border: none; color: var(--text3); font-size: 11.5px; cursor: pointer; padding: 2px 4px; }
 .kbd-toggle:hover { color: var(--text); }
@@ -66,4 +86,5 @@ kbd { background: var(--bg4); border: 1px solid var(--border2); border-bottom-wi
   .app:has(input:focus, select:focus, textarea:focus) .brand-tabs { display:none; } /* the keyboard owns the bottom while typing */
   .sheet { top:auto; left:0; right:0; bottom:0; width:100%; max-height:85vh; border-radius:18px 18px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); }
   .sheet-backdrop { background:rgba(0,0,0,0.5); }
+  .trade-actions .btn { flex:1; justify-content:center; min-height:46px; }
 }
