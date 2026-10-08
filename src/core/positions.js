@@ -1,7 +1,7 @@
 // @ts-check
 // Schwab positions as table rows (price, share of the account, stop and risk from working stop orders),
 // and the order plans for a breakeven stop or a market close on one of them.
-import { closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, optionStopTick, stopTick } from './orders.js';
+import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, optionStopTick, stopTick } from './orders.js';
 
 /**
  * @typedef {import('./orders.js').TradeAs} TradeAs
@@ -9,12 +9,15 @@ import { closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, optionSt
  * @typedef {{ assetType?: string, type?: string, symbol?: string, underlyingSymbol?: string, optionMultiplier?: number }} Instrument
  * @typedef {{ longQuantity?: number, shortQuantity?: number, averagePrice?: number, averageLongPrice?: number, averageShortPrice?: number, marketValue?: number, instrument?: Instrument }} Position
  * @typedef {{ instruction?: string, quantity?: number, instrument?: { symbol?: string } }} OrderLeg
- * @typedef {{ orderId?: number | string, orderType?: string, status?: string, stopPrice?: number, price?: number, quantity?: number, remainingQuantity?: number, orderLegCollection?: OrderLeg[], childOrderStrategies?: Order[] }} Order
- * @typedef {{ orderId: number | string | null, symbol: string, closes: 'long' | 'short', orderType: string, stop: number | null, price: number | null, qty: number }} Resting
+ * @typedef {{ orderId?: number | string, orderType?: string, orderStrategyType?: string, status?: string, stopPrice?: number, price?: number, quantity?: number, remainingQuantity?: number,
+ *   duration?: string, session?: string, enteredTime?: string, orderLegCollection?: OrderLeg[], childOrderStrategies?: Order[] }} Order
+ * @typedef {{ orderId: number | string | null, symbol: string, closes: 'long' | 'short', orderType: string, stop: number | null, price: number | null, qty: number,
+ *   oco: number | string | null, duration: string, session: string }} Resting
  * @typedef {{ symbol: string, label: string, under: string, option: { root: string, exp: string, type: string, strike: number } | null,
  *   tradeAs: TradeAs | null, qty: number, mult: number, avg: number, be: number | null, price: number, value: number, pctAcct: number,
  *   stop: number | null, stops: number, covered: number, risk: number | null, riskPct: number | null, stopOrders: Resting[], closers: Resting[] }} Row
- * @typedef {{ kind: 'cancel' | 'replace' | 'place', orderId?: number | string | null, was?: Resting, order?: object }} Step
+ * @typedef {{ kind: 'cancel' | 'replace' | 'place', orderId?: number | string | null, was?: Resting, order?: object, pairs?: Resting }} Step
+ * @typedef {{ error: string, stop: number, steps: Step[], paired: Resting[] }} Plan
  */
 
 /** 'AAPL  260620C00245000' → { root, exp, type, strike }; null for anything else. @param {string} symbol */
@@ -31,28 +34,56 @@ export function positionLabel(instrument) {
   return `${o.root} ${+mo}/${+d}/${y.slice(2)} ${o.strike}${o.type}`;
 }
 
-// statuses of an order resting at Schwab; AWAITING_PARENT_ORDER guards a position that isn't open yet
-const RESTING = new Set(['WORKING', 'ACCEPTED', 'QUEUED', 'PENDING_ACTIVATION', 'AWAITING_CONDITION', 'AWAITING_STOP_CONDITION', 'AWAITING_MANUAL_REVIEW', 'AWAITING_RELEASE_TIME']);
+// an order is in play until it ends; Schwab's other statuses (NEW, PENDING_*, AWAITING_*, QUEUED, WORKING...) still hold shares.
+// AWAITING_PARENT_ORDER waits on an entry that hasn't filled, so it holds nothing yet
+const ENDED = new Set(['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'REPLACED', 'AWAITING_PARENT_ORDER']);
+// a cancel Schwab refused still did its job when the order is already on its way out
+const GONE = new Set(['CANCELED', 'PENDING_CANCEL', 'EXPIRED', 'REJECTED', 'REPLACED']);
+/** @param {string} status */
+export const orderGone = status => GONE.has(status);
+
 /** @type {Record<string, 'long' | 'short'>} */
 const CLOSES = { SELL: 'long', SELL_TO_CLOSE: 'long', BUY_TO_COVER: 'short', BUY_TO_CLOSE: 'short', BUY: 'short' };
+const num = (/** @type {unknown} */ v) => Number(v) > 0 ? Number(v) : null;
+/** @param {Order} o @param {OrderLeg} leg */
+const orderQty = (o, leg) => Number(o.remainingQuantity) > 0 ? Number(o.remainingQuantity) : Number(o.quantity) || Number(leg.quantity) || 0;
 
-/** every resting single-leg order that closes a position, children of trigger and OCO orders included. @param {Order[]} orders @returns {Resting[]} */
+/** every order in play that closes a position, children of trigger and one-cancels-other orders included. @param {Order[]} orders @returns {Resting[]} */
 export function restingOrders(orders) {
   /** @type {Resting[]} */
+  const out = [];
+  let pairs = 0;
+  /** @param {Order} o @param {number | string | null} oco */
+  const walk = (o, oco) => {
+    const legs = o.orderLegCollection || [];
+    const closes = legs.length === 1 ? CLOSES[legs[0].instruction || ''] : undefined;
+    if (o.status && !ENDED.has(o.status) && closes) {
+      const qty = orderQty(o, legs[0]);
+      if (qty > 0) out.push({ orderId: o.orderId ?? null, symbol: legs[0].instrument?.symbol || '', closes, orderType: o.orderType || '',
+        stop: num(o.stopPrice), price: num(o.price), qty, oco, duration: o.duration || '', session: o.session || '' });
+    }
+    const group = o.orderStrategyType === 'OCO' ? o.orderId ?? `oco-${++pairs}` : null;
+    (o.childOrderStrategies || []).forEach(c => walk(c, group));
+  };
+  (orders || []).forEach(o => walk(o, null));
+  return out;
+}
+
+/** every single-leg order Schwab lists on a symbol, whatever its status, newest first. @param {Order[]} orders @param {string} symbol */
+export function ordersFor(orders, symbol) {
+  /** @type {{ orderId: number | string | null, orderType: string, status: string, instruction: string, stop: number | null, price: number | null, qty: number, entered: string }[]} */
   const out = [];
   /** @param {Order} o */
   const walk = o => {
     const legs = o.orderLegCollection || [];
-    const closes = legs.length === 1 ? CLOSES[legs[0].instruction || ''] : undefined;
-    if (RESTING.has(o.status || '') && closes) {
-      const qty = Number(o.remainingQuantity) > 0 ? Number(o.remainingQuantity) : Number(legs[0].quantity) || 0;
-      if (qty > 0) out.push({ orderId: o.orderId ?? null, symbol: legs[0].instrument?.symbol || '', closes, orderType: o.orderType || '',
-        stop: Number(o.stopPrice) > 0 ? Number(o.stopPrice) : null, price: Number(o.price) > 0 ? Number(o.price) : null, qty });
+    if (legs.length === 1 && legs[0].instrument?.symbol === symbol) {
+      out.push({ orderId: o.orderId ?? null, orderType: o.orderType || '', status: o.status || '', instruction: legs[0].instruction || '',
+        stop: num(o.stopPrice), price: num(o.price), qty: orderQty(o, legs[0]), entered: o.enteredTime || '' });
     }
     (o.childOrderStrategies || []).forEach(walk);
   };
   (orders || []).forEach(walk);
-  return out;
+  return out.sort((a, b) => b.entered.localeCompare(a.entered)).slice(0, 8);
 }
 
 /** what orders here can trade it as: stocks, ETFs and closed-end funds as equity, options as options. @param {Instrument} i @returns {TradeAs | null} */
@@ -60,6 +91,9 @@ function tradeAs(i) {
   if (i.assetType === 'OPTION') return 'OPTION';
   return i.assetType === 'EQUITY' || (i.assetType === 'COLLECTIVE_INVESTMENT' && (i.type === 'EXCHANGE_TRADED_FUND' || i.type === 'CLOSED_END_FUND')) ? 'EQUITY' : null;
 }
+
+/** @param {Resting} o */
+const isStop = o => /STOP/.test(o.orderType) && o.stop !== null;
 
 /**
  * The account's positions as rows sorted by underlying (stock before its options), with totals.
@@ -86,7 +120,7 @@ export function positionRows(account, orders) {
     const as = tradeAs(instrument);
     const closers = resting.filter(o => o.symbol === instrument.symbol && o.closes === (long ? 'long' : 'short'));
     // nearest stop first; each fills against the shares the ones before it left
-    const mine = closers.filter(o => /STOP/.test(o.orderType) && o.stop !== null).sort((a, b) => long ? Number(b.stop) - Number(a.stop) : Number(a.stop) - Number(b.stop));
+    const mine = closers.filter(isStop).sort((a, b) => long ? Number(b.stop) - Number(a.stop) : Number(a.stop) - Number(b.stop));
     let left = Math.abs(qty), loss = 0;
     for (const s of mine) {
       const q = Math.min(left, s.qty);
@@ -113,7 +147,11 @@ export function positionRows(account, orders) {
 export function fmtPositionPrice(p, as) { return as === 'OPTION' ? '$' + Number(p).toFixed(2) : fmtTick(p); }
 
 /** @type {Record<string, string>} */
-export const INSTRUCTION_WORDS = { SELL: 'sell', BUY_TO_COVER: 'buy to cover', SELL_TO_CLOSE: 'sell to close', BUY_TO_CLOSE: 'buy to close' };
+export const INSTRUCTION_WORDS = { SELL: 'sell', BUY_TO_COVER: 'buy to cover', SELL_TO_CLOSE: 'sell to close', BUY_TO_CLOSE: 'buy to close', BUY: 'buy', SELL_SHORT: 'sell short', BUY_TO_OPEN: 'buy to open', SELL_TO_OPEN: 'sell to open' };
+/** @type {Record<string, string>} */
+const ORDER_WORDS = { STOP: 'stop', STOP_LIMIT: 'stop limit', LIMIT: 'limit', TRAILING_STOP: 'trailing stop', TRAILING_STOP_LIMIT: 'trailing stop limit', MARKET: 'market' };
+/** 'STOP_LIMIT' → 'stop limit'. @param {string} type */
+export const orderTypeWord = type => ORDER_WORDS[type] || String(type || 'order').toLowerCase().replace(/_/g, ' ');
 
 /** @param {Row} row @returns {string} why orders can't go out for this row, or '' */
 function tradeError(row) {
@@ -125,40 +163,68 @@ function tradeError(row) {
 /** an order Schwab listed without an id can't be cancelled or replaced from here. @param {Step[]} steps */
 const unnamed = steps => steps.some(s => s.kind !== 'place' && s.orderId === null) ? 'Schwab listed an order on this position without an id. Change it in Schwab.' : '';
 
+/** @param {Resting[]} legs @returns {Step[]} */
+const cancels = legs => legs.map(was => ({ kind: 'cancel', orderId: was.orderId, was }));
+
 /**
- * One stop for the whole position at its average cost. The other stops are cancelled first (Schwab may refuse stops
- * for more than you hold), then the nearest is replaced, so the position is never without one; with none, a new stop is placed.
- * @param {Row} row @param {StopDuration} stopDuration @returns {{ error: string, stop: number, steps: Step[] }}
+ * A breakeven stop on every share without selling more than you hold, which Schwab refuses.
+ * Shares a limit target holds get a stop paired with that limit (one cancels the other); the rest get one plain stop.
+ * Order: the limits being re-paired are cancelled first, then the plain stops are cut down to the rest (others cancelled,
+ * the nearest replaced), then each limit is placed again with its stop. Between those, the paired shares have no stop for a moment.
+ * @param {Row} row @param {StopDuration} stopDuration @returns {Plan}
  */
 export function breakevenPlan(row, stopDuration) {
-  const fail = (/** @type {string} */ error) => ({ error, stop: row.be || 0, steps: [] });
+  const fail = (/** @type {string} */ error) => ({ error, stop: row.be || 0, steps: [], paired: [] });
   const blocked = tradeError(row);
   if (blocked) return fail(blocked);
   if (!(row.avg > 0) || row.be === null) return fail('Schwab shows no cost basis for this position, so it has no breakeven.');
-  const long = row.qty > 0, stop = row.be, qty = Math.abs(row.qty), as = row.tradeAs || 'EQUITY';
+  const long = row.qty > 0, be = row.be, held = Math.abs(row.qty), as = row.tradeAs || 'EQUITY', symbol = row.symbol;
   const px = (/** @type {number} */ p) => fmtPositionPrice(p, as);
-  if (long ? !(row.price > stop) : !(row.price < stop)) {
-    return fail(`The price ${px(row.price)} is at or ${long ? 'below' : 'above'} the breakeven stop ${px(stop)}. It would ${INSTRUCTION_WORDS[closingInstruction(as, long)]} right away.`);
+  if (long ? !(row.price > be) : !(row.price < be)) {
+    return fail(`The price ${px(row.price)} is at or ${long ? 'below' : 'above'} the breakeven stop ${px(be)}. It would ${INSTRUCTION_WORDS[closingInstruction(as, long)]} right away.`);
   }
-  const [nearest, ...others] = row.stopOrders;
-  if (nearest && !others.length && nearest.stop === stop && nearest.qty >= qty) return fail('The stop is already at breakeven for the whole position.');
-  const order = closeStopOrder({ symbol: row.symbol, assetType: as, isLong: long, qty, stop, stopDuration });
+  const odd = row.closers.find(o => o.oco === null && !isStop(o) && (o.orderType !== 'LIMIT' || o.price === null));
+  if (odd) return fail(`A ${orderTypeWord(odd.orderType)} order for ${odd.qty} is waiting to close part of this position. Change it in Schwab first.`);
+  /** @type {Map<number | string, Resting[]>} */
+  const groups = new Map();
+  for (const o of row.closers) if (o.oco !== null) groups.set(o.oco, [...(groups.get(o.oco) || []), o]);
+  const targets = row.closers.filter(o => o.oco === null && !isStop(o)).map(limit => ({ limit, legs: [limit] }));
+  const pairs = [...groups.values()].map(legs => ({ limit: legs.find(l => !isStop(l)), legs }));
+  if (pairs.some(p => !p.limit)) return fail('A one-cancels-other order on this position has no limit in it. Change it in Schwab first.');
+  const reserved = [...targets, ...pairs].reduce((n, p) => n + Number(p.limit?.qty), 0);
+  if (reserved > held) return fail(`The ${long ? 'sell' : 'buy'} orders on this position already add up to ${reserved}, more than the ${held} you hold. Fix them in Schwab first.`);
+  const rest = held - reserved;
+  const stopFor = (/** @type {number} */ qty) => closeStopOrder({ symbol, assetType: as, isLong: long, qty, stop: be, stopDuration });
+  // a pair whose stop is already at breakeven stays as it is
+  const repair = [...targets, ...pairs.filter(p => !p.legs.some(l => isStop(l) && l.stop === be))];
+  const plain = row.stopOrders.filter(o => o.oco === null); // nearest first
+  const keep = rest > 0 ? plain[0] : undefined;
+  const drop = (rest > 0 ? plain.slice(1) : plain).reverse(); // farthest first, so the nearest goes last
   /** @type {Step[]} */
-  const steps = others.map(was => ({ kind: 'cancel', orderId: was.orderId, was }));
-  steps.push(nearest ? { kind: 'replace', orderId: nearest.orderId, was: nearest, order } : { kind: 'place', order });
-  return { error: unnamed(steps), stop, steps };
+  const steps = [];
+  for (const p of repair) steps.push(...cancels([...p.legs].sort((a, b) => Number(isStop(a)) - Number(isStop(b)))).map(s => ({ ...s, pairs: p.limit })));
+  steps.push(...cancels(drop));
+  if (rest > 0 && !keep) steps.push({ kind: 'place', order: stopFor(rest) });
+  if (keep && !(keep.stop === be && keep.qty === rest)) steps.push({ kind: 'replace', orderId: keep.orderId, was: keep, order: stopFor(rest) });
+  for (const { limit } of repair) {
+    if (!limit || limit.price === null) continue;
+    const target = closeLimitOrder({ symbol, assetType: as, isLong: long, qty: limit.qty, price: limit.price, duration: stopDuration });
+    steps.push({ kind: 'place', order: ocoOrder(target, stopFor(limit.qty)), pairs: limit });
+  }
+  if (!steps.length) return fail('The position is already at breakeven: every share has a breakeven stop.');
+  return { error: unnamed(steps), stop: be, steps, paired: repair.flatMap(p => p.limit ? [p.limit] : []) };
 }
 
 /**
- * Close the whole position at market. Every resting order that would close it (stops and limit targets) is cancelled
- * first so nothing can sell twice; the close goes only if every cancel went through.
- * @param {Row} row @returns {{ error: string, stop: number, steps: Step[] }}
+ * Close the whole position at market. Every order in play that would close it is cancelled first so nothing can sell twice:
+ * targets first and the nearest stop last, so the position keeps a stop as long as it can. The close goes only if every cancel went through.
+ * @param {Row} row @returns {Plan}
  */
 export function closePlan(row) {
   const blocked = tradeError(row);
-  if (blocked) return { error: blocked, stop: 0, steps: [] };
-  /** @type {Step[]} */
-  const steps = row.closers.map(was => ({ kind: 'cancel', orderId: was.orderId, was }));
+  if (blocked) return { error: blocked, stop: 0, steps: [], paired: [] };
+  const others = row.closers.filter(o => !row.stopOrders.includes(o));
+  const steps = cancels([...others, ...[...row.stopOrders].reverse()]);
   steps.push({ kind: 'place', order: closeMarketOrder({ symbol: row.symbol, assetType: row.tradeAs || 'EQUITY', isLong: row.qty > 0, qty: Math.abs(row.qty) }) });
-  return { error: unnamed(steps), stop: 0, steps };
+  return { error: unnamed(steps), stop: 0, steps, paired: [] };
 }

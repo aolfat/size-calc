@@ -139,7 +139,7 @@ export const actions = {
   refreshAllPinned: () => refreshAllPinned(),
 
   // ---------- positions ----------
-  refreshPositions: () => refreshPositions(),
+  refreshPositions: () => refreshPositions(true),
   openPositionTrade: el => openPositionTrade(arg(el), el.dataset.arg2),
   setPositionStopDuration: el => setPositionStopDuration(arg(el)),
   placePositionTrade: () => placePositionTrade(),

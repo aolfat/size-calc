@@ -26,6 +26,9 @@
 .pos-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .pos-step.done { color: var(--green); }
 .pos-step.failed { color: var(--red); }
+.pos-orders { margin-top: 10px; font-size: 12px; color: var(--text2); }
+.pos-orders-title { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.pos-orders ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-family: var(--num); }
 
 @media (max-width: 600px) {
   .positions-card { padding: 14px; }

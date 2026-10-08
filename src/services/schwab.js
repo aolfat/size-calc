@@ -91,14 +91,29 @@ export async function schwabAccessToken() {
   return state.schwabRefreshing;
 }
 
-/** one Trader API call; never retried here, so an order is never sent twice */
+const READ_TIMEOUT = 15000;
+
+/** one Trader API call, never cached and never retried here, so an order is never sent twice */
 export async function schwabApi(path, { method = 'GET', body } = {}) {
   const token = await schwabAccessToken();
-  const res = await fetch(schwabProxy() + '/trader/v1' + path, {
-    method,
-    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // a read gives up after 15s so a hung call can't leave Refresh dead; an order waits, since giving up wouldn't unsend it
+  const ctrl = method === 'GET' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), READ_TIMEOUT) : 0;
+  let res;
+  try {
+    res = await fetch(schwabProxy() + '/trader/v1' + path, {
+      method,
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      ...(ctrl ? { signal: ctrl.signal } : {}),
+    });
+  } catch(e) {
+    if (ctrl && ctrl.signal.aborted) throw new Error(`No answer from Schwab in ${READ_TIMEOUT / 1000} seconds. Try again.`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 401) { // the access token was refused: the next call refreshes first
     const t = readTokens();
     if (t) store.set('schwab_tokens', JSON.stringify({ ...t, accessExp: 0 }));

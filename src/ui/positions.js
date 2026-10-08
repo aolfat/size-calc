@@ -4,12 +4,14 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { positionRows } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
+import { showToast } from './feedback.js';
 
 const POLL_MS = 30000;
 const money = v => (v < 0 ? '−' : '') + fmt$(Math.abs(v));
 const count = q => (q < 0 ? '−' : '') + Math.abs(q).toLocaleString('en-US');
 
-export async function refreshPositions() {
+/** read the account now; asked = a tap on Refresh (or r), which confirms when it lands; the 30s timer stays quiet */
+export async function refreshPositions(asked = false) {
   stopPositions();
   const id = ++state.positionsRequest;
   const acct = schwabConnected() ? schwabAccount() : null;
@@ -20,8 +22,9 @@ export async function refreshPositions() {
     // stops are extra: positions still show when the orders read fails
     const [account, orders] = await Promise.all([schwabPositions(), schwabRecentOrders().catch(() => null)]);
     if (id !== state.positionsRequest) return;
-    state.positions = { ...positionRows(account, orders || []), last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
+    state.positions = { ...positionRows(account, orders || []), orders: orders || [], last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
     state.positionsError = '';
+    if (asked) showToast(`Positions refreshed at ${new Date(state.positions.asOf).toLocaleTimeString()}.`);
   } catch(e) {
     if (id !== state.positionsRequest) return;
     state.positionsError = e instanceof TypeError ? 'Could not reach the Schwab worker. Check its URL in Settings.' : e.message;
@@ -33,7 +36,7 @@ export async function refreshPositions() {
 
 export function schedulePositions() {
   stopPositions();
-  if (state.positionsView && !document.hidden && schwabConnected()) state.positionsTimer = setTimeout(refreshPositions, POLL_MS);
+  if (state.positionsView && !document.hidden && schwabConnected()) state.positionsTimer = setTimeout(() => refreshPositions(), POLL_MS);
 }
 
 export function stopPositions() {
@@ -68,7 +71,7 @@ function riskCell(r) {
 // BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
 function tradeButtons(r) {
   if (!r.tradeAs) return '';
-  const atBe = r.be !== null && r.stops === 1 && r.stop === r.be && r.covered >= Math.abs(r.qty);
+  const atBe = r.be !== null && r.stops > 0 && r.stopOrders.every(s => s.stop === r.be) && r.covered >= Math.abs(r.qty);
   const arg = esc(r.symbol);
   return `<span class="pos-acts">${atBe ? '<span class="pos-locked">stop at breakeven</span>' : `<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close the whole position at market">Close</button></span>`;
 }
@@ -90,7 +93,7 @@ export function renderPositions() {
   const el = document.getElementById('positionsSection');
   const p = state.positions;
   document.getElementById('posCount').textContent = p && p.rows.length ? String(p.rows.length) : '';
-  const refresh = `<button class="btn" data-action="refreshPositions"${state.positionsBusy ? ' disabled' : ''} title="Read positions from Schwab now (r)">↻ Refresh</button>`;
+  const refresh = `<button class="btn" data-action="refreshPositions"${state.positionsBusy ? ' disabled' : ''} title="Read positions from Schwab now (r)">${state.positionsBusy ? '<span class="spinner" style="width:12px;height:12px;"></span> Refreshing…' : '↻ Refresh'}</button>`;
   if (!p) {
     el.innerHTML = !schwabConnected()
       ? `<div class="card empty-card"><div class="setup-title">Connect Schwab to see your positions</div><p>${state.positionsError ? esc(state.positionsError) : 'Positions come live from your Schwab account. Log in under Settings, Schwab trading.'}</p><button class="btn primary" data-action="openSheet" data-arg="settings">Open settings</button></div>`

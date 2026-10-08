@@ -79,6 +79,17 @@ export function closeMarketOrder(p) {
 }
 
 /**
+ * A limit that closes a held position: a target.
+ * @param {{ symbol: string, assetType: TradeAs, isLong: boolean, qty: number, price: number, duration: StopDuration }} p
+ */
+export function closeLimitOrder(p) {
+  return { orderType: 'LIMIT', session: 'NORMAL', duration: p.duration, orderStrategyType: 'SINGLE', price: p.price, orderLegCollection: closingLeg(p) };
+}
+
+/** Two orders where the first to fill cancels the other: a target and its stop. @param {object} a @param {object} b */
+export function ocoOrder(a, b) { return { orderStrategyType: 'OCO', childOrderStrategies: [a, b] }; }
+
+/**
  * Why a shares ticket can't be sent, or '' when it can.
  * @param {{ symbol: string, type?: string, qty: number, isLong: boolean, stop: number, bid?: number, ask?: number, last?: number }} t
  * @returns {string}
