@@ -122,6 +122,20 @@ test('a breakeven stop covers the shares no sell order holds, and pairs each lim
   assert.equal(short.steps[0].order.duration, 'DAY');
 });
 
+test('just moving the stop leaves the limit alone and puts a breakeven stop on the rest', async () => {
+  const { run } = await app();
+  const plan = plain(run(`breakevenPlan(${rowWith('HOOD')}, 'GOOD_TILL_CANCEL', { pair: false })`));
+  assert.equal(plan.error, '');
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId]), [['cancel', 102], ['replace', 101]], 'the limit is not touched');
+  assert.equal(plan.steps[1].order.orderLegCollection[0].quantity, 200);
+  assert.equal(plan.rest, 200);
+  assert.equal(plan.bare, 100, 'the shares in the limit stay without a stop');
+  assert.deepEqual(plan.paired, []);
+  const whole = ORDERS.map(o => o.orderId === 103 ? single(103, 'LIMIT', 'HOOD', 'SELL', 300, 45) : o);
+  assert.match(run(`breakevenPlan(${rowWith('HOOD', whole)}, 'DAY', { pair: false }).error`), /limit holds the whole position/);
+  assert.match(run(`breakevenPlan(${rowWith('AMD')}, 'DAY', { pair: false }).error`), /limit holds the whole position/);
+});
+
 test('a target already paired with a stop is placed again paired with a breakeven stop', async () => {
   const { run } = await app();
   const plan = plain(run(`breakevenPlan(${rowWith('AMD')}, 'GOOD_TILL_CANCEL')`));
@@ -196,6 +210,7 @@ test('the breakeven review re-reads Schwab, then sends each step once in order a
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'breakeven')");
   assert.equal(elements.get('posTradeSheet').style.display, '');
+  run("setPositionBeMode('pair')");
   const review = elements.get('posTradeBody').innerHTML;
   assert.match(review, /Cancel limit \$45\.00 for 100 shares, to pair it with a stop/);
   assert.match(review, /Cancel stop \$34\.00 for 50 shares/);
@@ -215,11 +230,44 @@ test('the breakeven review re-reads Schwab, then sends each step once in order a
   assert.equal(b.sent.length, 4, 'a sent ticket never goes again');
 });
 
+test('a limit in the way asks first: stop the rest, or pair with the limit, and nothing goes until you pick', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'breakeven')");
+  const ask = elements.get('posTradeBody').innerHTML;
+  assert.match(ask, /Your limit \$45\.00 for 100 shares already sells part of this position/);
+  assert.match(ask, /data-action="setPositionBeMode" data-arg="only"[^>]*>[\s\S]*Stop the rest[\s\S]*Breakeven stop for the 200 shares outside the limit\. The limit stays as it is; its 100 shares have no stop\./);
+  assert.match(ask, /data-action="setPositionBeMode" data-arg="pair"[^>]*>[\s\S]*Pair with the limit/);
+  assert.match(ask, /data-action="placePositionTrade" disabled/);
+  await run('placePositionTrade()');
+  assert.equal(b.sent.length, 0, 'no choice, no orders');
+
+  run("setPositionBeMode('only')");
+  const only = elements.get('posTradeBody').innerHTML;
+  assert.match(only, /aria-pressed="true" data-action="setPositionBeMode" data-arg="only"/);
+  assert.match(only, /Replace stop \$35\.50 for 250 shares with stop \$38\.20 for 200 shares/);
+  assert.doesNotMatch(only, /Cancel limit/);
+  assert.match(only, /data-action="placePositionTrade">Set stop \$38\.20</);
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/102', 'PUT /orders/101']);
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a stop at \$38\.20 for 200 shares\. Your limit keeps 100 shares without a stop\./);
+});
+
+test('a limit holding the whole position leaves only the pairing', async () => {
+  const b = broker();
+  b.live.orders = b.live.orders.map(o => o.orderId === 103 ? single(103, 'LIMIT', 'HOOD', 'SELL', 300, 45) : o);
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'breakeven')");
+  assert.match(elements.get('posTradeBody').innerHTML, /data-action="setPositionBeMode" data-arg="only" disabled/);
+  assert.match(elements.get('posTradeBody').innerHTML, /limit holds the whole position/);
+  assert.match(elements.get('posTradeBody').innerHTML, /Your limit \$45\.00 for 300 shares already sells the whole position\./);
+});
+
 test('the stop duration can be switched before sending and is remembered', async () => {
   const b = broker();
   const { run, elements, storage } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('TSLA', 'breakeven')");
-  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /shares in a limit/, 'nothing to pair, nothing said about pairing');
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /shares in a limit|setPositionBeMode/, 'no limit in the way: no question');
   run("setPositionStopDuration('DAY')");
   await run('placePositionTrade()');
   assert.equal(b.sent[0].body.duration, 'DAY');
@@ -230,6 +278,7 @@ test('a refused replace stops there and says what is left uncovered', async () =
   const b = broker({ refuse: c => c.method === 'PUT' ? json({ message: 'Order cannot be replaced.' }, 400) : null });
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'breakeven')");
+  run("setPositionBeMode('pair')");
   await run('placePositionTrade()');
   assert.deepEqual(b.sent.map(c => c.method), ['DELETE', 'DELETE', 'PUT']);
   const html = elements.get('posTradeBody').innerHTML;

@@ -14,7 +14,7 @@ import { effects } from './effects.js';
 import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsChanged, renderFutures, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { openPositionTrade, placePositionTrade, setPositionStopDuration } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
 import { refreshPositions } from './positions.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
@@ -142,6 +142,7 @@ export const actions = {
   refreshPositions: () => refreshPositions(true),
   openPositionTrade: el => openPositionTrade(arg(el), el.dataset.arg2),
   setPositionStopDuration: el => setPositionStopDuration(arg(el)),
+  setPositionBeMode: el => setPositionBeMode(arg(el)),
   placePositionTrade: () => placePositionTrade(),
 
   // ---------- simulator ----------
