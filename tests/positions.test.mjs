@@ -44,7 +44,7 @@ const ORDERS = [
 function network(schwab) {
   const calls = [];
   const fetch = async (url, init = {}) => {
-    calls.push({ url, headers: init.headers || {} });
+    calls.push({ url, headers: init.headers || {}, cache: init.cache });
     if (!url.startsWith(PROXY)) throw new Error('Unexpected request ' + url);
     return schwab(url.slice(PROXY.length));
   };
@@ -129,6 +129,7 @@ test('opening the tab loads the selected account live from Schwab, no Tradier ke
   assert.equal(net.calls.length, 2);
   assert.equal(account.url, PROXY + '/trader/v1/accounts/HASH1?fields=positions');
   assert.equal(account.headers.Authorization, 'Bearer acc-1');
+  assert.ok(net.calls.every(c => c.cache === 'no-store'), 'live data is never served from a cache');
   const q = new URL(orders.url).searchParams;
   assert.match(orders.url, /\/trader\/v1\/accounts\/HASH1\/orders\?/);
   const span = Date.parse(q.get('toEnteredTime')) - Date.parse(q.get('fromEnteredTime'));
@@ -179,6 +180,51 @@ test('a stop exactly at cost reads as breakeven, never a negative zero', async (
   const row = elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
   assert.match(row, /\$0\.00<\/span><span class="pos-sub">at breakeven/);
   assert.doesNotMatch(elements.get('positionsSection').innerHTML, /-0\.00/);
+});
+
+test('Refresh shows it is working and confirms when it lands; the 30s refresh stays quiet', async () => {
+  let gate = null;
+  const net = network(async path => { if (gate) await gate.promise; return schwabOk(path); });
+  const { run, elements, advance } = await app({ fetch: net.fetch, storage: connected(), timers: 'fake' });
+  run("setView('positions')");
+  await settle();
+  assert.equal(elements.get('errorBox').textContent, '', 'opening the tab says nothing extra');
+  gate = Promise.withResolvers();
+  const done = run('refreshPositions(true)');
+  await settle();
+  const busy = elements.get('positionsSection').innerHTML;
+  assert.match(busy, /data-action="refreshPositions" disabled[^>]*><span class="spinner"[^>]*><\/span> Refreshing…</);
+  assert.match(busy, /TEST 12\/18\/26 55C/, 'the table stays up while it reads');
+  gate.resolve();
+  gate = null;
+  await done;
+  assert.match(elements.get('positionsSection').innerHTML, /data-action="refreshPositions"[^>]*>↻ Refresh</);
+  assert.match(elements.get('errorBox').textContent, /^Positions refreshed at \d/);
+  elements.get('errorBox').textContent = '';
+  await advance(30000);
+  await settle();
+  assert.equal(net.calls.length, 6);
+  assert.equal(elements.get('errorBox').textContent, '', 'the automatic refresh stays quiet');
+});
+
+test('a Schwab read that never answers gives up after 15 seconds, and Refresh works again', async () => {
+  let hang = false;
+  const ok = network(schwabOk);
+  const fetch = async (url, init = {}) => hang
+    ? new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+    : ok.fetch(url, init);
+  const { run, elements, advance } = await app({ fetch, storage: connected(), timers: 'fake' });
+  await run('refreshPositions()');
+  hang = true;
+  run('refreshPositions(true)');
+  await settle();
+  assert.match(elements.get('positionsSection').innerHTML, /data-action="refreshPositions" disabled/);
+  await advance(15000);
+  await settle();
+  const html = elements.get('positionsSection').innerHTML;
+  assert.match(html, /No answer from Schwab in 15 seconds\. Try again\./);
+  assert.match(html, /data-action="refreshPositions" title="[^"]*">↻ Refresh</, 'the button is back');
+  assert.match(html, /TEST 12\/18\/26 55C/, 'the last table stays');
 });
 
 test('without orders the positions still show, with stops marked unavailable', async () => {
