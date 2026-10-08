@@ -4,7 +4,7 @@ import { hv20At, percentileOf } from '../core/bars.js';
 import { clampView, panView, viewRange, zoomView } from '../core/chart-view.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { dateStr, fmtN } from '../core/format.js';
-import { MONO_FONT } from '../lib/media.js';
+import { SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { attachTouchCrosshair, drawChart, setStopFromPrice } from './chart.js';
@@ -160,7 +160,7 @@ export function drawDailyChart() {
   const cText3 = css.getPropertyValue('--text3').trim();
   const cBorder = css.getPropertyValue('--border2').trim();
 
-  ctx.font = `10px ${MONO_FONT}`;
+  ctx.font = `10px ${SANS_FONT}`;
   ctx.fillStyle = cText3;
   ctx.strokeStyle = 'rgba(255,255,255,0.045)';
   ctx.lineWidth = 1;

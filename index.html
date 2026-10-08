@@ -12,7 +12,6 @@
 <link rel="icon" type="image/png" href="icon-180.png">
 <title>Size Calculator</title>
 <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles/base.css">
 <link rel="stylesheet" href="styles/chrome.css">
 <link rel="stylesheet" href="styles/calculator.css">
@@ -242,7 +241,7 @@
       <div class="field" style="flex:2;min-width:220px;position:relative;">
         <label for="quickInput">Option shorthand</label>
         <input type="text" id="quickInput" placeholder="AAPL 245 6/20  or  SPY 580 put 6/20" data-input="parseQuick" data-enter="fetchQuickOption" style="padding-right:120px;" />
-        <span id="quickParsed" style="position:absolute;right:10px;top:35px;font-size:11px;color:var(--teal);pointer-events:none;white-space:nowrap;font-family:var(--mono);"></span>
+        <span id="quickParsed" style="position:absolute;right:10px;top:35px;font-size:11px;color:var(--teal);pointer-events:none;white-space:nowrap;font-family:var(--num);"></span>
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
@@ -299,12 +298,12 @@
           <span class="quote-ticker" id="qTicker"></span>
           <span class="quote-price" id="qPrice"></span>
           <span class="quote-chg" id="qChg"></span>
-          <span id="qExt" style="font-size:13px;font-family:var(--mono);margin-left:4px;"></span>
+          <span id="qExt" style="font-size:13px;font-family:var(--num);margin-left:4px;"></span>
         </div>
         <div class="quote-levels">
           <span class="quote-lod">▼ LOD <span id="qLod"></span> <span class="lod-pct" id="qLodPct"></span></span>
           <span class="quote-hod">▲ HOD <span id="qHod"></span> <span class="lod-pct" id="qHodPct"></span></span>
-          <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="qVol"></span>
+          <span style="font-size:12px;color:var(--text3);font-family:var(--num);" id="qVol"></span>
         </div>
       </div>
     </div>
@@ -321,7 +320,7 @@
           </div>
           <div class="fgroup" id="bothCountGroup">
             <span style="font-size:12px;color:var(--text2);">± strikes</span>
-            <input type="number" id="bothStrikes" value="8" min="2" max="40" step="1" style="width:56px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="bothStrikesChanged" title="How many strikes to show on each side of ATM in the Both view" />
+            <input type="number" id="bothStrikes" value="8" min="2" max="40" step="1" style="width:56px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--num);outline:none;" data-input="bothStrikesChanged" title="How many strikes to show on each side of ATM in the Both view" />
           </div>
           <div class="seg" id="zoneSeg">
             <button id="zOtm" class="active" data-action="setZoneMode" data-arg="otm" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
@@ -331,17 +330,17 @@
           </div>
           <div class="fgroup" id="otmFloorGroup">
             <span style="font-size:12px;color:var(--text2);">OTM |Δ|≥</span>
-            <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="renderChain" title="Δ floor for the OTM zone" />
+            <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--num);outline:none;" data-input="renderChain" title="Δ floor for the OTM zone" />
           </div>
           <div class="fgroup" id="itmFloorGroup" style="display:none;">
             <span style="font-size:12px;color:var(--text2);">ITM |Δ|≤</span>
-            <input type="number" id="itmDelta" value="0.80" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="renderChain" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
+            <input type="number" id="itmDelta" value="0.80" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--num);outline:none;" data-input="renderChain" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
           </div>
-          <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
-          <span style="font-size:12px;color:var(--text2);font-family:var(--mono);" id="ivInfo"></span>
-          <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
+          <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--num);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
+          <span style="font-size:12px;color:var(--text2);font-family:var(--num);" id="ivInfo"></span>
+          <span style="font-size:12px;color:var(--text3);font-family:var(--num);" id="chainStatus"></span>
         </div>
-        <div id="spreadBanner" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--radius);font-size:12.5px;color:var(--blue);font-family:var(--mono);"></div>
+        <div id="spreadBanner" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--radius);font-size:12.5px;color:var(--blue);font-family:var(--num);"></div>
         <div class="chain-scroll">
           <table id="chainTable" style="min-width:1000px;">
             <thead id="chainHead"></thead>
@@ -356,7 +355,7 @@
   <div class="card chart-wrap" id="chartWrap" style="display:none;">
     <div class="chart-head">
       <span class="section-title" style="margin-bottom:0;">Chart</span>
-      <span style="font-size:11.5px;color:var(--text2);font-family:var(--mono);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
+      <span style="font-size:11.5px;color:var(--text2);font-family:var(--num);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
       <span class="ohlc" id="chartOhlc"></span>
     </div>
     <div class="chart-row">
@@ -474,11 +473,11 @@
       </div>
       <div class="hint" id="simMeta" style="margin:0 0 10px;"></div>
       <canvas id="simChart" height="240" style="width:100%;display:block;border-radius:10px;background:var(--bg3);border:1px solid var(--border);cursor:crosshair;"></canvas>
-      <div style="font-size:12.5px;color:var(--text2);font-family:var(--mono);margin:10px 2px;" id="simReadout"></div>
+      <div style="font-size:12.5px;color:var(--text2);font-family:var(--num);margin:10px 2px;" id="simReadout"></div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <span class="chip-label">Underlying</span>
         <input type="range" id="simPrice" style="flex:1;min-width:160px;" data-input="drawSim" />
-        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--mono);outline:none;" data-change="simPriceTyped" /></div>
+        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--num);outline:none;" data-change="simPriceTyped" /></div>
         <button class="filter-btn" data-action="simSetPrice" data-arg="stop">stop</button>
         <button class="filter-btn" data-action="simSetPrice" data-arg="current" title="Jump to the current underlying price">current</button>
         <button class="filter-btn" data-action="simSetPrice" data-arg="1">1R</button>

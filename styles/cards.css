@@ -13,4 +13,4 @@
   .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
   .pinned-header .card-act { order: 3; }
 }
-.pinned-symbol { font-size: 13px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+.pinned-symbol { font-size: 13px; font-weight: 600; color: var(--text); font-family: var(--num); }

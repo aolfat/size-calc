@@ -4,7 +4,7 @@ import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
 import { isBull, sizeUnit, spreadWidth, strikesLabel, typeLabel } from '../core/options.js';
 import { calcAllocation, unitsFor } from '../core/sizing.js';
-import { MONO_FONT, SANS_FONT } from '../lib/media.js';
+import { SANS_FONT } from '../lib/media.js';
 import { allocationForCard, allocationInputs, shareAllocation } from './allocation.js';
 import { showError, showToast } from './feedback.js';
 import { riskDollars } from './risk.js';
@@ -24,19 +24,19 @@ export function drawShareCard(spec) {
   let valueFont = 29, W = 0, rowCols = [];
   for (valueFont = 29; valueFont >= 20; valueFont--) {
     rowCols = rows.map(row => row.map(s => {
-      meas.font = `700 ${valueFont}px ${MONO_FONT}`;
+      meas.font = `700 ${valueFont}px ${SANS_FONT}`;
       const v = meas.measureText(s.value).width;
-      meas.font = `500 13px ${MONO_FONT}`;
+      meas.font = `500 13px ${SANS_FONT}`;
       const sb = s.sub ? meas.measureText(s.sub).width : 0;
       meas.font = `600 12px ${SANS_FONT}`;
       const lb = meas.measureText(s.label.toUpperCase()).width;
       return Math.max(v, sb, lb, 104);
     }));
-    meas.font = `700 30px ${MONO_FONT}`;
+    meas.font = `700 30px ${SANS_FONT}`;
     const titleW = spec.title.reduce((a, p) => a + meas.measureText(p.t).width, 0);
-    meas.font = `500 14px ${MONO_FONT}`;
+    meas.font = `500 14px ${SANS_FONT}`;
     const subW = meas.measureText(spec.sub).width;
-    meas.font = `500 13px ${MONO_FONT}`;
+    meas.font = `500 13px ${SANS_FONT}`;
     const footW = spec.footer ? meas.measureText(spec.footer).width + 220 : 0; // leave room for the wordmark
     W = Math.max(720, titleW + PAD * 2, subW + PAD * 2, footW + PAD * 2,
       ...rowCols.map(ws => PAD * 2 + ws.reduce((a, b) => a + b, 0) + GAP * (ws.length - 1)));
@@ -66,13 +66,13 @@ export function drawShareCard(spec) {
   x.strokeStyle = SC.border; x.lineWidth = 1.5; x.stroke();
 
   let tx = 40;
-  x.font = `700 30px ${MONO_FONT}`;
+  x.font = `700 30px ${SANS_FONT}`;
   spec.title.forEach(part => {
     x.fillStyle = part.c || SC.text;
     x.fillText(part.t, tx, 66);
     tx += x.measureText(part.t).width;
   });
-  x.font = `500 14px ${MONO_FONT}`;
+  x.font = `500 14px ${SANS_FONT}`;
   x.fillStyle = SC.text2;
   x.fillText(spec.sub, 40, 96);
 
@@ -86,11 +86,11 @@ export function drawShareCard(spec) {
       x.font = `600 12px ${SANS_FONT}`;
       x.fillStyle = SC.text3;
       x.fillText(s.label.toUpperCase(), sx, top + 14);
-      x.font = `700 ${valueFont}px ${MONO_FONT}`;
+      x.font = `700 ${valueFont}px ${SANS_FONT}`;
       x.fillStyle = s.color || SC.text;
       x.fillText(s.value, sx, top + 50);
       if (s.sub) {
-        x.font = `500 13px ${MONO_FONT}`;
+        x.font = `500 13px ${SANS_FONT}`;
         x.fillStyle = SC.text2;
         x.fillText(s.sub, sx, top + 74);
       }
@@ -99,11 +99,11 @@ export function drawShareCard(spec) {
   });
 
   if (spec.footer) {
-    x.font = `500 13px ${MONO_FONT}`;
+    x.font = `500 13px ${SANS_FONT}`;
     x.fillStyle = SC.text2;
     x.fillText(spec.footer, PAD, H - 30);
   }
-  x.font = `700 12px ${MONO_FONT}`;
+  x.font = `700 12px ${SANS_FONT}`;
   x.textAlign = 'right';
   x.fillStyle = SC.text3;
   x.fillText('SIZE / CALCULATOR', W - 40, H - 30);
