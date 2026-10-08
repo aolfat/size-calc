@@ -217,8 +217,9 @@ test('the breakeven review re-reads Schwab, then sends each step once in order a
 
 test('the stop duration can be switched before sending and is remembered', async () => {
   const b = broker();
-  const { run, storage } = await app({ fetch: b.fetch, storage: connected() });
+  const { run, elements, storage } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('TSLA', 'breakeven')");
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /shares in a limit/, 'nothing to pair, nothing said about pairing');
   run("setPositionStopDuration('DAY')");
   await run('placePositionTrade()');
   assert.equal(b.sent[0].body.duration, 'DAY');
