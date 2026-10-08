@@ -196,27 +196,3 @@ export function sharePinned(cardId) {
     })()
   }), `${d.parsed.ticker}-${d.parsed.strike}${d.isCall ? 'c' : 'p'}`);
 }
-
-export function shareSaved(id) {
-  const d = state.savedData[id];
-  if (!d) return;
-  if (d.sizing === 'allocation') {
-    const r = null; const qty = d.qty; const entry = d.entry;
-    shareAllocation(d, qty, entry, r); return;
-  }
-  const qty = d.qty || 0;
-  const sgn = d.credit ? -1 : 1;
-  const pnl = sgn * (d.mid - d.entry) * 100 * qty;
-  const lossAtStop = sgn * (d.entry - d.atLod) * 100 * qty;
-  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  effects.shareCanvasToClipboard(effects.drawShareCard({
-    title: [{ t: `${d.parsed.ticker} ${strikesLabel(d)} ` }, { t: typeLabel(d).toUpperCase(), c: isBull(d) ? SC.green : SC.red }, { t: ` ${d.parsed.expStr}` }],
-    sub: `POSITION · underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
-    stats: [
-      { label: d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct', value: fmt$(d.entry), color: SC.blue, sub: 'your fill' },
-      { label: 'Stop — underlying', value: fmt$(d.stopLevel), color: SC.red, sub: `${d.lodPct}% away · ${d.stopName}` },
-      { label: 'P&L now', value: `${pnl >= 0 ? '+' : '−'}${(d.entry > 0 ? Math.abs(pnl) / (d.entry * 100 * qty) * 100 : 0).toFixed(1)}%`, color: pnl >= 0 ? SC.green : SC.red, sub: `mid ${fmt$(d.mid)}` },
-      { label: lossAtStop > 0 ? 'Loss @ stop' : 'Locked @ stop', value: `${lossAtStop > 0 ? '−' : '+'}${(d.entry > 0 ? Math.abs(lossAtStop) / (d.entry * 100 * qty) * 100 : 0).toFixed(0)}%`, color: lossAtStop > 0 ? SC.red : SC.green, sub: `of cost · ${(Math.abs(lossAtStop) / acct * 100).toFixed(2)}% of acct` }
-    ]
-  }), `${d.parsed.ticker}-position`);
-}

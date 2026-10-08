@@ -1,5 +1,5 @@
 // @ts-check
-// Schwab share orders: the market entry that triggers a stop, the stop's price tick, and the checks a ticket must pass.
+// Schwab orders: the shares entry that triggers a stop, stops and market closes for held positions, price ticks, and ticket checks.
 
 /** @typedef {'DAY' | 'GOOD_TILL_CANCEL'} StopDuration */
 
@@ -40,6 +40,42 @@ export function sharesStopOrder({ symbol, qty, isLong, stop, stopDuration }) {
       orderLegCollection: [leg(isLong ? 'SELL' : 'BUY_TO_COVER')],
     }],
   };
+}
+
+/**
+ * Snap an option stop to a step every option class accepts ($0.05 under $3, $0.10 from $3; penny classes take these too),
+ * rounding toward the market: up on a long, down on a short.
+ * @param {number} stop @param {boolean} isLong @returns {number}
+ */
+export function optionStopTick(stop, isLong) {
+  const step = stop < 3 ? 5 : 10; // cents
+  const n = stop * 100 / step;
+  const near = Math.round(n);
+  const steps = Math.abs(n - near) < 1e-6 ? near : isLong ? Math.ceil(n) : Math.floor(n);
+  return steps * step / 100;
+}
+
+/** @typedef {'EQUITY' | 'OPTION'} TradeAs */
+
+/** The instruction that closes a long or a short. @param {TradeAs} assetType @param {boolean} isLong */
+export function closingInstruction(assetType, isLong) {
+  return assetType === 'OPTION' ? (isLong ? 'SELL_TO_CLOSE' : 'BUY_TO_CLOSE') : (isLong ? 'SELL' : 'BUY_TO_COVER');
+}
+
+/** @param {{ symbol: string, assetType: TradeAs, isLong: boolean, qty: number }} p */
+const closingLeg = ({ symbol, assetType, isLong, qty }) => [{ instruction: closingInstruction(assetType, isLong), quantity: qty, instrument: { symbol, assetType } }];
+
+/**
+ * A stop that closes a held position.
+ * @param {{ symbol: string, assetType: TradeAs, isLong: boolean, qty: number, stop: number, stopDuration: StopDuration }} p
+ */
+export function closeStopOrder(p) {
+  return { orderType: 'STOP', session: 'NORMAL', duration: p.stopDuration, orderStrategyType: 'SINGLE', stopPrice: p.stop, orderLegCollection: closingLeg(p) };
+}
+
+/** A market order that closes a held position, today. @param {{ symbol: string, assetType: TradeAs, isLong: boolean, qty: number }} p */
+export function closeMarketOrder(p) {
+  return { orderType: 'MARKET', session: 'NORMAL', duration: 'DAY', orderStrategyType: 'SINGLE', orderLegCollection: closingLeg(p) };
 }
 
 /**

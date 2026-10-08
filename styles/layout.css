@@ -10,7 +10,7 @@
 #appHeader { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #riskStrip { order: 3; } /* risk first: the max loss frames the trade */
 #modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection, #futuresSection { order: 6; }
 #optionTicket { order: 7; } #chartWrap { order: 8; }
-#quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #savedBar { order: 12; } #savedSection { order: 13; }
+#quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #positionsSection { order: 12; }
 #optionsSection { order: 14; } #marketSection, #utilsSection { order: 15; }
 
 /* Desktop shell (calculator and positions): the page holds still and each pane scrolls on its own.
@@ -26,8 +26,6 @@
   .app.calc-view #mainPane, .app.positions-view #mainPane { display: flex; flex-direction: column; grid-column: 2; grid-row: 2; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
   .app.positions-view #sidePane { display: none; }
   .app.positions-view #mainPane { grid-column: 1 / -1; }
-  .app.positions-view #savedSection { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 14px; align-items: start; }
-  .app.positions-view #savedSection > .pinned-card { margin-bottom: 0; }
   /* Tools, Futures and Market scroll as a page, but the header stays where the shell puts it (full width, same height)
      so switching views never moves the tabs; their content is a centered column under it */
   .app.utils-view, .app.futures-view, .app.market-view { max-width: none; padding: 0 20px 60px; }
@@ -60,10 +58,10 @@
   #sidePane .stat-grid, #trayPane .stat-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
   #sidePane .stat, #trayPane .stat { padding: 10px 12px; }
   #sidePane .stat .s-val, #trayPane .stat .s-val { font-size: 18px; }
-  /* narrow card columns (rail, tray, positions grid): the meta line with the editable stop gets its own row instead of an ellipsis */
-  #sidePane .pinned-header, #trayPane .pinned-header, #savedSection .pinned-header { flex-wrap: wrap; row-gap: 8px; }
+  /* narrow card columns (rail, tray): the meta line with the editable stop gets its own row instead of an ellipsis */
+  #sidePane .pinned-header, #trayPane .pinned-header { flex-wrap: wrap; row-gap: 8px; }
   #sidePane .pinned-header .pinned-badge, #trayPane .pinned-header .pinned-badge { display: none; }
-  #sidePane .pinned-header .pinned-meta, #trayPane .pinned-header .pinned-meta, #savedSection .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
+  #sidePane .pinned-header .pinned-meta, #trayPane .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
   #sidePane .pinned-header .card-act, #trayPane .pinned-header .card-act { order: 3; }
 }
 

@@ -4,8 +4,9 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fmtTick, inRegularHours, sharesStopOrder, sharesTicketError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
-import { parseSchwabRedirect, proxyOk, schwabAccount, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession } from '../services/schwab.js';
+import { parseSchwabRedirect, proxyOk, schwabAccount, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
+import { positionsAccountChanged } from './positions.js';
 import { renderShares, sharesPlan } from './shares.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
@@ -68,17 +69,20 @@ export async function reloadSchwabAccounts() {
     return false;
   } finally {
     updateSchwabUi();
+    positionsAccountChanged();
   }
 }
 
 export function schwabAccountChanged() {
   store.set('schwab_account', /** @type {HTMLSelectElement} */ (document.getElementById('schwabAccount')).value);
   updateSchwabUi();
+  positionsAccountChanged();
 }
 
 export function disconnectSchwab() {
   schwabDisconnect();
   updateSchwabUi();
+  positionsAccountChanged();
   showToast('Schwab disconnected on this device.');
 }
 
@@ -122,8 +126,6 @@ export function updateTradeButton() {
 
 // ---------- review sheet ----------
 
-function stopDuration() { return store.get('schwab_stop_duration') === 'DAY' ? 'DAY' : 'GOOD_TILL_CANCEL'; }
-
 /** the order exactly as the card sizes it right now, with what could go wrong spelled out */
 export function buildTradeTicket(now = Date.now()) {
   const q = state.quoteData;
@@ -136,7 +138,7 @@ export function buildTradeTicket(now = Date.now()) {
   const perShare = p => isLong ? p - stop : stop - p;
   const t = {
     symbol: q.symbol, qty, isLong, stop, entry, fill, bid: q.bid || 0, ask: q.ask || 0, last: q.last || 0,
-    customEntry: rawStop('entryPrice') > 0, stopDuration: stopDuration(),
+    customEntry: rawStop('entryPrice') > 0, stopDuration: schwabStopDuration(),
     plannedRisk: qty * perShare(entry), fillRisk: qty * perShare(fill),
     error, order: null, warnings: [], sent: false, orderId: '', result: null,
   };

@@ -80,7 +80,13 @@ export function createState() {
     zoneFilter: { otm: true, itm: false },
     railDetailSym: null,
     pinnedData: {},
-    savedData: {},
+    positions: null, // the last Schwab read: positionRows() plus { last4, asOf, stopsMissing }
+    positionsError: '',
+    positionsBusy: false,
+    positionsRequest: 0, // bumped per read, so a late answer for an old account is dropped
+    positionsTimer: null,
+    posTicket: null, // the position order the review sheet shows, frozen when it opens
+    posTradeBusy: false,
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,
     spreadPendingCredit: false,

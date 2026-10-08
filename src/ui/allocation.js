@@ -2,7 +2,7 @@
 import { state } from '../state.js';
 import { expChat, fmt$, fmtN, marketEscape } from '../core/format.js';
 import { isBull, sizeUnit, typeLabel } from '../core/options.js';
-import { calcAllocation, optionDte, optionPnl, shortPutMetrics, unitsFor } from '../core/sizing.js';
+import { calcAllocation, optionDte, shortPutMetrics, unitsFor } from '../core/sizing.js';
 import { store } from '../lib/store.js';
 import { renderPinnedCard, updatePinnedBar } from './cards.js';
 import { renderChain, setSide } from './chain.js';
@@ -123,14 +123,13 @@ export function allocationStats(r, unitCost, symbol, word) {
     </div>${r.reason ? `<p class="hint" role="status">${r.reason}</p>` : ''}`;
 }
 
-export function allocationOptionBody(d, qty, entry = d.mid, r = null) {
+export function allocationOptionBody(d, qty, entry, r) {
   const remaining = optionDte(d.parsed.expStr);
-  const dte = r ? remaining : d.entryDte; // saved entry premium must not annualize over a shrinking window
-  const duration = r ? `${Math.max(0, remaining)} DTE` : `${dte ?? 'n/a'} DTE at save · ${Math.max(0, remaining)} remaining`;
-  const m = d.shortPut ? shortPutMetrics(d.parsed.strike, entry, qty, dte) : null;
+  const duration = `${Math.max(0, remaining)} DTE`;
+  const m = d.shortPut ? shortPutMetrics(d.parsed.strike, entry, qty, remaining) : null;
   const delta = Number.isFinite(d.delta) ? d.delta.toFixed(3) : 'n/a';
   const spread = d.mid > 0 && Number.isFinite(d.bid) && Number.isFinite(d.ask) && d.ask >= d.bid ? ((d.ask - d.bid) / d.mid * 100).toFixed(1) + '%' : 'n/a';
-  return `${r ? allocationStats(r, (d.shortPut ? d.parsed.strike : entry) * 100, d.parsed.ticker, 'Contracts') : ''}
+  return `${allocationStats(r, (d.shortPut ? d.parsed.strike : entry) * 100, d.parsed.ticker, 'Contracts')}
     <div class="stat-grid" style="margin-top:12px;">
       ${m ? `<div class="stat highlight"><div class="s-label">Assignment notional</div><div class="s-val">${fmt$(m.notional)}</div><div class="s-sub">${qty * 100} shares at ${fmt$(d.parsed.strike)}</div></div>
       <div class="stat"><div class="s-label">Premium received</div><div class="s-val">${fmt$(m.premium)}</div><div class="s-sub">${fmt$(entry)} per share</div></div>
@@ -153,47 +152,37 @@ export function pinAllocation(symbol) {
   renderPinnedCard(id); updatePinnedBar();
 }
 
-export function renderAllocationCard(id, d, saved = false) {
-  const r = saved ? null : allocationForCard(d);
-  const qty = saved ? d.qty : r.units;
-  const entry = saved ? d.entry : d.mid;
+export function renderAllocationCard(id, d) {
+  const r = allocationForCard(d);
+  const qty = r.units;
   const error = allocationQuoteError(d);
-  const pnl = optionPnl(d, entry, d.mid, qty);
-  const unitBase = d.shortPut ? d.parsed.strike : entry;
-  const pnlPct = unitBase > 0 ? optionPnl(d, entry, d.mid, 1) / (unitBase * 100) * 100 : 0;
   const el = document.getElementById(id);
   el.innerHTML = `<div class="pinned-header allocation-header">
     <span class="tag ${isBull(d) ? 'call' : 'put'}">${d.shortPut ? 'Short put' : 'Long ' + (d.isCall ? 'call' : 'put')}</span>
     <span class="pinned-symbol">${marketEscape(d.parsed.ticker)} $${d.parsed.strike} ${marketEscape(d.parsed.expStr)}</span>
-    <span class="pinned-meta">${saved ? 'POSITION' : 'ALLOCATION'} · ${marketEscape(d.asOf || '')}</span>
-    <button class="filter-btn" data-action="${saved ? 'copySaved' : 'copyPinned'}" data-arg="${id}">copy</button>
-    <button class="filter-btn" data-action="${saved ? 'shareSaved' : 'sharePinned'}" data-arg="${id}">share</button>
-    <button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} data-action="${saved ? 'simFromSaved' : 'simFromPinned'}" data-arg="${id}">sim</button>
-    ${saved ? '' : `<button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} data-action="saveCard" data-arg="${id}">save</button>`}
-    <button class="filter-btn" data-action="${saved ? 'refreshSaved' : 'refreshPinned'}" data-arg="${id}">↻</button>
-    <button class="filter-btn" aria-label="Remove card" data-action="${saved ? 'removeSaved' : 'removePinned'}" data-arg="${id}">×</button>
+    <span class="pinned-meta">ALLOCATION · ${marketEscape(d.asOf || '')}</span>
+    <button class="filter-btn" data-action="copyPinned" data-arg="${id}">copy</button>
+    <button class="filter-btn" data-action="sharePinned" data-arg="${id}">share</button>
+    <button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} data-action="simFromPinned" data-arg="${id}">sim</button>
+    <button class="filter-btn" data-action="refreshPinned" data-arg="${id}">↻</button>
+    <button class="filter-btn" aria-label="Remove card" data-action="removePinned" data-arg="${id}">×</button>
     </div>
-    ${saved ? `<div class="stat-grid">
-      <div class="stat"><div class="s-label">${d.shortPut ? 'Entry credit' : 'Entry debit'} / share</div><div class="s-val"><input aria-label="Entry premium" class="s-val-input" type="number" value="${entry}" min="0.01" step="0.01" data-change="savedEntryChanged" data-arg="${id}" /></div><div class="s-sub">edit to your fill</div></div>
-      <div class="stat"><div class="s-label">Contracts held</div><div class="s-val"><input aria-label="Contracts held" class="s-val-input" type="number" value="${qty}" min="0" step="1" data-change="savedQtyChanged" data-arg="${id}" /></div></div>
-      <div class="stat ${pnl >= 0 ? 'good' : 'danger'}"><div class="s-label">P&amp;L now</div><div class="s-val">${error ? '—' : fmt$(pnl)}</div><div class="s-sub">${error ? marketEscape(error) : `${pnlPct.toFixed(2)}% on ${d.shortPut ? 'notional' : 'debit'} · at mid`}</div></div>
-    </div>` : ''}
-    ${!saved && error ? `<p class="shares-error">${error}</p>` : allocationOptionBody(d, qty, entry, r)}`;
+    ${error ? `<p class="shares-error">${error}</p>` : allocationOptionBody(d, qty, d.mid, r)}`;
   withFlash(el);
 }
 
-export function allocationSummary(d, qty, entry, r = null) {
+export function allocationSummary(d, qty, entry, r) {
   const total = d.shortPut ? d.parsed.strike * 100 * qty : entry * 100 * qty;
   const metrics = d.shortPut ? shortPutMetrics(d.parsed.strike, entry, qty, optionDte(d.parsed.expStr)) : null;
-  return `${d.shortPut ? 'Sell' : 'Buy'} ${qty} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} $${d.parsed.strike} ${d.isCall ? 'call' : 'put'} @ ${fmtN(entry, 2)} · ${d.shortPut ? 'assignment notional' : 'debit'} ${fmt$(total)}${metrics ? ` · breakeven ${fmt$(metrics.basis)} · maximum loss ${fmt$(metrics.maxLoss)} · return on notional ${(metrics.returnOnNotional * 100).toFixed(2)}%` : ''}${r ? ` · total allocation ${r.actualPct.toFixed(2)}%` : ''} · before fees`;
+  return `${d.shortPut ? 'Sell' : 'Buy'} ${qty} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} $${d.parsed.strike} ${d.isCall ? 'call' : 'put'} @ ${fmtN(entry, 2)} · ${d.shortPut ? 'assignment notional' : 'debit'} ${fmt$(total)}${metrics ? ` · breakeven ${fmt$(metrics.basis)} · maximum loss ${fmt$(metrics.maxLoss)} · return on notional ${(metrics.returnOnNotional * 100).toFixed(2)}%` : ''} · total allocation ${r.actualPct.toFixed(2)}% · before fees`;
 }
 
-export function shareAllocation(d, qty, entry, r = null) {
-  if (!Number.isFinite(entry) || entry <= 0 || (r && r.error)) return;
+export function shareAllocation(d, qty, entry, r) {
+  if (!Number.isFinite(entry) || entry <= 0 || r.error) return;
   const m = d.shortPut ? shortPutMetrics(d.parsed.strike, entry, qty, optionDte(d.parsed.expStr)) : null;
   effects.shareCanvasToClipboard(effects.drawShareCard({
     title: [{ t: `${d.parsed.ticker} $${d.parsed.strike} ${typeLabel(d).toUpperCase()} ${d.parsed.expStr}` }],
-    sub: `${qty} contracts · ${r ? 'allocation plan' : 'position'} · before fees`,
+    sub: `${qty} contracts · allocation plan · before fees`,
     stats: [
       { label: m ? 'Assignment notional' : 'Full debit', value: fmt$(m ? m.notional : entry * 100 * qty) },
       { label: m ? 'Premium received' : 'Entry premium', value: fmt$(m ? m.premium : entry) },

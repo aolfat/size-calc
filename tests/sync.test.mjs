@@ -35,18 +35,15 @@ test('a remote apply keeps unsynced local edits, adopts the rest, and refreshes 
   assert.deepEqual([...state.syncDirty], ['calc_risk'], 'applying a remote copy is not a local edit');
 });
 
-test('positions merge per id and a tombstoned delete stays deleted', async () => {
-  const local = JSON.stringify({ a: { v: 1 }, b: { v: 1 } });
-  const remote = "JSON.stringify({ b: { v: 2 }, c: { v: 2 } })";
-  const tombstone = "JSON.stringify({ a: Date.now() })";
-
-  const clean = new Map([['saved_positions', local]]);
-  (await app({ storage: clean })).run(`mergeBackupPayload({ saved_positions: ${remote}, deleted_positions: ${tombstone} }, new Set())`);
-  assert.deepEqual(JSON.parse(clean.get('saved_positions')), { b: { v: 2 }, c: { v: 2 } });
-
-  const dirty = new Map([['saved_positions', local]]);
-  (await app({ storage: dirty })).run(`mergeBackupPayload({ saved_positions: ${remote}, deleted_positions: ${tombstone} }, new Set(['saved_positions']))`);
-  assert.deepEqual(JSON.parse(dirty.get('saved_positions')), { b: { v: 1 }, c: { v: 2 } }, 'local edits win where both changed');
+test('old saved positions from other devices are left alone and never sent', async () => {
+  const storage = new Map([['saved_positions', '{"a":1}'], ['calc_risk', '1']]);
+  const { run } = await app({ storage });
+  assert.deepEqual(run("BACKUP_KEYS.filter(k => /positions/.test(k))"), []);
+  run(`mergeBackupPayload({ saved_positions: '{"b":2}', deleted_positions: '{"a":1}', calc_risk: '2' }, new Set())`);
+  assert.equal(storage.get('saved_positions'), '{"a":1}');
+  assert.equal(storage.has('deleted_positions'), false);
+  assert.equal(storage.get('calc_risk'), '2');
+  assert.doesNotMatch(run('buildBackup()'), /saved_positions/);
 });
 
 test('a file import with no recognized keys changes nothing', async () => {

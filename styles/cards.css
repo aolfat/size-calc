@@ -1,6 +1,5 @@
 /* Pinned idea cards and saved position cards. */
 .pinned-card { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px; box-shadow: 0 8px 24px -18px rgba(0,0,0,0.8); }
-.saved-card { box-shadow: inset 3px 0 0 var(--blue-bd), 0 8px 24px -18px rgba(0,0,0,0.8); }
 .pinned-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .allocation-header { flex-wrap: wrap !important; }
 .allocation-header .pinned-meta { flex-basis: 100%; font-size: 0.75rem; color: var(--text2); }

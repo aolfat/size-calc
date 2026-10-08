@@ -5,7 +5,6 @@ import { store } from '../lib/store.js';
 import { applyBackup, buildBackup } from '../services/backup.js';
 import { deriveSyncCreds, onSyncView, saveDirty, scheduleSyncPush, syncApplyRemote, syncDecrypt, syncEnabled, syncFetchRemote, syncPull, syncPush } from '../services/sync.js';
 import { showError, showToast } from './feedback.js';
-import { loadSaved, updateSavedBar } from './positions.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
 import { updateStopVisibility } from './stops.js';
@@ -48,9 +47,6 @@ export function syncRehydrate() {
     if (tick.trim()) document.getElementById('ticker').value = tick; // never yank a symbol the user typed or loaded
     updateApiStatus();
     renderUsdPresets();
-    Object.keys(state.savedData).forEach(id => { const el = document.getElementById(id); if (el) el.remove(); delete state.savedData[id]; });
-    loadSaved();
-    updateSavedBar();
     recalcAll();
   } finally { state.syncSuppress = false; }
 }
