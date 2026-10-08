@@ -210,7 +210,8 @@ function choicePrompt(t) {
   const only = t.options.only;
   const onlySub = only.error || `Breakeven stop for the ${units(row, only.rest)} outside the ${many ? 'limits' : 'limit'}. ${many ? 'The limits stay as they are' : 'The limit stays as it is'}${only.bare ? `; ${many ? 'their' : 'its'} ${units(row, only.bare)} have no stop.` : ', with its own stop where it is.'}`;
   const opt = (mode, title, sub, off) => `<button class="pos-choice-opt${t.mode === mode ? ' active' : ''}" aria-pressed="${t.mode === mode}" data-action="setPositionBeMode" data-arg="${mode}"${off || t.sent ? ' disabled' : ''}><strong>${title}</strong><span>${esc(sub)}</span></button>`;
-  return `<div><dt>Stop covers</dt><dd><span class="shares-detail">${esc(what)} part of this position. Schwab won't take a stop for the same shares too.</span>
+  const share = inLimit >= Math.abs(row.qty) ? 'the whole position' : 'part of this position';
+  return `<div><dt>Stop covers</dt><dd><span class="shares-detail">${esc(what)} ${share}. Schwab won't take a stop for the same shares too.</span>
     <div class="pos-choice" role="group" aria-label="What the breakeven stop covers">
       ${opt('only', 'Stop the rest', onlySub, !!only.error)}
       ${opt('pair', 'Pair with the limit', `Every share gets a breakeven stop. The ${many ? 'limits are' : 'limit is'} cancelled and placed again with ${many ? 'their' : 'its'} own stop.`, false)}

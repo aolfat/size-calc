@@ -260,6 +260,7 @@ test('a limit holding the whole position leaves only the pairing', async () => {
   await run("openPositionTrade('HOOD', 'breakeven')");
   assert.match(elements.get('posTradeBody').innerHTML, /data-action="setPositionBeMode" data-arg="only" disabled/);
   assert.match(elements.get('posTradeBody').innerHTML, /limit holds the whole position/);
+  assert.match(elements.get('posTradeBody').innerHTML, /Your limit \$45\.00 for 300 shares already sells the whole position\./);
 });
 
 test('the stop duration can be switched before sending and is remembered', async () => {
