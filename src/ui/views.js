@@ -7,7 +7,7 @@ import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { renderFutures } from './futures.js';
 import { pauseLive, resumeLive, stopLive } from './live.js';
 import { loadMarket, marketScheduleRefresh } from './market.js';
-import { refreshAllSaved, updateSavedBar } from './positions.js';
+import { refreshPositions, stopPositions } from './positions.js';
 import { recalcAll } from './risk.js';
 import { updateSetupNotice } from './settings.js';
 import { setQuoteVisible, updateModeSections } from './shares.js';
@@ -49,22 +49,17 @@ export function setView(v) {
   document.getElementById('pinnedBar').style.display = hide;
   document.getElementById('pinnedSection').style.display = hide;
   setQuoteVisible(calc && !futures && !!state.quoteData);
-  document.getElementById('savedBar').style.display = state.positionsView ? '' : 'none';
   updateChartVisibility();
   // the window may have resized while the charts were hidden: repaint at the current size on the way back
   if (calc && !futures && document.getElementById('chartWrap').clientWidth > 0) { if (state.chartBars.length) drawChart(); else if (state.dailyBars.length) drawDailyChart(); }
-  document.getElementById('savedSection').style.display = state.positionsView ? '' : 'none';
+  document.getElementById('positionsSection').style.display = state.positionsView ? '' : 'none';
   document.getElementById('utilsSection').style.display = state.utilsView ? '' : 'none';
   document.getElementById('marketSection').style.display = state.marketView ? '' : 'none';
   marketScheduleRefresh();
   if (state.marketView) { pauseLive(); loadMarket(); }
   else if (calc && !document.hidden) resumeLive();
   if (state.utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
-  if (state.positionsView) {
-    updateSavedBar();
-    // fresh P&L on open when a key is available
-    if (document.getElementById('apiKey').value.trim() && Object.keys(state.savedData).length) refreshAllSaved();
-  }
+  if (state.positionsView) refreshPositions(); else stopPositions();
   updateStickyBar();
 }
 

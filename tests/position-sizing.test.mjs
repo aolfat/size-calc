@@ -526,13 +526,10 @@ test('allocation option selection validates quotes and does not require Greeks o
   assert.equal(calc('').contracts, 0);
 });
 
-test('short put payoff and simulator use credit minus close with assignment notional as return basis', async () => {
+test('the short put simulator uses assignment notional as its return basis', async () => {
   const { run } = await app();
   run("var put = { sizing: 'allocation', shortPut: true, credit: true, isCall: false, parsed: { ticker: 'RKLB', strike: 65, expStr: '2099-01-16' }, mid: 2.1, iv: 0.5, underlyingPrice: 68 }; var sim = simParamsFromCard(put, 2.1, 2);");
   assert.equal(run('simReturnBase(sim)'), 65);
-  assert.equal(run('optionPnl(put, 2.1, 1.1, 2)'), 200);
-  assert.equal(run('optionPnl(put, 2.1, 65, 2)'), -12580);
-  assert.equal(run('optionPnl(put, 2.1, 0, 2)'), 420);
   assert.equal(run('sim.qty'), 2);
   assert.equal(run('simParamsFromCard(put, 2.1, 0).qty'), 0);
   assert.equal(run('simReturnBase({ credit: true, width: 10, entry: 2 })'), 8);
@@ -559,29 +556,21 @@ function setupAllocationPut(run) {
     var copiedText, sharedSpec; copyPlainText = text => { copiedText = text; }; drawShareCard = spec => { sharedSpec = spec; return {}; }; shareCanvasToClipboard = () => {};`);
 }
 
-test('pinned and saved allocation trades retain side, quantities, payoff and sharing after mode changes', async () => {
-  const { run, elements, storage } = await app();
+test('pinned allocation trades retain side, quantities, payoff and sharing after mode changes', async () => {
+  const { run, elements } = await app();
   setupAllocationPut(run);
   assert.match(elements.get(run('pinnedId')).innerHTML, /Short put/);
+  assert.doesNotMatch(elements.get(run('pinnedId')).innerHTML, /saveCard/, 'positions come from Schwab, cards are not saved');
   run("setSizingMode('risk'); copyPinned(pinnedId); sharePinned(pinnedId);");
   assert.match(run('copiedText'), /Sell 2.*assignment notional \$13,000\.00/);
   assert.doesNotMatch(run('copiedText'), /stop|NaN/);
   assert.equal(run("sharedSpec.stats.find(s => s.label === 'Maximum loss').value"), '$12,580.00');
-  run("saveCard(pinnedId); var savedId = Object.keys(savedData)[0]; savedData[savedId].mid = 1.1; renderSavedCard(savedId); copySaved(savedId); shareSaved(savedId);");
-  assert.equal(run('savedData[savedId].qty'), 2);
-  assert.match(elements.get(run('savedId')).innerHTML, /\$200\.00/);
-  assert.match(run('copiedText'), /Sell 2.*assignment notional \$13,000\.00/);
-  assert.equal(JSON.parse(storage.get('saved_positions'))[run('savedId')].shortPut, true);
-  run("for (const id of Object.keys(savedData)) delete savedData[id]; loadSaved();");
-  assert.equal(run('savedData[savedId].shortPut'), true);
-  assert.equal(run('savedData[savedId].qty'), 2);
 });
 
-test('allocation does not save or simulate a phantom contract when no contracts fit', async () => {
+test('allocation does not simulate a phantom contract when no contracts fit', async () => {
   const { run } = await app();
   setupAllocationPut(run);
-  run("exposureBySymbol.RKLB = 10000; saveCard(pinnedId); var simulated = false; openSim = () => { simulated = true; }; simFromPinned(pinnedId); copyPinned(pinnedId);");
-  assert.equal(run('Object.keys(savedData).length'), 0);
+  run("exposureBySymbol.RKLB = 10000; var simulated = false; openSim = () => { simulated = true; }; simFromPinned(pinnedId); copyPinned(pinnedId);");
   assert.equal(run('simulated'), false);
   assert.match(run('copiedText'), /Sell 0/);
 });
@@ -643,12 +632,9 @@ test('DTE uses the New York calendar and zero DTE has no annualization', async (
   assert.equal(run("optionDte('2026-10-09', new Date('2026-09-21T16:00:00Z'))"), 18);
 });
 
-test('saved annualization retains the original holding window and refresh validates standard contracts', async () => {
-  const { run, elements } = await app();
+test('refresh validates standard contracts', async () => {
+  const { run } = await app();
   setupAllocationPut(run);
-  run("saveCard(pinnedId); var savedId = Object.keys(savedData)[0]; savedData[savedId].entryDte = 18; renderSavedCard(savedId);");
-  assert.match(elements.get(run('savedId')).innerHTML, /65\.5% simple annualized/);
-  assert.match(elements.get(run('savedId')).innerHTML, /DTE at save/);
   run(`var fixtureResponses = [ { quotes: { quote: {symbol:'RKLB', type:'stock',last:68} } },
     { quotes: { quote: {symbol:'TEST',root_symbol:'RKLB1',contract_size:100,bid:2,ask:2.2} } } ];
     fetch = async () => ({ json: async () => fixtureResponses.shift() });`);

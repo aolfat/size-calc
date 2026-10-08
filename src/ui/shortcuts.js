@@ -5,6 +5,7 @@ import { closeDetails } from './detail.js';
 import { setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketRefreshToday, marketSetScope } from './market.js';
+import { refreshPositions } from './positions.js';
 import { toggleQuick } from './quick-lookup.js';
 import { stepRisk } from './risk.js';
 import { closeSheet } from './sheets.js';
@@ -51,7 +52,7 @@ export function initShortcuts() {
       case 't':
       case 'u': setView(state.utilsView ? 'calc' : 'utils'); break;
       case 'm': setView(state.marketView ? 'calc' : 'market'); break;
-      case 'r': if (state.marketView) marketRefreshToday(); else refreshQuote(); break;
+      case 'r': if (state.marketView) marketRefreshToday(); else if (state.positionsView) refreshPositions(); else refreshQuote(); break;
       case 'l': toggleLive(); break;
       case '-': stepRisk(-1); break;
       case '=':

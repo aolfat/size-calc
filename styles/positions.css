@@ -1,0 +1,35 @@
+/* Positions: the live Schwab table. Phones scroll it sideways with the symbol column pinned, like the Market table. */
+.positions-head { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.positions-head .section-title { margin: 0; color: var(--text); font-size: 14px; }
+.positions-head .section-title::after { display: none; }
+.positions-meta { font-size: 12px; color: var(--text2); font-family: var(--num); }
+.positions-head .btn { margin-left: auto; font-size: 12px; padding: 6px 12px; }
+.positions-card .shares-error { padding: 0 0 8px; }
+.positions-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+/* separate borders: collapsed ones let scrolled cells show through the pinned column */
+.positions-table { table-layout: auto; min-width: 760px; border-collapse: separate; border-spacing: 0; }
+.positions-table th, .positions-table td { white-space: nowrap; vertical-align: top; }
+.positions-table tbody td { border-bottom: 1px solid var(--border); }
+.positions-table thead th { text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+.positions-table tbody tr { cursor: default; }
+.positions-table th:first-child, .positions-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg2); text-align: left; }
+.positions-table tbody tr:hover td:first-child { background: var(--bg3); }
+.positions-table tfoot th, .positions-table tfoot td { padding: 9px 10px; text-align: right; font-family: var(--num); font-weight: 600; border-top: 1px solid var(--border2); }
+.positions-table tfoot th:first-child { text-align: left; font-family: inherit; }
+.pos-sub { display: block; font-size: 11px; color: var(--text3); font-weight: 400; }
+.pos-loss { color: var(--red); font-weight: 600; }
+.pos-locked { color: var(--green); font-weight: 600; }
+.pos-partial { color: var(--amber); }
+.pos-acts { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; }
+.pos-act { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 11px; font-weight: 600; padding: 3px 8px; cursor: pointer; }
+.pos-act:hover { color: var(--text); border-color: var(--blue-bd); }
+.pos-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.pos-step.done { color: var(--green); }
+.pos-step.failed { color: var(--red); }
+
+@media (max-width: 600px) {
+  .positions-card { padding: 14px; }
+  .positions-meta { order: 3; flex-basis: 100%; } /* the button stays on the title's line */
+  .positions-table { min-width: 640px; font-size: 12.5px; }
+  .positions-table th, .positions-table td { padding: 8px; }
+}

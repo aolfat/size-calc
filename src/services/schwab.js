@@ -27,6 +27,9 @@ export function schwabAccount() {
 
 export function schwabConnected() { return !!(schwabSession() && schwabAccount()); }
 
+/** how long a stop placed from here lasts: Today or Until canceled (the default) */
+export function schwabStopDuration() { return store.get('schwab_stop_duration') === 'DAY' ? 'DAY' : 'GOOD_TILL_CANCEL'; }
+
 export function schwabDisconnect() { SCHWAB_KEYS.filter(k => k !== 'schwab_proxy' && k !== 'schwab_stop_duration').forEach(k => store.del(k)); }
 
 // Schwab's errors come as { message, errors: [...] }, { error, error_description }, or nothing at all
@@ -116,14 +119,31 @@ export async function schwabFetchAccounts() {
   return list;
 }
 
-/** POST the order to the selected account; Schwab answers 201 with the new id in Location */
-export async function schwabPlaceOrder(order) {
+function ordersPath() {
   const acct = schwabAccount();
   if (!acct) throw new Error('Pick a Schwab account in Settings.');
-  const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}/orders`, { method: 'POST', body: order });
+  return `/accounts/${encodeURIComponent(acct.hash)}/orders`;
+}
+
+const newOrderId = res => { const id = (res.headers.get('Location') || '').match(/\/orders\/(\d+)/); return { orderId: id ? id[1] : '' }; };
+
+/** POST the order to the selected account; Schwab answers 201 with the new id in Location */
+export async function schwabPlaceOrder(order) {
+  const res = await schwabApi(ordersPath(), { method: 'POST', body: order });
   if (!res.ok) throw schwabError(await readJson(res), res.status);
-  const id = (res.headers.get('Location') || '').match(/\/orders\/(\d+)/);
-  return { orderId: id ? id[1] : '' };
+  return newOrderId(res);
+}
+
+/** PUT a new order in place of a working one; Schwab cancels the old one and gives the new one its own id */
+export async function schwabReplaceOrder(orderId, order) {
+  const res = await schwabApi(`${ordersPath()}/${encodeURIComponent(orderId)}`, { method: 'PUT', body: order });
+  if (!res.ok) throw schwabError(await readJson(res), res.status);
+  return newOrderId(res);
+}
+
+export async function schwabCancelOrder(orderId) {
+  const res = await schwabApi(`${ordersPath()}/${encodeURIComponent(orderId)}`, { method: 'DELETE' });
+  if (!res.ok) throw schwabError(await readJson(res), res.status);
 }
 
 export async function schwabOrder(orderId) {
@@ -131,6 +151,27 @@ export async function schwabOrder(orderId) {
   if (!acct || !orderId) return null;
   const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}/orders/${encodeURIComponent(orderId)}`);
   return res.ok ? readJson(res) : null;
+}
+
+/** the selected account with its positions and balances */
+export async function schwabPositions() {
+  const acct = schwabAccount();
+  if (!acct) throw new Error('Pick a Schwab account in Settings.');
+  const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}?fields=positions`);
+  const body = await readJson(res);
+  if (!res.ok || !body?.securitiesAccount) throw schwabError(body, res.status);
+  return body.securitiesAccount;
+}
+
+/** orders entered in the last 59 days (Schwab's window is 60), where the working stops are */
+export async function schwabRecentOrders(now = Date.now()) {
+  const acct = schwabAccount();
+  if (!acct) throw new Error('Pick a Schwab account in Settings.');
+  const q = new URLSearchParams({ fromEnteredTime: new Date(now - 59 * 86400000).toISOString(), toEnteredTime: new Date(now).toISOString() });
+  const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}/orders?${q}`);
+  const body = await readJson(res);
+  if (!res.ok || !Array.isArray(body)) throw schwabError(body, res.status);
+  return body;
 }
 
 /** where to send the browser to log in; state ties the callback to this attempt */

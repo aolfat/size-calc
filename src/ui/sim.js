@@ -198,11 +198,6 @@ export function simFromPinned(cardId) {
   if (d && (d.sizing !== 'allocation' || quantityForCard(d) > 0)) effects.openSim(simParamsFromCard(d, d.mid, quantityForCard(d)));
 }
 
-export function simFromSaved(id) {
-  const d = state.savedData[id];
-  if (d) effects.openSim(simParamsFromCard(d, d.entry, d.qty)); // returns measured from YOUR fill
-}
-
 export function initSimEvents() {
   const canvas = document.getElementById('simChart');
   const toIdx = clientX => {

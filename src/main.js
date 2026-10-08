@@ -12,7 +12,7 @@ import { initDailyChartEvents } from './ui/daily.js';
 import { initFutures } from './ui/futures.js';
 import { pauseLive, resumeLive } from './ui/live.js';
 import { initMarketEvents, marketScheduleRefresh } from './ui/market.js';
-import { loadSaved } from './ui/positions.js';
+import { positionsVisibilityChanged } from './ui/positions.js';
 import { applyQuickOpen } from './ui/quick-lookup.js';
 import { renderUsdPresets, syncRiskDollar, updateRiskStatus } from './ui/risk.js';
 import { initSync, loadKey, updateApiStatus } from './ui/settings.js';
@@ -50,7 +50,6 @@ updateChainControls();
 updateRiskStatus();
 applyQuickOpen();
 updateStopVisibility();
-loadSaved();
 setView(location.hash === '#market' ? 'market' : 'calc'); // direct link to Market; sizing remains the default
 updateIntervalChips();
 
@@ -59,6 +58,7 @@ window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), 
 // backgrounding the app pauses a live session instead of polling blind; foregrounding pulls fresh sync data
 document.addEventListener('visibilitychange', () => {
   marketScheduleRefresh();
+  positionsVisibilityChanged();
   if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(); }
 });
 window.addEventListener('online', marketScheduleRefresh);

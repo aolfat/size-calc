@@ -152,7 +152,6 @@ export function renderPinnedCard(cardId) {
       <button class="card-act" data-action="copyPinned" data-arg="${cardId}" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
       <button class="card-act" data-action="sharePinned" data-arg="${cardId}" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
       <button class="card-act" data-action="simFromPinned" data-arg="${cardId}" title="Simulate returns over time (Black-Scholes)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
-      <button class="card-act" data-action="saveCard" data-arg="${cardId}" title="Save as a position: persists, with editable entry price and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
       <button class="card-act" data-action="refreshPinned" data-arg="${cardId}" title="Refresh quote" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button class="card-act" data-action="removePinned" data-arg="${cardId}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
@@ -194,7 +193,6 @@ export function renderSpreadCard(cardId, d, risk, acct, cts) {
       <button class="card-act" data-action="copyPinned" data-arg="${cardId}" title="Copy as text for the live chat" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">copy</button>
       <button class="card-act" data-action="sharePinned" data-arg="${cardId}" title="Copy this card as an image" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">share</button>
       <button class="card-act" data-action="simFromPinned" data-arg="${cardId}" title="Simulate spread returns over time (Black-Scholes, both legs)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">sim</button>
-      <button class="card-act" data-action="saveCard" data-arg="${cardId}" title="Save as a position: persists, with editable entry ${credit ? 'credit' : 'debit'} and contracts" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;font-weight:600;">save</button>
       <button class="card-act" data-action="refreshPinned" data-arg="${cardId}" title="Refresh both legs" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;">↻</button>
       <button class="card-act" data-action="removePinned" data-arg="${cardId}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
