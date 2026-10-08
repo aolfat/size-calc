@@ -20,7 +20,7 @@
     max-width: none; height: 100vh; height: 100dvh; padding: 0 20px; overflow: hidden;
     display: grid; grid-template-columns: 360px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 20px;
   }
-  .app.calc-view > .header, .app.positions-view > .header { grid-column: 1 / -1; margin: 0; padding: 14px 2px; }
+  .app > .header { grid-column: 1 / -1; margin: 0; padding: 14px 2px; }
   .app.calc-view #sidePane { display: block; grid-column: 1; grid-row: 2; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
   .app.calc-view #railPane, .app.calc-view #trayPane { display: block; }
   .app.calc-view #mainPane, .app.positions-view #mainPane { display: flex; flex-direction: column; grid-column: 2; grid-row: 2; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
@@ -28,6 +28,11 @@
   .app.positions-view #mainPane { grid-column: 1 / -1; }
   .app.positions-view #savedSection { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 14px; align-items: start; }
   .app.positions-view #savedSection > .pinned-card { margin-bottom: 0; }
+  /* Tools, Futures and Market scroll as a page, but the header stays where the shell puts it (full width, same height)
+     so switching views never moves the tabs; their content is a centered column under it */
+  .app.utils-view, .app.futures-view, .app.market-view { max-width: none; padding: 0 20px 60px; }
+  .app.utils-view .pane > *, .app.futures-view .pane > * { width: 100%; max-width: 888px; margin-inline: auto; }
+  .app.market-view .pane > * { width: 100%; max-width: 1468px; margin-inline: auto; }
 
   /* the rail is phone-width: reuse the phone's compact ticket rows */
   #railPane .seg.mode-big button { font-size: 14px; }
