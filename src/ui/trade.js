@@ -5,6 +5,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fmtTick, inRegularHours, sharesStopOrder, sharesTicketError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
 import { parseSchwabRedirect, proxyOk, schwabAccount, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStopDuration } from '../services/schwab.js';
+import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
 import { renderShares, sharesPlan } from './shares.js';
@@ -70,6 +71,7 @@ export async function reloadSchwabAccounts() {
   } finally {
     updateSchwabUi();
     positionsAccountChanged();
+    dailyAccountSize();
   }
 }
 
@@ -77,6 +79,7 @@ export function schwabAccountChanged() {
   store.set('schwab_account', /** @type {HTMLSelectElement} */ (document.getElementById('schwabAccount')).value);
   updateSchwabUi();
   positionsAccountChanged();
+  dailyAccountSize();
 }
 
 export function disconnectSchwab() {
@@ -112,6 +115,7 @@ export function updateSchwabUi() {
     ? `<span style="color:var(--green)">●</span> ${acct ? 'Connected · ' + esc(mask(acct.last4)) : 'Logged in, no account'} · ${loginLeft(session.refreshExp - Date.now())}`
     : store.get('schwab_tokens') ? '<span style="color:var(--amber)">●</span> Login expired' : '○ Not connected';
   updateTradeButton();
+  updateAccountSourceUi();
 }
 
 // ---------- the shares card's trade button ----------
@@ -275,10 +279,11 @@ export function renderTradeSheet() {
 
 export async function initSchwab(href = location.href) {
   updateSchwabUi();
-  window.addEventListener('focus', updateSchwabUi); // a login finished in another tab shows up here
+  // a login finished in another tab shows up here, and a new day's account size comes in
+  window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); });
   const url = new URL(href);
-  if (url.searchParams.get('login') === 'google') return; // Google's return through Supabase carries a code too: not ours
-  if (!url.searchParams.get('code')) return;
+  if (url.searchParams.get('login') === 'google') { dailyAccountSize(); return; } // Google's return through Supabase carries a code too: not ours
+  if (!url.searchParams.get('code')) { dailyAccountSize(); return; }
   // the app as its own callback page: drop the code from the address, then finish the login
   globalThis.history?.replaceState(null, '', url.pathname + url.hash);
   if (await finishSchwab(url.search, true)) openSheet('settings');

@@ -139,6 +139,14 @@ export function recalcAll() {
   updateStickyBar();
 }
 
+/** a $ chip is lit and no % chip is: an account size change keeps those dollars instead of the risk % */
+export function riskFollowsDollars() {
+  const usd = riskDollars();
+  const pct = parseFloat(document.getElementById('riskPct').value);
+  const pcts = [...document.querySelectorAll('#riskPresets .filter-btn[data-pct]')].map(b => +b.dataset.pct);
+  return getUsdPresets().some(v => Math.abs(v - usd) < 0.5) && !(pcts.length ? pcts : [0.125, 0.25, 0.5, 1, 2, 3]).includes(pct);
+}
+
 export function riskDollars() {
   return parseFloat(document.getElementById('riskDollar').value) || 0;
 }

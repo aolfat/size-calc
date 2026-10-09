@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 
-export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration'];
+export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration', 'schwab_acct_size', 'schwab_acct_source'];
 const REFRESH_LIFE = 7 * 24 * 60 * 60 * 1000; // Schwab ends a login seven days after it starts; refreshes don't extend it
 
 export function schwabProxy() { return (store.get('schwab_proxy') || '').trim().replace(/\/+$/, ''); }
@@ -31,7 +31,9 @@ export function schwabConnected() { return !!(schwabSession() && schwabAccount()
 /** how long a stop placed from here lasts: Today or Until canceled (the default) */
 export function schwabStopDuration() { return store.get('schwab_stop_duration') === 'DAY' ? 'DAY' : 'GOOD_TILL_CANCEL'; }
 
-export function schwabDisconnect() { SCHWAB_KEYS.filter(k => k !== 'schwab_proxy' && k !== 'schwab_stop_duration').forEach(k => store.del(k)); }
+// the worker URL and your preferences outlast a logout
+const KEPT = ['schwab_proxy', 'schwab_stop_duration', 'schwab_acct_source'];
+export function schwabDisconnect() { SCHWAB_KEYS.filter(k => !KEPT.includes(k)).forEach(k => store.del(k)); }
 
 // Schwab's errors come as { message, errors: [...] }, { error, error_description }, or nothing at all
 export function schwabMessage(body, status) {
@@ -174,6 +176,16 @@ export async function schwabPositions() {
   const acct = schwabAccount();
   if (!acct) throw new Error('Pick a Schwab account in Settings.');
   const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}?fields=positions`);
+  const body = await readJson(res);
+  if (!res.ok || !body?.securitiesAccount) throw schwabError(body, res.status);
+  return body.securitiesAccount;
+}
+
+/** the selected account's balances alone, for the daily account size */
+export async function schwabBalances() {
+  const acct = schwabAccount();
+  if (!acct) throw new Error('Pick a Schwab account in Settings.');
+  const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}`);
   const body = await readJson(res);
   if (!res.ok || !body?.securitiesAccount) throw schwabError(body, res.status);
   return body.securitiesAccount;

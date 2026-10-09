@@ -97,6 +97,7 @@ export function createState() {
     spreadPending: null,
     spreadPendingCredit: false,
     schwabRefreshing: null, // the one in-flight token refresh, shared by concurrent calls
+    acctSizeBusy: false, // the daily account size read is in flight
     tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent
     tradeBusy: false,
     tradeLast: null, // { symbol, at } of the last order placed, to flag a quick repeat

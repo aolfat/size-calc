@@ -5,6 +5,7 @@ import { delegate } from './lib/delegate.js';
 import { actions } from './ui/actions.js';
 import { store } from './lib/store.js';
 import { cloudPull } from './services/cloud.js';
+import { dailyAccountSize } from './ui/account-size.js';
 import { updateSizingControls } from './ui/allocation.js';
 import { updateChainControls } from './ui/chain.js';
 import { initChartEvents, updateIntervalChips } from './ui/chart.js';
@@ -61,7 +62,7 @@ window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), 
 document.addEventListener('visibilitychange', () => {
   marketScheduleRefresh();
   positionsVisibilityChanged();
-  if (document.hidden) { pauseLive(); } else { resumeLive(); cloudPull(); }
+  if (document.hidden) { pauseLive(); } else { resumeLive(); cloudPull(); dailyAccountSize(); }
 });
 window.addEventListener('online', marketScheduleRefresh);
 window.addEventListener('offline', marketScheduleRefresh);
