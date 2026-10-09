@@ -4,6 +4,7 @@ import { state } from '../state.js';
 export function showError(msg) {
   const b = document.getElementById('errorBox');
   b.textContent = msg;
+  b.classList.remove('ok'); // a success toast may still be up: this one is an error
   b.style.display = 'block';
   clearTimeout(state.errorTimer);
   state.errorTimer = setTimeout(clearError, 6000); // floating toast, self-dismissing
