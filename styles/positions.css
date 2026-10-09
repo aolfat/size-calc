@@ -42,3 +42,33 @@
   .positions-table { min-width: 640px; font-size: 12.5px; }
   .positions-table th, .positions-table td { padding: 8px; }
 }
+
+/* Position chart: one stock's daily with its cost, stops and targets, and the profit-target form. Under the table on phones
+   and tablets, beside it on the desktop shell. */
+.positions-split { display: contents; }
+#posChartSection { order: 12; }
+.pos-chart .chart-head .section-title { margin: 0; color: var(--text); font-size: 14px; }
+.pos-chart .chart-head .section-title::after { display: none; }
+.pos-chart-meta { font-size: 12px; color: var(--text2); font-family: var(--num); }
+.pos-chart #posChartStatus:empty { display: none; }
+.pos-chart .chart-cap { display: flex; gap: 5px; align-items: center; }
+.pos-chart .chart-cap .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
+.pos-chart-canvas { position: relative; }
+#posChartToday { position: absolute; right: 58px; bottom: 28px; padding: 2px 8px; font-size: 11px; }
+.pos-act.active { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
+.pos-target { margin-top: 16px; }
+.pos-target .section-title { margin-bottom: 10px; }
+.pos-target-row { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; }
+.pos-target-row .field { flex: 1 1 130px; }
+.pos-portions { margin-top: 0; flex: 1 1 190px; flex-wrap: nowrap; }
+.pos-portions .filter-btn { flex: 1 1 0; min-width: 0; padding: 9px 4px; font-size: 14px; text-align: center; }
+.pos-portions .filter-btn:disabled { opacity: 0.45; cursor: default; }
+.pos-target-sum { margin-top: 10px; font-size: 12.5px; color: var(--text2); line-height: 1.5; font-family: var(--num); }
+.pos-target-sum strong { color: var(--text); font-weight: 600; }
+.pos-target-sum .shares-detail { display: block; font-family: var(--sans); }
+.pos-target-sum.warn { color: var(--amber); font-family: var(--sans); }
+.pos-target .trade-actions { margin-top: 10px; }
+
+@media (min-width: 1100px) {
+  .app.positions-view .positions-split.open { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(420px, 1fr); column-gap: 16px; align-items: start; }
+}

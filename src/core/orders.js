@@ -16,6 +16,12 @@ export function stopTick(stop, isLong) {
   return ticks / f;
 }
 
+/** A limit price on Schwab's tick, to the nearest: cents from $1 up, four decimals below. @param {number} p @returns {number} */
+export function priceTick(p) {
+  const f = p >= 1 ? 100 : 10000;
+  return Math.round(p * f) / f;
+}
+
 /** Price as Schwab ticks it: two decimals from $1 up, four below. @param {number} p @returns {string} */
 export function fmtTick(p) { return '$' + Number(p).toFixed(p >= 1 ? 2 : 4); }
 

@@ -433,3 +433,187 @@ test('stocks and ETFs trade as equity, options as options, cash and funds not at
   assert.deepEqual(plain(run(`positionRows(${JSON.stringify(account())}, ${JSON.stringify(ORDERS)}).rows`)).map(r => [r.label.split(' ')[0], r.tradeAs]),
     [['AAPL', 'OPTION'], ['AMD', 'EQUITY'], ['HOOD', 'EQUITY'], ['NVDA', 'EQUITY'], ['QQQ', 'EQUITY'], ['SWVXX', null], ['TSLA', 'EQUITY']]);
 });
+
+// ---------- profit targets ----------
+
+const onlyStop = [single(101, 'STOP', 'HOOD', 'SELL', 300, 35.5), single(201, 'STOP', 'TSLA', 'BUY_TO_COVER', 40, 270)];
+const targetFor = (symbol, price, qty, orders = onlyStop, duration = 'GOOD_TILL_CANCEL') => `targetPlan(${rowWith(symbol, orders)}, { price: ${price}, qty: ${qty}, duration: '${duration}' })`;
+
+test('limit prices snap to the nearest tick: cents from $1, four decimals under', async () => {
+  const { run } = await app();
+  assert.equal(run('priceTick(52.004)'), 52);
+  assert.equal(run('priceTick(52.006)'), 52.01);
+  assert.equal(run('priceTick(0.12346)'), 0.1235);
+});
+
+test('a target on a stopped position cuts the stop to make room and goes in paired with a stop for the same shares', async () => {
+  const { run } = await app();
+  const plan = plain(run(targetFor('HOOD', 50.004, 100)));
+  assert.equal(plan.error, '');
+  assert.equal(plan.price, 50);
+  assert.equal(plan.stop, 35.5);
+  assert.equal(plan.moved, 100, '100 shares leave the plain stop');
+  assert.equal(plan.rest, 200);
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId ?? null]), [['replace', 101], ['place', null]]);
+  const stop = qty => ({ orderType: 'STOP', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', orderStrategyType: 'SINGLE', stopPrice: 35.5,
+    orderLegCollection: [{ instruction: 'SELL', quantity: qty, instrument: { symbol: 'HOOD', assetType: 'EQUITY' } }] });
+  assert.deepEqual(plan.steps[0].order, stop(200), 'same price, 200 shares');
+  assert.deepEqual(plan.steps[1].order, { orderStrategyType: 'OCO', childOrderStrategies: [
+    { orderType: 'LIMIT', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', orderStrategyType: 'SINGLE', price: 50,
+      orderLegCollection: [{ instruction: 'SELL', quantity: 100, instrument: { symbol: 'HOOD', assetType: 'EQUITY' } }] },
+    stop(100),
+  ] });
+  // the whole position: the plain stop goes, the pair carries every share
+  assert.deepEqual(plain(run(targetFor('HOOD', 50, 300))).steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 101], ['place', null]]);
+});
+
+test('stops are cut farthest first and keep how long they last; the pair stops at the nearest', async () => {
+  const { run } = await app();
+  const orders = [single(101, 'STOP', 'HOOD', 'SELL', 200, 35.5, { duration: 'DAY' }), single(102, 'STOP', 'HOOD', 'SELL', 100, 34)];
+  const plan = plain(run(targetFor('HOOD', 50, 150, orders)));
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 102], ['replace', 101], ['place', null]]);
+  assert.equal(plan.steps[1].order.orderLegCollection[0].quantity, 150);
+  assert.equal(plan.steps[1].order.duration, 'DAY', 'a cut stop keeps its own duration');
+  assert.equal(plan.steps[2].order.childOrderStrategies[1].stopPrice, 35.5);
+  assert.equal(plan.moved, 150);
+  // room outside the stops: nothing to cut, and the target still carries the stop
+  const partial = [single(101, 'STOP', 'HOOD', 'SELL', 100, 35.5)];
+  const roomy = plain(run(targetFor('HOOD', 50, 100, partial)));
+  assert.deepEqual(roomy.steps.map(s => s.kind), ['place']);
+  assert.equal(roomy.moved, 0);
+  assert.equal(roomy.steps[0].order.orderStrategyType, 'OCO');
+});
+
+test('a target on a short buys back below the price, paired with the stop above', async () => {
+  const { run } = await app();
+  const plan = plain(run(targetFor('TSLA', 240, 20)));
+  assert.equal(plan.error, '');
+  assert.equal(plan.steps[0].order.orderLegCollection[0].quantity, 20);
+  const [limit, stop] = plan.steps[1].order.childOrderStrategies;
+  assert.equal(limit.orderLegCollection[0].instruction, 'BUY_TO_COVER');
+  assert.equal(limit.price, 240);
+  assert.equal(stop.stopPrice, 270);
+  assert.match(run(targetFor('TSLA', 260, 20) + '.error'), /The target \$260\.00 is at or above the price \$255\.30\. It would buy back right away/);
+});
+
+test('a position without a stop gets the target alone', async () => {
+  const { run } = await app();
+  const plan = plain(run(targetFor('NVDA', 125, 50, [])));
+  assert.equal(plan.error, '');
+  assert.equal(plan.stop, 0);
+  assert.equal(plan.bare, 50);
+  assert.deepEqual(plan.steps.map(s => s.order.orderType), ['LIMIT']);
+});
+
+test('a target is refused through the price, over what other targets leave, for options, or with an order in the way', async () => {
+  const { run } = await app();
+  assert.match(run(targetFor('HOOD', 41, 100) + '.error'), /The target \$41\.00 is at or below the price \$41\.10\. It would sell right away/);
+  assert.match(run(targetFor('HOOD', 0, 100) + '.error'), /Set a target price/);
+  assert.match(run(targetFor('HOOD', 50, 0) + '.error'), /Pick how many shares the target sells/);
+  assert.match(run(targetFor('HOOD', 50, 2.5) + '.error'), /Pick how many shares/);
+  assert.match(run(targetFor('HOOD', 50, 400) + '.error'), /The target is for 400 shares and you hold 300/);
+  assert.match(run(targetFor('HOOD', 50, 250, ORDERS) + '.error'), /Your other targets hold 100 of the 300 shares, so this one can take up to 200/);
+  assert.match(run(targetFor('AMD', 180, 10, ORDERS) + '.error'), /Your targets already hold all 50 shares/);
+  assert.match(run(targetFor(OPT, 9, 1, ORDERS) + '.error'), /stocks and ETFs/);
+  assert.match(run(targetFor('HOOD', 50, 100, [...onlyStop, single(105, 'MARKET', 'HOOD', 'SELL', 20, 0)]) + '.error'), /A market order for 20 is waiting/);
+  assert.deepEqual({ ...run(`targetRoom(${rowWith('HOOD', ORDERS)})`) }, { error: '', held: 300, reserved: 100, free: 200 });
+});
+
+test('the chart levels add up sizes per price, and a target reads in R off the nearest stop', async () => {
+  const { run } = await app();
+  assert.deepEqual(plain(run(`positionLevels(${rowWith('HOOD')})`)), [
+    { kind: 'avg', price: 38.2, qty: 300 }, { kind: 'stop', price: 35.5, qty: 250 }, { kind: 'stop', price: 34, qty: 50 }, { kind: 'target', price: 45, qty: 100 },
+  ]);
+  const paired = [single(101, 'STOP', 'HOOD', 'SELL', 200, 35.5), { orderId: 600, status: 'WORKING', orderStrategyType: 'OCO',
+    childOrderStrategies: [single(601, 'LIMIT', 'HOOD', 'SELL', 100, 50), single(602, 'STOP', 'HOOD', 'SELL', 100, 35.5)] }];
+  assert.deepEqual(plain(run(`positionLevels(${rowWith('HOOD', paired)})`)).filter(l => l.kind === 'stop'), [{ kind: 'stop', price: 35.5, qty: 300 }]);
+  const g = run(`targetGain(${rowWith('HOOD', onlyStop)}, 50, 100)`);
+  assert.ok(Math.abs(g.gain - 1180) < 1e-9);
+  assert.ok(Math.abs(g.pct - 11.8 / 38.2 * 100) < 1e-9);
+  assert.ok(Math.abs(g.r - 11.8 / 2.7) < 1e-9);
+  assert.equal(run(`targetGain(${rowWith('NVDA', [])}, 125, 10).r`), null, 'no stop, no R');
+});
+
+// the chart's form, as a tap and a portion chip leave it
+const setTarget = (run, elements, symbol, price, qty) => {
+  run(`posChart = { symbol: '${symbol}', bars: [], view: { count: 63, offset: 0 }, range: 63, loading: false, error: '', hover: -1, hoverY: -1, price: null, qty: null }`);
+  elements.get('posTargetPrice').value = String(price);
+  elements.get('posTargetQty').value = String(qty);
+  run('posTargetChanged()');
+};
+
+test('the target review re-reads Schwab, sends the cut and the pair once, and confirms the target Schwab shows', async () => {
+  const b = broker();
+  b.live.orders = plain(onlyStop);
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  setTarget(run, elements, 'HOOD', 50, 100);
+  await run("actions.openPositionTrade({ dataset: { arg: 'HOOD', arg2: 'target' } })");
+  assert.equal(elements.get('posTradeTitle').textContent, 'Profit target');
+  const review = elements.get('posTradeBody').innerHTML;
+  assert.match(review, /Cut stop \$35\.50 from 300 shares to 200/);
+  assert.match(review, /Place limit \$50\.00 for 100 shares paired with stop \$35\.50 \(one cancels the other\)/);
+  assert.match(review, /\+\$1,180\.00/);
+  assert.match(review, /\+30\.9% over your cost · 4\.4R from the \$35\.50 stop\. 200 shares left after it fills\./);
+  assert.match(review, /your stop is cut to make room\. While the target goes in, 100 shares have no stop for a moment/);
+  assert.match(review, /data-action="placePositionTrade"[^>]*>Place target \$50\.00</);
+  assert.equal(b.sent.length, 0);
+
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['PUT /orders/101', 'POST /orders']);
+  assert.equal(b.sent[0].body.orderLegCollection[0].quantity, 200);
+  assert.equal(b.sent[1].body.orderStrategyType, 'OCO');
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a target at \$50\.00 for 100 shares, paired with a stop at \$35\.50\./);
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /no stop now/, 'every share still has a stop');
+  assert.equal(run('posChart.price'), null, 'the form clears once Schwab shows it');
+  assert.equal(elements.get('posTargetPrice').value, '');
+  await run('placePositionTrade()');
+  assert.equal(b.sent.length, 2, 'a sent ticket never goes again');
+});
+
+test('a target lasting today only warns that its stop ends with it; the choice is remembered', async () => {
+  const b = broker();
+  b.live.orders = plain(onlyStop);
+  const { run, elements, storage } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  setTarget(run, elements, 'HOOD', 50, 100);
+  await run("openPositionTrade('HOOD', 'target')");
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /Today only/);
+  run("setPositionStopDuration('DAY')");
+  assert.match(elements.get('posTradeBody').innerHTML, /Today only: at the close the target and the stop paired with it both end, and those 100 shares have no stop\./);
+  assert.equal(storage.get('schwab_stop_duration'), 'DAY');
+  await run('placePositionTrade()');
+  assert.equal(b.sent[1].body.childOrderStrategies[0].duration, 'DAY');
+  assert.equal(b.sent[1].body.childOrderStrategies[1].duration, 'DAY');
+  assert.equal(b.sent[0].body.duration, 'GOOD_TILL_CANCEL', 'the cut stop keeps its own');
+});
+
+test('a target Schwab doesn\'t show yet is not confirmed, keeps the form, and holds the next send', async () => {
+  const b = broker({ lag: true });
+  b.live.orders = plain(onlyStop);
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  setTarget(run, elements, 'HOOD', 50, 100);
+  await run("openPositionTrade('HOOD', 'target')");
+  await run('placePositionTrade()');
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab does not show the target yet\. Check Schwab\./);
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab lists for HOOD/);
+  assert.equal(run('posChart.price'), 50);
+  await run("openPositionTrade('HOOD', 'target')");
+  assert.match(elements.get('posTradeBody').innerHTML, /Your last order on HOOD has not shown up at Schwab yet/);
+});
+
+test('without a stop the target goes alone, and the sheet says the position has no stop', async () => {
+  const b = broker();
+  b.live.orders = [];
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  setTarget(run, elements, 'HOOD', 50, 100);
+  await run("openPositionTrade('HOOD', 'target')");
+  const review = elements.get('posTradeBody').innerHTML;
+  assert.match(review, /Place a limit \$50\.00 for 100 shares \(sell\)/);
+  assert.match(review, /This position has no stop, so the target goes alone\./);
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => c.body.orderType), ['LIMIT']);
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a target at \$50\.00 for 100 shares\. 300 shares have no stop now\./);
+});

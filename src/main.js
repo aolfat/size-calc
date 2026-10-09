@@ -12,6 +12,7 @@ import { initDailyChartEvents } from './ui/daily.js';
 import { initFutures } from './ui/futures.js';
 import { pauseLive, resumeLive } from './ui/live.js';
 import { initMarketEvents, marketScheduleRefresh } from './ui/market.js';
+import { initPositionChartEvents } from './ui/position-chart.js';
 import { positionsVisibilityChanged } from './ui/positions.js';
 import { applyQuickOpen } from './ui/quick-lookup.js';
 import { renderUsdPresets, syncRiskDollar, updateRiskStatus } from './ui/risk.js';
@@ -37,6 +38,7 @@ state.syncSuppress = false;
 // canvas, keyboard, simulator and market listeners
 initChartEvents();
 initDailyChartEvents();
+initPositionChartEvents();
 initShortcuts();
 initSimEvents();
 initMarketEvents();

@@ -1,10 +1,11 @@
 // Positions: the selected Schwab account's holdings, read live every 30s while the tab is open, with stops from its working stop orders
-// and buttons into the breakeven-stop and close reviews (position-trade.js).
+// and buttons into a stock's chart and targets (position-chart.js) and the breakeven-stop and close reviews (position-trade.js).
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { positionRows } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { showToast } from './feedback.js';
+import { renderPositionChart } from './position-chart.js';
 
 const POLL_MS = 30000;
 const money = v => (v < 0 ? '−' : '') + fmt$(Math.abs(v));
@@ -51,6 +52,7 @@ export function positionsVisibilityChanged() {
 /** a login, logout or account switch: the old account's table goes, and the tab reloads if it's open */
 export function positionsAccountChanged() {
   state.positions = null;
+  state.posChart = null;
   state.positionsError = '';
   if (state.positionsView) { refreshPositions(); return; }
   state.positionsRequest++;
@@ -68,12 +70,14 @@ function riskCell(r) {
     : `<span class="pos-locked">+${fmt$(-r.risk)} locked</span>${partial}`;
 }
 
-// BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
+// Chart, BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
 function tradeButtons(r) {
   if (!r.tradeAs) return '';
   const atBe = r.be !== null && r.stops > 0 && r.stopOrders.every(s => s.stop === r.be) && r.covered >= Math.abs(r.qty);
   const arg = esc(r.symbol);
-  return `<span class="pos-acts">${atBe ? '<span class="pos-locked">stop at breakeven</span>' : `<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close the whole position at market">Close</button></span>`;
+  const charted = !!state.posChart && state.posChart.symbol === r.symbol;
+  const chart = r.tradeAs === 'EQUITY' ? `<button class="pos-act${charted ? ' active' : ''}" aria-pressed="${charted}" data-action="togglePositionChart" data-arg="${arg}" title="Daily chart with your cost, stops and targets: set a profit target on it">Chart</button>` : '';
+  return `<span class="pos-acts">${chart}${atBe ? '<span class="pos-locked">stop at breakeven</span>' : `<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close the whole position at market">Close</button></span>`;
 }
 
 function positionRow(r) {
@@ -90,6 +94,11 @@ function positionRow(r) {
 }
 
 export function renderPositions() {
+  renderPositionsTable();
+  renderPositionChart(); // its lines, sizes and target checks follow each read
+}
+
+function renderPositionsTable() {
   const el = document.getElementById('positionsSection');
   const p = state.positions;
   document.getElementById('posCount').textContent = p && p.rows.length ? String(p.rows.length) : '';
