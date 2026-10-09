@@ -20,6 +20,8 @@ function fakeSupabase({ settings = [], key = '' } = {}) {
   };
   const calls = [];
   let failure = null;
+  let gate = null, gateFor = null; // hold(name): those requests (all without a name) wait until released
+  const held = name => gate && (!gateFor || gateFor === name) ? gate : Promise.resolve();
   const answer = data => failure ? { data: null, error: { message: failure.message }, status: failure.status } : { data, error: null, status: 200 };
   const write = (table, rows) => {
     for (const r of rows) {
@@ -31,22 +33,23 @@ function fakeSupabase({ settings = [], key = '' } = {}) {
   const client = {
     db, calls,
     fail(f) { failure = f; },
+    hold(name = null) { let release; gateFor = name; gate = new Promise(r => { release = r; }); return () => { gate = null; release(); }; },
     from(table) {
       return {
         select() {
-          calls.push(['select', table]);
           let since = '';
           const query = {
             gt(col, value) { since = value; return query; },
             then(resolve, reject) {
-              const rows = db[table].filter(r => !since || r.updated_at > since).map(r => ({ ...r }));
-              return Promise.resolve(answer(rows)).then(resolve, reject);
+              calls.push(['select', table, since]);
+              return held('select').then(() => answer(db[table].filter(r => !since || r.updated_at > since).map(r => ({ ...r })))).then(resolve, reject);
             },
           };
           return query;
         },
         async upsert(rows) {
           calls.push(['upsert', table, rows]);
+          await held('upsert');
           if (!failure) write(table, rows);
           return answer(null);
         },
@@ -54,6 +57,7 @@ function fakeSupabase({ settings = [], key = '' } = {}) {
     },
     async rpc(name, args) {
       calls.push(['rpc', name, args]);
+      await held(name);
       if (failure) return answer(null);
       if (name === 'get_tradier_key') return answer(db.key);
       if (name === 'set_tradier_key') { db.key = args.new_key; write('settings', [{ user_id: USER.id, key: 'tradier_key_at', value: 'now' }]); }
@@ -71,6 +75,11 @@ function fakeSupabase({ settings = [], key = '' } = {}) {
 
 /** a device that already finished its first sign-in */
 const joined = (entries = []) => new Map([['cloud_user', USER.id], ...entries]);
+/** let pending promise work run until cond holds (a held request has been reached) */
+async function until(cond) {
+  for (let i = 0; i < 50 && !cond(); i++) await new Promise(r => setImmediate(r));
+  assert.ok(cond(), 'never got there');
+}
 
 // ---------- first sign-in ----------
 
@@ -117,6 +126,46 @@ test('a second device adopts the account, and uploads a setting only it has', as
   assert.equal(elements.get('apiKey').value, 'TK-cloud', 'the page shows the account without a reload');
   assert.equal(supabase.db.key, 'TK-cloud', "this device's key doesn't overwrite the account's");
   assert.match(elements.get('errorBox').textContent, /Loaded your settings/);
+});
+
+test("a device last signed in to another account sends none of its data, and that account's leftovers are cleared", async () => {
+  const supabase = fakeSupabase({ settings: [{ key: 'calc_account', value: '80000' }] });
+  const storage = new Map([
+    ['cloud_user', 'someone-else'], ['calc_account', '50000'], ['calc_risk', '3'], ['calc_allocation', '15'], ['tradier_key', 'TK-theirs'],
+    ['schwab_proxy', 'https://w.example'], ['cloud_pending', '["calc_risk"]'], ['cloud_seen', '{"settings":"2031-01-01T00:00:00.000Z"}'], ['show_daily', '0'],
+  ]);
+  const { run, elements, state } = await app({ supabase, storage });
+  Object.assign(elements.get('allocationPct'), { value: '15', defaultValue: '5' });
+  Object.assign(elements.get('riskPct'), { value: '3', defaultValue: '1' });
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+
+  assert.ok(!supabase.calls.some(c => c[0] === 'upsert' || (c[0] === 'rpc' && c[1] === 'set_tradier_key')), 'nothing of theirs is uploaded');
+  assert.equal(supabase.db.key, '');
+  assert.equal(storage.get('calc_account'), '80000', "the new account's settings win");
+  for (const k of ['calc_allocation', 'tradier_key']) assert.equal(storage.has(k), false, k);
+  assert.equal(elements.get('allocationPct').value, '5', 'a cleared setting shows the default');
+  assert.equal(storage.get('calc_risk'), '1', 'the page default, not theirs');
+  assert.equal(elements.get('apiKey').value, '');
+  assert.equal(storage.get('schwab_proxy'), 'https://w.example', "kept, like sign-out: this device's Schwab login needs it");
+  assert.equal(storage.get('show_daily'), '0');
+  assert.equal(storage.get('cloud_user'), USER.id);
+  assert.equal(state.cloudPending.size, 0);
+  assert.notEqual(JSON.parse(storage.get('cloud_seen')).settings, '2031-01-01T00:00:00.000Z', "their pull cursor is gone");
+  assert.match(elements.get('errorBox').textContent, /Loaded your settings.*previous account's unsaved changes/);
+});
+
+test('a device last signed in to another account does not fill an empty account', async () => {
+  const supabase = fakeSupabase();
+  const storage = new Map([['cloud_user', 'someone-else'], ['calc_account', '75000'], ['tradier_key', 'TK-theirs']]);
+  const { run, elements, state } = await app({ supabase, storage });
+  Object.assign(elements.get('accountSize'), { value: '75000', defaultValue: '50000' });
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+  assert.equal(supabase.db.settings.length, 0);
+  assert.equal(supabase.db.key, '');
+  assert.equal(storage.get('calc_account'), '50000', 'the page default, not theirs');
+  assert.equal(storage.has('tradier_key'), false);
+  assert.equal(state.cloudPending.size, 0);
+  assert.doesNotMatch(elements.get('errorBox').textContent, /Saved this device's/);
 });
 
 test('a failed first sign-in leaves the device as it was and is retried later', async () => {
@@ -209,6 +258,53 @@ test('a failed push keeps its edits pending, and a refused session asks to sign 
   assert.deepEqual([...state.cloudPending], ['calc_risk'], 'the edit waits for the next sign-in');
 });
 
+test('edits stay pending on the device until the server has them, and one changed mid-save stays pending', async () => {
+  const supabase = fakeSupabase();
+  const { run, storage, state } = await app({ supabase, session: SESSION, storage: joined() });
+  run("store.set('calc_risk', '2'); store.set('calc_account', '60000')");
+  const release = supabase.hold('upsert');
+  const pushing = run('cloudPush()');
+  await until(() => supabase.calls.some(c => c[0] === 'upsert'));
+  assert.deepEqual(JSON.parse(storage.get('cloud_pending')).sort(), ['calc_account', 'calc_risk'], 'a page killed now sends them next time');
+  run("store.set('calc_risk', '3')");
+  release();
+  assert.equal(await pushing, false);
+  assert.equal(supabase.db.settings.find(r => r.key === 'calc_risk').value, '2');
+  assert.deepEqual(JSON.parse(storage.get('cloud_pending')), ['calc_risk'], 'the saved one is done, the edited one is not');
+  assert.equal(await run('cloudPush()'), true);
+  assert.equal(supabase.db.settings.find(r => r.key === 'calc_risk').value, '3');
+  assert.equal(state.cloudPending.size, 0);
+});
+
+test("a Tradier key typed while a pull fetches the account's key is kept and sent", async () => {
+  const supabase = fakeSupabase({ key: 'TK-cloud' });
+  supabase.db.settings.push({ user_id: USER.id, key: 'tradier_key_at', value: 'now', updated_at: '2026-10-09T12:00:01.000Z' });
+  const { run, storage, state } = await app({ supabase, session: SESSION, storage: joined([['tradier_key', 'TK-old']]) });
+  const release = supabase.hold('get_tradier_key');
+  const pulling = run('cloudPull()');
+  await until(() => supabase.calls.some(c => c[1] === 'get_tradier_key'));
+  run("store.set('tradier_key', 'TK-typed')");
+  release();
+  await pulling;
+  assert.equal(storage.get('tradier_key'), 'TK-typed', "the account's older key doesn't overwrite it");
+  assert.deepEqual([...state.cloudPending], ['tradier_key']);
+  await run('cloudPush()');
+  assert.equal(supabase.db.key, 'TK-typed');
+});
+
+test('edits made after the session ended stay pending and reach the account after signing in again', async () => {
+  // the library dropped its saved session (refresh failed for good); the device is still bound to the account
+  const supabase = fakeSupabase({ settings: [{ key: 'calc_risk', value: '1' }] });
+  const storage = joined([['calc_risk', '1']]);
+  const { run, state } = await app({ supabase, storage });
+  run("store.set('calc_risk', '2')");
+  assert.deepEqual(JSON.parse(storage.get('cloud_pending')), ['calc_risk']);
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+  assert.equal(storage.get('calc_risk'), '2', 'the pending edit wins over the pull');
+  assert.equal(supabase.db.settings.find(r => r.key === 'calc_risk').value, '2');
+  assert.equal(state.cloudPending.size, 0);
+});
+
 test("a pull applies the other device's changes, keeps unsent edits, and doesn't mark anything pending", async () => {
   const supabase = fakeSupabase({ settings: [{ key: 'calc_account', value: '90000' }, { key: 'calc_risk', value: '3' }], key: 'TK-new' });
   supabase.db.settings.push({ user_id: USER.id, key: 'tradier_key_at', value: 'now', updated_at: '2026-10-09T12:00:01.000Z' });
@@ -237,6 +333,31 @@ test('a pull asks only for rows changed since the last one, and an echo of our o
   await run('cloudPull()');
   assert.equal(storage.get('calc_account'), '70000');
   assert.equal(JSON.parse(storage.get('cloud_seen')).settings, '2030-01-01T00:00:00.000Z');
+});
+
+test('a pull re-reads a minute back, so a save that committed late is not skipped, and rows already seen are no news', async () => {
+  const supabase = fakeSupabase({ key: 'TK-cloud' });
+  supabase.db.settings.push(
+    { user_id: USER.id, key: 'calc_account', value: '70000', updated_at: '2026-10-09T13:00:00.000Z' },
+    { user_id: USER.id, key: 'tradier_key_at', value: 'now', updated_at: '2026-10-09T12:59:50.000Z' },
+  );
+  const { run, storage, elements } = await app({ supabase, session: SESSION, storage: joined() });
+  await run('cloudPull()');
+  assert.equal(storage.get('calc_account'), '70000');
+  assert.equal(storage.get('tradier_key'), 'TK-cloud');
+
+  // started before the 13:00 save, committed after this device's pull: stamped earlier than anything seen
+  supabase.db.settings.push({ user_id: USER.id, key: 'calc_risk', value: '2', updated_at: '2026-10-09T12:59:30.000Z' });
+  elements.get('errorBox').textContent = '';
+  await run('cloudPull()');
+  assert.equal(supabase.calls.filter(c => c[0] === 'select').at(-1)[2], '2026-10-09T12:59:00.000Z', 'a minute before the newest row seen');
+  assert.equal(storage.get('calc_risk'), '2', 'the late save still arrives');
+  assert.match(elements.get('errorBox').textContent, /Synced changes/);
+
+  elements.get('errorBox').textContent = '';
+  await run('cloudPull()');
+  assert.equal(elements.get('errorBox').textContent, '', 'rows read again in the overlap change nothing');
+  assert.equal(supabase.calls.filter(c => c[1] === 'get_tradier_key').length, 1, 'the key is fetched once');
 });
 
 test("the Schwab worker URL from another device fills the Settings field, and sign-out leaves it", async () => {
@@ -285,6 +406,38 @@ test('offline, the first Sign out warns and the second discards', async () => {
   assert.equal(storage.has('calc_account'), false);
 });
 
+test('Sign out waits for a check already running, then sends pending edits without a false warning', async () => {
+  const supabase = fakeSupabase();
+  const storage = joined([['calc_account', '50000']]);
+  const { run, elements } = await app({ supabase, session: SESSION, storage });
+  run('reloadPage = () => { globalThis.reloaded = true }; globalThis.reloaded = false');
+  const release = supabase.hold('select');
+  const pulling = run('cloudPull()');
+  await until(() => supabase.calls.some(c => c[0] === 'select'));
+  run("store.set('calc_risk', '2')");
+  const out = run('signOut()');
+  await until(() => elements.get('cloudStatus').textContent === 'Signing out…');
+  release();
+  await pulling;
+  await out;
+  assert.doesNotMatch(elements.get('errorBox').textContent, /haven't reached/);
+  assert.equal(supabase.db.settings.find(r => r.key === 'calc_risk').value, '2', 'sent before signing out');
+  assert.equal(run('globalThis.reloaded'), true);
+});
+
+test('Sign out during a check with nothing pending signs out without a warning', async () => {
+  const supabase = fakeSupabase();
+  const { run, elements } = await app({ supabase, session: SESSION, storage: joined() });
+  run('reloadPage = () => { globalThis.reloaded = true }; globalThis.reloaded = false');
+  const release = supabase.hold('select');
+  const pulling = run('cloudPull()');
+  const out = run('signOut()');
+  release();
+  await Promise.all([pulling, out]);
+  assert.doesNotMatch(elements.get('errorBox').textContent, /haven't reached/);
+  assert.equal(run('globalThis.reloaded'), true);
+});
+
 // ---------- merge rules ----------
 
 test('first sign-in merge: an empty account takes everything; otherwise the account wins', async () => {
@@ -297,6 +450,22 @@ test('first sign-in merge: an empty account takes everything; otherwise the acco
   assert.deepEqual(join.settings, { calc_risk: '2', calc_allocation: '9' });
   assert.deepEqual(join.upload, { settings: { calc_allocation: '9' }, key: null });
   assert.equal(join.key, 'K2');
+  const foreign = JSON.parse(run(`JSON.stringify(mergeFirstSignIn({ settings: { calc_risk: '1', calc_allocation: '9' }, key: 'K' }, { settings: { calc_risk: '2' }, key: '' }, { foreign: true }))`));
+  assert.deepEqual(foreign.settings, { calc_risk: '2' });
+  assert.deepEqual(foreign.clear, ['calc_allocation']);
+  assert.deepEqual(foreign.upload, { settings: {}, key: null });
+  assert.equal(foreign.key, '', "another account's key isn't kept");
+  assert.equal(foreign.seeded, false);
+});
+
+test('pull bookkeeping: a minute of overlap, and a row already seen is skipped', async () => {
+  const { run } = await app();
+  assert.equal(run("pullFrom('2026-10-09T13:00:00.000Z')"), '2026-10-09T12:59:00.000Z');
+  assert.equal(run('pullFrom(undefined)'), '');
+  const seen = JSON.parse(run(`JSON.stringify(seenAfter([{ key: 'a', updated_at: '2026-10-09T12:00:00.000Z' }, { key: 'b', updated_at: '2026-10-09T13:00:00.000Z' }], {}))`));
+  assert.deepEqual(seen, { settings: '2026-10-09T13:00:00.000Z', keys: { a: '2026-10-09T12:00:00.000Z', b: '2026-10-09T13:00:00.000Z' } });
+  const rows = run(`unseenRows([{ key: 'a', updated_at: '2026-10-09T12:00:00.000Z' }, { key: 'b', updated_at: '2026-10-09T13:00:01.000Z' }], ${JSON.stringify(seen.keys)}).map(r => r.key)`);
+  assert.deepEqual([...rows], ['b']);
 });
 
 // ---------- leftover keys ----------
