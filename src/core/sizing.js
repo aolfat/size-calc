@@ -51,8 +51,5 @@ export function optionDte(exp, now = new Date()) {
   return Math.round((Date.parse(exp + 'T00:00:00Z') - Date.UTC(+part('year'), +part('month') - 1, +part('day'))) / 864e5);
 }
 
-/** @param {{ credit?: boolean }} d @param {number} entry @param {number} close @param {number} qty @returns {number} */
-export function optionPnl(d, entry, close, qty) { return (d.credit ? entry - close : close - entry) * 100 * qty; }
-
 /** @param {{ shortPut?: boolean, K?: number, credit?: boolean, width?: number, entry: number }} o @returns {number} */
 export function simReturnBase(o) { return o.shortPut ? o.K : o.credit ? Math.max(0.01, (o.width || 0) - o.entry) : o.entry; }

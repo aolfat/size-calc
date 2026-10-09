@@ -4,7 +4,7 @@
 .risk-strip-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
 .strip-title { font-size:13px; font-weight:600; color:var(--red); }
 .risk-strip.alloc .strip-title { color:var(--text2); }
-.link-btn { background:none; border:0; padding:2px 0; color:var(--text2); font:12px var(--mono); cursor:pointer; white-space:nowrap; }
+.link-btn { background:none; border:0; padding:2px 0; color:var(--text2); font:12px var(--num); cursor:pointer; white-space:nowrap; }
 .link-btn:hover { color:var(--text); text-decoration:underline; }
 .risk-strip .chip-row { margin-top:10px; }
 .risk-strip .chip-row + .chip-row { margin-top:6px; }
@@ -16,7 +16,7 @@
 #riskDollar:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,93,93,0.12); }
 .risk-wrap .prefix { color: var(--red); font-weight: 700; }
 
-.usd-edit-box { width: 68px; padding: 5px 4px; font-size: 12px; background: var(--bg3); border: 1px solid var(--blue-bd); border-radius: var(--radius); color: var(--text); font-family: var(--mono); text-align: center; outline: none; }
+.usd-edit-box { width: 68px; padding: 5px 4px; font-size: 12px; background: var(--bg3); border: 1px solid var(--blue-bd); border-radius: var(--radius); color: var(--text); font-family: var(--num); text-align: center; outline: none; }
 .usd-edit-box:focus { border-color: var(--blue); }
 
 .seg.mode-big { width: 100%; padding: 4px; }
@@ -29,7 +29,7 @@
 .setup-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
 
 .stops-hint { font-size:11.5px; color:var(--text3); padding-bottom:11px; }
-.ticker-hint { font:11.5px var(--mono); color:var(--text3); margin-top:6px; min-height:16px; }
+.ticker-hint { font:11.5px var(--num); color:var(--text3); margin-top:6px; min-height:16px; }
 .ticker-hint.ok { color:var(--teal); }
 .ticker-hint.wait { color:var(--amber); }
 #stopBufferInfo:empty { display:none; }
@@ -47,7 +47,7 @@
 #percentControls label { font-size: 0.6875rem; color: var(--text2); }
 #stopPercent { width: 5.5rem; padding: 0.375rem 0.5rem; font-size: 0.75rem; }
 #stopPercent[aria-invalid="true"] { border-color: var(--red); }
-#stopBufferInfo { font: 0.6875rem var(--mono); color: var(--text2); margin-top: 0.5rem; line-height: 1.6; }
+#stopBufferInfo { font: 0.6875rem var(--num); color: var(--text2); margin-top: 0.5rem; line-height: 1.6; }
 #entryPrice { border-left: 3px solid var(--amber); }
 #futuresEntry { border-left: 3px solid var(--amber); }
 #futuresStop { border-left: 3px solid var(--red); }
@@ -62,20 +62,20 @@
 .shares-primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .shares-primary > div { min-width: 0; }
 .shares-label { display: block; font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 8px; }
-.shares-primary .s-val { font: 600 clamp(28px, 4vw, 44px)/1.15 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; margin-bottom: 8px; }
+.shares-primary .s-val { font: 600 clamp(28px, 4vw, 44px)/1.15 var(--num); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; margin-bottom: 8px; }
 .shares-quantity .s-val { color: var(--blue); }
 .shares-primary .s-val-input { width: 100%; max-width: 100%; font-size: inherit !important; }
 .shares-primary .s-val-input:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; border-radius: 2px; }
 .shares-stop { border-left: 1px solid var(--border); padding-left: 24px; }
 .shares-stop .s-val { color: var(--red); }
 .shares-detail { color: var(--text2); font-size: 12px; line-height: 1.5; }
-.shares-detail strong { font-family: var(--mono); font-weight: 500; color: var(--text); }
+.shares-detail strong { font-family: var(--num); font-weight: 500; color: var(--text); }
 .shares-edit-hint { font-size: 11px; color: var(--text2); margin-top: 4px; }
 .shares-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 20px; }
 .shares-metrics dt { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
-.shares-metrics dd { font: 600 19px/1.25 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.shares-metrics dd { font: 600 19px/1.25 var(--num); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .shares-metrics .shares-loss { color: var(--red); }
-.shares-metrics .shares-detail { display: block; font: 11px/1.5 var(--mono); color: var(--text2); margin-top: 4px; }
+.shares-metrics .shares-detail { display: block; font: 11px/1.5 var(--num); color: var(--text2); margin-top: 4px; }
 .shares-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border); margin-top: 18px; padding-top: 14px; }
 .shares-actions .filter-btn { padding: 8px 12px; }
 .shares-actions .filter-btn:disabled { opacity: 0.4; cursor: default; }
@@ -95,10 +95,10 @@
 }
 
 .quote-bar { display: flex; gap: 20px; align-items: baseline; margin-bottom: 4px; flex-wrap: wrap; }
-.quote-price { font-size: 30px; font-weight: 600; font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.quote-lod { font-size: 13px; color: var(--red); font-family: var(--mono); }
-.quote-hod { font-size: 13px; color: var(--green); font-family: var(--mono); }
-.quote-chg { font-size: 14px; font-family: var(--mono); }
+.quote-price { font-size: 30px; font-weight: 600; font-family: var(--num); font-variant-numeric: tabular-nums; }
+.quote-lod { font-size: 13px; color: var(--red); font-family: var(--num); }
+.quote-hod { font-size: 13px; color: var(--green); font-family: var(--num); }
+.quote-chg { font-size: 14px; font-family: var(--num); }
 .quote-chg.up { color: var(--green); }
 .quote-chg.dn { color: var(--red); }
 .quote-ticker { font-size: 13px; color: var(--text2); font-weight: 600; letter-spacing: 0.04em; }

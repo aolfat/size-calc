@@ -5,6 +5,7 @@ import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
 import { spreadWidth, strikesLabel, typeLabel } from '../core/options.js';
 import { simReturnBase } from '../core/sizing.js';
+import { SANS_FONT } from '../lib/media.js';
 import { quantityForCard } from './allocation.js';
 import { attachTouchCrosshair } from './chart.js';
 import { showError } from './feedback.js';
@@ -112,7 +113,7 @@ export function drawSim() {
   const cText3 = css.getPropertyValue('--text3').trim();
   const cBorder = css.getPropertyValue('--border2').trim();
 
-  ctx.font = '10px ui-monospace, Menlo, monospace';
+  ctx.font = `10px ${SANS_FONT}`;
   // gridlines at sensible % steps
   const step = (hi - lo) > 400 ? 100 : (hi - lo) > 150 ? 50 : 25;
   ctx.lineWidth = 1;
@@ -195,11 +196,6 @@ export function simParamsFromCard(d, entry, qty) {
 export function simFromPinned(cardId) {
   const d = state.pinnedData[cardId];
   if (d && (d.sizing !== 'allocation' || quantityForCard(d) > 0)) effects.openSim(simParamsFromCard(d, d.mid, quantityForCard(d)));
-}
-
-export function simFromSaved(id) {
-  const d = state.savedData[id];
-  if (d) effects.openSim(simParamsFromCard(d, d.entry, d.qty)); // returns measured from YOUR fill
 }
 
 export function initSimEvents() {

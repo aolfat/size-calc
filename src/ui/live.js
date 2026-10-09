@@ -5,7 +5,6 @@ import { refreshAllPinned } from './cards.js';
 import { fetchChain } from './chain.js';
 import { fetchChart } from './chart.js';
 import { clearError, showError } from './feedback.js';
-import { refreshAllSaved } from './positions.js';
 import { renderQuote } from './shares.js';
 import { syncSbLive } from './sticky-bar.js';
 
@@ -102,10 +101,7 @@ export async function livePoll() {
     }
     // heavier refreshes spread across ticks: chart ~20s, cards ~20s offset
     if (state.liveTicks % 4 === 0) fetchChart(ticker);
-    if (state.liveTicks % 4 === 2) {
-      refreshAllPinned();
-      if (state.positionsView) refreshAllSaved();
-    }
+    if (state.liveTicks % 4 === 2) refreshAllPinned();
     state.liveTicks++;
     document.getElementById('lastUpdated').textContent = 'Live · updated ' + new Date().toLocaleTimeString();
   } catch(e) {} finally {

@@ -6,22 +6,25 @@ import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPc
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
 import { renderChain, selectExp, setSide, setZoneMode, toggleExps } from './chain.js';
 import { setChartInterval } from './chart.js';
-import { copyPinned, copySaved, copyShares } from './copy-text.js';
+import { copyPinned, copyShares } from './copy-text.js';
 import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
 import { effects } from './effects.js';
 import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsChanged, renderFutures, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { refreshAllSaved, refreshSaved, removeSaved, saveCard, savedEntryChanged, savedQtyChanged, savedStopChanged } from './positions.js';
+import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePositionChart } from './position-chart.js';
+import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
+import { openPositionTrade, placePositionTrade, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
+import { refreshPositions } from './positions.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { exportBackup, importBackup, saveKey, signIn, signOut } from './settings.js';
-import { sharePinned, shareSaved, shareShares } from './share-image.js';
+import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { toggleKbdHelp } from './shortcuts.js';
-import { closeSim, drawSim, simFromPinned, simFromSaved, simPriceTyped, simSetPrice } from './sim.js';
+import { closeSim, drawSim, simFromPinned, simPriceTyped, simSetPrice } from './sim.js';
 import { cancelSpread, startSpread } from './spreads.js';
 import { jumpTo } from './sticky-bar.js';
 import { setAtrMultiplier, setDirection, setStopPercent, setStopStrategy, stopsChanged } from './stops.js';
@@ -131,22 +134,26 @@ export const actions = {
   copyPinned: el => copyPinned(arg(el)),
   sharePinned: el => sharePinned(arg(el)),
   simFromPinned: el => simFromPinned(arg(el)),
-  saveCard: el => saveCard(arg(el)),
   refreshPinned: el => refreshPinned(arg(el)),
   removePinned: el => removePinned(arg(el)),
   pinnedStopChanged: el => pinnedStopChanged(arg(el), el),
   refreshAllPinned: () => refreshAllPinned(),
 
-  // ---------- saved positions ----------
-  copySaved: el => copySaved(arg(el)),
-  shareSaved: el => shareSaved(arg(el)),
-  simFromSaved: el => simFromSaved(arg(el)),
-  refreshSaved: el => refreshSaved(arg(el)),
-  removeSaved: el => removeSaved(arg(el)),
-  savedEntryChanged: el => savedEntryChanged(arg(el), el),
-  savedQtyChanged: el => savedQtyChanged(arg(el), el),
-  savedStopChanged: el => savedStopChanged(arg(el), el),
-  refreshAllSaved: () => refreshAllSaved(),
+  // ---------- positions ----------
+  refreshPositions: () => refreshPositions(true),
+  openPositionTrade: el => openPositionTrade(arg(el), el.dataset.arg2),
+  setPositionStopDuration: el => setPositionStopDuration(arg(el)),
+  setPositionBeMode: el => setPositionBeMode(arg(el)),
+  placePositionTrade: () => placePositionTrade(),
+  openOrderCancel: el => openOrderCancel(arg(el)),
+  setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
+  sendOrderCancel: () => sendOrderCancel(),
+  togglePositionChart: el => togglePositionChart(arg(el)),
+  closePositionChart: () => closePositionChart(),
+  setPosChartRange: el => setPosChartRange(num(el)),
+  posChartToday: () => posChartToday(),
+  posTargetChanged: () => posTargetChanged(),
+  setPosTargetPortion: el => setPosTargetPortion(num(el)),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),

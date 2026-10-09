@@ -165,13 +165,14 @@ test('the shares answer is its own card in the rail and follows the quote surfac
   assert.ok(!shown(shares));
 });
 
-test('Positions in the header reflects the active view and the saved count', async () => {
+test('Positions in the header reflects the active view', async () => {
   const { run, elements } = await app();
   run("setView('positions')");
   assert.equal(elements.get('brandPositions').getAttribute('aria-current'), 'page');
   assert.equal(elements.get('brandSize').getAttribute('aria-current'), null);
-  run("savedData.x = {}; updateSavedBar()");
-  assert.equal(elements.get('posCount').textContent, '1');
+  assert.equal(elements.get('positionsSection').style.display, '');
+  run("setView('calc')");
+  assert.equal(elements.get('positionsSection').style.display, 'none');
 });
 
 test('chain layout tiers follow the main pane width', async () => {

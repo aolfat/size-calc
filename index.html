@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" href="icon-180.png">
 <title>Size Calculator</title>
+<link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles/base.css">
 <link rel="stylesheet" href="styles/chrome.css">
 <link rel="stylesheet" href="styles/calculator.css">
@@ -19,6 +20,7 @@
 <link rel="stylesheet" href="styles/charts.css">
 <link rel="stylesheet" href="styles/tools.css">
 <link rel="stylesheet" href="styles/market.css">
+<link rel="stylesheet" href="styles/positions.css">
 <link rel="stylesheet" href="styles/layout.css">
 </head>
 <body>
@@ -28,7 +30,7 @@
   <header class="header" id="appHeader">
     <span class="dot"></span>
     <span class="view-title" id="viewTitle">Size</span>
-    <nav class="brand-tabs" aria-label="Views"><button class="brand-nav" id="brandMarket" data-action="setView" data-arg="market" title="Market performance (m)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg><span class="tab-label">Market</span></button><button class="brand-nav" id="brandSize" data-action="setView" data-arg="calc" aria-current="page" title="Size a trade: shares, options, futures (s / o / f)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01M8.5 15h.01M12 15h.01M15.5 15h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg><span class="tab-label">Size</span></button><button class="brand-nav" id="brandPositions" data-action="setView" data-arg="positions" title="Saved positions (v)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 13h18"/></svg><span class="tab-label">Positions</span><span class="count-badge" id="posCount"></span></button><button class="brand-nav" id="brandTools" data-action="setView" data-arg="utils" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="tab-label">Tools</span></button></nav>
+    <nav class="brand-tabs" aria-label="Views"><button class="brand-nav" id="brandMarket" data-action="setView" data-arg="market" title="Market performance (m)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg><span class="tab-label">Market</span></button><button class="brand-nav" id="brandSize" data-action="setView" data-arg="calc" aria-current="page" title="Size a trade: shares, options, futures (s / o / f)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01M8.5 15h.01M12 15h.01M15.5 15h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg><span class="tab-label">Size</span></button><button class="brand-nav" id="brandPositions" data-action="setView" data-arg="positions" title="Schwab positions, live (v)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 13h18"/></svg><span class="tab-label">Positions</span><span class="count-badge" id="posCount"></span></button><button class="brand-nav" id="brandTools" data-action="setView" data-arg="utils" title="Small tools: % gain calculator, leveraged ETF finder, lev ETF price target (t or u)"><svg class="tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="tab-label">Tools</span></button></nav>
     <span class="sub" id="lastUpdated"></span>
     <button class="kbd-toggle" data-action="toggleKbdHelp" title="Keyboard shortcuts (or press ?)"><kbd>?</kbd> shortcuts</button>
     <button class="icon-btn" id="settingsBtn" data-action="openSheet" data-arg="settings" aria-label="Settings" title="Settings: account, API key, backup"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="key-dot"></span></button>
@@ -240,7 +242,7 @@
       <div class="field" style="flex:2;min-width:220px;position:relative;">
         <label for="quickInput">Option shorthand</label>
         <input type="text" id="quickInput" placeholder="AAPL 245 6/20  or  SPY 580 put 6/20" data-input="parseQuick" data-enter="fetchQuickOption" style="padding-right:120px;" />
-        <span id="quickParsed" style="position:absolute;right:10px;top:35px;font-size:11px;color:var(--teal);pointer-events:none;white-space:nowrap;font-family:var(--mono);"></span>
+        <span id="quickParsed" style="position:absolute;right:10px;top:35px;font-size:11px;color:var(--teal);pointer-events:none;white-space:nowrap;font-family:var(--num);"></span>
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
@@ -297,12 +299,12 @@
           <span class="quote-ticker" id="qTicker"></span>
           <span class="quote-price" id="qPrice"></span>
           <span class="quote-chg" id="qChg"></span>
-          <span id="qExt" style="font-size:13px;font-family:var(--mono);margin-left:4px;"></span>
+          <span id="qExt" style="font-size:13px;font-family:var(--num);margin-left:4px;"></span>
         </div>
         <div class="quote-levels">
           <span class="quote-lod">▼ LOD <span id="qLod"></span> <span class="lod-pct" id="qLodPct"></span></span>
           <span class="quote-hod">▲ HOD <span id="qHod"></span> <span class="lod-pct" id="qHodPct"></span></span>
-          <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="qVol"></span>
+          <span style="font-size:12px;color:var(--text3);font-family:var(--num);" id="qVol"></span>
         </div>
       </div>
     </div>
@@ -319,7 +321,7 @@
           </div>
           <div class="fgroup" id="bothCountGroup">
             <span style="font-size:12px;color:var(--text2);">± strikes</span>
-            <input type="number" id="bothStrikes" value="8" min="2" max="40" step="1" style="width:56px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="bothStrikesChanged" title="How many strikes to show on each side of ATM in the Both view" />
+            <input type="number" id="bothStrikes" value="8" min="2" max="40" step="1" style="width:56px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--num);outline:none;" data-input="bothStrikesChanged" title="How many strikes to show on each side of ATM in the Both view" />
           </div>
           <div class="seg" id="zoneSeg">
             <button id="zOtm" class="active" data-action="setZoneMode" data-arg="otm" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
@@ -329,17 +331,17 @@
           </div>
           <div class="fgroup" id="otmFloorGroup">
             <span style="font-size:12px;color:var(--text2);">OTM |Δ|≥</span>
-            <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="renderChain" title="Δ floor for the OTM zone" />
+            <input type="number" id="otmDelta" value="0.20" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--num);outline:none;" data-input="renderChain" title="Δ floor for the OTM zone" />
           </div>
           <div class="fgroup" id="itmFloorGroup" style="display:none;">
             <span style="font-size:12px;color:var(--text2);">ITM |Δ|≤</span>
-            <input type="number" id="itmDelta" value="0.80" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none;" data-input="renderChain" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
+            <input type="number" id="itmDelta" value="0.80" step="0.05" min="0" max="1" style="width:62px;padding:5px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--num);outline:none;" data-input="renderChain" title="Depth limit: shows ITM from the ATM strike down to this Δ" />
           </div>
-          <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--mono);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
-          <span style="font-size:12px;color:var(--text2);font-family:var(--mono);" id="ivInfo"></span>
-          <span style="font-size:12px;color:var(--text3);font-family:var(--mono);" id="chainStatus"></span>
+          <span style="margin-left:auto;font-size:12px;color:var(--teal);font-family:var(--num);" id="emInfo" title="ATM straddle mid: the market's implied move by this expiry"></span>
+          <span style="font-size:12px;color:var(--text2);font-family:var(--num);" id="ivInfo"></span>
+          <span style="font-size:12px;color:var(--text3);font-family:var(--num);" id="chainStatus"></span>
         </div>
-        <div id="spreadBanner" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--radius);font-size:12.5px;color:var(--blue);font-family:var(--mono);"></div>
+        <div id="spreadBanner" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--radius);font-size:12.5px;color:var(--blue);font-family:var(--num);"></div>
         <div class="chain-scroll">
           <table id="chainTable" style="min-width:1000px;">
             <thead id="chainHead"></thead>
@@ -354,7 +356,7 @@
   <div class="card chart-wrap" id="chartWrap" style="display:none;">
     <div class="chart-head">
       <span class="section-title" style="margin-bottom:0;">Chart</span>
-      <span style="font-size:11.5px;color:var(--text2);font-family:var(--mono);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
+      <span style="font-size:11.5px;color:var(--text2);font-family:var(--num);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
       <span class="ohlc" id="chartOhlc"></span>
     </div>
     <div class="chart-row">
@@ -364,8 +366,40 @@
     <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span> &nbsp;·&nbsp; daily: pinch or ctrl+scroll to zoom, drag to pan</div>
   </div>
 
-  <div id="savedBar"></div>
-  <div id="savedSection"></div>
+  <div class="positions-split" id="positionsSplit">
+  <section id="positionsSection" style="display:none;" aria-label="Schwab positions"></section>
+
+  <section class="card chart-wrap pos-chart" id="posChartSection" style="display:none;" aria-labelledby="posChartTitle">
+    <div class="chart-head">
+      <span class="section-title" id="posChartTitle" style="margin-bottom:0;">Chart</span>
+      <span class="pos-chart-meta" id="posChartMeta"></span>
+      <button class="sheet-close" data-action="closePositionChart" aria-label="Close the chart" title="Close the chart">×</button>
+      <span class="ohlc" id="posChartOhlc"></span>
+    </div>
+    <p class="hint" id="posChartStatus" role="status"></p>
+    <div id="posChartPlot" style="display:none;">
+      <div class="chart-cap" id="posChartCap"><span>Daily</span><button class="filter-btn" data-action="setPosChartRange" data-arg="21">1M</button><button class="filter-btn active" data-action="setPosChartRange" data-arg="63">3M</button><button class="filter-btn" data-action="setPosChartRange" data-arg="126">6M</button><button class="filter-btn" data-action="setPosChartRange" data-arg="252">1Y</button></div>
+      <div class="pos-chart-canvas"><canvas id="posChart" height="260"></canvas><button class="filter-btn" id="posChartToday" data-action="posChartToday" style="display:none;" title="Back to the latest session">Today →</button></div>
+      <div class="chart-hint">Tap the chart to set the target; near a candle's high or low it takes that exact price. Pinch or ctrl+scroll to zoom, drag to pan. Lines: <span style="color:var(--blue);">avg cost</span> · <span style="color:var(--red);">stops</span> · <span style="color:var(--green);">targets</span> · <span style="color:var(--purple);">8 EMA</span></div>
+    </div>
+    <div class="pos-target">
+      <div class="section-title">Profit target</div>
+      <div class="pos-target-row">
+        <div class="field">
+          <label for="posTargetPrice">Target price</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posTargetPrice" step="0.01" min="0" inputmode="decimal" placeholder="tap the chart" autocomplete="off" data-input="posTargetChanged" /></div>
+        </div>
+        <div class="field">
+          <label for="posTargetQty" id="posTargetQtyLabel">Shares to sell</label>
+          <input type="number" id="posTargetQty" step="1" min="1" inputmode="numeric" autocomplete="off" data-input="posTargetChanged" />
+        </div>
+        <div class="chip-row pos-portions" id="posTargetPortions" role="group" aria-label="Portion of the position"></div>
+      </div>
+      <div class="pos-target-sum" id="posTargetSummary" role="status"></div>
+      <div class="trade-actions"><button class="btn trade-confirm" id="posTargetReview" data-action="openPositionTrade" data-arg="" data-arg2="target" disabled>Review target</button></div>
+    </div>
+  </section>
+  </div>
 
   <section id="marketSection" style="display:none;" aria-labelledby="marketTitle">
     <div class="market-heading">
@@ -472,11 +506,11 @@
       </div>
       <div class="hint" id="simMeta" style="margin:0 0 10px;"></div>
       <canvas id="simChart" height="240" style="width:100%;display:block;border-radius:10px;background:var(--bg3);border:1px solid var(--border);cursor:crosshair;"></canvas>
-      <div style="font-size:12.5px;color:var(--text2);font-family:var(--mono);margin:10px 2px;" id="simReadout"></div>
+      <div style="font-size:12.5px;color:var(--text2);font-family:var(--num);margin:10px 2px;" id="simReadout"></div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <span class="chip-label">Underlying</span>
         <input type="range" id="simPrice" style="flex:1;min-width:160px;" data-input="drawSim" />
-        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--mono);outline:none;" data-change="simPriceTyped" /></div>
+        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--num);outline:none;" data-change="simPriceTyped" /></div>
         <button class="filter-btn" data-action="simSetPrice" data-arg="stop">stop</button>
         <button class="filter-btn" data-action="simSetPrice" data-arg="current" title="Jump to the current underlying price">current</button>
         <button class="filter-btn" data-action="simSetPrice" data-arg="1">1R</button>
@@ -502,7 +536,7 @@
           <button class="btn" id="signInBtn" data-action="signIn">Sign in with Google</button>
           <button class="btn" id="signOutBtn" data-action="signOut" style="display:none;">Sign out</button>
         </div>
-        <p class="hint" id="accountHint">Sync your settings, key, and positions across devices. The calculator works without signing in.</p>
+        <p class="hint" id="accountHint">Sync your settings and Tradier key across devices. The calculator works without signing in.</p>
       </div>
       <div class="sheet-section">
         <div class="row">
@@ -563,7 +597,7 @@
           <button class="btn" data-action="pickImportFile">⬆ Import backup</button>
           <input type="file" id="importFile" accept=".json,application/json" style="display:none;" data-change="importBackup" />
         </div>
-        <p class="hint">Saves your settings, API key, and positions to a file. Keep it private. Importing merges positions.</p>
+        <p class="hint">Saves your settings and API key to a file. Keep it private.</p>
       </div>
     </div>
   </div>
@@ -575,6 +609,24 @@
       <button class="sheet-close" data-action="closeSheet" aria-label="Close order review">×</button>
     </div>
     <div id="tradeBody" aria-live="polite"></div>
+  </div>
+
+  <div class="sheet trade-sheet" id="posTradeSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="posTradeTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="posTradeTitle">Stop at breakeven</h2>
+      <span class="sheet-status" id="posTradeAccount"></span>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close order review">×</button>
+    </div>
+    <div id="posTradeBody" aria-live="polite"></div>
+  </div>
+
+  <div class="sheet trade-sheet" id="cancelSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cancelTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="cancelTitle">Cancel order</h2>
+      <span class="sheet-status" id="cancelAccount"></span>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close cancel review">×</button>
+    </div>
+    <div id="cancelBody" aria-live="polite"></div>
   </div>
 
   <div class="sheet" id="riskSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="riskTitle" tabindex="-1">

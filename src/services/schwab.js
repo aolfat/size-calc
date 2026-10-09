@@ -27,6 +27,9 @@ export function schwabAccount() {
 
 export function schwabConnected() { return !!(schwabSession() && schwabAccount()); }
 
+/** how long a stop placed from here lasts: Today or Until canceled (the default) */
+export function schwabStopDuration() { return store.get('schwab_stop_duration') === 'DAY' ? 'DAY' : 'GOOD_TILL_CANCEL'; }
+
 export function schwabDisconnect() { SCHWAB_KEYS.filter(k => k !== 'schwab_proxy' && k !== 'schwab_stop_duration').forEach(k => store.del(k)); }
 
 // Schwab's errors come as { message, errors: [...] }, { error, error_description }, or nothing at all
@@ -88,14 +91,29 @@ export async function schwabAccessToken() {
   return state.schwabRefreshing;
 }
 
-/** one Trader API call; never retried here, so an order is never sent twice */
+const READ_TIMEOUT = 15000;
+
+/** one Trader API call, never cached and never retried here, so an order is never sent twice */
 export async function schwabApi(path, { method = 'GET', body } = {}) {
   const token = await schwabAccessToken();
-  const res = await fetch(schwabProxy() + '/trader/v1' + path, {
-    method,
-    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // a read gives up after 15s so a hung call can't leave Refresh dead; an order waits, since giving up wouldn't unsend it
+  const ctrl = method === 'GET' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), READ_TIMEOUT) : 0;
+  let res;
+  try {
+    res = await fetch(schwabProxy() + '/trader/v1' + path, {
+      method,
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      ...(ctrl ? { signal: ctrl.signal } : {}),
+    });
+  } catch(e) {
+    if (ctrl && ctrl.signal.aborted) throw new Error(`No answer from Schwab in ${READ_TIMEOUT / 1000} seconds. Try again.`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 401) { // the access token was refused: the next call refreshes first
     const t = readTokens();
     if (t) store.set('schwab_tokens', JSON.stringify({ ...t, accessExp: 0 }));
@@ -116,14 +134,31 @@ export async function schwabFetchAccounts() {
   return list;
 }
 
-/** POST the order to the selected account; Schwab answers 201 with the new id in Location */
-export async function schwabPlaceOrder(order) {
+function ordersPath() {
   const acct = schwabAccount();
   if (!acct) throw new Error('Pick a Schwab account in Settings.');
-  const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}/orders`, { method: 'POST', body: order });
+  return `/accounts/${encodeURIComponent(acct.hash)}/orders`;
+}
+
+const newOrderId = res => { const id = (res.headers.get('Location') || '').match(/\/orders\/(\d+)/); return { orderId: id ? id[1] : '' }; };
+
+/** POST the order to the selected account; Schwab answers 201 with the new id in Location */
+export async function schwabPlaceOrder(order) {
+  const res = await schwabApi(ordersPath(), { method: 'POST', body: order });
   if (!res.ok) throw schwabError(await readJson(res), res.status);
-  const id = (res.headers.get('Location') || '').match(/\/orders\/(\d+)/);
-  return { orderId: id ? id[1] : '' };
+  return newOrderId(res);
+}
+
+/** PUT a new order in place of a working one; Schwab cancels the old one and gives the new one its own id */
+export async function schwabReplaceOrder(orderId, order) {
+  const res = await schwabApi(`${ordersPath()}/${encodeURIComponent(orderId)}`, { method: 'PUT', body: order });
+  if (!res.ok) throw schwabError(await readJson(res), res.status);
+  return newOrderId(res);
+}
+
+export async function schwabCancelOrder(orderId) {
+  const res = await schwabApi(`${ordersPath()}/${encodeURIComponent(orderId)}`, { method: 'DELETE' });
+  if (!res.ok) throw schwabError(await readJson(res), res.status);
 }
 
 export async function schwabOrder(orderId) {
@@ -131,6 +166,27 @@ export async function schwabOrder(orderId) {
   if (!acct || !orderId) return null;
   const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}/orders/${encodeURIComponent(orderId)}`);
   return res.ok ? readJson(res) : null;
+}
+
+/** the selected account with its positions and balances */
+export async function schwabPositions() {
+  const acct = schwabAccount();
+  if (!acct) throw new Error('Pick a Schwab account in Settings.');
+  const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}?fields=positions`);
+  const body = await readJson(res);
+  if (!res.ok || !body?.securitiesAccount) throw schwabError(body, res.status);
+  return body.securitiesAccount;
+}
+
+/** orders entered in the last 59 days (Schwab's window is 60), where the working stops are */
+export async function schwabRecentOrders(now = Date.now()) {
+  const acct = schwabAccount();
+  if (!acct) throw new Error('Pick a Schwab account in Settings.');
+  const q = new URLSearchParams({ fromEnteredTime: new Date(now - 59 * 86400000).toISOString(), toEnteredTime: new Date(now).toISOString() });
+  const res = await schwabApi(`/accounts/${encodeURIComponent(acct.hash)}/orders?${q}`);
+  const body = await readJson(res);
+  if (!res.ok || !Array.isArray(body)) throw schwabError(body, res.status);
+  return body;
 }
 
 /** where to send the browser to log in; state ties the callback to this attempt */

@@ -4,7 +4,7 @@ import { aggregateBars } from '../core/bars.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { dateStr } from '../core/format.js';
 import { calculateAtr5 } from '../core/stops.js';
-import { DESKTOP_MQ } from '../lib/media.js';
+import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { renderChain } from './chain.js';
@@ -102,7 +102,7 @@ export function drawChart() {
   const cBorder = css.getPropertyValue('--border2').trim();
 
   // horizontal gridlines + price axis
-  ctx.font = '10px ui-monospace, Menlo, monospace';
+  ctx.font = `10px ${SANS_FONT}`;
   ctx.fillStyle = cText3;
   ctx.strokeStyle = 'rgba(255,255,255,0.045)';
   ctx.lineWidth = 1;

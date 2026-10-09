@@ -12,7 +12,8 @@ import { initDailyChartEvents } from './ui/daily.js';
 import { initFutures } from './ui/futures.js';
 import { pauseLive, resumeLive } from './ui/live.js';
 import { initMarketEvents, marketScheduleRefresh } from './ui/market.js';
-import { loadSaved } from './ui/positions.js';
+import { initPositionChartEvents } from './ui/position-chart.js';
+import { positionsVisibilityChanged } from './ui/positions.js';
 import { applyQuickOpen } from './ui/quick-lookup.js';
 import { renderUsdPresets, syncRiskDollar, updateRiskStatus } from './ui/risk.js';
 import { initCloud, loadKey, updateApiStatus } from './ui/settings.js';
@@ -37,6 +38,7 @@ state.cloudSuppress = false;
 // canvas, keyboard, simulator and market listeners
 initChartEvents();
 initDailyChartEvents();
+initPositionChartEvents();
 initShortcuts();
 initSimEvents();
 initMarketEvents();
@@ -50,7 +52,6 @@ updateChainControls();
 updateRiskStatus();
 applyQuickOpen();
 updateStopVisibility();
-loadSaved();
 setView(location.hash === '#market' ? 'market' : 'calc'); // direct link to Market; sizing remains the default
 updateIntervalChips();
 
@@ -59,6 +60,7 @@ window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), 
 // backgrounding the app pauses a live session instead of polling blind; foregrounding pulls fresh account data
 document.addEventListener('visibilitychange', () => {
   marketScheduleRefresh();
+  positionsVisibilityChanged();
   if (document.hidden) { pauseLive(); } else { resumeLive(); cloudPull(); }
 });
 window.addEventListener('online', marketScheduleRefresh);

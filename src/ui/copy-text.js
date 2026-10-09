@@ -62,16 +62,3 @@ export function copyPinned(cardId) {
   const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} ${d.credit ? 'credit' : 'debit'} spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
   effects.copyPlainText(`${d.credit ? 'sold' : 'bought'} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.mid, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying · risk ${(Math.max(1, cts) * sizeUnit(d) / acct * 100).toFixed(2)}% of account${ex100(sizeUnit(d), d.kind === 'spread' ? 'spread' : 'contract')}`);
 }
-
-export function copySaved(id) {
-  const d = state.savedData[id];
-  if (!d) return;
-  if (d.sizing === 'allocation') {
-    const r = null; const qty = d.qty; const entry = d.entry;
-    effects.copyPlainText(allocationSummary(d, qty, entry, r)); return;
-  }
-  const acct = parseFloat(document.getElementById('accountSize').value) || 1;
-  const lossPct = (d.credit ? -1 : 1) * (d.entry - d.atLod) * 100 * (d.qty || 0) / acct * 100;
-  const what = d.kind === 'spread' ? `${+d.legs[0].K}/${+d.legs[1].K}${d.isCall ? 'c' : 'p'} ${d.credit ? 'credit' : 'debit'} spread` : `${+d.parsed.strike}${d.isCall ? 'c' : 'p'}`;
-  effects.copyPlainText(`${d.credit ? 'sold' : 'bought'} $${d.parsed.ticker} ${expChat(d.parsed.expStr)} ${what} @ ${fmtN(d.entry, 2)} with stop at ${fmtN(d.stopLevel, 2)} on the underlying${lossPct > 0 ? ` · risk ${lossPct.toFixed(2)}% of account` : ''}`);
-}

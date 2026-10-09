@@ -5,7 +5,6 @@ import { updateSizingControls } from './allocation.js';
 import { renderPinnedCards } from './cards.js';
 import { renderChain } from './chain.js';
 import { renderFutures } from './futures.js';
-import { renderSavedCards } from './positions.js';
 import { renderShares } from './shares.js';
 import { updateStickyBar } from './sticky-bar.js';
 
@@ -122,7 +121,6 @@ export function syncFromDollar() {
   renderFutures();
   if (state.quoteData) { renderShares(); renderChain(); }
   renderPinnedCards();
-  renderSavedCards();
   state.flashNext = false;
   updateStickyBar();
 }
@@ -137,7 +135,6 @@ export function recalcAll() {
     renderChain();
   }
   renderPinnedCards();
-  renderSavedCards();
   state.flashNext = false;
   updateStickyBar();
 }

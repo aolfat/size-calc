@@ -7,7 +7,6 @@ import { cloudClearDevice, cloudFirstSignIn, cloudPull, cloudPush, loadPending, 
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { effects } from './effects.js';
 import { showError, showToast } from './feedback.js';
-import { loadSaved, updateSavedBar } from './positions.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
 import { updateStopVisibility } from './stops.js';
@@ -50,9 +49,6 @@ export function cloudRehydrate() {
     if (tick.trim()) document.getElementById('ticker').value = tick; // never yank a symbol the user typed or loaded
     updateApiStatus();
     renderUsdPresets();
-    Object.keys(state.savedData).forEach(id => { const el = document.getElementById(id); if (el) el.remove(); delete state.savedData[id]; });
-    loadSaved();
-    updateSavedBar();
     recalcAll();
   } finally { state.cloudSuppress = false; }
 }
@@ -121,8 +117,8 @@ export function setCloudUi(status) {
   who.style.display = s ? '' : 'none';
   document.getElementById('cloudStatus').textContent = status || '';
   document.getElementById('accountHint').textContent = s
-    ? 'Your settings, key, and positions sync across your devices.'
-    : 'Sync your settings, key, and positions across devices. The calculator works without signing in.';
+    ? 'Your settings and Tradier key sync across your devices.'
+    : 'Sync your settings and Tradier key across devices. The calculator works without signing in.';
   document.getElementById('apiNotice').innerHTML = (s ? 'Saved to your account, encrypted. ' : 'Stored in this browser. ')
     + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.';
 }

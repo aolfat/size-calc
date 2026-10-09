@@ -1,5 +1,9 @@
 /* Tokens, reset, element defaults, and components shared across views. */
 * { box-sizing: border-box; margin: 0; padding: 0; }
+* { font-variant-numeric: tabular-nums !important; } /* every digit the same width so figures line up; !important because the font shorthand resets it */
+button, input, select, textarea { font-family: inherit; } /* controls default to the OS font otherwise */
+/* Geist for everything, self-hosted latin subset, OFL (fonts/OFL.txt). Canvas text mirrors the stack: SANS_FONT in src/lib/media.js */
+@font-face { font-family: "Geist"; src: url(../fonts/geist.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
 :root {
   --bg: #0b0d12;
   --bg2: #12151c;
@@ -26,14 +30,16 @@
   --purple: #b47aff;
   --radius: 8px;
   --radius-lg: 14px;
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --num: var(--sans); /* figures: tabular digits (the * rule above) line columns up without a monospace; point at --mono for the terminal look */
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; /* code only: the order payload */
 }
 body {
   background:
     radial-gradient(1200px 500px at 50% -200px, #131a28 0%, transparent 60%),
     var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--sans);
   font-size: 14px; min-height: 100vh;
 }
 
@@ -53,14 +59,14 @@ body {
   background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
   color: var(--text); font-size: 14px; padding: 9px 11px; outline: none; width: 100%;
   transition: border-color 0.15s, box-shadow 0.15s;
-  font-family: var(--mono);
+  font-family: var(--num);
 }
 .field input:focus, .field select:focus, .stop-buffer input:focus, .stop-buffer select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(91,157,255,0.12); }
 .field input::placeholder { color: var(--text3); }
 .field select option, .stop-buffer select option { background: var(--bg3); }
 
 .prefix-wrap { position: relative; }
-.prefix-wrap .prefix { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text3); pointer-events: none; font-size: 13px; font-family: var(--mono); }
+.prefix-wrap .prefix { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text3); pointer-events: none; font-size: 13px; font-family: var(--num); }
 .prefix-wrap input { padding-left: 24px; }
 
 .section-title { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
@@ -88,8 +94,8 @@ body {
 .stat { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; position: relative; overflow: hidden; }
 .stat::before { content:''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--border2); }
 .stat .s-label { font-size: 12px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
-.stat .s-val { font-size: 22px; font-weight: 600; line-height: 1.1; font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.stat .s-sub { font-size: 11px; color: var(--text2); margin-top: 4px; font-family: var(--mono); }
+.stat .s-val { font-size: 22px; font-weight: 600; line-height: 1.1; font-family: var(--num); font-variant-numeric: tabular-nums; }
+.stat .s-sub { font-size: 11px; color: var(--text2); margin-top: 4px; font-family: var(--num); }
 .stat.highlight::before { background: var(--blue); }
 .stat.highlight .s-val { color: var(--blue); }
 .stat.danger::before { background: var(--red); }
@@ -113,7 +119,7 @@ thead th:first-child { text-align: left; }
 tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
 tbody tr:hover { background: var(--bg3); }
 tbody tr.selected { background: var(--bg4); }
-tbody td { padding: 9px 10px; text-align: right; color: var(--text); font-family: var(--mono); }
+tbody td { padding: 9px 10px; text-align: right; color: var(--text); font-family: var(--num); }
 tbody td:first-child { text-align: left; font-family: inherit; }
 
 .badge-itm { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--amber-bg); color: var(--amber); font-weight: 600; margin-left: 6px; vertical-align: middle; }
@@ -124,7 +130,7 @@ tbody td:first-child { text-align: left; font-family: inherit; }
 .card-toggle:not(.open) { margin-bottom: 0; }
 .card-toggle .chev { color: var(--text3); font-size: 10px; transition: transform 0.15s; display: inline-block; }
 .card-toggle.open .chev { transform: rotate(90deg); }
-.card-toggle .title-status { color: var(--text3); font-weight: 500; font-family: var(--mono); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-toggle .title-status { color: var(--text3); font-weight: 500; font-family: var(--num); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* recalc flash: pulse freshly re-rendered stat values */
 @keyframes valPulse { 0% { color: var(--blue); text-shadow: 0 0 14px rgba(91,157,255,0.75); } 100% { } }
@@ -141,7 +147,7 @@ a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .hint { font-size: 11px; color: var(--text3); margin-top: 7px; }
-.hint b { color: var(--text2); font-weight: 500; font-family: var(--mono); }
+.hint b { color: var(--text2); font-weight: 500; font-family: var(--num); }
 
 @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
