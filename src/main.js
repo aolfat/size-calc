@@ -13,6 +13,7 @@ import { initFutures } from './ui/futures.js';
 import { pauseLive, resumeLive } from './ui/live.js';
 import { initMarketEvents, marketScheduleRefresh } from './ui/market.js';
 import { initPositionChartEvents } from './ui/position-chart.js';
+import { dailyAccountSize } from './ui/account-size.js';
 import { positionsVisibilityChanged } from './ui/positions.js';
 import { applyQuickOpen } from './ui/quick-lookup.js';
 import { renderUsdPresets, syncRiskDollar, updateRiskStatus } from './ui/risk.js';
@@ -61,7 +62,7 @@ window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), 
 document.addEventListener('visibilitychange', () => {
   marketScheduleRefresh();
   positionsVisibilityChanged();
-  if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(); }
+  if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(); dailyAccountSize(); }
 });
 window.addEventListener('online', marketScheduleRefresh);
 window.addEventListener('offline', marketScheduleRefresh);

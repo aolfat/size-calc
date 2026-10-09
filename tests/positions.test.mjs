@@ -185,7 +185,8 @@ test('a stop exactly at cost reads as breakeven, never a negative zero', async (
 test('Refresh shows it is working and confirms when it lands; the 30s refresh stays quiet', async () => {
   let gate = null;
   const net = network(async path => { if (gate) await gate.promise; return schwabOk(path); });
-  const { run, elements, advance } = await app({ fetch: net.fetch, storage: connected(), timers: 'fake' });
+  // the account size stays typed in, so the day's first read has nothing to say either
+  const { run, elements, advance } = await app({ fetch: net.fetch, storage: connected([['schwab_acct_source', 'manual']]), timers: 'fake' });
   run("setView('positions')");
   await settle();
   assert.equal(elements.get('errorBox').textContent, '', 'opening the tab says nothing extra');

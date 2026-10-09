@@ -3,6 +3,7 @@
 import { store } from '../lib/store.js';
 import { syncEnabled } from '../services/sync.js';
 import { state } from '../state.js';
+import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
 import { renderChain, selectExp, setSide, setZoneMode, toggleExps } from './chain.js';
@@ -66,6 +67,7 @@ export const actions = {
 
   // ---------- account and risk ----------
   setSizingMode: el => setSizingMode(arg(el)),
+  setAccountSizeSource: el => setAccountSizeSource(arg(el)),
   recalcAll: () => recalcAll(),
   syncFromDollar: () => syncFromDollar(),
   setRiskPct: el => setRiskPct(num(el)),

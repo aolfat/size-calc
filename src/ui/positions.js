@@ -5,6 +5,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { INSTRUCTION_WORDS, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
+import { applyAccountValue } from './account-size.js';
 import { showToast } from './feedback.js';
 import { renderPositionChart } from './position-chart.js';
 
@@ -29,6 +30,7 @@ export async function refreshPositions(asked = false) {
     if (id !== state.positionsRequest) return;
     state.positions = { ...positionRows(account, orders || []), orders: orders || [], last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
     state.positionsError = '';
+    applyAccountValue(account); // the first read of the day sets the account size
     if (asked) showToast(`Positions refreshed at ${new Date(state.positions.asOf).toLocaleTimeString()}.`);
   } catch(e) {
     if (id !== state.positionsRequest) return;
