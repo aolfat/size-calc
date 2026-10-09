@@ -130,13 +130,23 @@ export async function initCloud(href = location.href) {
   if (isGoogleReturn(href)) {
     const url = new URL(href);
     globalThis.history?.replaceState(null, '', url.pathname + url.hash); // the code is single-use: off the address bar now
-    try {
-      await startSession(await finishGoogleReturn(href));
-      openSheet('settings');
-    } catch(e) {
+    const failed = e => {
       state.session = null;
       setCloudUi('');
       showError('Google sign-in failed. ' + (e && e.message ? e.message : 'Try again.'));
+    };
+    let session = null;
+    try { session = await finishGoogleReturn(href); } catch(e) {
+      // an old return address opened again (Chrome's history, autocomplete, a restored tab): its code is spent,
+      // but the session it made is still on this device
+      if (hasStoredSession()) await resumeSession().catch(() => setCloudUi('Offline, will retry'));
+      if (!state.session && !hasStoredSession()) failed(e);
+    }
+    if (session) {
+      try {
+        await startSession(session);
+        openSheet('settings');
+      } catch(e) { failed(e); }
     }
   } else if (hasStoredSession()) {
     await resumeSession().catch(() => setCloudUi('Offline, will retry'));

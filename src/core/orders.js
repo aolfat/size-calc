@@ -61,6 +61,12 @@ export function optionStopTick(stop, isLong) {
   return steps * step / 100;
 }
 
+/** An option limit price on the same grid, to the nearest step. @param {number} p @returns {number} */
+export function optionPriceTick(p) {
+  const step = p < 3 ? 5 : 10; // cents
+  return Math.round(p * 100 / step) * step / 100;
+}
+
 /** @typedef {'EQUITY' | 'OPTION'} TradeAs */
 
 /** The instruction that closes a long or a short. @param {TradeAs} assetType @param {boolean} isLong */

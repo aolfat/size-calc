@@ -8,6 +8,7 @@ import { app } from './helpers/app.mjs';
 const USER = { id: 'user-1', email: 'me@example.com' };
 const SESSION = { user: USER, access_token: 'jwt' };
 const GOOGLE_RETURN = 'https://aolfat.github.io/size-calc/?login=google&code=abc';
+const SESSION_KEY = 'sb-dhohfavttsxwutanvcuj-auth-token';
 
 /** a fake Supabase client over in-memory tables; rows get server-side updated_at stamps like the real triggers */
 function fakeSupabase({ settings = [], key = '' } = {}) {
@@ -127,6 +128,29 @@ test('a failed first sign-in leaves the device as it was and is retried later', 
   assert.equal(state.session, null, 'not merged means not signed in here');
   assert.equal(storage.has('cloud_user'), false);
   assert.equal(storage.get('calc_account'), '50000');
+  assert.match(elements.get('errorBox').textContent, /Google sign-in failed/);
+});
+
+test('an old return address opened again keeps the session this device already has', async () => {
+  // Chrome's history and autocomplete bring back ?login=google&code=…; the code is spent, the session it made is not
+  const supabase = fakeSupabase();
+  supabase.auth.exchangeCodeForSession = async () => ({ data: { session: null }, error: { message: 'PKCE code verifier not found in storage.' } });
+  const storage = joined([[SESSION_KEY, '{"access_token":"jwt"}']]);
+  const { run, elements, state } = await app({ supabase, storage });
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+  assert.equal(state.session, SESSION);
+  assert.equal(elements.get('signInBtn').style.display, 'none');
+  assert.equal(elements.get('signOutBtn').style.display, '');
+  assert.doesNotMatch(elements.get('errorBox').textContent, /sign-in failed/);
+});
+
+test('an old return address without a session here says the sign-in failed', async () => {
+  const supabase = fakeSupabase();
+  supabase.auth.exchangeCodeForSession = async () => ({ data: { session: null }, error: { message: 'PKCE code verifier not found in storage.' } });
+  const { run, elements, state } = await app({ supabase });
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+  assert.equal(state.session, null);
+  assert.equal(elements.get('signInBtn').style.display, '');
   assert.match(elements.get('errorBox').textContent, /Google sign-in failed/);
 });
 
