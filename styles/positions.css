@@ -72,3 +72,14 @@
 @media (min-width: 1100px) {
   .app.positions-view .positions-split.open { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(420px, 1fr); column-gap: 16px; align-items: start; }
 }
+
+/* Working orders: the account's orders still in play, under the positions table */
+.orders-table { min-width: 720px; }
+.orders-table th:nth-child(2), .orders-table td.pos-order { text-align: left; font-family: inherit; }
+.orders-table tr.pos-oco td:first-child { box-shadow: inset 2px 0 0 var(--blue-bd); }
+.orders-table td.pos-order { white-space: normal; min-width: 150px; } /* a pair's note wraps, so the price stays in view on phones */
+@media (max-width: 600px) {
+  .orders-card .positions-meta { order: 0; flex-basis: auto; } /* the count stays on the title's line */
+  .orders-table { min-width: 600px; }
+  .orders-table td.pos-order { min-width: 130px; max-width: 150px; }
+}

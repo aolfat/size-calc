@@ -1,6 +1,6 @@
 // @ts-check
-// Schwab positions as table rows (price, share of the account, stop and risk from working stop orders), the levels a
-// position chart draws, and the order plans for a breakeven stop, a profit target or a market close on one of them.
+// Schwab positions as table rows (price, share of the account, stop and risk from working stop orders), the account's
+// working orders, the levels a position chart draws, and the order plans for a breakeven stop, a profit target or a market close.
 import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, optionStopTick, priceTick, stopTick } from './orders.js';
 
 /**
@@ -8,8 +8,9 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
  * @typedef {import('./orders.js').StopDuration} StopDuration
  * @typedef {{ assetType?: string, type?: string, symbol?: string, underlyingSymbol?: string, optionMultiplier?: number }} Instrument
  * @typedef {{ longQuantity?: number, shortQuantity?: number, averagePrice?: number, averageLongPrice?: number, averageShortPrice?: number, marketValue?: number, instrument?: Instrument }} Position
- * @typedef {{ instruction?: string, quantity?: number, instrument?: { symbol?: string } }} OrderLeg
+ * @typedef {{ instruction?: string, quantity?: number, instrument?: { symbol?: string, assetType?: string } }} OrderLeg
  * @typedef {{ orderId?: number | string, orderType?: string, orderStrategyType?: string, status?: string, stopPrice?: number, price?: number, quantity?: number, remainingQuantity?: number,
+ *   filledQuantity?: number, stopPriceOffset?: number, stopPriceLinkType?: string,
  *   duration?: string, session?: string, enteredTime?: string, orderLegCollection?: OrderLeg[], childOrderStrategies?: Order[] }} Order
  * @typedef {{ orderId: number | string | null, symbol: string, closes: 'long' | 'short', orderType: string, stop: number | null, price: number | null, qty: number,
  *   oco: number | string | null, duration: string, session: string }} Resting
@@ -20,6 +21,9 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
  * @typedef {{ error: string, stop: number, steps: Step[], paired: Resting[], rest: number, bare: number, price?: number, moved?: number }} Plan
  * @typedef {{ limit: Resting | undefined, legs: Resting[] }} Hold
  * @typedef {{ kind: 'avg' | 'stop' | 'target', price: number, qty: number }} Level
+ * @typedef {{ orderId: number | string | null, symbol: string, label: string, under: string, assetType: string, legs: number, instruction: string,
+ *   orderType: string, qty: number, filled: number, stop: number | null, price: number | null, trail: string, duration: string, session: string,
+ *   status: string, entered: string, oco: number | string | null, parent: string }} Working
  */
 
 /** 'AAPL  260620C00245000' → { root, exp, type, strike }; null for anything else. @param {string} symbol */
@@ -70,6 +74,52 @@ export function restingOrders(orders) {
   (orders || []).forEach(o => walk(o, null));
   return out;
 }
+
+// done for good; anything else is still working, or waiting to (a stop whose entry hasn't filled: AWAITING_PARENT_ORDER)
+const DONE = new Set(['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'REPLACED']);
+
+/**
+ * Every order still working in the account, entries included, one row per order with legs: the legs of a one-cancels-other
+ * share its oco id, and the children of an entry that hasn't filled name its instruction (parent). Sorted by underlying,
+ * newest first within one, an order's children right after it.
+ * @param {Order[]} orders @returns {Working[]}
+ */
+export function workingOrders(orders) {
+  /** @type {Working[][]} */
+  const groups = [];
+  let pairs = 0;
+  for (const top of orders || []) {
+    /** @type {Working[]} */
+    const rows = [];
+    /** @param {Order} o @param {number | string | null} oco @param {string} parent */
+    const walk = (o, oco, parent) => {
+      const legs = o.orderLegCollection || [];
+      const live = !!o.status && !DONE.has(o.status);
+      if (legs.length && live) {
+        const labels = legs.map(l => positionLabel({ assetType: l.instrument?.assetType, symbol: l.instrument?.symbol }));
+        const first = legs[0], symbol = first.instrument?.symbol || '', option = parseSchwabOption(symbol);
+        const offset = Number(o.stopPriceOffset) || 0;
+        rows.push({ orderId: o.orderId ?? null, symbol, label: labels.join(' / '), under: option ? option.root : symbol, assetType: first.instrument?.assetType || '',
+          legs: legs.length, instruction: first.instruction || '', orderType: o.orderType || '', qty: Number(o.quantity) || Number(first.quantity) || 0,
+          filled: Number(o.filledQuantity) || 0, stop: num(o.stopPrice), price: num(o.price),
+          trail: offset > 0 ? (o.stopPriceLinkType === 'PERCENT' ? offset + '%' : '$' + offset.toFixed(2)) : '',
+          duration: o.duration || '', session: o.session || '', status: o.status || '', entered: o.enteredTime || '', oco, parent });
+      }
+      const group = o.orderStrategyType === 'OCO' ? o.orderId ?? `oco-${++pairs}` : oco;
+      // a trigger's children wait on it until it fills
+      const waits = o.orderStrategyType === 'TRIGGER' && legs.length && live ? legs[0].instruction || '' : parent;
+      (o.childOrderStrategies || []).forEach(c => walk(c, group, waits));
+    };
+    walk(top, null, '');
+    if (rows.length) groups.push(rows);
+  }
+  const by = (/** @type {Working[]} */ g) => g[0].under;
+  groups.sort((a, b) => by(a) < by(b) ? -1 : by(a) > by(b) ? 1 : b[0].entered.localeCompare(a[0].entered));
+  return groups.flat();
+}
+
+/** Schwab's '2026-10-08T13:41:22+0000' as epoch ms (Safari won't read the offset without its colon); NaN when unreadable. @param {string} s */
+export function schwabTime(s) { return Date.parse(String(s || '').replace(/([+-]\d{2})(\d{2})$/, '$1:$2')); }
 
 /** every single-leg order Schwab lists on a symbol, whatever its status, newest first. @param {Order[]} orders @param {string} symbol */
 export function ordersFor(orders, symbol) {
