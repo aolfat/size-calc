@@ -1,6 +1,7 @@
 // @ts-check
 // Option and spread math: labels, direction, width, Black-Scholes card value, defined-risk unit, expiry helpers.
 import { RISK_FREE, bsPrice } from './black-scholes.js';
+import { nyDateStr } from './format.js';
 
 /** @typedef {{ K: number, iv?: number, side: number, occ?: string, mid?: number, delta?: number }} Leg */
 /**
@@ -94,10 +95,7 @@ function nyParts(ms) {
 }
 
 /** The New York calendar date at an instant, YYYY-MM-DD. @param {number} [ms] @returns {string} */
-export function nyDate(ms = Date.now()) {
-  const p = nyParts(ms);
-  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
-}
+export function nyDate(ms = Date.now()) { return nyDateStr(new Date(ms)); }
 
 /** The 4pm New York close on expiry as epoch ms, whatever the browser's time zone; NaN when invalid. @param {string | undefined} expStr YYYY-MM-DD @returns {number} */
 export function expiryCloseMs(expStr) {

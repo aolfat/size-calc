@@ -1,7 +1,7 @@
 // Ticker: load a symbol (or send shorthand to quick lookup), fetch the quote, recent ticker chips.
 import { state } from '../state.js';
 import { marketEscape } from '../core/format.js';
-import { isShorthand, parseQuickStr } from '../core/shorthand.js';
+import { isShorthand, parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { fetchChain, markActiveExp, renderChain, renderExpTabs } from './chain.js';
@@ -132,6 +132,6 @@ export function tickerInputChanged() {
   const v = document.getElementById('ticker').value;
   const el = document.getElementById('tickerParsed');
   const parsed = isShorthand(v) ? parseQuickStr(v) : null;
-  el.textContent = !isShorthand(v) ? TICKER_HINT : parsed ? 'Pin ' + parsed.display : 'Keep typing: ticker, strike, and expiry';
+  el.textContent = !isShorthand(v) ? TICKER_HINT : parsed ? 'Pin ' + parsed.display : quickParseHint(v) || 'Keep typing: ticker, strike, and expiry';
   el.className = 'ticker-hint' + (!isShorthand(v) ? '' : parsed ? ' ok' : ' wait');
 }

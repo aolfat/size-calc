@@ -32,12 +32,6 @@ export function fmt$(v) { return '$' + Number(v).toLocaleString('en-US', {minimu
 /** @param {number | string} v @param {number} [d] */
 export function fmtN(v, d=2) { return Number(v).toFixed(d); }
 
-/** Local calendar date as YYYY-MM-DD. @param {Date} d */
-export function dateStr(d) {
-  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${dd}`;
-}
-
 const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }); // en-CA formats as YYYY-MM-DD
 
 /** The market's (New York) calendar date as YYYY-MM-DD, whatever the device's zone. @param {Date} d */
