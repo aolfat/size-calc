@@ -41,8 +41,6 @@ export function loadTicker(t) {
   fetchQuote();
 }
 
-let quoteRequest = 0; // bumped per Load: only the latest Load applies its answer and owns the spinner
-
 // the one path that reads the ticker field (it doubles as the search box); everything after keys off quoteData.symbol
 export async function fetchQuote() {
   if (state.currentMode === 'futures') return;
@@ -51,8 +49,8 @@ export async function fetchQuote() {
   if (!isSymbol(ticker)) { showError('Not a ticker symbol. Try AAPL or BRK.B.'); return; }
   if (!requireKey()) return;
 
-  const req = ++quoteRequest;
-  const current = () => req === quoteRequest;
+  const req = ++state.quoteRequestId;
+  const current = () => req === state.quoteRequestId;
   clearError();
   document.getElementById('fetchBtnText').innerHTML = '<span class="spinner"></span>';
   setQuoteVisible(false);

@@ -50,8 +50,8 @@ export function recalcPinnedStop(d) {
 export async function refreshCardData(d) {
   const optSyms = d.legs ? d.legs.map(L => L.occ).join(',') : d.parsed.occ;
   const [qRes, oRes] = await Promise.all([
-    fetch(`${baseUrl()}/markets/quotes?symbols=${d.parsed.ticker}`, { headers: headers() }),
-    fetch(`${baseUrl()}/markets/quotes?symbols=${optSyms}&greeks=true`, { headers: headers() })
+    fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(d.parsed.ticker)}`, { headers: headers() }),
+    fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(optSyms)}&greeks=true`, { headers: headers() })
   ]);
   const uq = (await qRes.json())?.quotes?.quote;
   const oqRaw = (await oRes.json())?.quotes?.quote;
