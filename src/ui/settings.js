@@ -118,7 +118,7 @@ export function setCloudUi(status) {
   who.style.display = s ? '' : 'none';
   document.getElementById('cloudStatus').textContent = status || '';
   document.getElementById('accountHint').textContent = s
-    ? 'Your settings and Tradier key sync across your devices.'
+    ? 'Your settings and Tradier key sync across your devices. Signing out keeps Schwab logged in here: use Disconnect under Schwab trading.'
     : 'Sync your settings and Tradier key across devices. The calculator works without signing in.';
   document.getElementById('apiNotice').innerHTML = (s ? 'Saved to your account, encrypted. ' : 'Stored in this browser. ')
     + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.';

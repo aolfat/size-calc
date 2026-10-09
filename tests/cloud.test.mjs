@@ -104,6 +104,7 @@ test('the first device fills an empty account and drops the old sync keys', asyn
   assert.equal(elements.get('signOutBtn').style.display, '');
   assert.equal(elements.get('signInBtn').style.display, 'none');
   assert.match(elements.get('accountEmail').textContent, /me@example\.com/);
+  assert.match(elements.get('accountHint').textContent, /Signing out keeps Schwab logged in here/);
   assert.equal(state.cloudPending.size, 0, 'the merge itself is not a pending edit');
 });
 
