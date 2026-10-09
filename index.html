@@ -623,6 +623,15 @@
     <div id="posTradeBody" aria-live="polite"></div>
   </div>
 
+  <div class="sheet trade-sheet" id="cancelSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cancelTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="cancelTitle">Cancel order</h2>
+      <span class="sheet-status" id="cancelAccount"></span>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close cancel review">×</button>
+    </div>
+    <div id="cancelBody" aria-live="polite"></div>
+  </div>
+
   <div class="sheet" id="riskSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="riskTitle" tabindex="-1">
     <div class="sheet-head">
       <h2 id="riskTitle">Account and risk</h2>

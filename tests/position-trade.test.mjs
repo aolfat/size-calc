@@ -617,3 +617,131 @@ test('without a stop the target goes alone, and the sheet says the position has 
   assert.deepEqual(b.sent.map(c => c.body.orderType), ['LIMIT']);
   assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a target at \$50\.00 for 100 shares\. 300 shares have no stop now\./);
 });
+
+// ---------- cancelling working orders ----------
+
+const ENTRY = { ...single(600, 'LIMIT', 'NVDA', 'BUY', 20, 110, { duration: 'DAY' }), orderStrategyType: 'TRIGGER',
+  childOrderStrategies: [single(601, 'STOP', 'NVDA', 'SELL', 20, 104, { status: 'AWAITING_PARENT_ORDER' })] };
+
+test('cancelling half of a pair puts the other half back on its own unless both should go', async () => {
+  const { run } = await app();
+  const keep = plain(run(`cancelPlan(${JSON.stringify(ORDERS)}, 501)`));
+  assert.equal(keep.error, '');
+  assert.equal(keep.partner.orderId, 502);
+  assert.equal(keep.keep, true);
+  assert.deepEqual(keep.steps, [{ kind: 'cancel', orderId: 501 }, { kind: 'place', order: { orderType: 'STOP', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', orderStrategyType: 'SINGLE',
+    stopPrice: 140, orderLegCollection: [{ instruction: 'SELL', quantity: 50, instrument: { symbol: 'AMD', assetType: 'EQUITY' } }] } }]);
+  const both = plain(run(`cancelPlan(${JSON.stringify(ORDERS)}, '501', { keep: false })`));
+  assert.deepEqual(both.steps, [{ kind: 'cancel', orderId: 501 }], 'ids match as strings too');
+  assert.equal(both.keep, false);
+  const alone = plain(run(`cancelPlan(${JSON.stringify(ORDERS)}, 102)`));
+  assert.deepEqual([alone.partner, alone.steps.length], [null, 1]);
+  const trailing = [{ orderId: 700, status: 'WORKING', orderStrategyType: 'OCO', childOrderStrategies: [single(701, 'LIMIT', 'AMD', 'SELL', 50, 170), single(702, 'TRAILING_STOP', 'AMD', 'SELL', 50, 0, { stopPriceOffset: 2 })] }];
+  const t = plain(run(`cancelPlan(${JSON.stringify(trailing)}, 701)`));
+  assert.match(t.keepError, /A trailing stop can't be placed again from here/);
+  assert.equal(t.keep, false);
+  assert.deepEqual(t.steps.map(s => s.kind), ['cancel']);
+});
+
+test('an entry takes its waiting stop with it; the waiting stop alone can\'t be cancelled from here', async () => {
+  const { run } = await app();
+  const plan = plain(run(`cancelPlan(${JSON.stringify([ENTRY])}, 600)`));
+  assert.deepEqual(plan.children.map(c => c.orderId), [601]);
+  assert.match(run(`cancelPlan(${JSON.stringify([ENTRY])}, 601).error`), /This waits on its buy order\. Cancel that one and this goes with it/);
+  assert.match(run(`cancelPlan(${JSON.stringify(ORDERS)}, 999).error`), /no longer shows this order as working/);
+  assert.match(run(`cancelPlan(${JSON.stringify(ORDERS)}, 103).error`), /^$/);
+});
+
+test('working orders get a Cancel button, except one waiting on its entry', async () => {
+  const b = broker();
+  b.live.orders.push(plain(ENTRY));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  const html = elements.get('positionsSection').innerHTML;
+  const card = html.slice(html.indexOf('orders-card'));
+  for (const id of [101, 102, 103, 201, 401, 501, 502, 600]) assert.match(card, new RegExp(`data-action="openOrderCancel" data-arg="${id}"`), String(id));
+  assert.doesNotMatch(card, /data-arg="601"/);
+});
+
+test('cancelling a target keeps its stop: the pair goes, the stop goes back alone, and Schwab confirms both', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run("actions.openOrderCancel({ dataset: { arg: '501' } })");
+  assert.equal(elements.get('cancelSheet').style.display, '');
+  const review = elements.get('cancelBody').innerHTML;
+  assert.match(review, /Sell limit \$170\.00 · 50 shares AMD/);
+  assert.match(review, /It's paired with the sell stop \$140\.00 for 50 shares\. Schwab cancels the two together\./);
+  assert.match(review, /aria-pressed="true" data-action="setCancelKeep" data-arg="keep"[^>]*><strong>Keep the stop<\/strong><span>Placed again on its own: sell stop \$140\.00 for 50 shares, until canceled\./);
+  assert.match(review, /Cancel sell limit \$170\.00 for 50 shares AMD, and with it the paired sell stop \$140\.00/);
+  assert.match(review, /Place the sell stop \$140\.00 for 50 shares again on its own/);
+  assert.match(review, /Until the stop is placed again, 50 shares have no stop for a moment\./);
+  assert.match(review, /data-action="sendOrderCancel"[^>]*>Cancel sell limit \$170\.00</);
+  assert.equal(b.sent.length, 0, 'nothing is sent from the review');
+
+  await run('sendOrderCancel()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/501', 'POST /orders']);
+  assert.equal(b.sent[1].body.orderType, 'STOP');
+  assert.match(elements.get('cancelBody').innerHTML, /Schwab no longer shows the sell limit \$170\.00\. The sell stop \$140\.00 for 50 shares is working on its own\./);
+  await run('sendOrderCancel()');
+  assert.equal(b.sent.length, 2, 'a sent ticket never goes again');
+});
+
+test('cancelling both halves says the shares lose their stop, and sends only the cancel', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderCancel(501)');
+  run("actions.setCancelKeep({ dataset: { arg: 'both' } })");
+  const review = elements.get('cancelBody').innerHTML;
+  assert.match(review, /aria-pressed="true" data-action="setCancelKeep" data-arg="both"/);
+  assert.match(review, /The stop goes too: those 50 shares lose it\./);
+  assert.match(review, /After this, your 50 AMD have no stop\./);
+  assert.doesNotMatch(review, /<li class="pos-step">Place/, 'nothing placed again');
+  await run('sendOrderCancel()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/501']);
+  assert.match(elements.get('cancelBody').innerHTML, /Schwab no longer shows the sell limit \$170\.00\./);
+});
+
+test('cancelling one of several stops says what the rest still cover', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderCancel(102)');
+  assert.match(elements.get('cancelBody').innerHTML, /After this, stops cover 250 of your 300 HOOD\./);
+  await run('sendOrderCancel()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/102']);
+  assert.match(elements.get('cancelBody').innerHTML, /trade-result ok[\s\S]*Schwab no longer shows the sell stop \$34\.00\./);
+});
+
+test('a cancel that loses to a fill says so and sends nothing more', async () => {
+  const b = broker({ refuse: (c, live) => {
+    if (c.method !== 'DELETE') return null;
+    const pair = live.orders.find(o => o.orderId === 500);
+    pair.childOrderStrategies[0].status = 'FILLED';
+    pair.childOrderStrategies[1].status = 'CANCELED';
+    return json({ message: 'Order cannot be canceled.' }, 400);
+  } });
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderCancel(501)');
+  await run('sendOrderCancel()');
+  assert.deepEqual(b.sent.map(c => c.method), ['DELETE'], 'the stop is not placed again over a filled target');
+  const html = elements.get('cancelBody').innerHTML;
+  assert.match(html, /Schwab filled the sell limit \$170\.00 before it could be cancelled\. Nothing more was sent\./);
+  assert.match(html, /Schwab shows the sell limit \$170\.00 filled\./);
+  assert.match(html, /Schwab lists for AMD/);
+});
+
+test('an entry cancel names the stop waiting on it; a stale order can\'t be cancelled', async () => {
+  const b = broker();
+  b.live.orders.push(plain(ENTRY));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderCancel(600)');
+  assert.match(elements.get('cancelBody').innerHTML, /Its sell stop \$104\.00, waiting on it, is cancelled too\./);
+  b.live.orders = b.live.orders.filter(o => o.orderId !== 600);
+  await run('openOrderCancel(600)');
+  assert.match(elements.get('cancelBody').innerHTML, /no longer shows this order as working/);
+  assert.doesNotMatch(elements.get('cancelBody').innerHTML, /sendOrderCancel/);
+});

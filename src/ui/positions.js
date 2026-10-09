@@ -3,7 +3,7 @@
 // and every order still working in the account.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { INSTRUCTION_WORDS, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders } from '../core/positions.js';
+import { INSTRUCTION_WORDS, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { showToast } from './feedback.js';
 import { renderPositionChart } from './position-chart.js';
@@ -137,18 +137,10 @@ function renderPositionsTable() {
 
 const orderPx = (o, v) => fmtPositionPrice(v, o.assetType === 'OPTION' ? 'OPTION' : null);
 
-/** the price an order works at, as plain words: stop, limit, the stop of a stop limit, the trail of a trailing stop */
-function priceText(o) {
-  if (o.trail) return 'trail ' + o.trail;
-  if (o.stop !== null) return orderPx(o, o.stop) + (o.price !== null ? ' stop' : '');
-  if (o.price !== null) return orderPx(o, o.price);
-  return o.orderType === 'MARKET' ? 'market' : '—';
-}
-
 /** the price cell: a stop limit's limit and a trailing stop's current stop go underneath */
 function orderPrice(o) {
   const under = o.trail && o.stop !== null ? `now ${orderPx(o, o.stop)}` : !o.trail && o.stop !== null && o.price !== null ? `${orderPx(o, o.price)} limit` : '';
-  return esc(priceText(o)) + (under ? `<span class="pos-sub">${esc(under)}</span>` : '');
+  return esc(workingPrice(o)) + (under ? `<span class="pos-sub">${esc(under)}</span>` : '');
 }
 
 const orderWords = o => o.legs > 1 ? `${o.legs}-leg ${orderTypeWord(o.orderType)}` : `${INSTRUCTION_WORDS[o.instruction] || words(o.instruction)} ${orderTypeWord(o.orderType)}`;
@@ -163,13 +155,16 @@ function placed(entered) {
 
 function orderRow(o, list) {
   const partner = o.oco !== null ? list.find(x => x.oco === o.oco && x !== o) : null;
-  const note = partner ? `one cancels the other with the ${orderTypeWord(partner.orderType)} ${priceText(partner)}`
+  const note = partner ? `one cancels the other with the ${orderTypeWord(partner.orderType)} ${workingPrice(partner)}`
     : o.parent ? `after the ${INSTRUCTION_WORDS[o.parent] || words(o.parent)} fills` : '';
   const what = orderWords(o);
   const left = o.qty - o.filled;
   const lasts = (DURATION_WORDS[o.duration] || words(o.duration) || '—') + (o.session && o.session !== 'NORMAL' ? '<span class="pos-sub">extended hours</span>' : '');
+  // an order waiting on its entry goes with that entry, so only the entry gets the button
+  const cancel = o.orderId !== null && o.status !== 'AWAITING_PARENT_ORDER'
+    ? `<span class="pos-acts"><button class="pos-act" data-action="openOrderCancel" data-arg="${esc(o.orderId)}" title="Review cancelling this order">Cancel</button></span>` : '';
   return `<tr${o.oco !== null ? ' class="pos-oco"' : ''}>
-    <td><b>${esc(o.label)}</b></td>
+    <td><b>${esc(o.label)}</b>${cancel}</td>
     <td class="pos-order">${esc(what.charAt(0).toUpperCase() + what.slice(1))}${note ? `<span class="pos-sub">${esc(note)}</span>` : ''}</td>
     <td>${orderPrice(o)}</td>
     <td>${o.filled > 0 ? `${left.toLocaleString('en-US')}<span class="pos-sub">of ${o.qty.toLocaleString('en-US')}, ${o.filled.toLocaleString('en-US')} filled</span>` : o.qty.toLocaleString('en-US')}</td>
