@@ -23,11 +23,14 @@ export function createState() {
     simHover: -1,
     simHoverY: -1,
     simReg: {}, // chain detail rows park their sim params here by option symbol
-    syncSuppress: false, // true while applying remote data, so those writes don't re-mark dirty
-    syncBusy: false,
-    syncTimer: null,
-    syncKeyObj: null, // cached CryptoKey
-    syncDirty: new Set(), // keys changed locally since the last successful push (persisted)
+    session: null, // the signed-in Supabase session, or null
+    supabase: null, // the Supabase client, created on first use (tests put a fake here)
+    supabaseLoading: null, // the one in-flight library load
+    cloudSuppress: false, // true while applying server data or restoring storage, so those writes aren't edits
+    cloudBusy: false,
+    cloudTimer: null,
+    cloudPending: new Set(), // account keys changed here since the last successful push (persisted)
+    signOutArmed: false, // a second Sign out discards edits that couldn't be sent
     openSheetName: null,
     sheetOpener: null,
     quickOpen: false,

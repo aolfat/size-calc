@@ -1,10 +1,10 @@
-// Boot: one delegated listener set, stored settings restored without marking sync dirty, first render, then
-// page listeners, sync, the Schwab login, and an auto-load of the last ticker when a key is saved.
+// Boot: one delegated listener set, stored settings restored without marking cloud edits, first render, then
+// page listeners, the account (Google sign-in and cloud sync), the Schwab login, and an auto-load of the last ticker.
 import { state } from './state.js';
 import { delegate } from './lib/delegate.js';
 import { actions } from './ui/actions.js';
 import { store } from './lib/store.js';
-import { syncPull } from './services/sync.js';
+import { cloudPull } from './services/cloud.js';
 import { updateSizingControls } from './ui/allocation.js';
 import { updateChainControls } from './ui/chain.js';
 import { initChartEvents, updateIntervalChips } from './ui/chart.js';
@@ -16,7 +16,7 @@ import { initPositionChartEvents } from './ui/position-chart.js';
 import { positionsVisibilityChanged } from './ui/positions.js';
 import { applyQuickOpen } from './ui/quick-lookup.js';
 import { renderUsdPresets, syncRiskDollar, updateRiskStatus } from './ui/risk.js';
-import { initSync, loadKey, updateApiStatus } from './ui/settings.js';
+import { initCloud, loadKey, updateApiStatus } from './ui/settings.js';
 import { initShortcuts } from './ui/shortcuts.js';
 import { initSimEvents } from './ui/sim.js';
 import { updateStickyBar } from './ui/sticky-bar.js';
@@ -27,13 +27,13 @@ import { setView } from './ui/views.js';
 
 delegate(document, actions); // every data-action / data-input / data-change / data-enter in the page
 
-// restore: init reads back what storage already holds, so nothing here is a fresh edit for sync
-state.syncSuppress = true;
+// restore: init reads back what storage already holds, so nothing here is a fresh edit for the cloud
+state.cloudSuppress = true;
 loadKey();
 syncRiskDollar();
 initFutures();
 updateSizingControls();
-state.syncSuppress = false;
+state.cloudSuppress = false;
 
 // canvas, keyboard, simulator and market listeners
 initChartEvents();
@@ -57,18 +57,18 @@ updateIntervalChips();
 
 // page listeners
 window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
-// backgrounding the app pauses a live session instead of polling blind; foregrounding pulls fresh sync data
+// backgrounding the app pauses a live session instead of polling blind; foregrounding pulls fresh account data
 document.addEventListener('visibilitychange', () => {
   marketScheduleRefresh();
   positionsVisibilityChanged();
-  if (document.hidden) { pauseLive(); } else { resumeLive(); syncPull(); }
+  if (document.hidden) { pauseLive(); } else { resumeLive(); cloudPull(); }
 });
 window.addEventListener('online', marketScheduleRefresh);
 window.addEventListener('offline', marketScheduleRefresh);
 
 renderRecentTickers();
-initSync();
-initSchwab(); // also finishes a Schwab login when this page is the callback
+initCloud(); // also finishes a Google sign-in when this page is its return (?login=google)
+initSchwab(); // also finishes a Schwab login when this page is the callback (it ignores Google's return)
 
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {

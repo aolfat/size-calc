@@ -277,6 +277,7 @@ export async function initSchwab(href = location.href) {
   updateSchwabUi();
   window.addEventListener('focus', updateSchwabUi); // a login finished in another tab shows up here
   const url = new URL(href);
+  if (url.searchParams.get('login') === 'google') return; // Google's return through Supabase carries a code too: not ours
   if (!url.searchParams.get('code')) return;
   // the app as its own callback page: drop the code from the address, then finish the login
   globalThis.history?.replaceState(null, '', url.pathname + url.hash);

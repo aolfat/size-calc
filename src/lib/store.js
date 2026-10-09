@@ -1,11 +1,11 @@
 // @ts-check
 // Safe localStorage: sandboxed previews can block it, so every call is guarded.
-// Every write funnels through set(), which tells the write listener (sync's dirty tracker) about real changes.
+// Every write funnels through set(), which tells the write listener (the cloud module's pending tracker) about real changes.
 
 /** @type {((k: string) => void) | null} */
 let writeListener = null;
 
-/** Register the one listener told about value-changing writes (sync uses it to mark keys dirty). */
+/** Register the one listener told about value-changing writes (the cloud module uses it to mark account keys pending). */
 /** @param {(k: string) => void} fn */
 export function onStoreWrite(fn) { writeListener = fn; }
 
