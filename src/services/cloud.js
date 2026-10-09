@@ -52,10 +52,22 @@ function exclusive(work) {
   return run;
 }
 
-/** wait until no push, pull or merge is running */
-async function settle() {
-  while (typeof state.cloudBusy?.then === 'function') { try { await state.cloudBusy; } catch(e) {} }
+/** wait until no push, pull or merge is running; false when one is still running after ms (a dead connection) */
+async function settle(ms = Infinity) {
+  const LATE = Symbol('late');
+  let timer;
+  const late = Number.isFinite(ms) ? new Promise(r => { timer = setTimeout(() => r(LATE), ms); }) : null;
+  try {
+    while (typeof state.cloudBusy?.then === 'function') {
+      const busy = state.cloudBusy.catch(() => {});
+      if ((await (late ? Promise.race([busy, late]) : busy)) === LATE) return false;
+    }
+    return true;
+  } finally { clearTimeout(timer); }
 }
+
+/** how long Sign out waits for a save or check already running */
+const FLUSH_WAIT = 10000;
 
 // ---------- pending edits ----------
 
@@ -126,10 +138,13 @@ export async function cloudPush() {
   });
 }
 
-/** Sign out's last save: wait for a running push or pull, then send what's pending. True when nothing is left. */
-export async function cloudFlush() {
-  await settle();
-  return cloudPush();
+/**
+ * Sign out's last save: wait (a while, not forever) for a running push or pull, then send what's pending. True when
+ * nothing is left; false when edits couldn't be sent or the running one never finished.
+ */
+export async function cloudFlush(ms = FLUSH_WAIT) {
+  if (!(await settle(ms))) return !state.cloudPending.size;
+  return state.cloudBusy ? !state.cloudPending.size : cloudPush(); // a poll that slipped in first: nothing pending is fine
 }
 
 // ---------- pull ----------

@@ -5,6 +5,7 @@ import { state } from '../state.js';
 import { marketEscape as esc } from '../core/format.js';
 import { cancelPlan, orderGone, ordersFor, schwabTime, workingOrders, workingWords } from '../core/positions.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder } from '../services/schwab.js';
+import { effects } from './effects.js';
 import { showError, showToast } from './feedback.js';
 import { failureText } from './position-trade.js';
 import { refreshPositions } from './positions.js';
@@ -95,13 +96,22 @@ async function cancelStep(t) {
   }
 }
 
+/** reads of the other half while Schwab is still cancelling it (PENDING_CANCEL, WORKING...), a second apart */
+const PARTNER_READS = 6, PARTNER_GAP = 1000;
+
 /**
  * The other half goes back in only when Schwab shows it cancelled with nothing more filled. A fill (the target sold, so its
  * stop went with it), a partial fill or a half still working stops here: placing it again would sell what is already sold.
+ * Schwab cancels the other half on its own schedule, so a half on its way out is read again for a few seconds first.
  */
 async function partnerCancelled(t) {
   const q = t.partner;
-  const o = q.orderId === null ? null : await schwabOrder(q.orderId, t.hash).catch(() => null);
+  let o = null;
+  for (let i = 0; i < PARTNER_READS && q.orderId !== null; i++) {
+    if (i) await effects.wait(PARTNER_GAP);
+    o = await schwabOrder(q.orderId, t.hash).catch(() => null);
+    if (o && (o.status === 'CANCELED' || o.status === 'FILLED' || (Number(o.filledQuantity) || 0) > q.filled)) break;
+  }
   if (!o) throw new Error(`Could not check the ${workingWords(q)} at Schwab, so it was not placed again. Check Schwab.`);
   const filled = Number(o.filledQuantity) || 0;
   if (o.status === 'FILLED') throw new Error(`Schwab shows the ${workingWords(q)} filled, so it was not placed again.`);

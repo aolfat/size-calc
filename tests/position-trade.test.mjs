@@ -432,6 +432,26 @@ test('closing a position cancels its orders, sells at market, and confirms it is
   assert.match(elements.get('posTradeBody').innerHTML, /Schwab no longer shows the HOOD position/);
 });
 
+test('a warning that appears after the review stops the send until it is seen', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  run("setCloseType('LIMIT')");
+  run("setClosePrice('42')"); // above the $41.10 mark: it waits to fill
+  assert.doesNotMatch(elements.get('posTradeDetail').innerHTML, /likely fills right away/);
+  const hood = b.live.positions.find(p => p.instrument.symbol === 'HOOD');
+  hood.marketValue = 300 * 43; // the price ran through the limit before Send
+  await run('placePositionTrade()');
+  assert.equal(b.sent.length, 0, 'nothing sent on a warning the user has not seen');
+  const html = elements.get('posTradeBody').innerHTML;
+  assert.match(html, /Nothing was sent: something new to know/);
+  assert.match(html, /The limit \$42\.00 is at or below the price \$43\.00, so it likely fills right away/);
+  await run('placePositionTrade()');
+  const last = b.sent.at(-1).body;
+  assert.equal(last.orderStrategyType, 'OCO', 'sent once the warning was shown');
+  assert.equal(last.childOrderStrategies[0].price, 42);
+});
+
 test('the close ticket picks market or limit, how many and the price, like a broker', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
@@ -1073,10 +1093,35 @@ test('keeping the other half waits for Schwab to show it cancelled', async () =>
   const b = broker({ refuse: c => c.method === 'DELETE' ? new Response(null, { status: 200 }) : null }); // accepted, but nothing changed yet
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run('refreshPositions()');
+  run('waits = 0; effects.wait = async () => { waits++; }');
   await run('openOrderCancel(501)');
   await run('sendOrderCancel()');
   assert.deepEqual(b.sent.map(c => c.method), ['DELETE']);
+  assert.equal(run('waits'), 5, 'read again for a few seconds before giving up');
   assert.match(elements.get('cancelBody').innerHTML, /Schwab shows the sell stop \$140\.00 working, so it was not placed again\. Check Schwab\./);
+});
+
+test('keeping the other half reads it again while Schwab is still cancelling it', async () => {
+  const b = broker({ refuse: (c, live) => {
+    if (c.method !== 'DELETE' || c.path !== '/orders/501') return null;
+    const [limit, stop] = live.orders.find(o => o.orderId === 500).childOrderStrategies;
+    limit.status = 'CANCELED';
+    stop.status = 'PENDING_CANCEL'; // Schwab is still taking the stop down with it
+    return new Response(null, { status: 200 });
+  } });
+  let reads = 0;
+  const fetch = (url, init = {}) => { // Schwab finishes on the third read of the stop
+    if ((init.method || 'GET') === 'GET' && /\/orders\/502(\?|$)/.test(url) && ++reads === 3) b.live.orders.find(o => o.orderId === 500).childOrderStrategies[1].status = 'CANCELED';
+    return b.fetch(url, init);
+  };
+  const { run, elements } = await app({ fetch, storage: connected() });
+  await run('refreshPositions()');
+  run('effects.wait = async () => {}');
+  await run('openOrderCancel(501)'); // cancel the limit, keep the stop
+  await run('sendOrderCancel()');
+  assert.deepEqual(b.sent.map(c => c.method), ['DELETE', 'POST'], 'the stop is placed again once Schwab shows it cancelled');
+  assert.equal(b.sent[1].body.orderType, 'STOP');
+  assert.doesNotMatch(elements.get('cancelBody').innerHTML, /was not placed again/);
 });
 
 test('a cancel is checked against Schwab again before it goes', async () => {

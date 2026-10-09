@@ -58,7 +58,7 @@ function pairingWarnings(t) {
 export function buildPositionTicket(row, kind, symbol, now = Date.now(), target = null) {
   // hash: the account it was read from, and the only one its steps go to
   const t = { kind, symbol, hash: (state.positions && state.positions.hash) || '', row: row || null, error: '', notice: '', listing: false, stop: 0, steps: [], paired: [], rest: 0, bare: 0, kept: 0, locked: 0,
-    choose: false, mode: null, options: null, target, price: 0, moved: 0, stopDuration: schwabStopDuration(), warnings: [], sent: false, checking: false, failure: '', done: '', confirmed: false };
+    choose: false, mode: null, options: null, target, price: 0, moved: 0, stopDuration: schwabStopDuration(), warnings: [], warnFlags: [], sent: false, checking: false, failure: '', done: '', confirmed: false };
   if (!row) { t.error = `Schwab no longer shows a ${symbol} position.`; return t; }
   if (state.positions && state.positions.stopsMissing) {
     t.error = 'Schwab did not return the orders on this account, so there is no telling what already covers the position. Try again in a moment.';
@@ -152,24 +152,27 @@ export function setPositionBeMode(mode) {
 }
 
 function buildWarnings(t, now) {
-  const row = t.row, out = [];
+  const row = t.row, out = [], flags = [];
+  // flags name the warnings, so a send can tell a new one from the same one with fresher numbers
+  const warn = (flag, text) => { flags.push(flag); out.push(text); };
   const limit = t.kind === 'close' && t.close.type === 'LIMIT';
   if (!inRegularHours(now)) {
-    out.push(limit ? 'Outside regular hours. The limit starts working at the next open.'
+    warn('hours', limit ? 'Outside regular hours. The limit starts working at the next open.'
       : t.kind === 'close' ? 'Outside regular hours. A market order waits for the next open and can fill far from here.'
       : t.kind === 'target' ? 'Outside regular hours. The target starts working at the next open.' : 'Outside regular hours. The stop starts working at the next open.');
   }
   if (limit && !t.planError && (row.qty > 0 ? t.price <= row.price : t.price >= row.price)) {
-    out.push(`The limit ${fmtPositionPrice(t.price, row.tradeAs)} is at or ${row.qty > 0 ? 'below' : 'above'} the price ${fmtPositionPrice(row.price, row.tradeAs)}, so it likely fills right away.`);
+    warn('fills', `The limit ${fmtPositionPrice(t.price, row.tradeAs)} is at or ${row.qty > 0 ? 'below' : 'above'} the price ${fmtPositionPrice(row.price, row.tradeAs)}, so it likely fills right away.`);
   }
   if ((t.kind === 'target' || limit) && t.stop > 0 && t.stopDuration === 'DAY') {
     const what = t.kind === 'target' ? 'target' : 'limit', n = t.kind === 'target' ? t.target.qty : t.close.qty;
-    out.push(`Today only: at the close the ${what} and the stop paired with it both end, and those ${units(row, n)} have no stop.`);
+    warn('today', `Today only: at the close the ${what} and the stop paired with it both end, and those ${units(row, n)} have no stop.`);
   }
-  if (row.tradeAs === 'OPTION' && !(limit && !t.stop)) out.push(t.kind === 'close' && !limit ? 'A market order on an option can fill far from the mark.' : 'An option stop triggers on the option\'s own price, which jumps with its spread.');
-  out.push(...pairingWarnings(t));
+  if (row.tradeAs === 'OPTION' && !(limit && !t.stop)) warn('option', t.kind === 'close' && !limit ? 'A market order on an option can fill far from the mark.' : 'An option stop triggers on the option\'s own price, which jumps with its spread.');
+  for (const w of pairingWarnings(t)) warn(w, w);
   const last = state.tradeLast;
-  if (last && last.symbol === row.symbol && now - last.at < UNCONFIRMED_WAIT) out.push(`You sent a ${row.label} order ${Math.round((now - last.at) / 1000)}s ago.`);
+  if (last && last.symbol === row.symbol && now - last.at < UNCONFIRMED_WAIT) warn('repeat', `You sent a ${row.label} order ${Math.round((now - last.at) / 1000)}s ago.`);
+  t.warnFlags = flags;
   return out;
 }
 
@@ -242,16 +245,18 @@ export async function placePositionTrade() {
   renderPositionTradeSheet();
   let fresh;
   try { await refreshPositions(); fresh = freshTicket(t.kind, t.symbol, t.target, t); } finally { t.checking = false; }
-  const moved = state.positions && fresh.hash !== t.hash ? 'account' : fresh.error || fresh.planError || (fresh.choose && !fresh.mode) || !sendsSame(fresh, t) ? 'orders' : '';
+  const moved = state.positions && fresh.hash !== t.hash ? 'account' : fresh.error || fresh.planError || (fresh.choose && !fresh.mode) || !sendsSame(fresh, t) ? 'orders'
+    : (fresh.warnFlags || []).some(f => !(t.warnFlags || []).includes(f)) ? 'warnings' : '';
   if (moved) {
     state.posTradeBusy = false;
     if (moved === 'account') { fresh.error = 'You switched Schwab accounts since this was reviewed. Nothing was sent.'; fresh.listing = false; }
     else if (fresh.error) fresh.error = 'Nothing was sent. ' + fresh.error;
+    else if (moved === 'warnings') fresh.notice = 'Nothing was sent: something new to know. Check the warnings, then send again.';
     else fresh.notice = 'Schwab changed since you opened this, so nothing was sent. This is what it would send now: review it, then send again.';
     if (state.posTicket === t) { state.posTicket = fresh; renderPositionTradeSheet(); }
     return;
   }
-  Object.assign(t, { row: fresh.row, warnings: fresh.warnings }); // the same orders, judged against what Schwab shows now
+  Object.assign(t, { row: fresh.row, warnings: fresh.warnings, warnFlags: fresh.warnFlags }); // the same orders, judged against what Schwab shows now
   t.sent = true; // one review, one run: no step is sent twice, and nothing retries
   try {
     for (const step of t.steps) {

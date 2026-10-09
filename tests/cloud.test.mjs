@@ -439,6 +439,25 @@ test('Sign out during a check with nothing pending signs out without a warning',
   assert.equal(run('globalThis.reloaded'), true);
 });
 
+test('Sign out stops waiting on a check that never answers and warns instead of hanging', async () => {
+  const supabase = fakeSupabase();
+  const storage = joined([['calc_account', '50000']]);
+  const { run, elements, advance } = await app({ supabase, session: SESSION, storage, timers: 'fake' });
+  run('reloadPage = () => { globalThis.reloaded = true }; globalThis.reloaded = false');
+  supabase.hold('select'); // a dead connection: the check never finishes
+  run('cloudPull()');
+  await until(() => supabase.calls.some(c => c[0] === 'select'));
+  run("store.set('calc_risk', '2')");
+  let done = false;
+  const out = run('signOut()').then(() => { done = true; });
+  await new Promise(r => setImmediate(r));
+  assert.equal(done, false, 'still waiting for the check');
+  await advance(10000);
+  await out;
+  assert.match(elements.get('errorBox').textContent, /Sign out again to discard/);
+  assert.equal(run('globalThis.reloaded'), false);
+});
+
 // ---------- merge rules ----------
 
 test('first sign-in merge: an empty account takes everything; otherwise the account wins', async () => {
