@@ -23,7 +23,8 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
  * @typedef {{ kind: 'avg' | 'stop' | 'target', price: number, qty: number }} Level
  * @typedef {{ orderId: number | string | null, symbol: string, label: string, under: string, assetType: string, legs: number, instruction: string,
  *   orderType: string, qty: number, filled: number, stop: number | null, price: number | null, trail: string, duration: string, session: string,
- *   status: string, entered: string, oco: number | string | null, parent: string }} Working
+ *   status: string, entered: string, oco: number | string | null, parent: string, parentId: number | string | null }} Working
+ * @typedef {{ error: string, order: Working | null, partner: Working | null, children: Working[], keep: boolean, keepError: string, steps: Step[] }} CancelPlan
  */
 
 /** 'AAPL  260620C00245000' → { root, exp, type, strike }; null for anything else. @param {string} symbol */
@@ -80,7 +81,7 @@ const DONE = new Set(['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'REPLACED']);
 
 /**
  * Every order still working in the account, entries included, one row per order with legs: the legs of a one-cancels-other
- * share its oco id, and the children of an entry that hasn't filled name its instruction (parent). Sorted by underlying,
+ * share its oco id, and the children of an entry that hasn't filled name its instruction and id (parent, parentId). Sorted by underlying,
  * newest first within one, an order's children right after it.
  * @param {Order[]} orders @returns {Working[]}
  */
@@ -91,8 +92,8 @@ export function workingOrders(orders) {
   for (const top of orders || []) {
     /** @type {Working[]} */
     const rows = [];
-    /** @param {Order} o @param {number | string | null} oco @param {string} parent */
-    const walk = (o, oco, parent) => {
+    /** @param {Order} o @param {number | string | null} oco @param {string} parent @param {number | string | null} parentId */
+    const walk = (o, oco, parent, parentId) => {
       const legs = o.orderLegCollection || [];
       const live = !!o.status && !DONE.has(o.status);
       if (legs.length && live) {
@@ -103,19 +104,68 @@ export function workingOrders(orders) {
           legs: legs.length, instruction: first.instruction || '', orderType: o.orderType || '', qty: Number(o.quantity) || Number(first.quantity) || 0,
           filled: Number(o.filledQuantity) || 0, stop: num(o.stopPrice), price: num(o.price),
           trail: offset > 0 ? (o.stopPriceLinkType === 'PERCENT' ? offset + '%' : '$' + offset.toFixed(2)) : '',
-          duration: o.duration || '', session: o.session || '', status: o.status || '', entered: o.enteredTime || '', oco, parent });
+          duration: o.duration || '', session: o.session || '', status: o.status || '', entered: o.enteredTime || '', oco, parent, parentId });
       }
       const group = o.orderStrategyType === 'OCO' ? o.orderId ?? `oco-${++pairs}` : oco;
       // a trigger's children wait on it until it fills
-      const waits = o.orderStrategyType === 'TRIGGER' && legs.length && live ? legs[0].instruction || '' : parent;
-      (o.childOrderStrategies || []).forEach(c => walk(c, group, waits));
+      const waits = o.orderStrategyType === 'TRIGGER' && legs.length && live;
+      (o.childOrderStrategies || []).forEach(c => walk(c, group, waits ? legs[0].instruction || '' : parent, waits ? o.orderId ?? null : parentId));
     };
-    walk(top, null, '');
+    walk(top, null, '', null);
     if (rows.length) groups.push(rows);
   }
   const by = (/** @type {Working[]} */ g) => g[0].under;
   groups.sort((a, b) => by(a) < by(b) ? -1 : by(a) > by(b) ? 1 : b[0].entered.localeCompare(a[0].entered));
   return groups.flat();
+}
+
+/** A working order's price in words: stop, limit, a stop limit's stop, a trailing stop's trail. @param {Working} w */
+export function workingPrice(w) {
+  const px = (/** @type {number} */ v) => fmtPositionPrice(v, w.assetType === 'OPTION' ? 'OPTION' : null);
+  if (w.trail) return 'trail ' + w.trail;
+  if (w.stop !== null) return px(w.stop) + (w.price !== null ? ' stop' : '');
+  if (w.price !== null) return px(w.price);
+  return w.orderType === 'MARKET' ? 'market' : '—';
+}
+
+/** 'sell stop $33.40', or '2-leg limit' for a multi-leg order. @param {Working} w */
+export function workingWords(w) {
+  const what = w.legs > 1 ? `${w.legs}-leg ${orderTypeWord(w.orderType)}` : `${INSTRUCTION_WORDS[w.instruction] || String(w.instruction).toLowerCase().replace(/_/g, ' ')} ${orderTypeWord(w.orderType)}`;
+  const px = workingPrice(w);
+  return px === '—' || px === 'market' ? what : `${what} ${px}`;
+}
+
+/** A working single-leg order as Schwab takes it new, for the shares still open on it; null for types rebuilt here never (trailing stops...). @param {Working} w */
+export function singleOrder(w) {
+  if (w.legs !== 1 || !['STOP', 'LIMIT', 'STOP_LIMIT'].includes(w.orderType)) return null;
+  return { orderType: w.orderType, session: w.session || 'NORMAL', duration: w.duration || 'DAY', orderStrategyType: 'SINGLE',
+    ...(w.price !== null ? { price: w.price } : {}), ...(w.stop !== null ? { stopPrice: w.stop } : {}),
+    orderLegCollection: [{ instruction: w.instruction, quantity: w.qty - w.filled, instrument: { symbol: w.symbol, assetType: w.assetType || 'EQUITY' } }] };
+}
+
+/**
+ * Cancel one working order. Schwab cancels a one-cancels-other pair together, so by default (keep) the other half is placed
+ * again on its own right after, at its price, size and duration: cancelling a target keeps its stop. An entry that hasn't
+ * filled takes the orders waiting on it (children) with it; an order waiting on its entry can't be cancelled from here.
+ * @param {Order[]} orders @param {number | string} orderId @param {{ keep?: boolean }} [opts] @returns {CancelPlan}
+ */
+export function cancelPlan(orders, orderId, { keep = true } = {}) {
+  const list = workingOrders(orders);
+  const order = list.find(o => o.orderId !== null && String(o.orderId) === String(orderId)) || null;
+  const fail = (/** @type {string} */ error) => ({ error, order, partner: null, children: [], keep: false, keepError: '', steps: [] });
+  if (!order) return fail('Schwab no longer shows this order as working.');
+  if (order.status === 'AWAITING_PARENT_ORDER') {
+    return fail(`This waits on its ${INSTRUCTION_WORDS[order.parent] || 'entry'} order. Cancel that one and this goes with it, or change it in Schwab.`);
+  }
+  const partner = order.oco !== null ? list.find(o => o.oco === order.oco && o !== order) || null : null;
+  const children = list.filter(o => o.parentId !== null && o.parentId === order.orderId);
+  const again = partner ? singleOrder(partner) : null;
+  const keepError = partner && !again ? `A ${orderTypeWord(partner.orderType)} can't be placed again from here.` : '';
+  const keeping = !!partner && keep && !keepError;
+  /** @type {Step[]} */
+  const steps = [{ kind: 'cancel', orderId: order.orderId }];
+  if (keeping && again) steps.push({ kind: 'place', order: again });
+  return { error: '', order, partner, children, keep: keeping, keepError, steps };
 }
 
 /** Schwab's '2026-10-08T13:41:22+0000' as epoch ms (Safari won't read the offset without its colon); NaN when unreadable. @param {string} s */

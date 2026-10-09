@@ -15,6 +15,7 @@ import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsCha
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
 import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePositionChart } from './position-chart.js';
+import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openPositionTrade, placePositionTrade, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
 import { refreshPositions } from './positions.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -145,6 +146,9 @@ export const actions = {
   setPositionStopDuration: el => setPositionStopDuration(arg(el)),
   setPositionBeMode: el => setPositionBeMode(arg(el)),
   placePositionTrade: () => placePositionTrade(),
+  openOrderCancel: el => openOrderCancel(arg(el)),
+  setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
+  sendOrderCancel: () => sendOrderCancel(),
   togglePositionChart: el => togglePositionChart(arg(el)),
   closePositionChart: () => closePositionChart(),
   setPosChartRange: el => setPosChartRange(num(el)),
