@@ -91,7 +91,7 @@ function parse(str) {
     const [ty, tm, td] = nyDate().split('-').map(Number);
     year = month < tm || (month === tm && day < td) ? ty + 1 : ty;
   }
-  if (day > daysIn(month, year)) return `No such date: ${month}/${day}/${year}`;
+  if (day > daysIn(month, year)) return `No such date: ${month}/${day}${parts.length > 2 ? '/' + year : ''}`; // the year only when typed
   const yyyy = String(year);
   const mm = String(month).padStart(2, '0');
   const dd = String(day).padStart(2, '0');
