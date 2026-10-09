@@ -1,7 +1,7 @@
 // Allocation sizing: target % of account less existing exposure, for long shares, long options and sold puts.
 import { state } from '../state.js';
 import { expChat, fmt$, fmtN, marketEscape } from '../core/format.js';
-import { isBull, sizeUnit, typeLabel } from '../core/options.js';
+import { expiryCloseMs, isBull, sizeUnit, typeLabel } from '../core/options.js';
 import { calcAllocation, optionDte, shortPutMetrics, unitsFor } from '../core/sizing.js';
 import { store } from '../lib/store.js';
 import { renderPinnedCard, updatePinnedBar } from './cards.js';
@@ -83,7 +83,8 @@ export function allocationQuoteError(d) {
   if (d.rootSymbol !== d.parsed.ticker) return 'Adjusted or unverified option roots are not supported.';
   if (d.contractSize !== 100) return 'Only standard 100-share contracts are supported.';
   if (![d.bid, d.ask, d.mid, d.parsed.strike].every(Number.isFinite) || d.bid <= 0 || d.ask < d.bid || d.mid <= 0 || d.parsed.strike <= 0) return 'A valid two-sided quote is required.';
-  if (!Number.isFinite(optionDte(d.parsed.expStr)) || optionDte(d.parsed.expStr) < 0) return 'This contract has expired or has an invalid expiration.';
+  // expired once the 4pm New York close on expiry has passed, not at midnight
+  if (!Number.isFinite(optionDte(d.parsed.expStr)) || !(expiryCloseMs(d.parsed.expStr) > Date.now())) return 'This contract has expired or has an invalid expiration.';
   if (d.shortPut && (d.isCall || d.mid >= d.parsed.strike)) return 'Select a put with credit below its strike.';
   return '';
 }

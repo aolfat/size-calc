@@ -12,7 +12,7 @@ export function fmtFuturesPrice(v) { return Number(v).toLocaleString('en-US', { 
 
 /** @param {unknown} value @returns {string} */
 export function marketEscape(value) {
-  return String(value).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+  return String(value).replace(/[&<>"']/g, ch => /** @type {Record<string, string>} */ ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch]);
 }
 
 /** @param {number} l */

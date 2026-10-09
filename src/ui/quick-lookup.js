@@ -1,7 +1,7 @@
 // Quick lookup: the shorthand box, its parse preview, and fetch-and-pin.
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
-import { parseQuickStr } from '../core/shorthand.js';
+import { parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { mq } from '../lib/media.js';
 import { baseUrl, headers } from '../services/tradier.js';
@@ -25,13 +25,13 @@ export function toggleQuick(force) {
 export function parseQuick() {
   const val = document.getElementById('quickInput').value;
   const parsed = parseQuickStr(val);
-  document.getElementById('quickParsed').textContent = parsed ? parsed.display : (val.trim() ? '?' : '');
+  document.getElementById('quickParsed').textContent = parsed ? parsed.display : (val.trim() ? quickParseHint(val) || '?' : '');
 }
 
 export async function fetchQuickOption(str, fromSearch = false) {
   const val = typeof str === 'string' ? str : document.getElementById('quickInput').value;
   const parsed = parseQuickStr(val);
-  if (!parsed) { showError('Could not parse — try: AAPL 245 6/20  or  SPY 580 put 6/20'); return; }
+  if (!parsed) { showError((quickParseHint(val) || 'Could not parse') + '. Try: AAPL 245 6/20  or  SPY 580 put 6/20'); return; }
   const allocationTrade = state.sizingMode === 'allocation' && !parsed.spread;
   const shortPutTrade = allocationTrade && state.optionTradeSide === 'sell-put';
   if (shortPutTrade && parsed.optType !== 'put') { showError('Sell put requires a put contract.'); return; }
