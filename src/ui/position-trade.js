@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { inRegularHours } from '../core/orders.js';
-import { INSTRUCTION_WORDS, breakevenPlan, closePlan, fmtPositionPrice, orderGone, orderTypeWord, ordersFor } from '../core/positions.js';
+import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
@@ -68,18 +68,20 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now()) {
   return t;
 }
 
-// a limit in the way of a breakeven stop: ask whether to stop only the rest or pair the limit, and send nothing until answered
+// orders already selling part of the position: ask whether to keep them (stop the rest), pair them with stops, or cancel them,
+// and send nothing until answered; an option that can't work is shown greyed out with its reason
 function planBreakeven(t) {
-  const pair = breakevenPlan(t.row, t.stopDuration, { pair: true });
-  t.choose = !pair.error && pair.paired.length > 0;
-  t.options = t.choose ? { pair, only: breakevenPlan(t.row, t.stopDuration, { pair: false }) } : null;
-  if (t.mode && t.options && t.options[t.mode].error) t.mode = null;
-  Object.assign(t, !t.choose ? pair : t.mode ? t.options[t.mode] : { error: '', stop: pair.stop, steps: [], paired: [], rest: 0, bare: 0 });
+  const plan = limits => breakevenPlan(t.row, t.stopDuration, { limits });
+  const options = { keep: plan('keep'), pair: plan('pair'), cancel: plan('cancel') };
+  t.choose = closersInTheWay(t.row).length > 0 && Object.values(options).some(p => !p.error);
+  t.options = t.choose ? options : null;
+  if (t.mode && (!t.options || t.options[t.mode].error)) t.mode = null;
+  Object.assign(t, !t.choose ? options.pair : t.mode ? t.options[t.mode] : { error: '', stop: options.pair.stop, steps: [], paired: [], rest: 0, bare: 0 });
 }
 
 export function setPositionBeMode(mode) {
   const t = state.posTicket;
-  if (!t || !t.choose || t.sent || (mode !== 'only' && mode !== 'pair') || t.options[mode].error) return;
+  if (!t || !t.choose || t.sent || !['keep', 'pair', 'cancel'].includes(mode) || t.options[mode].error) return;
   t.mode = mode;
   planBreakeven(t);
   t.warnings = buildWarnings(t, Date.now());
@@ -173,7 +175,7 @@ function outcome(t) {
     && !t.steps.some(p => p.kind === 'place' && p.pairs === s.was && p.status === 'done'))
     .map(s => ` Your ${orderWord(row, s.was)} for ${units(row, s.was.qty)} was cancelled and not placed again.`).join('');
   if (t.kind === 'close') return { done: (`Schwab still shows ${units(row, held)} ${row.label}.${t.failure ? '' : ' A market order can take a moment to fill.'}` + exposed + lost).trim(), confirmed: false };
-  if (t.mode === 'only') {
+  if (t.mode === 'keep') {
     const plain = row.stopOrders.filter(s => s.oco === null);
     if (!t.failure && plain.length && plain.every(s => s.stop === t.stop) && plain.reduce((n, s) => n + s.qty, 0) >= t.rest) {
       return { done: `Schwab now shows a stop at ${fmtPositionPrice(t.stop, row.tradeAs)} for ${units(row, t.rest)}.${t.bare ? ` Your limit keeps ${units(row, t.bare)} without a stop.` : ''}`, confirmed: true };
@@ -200,21 +202,25 @@ function schwabList(t) {
   return `<div class="pos-orders"><div class="pos-orders-title">Schwab lists for ${esc(t.row ? t.row.label : t.symbol)}</div><ul>${list.map(item).join('')}</ul></div>`;
 }
 
-/** the question a limit in the way raises: stop only the rest, or pair the limit with a stop too */
+/** the question orders in the way raise: keep them and stop the rest, pair them with stops, or cancel them and stop everything */
 function choicePrompt(t) {
-  const row = t.row, px = p => fmtPositionPrice(p, row.tradeAs);
-  const limits = t.options.pair.paired, many = limits.length > 1;
-  const inLimit = limits.reduce((n, l) => n + l.qty, 0);
+  const row = t.row, held = Math.abs(row.qty);
+  const inWay = closersInTheWay(row), many = inWay.length > 1;
+  const inLimit = inWay.reduce((n, l) => n + l.qty, 0);
   const verb = row.qty > 0 ? (many ? 'sell' : 'sells') : (many ? 'buy back' : 'buys back');
-  const what = many ? `Your limits for ${units(row, inLimit)} already ${verb}` : `Your limit ${px(limits[0].price)} for ${units(row, inLimit)} already ${verb}`;
-  const only = t.options.only;
-  const onlySub = only.error || `Breakeven stop for the ${units(row, only.rest)} outside the ${many ? 'limits' : 'limit'}. ${many ? 'The limits stay as they are' : 'The limit stays as it is'}${only.bare ? `; ${many ? 'their' : 'its'} ${units(row, only.bare)} have no stop.` : ', with its own stop where it is.'}`;
-  const opt = (mode, title, sub, off) => `<button class="pos-choice-opt${t.mode === mode ? ' active' : ''}" aria-pressed="${t.mode === mode}" data-action="setPositionBeMode" data-arg="${mode}"${off || t.sent ? ' disabled' : ''}><strong>${title}</strong><span>${esc(sub)}</span></button>`;
-  const share = inLimit >= Math.abs(row.qty) ? 'the whole position' : 'part of this position';
+  const what = many ? `Your orders for ${units(row, inLimit)} already ${verb}` : `Your ${orderWord(row, inWay[0])} for ${units(row, inLimit)} already ${verb}`;
+  const share = inLimit >= held ? 'the whole position' : 'part of this position';
+  const { keep, pair, cancel } = t.options;
+  const targets = inWay.some(o => o.orderType === 'LIMIT') ? ` You lose the ${many ? 'targets' : 'target'}.` : '';
+  const keepSub = keep.error || `Breakeven stop for the ${units(row, keep.rest)} outside the ${many ? 'limits' : 'limit'}. ${many ? 'The limits stay as they are' : 'The limit stays as it is'}${keep.bare ? `; ${many ? 'their' : 'its'} ${units(row, keep.bare)} have no stop.` : ', with its own stop where it is.'}`;
+  const pairSub = pair.error || `Every share gets a breakeven stop. The ${many ? 'limits are' : 'limit is'} cancelled and placed again with ${many ? 'their' : 'its'} own stop.`;
+  const cancelSub = cancel.error || `${many ? 'Cancel them' : 'Cancel it'}, then one breakeven stop for all ${units(row, held)}.${targets}`;
+  const opt = (mode, title, sub, off) => `<button class="pos-choice-opt${t.mode === mode ? ' active' : ''}" aria-pressed="${t.mode === mode}" data-action="setPositionBeMode" data-arg="${mode}"${off || t.sent ? ' disabled' : ''}><strong>${esc(title)}</strong><span>${esc(sub)}</span></button>`;
   return `<div><dt>Stop covers</dt><dd><span class="shares-detail">${esc(what)} ${share}. Schwab won't take a stop for the same shares too.</span>
     <div class="pos-choice" role="group" aria-label="What the breakeven stop covers">
-      ${opt('only', 'Stop the rest', onlySub, !!only.error)}
-      ${opt('pair', 'Pair with the limit', `Every share gets a breakeven stop. The ${many ? 'limits are' : 'limit is'} cancelled and placed again with ${many ? 'their' : 'its'} own stop.`, false)}
+      ${opt('keep', 'Stop the rest', keepSub, !!keep.error)}
+      ${opt('pair', 'Pair with the limit', pairSub, !!pair.error)}
+      ${opt('cancel', many ? 'Cancel them' : `Cancel the ${orderTypeWord(inWay[0].orderType)}`, cancelSub, !!cancel.error)}
     </div></dd></div>`;
 }
 
