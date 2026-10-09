@@ -167,17 +167,11 @@ function ticketFor(p, q, now) {
   return t;
 }
 
-/**
- * The quote again for the symbol under review; true only when a fresh one came in. refreshQuote answers true or false;
- * an older one that answered nothing counts as fresh only when it put a new quote in place.
- */
+/** The quote again for the symbol under review; true only when a fresh one came in. */
 async function freshQuote(symbol) {
-  const before = state.quoteData;
-  let ok;
-  try { ok = await refreshQuote(); } catch(e) { ok = false; }
-  const q = state.quoteData;
-  if (!q || q.symbol !== symbol) return false;
-  return ok === true || (ok === undefined && q !== before);
+  let ok = false;
+  try { ok = await refreshQuote(); } catch(e) {}
+  return ok === true && state.quoteData?.symbol === symbol;
 }
 
 export async function openTrade() {
