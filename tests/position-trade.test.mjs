@@ -841,3 +841,256 @@ test('an entry cancel names the stop waiting on it; a stale order can\'t be canc
   assert.match(elements.get('cancelBody').innerHTML, /no longer shows this order as working/);
   assert.doesNotMatch(elements.get('cancelBody').innerHTML, /sendOrderCancel/);
 });
+
+// ---------- a breakeven stop never loosens a stop ----------
+
+const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
+const two = () => { const s = connected(); s.set('schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }, { hash: 'HASH2', last4: '4321' }])); return s; };
+const marked = (symbol, mark) => POSITIONS.map(p => p.instrument.symbol === symbol ? { ...p, marketValue: (p.longQuantity || -p.shortQuantity) * mark } : p);
+const rowAt = (symbol, mark, orders) => `positionRows(${JSON.stringify(account(marked(symbol, mark)))}, ${JSON.stringify(orders)}).rows.find(r => r.symbol === '${symbol}')`;
+
+test('stops already past breakeven stay where they are: nothing to move, long or short', async () => {
+  const { run } = await app();
+  // long 300 HOOD from $38.20, now $50, a sell stop at $45 for all of it: moving it to $38.20 would give up $2,040
+  const long = rowAt('HOOD', 50, [single(101, 'STOP', 'HOOD', 'SELL', 300, 45)]);
+  for (const limits of ['pair', 'keep', 'cancel']) {
+    const plan = plain(run(`breakevenPlan(${long}, 'GOOD_TILL_CANCEL', { limits: '${limits}' })`));
+    assert.match(plan.error, /Every share already has a stop at or past breakeven\. Moving it would loosen it\./, limits);
+    assert.deepEqual(plan.steps, []);
+  }
+  assert.equal(run(`atBreakeven(${long})`), true);
+  // short 40 TSLA from $262, now $230, a cover stop at $240
+  const short = rowAt('TSLA', 230, [single(201, 'STOP', 'TSLA', 'BUY_TO_COVER', 40, 240)]);
+  assert.match(run(`breakevenPlan(${short}, 'DAY').error`), /already has a stop at or past breakeven/);
+  assert.equal(run(`atBreakeven(${short})`), true);
+  assert.equal(run(`atBreakeven(${rowAt('TSLA', 230, [single(201, 'STOP', 'TSLA', 'BUY_TO_COVER', 40, 270)])})`), false);
+});
+
+test('only the shares without a stop past breakeven get one; the better stop is kept as it is', async () => {
+  const { run } = await app();
+  const orders = [single(101, 'STOP', 'HOOD', 'SELL', 200, 45), single(102, 'STOP', 'HOOD', 'SELL', 100, 34)];
+  const plan = plain(run(`breakevenPlan(${rowAt('HOOD', 50, orders)}, 'GOOD_TILL_CANCEL')`));
+  assert.equal(plan.error, '');
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId ?? null]), [['replace', 102]], 'the $45 stop is not touched');
+  assert.equal(plan.steps[0].order.stopPrice, 38.2);
+  assert.equal(plan.steps[0].order.orderLegCollection[0].quantity, 100);
+  assert.equal(plan.kept, 200);
+  assert.ok(Math.abs(plan.locked - (45 - 38.2) * 200) < 1e-6, 'the kept stop locks its own gain, breakeven locks nothing');
+  // a short the same way: $240 kept for 30, the $270 stop moves to $262 for the other 10
+  const short = plain(run(`breakevenPlan(${rowAt('TSLA', 230, [single(201, 'STOP', 'TSLA', 'BUY_TO_COVER', 30, 240), single(202, 'STOP', 'TSLA', 'BUY_TO_COVER', 10, 270)])}, 'DAY')`));
+  assert.deepEqual(short.steps.map(s => [s.kind, s.orderId, s.order.stopPrice, s.order.orderLegCollection[0].quantity]), [['replace', 202, 262, 10]]);
+  // no stop for the rest: a new one for just those shares
+  const placed = plain(run(`breakevenPlan(${rowAt('HOOD', 50, [single(101, 'STOP', 'HOOD', 'SELL', 200, 45)])}, 'DAY')`));
+  assert.deepEqual(placed.steps.map(s => [s.kind, s.order.orderLegCollection[0].quantity]), [['place', 100]]);
+});
+
+test('a pair whose stop is past breakeven stays; cancelling it would loosen it, so that choice is refused', async () => {
+  const { run } = await app();
+  const orders = [single(102, 'STOP', 'HOOD', 'SELL', 200, 34),
+    { orderId: 600, status: 'WORKING', orderStrategyType: 'OCO', childOrderStrategies: [single(601, 'LIMIT', 'HOOD', 'SELL', 100, 55), single(602, 'STOP', 'HOOD', 'SELL', 100, 40)] }];
+  const row = rowAt('HOOD', 50, orders);
+  for (const limits of ['pair', 'keep']) {
+    const plan = plain(run(`breakevenPlan(${row}, 'GOOD_TILL_CANCEL', { limits: '${limits}' })`));
+    assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId ?? null]), [['replace', 102]], `${limits}: the pair is left alone`);
+    assert.equal(plan.steps[0].order.orderLegCollection[0].quantity, 200);
+  }
+  assert.match(run(`breakevenPlan(${row}, 'DAY', { limits: 'cancel' }).error`), /Your stop \$40\.00 paired with a limit is already past breakeven\. Cancelling it would loosen it\./);
+});
+
+test('cancelling the limits keeps the stops past breakeven and covers only the rest', async () => {
+  const { run } = await app();
+  // 300 held, a target for 100, a $40 stop for 250: the stop can't shrink for a pair without loosening, but cancelling the target works
+  const orders = [single(101, 'STOP', 'HOOD', 'SELL', 250, 40), single(103, 'LIMIT', 'HOOD', 'SELL', 100, 55)];
+  const row = rowAt('HOOD', 50, orders);
+  assert.match(run(`breakevenPlan(${row}, 'DAY', { limits: 'pair' }).error`), /Stops at or past breakeven already cover 250, more than the 200 outside your limits/);
+  assert.match(run(`breakevenPlan(${row}, 'DAY', { limits: 'keep' }).error`), /already at or past breakeven/);
+  const cancel = plain(run(`breakevenPlan(${row}, 'DAY', { limits: 'cancel' })`));
+  assert.deepEqual(cancel.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 103], ['place', null]]);
+  assert.equal(cancel.steps[1].order.orderLegCollection[0].quantity, 50);
+  assert.equal(cancel.steps[1].order.stopPrice, 38.2);
+});
+
+test('a stop limit moved to breakeven keeps its limit as far away; a trailing stop short of it is cancelled, not rebuilt', async () => {
+  const { run } = await app();
+  const stopLimit = plain(run(`breakevenPlan(${rowWith('HOOD', [single(101, 'STOP_LIMIT', 'HOOD', 'SELL', 300, 35.5, { price: 35.3 })])}, 'DAY')`));
+  assert.deepEqual(stopLimit.steps.map(s => [s.kind, s.order.orderType, s.order.stopPrice, s.order.price]), [['replace', 'STOP_LIMIT', 38.2, 38]]);
+  const trailing = plain(run(`breakevenPlan(${rowWith('HOOD', [single(101, 'TRAILING_STOP', 'HOOD', 'SELL', 300, 35.5, { stopPriceOffset: 2 })])}, 'DAY')`));
+  assert.deepEqual(trailing.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 101], ['place', null]]);
+  assert.equal(trailing.steps[1].order.orderType, 'STOP');
+});
+
+test('a stop cut for a target or a partial close keeps its type; a trailing stop can\'t be cut', async () => {
+  const { run } = await app();
+  const stopLimit = [single(101, 'STOP_LIMIT', 'HOOD', 'SELL', 300, 35.5, { price: 35.3, duration: 'DAY' })];
+  const target = plain(run(targetFor('HOOD', 50, 100, stopLimit)));
+  assert.deepEqual(target.steps[0].order, { orderType: 'STOP_LIMIT', session: 'NORMAL', duration: 'DAY', orderStrategyType: 'SINGLE', stopPrice: 35.5, price: 35.3,
+    orderLegCollection: [{ instruction: 'SELL', quantity: 200, instrument: { symbol: 'HOOD', assetType: 'EQUITY' } }] });
+  const close = plain(run(`closePlan(${rowWith('HOOD', stopLimit)}, { type: 'MARKET', qty: 100 })`));
+  assert.equal(close.steps[0].order.orderType, 'STOP_LIMIT');
+  assert.equal(close.steps[0].order.price, 35.3);
+  const trailing = [single(101, 'TRAILING_STOP', 'HOOD', 'SELL', 300, 35.5, { stopPriceOffset: 2 })];
+  assert.match(run(targetFor('HOOD', 50, 100, trailing) + '.error'), /Your trailing stop for 300 can't be cut to fewer from here\. Change it in Schwab first\./);
+  assert.match(run(`closePlan(${rowWith('HOOD', trailing)}, { type: 'MARKET', qty: 100 }).error`), /trailing stop for 300 can't be cut/);
+  assert.equal(run(`closePlan(${rowWith('HOOD', trailing)}).error`), '', 'closing all of it just cancels the trailing stop');
+});
+
+test('the table says a stop is past breakeven instead of offering to move it', async () => {
+  const b = broker();
+  b.live.positions = marked('HOOD', 50);
+  b.live.orders = [single(101, 'STOP', 'HOOD', 'SELL', 300, 45), single(401, 'STOP', 'QQQ', 'SELL', 10, 400)];
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  const html = elements.get('positionsSection').innerHTML;
+  const cell = symbol => html.split('<tr>').find(r => r.includes(`>${symbol}<`)) || '';
+  assert.match(cell('HOOD'), /stop past breakeven/);
+  assert.doesNotMatch(cell('HOOD'), /data-arg2="breakeven"/);
+  assert.match(cell('QQQ'), /stop at breakeven/);
+});
+
+// ---------- re-checked before sending ----------
+
+test('a position trade is checked against Schwab again before it goes; a changed plan is shown, not sent', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('TSLA', 'breakeven')");
+  assert.match(elements.get('posTradeBody').innerHTML, /Replace stop \$270\.00 for 40 shares with stop \$262\.00 for 40 shares/);
+  b.live.orders.push(single(202, 'STOP', 'TSLA', 'BUY_TO_COVER', 40, 280)); // another stop showed up since the review opened
+  await run('placePositionTrade()');
+  assert.equal(b.sent.length, 0, 'nothing goes when Schwab shows something else');
+  const html = elements.get('posTradeBody').innerHTML;
+  assert.match(html, /Schwab changed since you opened this, so nothing was sent\. This is what it would send now: review it, then send again\./);
+  assert.match(html, /Cancel stop \$280\.00 for 40 shares/);
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/202', 'PUT /orders/201'], 'the reviewed update goes as shown');
+});
+
+test('a price through the stop by send time sends nothing and says why', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('TSLA', 'breakeven')");
+  b.live.positions = marked('TSLA', 263); // the short is now under water: a $262 cover stop would fire at once
+  await run('placePositionTrade()');
+  assert.equal(b.sent.length, 0);
+  assert.match(elements.get('posTradeBody').innerHTML, /Nothing was sent\. The price \$263\.00 is at or above the breakeven stop \$262\.00/);
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /data-action="placePositionTrade"/);
+});
+
+test('a review waits for the newest read when another refresh overtakes its own', async () => {
+  const b = broker();
+  const gates = [], opened = [];
+  const fetch = async (url, init = {}) => {
+    if (url.endsWith('?fields=positions')) { const n = opened.push(url); await gates[n - 1]; }
+    return b.fetch(url, init);
+  };
+  const release = [];
+  for (let i = 0; i < 2; i++) gates.push(new Promise(r => release.push(r)));
+  const { run, state } = await app({ fetch, storage: connected() });
+  const open = run("openPositionTrade('TSLA', 'breakeven')");
+  await settle();
+  run('refreshPositions()'); // the 30s timer, or a tap on Refresh, while the review's read is out
+  await settle();
+  release[0](); // the review's own read lands first, already overtaken
+  await settle();
+  assert.equal(state.posTicket, null, 'no ticket from a read that was overtaken');
+  release[1]();
+  await open;
+  assert.equal(state.posTicket.error, '');
+  assert.deepEqual(plain(state.posTicket.steps.map(s => s.kind)), ['replace']);
+});
+
+test('a full limit close at a target\'s price is confirmed though the plan cancelled that target', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  run("setCloseType('LIMIT')");
+  run("setClosePrice('45')"); // where the 100-share target sits
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/103', 'DELETE /orders/102', 'DELETE /orders/101', 'POST /orders']);
+  assert.match(elements.get('posTradeBody').innerHTML, /trade-result ok[\s\S]*Schwab now shows a limit \$45\.00 for 300 shares, paired with a stop at \$35\.50/);
+});
+
+// ---------- bound to one account ----------
+
+test('a position ticket goes only to the account it was read from', async () => {
+  const b = broker();
+  const storage = two();
+  const { run, elements } = await app({ fetch: b.fetch, storage });
+  await run("openPositionTrade('TSLA', 'breakeven')");
+  storage.set('schwab_account', 'HASH2'); // another account picked while the review is open
+  await run('placePositionTrade()');
+  assert.equal(b.sent.length, 0);
+  assert.match(elements.get('posTradeBody').innerHTML, /You switched Schwab accounts since this was reviewed\. Nothing was sent\./);
+});
+
+test('switching accounts mid-run stops the next step before it leaves', async () => {
+  let storage;
+  const b = broker({ refuse: c => { if (c.method === 'DELETE' && c.path === '/orders/103') storage.set('schwab_account', 'HASH2'); return null; } });
+  storage = two();
+  const { run, elements } = await app({ fetch: b.fetch, storage });
+  await run("openPositionTrade('HOOD', 'close')");
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/103'], 'nothing goes to either account after the switch');
+  assert.match(elements.get('posTradeBody').innerHTML, /You switched Schwab accounts since this was reviewed\. Nothing more was sent\./);
+});
+
+test('the wait after an unconfirmed order is per account and symbol', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  run("posLast = { hash: 'HASH2', symbol: 'TSLA', at: Date.now(), confirmed: false }");
+  await run("openPositionTrade('TSLA', 'breakeven')");
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /has not shown up at Schwab yet/, 'another account\'s order does not hold this one');
+  run("posLast = { hash: 'HASH1', symbol: 'TSLA', at: Date.now(), confirmed: false }");
+  await run("openPositionTrade('TSLA', 'breakeven')");
+  assert.match(elements.get('posTradeBody').innerHTML, /Your last order on TSLA has not shown up at Schwab yet/);
+});
+
+// ---------- keeping the other half of a pair ----------
+
+const fillTarget = status => (c, live) => {
+  if (c.method !== 'DELETE' || c.path !== '/orders/502') return null;
+  const pair = live.orders.find(o => o.orderId === 500);
+  pair.childOrderStrategies[0].status = 'FILLED'; // the target sold first, and Schwab cancelled its stop with it
+  pair.childOrderStrategies[1].status = 'CANCELED';
+  return status === 200 ? new Response(null, { status: 200 }) : json({ message: 'Order cannot be canceled.' }, 400);
+};
+
+for (const status of [400, 200]) {
+  test(`keeping the target is never a new sell over a target that filled (cancel answered ${status})`, async () => {
+    const b = broker({ refuse: fillTarget(status) });
+    const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+    await run('refreshPositions()');
+    await run('openOrderCancel(502)'); // cancel the stop, keep the limit
+    assert.match(elements.get('cancelBody').innerHTML, /Place the sell limit \$170\.00 for 50 shares again on its own/);
+    await run('sendOrderCancel()');
+    assert.deepEqual(b.sent.map(c => c.method), ['DELETE'], 'the limit is not placed again');
+    const html = elements.get('cancelBody').innerHTML;
+    assert.match(html, /Schwab shows the sell limit \$170\.00 filled, so it was not placed again\./);
+    assert.doesNotMatch(html, /went with it/);
+  });
+}
+
+test('keeping the other half waits for Schwab to show it cancelled', async () => {
+  const b = broker({ refuse: c => c.method === 'DELETE' ? new Response(null, { status: 200 }) : null }); // accepted, but nothing changed yet
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderCancel(501)');
+  await run('sendOrderCancel()');
+  assert.deepEqual(b.sent.map(c => c.method), ['DELETE']);
+  assert.match(elements.get('cancelBody').innerHTML, /Schwab shows the sell stop \$140\.00 working, so it was not placed again\. Check Schwab\./);
+});
+
+test('a cancel is checked against Schwab again before it goes', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderCancel(501)');
+  const stop = b.live.orders.find(o => o.orderId === 500).childOrderStrategies[1];
+  stop.stopPrice = 145; // the paired stop was changed in Schwab meanwhile
+  await run('sendOrderCancel()');
+  assert.equal(b.sent.length, 0);
+  assert.match(elements.get('cancelBody').innerHTML, /Schwab changed since you opened this, so nothing was sent/);
+  assert.match(elements.get('cancelBody').innerHTML, /Place the sell stop \$145\.00 for 50 shares again on its own/);
+  await run('sendOrderCancel()');
+  assert.deepEqual(b.sent.map(c => c.method), ['DELETE', 'POST']);
+  assert.equal(b.sent[1].body.stopPrice, 145);
+});

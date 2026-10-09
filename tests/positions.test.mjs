@@ -326,3 +326,25 @@ test('the Positions tab lists working orders under the table', async () => {
   await blind.run('refreshPositions()');
   assert.match(blind.elements.get('positionsSection').innerHTML, /Orders unavailable: Schwab did not return this account's orders/);
 });
+
+test('a refresh overtaken by a newer one resolves once the newer read is in', async () => {
+  let release, n = 0;
+  const gate = new Promise(r => { release = r; });
+  const fetch = async url => {
+    const path = url.slice(PROXY.length);
+    if (path.endsWith('?fields=positions') && ++n === 2) await gate; // the newer read is the slow one
+    return schwabOk(path);
+  };
+  const { run, state } = await app({ fetch, storage: connected() });
+  const older = run('refreshPositions()');
+  run('refreshPositions()');
+  let done = false;
+  older.then(() => { done = true; });
+  await settle();
+  assert.equal(done, false, 'the older read landed, but the newer one is still out');
+  assert.equal(state.positions, null, 'and its answer was dropped');
+  release();
+  await older;
+  assert.equal(state.positions.rows.length, 4);
+  assert.equal(state.positions.hash, 'HASH1');
+});

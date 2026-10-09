@@ -3,7 +3,7 @@
 // and every order still working in the account.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { INSTRUCTION_WORDS, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
 import { showToast } from './feedback.js';
@@ -16,24 +16,36 @@ const words = s => String(s || '').toLowerCase().replace(/_/g, ' ');
 const DURATION_WORDS = { DAY: 'Today', GOOD_TILL_CANCEL: 'Until canceled', FILL_OR_KILL: 'Fill or kill', IMMEDIATE_OR_CANCEL: 'Immediate or cancel' };
 const STATUS_WORDS = { AWAITING_PARENT_ORDER: 'waiting on entry', PENDING_ACTIVATION: 'pending', AWAITING_RELEASE_TIME: 'waiting on release' };
 
-/** read the account now; asked = a tap on Refresh (or r), which confirms when it lands; the 30s timer stays quiet */
-export async function refreshPositions(asked = false) {
+/**
+ * read the account now; asked = a tap on Refresh (or r), which confirms when it lands; the 30s timer stays quiet.
+ * Resolves once the newest read is in: a read overtaken by a later one waits for that one, so whoever awaits this
+ * (a review about to plan or send) sees state.positions as Schwab shows it now. positionsBusy holds the read in flight.
+ */
+export function refreshPositions(asked = false) {
   stopPositions();
   const id = ++state.positionsRequest;
   const acct = schwabConnected() ? schwabAccount() : null;
-  if (!acct) { state.positions = null; state.positionsBusy = false; renderPositions(); return; }
-  state.positionsBusy = true;
+  if (!acct) { state.positions = null; state.positionsBusy = false; renderPositions(); return Promise.resolve(); }
+  const read = readPositions(id, acct, asked);
+  state.positionsBusy = read;
   renderPositions();
+  return read;
+}
+
+// the read that overtook this one, while it is still out; once it is done, state.positions is already its answer
+const newest = () => state.positionsBusy || undefined;
+
+async function readPositions(id, acct, asked) {
   try {
     // stops are extra: positions still show when the orders read fails
-    const [account, orders] = await Promise.all([schwabPositions(), schwabRecentOrders().catch(() => null)]);
-    if (id !== state.positionsRequest) return;
-    state.positions = { ...positionRows(account, orders || []), orders: orders || [], last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
+    const [account, orders] = await Promise.all([schwabPositions(acct.hash), schwabRecentOrders(Date.now(), acct.hash).catch(() => null)]);
+    if (id !== state.positionsRequest) return newest();
+    state.positions = { ...positionRows(account, orders || []), orders: orders || [], hash: acct.hash, last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
     state.positionsError = '';
-    applyAccountValue(account); // the first read of the day sets the account size
+    applyAccountValue(account, acct.hash); // the first read of the day sets the account size
     if (asked) showToast(`Positions refreshed at ${new Date(state.positions.asOf).toLocaleTimeString()}.`);
   } catch(e) {
-    if (id !== state.positionsRequest) return;
+    if (id !== state.positionsRequest) return newest();
     state.positionsError = e instanceof TypeError ? 'Could not reach the Schwab worker. Check its URL in Settings.' : e.message;
     if (!schwabConnected()) state.positions = null; // the login ended
   } finally {
@@ -79,11 +91,12 @@ function riskCell(r) {
 // Chart, BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
 function tradeButtons(r) {
   if (!r.tradeAs) return '';
-  const atBe = r.be !== null && r.stops > 0 && r.stopOrders.every(s => s.stop === r.be) && r.covered >= Math.abs(r.qty);
+  // every share already has a stop at or past breakeven: nothing to move, and moving it would loosen it
+  const atBe = atBreakeven(r) ? (r.stopOrders.every(s => s.stop === r.be) ? 'stop at breakeven' : `stop${r.stops > 1 ? 's' : ''} past breakeven`) : '';
   const arg = esc(r.symbol);
   const charted = !!state.posChart && state.posChart.symbol === r.symbol;
   const chart = r.tradeAs === 'EQUITY' ? `<button class="pos-act${charted ? ' active' : ''}" aria-pressed="${charted}" data-action="togglePositionChart" data-arg="${arg}" title="Daily chart with your cost, stops and targets: set a profit target on it">Chart</button>` : '';
-  return `<span class="pos-acts">${chart}${atBe ? '<span class="pos-locked">stop at breakeven</span>' : `<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button></span>`;
+  return `<span class="pos-acts">${chart}${atBe ? `<span class="pos-locked">${atBe}</span>` :`<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button></span>`;
 }
 
 function positionRow(r) {
