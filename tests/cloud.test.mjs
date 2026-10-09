@@ -215,6 +215,19 @@ test('a pull asks only for rows changed since the last one, and an echo of our o
   assert.equal(JSON.parse(storage.get('cloud_seen')).settings, '2030-01-01T00:00:00.000Z');
 });
 
+test("the Schwab worker URL from another device fills the Settings field, and sign-out leaves it", async () => {
+  const supabase = fakeSupabase({ settings: [{ key: 'schwab_proxy', value: 'https://w.example' }] });
+  const storage = joined([['schwab_tokens', '{"refresh":"r"}']]);
+  const { run, elements } = await app({ supabase, session: SESSION, storage });
+  run('reloadPage = () => {}');
+  await run('cloudPull()');
+  assert.equal(storage.get('schwab_proxy'), 'https://w.example');
+  assert.equal(elements.get('schwabProxy').value, 'https://w.example', 'shown without a reload');
+  await run('signOut()');
+  assert.equal(storage.get('schwab_proxy'), 'https://w.example', "this device's Schwab login still needs its worker");
+  assert.equal(storage.get('schwab_tokens'), '{"refresh":"r"}', 'signing out of Google is not a Schwab logout');
+});
+
 // ---------- signing out ----------
 
 test('sign out sends pending edits, clears synced data from the device, and starts over', async () => {

@@ -7,7 +7,9 @@ import { latestUpdate, mergeFirstSignIn } from '../core/cloud-merge.js';
 import { hasStoredSession, supabaseClient } from './supabase.js';
 
 /** settings that live in the account (the Tradier key goes to Vault) */
-export const CLOUD_KEYS = ['calc_account', 'calc_risk', 'calc_allocation', 'risk_usd_presets', 'atr_multiplier', 'stop_strategy', 'stop_percent', 'last_ticker', 'tradier_env'];
+export const CLOUD_KEYS = ['calc_account', 'calc_risk', 'calc_allocation', 'risk_usd_presets', 'atr_multiplier', 'stop_strategy', 'stop_percent', 'last_ticker', 'tradier_env', 'schwab_proxy'];
+/** synced, but kept on sign-out: this device's own Schwab login still needs its worker */
+const KEPT_ON_SIGN_OUT = ['schwab_proxy'];
 /** device-local bookkeeping, never sent */
 export const CLOUD_LOCAL_KEYS = ['cloud_pending', 'cloud_user', 'cloud_seen'];
 /** the old encrypted Cloudflare sync, removed: its keys are deleted at first sign-in */
@@ -178,7 +180,7 @@ export async function cloudFirstSignIn() {
 
 /** remove everything synced from this device, so a shared computer doesn't keep the key */
 export function cloudClearDevice() {
-  [...CLOUD_KEYS, 'tradier_key', ...CLOUD_LOCAL_KEYS].forEach(k => store.del(k));
+  [...CLOUD_KEYS.filter(k => !KEPT_ON_SIGN_OUT.includes(k)), 'tradier_key', ...CLOUD_LOCAL_KEYS].forEach(k => store.del(k));
   clearTimeout(state.cloudTimer);
   state.cloudPending.clear();
   state.session = null;
