@@ -1,31 +1,38 @@
 // Ticker: load a symbol (or send shorthand to quick lookup), fetch the quote, recent ticker chips.
 import { state } from '../state.js';
+import { marketEscape } from '../core/format.js';
 import { isShorthand, parseQuickStr } from '../core/shorthand.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { fetchChain, markActiveExp, renderChain, renderExpTabs } from './chain.js';
 import { fetchChart } from './chart.js';
-import { fetchAdr } from './daily.js';
+import { fetchAdr, updateChartVisibility } from './daily.js';
 import { clearError, showError } from './feedback.js';
 import { fetchQuickOption } from './quick-lookup.js';
 import { requireKey } from './settings.js';
 import { renderQuote, setQuoteVisible } from './shares.js';
 
-export function pushRecentTicker(t) {
+// what a stock / ETF / index symbol can look like (BRK.B, BF-B); anything else is never fetched or stored
+export const SYMBOL_RE = /^[A-Z0-9][A-Z0-9./^-]{0,14}$/;
+export const isSymbol = s => typeof s === 'string' && SYMBOL_RE.test(s);
+
+function recentTickers() {
   let arr = [];
   try { arr = JSON.parse(store.get('recent_tickers') || '[]'); } catch(e) {}
-  arr = [t, ...arr.filter(x => x !== t)].slice(0, 5);
-  store.set('recent_tickers', JSON.stringify(arr));
+  return Array.isArray(arr) ? arr.filter(isSymbol) : [];
+}
+
+export function pushRecentTicker(t) {
+  if (!isSymbol(t)) return;
+  store.set('recent_tickers', JSON.stringify([t, ...recentTickers().filter(x => x !== t)].slice(0, 5)));
   renderRecentTickers();
 }
 
 export function renderRecentTickers() {
-  let arr = [];
-  try { arr = JSON.parse(store.get('recent_tickers') || '[]'); } catch(e) {}
   const cur = document.getElementById('ticker').value.trim().toUpperCase();
-  document.getElementById('recentTickers').innerHTML = arr
+  document.getElementById('recentTickers').innerHTML = recentTickers()
     .filter(t => t !== cur)
-    .map(t => `<button class="filter-btn" data-action="loadTicker" data-arg="${t}">${t}</button>`)
+    .map(t => `<button class="filter-btn" data-action="loadTicker" data-arg="${marketEscape(t)}">${marketEscape(t)}</button>`)
     .join('');
 }
 
@@ -34,41 +41,51 @@ export function loadTicker(t) {
   fetchQuote();
 }
 
+let quoteRequest = 0; // bumped per Load: only the latest Load applies its answer and owns the spinner
+
+// the one path that reads the ticker field (it doubles as the search box); everything after keys off quoteData.symbol
 export async function fetchQuote() {
   if (state.currentMode === 'futures') return;
   const ticker = document.getElementById('ticker').value.trim().toUpperCase();
   if (!ticker) { showError('Enter a ticker symbol.'); return; }
+  if (!isSymbol(ticker)) { showError('Not a ticker symbol. Try AAPL or BRK.B.'); return; }
   if (!requireKey()) return;
 
+  const req = ++quoteRequest;
+  const current = () => req === quoteRequest;
   clearError();
   document.getElementById('fetchBtnText').innerHTML = '<span class="spinner"></span>';
   setQuoteVisible(false);
 
   try {
-    const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${ticker}&greeks=true`, { headers: headers() });
+    const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}&greeks=true`, { headers: headers() });
     const qJson = await qRes.json();
-    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
+    if (!current()) return;
     const q = qJson?.quotes?.quote;
-    if (!q || q.type === 'option') throw new Error('Symbol not found or invalid.');
+    if (!q || Array.isArray(q) || q.type === 'option') throw new Error('Symbol not found or invalid.');
+    if (!q.symbol) q.symbol = ticker;
+    const sym = q.symbol;
 
-    // stops belong to the underlying's levels; clear them on a symbol change
-    if (state.quoteData && state.quoteData.symbol !== q.symbol) {
+    // stops and bars belong to the underlying; clear them on a symbol change
+    if (state.quoteData && state.quoteData.symbol !== sym) {
       document.getElementById('stopLong').value = '';
       document.getElementById('stopShort').value = '';
       document.getElementById('entryPrice').value = '';
+      state.chartBars = []; // the chart hides until this symbol's bars land
+      state.chartHover = -1;
     }
     state.quoteData = q;
     state.chainData = [];
-    store.set('last_ticker', ticker);
-    pushRecentTicker(ticker);
+    if (isSymbol(sym)) { store.set('last_ticker', sym); pushRecentTicker(sym); }
     renderQuote();
-    fetchChart(ticker);
-    fetchAdr(ticker);
+    updateChartVisibility();
+    fetchChart(sym);
+    fetchAdr(sym);
 
     if (state.currentMode === 'options') {
-      const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${ticker}&includeAllRoots=true`, { headers: headers() });
+      const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${encodeURIComponent(sym)}&includeAllRoots=true`, { headers: headers() });
       const expJson = await expRes.json();
-      if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
+      if (!current()) return;
       const exps = expJson?.expirations?.date;
       if (!exps) throw new Error('No options expirations found.');
       const expList = Array.isArray(exps) ? exps : [exps];
@@ -76,31 +93,34 @@ export async function fetchQuote() {
       renderExpTabs(expList);
       state.selectedExp = expList[0];
       markActiveExp(state.selectedExp);
-      await fetchChain(ticker, state.selectedExp, true);
+      await fetchChain(sym, state.selectedExp, true);
     }
-
-    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
-    setQuoteVisible(!(state.positionsView || state.utilsView || state.marketView || state.currentMode === 'futures'));
-    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    if (current()) document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch(e) {
-    if (ticker === document.getElementById('ticker').value.trim().toUpperCase()) showError('Error: ' + e.message);
+    if (current()) showError('Error: ' + e.message);
   } finally {
-    if (ticker === document.getElementById('ticker').value.trim().toUpperCase()) document.getElementById('fetchBtnText').innerHTML = state.currentMode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
+    // a newer Load owns the button and the sections; otherwise show whatever quote is loaded now
+    if (current()) {
+      document.getElementById('fetchBtnText').innerHTML = state.currentMode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
+      setQuoteVisible(!!state.quoteData && !(state.positionsView || state.utilsView || state.marketView || state.currentMode === 'futures'));
+    }
   }
 }
 
+// re-reads the LOADED symbol, never the field; true only when a fresh quote for it was applied
 export async function refreshQuote() {
-  if (state.currentMode === 'futures') return;
-  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
-  if (!ticker || !state.quoteData) return;
+  if (state.currentMode === 'futures') return false;
+  const ticker = state.quoteData?.symbol;
+  if (!ticker) return false;
   try {
-    const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${ticker}`, { headers: headers() });
+    const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}`, { headers: headers() });
     const qJson = await qRes.json();
-    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
     const q = qJson?.quotes?.quote;
-    if (q) { state.quoteData = q; renderQuote(); renderChain(); fetchChart(ticker); }
+    if (!q || q.symbol !== ticker || state.quoteData?.symbol !== ticker || state.currentMode === 'futures') return false;
+    state.quoteData = q; renderQuote(); renderChain(); fetchChart(ticker);
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  } catch(e) {}
+    return true;
+  } catch(e) { return false; }
 }
 
 export function submitTicker() {

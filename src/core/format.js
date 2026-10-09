@@ -37,3 +37,8 @@ export function dateStr(d) {
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dd}`;
 }
+
+const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }); // en-CA formats as YYYY-MM-DD
+
+/** The market's (New York) calendar date as YYYY-MM-DD, whatever the device's zone. @param {Date} d */
+export function nyDateStr(d) { return NY_DAY.format(d); }
