@@ -2,7 +2,7 @@
 import { state } from '../state.js';
 import { normalizeAtrMultiplier, normalizeStopStrategy, parseStopPercent } from '../core/stops.js';
 import { store } from '../lib/store.js';
-import { cloudClearDevice, cloudFirstSignIn, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
+import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { effects } from './effects.js';
 import { showError, showToast } from './feedback.js';
@@ -20,12 +20,11 @@ export function saveKey() {
 export function loadKey() {
   document.getElementById('apiKey').value = store.get('tradier_key') || '';
   document.getElementById('apiEnv').value = store.get('tradier_env') || 'production';
-  const acct = store.get('calc_account');
-  const risk = store.get('calc_risk');
-  if (acct) document.getElementById('accountSize').value = acct;
-  if (risk) document.getElementById('riskPct').value = risk;
-  const allocation = store.get('calc_allocation');
-  if (allocation !== null) document.getElementById('allocationPct').value = allocation;
+  // a setting that isn't stored shows the page's default (a sign-in that cleared another account's values)
+  const field = (id, v) => { const el = document.getElementById(id); if (v !== null && v !== '') el.value = v; else if (el.defaultValue != null) el.value = el.defaultValue; };
+  field('accountSize', store.get('calc_account'));
+  field('riskPct', store.get('calc_risk'));
+  field('allocationPct', store.get('calc_allocation'));
   const lastTicker = store.get('last_ticker');
   if (lastTicker) document.getElementById('ticker').value = lastTicker;
   state.atrMultiplier = normalizeAtrMultiplier(store.get('atr_multiplier'));
@@ -69,7 +68,7 @@ export async function signIn() {
 export async function signOut() {
   if (!state.session) return;
   setCloudUi('Signing out…');
-  const sent = await cloudPush();
+  const sent = await cloudFlush(); // waits for a save or check already running
   if (!sent && !state.signOutArmed) {
     state.signOutArmed = true;
     setCloudUi('Offline, will retry');
@@ -87,11 +86,12 @@ async function startSession(session) {
   state.session = session;
   setCloudUi('Syncing…');
   if (store.get('cloud_user') !== session.user.id) {
-    let seeded;
+    let m;
     // not merged yet = not signed in here: the poll retries the whole first sign-in rather than syncing half-joined
-    try { seeded = await cloudFirstSignIn(); } catch(e) { state.session = null; throw e; }
+    try { m = await cloudFirstSignIn(); } catch(e) { state.session = null; throw e; }
     cloudRehydrate();
-    showToast(seeded ? "Signed in. Saved this device's settings to your account." : 'Signed in. Loaded your settings from your account.');
+    showToast(m.seeded ? "Signed in. Saved this device's settings to your account."
+      : 'Signed in. Loaded your settings from your account.' + (m.dropped ? " The previous account's unsaved changes on this device were dropped." : ''));
     setCloudUi('Synced');
   } else {
     await cloudPull();
@@ -118,7 +118,7 @@ export function setCloudUi(status) {
   who.style.display = s ? '' : 'none';
   document.getElementById('cloudStatus').textContent = status || '';
   document.getElementById('accountHint').textContent = s
-    ? 'Your settings and Tradier key sync across your devices.'
+    ? 'Your settings and Tradier key sync across your devices. Signing out keeps Schwab logged in here: use Disconnect under Schwab trading.'
     : 'Sync your settings and Tradier key across devices. The calculator works without signing in.';
   document.getElementById('apiNotice').innerHTML = (s ? 'Saved to your account, encrypted. ' : 'Stored in this browser. ')
     + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.';

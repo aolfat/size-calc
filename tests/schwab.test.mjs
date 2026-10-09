@@ -340,3 +340,127 @@ test('worker: a missing app key, secret, or callback says so instead of half wor
   assert.equal(res.status, 500);
   assert.match(await res.text(), /missing SCHWAB_APP_SECRET/);
 });
+
+// ---------- checked again before sending ----------
+
+const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
+const placed = path => path === '/trader/v1/accounts/HASH1/orders';
+
+// Tradier answers each quote call with the next one in the list (the last one repeats); Schwab calls go to the handler
+function quotes(list, schwab) {
+  const calls = [];
+  let n = 0;
+  const fetch = async (url, init = {}) => {
+    calls.push({ url, method: init.method || 'GET', body: init.body });
+    if (url.startsWith(PROXY)) return schwab(url.slice(PROXY.length), init);
+    if (url.includes('/markets/quotes')) {
+      const q = list[Math.min(n++, list.length - 1)];
+      if (q instanceof Error) throw q;
+      return json({ quotes: { quote: q } });
+    }
+    return json({});
+  };
+  return { calls, fetch, posts: () => calls.filter(c => c.method === 'POST' && c.url.startsWith(PROXY)) };
+}
+const created = async (path, init) => init.method === 'POST' && placed(path) ? json(null, 201, { Location: `${PROXY}/trader/v1/accounts/HASH1/orders/1001` }) : json({}, 404);
+
+test('no review from a stale quote: when the refresh fails, the sheet does not open', async () => {
+  const net = quotes([new TypeError('Failed to fetch')], created);
+  const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  assert.equal(state.tradeTicket, null);
+  assert.match(elements.get('errorBox').textContent, /Could not refresh the TEST quote, so there is nothing to review yet/);
+});
+
+test('Place checks the quote again: a stop now through the bid sends nothing', async () => {
+  const net = quotes([QUOTE, { ...QUOTE, bid: 97.9, ask: 98.1, last: 98 }], created);
+  const { run, elements } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  await run('placeTrade()');
+  assert.equal(net.posts().length, 0);
+  assert.match(elements.get('tradeBody').innerHTML, /The stop \$98\.00 is at or above the bid \$97\.90\. It would sell as soon as the buy fills\. Nothing was sent\./);
+  assert.doesNotMatch(elements.get('tradeBody').innerHTML, /data-action="placeTrade"/);
+});
+
+test('a quote that moves past the plan shows the new warning and waits for a second Place', async () => {
+  const net = quotes([QUOTE, { ...QUOTE, bid: 100.9, ask: 101 }], created);
+  const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  const reviewed = state.tradeTicket;
+  await run('placeTrade()');
+  assert.equal(net.posts().length, 0, 'a new warning means a new review');
+  assert.notEqual(state.tradeTicket, reviewed);
+  assert.match(elements.get('tradeBody').innerHTML, /At the ask \$101\.00, risk is \$750\.00, over your \$500\.00 plan/);
+  assert.match(result(elements), /The quote moved since you reviewed this\. Nothing was sent\./);
+  await run('placeTrade()');
+  assert.equal(net.posts().length, 1);
+  assert.deepEqual(JSON.parse(net.posts()[0].body), JSON.parse(JSON.stringify(reviewed.order)), 'still the order reviewed');
+});
+
+test('a new trade goes only to the account it was reviewed for', async () => {
+  const storage = connected([['schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }, { hash: 'HASH2', last4: '4321' }])]]);
+  const net = quotes([QUOTE], created);
+  const { run, state } = await sharesCard({ fetch: net.fetch, storage });
+  await run('openTrade()');
+  assert.equal(state.tradeTicket.hash, 'HASH1');
+  storage.set('schwab_account', 'HASH2');
+  await run('placeTrade()');
+  assert.equal(net.calls.filter(c => c.url.startsWith(PROXY)).length, 0);
+  assert.match(state.tradeTicket.result.text, /You switched Schwab accounts since this was reviewed\. Nothing was sent\./);
+  assert.equal(state.tradeTicket.sent, false);
+});
+
+// ---------- after it goes ----------
+
+test('a filled entry whose stop Schwab rejected is a loud warning, not a success', async () => {
+  const net = quotes([QUOTE], async (path, init) => {
+    if (init.method === 'POST') return created(path, init);
+    if (path.endsWith('/orders/1001')) return json({ status: 'FILLED', filledQuantity: 250, orderActivityCollection: [{ executionLegs: [{ quantity: 250, price: 100.03 }] }], childOrderStrategies: [{ status: 'REJECTED' }] });
+    return json({}, 404);
+  });
+  const { run, elements } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  await run('placeTrade()');
+  assert.match(result(elements), /Order 1001: filled 250 at \$100\.03\. Stop \$98\.00: rejected\. Your 250 TEST have no stop\. Set one in Schwab now\./);
+  assert.match(elements.get('tradeBody').innerHTML, /class="trade-result bad"/);
+});
+
+test('a refresh that fails before the order leaves says nothing reached Schwab, and arms no repeat warning', async () => {
+  const stale = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const net = quotes([QUOTE], async path => { if (path === '/refresh') throw new TypeError('Failed to fetch'); return json({}, 404); });
+  const { run, state } = await sharesCard({ fetch: net.fetch, storage: stale });
+  await run('openTrade()');
+  await run('placeTrade()');
+  assert.equal(net.posts().filter(c => !c.url.endsWith('/refresh')).length, 0, 'no order request');
+  assert.equal(state.tradeTicket.result.text, 'Could not reach the Schwab worker. Nothing was sent to Schwab.');
+  assert.equal(state.tradeLast, null);
+});
+
+// ---------- the login changing while a refresh is out ----------
+
+test('a refresh that lands after a logout is not saved; a refusal after a new login does not end it', async () => {
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const stale = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const net = network(async path => { if (path === '/refresh') { await gate; return json({ access_token: 'fresh', refresh_token: 'ref-9', expires_in: 1800 }); } return json([]); });
+  const { run } = await app({ fetch: net.fetch, storage: stale });
+  const call = run("schwabApi('/accounts/accountNumbers')");
+  await settle();
+  run('schwabDisconnect()');
+  release();
+  await assert.rejects(call, /login changed/);
+  assert.equal(stale.has('schwab_tokens'), false, 'logged out stays logged out');
+
+  let refuse;
+  const later = new Promise(r => { refuse = r; });
+  const over = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const refused = network(async path => { if (path === '/refresh') { await later; return json({ error: 'invalid_grant' }, 400); } return json([]); });
+  const second = await app({ fetch: refused.fetch, storage: over });
+  const pending = second.run("schwabApi('/accounts/accountNumbers')");
+  await settle();
+  const fresh = JSON.stringify({ access: 'new', accessExp: Date.now() + 20 * 60000, refresh: 'ref-2', refreshExp: Date.now() + 5 * DAY });
+  over.set('schwab_tokens', fresh); // logged in again meanwhile
+  refuse();
+  await assert.rejects(pending, /login changed/);
+  assert.equal(over.get('schwab_tokens'), fresh, 'the new login is kept');
+});

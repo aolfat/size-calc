@@ -27,10 +27,11 @@ export function createState() {
     supabase: null, // the Supabase client, created on first use (tests put a fake here)
     supabaseLoading: null, // the one in-flight library load
     cloudSuppress: false, // true while applying server data or restoring storage, so those writes aren't edits
-    cloudBusy: false,
+    cloudBusy: false, // the running push, pull or merge (a promise), or false
     cloudTimer: null,
     cloudPending: new Set(), // account keys changed here since the last successful push (persisted)
     signOutArmed: false, // a second Sign out discards edits that couldn't be sent
+    quoteRequestId: 0, // bumped per Load: only the latest Load applies its answer and owns the spinner
     openSheetName: null,
     sheetOpener: null,
     quickOpen: false,
@@ -83,14 +84,14 @@ export function createState() {
     zoneFilter: { otm: true, itm: false },
     railDetailSym: null,
     pinnedData: {},
-    positions: null, // the last Schwab read: positionRows() plus { orders, last4, asOf, stopsMissing }
+    positions: null, // the last Schwab read: positionRows() plus { hash, orders, last4, asOf, stopsMissing }
     positionsError: '',
-    positionsBusy: false,
+    positionsBusy: false, // the read in flight (a promise resolving to the newest read), or false
     positionsRequest: 0, // bumped per read, so a late answer for an old account is dropped
     positionsTimer: null,
     posTicket: null, // the position order the review sheet shows, frozen when it opens
     posTradeBusy: false,
-    posLast: null, // { symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat for a while
+    posLast: null, // { hash, symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat on that account and symbol for a while
     cancelTicket: null, // the working-order cancel the review sheet shows, frozen when it opens
     posChart: null, // the open position chart: { symbol, bars, view, range, loading, error, hover, hoverY, price, qty } (price and qty = the target form)
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs

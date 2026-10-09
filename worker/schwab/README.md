@@ -62,3 +62,15 @@ again.
   your pick in the review sheet.
 - There is no Schwab sandbox for individual developers, so every order is real.
   Try one share first.
+
+## Security
+
+- An origin is the whole host, not a repo: `https://aolfat.github.io` is every
+  GitHub Pages site under that account. Any of them shares the app's
+  localStorage (the Schwab tokens included) and passes `ALLOWED_ORIGINS`, so it
+  can call the worker as the app.
+- `/token` and `/refresh` check only the Origin header, which anything outside a
+  browser can set. A stolen refresh token gets fresh access tokens until Schwab
+  ends the login, up to 7 days.
+- So serve the app from its own origin (a custom domain, or a subdomain no other
+  site uses), list only that in `ALLOWED_ORIGINS`, and keep other pages off it.

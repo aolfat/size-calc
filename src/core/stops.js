@@ -4,7 +4,7 @@
 export const ATR_MULTIPLIERS = [0, 0.25, 0.5, 1, 1.5, 2];
 
 /** @param {string | null} value @returns {string} */
-export function normalizeStopStrategy(value) { return ['none', 'atr', 'percent'].includes(value) ? value : 'none'; }
+export function normalizeStopStrategy(value) { const v = String(value); return ['none', 'atr', 'percent'].includes(v) ? v : 'none'; }
 
 /** @param {string | number | null} value @returns {number} NaN when invalid */
 export function parseStopPercent(value) {

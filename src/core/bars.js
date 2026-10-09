@@ -3,24 +3,33 @@
 
 /** @typedef {{ t: string, o: number, h: number, l: number, c: number, v?: number }} Bar */
 
-/** Roll 5-minute bars up to `iv` minutes; buckets never cross a session. @param {Bar[]} bars5 @param {number} iv @returns {Bar[]} */
+/**
+ * Roll 5-minute bars up to `iv` minutes by clock time from the 9:30 open (exchange-local `t`), so a missing
+ * 5m bar leaves the later buckets where they belong; buckets never cross a session. @param {Bar[]} bars5 @param {number} iv @returns {Bar[]}
+ */
 export function aggregateBars(bars5, iv) {
   if (iv <= 5) return bars5;
   const chunk = Math.round(iv / 5);
+  /** @type {Bar[]} */
   const out = [];
-  let day = null, idx = 0;
+  /** @type {string | null} */
+  let day = null, key = null;
+  let idx = 0;
   for (const b of bars5) {
-    const d = (b.t || '').slice(0, 10);
+    const t = b.t || '';
+    const d = t.slice(0, 10);
     if (d !== day) { day = d; idx = 0; } // buckets never cross a session boundary
-    if (idx % chunk === 0) out.push({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 });
+    const mins = +t.slice(11, 13) * 60 + +t.slice(14, 16) - (9 * 60 + 30);
+    const bucket = d + ':' + (/T\d\d:\d\d/.test(t) ? Math.floor(mins / (chunk * 5)) : Math.floor(idx / chunk)); // no clock time: by count
+    idx++;
+    if (bucket !== key) { key = bucket; out.push({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 }); }
     else {
       const cur = out[out.length - 1];
       cur.h = Math.max(cur.h, b.h);
       cur.l = Math.min(cur.l, b.l);
       cur.c = b.c;
-      cur.v += b.v || 0;
+      cur.v = (cur.v || 0) + (b.v || 0);
     }
-    idx++;
   }
   return out;
 }

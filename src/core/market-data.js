@@ -1,12 +1,25 @@
 // @ts-check
 // Pure market-data operations: CSV parsing, grouping, filtering, sorting, and batched quote fetches.
 // No DOM; exercised directly by tests/market.test.mjs.
+/**
+ * A CSV row (stock or ETF; returns are the period columns, ETFs add From open and 1Y), a theme group,
+ * either one in a list, and a refreshed quote.
+ * @typedef {{ ticker: string, name: string, group: string, returns: (number | null)[], category?: string,
+ *   price?: number | null, volume?: number | null }} Row
+ * @typedef {{ name: string, stocks: Row[], count: number, coverage: number[], returns: (number | null)[] }} Group
+ * @typedef {{ name: string, ticker?: string, group?: string, returns: (number | null)[], stocks?: Row[] }} Listed
+ * @typedef {{ price: number, change: number, fromOpen: number | null, volume: number | null, tradeDate: number | null }} Quote
+ */
 export const MarketData = (() => {
   const periods = ['today', '1w', '1m', '3m', '6m', 'ytd'];
-  const number = value => value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+  const number = /** @param {unknown} value @returns {number | null} */ value => value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+  /** @param {string} text @returns {Row[]} */
   function parseCsv(text) {
+    /** @type {string[][]} */
     const records = [];
-    let row = [], field = '', quoted = false;
+    /** @type {string[]} */
+    let row = [];
+    let field = '', quoted = false;
     text = text.replace(/^\uFEFF/, '');
     for (let i = 0; i <= text.length; i++) {
       const ch = text[i];
@@ -32,6 +45,7 @@ export const MarketData = (() => {
       if (!ticker || !name || !group) throw new Error('Market CSV contains an incomplete stock mapping.');
       if (seen.has(ticker)) throw new Error('Duplicate ticker in market CSV: ' + ticker);
       seen.add(ticker);
+      /** @type {Row} */
       const result = { ticker, name, group, returns: values.map(number) };
       if (categoryIndex >= 0) {
         result.category = (record[categoryIndex] || '').trim();
@@ -41,11 +55,13 @@ export const MarketData = (() => {
       return result;
     });
   }
+  /** @param {Row[]} rows @returns {Group[]} */
   function groups(rows) {
+    /** @type {Map<string, Row[]>} */
     const buckets = new Map();
     rows.forEach(row => {
-      if (!buckets.has(row.group)) buckets.set(row.group, []);
-      buckets.get(row.group).push(row);
+      const list = buckets.get(row.group);
+      if (list) list.push(row); else buckets.set(row.group, [row]);
     });
     return [...buckets].map(([name, stocks]) => {
       const coverage = periods.map((_, i) => stocks.filter(s => Number.isFinite(s.returns[i])).length);
@@ -55,12 +71,14 @@ export const MarketData = (() => {
       };
     });
   }
+  /** @template {Listed} T @param {T[]} rows @param {string} query @returns {T[]} */
   function filter(rows, query) {
     const text = query.trim().toLowerCase();
     if (!text) return rows;
-    const matches = row => [row.name, row.ticker, row.group].some(value => value && value.toLowerCase().includes(text));
+    const matches = /** @param {Listed} row */ row => [row.name, row.ticker, row.group].some(value => value && value.toLowerCase().includes(text));
     return rows.filter(row => matches(row) || row.stocks?.some(matches));
   }
+  /** @template {Listed} T @param {T[]} rows @param {number | 'ticker'} period @param {string} direction @returns {T[]} */
   function sort(rows, period, direction) {
     return [...rows].sort((a, b) => {
       if (period === 'ticker') return (a.ticker || a.name).localeCompare(b.ticker || b.name) * (direction === 'asc' ? 1 : -1);
@@ -71,19 +89,22 @@ export const MarketData = (() => {
         || (a.ticker || a.name).localeCompare(b.ticker || b.name);
     });
   }
+  /** @param {any} payload @returns {Record<string, Quote>} */
   function quoteRows(payload) {
     const raw = payload?.quotes?.quote;
+    /** @type {Record<string, Quote>} */
     const result = Object.create(null);
-    (Array.isArray(raw) ? raw : raw ? [raw] : []).forEach(q => {
+    (Array.isArray(raw) ? raw : raw ? [raw] : []).forEach(/** @param {any} q */ q => {
       const price = number(q.last), previous = number(q.prevclose);
-      const change = number(q.change_percentage) ?? (price > 0 && previous > 0 ? (price / previous - 1) * 100 : null);
-      if (typeof q.symbol !== 'string' || !(price > 0) || change === null || q.type === 'option') return;
+      const change = number(q.change_percentage) ?? (price !== null && previous !== null && price > 0 && previous > 0 ? (price / previous - 1) * 100 : null);
+      if (typeof q.symbol !== 'string' || price === null || !(price > 0) || change === null || q.type === 'option') return;
       const open = number(q.open);
-      result[q.symbol] = { price, change, fromOpen: open > 0 ? (price / open - 1) * 100 : null,
+      result[q.symbol] = { price, change, fromOpen: open !== null && open > 0 ? (price / open - 1) * 100 : null,
         volume: number(q.volume), tradeDate: number(q.trade_date) };
     });
     return result;
   }
+  /** @param {Row[]} rows @param {Record<string, Quote>} quotes @returns {Row[]} */
   function withQuotes(rows, quotes) {
     return rows.map(row => {
       const quote = quotes[row.ticker];
@@ -93,9 +114,10 @@ export const MarketData = (() => {
         returns };
     });
   }
+  /** @param {number} ms @param {AbortSignal} [signal] @returns {Promise<void>} */
   function waitForRefresh(ms, signal) {
     return new Promise((resolve, reject) => {
-      const finish = () => { signal?.removeEventListener('abort', cancel); resolve(); };
+      const finish = () => { signal?.removeEventListener('abort', cancel); resolve(undefined); };
       const timer = setTimeout(finish, ms);
       const cancel = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancel); reject(new Error('Refresh cancelled.')); };
       if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once:true});
@@ -118,6 +140,7 @@ export const MarketData = (() => {
         const cancel = () => controller.abort();
         signal?.addEventListener('abort', cancel, {once:true});
         const timeout = setTimeout(cancel, 20000);
+        /** @type {(Error & { status?: number, retryAfter?: number }) | undefined} */
         let failure;
         try {
           const response = await fetchImpl(base + '/markets/quotes', {
@@ -145,7 +168,7 @@ export const MarketData = (() => {
           Object.assign(result, quoteRows(payload));
         } catch (error) {
           if (signal?.aborted) throw new Error('Refresh cancelled.');
-          failure = controller.signal.aborted ? new Error('Tradier timed out. Try refreshing again.') : error;
+          failure = controller.signal.aborted ? new Error('Tradier timed out. Try refreshing again.') : /** @type {Error & { status?: number, retryAfter?: number }} */ (error);
         } finally {
           clearTimeout(timeout);
           signal?.removeEventListener('abort', cancel);

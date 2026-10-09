@@ -46,8 +46,8 @@ export function markActiveExp(exp) {
 export async function selectExp(exp) {
   state.selectedExp = exp;
   markActiveExp(exp);
-  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
-  await fetchChain(ticker, exp, true);
+  const ticker = state.quoteData?.symbol; // the loaded symbol, not the field
+  if (ticker) await fetchChain(ticker, exp, true);
 }
 
 export async function fetchChain(ticker, exp, scrollAtm) {
@@ -64,9 +64,9 @@ export async function fetchChain(ticker, exp, scrollAtm) {
     tbody.style.opacity = '0.4';
   }
   try {
-    const res = await fetch(`${baseUrl()}/markets/options/chains?symbol=${ticker}&expiration=${exp}&greeks=true`, { headers: headers() });
+    const res = await fetch(`${baseUrl()}/markets/options/chains?symbol=${encodeURIComponent(ticker)}&expiration=${encodeURIComponent(exp)}&greeks=true`, { headers: headers() });
     const json = await res.json();
-    if (requestId !== state.chainRequestId || ticker !== document.getElementById('ticker').value.trim().toUpperCase() || exp !== state.selectedExp) return;
+    if (requestId !== state.chainRequestId || ticker !== (state.quoteData?.symbol ?? ticker) || exp !== state.selectedExp) return;
     const opts = json?.options?.option;
     if (!opts) {
       state.chainData = [];

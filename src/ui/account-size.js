@@ -23,12 +23,13 @@ function due(now = Date.now()) {
   return !last || last.hash !== schwabAccount().hash || last.day !== nyDay(now);
 }
 
-/** an account read that already happened (Positions): use it when today's update is still due */
-export function applyAccountValue(account, now = Date.now()) {
+/** an account read that already happened (Positions): use it when today's update is still due and it is for the account selected now (hash) */
+export function applyAccountValue(account, hash, now = Date.now()) {
   if (!due(now)) return;
+  const acct = schwabAccount();
+  if (!hash || acct.hash !== hash) return; // another account was picked while the read was out
   const value = Math.round(Number(account?.currentBalances?.liquidationValue) || 0);
   if (value <= 0) return; // nothing to size off; the next read tries again
-  const acct = schwabAccount();
   store.set('schwab_acct_size', JSON.stringify({ day: nyDay(now), hash: acct.hash, value, at: now }));
   const input = /** @type {HTMLInputElement} */ (document.getElementById('accountSize'));
   if (Math.round(parseFloat(input.value) || 0) !== value) {
@@ -44,14 +45,18 @@ export function applyAccountValue(account, now = Date.now()) {
 /** read the account when today's update is due; Positions, when open, reads it anyway and applies it there */
 export async function dailyAccountSize(now = Date.now()) {
   if (!due(now) || state.positionsView || state.acctSizeBusy) return;
+  const hash = schwabAccount().hash; // the account this read is for; an answer for it never lands on another
   state.acctSizeBusy = true;
   try {
-    applyAccountValue(await schwabBalances(), now);
+    applyAccountValue(await schwabBalances(hash), hash, now);
   } catch(e) {
     // quiet: the next focus or read tries again
   } finally {
     state.acctSizeBusy = false;
   }
+  // another account was picked while that read was out (its own call found this one busy): it is due now
+  const acct = schwabConnected() ? schwabAccount() : null;
+  if (acct && acct.hash !== hash) await dailyAccountSize();
 }
 
 export function setAccountSizeSource(source) {

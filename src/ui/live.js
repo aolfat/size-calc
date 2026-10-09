@@ -87,15 +87,16 @@ export function updateLiveBtn() {
 }
 
 export async function livePoll() {
-  if (state.livePolling || state.currentMode === 'futures') return;
+  // the loaded symbol, never the field: it doubles as the search box and may hold half a new ticker
+  const ticker = state.quoteData?.symbol;
+  if (state.livePolling || state.currentMode === 'futures' || !ticker) return;
   state.livePolling = true;
-  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
   try {
-    const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${ticker}`, { headers: headers() });
+    const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}`, { headers: headers() });
     const qJson = await qRes.json();
-    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
+    if (ticker !== state.quoteData?.symbol) return; // a Load landed meanwhile
     const q = qJson?.quotes?.quote;
-    if (q) { state.quoteData = q; renderQuote(); }
+    if (q && q.symbol === ticker) { state.quoteData = q; renderQuote(); }
     if (state.currentMode === 'options' && state.selectedExp) {
       await fetchChain(ticker, state.selectedExp);
     }

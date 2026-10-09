@@ -1,7 +1,7 @@
 // Tools view: % gain card, leveraged ETF finder, and the leveraged ETF price target.
 import { state } from '../state.js';
 import { hv20At } from '../core/bars.js';
-import { dateStr, fmt$, fmtDayVol, fmtLev } from '../core/format.js';
+import { fmt$, fmtDayVol, fmtLev, nyDateStr } from '../core/format.js';
 import { LEV_ALIASES, LEV_ETFS, LEV_NAMES, LEV_REVERSE } from '../core/lev-etfs.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { showError } from './feedback.js';
@@ -57,7 +57,7 @@ export async function findLevEtfs() {
   if (!key) { renderLevTable(under, rows, note, false); return; }
   document.getElementById('levBtnText').innerHTML = '<span class="spinner"></span>';
   try {
-    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${rows.map(r => r.sym).join(',')}`, { headers: headers() });
+    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(rows.map(r => r.sym).join(','))}`, { headers: headers() });
     const json = await res.json();
     let qs = json?.quotes?.quote || [];
     if (!Array.isArray(qs)) qs = [qs];
@@ -147,7 +147,7 @@ export async function levTarget() {
   const days = Math.max(1, Math.round(parseFloat(document.getElementById('levTgtDays').value) || 1));
   document.getElementById('levTgtBtnText').innerHTML = '<span class="spinner"></span>';
   try {
-    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${sym},${r.under}`, { headers: headers() });
+    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(sym + ',' + r.under)}`, { headers: headers() });
     let qs = (await res.json())?.quotes?.quote || [];
     if (!Array.isArray(qs)) qs = [qs];
     const etfNow = qs.find(q => q.symbol === sym)?.last;
@@ -162,7 +162,7 @@ export async function levTarget() {
       let hv = 0;
       try {
         const from = new Date(); from.setDate(from.getDate() - 60);
-        const hres = await fetch(`${baseUrl()}/markets/history?symbol=${r.under}&interval=daily&start=${dateStr(from)}&end=${dateStr(new Date())}`, { headers: headers() });
+        const hres = await fetch(`${baseUrl()}/markets/history?symbol=${encodeURIComponent(r.under)}&interval=daily&start=${nyDateStr(from)}&end=${nyDateStr(new Date())}`, { headers: headers() });
         let hdays = (await hres.json())?.history?.day || [];
         if (!Array.isArray(hdays)) hdays = [hdays];
         const closes = hdays.map(d => d.close).filter(c => c > 0);

@@ -3,7 +3,7 @@
 // sign-in merges with the account. Never touches the page: it reports through onCloudView.
 import { state } from '../state.js';
 import { store, onStoreWrite } from '../lib/store.js';
-import { latestUpdate, mergeFirstSignIn } from '../core/cloud-merge.js';
+import { mergeFirstSignIn, pullFrom, seenAfter, unseenRows } from '../core/cloud-merge.js';
 import { hasStoredSession, supabaseClient } from './supabase.js';
 
 /** settings that live in the account (the Tradier key goes to Vault) */
@@ -21,8 +21,14 @@ let view = { status: (/** @type {string} */ text) => {}, applied: () => {}, pull
 /** @param {{ status: (text: string) => void, applied: () => void, pulled: () => void }} handlers */
 export function onCloudView(handlers) { view = handlers; }
 
-/** signed in, or holding a saved session that hasn't been read yet (offline at load): either way, edits count */
-export function cloudActive() { return !!state.session || hasStoredSession(); }
+/**
+ * edits count while signed in, while holding a saved session not read yet (offline at load), and while this device
+ * is still bound to an account whose session ended: they go out after signing in again
+ */
+export function cloudActive() { return !!state.session || hasStoredSession() || !!store.get('cloud_user'); }
+
+/** signed in and merged with this account: the first sign-in has finished here */
+const merged = () => !!state.session && store.get('cloud_user') === state.session.user.id;
 
 function readJson(k, fallback) { try { return JSON.parse(store.get(k) || 'null') ?? fallback; } catch(e) { return fallback; } }
 const clock = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -36,6 +42,32 @@ function check(res) {
   }
   return res || {};
 }
+
+// ---------- one at a time ----------
+
+/** run a push, pull or merge alone: state.cloudBusy holds it while it runs, so others can wait for it */
+function exclusive(work) {
+  const run = (async () => { try { return await work(); } finally { state.cloudBusy = false; } })();
+  state.cloudBusy = run;
+  return run;
+}
+
+/** wait until no push, pull or merge is running; false when one is still running after ms (a dead connection) */
+async function settle(ms = Infinity) {
+  const LATE = Symbol('late');
+  let timer;
+  const late = Number.isFinite(ms) ? new Promise(r => { timer = setTimeout(() => r(LATE), ms); }) : null;
+  try {
+    while (typeof state.cloudBusy?.then === 'function') {
+      const busy = state.cloudBusy.catch(() => {});
+      if ((await (late ? Promise.race([busy, late]) : busy)) === LATE) return false;
+    }
+    return true;
+  } finally { clearTimeout(timer); }
+}
+
+/** how long Sign out waits for a save or check already running */
+const FLUSH_WAIT = 10000;
 
 // ---------- pending edits ----------
 
@@ -78,102 +110,134 @@ function failed(e) {
 
 /** send pending edits. True when nothing is left pending. */
 export async function cloudPush() {
-  if (!state.session) return !state.cloudPending.size;
-  if (state.cloudBusy) { schedulePush(1000); return false; }
   if (!state.cloudPending.size) return true;
-  state.cloudBusy = true;
-  view.status('Saving…');
-  const pushing = new Set(state.cloudPending); // edits landing mid-flight stay pending for the next push
-  state.cloudPending.clear();
-  savePending();
-  try {
-    const client = await supabaseClient();
-    const uid = state.session.user.id;
-    const rows = CLOUD_KEYS.filter(k => pushing.has(k) && store.get(k) !== null).map(k => ({ user_id: uid, key: k, value: store.get(k) }));
-    if (rows.length) check(await client.from('settings').upsert(rows));
-    if (pushing.has('tradier_key')) check(await client.rpc('set_tradier_key', { new_key: store.get('tradier_key') || '' }));
-    view.status('Synced ' + clock());
-    return !state.cloudPending.size;
-  } catch(e) {
-    pushing.forEach(k => state.cloudPending.add(k));
-    savePending();
-    failed(e);
-    return false;
-  } finally { state.cloudBusy = false; }
+  if (!merged()) return false; // kept until the session is back
+  if (state.cloudBusy) { schedulePush(1000); return false; }
+  return exclusive(async () => {
+    view.status('Saving…');
+    // sent as they are now, and pending (on the device too) until the server has them: a page killed mid-save resends
+    const sending = new Map([...state.cloudPending].map(k => [k, store.get(k)]));
+    // done = the server has this value; a key edited again mid-flight stays pending for the next push
+    const done = keys => { keys.forEach(k => { if (store.get(k) === sending.get(k)) state.cloudPending.delete(k); }); savePending(); };
+    try {
+      const client = await supabaseClient();
+      const uid = state.session.user.id;
+      const rows = CLOUD_KEYS.filter(k => sending.has(k) && sending.get(k) !== null).map(k => ({ user_id: uid, key: k, value: sending.get(k) }));
+      if (rows.length) check(await client.from('settings').upsert(rows));
+      done([...sending.keys()].filter(k => k !== 'tradier_key')); // saved, removed (nothing to send), or not an account key
+      if (sending.has('tradier_key')) {
+        check(await client.rpc('set_tradier_key', { new_key: sending.get('tradier_key') || '' }));
+        done(['tradier_key']);
+      }
+      view.status('Synced ' + clock());
+      return !state.cloudPending.size;
+    } catch(e) {
+      failed(e);
+      return false;
+    }
+  });
+}
+
+/**
+ * Sign out's last save: wait (a while, not forever) for a running push or pull, then send what's pending. True when
+ * nothing is left; false when edits couldn't be sent or the running one never finished.
+ */
+export async function cloudFlush(ms = FLUSH_WAIT) {
+  if (!(await settle(ms))) return !state.cloudPending.size;
+  return state.cloudBusy ? !state.cloudPending.size : cloudPush(); // a poll that slipped in first: nothing pending is fine
 }
 
 // ---------- pull ----------
 
-/** apply rows changed on the server since the last pull. Edits not yet sent win over what comes back. */
+/**
+ * apply rows changed on the server since the last pull. Each pull re-reads a minute back (a save can commit after a
+ * later-stamped one); rows already seen are skipped. Edits not yet sent win over what comes back.
+ */
 export async function cloudPull() {
-  if (!state.session || state.cloudBusy) return;
-  state.cloudBusy = true;
-  try {
-    const client = await supabaseClient();
-    const seen = readJson('cloud_seen', {});
-    let sq = client.from('settings').select(SETTINGS_COLS);
-    if (seen.settings) sq = sq.gt('updated_at', seen.settings);
-    const settingRows = check(await sq).data || [];
-
-    let changed = false;
-    let newKey = null;
-    if (settingRows.some(r => r.key === 'tradier_key_at') && !state.cloudPending.has('tradier_key')) {
-      newKey = check(await client.rpc('get_tradier_key')).data || '';
-    }
-    state.cloudSuppress = true;
+  if (!merged() || state.cloudBusy) return;
+  return exclusive(async () => {
     try {
-      for (const r of settingRows) {
-        if (!CLOUD_KEYS.includes(r.key) || state.cloudPending.has(r.key)) continue;
-        if (store.get(r.key) !== r.value) { store.set(r.key, r.value); changed = true; }
+      const client = await supabaseClient();
+      const seen = readJson('cloud_seen', {});
+      let sq = client.from('settings').select(SETTINGS_COLS);
+      const since = pullFrom(seen.settings);
+      if (since) sq = sq.gt('updated_at', since);
+      const settingRows = check(await sq).data || [];
+      const fresh = unseenRows(settingRows, seen.keys || {});
+
+      let changed = false;
+      let newKey = null;
+      const keyBefore = store.get('tradier_key');
+      if (fresh.some(r => r.key === 'tradier_key_at') && !state.cloudPending.has('tradier_key')) {
+        newKey = check(await client.rpc('get_tradier_key')).data || '';
       }
-      if (newKey !== null && (store.get('tradier_key') || '') !== newKey) { store.set('tradier_key', newKey); changed = true; }
-    } finally { state.cloudSuppress = false; }
-    store.set('cloud_seen', JSON.stringify({ settings: latestUpdate(settingRows, seen.settings || '') }));
-    view.status('Synced ' + clock());
-    if (changed) { view.applied(); view.pulled(); }
-    if (state.cloudPending.size) schedulePush(1000);
-  } catch(e) {
-    failed(e);
-  } finally { state.cloudBusy = false; }
+      state.cloudSuppress = true;
+      try {
+        for (const r of fresh) {
+          if (!CLOUD_KEYS.includes(r.key) || state.cloudPending.has(r.key)) continue;
+          if (store.get(r.key) !== r.value) { store.set(r.key, r.value); changed = true; }
+        }
+        // a key typed while Vault answered is newer than Vault's
+        const keptHere = state.cloudPending.has('tradier_key') || store.get('tradier_key') !== keyBefore;
+        if (newKey !== null && !keptHere && (keyBefore || '') !== newKey) { store.set('tradier_key', newKey); changed = true; }
+      } finally { state.cloudSuppress = false; }
+      store.set('cloud_seen', JSON.stringify(seenAfter(settingRows, seen)));
+      view.status('Synced ' + clock());
+      if (changed) { view.applied(); view.pulled(); }
+      if (state.cloudPending.size) schedulePush(1000);
+    } catch(e) {
+      failed(e);
+    }
+  });
 }
 
 // ---------- first sign-in on this device ----------
 
 /**
  * Merge this device with the account: an empty account is filled from here, otherwise the account's settings and
- * key win. Uploads go first, so a failure leaves this device as it was and the next sign-in retries.
- * Returns true when this device filled the account.
+ * key win. A device last bound to another account holds that account's data: nothing is uploaded, and synced
+ * settings the new account doesn't have are cleared, the key too. Uploads go first, so a failure leaves this device
+ * as it was and the next sign-in retries.
+ * Returns { seeded: this device filled the account, foreign: it was another account's, dropped: that account's unsent edits }.
  */
 export async function cloudFirstSignIn() {
-  const client = await supabaseClient();
-  const uid = state.session.user.id;
-  const settingRows = check(await client.from('settings').select(SETTINGS_COLS)).data || [];
-  const cloudKey = check(await client.rpc('get_tradier_key')).data || '';
+  await settle();
+  return exclusive(async () => {
+    const client = await supabaseClient();
+    const uid = state.session.user.id;
+    const before = store.get('cloud_user');
+    const foreign = !!before && before !== uid;
+    const settingRows = check(await client.from('settings').select(SETTINGS_COLS)).data || [];
+    const cloudKey = check(await client.rpc('get_tradier_key')).data || '';
 
-  /** @type {Record<string, string>} */
-  const localSettings = {};
-  for (const k of CLOUD_KEYS) { const v = store.get(k); if (v !== null) localSettings[k] = v; }
-  /** @type {Record<string, string>} */
-  const cloudSettings = {};
-  for (const r of settingRows) if (CLOUD_KEYS.includes(r.key)) cloudSettings[r.key] = r.value;
+    /** @type {Record<string, string>} */
+    const localSettings = {};
+    for (const k of CLOUD_KEYS) { const v = store.get(k); if (v !== null) localSettings[k] = v; }
+    /** @type {Record<string, string>} */
+    const cloudSettings = {};
+    for (const r of settingRows) if (CLOUD_KEYS.includes(r.key)) cloudSettings[r.key] = r.value;
 
-  const m = mergeFirstSignIn({ settings: localSettings, key: store.get('tradier_key') || '' }, { settings: cloudSettings, key: cloudKey });
+    const m = mergeFirstSignIn({ settings: localSettings, key: store.get('tradier_key') || '' }, { settings: cloudSettings, key: cloudKey }, { foreign });
 
-  const uploadSettings = Object.entries(m.upload.settings).map(([key, value]) => ({ user_id: uid, key, value }));
-  if (uploadSettings.length) check(await client.from('settings').upsert(uploadSettings));
-  if (m.upload.key) check(await client.rpc('set_tradier_key', { new_key: m.upload.key }));
+    const uploadSettings = Object.entries(m.upload.settings).map(([key, value]) => ({ user_id: uid, key, value }));
+    if (uploadSettings.length) check(await client.from('settings').upsert(uploadSettings));
+    if (m.upload.key) check(await client.rpc('set_tradier_key', { new_key: m.upload.key }));
 
-  state.cloudSuppress = true;
-  try {
-    for (const [k, v] of Object.entries(m.settings)) store.set(k, v);
-    if (m.key) store.set('tradier_key', m.key);
-    store.set('cloud_seen', JSON.stringify({ settings: latestUpdate(settingRows, '') }));
-    state.cloudPending.clear();
-    savePending();
-    OLD_SYNC_KEYS.forEach(k => store.del(k));
-    store.set('cloud_user', uid);
-  } finally { state.cloudSuppress = false; }
-  return m.seeded;
+    const dropped = foreign ? state.cloudPending.size : 0;
+    state.cloudSuppress = true;
+    try {
+      for (const [k, v] of Object.entries(m.settings)) store.set(k, v);
+      m.clear.filter(k => !KEPT_ON_SIGN_OUT.includes(k)).forEach(k => store.del(k));
+      if (m.key) store.set('tradier_key', m.key);
+      else if (foreign) store.del('tradier_key');
+      store.set('cloud_seen', JSON.stringify(seenAfter(settingRows, {})));
+      state.cloudPending.clear();
+      savePending();
+      OLD_SYNC_KEYS.forEach(k => store.del(k));
+      store.set('cloud_user', uid);
+    } finally { state.cloudSuppress = false; }
+    return { seeded: m.seeded, foreign, dropped };
+  });
 }
 
 // ---------- signing out ----------

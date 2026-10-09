@@ -2,7 +2,7 @@
 import { state } from '../state.js';
 import { aggregateBars } from '../core/bars.js';
 import { effectivePrice } from '../core/extended-hours.js';
-import { dateStr } from '../core/format.js';
+import { nyDateStr } from '../core/format.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
@@ -17,8 +17,7 @@ export function setChartInterval(iv) {
   state.chartInterval = iv;
   store.set('chart_interval', String(iv));
   updateIntervalChips();
-  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
-  if (ticker && state.quoteData) fetchChart(ticker);
+  if (state.quoteData?.symbol) fetchChart(state.quoteData.symbol); // the loaded symbol, not the field
 }
 
 export function updateIntervalChips() {
@@ -27,10 +26,9 @@ export function updateIntervalChips() {
 }
 
 export async function fetchFiveMinuteBars(ticker) {
-  const from = new Date();
-  // Fixed history keeps the ATR seed independent of the visible chart interval.
-  from.setDate(from.getDate() - 14);
-  const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(ticker)}&interval=5min&start=${encodeURIComponent(dateStr(from) + ' 09:30')}&end=${encodeURIComponent(dateStr(new Date()) + ' 16:00')}&session_filter=open`;
+  // Fixed history keeps the ATR seed independent of the visible chart interval; dates are New York's, like the bars.
+  const from = new Date(Date.now() - 14 * 864e5);
+  const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(ticker)}&interval=5min&start=${encodeURIComponent(nyDateStr(from) + ' 09:30')}&end=${encodeURIComponent(nyDateStr(new Date()) + ' 16:00')}&session_filter=open`;
   const res = await fetch(url, { headers: headers() });
   if (!res.ok) throw new Error('Intraday data unavailable');
   const data = (await res.json())?.series?.data;
@@ -41,7 +39,7 @@ export async function fetchChart(ticker) {
   const requestId = ++state.chartRequestId;
   let raw = [];
   try { raw = await fetchFiveMinuteBars(ticker); } catch(e) {}
-  if (requestId !== state.chartRequestId || ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
+  if (requestId !== state.chartRequestId || ticker !== (state.quoteData?.symbol ?? ticker)) return; // only the latest request, for the loaded symbol
   const sessions = CHART_SESSIONS[state.chartInterval] || 1;
   const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
   const keep = new Set(days.slice(-sessions));

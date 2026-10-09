@@ -22,18 +22,20 @@ const VALUES = { HASH1: 52340.61, HASH2: 80000 };
 const account = hash => ({ securitiesAccount: { type: 'MARGIN', currentBalances: { liquidationValue: VALUES[hash], cashBalance: 1000 }, positions: [] } });
 
 // Schwab answers balances, positions and orders; every Schwab path is logged
+// holds[hash], when set, is a promise a balances read for that account waits on
 function network() {
-  const paths = [];
+  const paths = [], holds = {};
   const fetch = async (url) => {
     if (!url.startsWith(PROXY)) throw new Error('Unexpected request ' + url);
     const path = url.slice(PROXY.length);
     paths.push(path);
     const hash = path.match(/\/accounts\/([^/?]+)/)?.[1];
+    if (holds[hash] && /\/accounts\/[^/?]+$/.test(path)) await holds[hash];
     if (path.includes('/orders?')) return json([]);
     if (hash in VALUES) return json(account(hash));
     return json({}, 404);
   };
-  return { paths, fetch, balances: () => paths.filter(p => /\/accounts\/[^/?]+$/.test(p)).length };
+  return { paths, holds, fetch, balances:() => paths.filter(p => /\/accounts\/[^/?]+$/.test(p)).length };
 }
 
 // starts every test at noon New York time, so "later today" never crosses midnight there
@@ -154,4 +156,21 @@ test('no login, a failed read or an empty account changes nothing', async () => 
   VALUES.HASH1 = zero;
   await run('dailyAccountSize()');
   assert.equal(acctSize(elements), '52341');
+});
+
+test('an answer for an account switched away from is dropped, and the one picked meanwhile gets its own read', async () => {
+  const { run, elements, storage, net } = await setup();
+  let release;
+  net.holds.HASH1 = new Promise(r => { release = r; });
+  const first = run('dailyAccountSize()');
+  await settle();
+  storage.set('schwab_account', 'HASH2'); // picked while HASH1's read is out
+  await run('dailyAccountSize()'); // finds the read busy
+  release();
+  await first;
+  await settle();
+  assert.equal(net.balances(), 2, 'HASH2 read once HASH1 finished');
+  assert.equal(acctSize(elements), '80000', 'HASH2\'s value, never HASH1\'s');
+  assert.deepEqual([JSON.parse(storage.get('schwab_acct_size')).hash, JSON.parse(storage.get('schwab_acct_size')).value], ['HASH2', 80000]);
+  assert.match(elements.get('errorBox').textContent, /\$80,000 from Schwab ••4321/);
 });

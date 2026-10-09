@@ -1,4 +1,4 @@
-// Keyboard shortcuts: one keydown listener, ignored while typing or while a sheet is open.
+// Keyboard shortcuts: one keydown listener, ignored while typing or while a sheet or the simulator is open.
 import { state } from '../state.js';
 import { cycleExp, setSide, setZoneMode } from './chain.js';
 import { closeDetails } from './detail.js';
@@ -35,7 +35,7 @@ export function initShortcuts() {
       return;
     }
     if (typing && e.key === '/' && e.target.id === 'ticker') { e.preventDefault(); e.target.select(); return; } // '/' re-selects even from inside the field
-    if (typing || state.openSheetName) return; // never hijack keys while filling a field or working in a sheet
+    if (typing || state.openSheetName || state.simState) return; // never hijack keys while filling a field or working in a sheet or the simulator
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
     if (state.marketView && !['/', 'm', 's', 'o', 'f', 'v', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
