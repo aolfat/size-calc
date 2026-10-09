@@ -48,7 +48,7 @@ I can't create accounts or enter credentials, so these are yours.
 
 | On the device today | Goes to |
 |---|---|
-| `calc_account`, `calc_risk`, `calc_allocation`, `risk_usd_presets`, `atr_multiplier`, `stop_strategy`, `stop_percent`, `last_ticker`, `tradier_env` | The `settings` table, one row per key |
+| `calc_account`, `calc_risk`, `calc_allocation`, `risk_usd_presets`, `atr_multiplier`, `stop_strategy`, `stop_percent`, `last_ticker`, `tradier_env`, `schwab_proxy` | The `settings` table, one row per key |
 | `tradier_key` | Vault, through three database functions |
 | `saved_positions` | The `saved_positions` table, one row per position |
 | `deleted_positions` (delete markers) | A `deleted_at` time on that table's rows. Kept on the device too, for backup-file merges |

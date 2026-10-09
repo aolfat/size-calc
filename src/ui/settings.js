@@ -10,6 +10,7 @@ import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
 import { updateStopVisibility } from './stops.js';
+import { updateSchwabUi } from './trade.js';
 
 export function saveKey() {
   store.set('tradier_key', document.getElementById('apiKey').value.trim());
@@ -48,6 +49,7 @@ export function cloudRehydrate() {
     loadKey();
     if (tick.trim()) document.getElementById('ticker').value = tick; // never yank a symbol the user typed or loaded
     updateApiStatus();
+    updateSchwabUi(); // the worker URL syncs
     renderUsdPresets();
     recalcAll();
   } finally { state.cloudSuppress = false; }
