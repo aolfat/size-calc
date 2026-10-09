@@ -3,7 +3,7 @@ import { state } from '../state.js';
 import { hv20At, percentileOf } from '../core/bars.js';
 import { clampView, viewRange } from '../core/chart-view.js';
 import { effectivePrice } from '../core/extended-hours.js';
-import { dateStr, fmtN } from '../core/format.js';
+import { fmtN, nyDateStr } from '../core/format.js';
 import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
@@ -13,7 +13,7 @@ import { chartStopVal, rawStop, tradeCtx } from './stops.js';
 
 export function applyDailyHistory(list) {
   state.dailyBars = list;
-  const today = dateStr(new Date());
+  const today = nyDateStr(new Date()); // the bars carry New York dates
   const done = list.filter(x => x.date !== today); // today's range is still forming
   const last14 = done.slice(-14);
   if (last14.length) state.adrValue = last14.reduce((s, x) => s + (x.high - x.low), 0) / last14.length;
@@ -36,10 +36,11 @@ export async function fetchAdr(ticker) {
   state.adrValue = 0;
   state.prevDay = null;
   state.hv20 = 0;
+  state.hvDist = []; // or IV percentile ranks this symbol against the last one's vol
   state.dailyBars = [];
   try {
     const days = await dailyHistory(ticker);
-    if (ticker !== document.getElementById('ticker').value.trim().toUpperCase()) return;
+    if (ticker !== state.dailySymbol) return; // a newer symbol was requested meanwhile
     if (days.length) applyDailyHistory(days);
   } catch(e) {}
   renderAdr();

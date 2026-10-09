@@ -79,11 +79,12 @@ export async function setMode(mode) {
   if (state.chartBars.length) drawChart();
   // switching to options with a quote loaded but no chain yet — load it
   if (mode === 'options' && state.quoteData && state.chainData.length === 0) {
-    const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+    const ticker = state.quoteData.symbol; // the loaded symbol, not whatever the field holds now
     if (ticker && document.getElementById('apiKey').value.trim()) {
       try {
-        const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${ticker}&includeAllRoots=true`, { headers: headers() });
+        const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${encodeURIComponent(ticker)}&includeAllRoots=true`, { headers: headers() });
         const expJson = await expRes.json();
+        if (ticker !== state.quoteData?.symbol || state.currentMode !== 'options') return;
         const exps = expJson?.expirations?.date;
         if (exps) {
           const expList = Array.isArray(exps) ? exps : [exps];
