@@ -1,4 +1,4 @@
-// Backup and the sync payload: every synced key as one JSON blob, plus the merge rule both use.
+// Backup file: every backup key as one JSON blob, plus the merge rule its import uses.
 // The settings sheet owns the file buttons.
 import { store } from '../lib/store.js';
 
@@ -18,7 +18,7 @@ export function applyBackup(text) { // returns restored key count, throws on jun
   return mergeBackupPayload(payload, new Set());
 }
 
-// shared by file import and live sync: keys adopt the payload except those in dirtySet (local edits the payload hasn't seen)
+// a backup file's merge: keys adopt the payload except those in dirtySet (local edits the payload hasn't seen)
 
 export function mergeBackupPayload(payload, dirtySet) {
   let n = 0;

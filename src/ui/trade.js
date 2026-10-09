@@ -282,6 +282,7 @@ export async function initSchwab(href = location.href) {
   // a login finished in another tab shows up here, and a new day's account size comes in
   window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); });
   const url = new URL(href);
+  if (url.searchParams.get('login') === 'google') { dailyAccountSize(); return; } // Google's return through Supabase carries a code too: not ours
   if (!url.searchParams.get('code')) { dailyAccountSize(); return; }
   // the app as its own callback page: drop the code from the address, then finish the login
   globalThis.history?.replaceState(null, '', url.pathname + url.hash);

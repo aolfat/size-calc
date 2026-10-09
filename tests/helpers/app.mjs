@@ -55,9 +55,10 @@ export function makeElement(id = '') {
 
 /**
  * Fresh app per test: new fake page, storage and globals, and a reset state object.
- * @param {{ width?: number | null, fetch?: Function, lenient?: boolean, timers?: 'noop' | 'fake', clock?: boolean, storage?: Map<string,string> }} [opts]
+ * `supabase` is a fake client for the cloud module (it never loads the real library); `session` signs it in.
+ * @param {{ width?: number | null, fetch?: Function, lenient?: boolean, timers?: 'noop' | 'fake', clock?: boolean, storage?: Map<string,string>, supabase?: object, session?: object }} [opts]
  */
-export async function app({ width = null, fetch, lenient = false, timers = 'noop', clock = false, storage = new Map() } = {}) {
+export async function app({ width = null, fetch, lenient = false, timers = 'noop', clock = false, storage = new Map(), supabase = null, session = null } = {}) {
   const elements = new Map();
   const listeners = new Map();
   const element = id => {
@@ -119,13 +120,15 @@ export async function app({ width = null, fetch, lenient = false, timers = 'noop
   const mods = await loadModules();
   mods.resetState();
   const { state, effects } = mods;
+  state.supabase = supabase;
+  state.session = session;
 
   // run() scope: exports, live state fields, the effects seam, and the swapped globals
   const scope = { console, JSON, Math, Object, Array, Number, String, Promise, URLSearchParams, AbortController };
   for (const [k, v] of Object.entries(mods)) scope[k] = v;
   for (const k of Object.keys(state)) Object.defineProperty(scope, k, { get: () => state[k], set: v => { state[k] = v; }, enumerable: true });
   for (const k of Object.keys(effects)) Object.defineProperty(scope, k, { get: () => effects[k], set: v => { effects[k] = v; }, enumerable: true });
-  for (const k of ['document', 'window', 'localStorage', 'navigator', 'fetch', 'Date'])
+  for (const k of ['document', 'window', 'localStorage', 'navigator', 'fetch', 'Date', 'location', 'history'])
     Object.defineProperty(scope, k, { get: () => globalThis[k], set: v => { globalThis[k] = v; }, enumerable: true });
   const context = vm.createContext(scope);
   // effects keep their production implementations unless a test swaps them

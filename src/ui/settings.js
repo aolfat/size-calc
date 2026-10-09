@@ -1,13 +1,16 @@
-// Settings sheet: API key and environment, backup file, and the sync switch and status line.
+// Settings sheet: the account (Google sign-in and sync status), API key and environment, and the backup file.
 import { state } from '../state.js';
 import { normalizeAtrMultiplier, normalizeStopStrategy, parseStopPercent } from '../core/stops.js';
 import { store } from '../lib/store.js';
 import { applyBackup, buildBackup } from '../services/backup.js';
-import { deriveSyncCreds, onSyncView, saveDirty, scheduleSyncPush, syncApplyRemote, syncDecrypt, syncEnabled, syncFetchRemote, syncPull, syncPush } from '../services/sync.js';
+import { cloudClearDevice, cloudFirstSignIn, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
+import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
+import { effects } from './effects.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
 import { updateStopVisibility } from './stops.js';
+import { updateSchwabUi } from './trade.js';
 
 export function saveKey() {
   store.set('tradier_key', document.getElementById('apiKey').value.trim());
@@ -37,84 +40,115 @@ export function loadKey() {
   syncRiskDollar();
 }
 
-// re-read storage into the UI without a page reload (imports reload; live pulls shouldn't)
+// re-read storage into the UI without a page reload (imports and sign-out reload; synced changes shouldn't)
 
-export function syncRehydrate() {
-  state.syncSuppress = true;
+export function cloudRehydrate() {
+  state.cloudSuppress = true;
   try {
     const tick = document.getElementById('ticker').value;
     loadKey();
     if (tick.trim()) document.getElementById('ticker').value = tick; // never yank a symbol the user typed or loaded
     updateApiStatus();
+    updateSchwabUi(); // the worker URL syncs
     renderUsdPresets();
     recalcAll();
-  } finally { state.syncSuppress = false; }
+  } finally { state.cloudSuppress = false; }
 }
 
-export async function toggleSync() {
-  if (syncEnabled()) {
-    ['sync_id', 'sync_key', 'sync_dirty', 'last_sync_t'].forEach(k => store.del(k));
-    state.syncDirty.clear();
-    state.syncKeyObj = null;
-    document.getElementById('syncPass').value = '';
-    setSyncUi('');
-    updateApiStatus();
-    showToast('Sync off. Local data stays put.');
+// ---------- account: Google sign-in through Supabase ----------
+
+export async function signIn() {
+  setCloudUi('Opening Google…');
+  try {
+    await signInWithGoogle(location.href); // the browser leaves for Google here
+  } catch(e) {
+    setCloudUi('');
+    showError("Couldn't start Google sign-in. Check your connection and try again.");
+  }
+}
+
+export async function signOut() {
+  if (!state.session) return;
+  setCloudUi('Signing out…');
+  const sent = await cloudPush();
+  if (!sent && !state.signOutArmed) {
+    state.signOutArmed = true;
+    setCloudUi('Offline, will retry');
+    showError("Your last changes haven't reached your account. Sign out again to discard them.");
     return;
   }
-  const pass = document.getElementById('syncPass').value;
-  if (pass.length < 8) { showError('Use a longer passphrase (8+ characters). It is the only lock on your data.'); return; }
-  if (!(window.crypto && crypto.subtle)) { showError('Sync needs a secure (https) page.'); return; }
-  setSyncUi('connecting…');
-  try {
-    const creds = await deriveSyncCreds(pass);
-    store.set('sync_id', creds.id);
-    store.set('sync_key', creds.keyB64);
-    store.set('last_sync_t', '0');
-    state.syncKeyObj = null;
-    document.getElementById('syncPass').value = '';
-    state.syncDirty.clear(); // enabling adopts the cloud copy as truth (positions still merge)
-    saveDirty();
-    const remote = await syncFetchRemote(false);
-    if (remote) {
-      syncApplyRemote(JSON.parse(await syncDecrypt(remote.blob)));
-      store.set('last_sync_t', String(remote.t));
-      showToast('Sync on. Loaded the cloud copy.');
-    } else {
-      showToast('Sync on. This device seeded the cloud copy.');
-    }
-    await syncPush();
-    updateApiStatus();
-  } catch(e) {
-    ['sync_id', 'sync_key'].forEach(k => store.del(k));
-    state.syncKeyObj = null;
-    setSyncUi('');
-    showError('Could not reach the sync server. Check the URL.');
+  state.signOutArmed = false;
+  await signOutSupabase();
+  cloudClearDevice();
+  effects.reloadPage();
+}
+
+// a session on this device: the first one merges with the account, later ones catch up and send what's pending
+async function startSession(session) {
+  state.session = session;
+  setCloudUi('Syncing…');
+  if (store.get('cloud_user') !== session.user.id) {
+    let seeded;
+    // not merged yet = not signed in here: the poll retries the whole first sign-in rather than syncing half-joined
+    try { seeded = await cloudFirstSignIn(); } catch(e) { state.session = null; throw e; }
+    cloudRehydrate();
+    showToast(seeded ? "Signed in. Saved this device's settings to your account." : 'Signed in. Loaded your settings from your account.');
+    setCloudUi('Synced');
+  } else {
+    await cloudPull();
+    if (state.cloudPending.size) await cloudPush();
   }
+  updateApiStatus();
 }
 
-// sync reports here: status line, re-read storage after a remote apply, a toast when another device's edits land
-onSyncView({ status: setSyncUi, applied: syncRehydrate, pulled: () => showToast('Synced changes from your other device.') });
-
-export function setSyncUi(status) {
-  const on = syncEnabled();
-  document.getElementById('syncBtn').textContent = on ? '✕ Disable sync' : '⇄ Enable sync';
-  document.getElementById('syncPass').placeholder = on ? 'Passphrase set' : 'Same phrase on every device';
-  document.getElementById('syncStatus').textContent = on
-    ? 'Sync ' + (status || 'on') + '. Encrypted on this device, so the server only stores ciphertext.'
-    : 'Syncs settings, your key, and positions across devices. Encrypted with your passphrase before it leaves this browser. Use the same phrase on every device.';
+async function resumeSession() {
+  const session = await currentSession();
+  if (session) await startSession(session);
+  else setCloudUi('');
 }
 
-export function initSync() {
-  try { JSON.parse(store.get('sync_dirty') || '[]').forEach(k => state.syncDirty.add(k)); } catch(e) {}
-  setSyncUi('');
-  if (syncEnabled()) syncPull().then(() => { if (state.syncDirty.size) scheduleSyncPush(); });
-  // gentle poll keeps an open idle device current; pushes retry here too if one failed
+// synced changes report here: status line, re-read storage, and a toast when another device's edits land
+onCloudView({ status: setCloudUi, applied: cloudRehydrate, pulled: () => showToast('Synced changes from your other device.') });
+
+export function setCloudUi(status) {
+  const s = state.session;
+  document.getElementById('signInBtn').style.display = s ? 'none' : '';
+  document.getElementById('signOutBtn').style.display = s ? '' : 'none';
+  const who = document.getElementById('accountEmail');
+  who.textContent = s ? 'Signed in as ' + (s.user.email || 'your Google account') : '';
+  who.style.display = s ? '' : 'none';
+  document.getElementById('cloudStatus').textContent = status || '';
+  document.getElementById('accountHint').textContent = s
+    ? 'Your settings and Tradier key sync across your devices.'
+    : 'Sync your settings and Tradier key across devices. The calculator works without signing in.';
+  document.getElementById('apiNotice').innerHTML = (s ? 'Saved to your account, encrypted. ' : 'Stored in this browser. ')
+    + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.';
+}
+
+export async function initCloud(href = location.href) {
+  loadPending();
+  setCloudUi('');
+  if (isGoogleReturn(href)) {
+    const url = new URL(href);
+    globalThis.history?.replaceState(null, '', url.pathname + url.hash); // the code is single-use: off the address bar now
+    try {
+      await startSession(await finishGoogleReturn(href));
+      openSheet('settings');
+    } catch(e) {
+      state.session = null;
+      setCloudUi('');
+      showError('Google sign-in failed. ' + (e && e.message ? e.message : 'Try again.'));
+    }
+  } else if (hasStoredSession()) {
+    await resumeSession().catch(() => setCloudUi('Offline, will retry'));
+  }
+  // gentle poll keeps an open idle device current; it also retries failed saves and a session that couldn't load
   setInterval(() => {
-    if (document.hidden || !syncEnabled() || state.syncBusy) return;
-    state.syncDirty.size ? syncPush() : syncPull();
+    if (document.hidden || state.cloudBusy) return;
+    if (!state.session) { if (hasStoredSession()) resumeSession().catch(() => {}); return; }
+    state.cloudPending.size ? cloudPush() : cloudPull();
   }, 60000);
-  window.addEventListener('focus', () => syncPull());
+  window.addEventListener('focus', () => cloudPull());
 }
 
 // backup file: download (and copy) everything, or merge one back in and reload
@@ -153,7 +187,7 @@ export function updateApiStatus() {
   const key = document.getElementById('apiKey').value.trim();
   document.getElementById('apiStatus').innerHTML = (key
     ? `<span style="color:var(--green)">●</span> Key saved · ${document.getElementById('apiEnv').value}`
-    : '○ No key yet') + (syncEnabled() ? ' · <span style="color:var(--blue)">⇄ Sync on</span>' : '');
+    : '○ No key yet') + (state.session ? ' · <span style="color:var(--blue)">Signed in</span>' : '');
   document.getElementById('settingsBtn').classList.toggle('needs-key', !key);
   updateSetupNotice();
 }

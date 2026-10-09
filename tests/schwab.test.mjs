@@ -140,13 +140,25 @@ test('a callback page with someone else\'s state is ignored', async () => {
   assert.match(elements.get('errorBox').textContent, /another attempt/);
 });
 
-test('Schwab logins never travel in backups or sync', async () => {
-  const storage = connected([['sync_id', 'test-id'], ['sync_key', 'dGVzdA==']]);
-  const { run } = await app({ storage });
+test('Schwab logins never travel in backups or the account; only the worker URL syncs', async () => {
+  const storage = connected([]);
+  const { run } = await app({ storage, session: { user: { id: 'u1' } } });
   assert.deepEqual(run('BACKUP_KEYS.filter(k => k.startsWith("schwab"))'), []);
+  assert.deepEqual(run('CLOUD_KEYS.filter(k => k.startsWith("schwab"))'), ['schwab_proxy']);
   assert.doesNotMatch(run('buildBackup()'), /schwab|acc-1|ref-1|HASH1/);
-  run("store.set('schwab_tokens', 'changed'); store.set('schwab_proxy', 'https://other.example')");
-  assert.equal(storage.get('sync_dirty'), undefined);
+  run("store.set('schwab_tokens', 'changed'); store.set('schwab_account', 'HASH2'); store.set('schwab_stop_duration', 'DAY')");
+  assert.equal(storage.get('cloud_pending'), undefined);
+  run("store.set('schwab_proxy', 'https://other.example')");
+  assert.deepEqual(JSON.parse(storage.get('cloud_pending')), ['schwab_proxy']);
+});
+
+test('Google\'s return carries a code too, and the Schwab callback leaves it alone', async () => {
+  const storage = new Map([['schwab_proxy', PROXY], ['schwab_oauth_state', 'mine']]);
+  const net = network(async () => json({}, 500));
+  const { run, elements } = await app({ fetch: net.fetch, storage });
+  await run("initSchwab('https://aolfat.github.io/size-calc/?login=google&code=from-google')");
+  assert.equal(net.schwabCalls().length, 0);
+  assert.equal(elements.get('errorBox').textContent, '', 'no Schwab error for a Google sign-in');
 });
 
 test('an expired access token refreshes once before the call; a refused refresh ends the login', async () => {
