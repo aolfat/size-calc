@@ -1,5 +1,5 @@
 // Run with: node --test
-// Position trades: a breakeven stop or a market close for one Schwab position, planned purely, reviewed, sent once.
+// Position trades: a breakeven stop or a close (market or limit, all or part) for one Schwab position, planned purely, reviewed, sent once.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -80,8 +80,12 @@ function broker({ refuse = () => null, lag = false } = {}) {
     const orderId = live.nextId++;
     if (method === 'PUT') all().find(o => o.orderId === id).status = 'REPLACED';
     if (call.body.orderType === 'MARKET') {
-      const symbol = call.body.orderLegCollection[0].instrument.symbol;
-      live.positions = live.positions.filter(p => p.instrument.symbol !== symbol); // filled at once
+      const { quantity, instrument: { symbol } } = call.body.orderLegCollection[0];
+      live.positions = live.positions.flatMap(p => { // filled at once, for that many
+        if (p.instrument.symbol !== symbol) return [p];
+        const qty = (p.longQuantity || -p.shortQuantity) > 0 ? p.longQuantity - quantity : -(p.shortQuantity - quantity);
+        return qty ? [{ ...p, longQuantity: Math.max(qty, 0), shortQuantity: Math.max(-qty, 0), marketValue: p.marketValue / (p.longQuantity || -p.shortQuantity) * qty }] : [];
+      });
     } else live.orders.push({ ...call.body, orderId, status: 'WORKING', childOrderStrategies: (call.body.childOrderStrategies || []).map(c => ({ ...c, orderId: live.nextId++, status: 'WORKING' })) });
     return new Response(null, { status: 201, headers: { Location: `${PROXY}/trader/v1/accounts/HASH1/orders/${orderId}` } });
   };
@@ -199,6 +203,52 @@ test('closing cancels the targets first and the nearest stop last, then sells it
   assert.equal(run(`closePlan(${rowWith(OPT)}).steps[0].order.orderLegCollection[0].instruction`), 'SELL_TO_CLOSE');
   assert.equal(run(`closePlan(${rowWith('TSLA')}).steps[1].order.orderLegCollection[0].instruction`), 'BUY_TO_COVER');
   assert.match(run(`closePlan(${rowWith('SWVXX')}).error`), /stocks, ETFs and options/);
+});
+
+test('a partial close at market keeps the targets and cuts the stops to the shares left', async () => {
+  const { run } = await app();
+  // HOOD: 300 shares, a limit holding 100, stops $35.50 × 250 and $34 × 50; 200 shares are free to close
+  const plan = plain(run(`closePlan(${rowWith('HOOD')}, { type: 'MARKET', qty: 100 })`));
+  assert.equal(plan.error, '');
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 102], ['replace', 101], ['place', null]]);
+  assert.equal(plan.steps[1].order.orderLegCollection[0].quantity, 100);
+  assert.equal(plan.steps[1].order.stopPrice, 35.5);
+  assert.equal(plan.steps[2].order.orderType, 'MARKET');
+  assert.equal(plan.steps[2].order.orderLegCollection[0].quantity, 100);
+  assert.equal(plan.rest, 200);
+  assert.match(run(`closePlan(${rowWith('HOOD')}, { type: 'MARKET', qty: 250 }).error`), /Your targets hold 100 of the 300 shares, so a partial close can take up to 200\. Close all 300 to cancel them too\./);
+  assert.match(run(`closePlan(${rowWith('HOOD')}, { type: 'MARKET', qty: 0 }).error`), /Pick how many shares to sell/);
+  assert.match(run(`closePlan(${rowWith('HOOD')}, { type: 'MARKET', qty: 301 }).error`), /You hold 300 shares/);
+  assert.match(run(`closePlan(${rowWith('TSLA')}, { type: 'MARKET', qty: 0 }).error`), /Pick how many shares to buy back/);
+});
+
+test('a limit close is paired with the nearest stop for the same shares', async () => {
+  const { run } = await app();
+  const part = plain(run(`closePlan(${rowWith('HOOD')}, { type: 'LIMIT', qty: 100, price: 41.004, duration: 'DAY' })`));
+  assert.deepEqual(part.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 102], ['replace', 101], ['place', null]]);
+  assert.deepEqual(part.steps[2].order, { orderStrategyType: 'OCO', childOrderStrategies: [
+    { orderType: 'LIMIT', session: 'NORMAL', duration: 'DAY', orderStrategyType: 'SINGLE', price: 41, orderLegCollection: [{ instruction: 'SELL', quantity: 100, instrument: { symbol: 'HOOD', assetType: 'EQUITY' } }] },
+    { orderType: 'STOP', session: 'NORMAL', duration: 'DAY', orderStrategyType: 'SINGLE', stopPrice: 35.5, orderLegCollection: [{ instruction: 'SELL', quantity: 100, instrument: { symbol: 'HOOD', assetType: 'EQUITY' } }] },
+  ] });
+  assert.equal(part.price, 41);
+  assert.equal(part.stop, 35.5);
+  // all of it: every order on it is cancelled first, then one pair for the whole position
+  const all = plain(run(`closePlan(${rowWith('HOOD')}, { type: 'LIMIT', qty: 300, price: 41, duration: 'GOOD_TILL_CANCEL' })`));
+  assert.deepEqual(all.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 103], ['cancel', 102], ['cancel', 101], ['place', null]]);
+  assert.equal(all.steps[3].order.childOrderStrategies[0].orderLegCollection[0].quantity, 300);
+  assert.equal(all.steps[3].order.childOrderStrategies[1].stopPrice, 35.5);
+  assert.equal(all.moved, 300, 'no stop between the cancels and the pair');
+  // no stop: the limit goes alone
+  const bare = plain(run(`closePlan(${rowWith('NVDA')}, { type: 'LIMIT', qty: 150, price: 113, duration: 'DAY' })`));
+  assert.deepEqual(bare.steps.map(s => s.kind), ['place']);
+  assert.equal(bare.steps[0].order.orderType, 'LIMIT');
+  assert.equal(bare.stop, 0);
+  // options take the $0.05 / $0.10 grid, to the nearest step
+  const opt = plain(run(`closePlan(${rowWith(OPT)}, { type: 'LIMIT', qty: 2, price: 6.14, duration: 'DAY' })`));
+  assert.equal(opt.steps.at(-1).order.price, 6.1);
+  assert.equal(opt.steps.at(-1).order.orderLegCollection[0].instruction, 'SELL_TO_CLOSE');
+  assert.equal(run('optionPriceTick(2.97)'), 2.95);
+  assert.match(run(`closePlan(${rowWith('HOOD')}, { type: 'LIMIT', qty: 300, price: 0 }).error`), /Set a limit price/);
 });
 
 test('only orders still in play count, under any of Schwab\'s live statuses', async () => {
@@ -375,11 +425,57 @@ test('closing a position cancels its orders, sells at market, and confirms it is
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'close')");
   assert.match(elements.get('posTradeBody').innerHTML, /Cancel limit \$45\.00 for 100 shares/);
-  assert.match(elements.get('posTradeBody').innerHTML, />Close 300 shares HOOD</);
+  assert.match(elements.get('posTradeBody').innerHTML, />Sell 300 HOOD at market</);
   await run('placePositionTrade()');
   assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/103', 'DELETE /orders/102', 'DELETE /orders/101', 'POST /orders']);
   assert.equal(b.sent[3].body.orderType, 'MARKET');
   assert.match(elements.get('posTradeBody').innerHTML, /Schwab no longer shows the HOOD position/);
+});
+
+test('the close ticket picks market or limit, how many and the price, like a broker', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  const detail = () => elements.get('posTradeDetail').innerHTML;
+  assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="MARKET"/);
+  assert.match(body(), /id="posCloseQty"[^>]*value="300"/);
+  assert.doesNotMatch(body(), /id="posClosePrice"/, 'a market order has no price');
+  run("setCloseType('LIMIT')");
+  assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="LIMIT"/);
+  assert.match(body(), /id="posClosePrice"[^>]*value="41.10"/, 'starts at Schwab\'s mark');
+  assert.match(body(), /data-action="setPositionStopDuration" data-arg="DAY"/);
+  assert.match(body(), />Sell 300 HOOD, limit \$41\.10</);
+  // typing re-plans without redrawing the inputs under the cursor
+  run("setCloseQty('100')");
+  assert.match(detail(), /Cut stop \$35\.50 from 250 shares to 100/);
+  assert.match(detail(), /paired with stop \$35\.50/);
+  assert.match(detail(), />Sell 100 HOOD, limit \$41\.10</);
+  run("setCloseQty('250')");
+  assert.match(detail(), /can take up to 200/);
+  assert.match(detail(), /data-action="placePositionTrade" disabled/);
+  run('setClosePortion(0.5)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="150"/);
+  run("setClosePrice('40.5')");
+  assert.match(detail(), /\+\$345\.00/, '150 × ($40.50 − $38.20)');
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/102', 'PUT /orders/101', 'POST /orders']);
+  assert.equal(b.sent[1].body.orderLegCollection[0].quantity, 50);
+  assert.equal(b.sent[2].body.orderStrategyType, 'OCO');
+  assert.equal(b.sent[2].body.childOrderStrategies[0].price, 40.5);
+  assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
+});
+
+test('a partial market close sells only that many and confirms what is left', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  run("setCloseQty('100')");
+  assert.match(elements.get('posTradeDetail').innerHTML, />Sell 100 HOOD at market</);
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/102', 'PUT /orders/101', 'POST /orders']);
+  assert.equal(b.sent[2].body.orderLegCollection[0].quantity, 100);
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows 200 shares HOOD/);
 });
 
 test('without the account\'s orders there is no plan: the app can\'t see what already covers the position', async () => {

@@ -1,7 +1,7 @@
 // @ts-check
 // Schwab positions as table rows (price, share of the account, stop and risk from working stop orders), the account's
-// working orders, the levels a position chart draws, and the order plans for a breakeven stop, a profit target or a market close.
-import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, optionStopTick, priceTick, stopTick } from './orders.js';
+// working orders, the levels a position chart draws, and the order plans for a breakeven stop, a profit target or a close.
+import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, optionPriceTick, optionStopTick, priceTick, stopTick } from './orders.js';
 
 /**
  * @typedef {import('./orders.js').TradeAs} TradeAs
@@ -358,6 +358,28 @@ function cancelThenStop(row, be, held, stopFor) {
   return { error: unnamed(steps), stop: be, steps, paired: [], rest: held, bare: 0 };
 }
 
+/**
+ * The plain stops cut to cover `left` shares, nearest first; the farthest are cancelled, the boundary one replaced with fewer.
+ * moved = the shares that lose their plain stop.
+ * @param {Row} row @param {number} left @param {StopDuration} duration @returns {{ steps: Step[], moved: number }}
+ */
+function cutStops(row, left, duration) {
+  const long = row.qty > 0, assetType = row.tradeAs || 'EQUITY';
+  let moved = 0;
+  /** @type {Step[]} */
+  const cuts = [];
+  for (const s of row.stopOrders.filter(o => o.oco === null)) {
+    const keep = Math.min(left, s.qty);
+    left -= keep;
+    if (keep === s.qty) continue;
+    moved += s.qty - keep;
+    const lasts = s.duration === 'DAY' || s.duration === 'GOOD_TILL_CANCEL' ? s.duration : duration;
+    cuts.push(keep ? { kind: 'replace', orderId: s.orderId, was: s, order: closeStopOrder({ symbol: row.symbol, assetType, isLong: long, qty: keep, stop: Number(s.stop), stopDuration: lasts }) }
+      : { kind: 'cancel', orderId: s.orderId, was: s });
+  }
+  return { steps: cuts.reverse(), moved }; // farthest first, so the nearest is the last one touched
+}
+
 /** How many shares a new target can take: what limits already hold is spoken for. @param {Row} row */
 export function targetRoom(row) {
   const held = Math.abs(row.qty), { error, reserved } = limitsHolding(row);
@@ -392,21 +414,7 @@ export function targetPlan(row, { price, qty, duration }) {
       : free > 0 ? `Your other targets hold ${holding.reserved} of the ${held} shares, so this one can take up to ${free}.`
       : `Your targets already hold all ${held} shares.`);
   }
-  // the plain stops keep what fits outside every limit, nearest first; the rest are cut
-  const plain = row.stopOrders.filter(o => o.oco === null);
-  let left = free - qty, moved = 0;
-  /** @type {Step[]} */
-  const cuts = [];
-  for (const s of plain) {
-    const keep = Math.min(left, s.qty);
-    left -= keep;
-    if (keep === s.qty) continue;
-    moved += s.qty - keep;
-    const lasts = s.duration === 'DAY' || s.duration === 'GOOD_TILL_CANCEL' ? s.duration : duration;
-    cuts.push(keep ? { kind: 'replace', orderId: s.orderId, was: s, order: closeStopOrder({ symbol, assetType: 'EQUITY', isLong: long, qty: keep, stop: Number(s.stop), stopDuration: lasts }) }
-      : { kind: 'cancel', orderId: s.orderId, was: s });
-  }
-  const steps = cuts.reverse(); // farthest first, so the nearest is the last one touched
+  const { steps, moved } = cutStops(row, free - qty, duration);
   const stop = row.stop; // the nearest stop of any kind
   const target = closeLimitOrder({ symbol, assetType: 'EQUITY', isLong: long, qty, price: limit, duration });
   steps.push({ kind: 'place', order: stop === null ? target : ocoOrder(target, closeStopOrder({ symbol, assetType: 'EQUITY', isLong: long, qty, stop, stopDuration: duration })) });
@@ -436,15 +444,42 @@ export function positionLevels(row) {
 }
 
 /**
- * Close the whole position at market. Every order in play that would close it is cancelled first so nothing can sell twice:
- * targets first and the nearest stop last, so the position keeps a stop as long as it can. The close goes only if every cancel went through.
- * @param {Row} row @returns {Plan}
+ * Close all or part of the position, at market or at a limit, the way a broker's close ticket does. Schwab won't take orders
+ * to close more than you hold, so room is made first. All of it: every order in play that would close it is cancelled,
+ * targets first and the nearest stop last, so the position keeps a stop as long as it can. Part of it: targets stay, and the
+ * plain stops are cut to the shares left. A limit goes in paired with the nearest stop for the same shares (one cancels the
+ * other), so its shares keep a stop while it works. The close goes only if every step before it went through.
+ * @param {Row} row
+ * @param {{ type?: 'MARKET' | 'LIMIT', qty?: number, price?: number, duration?: StopDuration }} [ticket] all of it at market by default
+ * @returns {Plan}
  */
-export function closePlan(row) {
+export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DAY' } = {}) {
+  const fail = (/** @type {string} */ error) => ({ error, stop: 0, steps: [], paired: [], rest: 0, bare: 0, price: 0, moved: 0 });
   const blocked = tradeError(row);
-  if (blocked) return { error: blocked, stop: 0, steps: [], paired: [], rest: 0, bare: 0 };
-  const others = row.closers.filter(o => !row.stopOrders.includes(o));
-  const steps = cancels([...others, ...[...row.stopOrders].reverse()]);
-  steps.push({ kind: 'place', order: closeMarketOrder({ symbol: row.symbol, assetType: row.tradeAs || 'EQUITY', isLong: row.qty > 0, qty: Math.abs(row.qty) }) });
-  return { error: unnamed(steps), stop: 0, steps, paired: [], rest: 0, bare: 0 };
+  if (blocked) return fail(blocked);
+  const long = row.qty > 0, held = Math.abs(row.qty), assetType = row.tradeAs || 'EQUITY', n = qty ?? held;
+  const what = (/** @type {number} */ k) => `${k.toLocaleString('en-US')} ${assetType === 'OPTION' ? (k === 1 ? 'contract' : 'contracts') : (k === 1 ? 'share' : 'shares')}`;
+  if (!Number.isInteger(n) || n < 1) return fail(`Pick how many ${assetType === 'OPTION' ? 'contracts' : 'shares'} to ${long ? 'sell' : 'buy back'}.`);
+  if (n > held) return fail(`You hold ${what(held)}.`);
+  const limit = type === 'LIMIT' ? (assetType === 'OPTION' ? optionPriceTick(price) : priceTick(price)) : 0;
+  if (type === 'LIMIT' && !(limit > 0)) return fail('Set a limit price.');
+  /** @type {Step[]} */
+  let steps;
+  let moved = 0;
+  if (n === held) {
+    const others = row.closers.filter(o => !row.stopOrders.includes(o));
+    steps = cancels([...others, ...[...row.stopOrders].reverse()]);
+  } else {
+    const holding = limitsHolding(row);
+    if (holding.error) return fail(holding.error);
+    const free = held - holding.reserved;
+    if (n > free) return fail(`Your targets hold ${holding.reserved} of the ${what(held)}, so a partial close can take up to ${free}. Close all ${held} to cancel them too.`);
+    ({ steps, moved } = cutStops(row, free - n, duration));
+  }
+  const p = { symbol: row.symbol, assetType, isLong: long, qty: n };
+  const stop = type === 'LIMIT' ? row.stop : null; // the nearest stop of any kind
+  const close = type === 'LIMIT' ? closeLimitOrder({ ...p, price: limit, duration }) : closeMarketOrder(p);
+  if (stop !== null && n === held) moved = held; // cancelled above, back once the pair is in
+  steps.push({ kind: 'place', order: stop === null ? close : ocoOrder(close, closeStopOrder({ ...p, stop, stopDuration: duration })) });
+  return { error: unnamed(steps), stop: stop ?? 0, steps, paired: [], rest: held - n, bare: 0, price: limit, moved };
 }

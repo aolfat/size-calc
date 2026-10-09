@@ -68,6 +68,11 @@
 .pos-target-sum .shares-detail { display: block; font-family: var(--sans); }
 .pos-target-sum.warn { color: var(--amber); font-family: var(--sans); }
 .pos-target .trade-actions { margin-top: 10px; }
+/* the close ticket: count and portion chips on one line, the inputs as wide as a thumb needs */
+.trade-legs dt label { font: inherit; color: inherit; }
+.pos-close-qty { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+.pos-close-qty input { flex: 0 1 110px; min-width: 80px; }
+.pos-close-price { width: 140px; }
 
 @media (min-width: 1100px) {
   .app.positions-view .positions-split.open { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(420px, 1fr); column-gap: 16px; align-items: start; }

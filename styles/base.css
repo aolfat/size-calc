@@ -55,13 +55,13 @@ body {
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 120px; }
 .field label { font-size: 12px; font-weight: 500; color: var(--text2); }
-.field input, .field select, .stop-buffer input, .stop-buffer select {
+.field input, .field select, .stop-buffer input, .stop-buffer select, .pos-close-qty input, .pos-close-price input {
   background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
   color: var(--text); font-size: 14px; padding: 9px 11px; outline: none; width: 100%;
   transition: border-color 0.15s, box-shadow 0.15s;
   font-family: var(--num);
 }
-.field input:focus, .field select:focus, .stop-buffer input:focus, .stop-buffer select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(91,157,255,0.12); }
+.field input:focus, .field select:focus, .stop-buffer input:focus, .stop-buffer select:focus, .pos-close-qty input:focus, .pos-close-price input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(91,157,255,0.12); }
 .field input::placeholder { color: var(--text3); }
 .field select option, .stop-buffer select option { background: var(--bg3); }
 

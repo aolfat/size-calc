@@ -16,7 +16,7 @@ import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
 import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
-import { openPositionTrade, placePositionTrade, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
 import { refreshPositions } from './positions.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
@@ -144,6 +144,10 @@ export const actions = {
   setPositionStopDuration: el => setPositionStopDuration(arg(el)),
   setPositionBeMode: el => setPositionBeMode(arg(el)),
   placePositionTrade: () => placePositionTrade(),
+  setCloseType: el => setCloseType(arg(el)),
+  setClosePortion: el => setClosePortion(num(el)),
+  setCloseQty: el => setCloseQty(el.value),
+  setClosePrice: el => setClosePrice(el.value),
   openOrderCancel: el => openOrderCancel(arg(el)),
   setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
   sendOrderCancel: () => sendOrderCancel(),
