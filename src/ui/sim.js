@@ -3,7 +3,7 @@ import { state } from '../state.js';
 import { RISK_FREE, bsPrice } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
-import { spreadWidth, strikesLabel, typeLabel } from '../core/options.js';
+import { expiryCloseMs, spreadWidth, strikesLabel, typeLabel } from '../core/options.js';
 import { simReturnBase } from '../core/sizing.js';
 import { SANS_FONT } from '../lib/media.js';
 import { quantityForCard } from './allocation.js';
@@ -65,7 +65,7 @@ export function simPriceTyped(el) {
 }
 
 export function simCurve(S) {
-  const exp = new Date(state.simState.expStr + 'T16:00:00');
+  const exp = expiryCloseMs(state.simState.expStr); // the 4pm New York close, not the browser's 4pm
   const now = Date.now();
   const total = Math.max(exp - now, 3600 * 1000);
   const N = 80;
