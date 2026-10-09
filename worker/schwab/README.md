@@ -10,7 +10,7 @@ secret, which should not live in a web page. This worker:
 - `/trader/v1/*` relays Trader API calls with the app's bearer token
 
 It stores nothing. Tokens go back to the app, which keeps them in that
-browser's storage only (never in backups or sync). Browser calls are accepted
+browser's storage only (never in sync). Browser calls are accepted
 only from `ALLOWED_ORIGINS`.
 
 ## One-time setup

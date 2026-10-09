@@ -1,6 +1,6 @@
 // Run with: node --test
 // The account: Google sign-in through Supabase, a device's first sign-in, pending edits, pushes, pulls, sign-out,
-// and the backup file. A small in-memory fake stands in for the Supabase client: nothing reaches the network.
+// and leftover keys. A small in-memory fake stands in for the Supabase client: nothing reaches the network.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -275,25 +275,13 @@ test('first sign-in merge: an empty account takes everything; otherwise the acco
   assert.equal(join.key, 'K2');
 });
 
-// ---------- backup file ----------
+// ---------- leftover keys ----------
 
 test('old saved positions from other devices are left alone and never sent', async () => {
   const storage = joined([['saved_positions', '{"a":1}'], ['calc_risk', '1']]);
   const { run } = await app({ storage, session: SESSION });
-  assert.deepEqual(run("BACKUP_KEYS.filter(k => /positions/.test(k))"), []);
   assert.deepEqual(run("CLOUD_KEYS.filter(k => /positions/.test(k))"), []);
-  run(`mergeBackupPayload({ saved_positions: '{"b":2}', deleted_positions: '{"a":1}', calc_risk: '2' }, new Set())`);
-  assert.equal(storage.get('saved_positions'), '{"a":1}');
-  assert.equal(storage.has('deleted_positions'), false);
-  assert.equal(storage.get('calc_risk'), '2');
-  assert.doesNotMatch(run('buildBackup()'), /saved_positions/);
+  run(`store.set('calc_risk', '2')`);
   run(`store.set('saved_positions', '{"c":3}')`);
   assert.deepEqual(JSON.parse(storage.get('cloud_pending')), ['calc_risk'], 'a leftover positions key is not an account edit');
-});
-
-test('a file import with no recognized keys changes nothing', async () => {
-  const storage = new Map([['calc_account', '50000']]);
-  const { run } = await app({ storage });
-  assert.throws(() => run("applyBackup(JSON.stringify({ app: 'size-calc', data: { nope: 1 } }))"), /no recognized keys/);
-  assert.deepEqual([...storage], [['calc_account', '50000']]);
 });

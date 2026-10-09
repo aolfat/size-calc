@@ -140,12 +140,10 @@ test('a callback page with someone else\'s state is ignored', async () => {
   assert.match(elements.get('errorBox').textContent, /another attempt/);
 });
 
-test('Schwab logins never travel in backups or the account; only the worker URL syncs', async () => {
+test('Schwab logins never travel in the account; only the worker URL syncs', async () => {
   const storage = connected([]);
   const { run } = await app({ storage, session: { user: { id: 'u1' } } });
-  assert.deepEqual(run('BACKUP_KEYS.filter(k => k.startsWith("schwab"))'), []);
   assert.deepEqual(run('CLOUD_KEYS.filter(k => k.startsWith("schwab"))'), ['schwab_proxy']);
-  assert.doesNotMatch(run('buildBackup()'), /schwab|acc-1|ref-1|HASH1/);
   run("store.set('schwab_tokens', 'changed'); store.set('schwab_account', 'HASH2'); store.set('schwab_stop_duration', 'DAY')");
   assert.equal(storage.get('cloud_pending'), undefined);
   run("store.set('schwab_proxy', 'https://other.example')");

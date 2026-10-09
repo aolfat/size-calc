@@ -1,8 +1,7 @@
-// Settings sheet: the account (Google sign-in and sync status), API key and environment, and the backup file.
+// Settings sheet: the account (Google sign-in and sync status), API key and environment.
 import { state } from '../state.js';
 import { normalizeAtrMultiplier, normalizeStopStrategy, parseStopPercent } from '../core/stops.js';
 import { store } from '../lib/store.js';
-import { applyBackup, buildBackup } from '../services/backup.js';
 import { cloudClearDevice, cloudFirstSignIn, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { effects } from './effects.js';
@@ -149,36 +148,6 @@ export async function initCloud(href = location.href) {
     state.cloudPending.size ? cloudPush() : cloudPull();
   }, 60000);
   window.addEventListener('focus', () => cloudPull());
-}
-
-// backup file: download (and copy) everything, or merge one back in and reload
-
-export function exportBackup() {
-  const json = buildBackup();
-  const blob = new Blob([json], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'size-calc-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-  if (navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
-  showToast('Backup downloaded (and copied to clipboard). Keep it private — it includes your API key.');
-}
-
-export function importBackup(input) {
-  const f = input.files && input.files[0];
-  input.value = '';
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      applyBackup(reader.result);
-      location.reload(); // rehydrate everything from storage
-    } catch(e) {
-      showError('Import failed — not a Size Calc backup file.');
-    }
-  };
-  reader.readAsText(f);
 }
 
 // setup status: the key line in Settings, the settings button's dot, and the first-run notice

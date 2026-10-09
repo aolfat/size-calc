@@ -20,7 +20,7 @@ import { openPositionTrade, placePositionTrade, setPositionBeMode, setPositionSt
 import { refreshPositions } from './positions.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
-import { exportBackup, importBackup, saveKey, signIn, signOut } from './settings.js';
+import { saveKey, signIn, signOut } from './settings.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
 import { closeSheet, openSheet } from './sheets.js';
@@ -48,11 +48,8 @@ export const actions = {
   openSheet: el => openSheet(arg(el)),
   closeSheet: () => closeSheet(),
 
-  // ---------- settings: account, key, backup ----------
+  // ---------- settings: account and key ----------
   saveKey: () => saveKey(),
-  exportBackup: () => exportBackup(),
-  pickImportFile: () => document.getElementById('importFile').click(),
-  importBackup: el => importBackup(el),
   signIn: () => signIn(),
   signOut: () => signOut(),
 
