@@ -1,6 +1,8 @@
 # Trade journal plan
 
-Status: planning. Nothing is built yet. Decisions as of 2026-10-08.
+Status: phase 1, step 1 (Google sign-in and settings sync through Supabase) is built. The rest is planning. Decisions as of 2026-10-08.
+
+**Update (2026-10-09):** `main` already retired saved position cards. Positions shows live Schwab positions, with breakeven stops and closes. So "saved positions retire" below is done, and the journal's open trades can build on the live Schwab positions.
 
 ## Goal
 

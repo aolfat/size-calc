@@ -1,6 +1,8 @@
 # Step 1: Supabase and sign-in
 
-Status: planned, not built. This is phase 1 of [the journal plan](journal-plan.md).
+Status: built. This is phase 1 of [the journal plan](journal-plan.md).
+
+**Update (2026-10-09):** `main` retired saved position cards while this step was being built. Positions now shows live Schwab positions. So this step syncs settings and the Tradier key only. The `saved_positions` table created by the first migration is dropped by `20261009010000_drop_saved_positions.sql`, and leftover saved-position keys on older devices are never sent. Everything below about saved positions describes the original plan.
 
 ## Outcome
 
