@@ -24,9 +24,11 @@ export function calcAllocation({ account, pct, existing, unitCost }) {
   }
   const target = account * pct / 100;
   const budget = Math.max(0, target - existing);
-  // Tolerate only arithmetic noise at an exact boundary, never a material overspend.
+  // Tolerate only arithmetic noise at an exact boundary, never a material overspend. The noise scales
+  // with the target, not the budget: target − existing keeps the target's rounding error (a typed
+  // quantity's pct = (existing + qty × unit) / account must floor back to that quantity).
   const ratio = budget / unitCost;
-  const units = Math.floor(ratio + Number.EPSILON * Math.max(1, ratio) * 4);
+  const units = Math.floor(ratio + Number.EPSILON * 16 * Math.max(1, target / unitCost));
   if (!Number.isSafeInteger(units)) return { units: 0, error: 'Position size is too large.' };
   const commitment = units * unitCost;
   const totalExposure = existing + commitment;
@@ -47,9 +49,9 @@ export function shortPutMetrics(strike, credit, contracts, dte) {
 /** Calendar days to expiry on the New York calendar. @param {string} exp @param {Date} [now] @returns {number} */
 export function optionDte(exp, now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
-  const part = type => parts.find(p => p.type === type).value;
-  return Math.round((Date.parse(exp + 'T00:00:00Z') - Date.UTC(+part('year'), +part('month') - 1, +part('day'))) / 864e5);
+  const part = /** @param {string} type */ type => parts.find(p => p.type === type)?.value;
+  return Math.round((Date.parse(exp + 'T00:00:00Z') - Date.UTC(Number(part('year')), Number(part('month')) - 1, Number(part('day')))) / 864e5);
 }
 
 /** @param {{ shortPut?: boolean, K?: number, credit?: boolean, width?: number, entry: number }} o @returns {number} */
-export function simReturnBase(o) { return o.shortPut ? o.K : o.credit ? Math.max(0.01, (o.width || 0) - o.entry) : o.entry; }
+export function simReturnBase(o) { return o.shortPut ? Number(o.K) : o.credit ? Math.max(0.01, (o.width || 0) - o.entry) : o.entry; }
