@@ -26,7 +26,7 @@
 .pos-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .pos-step.done { color: var(--green); }
 .pos-step.failed { color: var(--red); }
-.pos-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; width: 100%; }
+.pos-choice { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px; width: 100%; }
 .pos-choice-opt { display: flex; flex-direction: column; gap: 4px; text-align: left; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 10px 12px; color: var(--text2); font: inherit; font-size: 12px; line-height: 1.4; cursor: pointer; }
 .pos-choice-opt strong { color: var(--text); font-size: 13.5px; }
 .pos-choice-opt.active { border-color: var(--blue-bd); background: var(--blue-bg); }
@@ -37,7 +37,6 @@
 .pos-orders ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-family: var(--num); }
 
 @media (max-width: 600px) {
-  .pos-choice { grid-template-columns: 1fr; }
   .positions-card { padding: 14px; }
   .positions-meta { order: 3; flex-basis: 100%; } /* the button stays on the title's line */
   .positions-table { min-width: 640px; font-size: 12.5px; }

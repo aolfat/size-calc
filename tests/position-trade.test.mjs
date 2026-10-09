@@ -124,7 +124,7 @@ test('a breakeven stop covers the shares no sell order holds, and pairs each lim
 
 test('just moving the stop leaves the limit alone and puts a breakeven stop on the rest', async () => {
   const { run } = await app();
-  const plan = plain(run(`breakevenPlan(${rowWith('HOOD')}, 'GOOD_TILL_CANCEL', { pair: false })`));
+  const plan = plain(run(`breakevenPlan(${rowWith('HOOD')}, 'GOOD_TILL_CANCEL', { limits: 'keep' })`));
   assert.equal(plan.error, '');
   assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId]), [['cancel', 102], ['replace', 101]], 'the limit is not touched');
   assert.equal(plan.steps[1].order.orderLegCollection[0].quantity, 200);
@@ -132,8 +132,27 @@ test('just moving the stop leaves the limit alone and puts a breakeven stop on t
   assert.equal(plan.bare, 100, 'the shares in the limit stay without a stop');
   assert.deepEqual(plan.paired, []);
   const whole = ORDERS.map(o => o.orderId === 103 ? single(103, 'LIMIT', 'HOOD', 'SELL', 300, 45) : o);
-  assert.match(run(`breakevenPlan(${rowWith('HOOD', whole)}, 'DAY', { pair: false }).error`), /limit holds the whole position/);
-  assert.match(run(`breakevenPlan(${rowWith('AMD')}, 'DAY', { pair: false }).error`), /limit holds the whole position/);
+  assert.match(run(`breakevenPlan(${rowWith('HOOD', whole)}, 'DAY', { limits: 'keep' }).error`), /limit holds the whole position/);
+  assert.match(run(`breakevenPlan(${rowWith('AMD')}, 'DAY', { limits: 'keep' }).error`), /limit holds the whole position/);
+});
+
+test('cancelling the limits clears the way for one breakeven stop on every share', async () => {
+  const { run } = await app();
+  const plan = plain(run(`breakevenPlan(${rowWith('HOOD')}, 'GOOD_TILL_CANCEL', { limits: 'cancel' })`));
+  assert.equal(plan.error, '');
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId]), [['cancel', 103], ['cancel', 102], ['replace', 101]], 'the limit first, the far stop next, then the near stop takes everything');
+  assert.equal(plan.steps[2].order.orderLegCollection[0].quantity, 300);
+  assert.equal(plan.rest, 300);
+  assert.equal(plan.bare, 0);
+  const pairOnly = plain(run(`breakevenPlan(${rowWith('AMD')}, 'DAY', { limits: 'cancel' })`));
+  assert.deepEqual(pairOnly.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 501], ['cancel', 502], ['place', null]]);
+  assert.equal(pairOnly.steps[2].order.orderLegCollection[0].quantity, 50);
+  // what blocks the other two is just one more order to cancel here
+  const market = [...ORDERS, single(105, 'MARKET', 'HOOD', 'SELL', 20, 0)];
+  assert.match(run(`breakevenPlan(${rowWith('HOOD', market)}, 'DAY', { limits: 'keep' }).error`), /market order for 20/);
+  assert.deepEqual(plain(run(`breakevenPlan(${rowWith('HOOD', market)}, 'DAY', { limits: 'cancel' })`)).steps.map(s => s.orderId ?? null), [103, 105, 102, 101]);
+  const tooMany = [...ORDERS, single(104, 'LIMIT', 'HOOD', 'SELL', 250, 50)];
+  assert.equal(run(`breakevenPlan(${rowWith('HOOD', tooMany)}, 'DAY', { limits: 'cancel' }).error`), '');
 });
 
 test('a target already paired with a stop is placed again paired with a breakeven stop', async () => {
@@ -236,15 +255,15 @@ test('a limit in the way asks first: stop the rest, or pair with the limit, and 
   await run("openPositionTrade('HOOD', 'breakeven')");
   const ask = elements.get('posTradeBody').innerHTML;
   assert.match(ask, /Your limit \$45\.00 for 100 shares already sells part of this position/);
-  assert.match(ask, /data-action="setPositionBeMode" data-arg="only"[^>]*>[\s\S]*Stop the rest[\s\S]*Breakeven stop for the 200 shares outside the limit\. The limit stays as it is; its 100 shares have no stop\./);
+  assert.match(ask, /data-action="setPositionBeMode" data-arg="keep"[^>]*>[\s\S]*Stop the rest[\s\S]*Breakeven stop for the 200 shares outside the limit\. The limit stays as it is; its 100 shares have no stop\./);
   assert.match(ask, /data-action="setPositionBeMode" data-arg="pair"[^>]*>[\s\S]*Pair with the limit/);
   assert.match(ask, /data-action="placePositionTrade" disabled/);
   await run('placePositionTrade()');
   assert.equal(b.sent.length, 0, 'no choice, no orders');
 
-  run("setPositionBeMode('only')");
+  run("setPositionBeMode('keep')");
   const only = elements.get('posTradeBody').innerHTML;
-  assert.match(only, /aria-pressed="true" data-action="setPositionBeMode" data-arg="only"/);
+  assert.match(only, /aria-pressed="true" data-action="setPositionBeMode" data-arg="keep"/);
   assert.match(only, /Replace stop \$35\.50 for 250 shares with stop \$38\.20 for 200 shares/);
   assert.doesNotMatch(only, /Cancel limit/);
   assert.match(only, /data-action="placePositionTrade">Set stop \$38\.20</);
@@ -253,12 +272,42 @@ test('a limit in the way asks first: stop the rest, or pair with the limit, and 
   assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a stop at \$38\.20 for 200 shares\. Your limit keeps 100 shares without a stop\./);
 });
 
-test('a limit holding the whole position leaves only the pairing', async () => {
+test('cancel the limit: the sell orders go, then one breakeven stop for every share', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'breakeven')");
+  assert.match(elements.get('posTradeBody').innerHTML, /data-action="setPositionBeMode" data-arg="cancel"[^>]*>[\s\S]*Cancel the limit[\s\S]*Cancel it, then one breakeven stop for all 300 shares\. You lose the target\./);
+  run("setPositionBeMode('cancel')");
+  const review = elements.get('posTradeBody').innerHTML;
+  assert.match(review, /Cancel limit \$45\.00 for 100 shares</);
+  assert.match(review, /Replace stop \$35\.50 for 250 shares with stop \$38\.20 for 300 shares/);
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/103', 'DELETE /orders/102', 'PUT /orders/101']);
+  assert.equal(b.sent[2].body.orderLegCollection[0].quantity, 300);
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a stop at \$38\.20 for 300 shares\./);
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /was cancelled and not placed again/);
+});
+
+test('an order the other options can\'t work around still leaves cancelling', async () => {
+  const b = broker();
+  b.live.orders.push(single(105, 'MARKET', 'HOOD', 'SELL', 20, 0));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'breakeven')");
+  const html = elements.get('posTradeBody').innerHTML;
+  assert.match(html, /Your orders for 120 shares already sell part of this position/);
+  assert.match(html, /data-action="setPositionBeMode" data-arg="keep" disabled/);
+  assert.match(html, /data-action="setPositionBeMode" data-arg="pair" disabled/);
+  assert.match(html, /A market order for 20 is waiting/);
+  assert.doesNotMatch(html, /data-action="setPositionBeMode" data-arg="cancel" disabled/);
+  assert.match(html, /Cancel them, then one breakeven stop for all 300 shares\. You lose the target\./, 'one limit among them: one target');
+});
+
+test('a limit holding the whole position leaves pairing or cancelling', async () => {
   const b = broker();
   b.live.orders = b.live.orders.map(o => o.orderId === 103 ? single(103, 'LIMIT', 'HOOD', 'SELL', 300, 45) : o);
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'breakeven')");
-  assert.match(elements.get('posTradeBody').innerHTML, /data-action="setPositionBeMode" data-arg="only" disabled/);
+  assert.match(elements.get('posTradeBody').innerHTML, /data-action="setPositionBeMode" data-arg="keep" disabled/);
   assert.match(elements.get('posTradeBody').innerHTML, /limit holds the whole position/);
   assert.match(elements.get('posTradeBody').innerHTML, /Your limit \$45\.00 for 300 shares already sells the whole position\./);
 });

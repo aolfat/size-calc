@@ -166,15 +166,20 @@ const unnamed = steps => steps.some(s => s.kind !== 'place' && s.orderId === nul
 /** @param {Resting[]} legs @returns {Step[]} */
 const cancels = legs => legs.map(was => ({ kind: 'cancel', orderId: was.orderId, was }));
 
+/** the orders other than stops that would close a position: limit targets, legs of a target-and-stop pair, anything else waiting. @param {Row} row */
+export const closersInTheWay = row => row.closers.filter(o => !isStop(o));
+
 /**
- * A breakeven stop without selling more than you hold, which Schwab refuses. The shares outside any limit target (rest)
- * get one plain stop. pair: the shares a limit holds get a stop paired with that limit too (one cancels the other);
- * without it the limits are left as they are and their shares (bare) keep no stop.
- * Order: the limits being re-paired are cancelled first, then the plain stops are cut down to the rest (others cancelled,
- * the nearest replaced), then each limit is placed again with its stop. Between those, the paired shares have no stop for a moment.
- * @param {Row} row @param {StopDuration} stopDuration @param {{ pair?: boolean }} [opts] @returns {Plan}
+ * A breakeven stop without selling more than you hold, which Schwab refuses. What happens to orders that already sell
+ * part of the position (limits) is the caller's pick:
+ * - 'pair': the shares a limit holds get a stop paired with that limit (one cancels the other), the rest one plain stop.
+ *   The limits being re-paired are cancelled first, then the plain stops are cut down to the rest (others cancelled,
+ *   the nearest replaced), then each limit is placed again with its stop; the paired shares have no stop for a moment.
+ * - 'keep': the limits stay as they are and their shares (bare) keep no stop; the rest get one plain stop.
+ * - 'cancel': every other order that would close it is cancelled, then one plain stop covers the whole position.
+ * @param {Row} row @param {StopDuration} stopDuration @param {{ limits?: 'pair' | 'keep' | 'cancel' }} [opts] @returns {Plan}
  */
-export function breakevenPlan(row, stopDuration, { pair = true } = {}) {
+export function breakevenPlan(row, stopDuration, { limits = 'pair' } = {}) {
   const fail = (/** @type {string} */ error) => ({ error, stop: row.be || 0, steps: [], paired: [], rest: 0, bare: 0 });
   const blocked = tradeError(row);
   if (blocked) return fail(blocked);
@@ -184,6 +189,9 @@ export function breakevenPlan(row, stopDuration, { pair = true } = {}) {
   if (long ? !(row.price > be) : !(row.price < be)) {
     return fail(`The price ${px(row.price)} is at or ${long ? 'below' : 'above'} the breakeven stop ${px(be)}. It would ${INSTRUCTION_WORDS[closingInstruction(as, long)]} right away.`);
   }
+  const stopFor = (/** @type {number} */ qty) => closeStopOrder({ symbol, assetType: as, isLong: long, qty, stop: be, stopDuration });
+  if (limits === 'cancel') return cancelThenStop(row, be, held, stopFor);
+  const pair = limits === 'pair';
   const odd = row.closers.find(o => o.oco === null && !isStop(o) && (o.orderType !== 'LIMIT' || o.price === null));
   if (odd) return fail(`A ${orderTypeWord(odd.orderType)} order for ${odd.qty} is waiting to close part of this position. Change it in Schwab first.`);
   /** @type {Map<number | string, Resting[]>} */
@@ -195,7 +203,6 @@ export function breakevenPlan(row, stopDuration, { pair = true } = {}) {
   const reserved = [...targets, ...pairs].reduce((n, p) => n + Number(p.limit?.qty), 0);
   if (reserved > held) return fail(`The ${long ? 'sell' : 'buy'} orders on this position already add up to ${reserved}, more than the ${held} you hold. Fix them in Schwab first.`);
   const rest = held - reserved;
-  const stopFor = (/** @type {number} */ qty) => closeStopOrder({ symbol, assetType: as, isLong: long, qty, stop: be, stopDuration });
   if (!pair && rest === 0) return fail('Your limit holds the whole position, so no shares are left for a separate stop. Pair it with a stop instead.');
   // a pair whose stop is already at breakeven stays as it is; without pairing, every limit does
   const repair = pair ? [...targets, ...pairs.filter(p => !p.legs.some(l => isStop(l) && l.stop === be))] : [];
@@ -216,6 +223,22 @@ export function breakevenPlan(row, stopDuration, { pair = true } = {}) {
   }
   if (!steps.length) return fail(pair ? 'The position is already at breakeven: every share has a breakeven stop.' : 'The stop outside your limit is already at breakeven.');
   return { error: unnamed(steps), stop: be, steps, paired: repair.flatMap(p => p.limit ? [p.limit] : []), rest, bare };
+}
+
+/**
+ * Every other order that would close it goes (limits and pairs first, then the extra stops, farthest first),
+ * then the nearest plain stop is replaced to cover everything, or a new one is placed.
+ * @param {Row} row @param {number} be @param {number} held @param {(qty: number) => object} stopFor @returns {Plan}
+ */
+function cancelThenStop(row, be, held, stopFor) {
+  const plain = row.stopOrders.filter(o => o.oco === null); // nearest first
+  const keep = plain[0];
+  /** @type {Step[]} */
+  const steps = cancels([...closersInTheWay(row), ...row.stopOrders.filter(o => o.oco !== null), ...plain.slice(1).reverse()]);
+  if (!keep) steps.push({ kind: 'place', order: stopFor(held) });
+  else if (!(keep.stop === be && keep.qty === held)) steps.push({ kind: 'replace', orderId: keep.orderId, was: keep, order: stopFor(held) });
+  if (!steps.length) return { error: 'The position is already at breakeven: every share has a breakeven stop.', stop: be, steps: [], paired: [], rest: 0, bare: 0 };
+  return { error: unnamed(steps), stop: be, steps, paired: [], rest: held, bare: 0 };
 }
 
 /**
