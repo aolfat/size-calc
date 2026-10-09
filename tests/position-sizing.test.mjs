@@ -174,12 +174,12 @@ test('invalid levels and nonpositive buffered prices cannot produce share sizing
   }
 });
 
-test('multiplier preference restores safely and is included in backups', async () => {
+test('multiplier preference restores safely and syncs to the account', async () => {
   const { run, storage } = await app();
   storage.set('atr_multiplier', '1.5');
   run('loadKey()');
   assert.equal(run('atrMultiplier'), 1.5);
-  assert.ok(run("BACKUP_KEYS.includes('atr_multiplier')"));
+  assert.ok(run("CLOUD_KEYS.includes('atr_multiplier')"));
   for (const value of ['NaN', 'Infinity', '-1', '999', '1.25oops']) {
     storage.set('atr_multiplier', value);
     run('loadKey()');
@@ -294,7 +294,7 @@ test('strategy preferences restore including migration from existing ATR setting
   assert.equal(run('stopPercent'), 0.05);
   assert.equal(elements.get('stopPercent').value, '0.05');
   assert.equal(run('atrMultiplier'), 1.5);
-  assert.ok(run("BACKUP_KEYS.includes('stop_strategy') && BACKUP_KEYS.includes('stop_percent')"));
+  assert.ok(run("CLOUD_KEYS.includes('stop_strategy') && CLOUD_KEYS.includes('stop_percent')"));
   run("setStopStrategy('none'); loadKey();");
   assert.equal(run('stopStrategy'), 'none');
   storage.set('stop_percent', '999');
@@ -535,7 +535,7 @@ test('the short put simulator uses assignment notional as its return basis', asy
   assert.equal(run('simReturnBase({ credit: true, width: 10, entry: 2 })'), 8);
 });
 
-test('allocation settings are backed up and exposure stays scoped to its ticker', async () => {
+test('allocation settings sync to the account and exposure stays scoped to its ticker', async () => {
   const { run, elements, storage } = await app();
   run("quoteData = { symbol: 'RKLB', last: 68 }; setSizingMode('allocation');");
   elements.get('existingExposure').value = '5000';
@@ -545,7 +545,7 @@ test('allocation settings are backed up and exposure stays scoped to its ticker'
   storage.set('calc_allocation', '7');
   run('loadKey()');
   assert.equal(+elements.get('allocationPct').value, 7);
-  assert.equal(run('JSON.parse(buildBackup()).data.calc_allocation'), '7');
+  assert.ok(run("CLOUD_KEYS.includes('calc_allocation')"));
 });
 
 function setupAllocationPut(run) {

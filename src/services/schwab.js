@@ -1,6 +1,5 @@
 // Schwab Trader API through the size-calc-schwab worker, which holds the app secret, swaps codes for tokens,
-// and relays /trader/v1 calls. Login tokens are device-local: not in BACKUP_KEYS or CLOUD_KEYS, so never in a backup
-// or the account. Only the worker URL syncs.
+// and relays /trader/v1 calls. Login tokens are device-local: not in CLOUD_KEYS, so never in the account. Only the worker URL syncs.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 
