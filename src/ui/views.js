@@ -53,6 +53,7 @@ export function setView(v) {
   // the window may have resized while the charts were hidden: repaint at the current size on the way back
   if (calc && !futures && document.getElementById('chartWrap').clientWidth > 0) { if (state.chartBars.length) drawChart(); else if (state.dailyBars.length) drawDailyChart(); }
   document.getElementById('positionsSection').style.display = state.positionsView ? '' : 'none';
+  document.getElementById('posChartSection').style.display = state.positionsView && state.posChart ? '' : 'none';
   document.getElementById('utilsSection').style.display = state.utilsView ? '' : 'none';
   document.getElementById('marketSection').style.display = state.marketView ? '' : 'none';
   marketScheduleRefresh();

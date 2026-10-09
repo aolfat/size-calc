@@ -88,6 +88,7 @@ export function createState() {
     posTicket: null, // the position order the review sheet shows, frozen when it opens
     posTradeBusy: false,
     posLast: null, // { symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat for a while
+    posChart: null, // the open position chart: { symbol, bars, view, range, loading, error, hover, hoverY, price, qty } (price and qty = the target form)
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,
     spreadPendingCredit: false,

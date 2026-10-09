@@ -264,3 +264,64 @@ test('switching accounts or logging out drops the old account\'s table', async (
   assert.match(elements.get('positionsSection').innerHTML, /Connect Schwab/);
   assert.equal(elements.get('posCount').textContent, '');
 });
+
+// ---------- working orders ----------
+
+const W = (orderId, orderType, symbol, instruction, quantity, extra = {}) => ({ orderId, orderType, status: 'WORKING', orderStrategyType: 'SINGLE', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL',
+  quantity, orderLegCollection: [leg(instruction, quantity, symbol, symbol.includes(' ') ? 'OPTION' : 'EQUITY')], enteredTime: '2026-10-01T14:00:00+0000', ...extra });
+const BOOK = [
+  W(1, 'STOP', 'TEST', 'SELL', 100, { stopPrice: 48 }),
+  { orderId: 2, status: 'WORKING', orderStrategyType: 'OCO', childOrderStrategies: [
+    W(3, 'LIMIT', 'TEST', 'SELL', 50, { price: 60, enteredTime: '2026-10-05T12:00:00+0000' }), W(4, 'STOP', 'TEST', 'SELL', 50, { stopPrice: 48, enteredTime: '2026-10-05T12:00:00+0000' })] },
+  // an entry that hasn't filled: its stop waits on it
+  { ...W(5, 'LIMIT', 'NVDA', 'BUY', 20, { price: 110, duration: 'DAY', session: 'SEAMLESS' }), orderStrategyType: 'TRIGGER',
+    childOrderStrategies: [W(6, 'STOP', 'NVDA', 'SELL', 20, { stopPrice: 104, status: 'AWAITING_PARENT_ORDER' })] },
+  W(7, 'STOP_LIMIT', 'AMD', 'SELL', 30, { stopPrice: 150, price: 149.5, filledQuantity: 10 }),
+  W(8, 'TRAILING_STOP', OPT, 'SELL_TO_CLOSE', 2, { stopPriceOffset: 0.5, stopPrice: 2.9, status: 'QUEUED' }),
+  W(9, 'STOP', 'TEST', 'SELL', 100, { stopPrice: 40, status: 'CANCELED' }),
+  W(10, 'LIMIT', 'TEST', 'SELL', 100, { price: 55, status: 'FILLED' }),
+];
+
+test('working orders list everything still in play, entries included, pairs and waiting stops marked', async () => {
+  const { run } = await app();
+  const list = JSON.parse(run(`JSON.stringify(workingOrders(${JSON.stringify(BOOK)}))`));
+  assert.deepEqual(list.map(o => o.orderId), [7, 5, 6, 3, 4, 1, 8], 'by underlying, newest first, children after their order; done orders gone');
+  const by = id => list.find(o => o.orderId === id);
+  assert.equal(by(3).oco, 2);
+  assert.equal(by(4).oco, 2);
+  assert.equal(by(1).oco, null);
+  assert.equal(by(6).parent, 'BUY', 'waits on the buy');
+  assert.equal(by(6).status, 'AWAITING_PARENT_ORDER');
+  assert.equal(by(5).parent, '');
+  assert.deepEqual([by(7).stop, by(7).price, by(7).qty, by(7).filled], [150, 149.5, 30, 10]);
+  assert.equal(by(8).label, 'TEST 12/18/26 55C');
+  assert.equal(by(8).trail, '$0.50');
+  assert.equal(run("schwabTime('2026-10-08T13:41:22+0000')"), Date.UTC(2026, 9, 8, 13, 41, 22), 'the offset without its colon still reads');
+  assert.ok(Number.isNaN(run("schwabTime('')")));
+});
+
+test('the Positions tab lists working orders under the table', async () => {
+  const net = network(path => path.includes('/orders?') ? json(BOOK) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404));
+  const { run, elements } = await app({ fetch: net.fetch, storage: connected() });
+  await run('refreshPositions()');
+  const html = elements.get('positionsSection').innerHTML;
+  const card = html.slice(html.indexOf('orders-card'));
+  assert.match(card, /Working orders<\/span><span class="positions-meta">7</);
+  const row = id => card.split('<tr').find(r => r.includes(id)) || '';
+  assert.match(row('Sell limit'), /<b>TEST<\/b>[\s\S]*Sell limit<span class="pos-sub">one cancels the other with the stop \$48\.00<\/span>[\s\S]*\$60\.00[\s\S]*Until canceled[\s\S]*working[\s\S]*10\/5/);
+  assert.match(row('Buy limit'), /<b>NVDA<\/b>[\s\S]*\$110\.00[\s\S]*Today<span class="pos-sub">extended hours<\/span>/);
+  assert.match(row('after the buy fills'), /Sell stop<span class="pos-sub">after the buy fills<\/span>[\s\S]*\$104\.00[\s\S]*waiting on entry/);
+  assert.match(row('Sell stop limit'), /\$150\.00 stop<span class="pos-sub">\$149\.50 limit<\/span>[\s\S]*20<span class="pos-sub">of 30, 10 filled<\/span>/);
+  assert.match(row('trailing stop'), /TEST 12\/18\/26 55C[\s\S]*Sell to close trailing stop[\s\S]*trail \$0\.50<span class="pos-sub">now \$2\.90<\/span>[\s\S]*queued/);
+  assert.match(card, /class="pos-oco"/);
+  assert.doesNotMatch(card, /\$40\.00|\$55\.00/, 'cancelled and filled orders are gone');
+
+  const none = network(path => path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404));
+  const empty = await app({ fetch: none.fetch, storage: connected() });
+  await empty.run('refreshPositions()');
+  assert.match(empty.elements.get('positionsSection').innerHTML, /Working orders<\/span><span class="positions-meta">None<\/span>[\s\S]*Nothing working in the last 59 days/);
+  const down = network(path => path.includes('/orders?') ? json({ message: 'down' }, 500) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404));
+  const blind = await app({ fetch: down.fetch, storage: connected() });
+  await blind.run('refreshPositions()');
+  assert.match(blind.elements.get('positionsSection').innerHTML, /Orders unavailable: Schwab did not return this account's orders/);
+});

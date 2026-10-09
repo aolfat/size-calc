@@ -366,7 +366,40 @@
     <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span> &nbsp;·&nbsp; daily: pinch or ctrl+scroll to zoom, drag to pan</div>
   </div>
 
+  <div class="positions-split" id="positionsSplit">
   <section id="positionsSection" style="display:none;" aria-label="Schwab positions"></section>
+
+  <section class="card chart-wrap pos-chart" id="posChartSection" style="display:none;" aria-labelledby="posChartTitle">
+    <div class="chart-head">
+      <span class="section-title" id="posChartTitle" style="margin-bottom:0;">Chart</span>
+      <span class="pos-chart-meta" id="posChartMeta"></span>
+      <button class="sheet-close" data-action="closePositionChart" aria-label="Close the chart" title="Close the chart">×</button>
+      <span class="ohlc" id="posChartOhlc"></span>
+    </div>
+    <p class="hint" id="posChartStatus" role="status"></p>
+    <div id="posChartPlot" style="display:none;">
+      <div class="chart-cap" id="posChartCap"><span>Daily</span><button class="filter-btn" data-action="setPosChartRange" data-arg="21">1M</button><button class="filter-btn active" data-action="setPosChartRange" data-arg="63">3M</button><button class="filter-btn" data-action="setPosChartRange" data-arg="126">6M</button><button class="filter-btn" data-action="setPosChartRange" data-arg="252">1Y</button></div>
+      <div class="pos-chart-canvas"><canvas id="posChart" height="260"></canvas><button class="filter-btn" id="posChartToday" data-action="posChartToday" style="display:none;" title="Back to the latest session">Today →</button></div>
+      <div class="chart-hint">Tap the chart to set the target; near a candle's high or low it takes that exact price. Pinch or ctrl+scroll to zoom, drag to pan. Lines: <span style="color:var(--blue);">avg cost</span> · <span style="color:var(--red);">stops</span> · <span style="color:var(--green);">targets</span> · <span style="color:var(--purple);">8 EMA</span></div>
+    </div>
+    <div class="pos-target">
+      <div class="section-title">Profit target</div>
+      <div class="pos-target-row">
+        <div class="field">
+          <label for="posTargetPrice">Target price</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posTargetPrice" step="0.01" min="0" inputmode="decimal" placeholder="tap the chart" autocomplete="off" data-input="posTargetChanged" /></div>
+        </div>
+        <div class="field">
+          <label for="posTargetQty" id="posTargetQtyLabel">Shares to sell</label>
+          <input type="number" id="posTargetQty" step="1" min="1" inputmode="numeric" autocomplete="off" data-input="posTargetChanged" />
+        </div>
+        <div class="chip-row pos-portions" id="posTargetPortions" role="group" aria-label="Portion of the position"></div>
+      </div>
+      <div class="pos-target-sum" id="posTargetSummary" role="status"></div>
+      <div class="trade-actions"><button class="btn trade-confirm" id="posTargetReview" data-action="openPositionTrade" data-arg="" data-arg2="target" disabled>Review target</button></div>
+    </div>
+  </section>
+  </div>
 
   <section id="marketSection" style="display:none;" aria-labelledby="marketTitle">
     <div class="market-heading">

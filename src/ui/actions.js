@@ -14,6 +14,7 @@ import { effects } from './effects.js';
 import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsChanged, renderFutures, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
+import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePositionChart } from './position-chart.js';
 import { openPositionTrade, placePositionTrade, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
 import { refreshPositions } from './positions.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -144,6 +145,12 @@ export const actions = {
   setPositionStopDuration: el => setPositionStopDuration(arg(el)),
   setPositionBeMode: el => setPositionBeMode(arg(el)),
   placePositionTrade: () => placePositionTrade(),
+  togglePositionChart: el => togglePositionChart(arg(el)),
+  closePositionChart: () => closePositionChart(),
+  setPosChartRange: el => setPosChartRange(num(el)),
+  posChartToday: () => posChartToday(),
+  posTargetChanged: () => posTargetChanged(),
+  setPosTargetPortion: el => setPosTargetPortion(num(el)),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),

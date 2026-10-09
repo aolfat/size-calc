@@ -1,13 +1,14 @@
-// Position trades: a breakeven stop or a market close for one Schwab position, reviewed in a sheet and sent once.
+// Position trades: a breakeven stop, a profit target or a market close for one Schwab position, reviewed in a sheet and sent once.
 // Steps run in order and stop at the first failure; nothing retries. Schwab is re-read afterwards to say what it now shows,
 // and until it shows the last result, that symbol takes no new order from here.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { inRegularHours } from '../core/orders.js';
-import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor } from '../core/positions.js';
+import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, targetGain, targetPlan } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
+import { positionTargetPlaced } from './position-chart.js';
 import { refreshPositions } from './positions.js';
 import { openSheet } from './sheets.js';
 
@@ -32,6 +33,10 @@ function stepText(t, step) {
   }
   const leg = step.order.orderLegCollection[0];
   if (t.kind === 'close') return `${cap(INSTRUCTION_WORDS[leg.instruction])} ${units(row, leg.quantity)} ${row.label} at market`;
+  if (step.order.orderType === 'LIMIT') return `Place a limit ${fmtPositionPrice(step.order.price, row.tradeAs)} for ${units(row, leg.quantity)} (${INSTRUCTION_WORDS[leg.instruction]})`;
+  if (step.kind === 'replace' && step.was.stop === step.order.stopPrice && leg.quantity < step.was.qty) {
+    return `Cut ${orderWord(row, step.was)} from ${units(row, step.was.qty)} to ${leg.quantity.toLocaleString('en-US')}`;
+  }
   const next = `stop ${fmtPositionPrice(step.order.stopPrice, row.tradeAs)} for ${units(row, leg.quantity)}`;
   return step.kind === 'replace' ? `Replace ${orderWord(row, step.was)} for ${units(row, step.was.qty)} with ${next}` : `Place a ${next} (${INSTRUCTION_WORDS[leg.instruction]})`;
 }
@@ -47,9 +52,9 @@ function pairingWarnings(t) {
   return [...out];
 }
 
-/** the frozen ticket for one position: its plan, and what could go wrong spelled out */
-export function buildPositionTicket(row, kind, symbol, now = Date.now()) {
-  const t = { kind, symbol, row: row || null, error: '', listing: false, stop: 0, steps: [], paired: [], rest: 0, bare: 0, choose: false, mode: null, options: null,
+/** the frozen ticket for one position: its plan, and what could go wrong spelled out. target: { price, qty } for a profit target */
+export function buildPositionTicket(row, kind, symbol, now = Date.now(), target = null) {
+  const t = { kind, symbol, row: row || null, error: '', listing: false, stop: 0, steps: [], paired: [], rest: 0, bare: 0, choose: false, mode: null, options: null, target, price: 0, moved: 0,
     stopDuration: schwabStopDuration(), warnings: [], sent: false, failure: '', done: '', confirmed: false };
   if (!row) { t.error = `Schwab no longer shows a ${symbol} position.`; return t; }
   if (state.positions && state.positions.stopsMissing) {
@@ -62,7 +67,7 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now()) {
     t.listing = true;
     return t;
   }
-  if (kind === 'close') Object.assign(t, closePlan(row)); else planBreakeven(t);
+  if (kind === 'close') Object.assign(t, closePlan(row)); else if (kind === 'target') planTarget(t); else planBreakeven(t);
   if (t.error) return t;
   t.warnings = buildWarnings(t, now);
   return t;
@@ -79,6 +84,10 @@ function planBreakeven(t) {
   Object.assign(t, !t.choose ? options.pair : t.mode ? t.options[t.mode] : { error: '', stop: options.pair.stop, steps: [], paired: [], rest: 0, bare: 0 });
 }
 
+function planTarget(t) {
+  Object.assign(t, targetPlan(t.row, { price: t.target ? t.target.price : 0, qty: t.target ? t.target.qty : 0, duration: t.stopDuration }));
+}
+
 export function setPositionBeMode(mode) {
   const t = state.posTicket;
   if (!t || !t.choose || t.sent || !['keep', 'pair', 'cancel'].includes(mode) || t.options[mode].error) return;
@@ -90,7 +99,13 @@ export function setPositionBeMode(mode) {
 
 function buildWarnings(t, now) {
   const row = t.row, out = [];
-  if (!inRegularHours(now)) out.push(t.kind === 'close' ? 'Outside regular hours. A market order waits for the next open and can fill far from here.' : 'Outside regular hours. The stop starts working at the next open.');
+  if (!inRegularHours(now)) {
+    out.push(t.kind === 'close' ? 'Outside regular hours. A market order waits for the next open and can fill far from here.'
+      : t.kind === 'target' ? 'Outside regular hours. The target starts working at the next open.' : 'Outside regular hours. The stop starts working at the next open.');
+  }
+  if (t.kind === 'target' && t.stop > 0 && t.stopDuration === 'DAY') {
+    out.push(`Today only: at the close the target and the stop paired with it both end, and those ${units(row, t.target.qty)} have no stop.`);
+  }
   if (row.tradeAs === 'OPTION') out.push(t.kind === 'close' ? 'A market order on an option can fill far from the mark.' : 'An option stop triggers on the option\'s own price, which jumps with its spread.');
   out.push(...pairingWarnings(t));
   const last = state.tradeLast;
@@ -100,23 +115,26 @@ function buildWarnings(t, now) {
 
 export async function openPositionTrade(symbol, kind) {
   if (state.posTradeBusy) return;
+  // a target is frozen from the chart's form as it is now
+  const c = state.posChart;
+  const target = kind === 'target' ? (c && c.symbol === symbol ? { price: c.price || 0, qty: c.qty || 0 } : { price: 0, qty: 0 }) : null;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
   try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
   if (state.positionsError || !state.positions) {
-    state.posTicket = buildPositionTicket(null, kind, symbol);
+    state.posTicket = buildPositionTicket(null, kind, symbol, Date.now(), target);
     state.posTicket.error = 'Could not re-read the position from Schwab. ' + state.positionsError;
-  } else state.posTicket = buildPositionTicket(state.positions.rows.find(r => r.symbol === symbol), kind, symbol);
+  } else state.posTicket = buildPositionTicket(state.positions.rows.find(r => r.symbol === symbol), kind, symbol, Date.now(), target);
   renderPositionTradeSheet();
   openSheet('posTrade');
 }
 
 export function setPositionStopDuration(d) {
   const t = state.posTicket;
-  if (!t || t.kind !== 'breakeven' || t.error || t.sent || (d !== 'DAY' && d !== 'GOOD_TILL_CANCEL')) return;
+  if (!t || t.kind === 'close' || t.error || t.sent || (d !== 'DAY' && d !== 'GOOD_TILL_CANCEL')) return;
   store.set('schwab_stop_duration', d);
   t.stopDuration = d;
-  planBreakeven(t);
+  if (t.kind === 'target') planTarget(t); else planBreakeven(t);
   t.warnings = buildWarnings(t, Date.now());
   renderPositionTradeSheet();
 }
@@ -157,6 +175,7 @@ export async function placePositionTrade() {
     await refreshPositions(); // what Schwab shows now, not what the answers implied
     Object.assign(t, outcome(t));
     state.posLast = { symbol: t.row.symbol, at: Date.now(), confirmed: t.confirmed };
+    if (t.kind === 'target' && t.confirmed) positionTargetPlaced(t.row.symbol);
   } finally {
     state.posTradeBusy = false;
     if (state.posTicket === t) renderPositionTradeSheet();
@@ -175,6 +194,15 @@ function outcome(t) {
     && !t.steps.some(p => p.kind === 'place' && p.pairs === s.was && p.status === 'done'))
     .map(s => ` Your ${orderWord(row, s.was)} for ${units(row, s.was.qty)} was cancelled and not placed again.`).join('');
   if (t.kind === 'close') return { done: (`Schwab still shows ${units(row, held)} ${row.label}.${t.failure ? '' : ' A market order can take a moment to fill.'}` + exposed + lost).trim(), confirmed: false };
+  if (t.kind === 'target') {
+    // the limits Schwab lists at the target price, before and after
+    const at = r => r.closers.filter(o => o.orderType === 'LIMIT' && o.price === t.price).reduce((n, o) => n + o.qty, 0);
+    if (!t.failure && at(row) - at(t.row) >= t.target.qty) {
+      const paired = t.stop > 0 ? `, paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)}` : '';
+      return { done: (`Schwab now shows a target at ${fmtPositionPrice(t.price, row.tradeAs)} for ${units(row, t.target.qty)}${paired}.` + exposed).trim(), confirmed: true };
+    }
+    return { done: ((t.failure ? '' : 'Schwab does not show the target yet. Check Schwab.') + exposed).trim(), confirmed: false };
+  }
   if (t.mode === 'keep') {
     const plain = row.stopOrders.filter(s => s.oco === null);
     if (!t.failure && plain.length && plain.every(s => s.stop === t.stop) && plain.reduce((n, s) => n + s.qty, 0) >= t.rest) {
@@ -225,11 +253,31 @@ function choicePrompt(t) {
     </div></dd></div>`;
 }
 
+/** a target's own rows: how long its orders last, and what it makes */
+function targetRows(t, duration) {
+  const row = t.row, g = targetGain(row, t.price, t.target.qty);
+  const sign = v => (v >= 0 ? '+' : '−') + fmt$(Math.abs(v));
+  const r = g.r === null ? '' : ` · ${g.r.toFixed(1)}R from the ${fmtPositionPrice(t.stop, row.tradeAs)} stop`;
+  const left = Math.abs(row.qty) - t.target.qty;
+  return `<div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
+    <div><dt>At target</dt><dd>${g.gain === null ? '<span class="shares-detail">Schwab shows no cost basis for this position.</span>'
+      : `<span class="${g.gain >= 0 ? 'pos-locked' : 'pos-loss'}">${sign(g.gain)}</span><span class="shares-detail">${g.pct >= 0 ? '+' : '−'}${Math.abs(g.pct).toFixed(1)}% over your cost${r}. ${left ? `${cap(units(row, left))} left after it fills.` : 'Nothing left after it fills.'}</span>`}</dd></div>`;
+}
+
+function targetHint(t) {
+  const row = t.row, verb = INSTRUCTION_WORDS[row.qty > 0 ? 'SELL' : 'BUY_TO_COVER'];
+  const pairing = t.moved > 0
+    ? `Schwab won't take orders to ${verb} more than you hold, so the target is paired with a stop for the same shares (one cancels the other) and your stop is cut to make room. While the target goes in, ${units(row, t.moved)} have no stop for a moment.`
+    : t.stop > 0 ? `The target is paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)} for the same shares: one cancels the other.`
+    : 'This position has no stop, so the target goes alone.';
+  return pairing + ' A limit fills at the target or better, and only if the price gets there.';
+}
+
 export function renderPositionTradeSheet() {
   const t = state.posTicket;
   const acct = schwabAccount();
   document.getElementById('posTradeAccount').textContent = acct ? 'Account ••' + acct.last4 : '';
-  document.getElementById('posTradeTitle').textContent = t && t.kind === 'close' ? 'Close position' : 'Stop at breakeven';
+  document.getElementById('posTradeTitle').textContent = !t || t.kind === 'breakeven' ? 'Stop at breakeven' : t.kind === 'close' ? 'Close position' : 'Profit target';
   const body = document.getElementById('posTradeBody');
   if (!t) { body.innerHTML = ''; return; }
   if (t.error) {
@@ -245,15 +293,17 @@ export function renderPositionTradeSheet() {
     + (t.bare ? `. ${cap(units(row, t.bare))} in your limit have no stop` : '');
   const extra = t.kind === 'close'
     ? `<div><dt>Value</dt><dd>${fmt$(Math.abs(row.value))}<span class="shares-detail">At Schwab's mark, before the fill</span></dd></div>`
+    : t.kind === 'target' ? targetRows(t, duration)
     : `<div><dt>Stop lasts</dt><dd><div class="seg" role="group" aria-label="Stop lasts">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
       <div><dt>Risk at stop</dt><dd><span class="pos-locked">${locked > 0.005 ? '+' + fmt$(locked) + ' locked' : '$0.00'}</span><span class="shares-detail">${rounding}</span></dd></div>`;
   const pairedQty = (t.paired || []).reduce((n, l) => n + l.qty, 0);
   const hint = t.kind === 'close'
     ? 'Orders that would close it are cancelled first, so nothing sells twice. If a cancel fails, the close is not sent.'
+    : t.kind === 'target' ? targetHint(t)
     : `${pairedQty
       ? `Schwab won't take orders to ${INSTRUCTION_WORDS[row.qty > 0 ? (row.tradeAs === 'OPTION' ? 'SELL_TO_CLOSE' : 'SELL') : (row.tradeAs === 'OPTION' ? 'BUY_TO_CLOSE' : 'BUY_TO_COVER')]} more than you hold, so shares in a limit get their stop paired with it, and the rest get one stop. While ${t.paired.length === 1 ? 'the limit is' : 'the limits are'} placed again, ${units(row, pairedQty)} have no stop for a moment.`
       : 'Other stops are cancelled first, then Schwab swaps the nearest one for the new stop.'} A triggered stop becomes a market order and can fill past it.`;
-  const confirm = t.kind === 'close' ? `Close ${units(row, held)} ${row.label}` : `Set stop ${px(t.stop)}`;
+  const confirm = t.kind === 'close' ? `Close ${units(row, held)} ${row.label}` : t.kind === 'target' ? `Place target ${px(t.price)}` : `Set stop ${px(t.stop)}`;
   const orders = t.steps.map(s => s.kind === 'cancel' ? { cancel: s.orderId } : s.kind === 'replace' ? { replace: s.orderId, with: s.order } : { place: s.order });
   const settled = t.sent && !state.posTradeBusy;
   const waiting = t.choose && !t.mode;
