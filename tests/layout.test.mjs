@@ -34,9 +34,11 @@ test('header carries the view nav with Positions and the settings button', async
   assert.doesNotMatch(block('modeSeg'), /Positions/, 'Positions is a view, not a sizing mode');
 });
 
-test('setup lives in sheets: settings holds the key, backup and sync; the risk sheet holds the account', async () => {
+test('setup lives in sheets: settings holds the account, key and backup; the risk sheet holds the account size', async () => {
   const settings = block('settingsSheet');
-  for (const id of ['apiKey', 'apiEnv', 'importFile', 'syncPass', 'syncBtn', 'apiStatus']) assert.match(settings, new RegExp(`id="${id}"`), id);
+  for (const id of ['signInBtn', 'signOutBtn', 'cloudStatus', 'apiKey', 'apiEnv', 'importFile', 'apiStatus']) assert.match(settings, new RegExp(`id="${id}"`), id);
+  assert.ok(settings.indexOf('id="accountSection"') < settings.indexOf('id="apiKey"'), 'the account comes first');
+  assert.doesNotMatch(html, /id="syncPass"|id="syncBtn"/, 'the passphrase sync is gone');
   const risk = block('riskSheet');
   for (const id of ['accountSize', 'riskPct', 'sizingRisk', 'sizingAllocation']) assert.match(risk, new RegExp(`id="${id}"`), id);
   assert.doesNotMatch(html, /id="apiToggle"|id="riskToggle"/, 'no collapsible setup cards left behind');

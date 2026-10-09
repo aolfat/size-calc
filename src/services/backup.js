@@ -30,7 +30,7 @@ export function mergeTombstones(extra) {
   return t;
 }
 
-// shared by file import and live sync: tombstoned deletes first, positions merge per id,
+// a backup file's merge: tombstoned deletes first, positions merge per id,
 // scalars adopt the payload except keys in dirtySet (local edits the payload hasn't seen)
 
 export function mergeBackupPayload(payload, dirtySet) {
