@@ -211,7 +211,8 @@ function choicePrompt(t) {
   const what = many ? `Your orders for ${units(row, inLimit)} already ${verb}` : `Your ${orderWord(row, inWay[0])} for ${units(row, inLimit)} already ${verb}`;
   const share = inLimit >= held ? 'the whole position' : 'part of this position';
   const { keep, pair, cancel } = t.options;
-  const targets = inWay.some(o => o.orderType === 'LIMIT') ? ` You lose the ${many ? 'targets' : 'target'}.` : '';
+  const limitCount = inWay.filter(o => o.orderType === 'LIMIT').length;
+  const targets = limitCount ? ` You lose the ${limitCount > 1 ? 'targets' : 'target'}.` : '';
   const keepSub = keep.error || `Breakeven stop for the ${units(row, keep.rest)} outside the ${many ? 'limits' : 'limit'}. ${many ? 'The limits stay as they are' : 'The limit stays as it is'}${keep.bare ? `; ${many ? 'their' : 'its'} ${units(row, keep.bare)} have no stop.` : ', with its own stop where it is.'}`;
   const pairSub = pair.error || `Every share gets a breakeven stop. The ${many ? 'limits are' : 'limit is'} cancelled and placed again with ${many ? 'their' : 'its'} own stop.`;
   const cancelSub = cancel.error || `${many ? 'Cancel them' : 'Cancel it'}, then one breakeven stop for all ${units(row, held)}.${targets}`;

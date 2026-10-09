@@ -299,7 +299,7 @@ test('an order the other options can\'t work around still leaves cancelling', as
   assert.match(html, /data-action="setPositionBeMode" data-arg="pair" disabled/);
   assert.match(html, /A market order for 20 is waiting/);
   assert.doesNotMatch(html, /data-action="setPositionBeMode" data-arg="cancel" disabled/);
-  assert.match(html, /Cancel them, then one breakeven stop for all 300 shares/);
+  assert.match(html, /Cancel them, then one breakeven stop for all 300 shares\. You lose the target\./, 'one limit among them: one target');
 });
 
 test('a limit holding the whole position leaves pairing or cancelling', async () => {
