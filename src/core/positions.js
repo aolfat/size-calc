@@ -7,7 +7,7 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
  * @typedef {import('./orders.js').TradeAs} TradeAs
  * @typedef {import('./orders.js').StopDuration} StopDuration
  * @typedef {{ assetType?: string, type?: string, symbol?: string, underlyingSymbol?: string, optionMultiplier?: number }} Instrument
- * @typedef {{ longQuantity?: number, shortQuantity?: number, averagePrice?: number, averageLongPrice?: number, averageShortPrice?: number, marketValue?: number, instrument?: Instrument }} Position
+ * @typedef {{ longQuantity?: number, shortQuantity?: number, averagePrice?: number, averageLongPrice?: number, averageShortPrice?: number, marketValue?: number, currentDayProfitLoss?: number, instrument?: Instrument }} Position
  * @typedef {{ instruction?: string, quantity?: number, instrument?: { symbol?: string, assetType?: string } }} OrderLeg
  * @typedef {{ orderId?: number | string, orderType?: string, orderStrategyType?: string, status?: string, stopPrice?: number, price?: number, quantity?: number, remainingQuantity?: number,
  *   filledQuantity?: number, stopPriceOffset?: number, stopPriceLinkType?: string,
@@ -16,7 +16,8 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
  *   oco: number | string | null, duration: string, session: string }} Resting
  * @typedef {{ symbol: string, label: string, under: string, option: { root: string, exp: string, type: string, strike: number } | null,
  *   tradeAs: TradeAs | null, qty: number, mult: number, avg: number, be: number | null, price: number, value: number, pctAcct: number,
- *   stop: number | null, stops: number, covered: number, risk: number | null, riskPct: number | null, stopOrders: Resting[], closers: Resting[] }} Row
+ *   stop: number | null, stops: number, covered: number, risk: number | null, riskPct: number | null, stopOrders: Resting[], closers: Resting[],
+ *   pnl: number | null, pnlPct: number | null, day: number | null, dayPct: number | null }} Row
  * @typedef {{ kind: 'cancel' | 'replace' | 'place', orderId?: number | string | null, was?: Resting, order?: object, pairs?: Resting }} Step
  * @typedef {{ error: string, stop: number, steps: Step[], paired: Resting[], rest: number, bare: number, price?: number, moved?: number, kept?: number, locked?: number }} Plan
  * @typedef {{ limit: Resting | undefined, legs: Resting[] }} Hold
@@ -201,6 +202,7 @@ const isStop = o => /STOP/.test(o.orderType) && o.stop !== null;
 /**
  * The account's positions as rows sorted by underlying (stock before its options), with totals.
  * Risk is what a stop fill loses from the average cost; negative when the stop locks a gain. Totals count losses only.
+ * P/L is from the average cost (null without one), as % of that cost; today's is Schwab's day P/L, as % of the value before it.
  * @param {{ positions?: Position[], currentBalances?: { liquidationValue?: number, cashBalance?: number } }} account
  * @param {Order[]} orders
  */
@@ -231,19 +233,27 @@ export function positionRows(account, orders) {
       left -= q;
     }
     const risk = mine.length && avg > 0 ? loss : null;
+    const cost = avg * Math.abs(qty) * mult, pnl = avg > 0 ? mv - avg * qty * mult : null;
+    const day = typeof p.currentDayProfitLoss === 'number' && Number.isFinite(p.currentDayProfitLoss) ? p.currentDayProfitLoss : null;
+    const before = day === null ? 0 : Math.abs(mv - day);
     rows.push({
       symbol: instrument.symbol || '', label: positionLabel(instrument), under: instrument.underlyingSymbol || option?.root || instrument.symbol || '', option,
       tradeAs: as, qty, mult, avg, be: as && avg > 0 ? (as === 'OPTION' ? optionStopTick(avg, long) : stopTick(avg, long)) : null,
       price: mv / (qty * mult), value: mv, pctAcct: pct(Math.abs(mv)),
       stop: mine.length ? mine[0].stop : null, stops: mine.length, covered: Math.abs(qty) - left,
       risk, riskPct: risk === null ? null : pct(risk), stopOrders: mine, closers,
+      pnl, pnlPct: pnl === null ? null : pnl / cost * 100, day, dayPct: day === null || !before ? null : day / before * 100,
     });
   }
   const key = (/** @type {Row} */ r) => [r.under, r.option ? 1 : 0, r.option?.exp || '', (r.option?.strike ?? 0).toFixed(3).padStart(12, '0'), r.option?.type || ''].join('|');
   rows.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
   const total = rows.reduce((s, r) => s + r.value, 0);
   const risk = rows.reduce((s, r) => s + Math.max(0, r.risk || 0), 0);
-  return { value, cash, rows, total, totalPct: pct(total), risk, riskPct: pct(risk) };
+  const priced = rows.filter(r => r.pnl !== null), dated = rows.filter(r => r.day !== null);
+  const pnl = priced.reduce((s, r) => s + Number(r.pnl), 0), cost = priced.reduce((s, r) => s + r.avg * Math.abs(r.qty) * r.mult, 0);
+  const day = dated.reduce((s, r) => s + Number(r.day), 0), before = dated.reduce((s, r) => s + Math.abs(r.value - Number(r.day)), 0);
+  return { value, cash, rows, total, totalPct: pct(total), risk, riskPct: pct(risk),
+    pnl: priced.length ? pnl : null, pnlPct: cost > 0 ? pnl / cost * 100 : null, day: dated.length ? day : null, dayPct: before > 0 ? day / before * 100 : null };
 }
 
 /** A price as Schwab takes it for this instrument: cents for options, four decimals for stock under $1. @param {number} p @param {TradeAs | null} as */

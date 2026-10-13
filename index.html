@@ -512,10 +512,12 @@
         <span class="chip-label">Underlying</span>
         <input type="range" id="simPrice" style="flex:1;min-width:160px;" data-input="drawSim" />
         <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--num);outline:none;" data-change="simPriceTyped" /></div>
-        <button class="filter-btn" data-action="simSetPrice" data-arg="stop">stop</button>
+        <span class="sim-chips" id="simRChips"><button class="filter-btn" data-action="simSetPrice" data-arg="stop">stop</button></span>
+        <span class="sim-chips" id="simEmChips" style="display:none;"><button class="filter-btn" data-action="simSetPrice" data-arg="-em" title="One standard deviation lower by expiry, from IV">−1σ</button></span>
         <button class="filter-btn" data-action="simSetPrice" data-arg="current" title="Jump to the current underlying price">current</button>
-        <button class="filter-btn" data-action="simSetPrice" data-arg="1">1R</button>
-        <button class="filter-btn" data-action="simSetPrice" data-arg="2">2R</button>
+        <span class="sim-chips" id="simRChips2"><button class="filter-btn" data-action="simSetPrice" data-arg="1">1R</button>
+        <button class="filter-btn" data-action="simSetPrice" data-arg="2">2R</button></span>
+        <span class="sim-chips" id="simEmChips2" style="display:none;"><button class="filter-btn" data-action="simSetPrice" data-arg="+em" title="One standard deviation higher by expiry, from IV">+1σ</button></span>
       </div>
       <div class="hint">theoretical Black-Scholes value, IV held constant · drag the chart for a date · slide or tap chips for a price</div>
     </div>

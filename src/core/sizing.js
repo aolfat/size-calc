@@ -53,5 +53,8 @@ export function optionDte(exp, now = new Date()) {
   return Math.round((Date.parse(exp + 'T00:00:00Z') - Date.UTC(Number(part('year')), Number(part('month')) - 1, Number(part('day')))) / 864e5);
 }
 
-/** @param {{ shortPut?: boolean, K?: number, credit?: boolean, width?: number, entry: number }} o @returns {number} */
-export function simReturnBase(o) { return o.shortPut ? Number(o.K) : o.credit ? Math.max(0.01, (o.width || 0) - o.entry) : o.entry; }
+/** what return % is measured against: a sold put's assignment notional, a credit spread's max loss, else the premium (a lone sold option's credit). @param {{ shortPut?: boolean, K?: number, credit?: boolean, width?: number, entry: number }} o @returns {number} */
+export function simReturnBase(o) {
+  const width = o.width || 0;
+  return o.shortPut ? Number(o.K) : o.credit && width > 0 ? Math.max(0.01, width - o.entry) : o.entry;
+}

@@ -1,6 +1,7 @@
 // Positions: the selected Schwab account's holdings, read live every 30s while the tab is open, with stops from its working stop orders,
-// buttons into a stock's chart and targets (position-chart.js) and the breakeven-stop and close reviews (position-trade.js),
-// and every order still working in the account.
+// buttons into a stock's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the breakeven-stop and close reviews (position-trade.js),
+// optional P/L columns picked from Columns (kept on this device), the account value hidden on request, and every order still working in the account.
+import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { INSTRUCTION_WORDS, atBreakeven, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
@@ -15,6 +16,39 @@ const count = q => (q < 0 ? '−' : '') + Math.abs(q).toLocaleString('en-US');
 const words = s => String(s || '').toLowerCase().replace(/_/g, ' ');
 const DURATION_WORDS = { DAY: 'Today', GOOD_TILL_CANCEL: 'Until canceled', FILL_OR_KILL: 'Fill or kill', IMMEDIATE_OR_CANCEL: 'Immediate or cancel' };
 const STATUS_WORDS = { AWAITING_PARENT_ORDER: 'waiting on entry', PENDING_ACTIVATION: 'pending', AWAITING_RELEASE_TIME: 'waiting on release' };
+const signed = (v, text) => `<span class="${v >= 0 ? 'pos-locked' : 'pos-loss'}">${v >= 0 ? '+' : '−'}${text}</span>`;
+const pnlCell = v => v === null ? '—' : signed(v, fmt$(Math.abs(v)));
+const pctCell = v => v === null ? '—' : signed(v, Math.abs(v).toFixed(2) + '%');
+// the optional columns, in table order after Market value: [key, header, row or totals → cell]
+const EXTRA_COLS = [
+  ['pnl', 'P/L', r => pnlCell(r.pnl)],
+  ['pnlPct', 'P/L %', r => pctCell(r.pnlPct)],
+  ['day', 'Today', r => pnlCell(r.day)],
+  ['dayPct', 'Today %', r => pctCell(r.dayPct)],
+];
+const shownCols = () => EXTRA_COLS.filter(([key]) => state.posCols.includes(key));
+
+/** the Columns button: shows or hides the column picker */
+export function togglePosColumnsMenu() {
+  state.posColsOpen = !state.posColsOpen;
+  renderPositionsTable();
+}
+
+/** a column chip: adds or drops that column */
+export function togglePosColumn(key) {
+  if (!EXTRA_COLS.some(([k]) => k === key)) return;
+  const on = state.posCols.includes(key);
+  state.posCols = EXTRA_COLS.map(([k]) => k).filter(k => k === key ? !on : state.posCols.includes(k));
+  store.set('positions_cols', JSON.stringify(state.posCols));
+  renderPositionsTable();
+}
+
+/** Hide / Show beside the account value */
+export function togglePosHideValue() {
+  state.posHideValue = !state.posHideValue;
+  store.set('positions_hide_value', state.posHideValue ? '1' : '0');
+  renderPositionsTable();
+}
 
 /**
  * read the account now; asked = a tap on Refresh (or r), which confirms when it lands; the 30s timer stays quiet.
@@ -88,14 +122,15 @@ function riskCell(r) {
     : `<span class="pos-locked">+${fmt$(-r.risk)} locked</span>${partial}`;
 }
 
-// Chart, BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
+// Chart (Simulate for options), BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
 function tradeButtons(r) {
   if (!r.tradeAs) return '';
   // every share already has a stop at or past breakeven: nothing to move, and moving it would loosen it
   const atBe = atBreakeven(r) ? (r.stopOrders.every(s => s.stop === r.be) ? 'stop at breakeven' : `stop${r.stops > 1 ? 's' : ''} past breakeven`) : '';
   const arg = esc(r.symbol);
   const charted = !!state.posChart && state.posChart.symbol === r.symbol;
-  const chart = r.tradeAs === 'EQUITY' ? `<button class="pos-act${charted ? ' active' : ''}" aria-pressed="${charted}" data-action="togglePositionChart" data-arg="${arg}" title="Daily chart with your cost, stops and targets: set a profit target on it">Chart</button>` : '';
+  const chart = r.tradeAs === 'EQUITY' ? `<button class="pos-act${charted ? ' active' : ''}" aria-pressed="${charted}" data-action="togglePositionChart" data-arg="${arg}" title="Daily chart with your cost, stops and targets: set a profit target on it">Chart</button>`
+    : r.option ? `<button class="pos-act" data-action="simPosition" data-arg="${arg}" title="Simulate returns over time from your average cost (Black-Scholes)">Simulate</button>` : '';
   return `<span class="pos-acts">${chart}${atBe ? `<span class="pos-locked">${atBe}</span>` :`<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button></span>`;
 }
 
@@ -106,6 +141,7 @@ function positionRow(r) {
     <td>${r.avg > 0 ? fmt$(r.avg) : '—'}</td>
     <td>${fmt$(r.price)}</td>
     <td>${money(r.value)}</td>
+    ${shownCols().map(([, , cell]) => `<td>${cell(r)}</td>`).join('')}
     <td>${r.pctAcct.toFixed(2)}%</td>
     <td>${r.stop === null ? '—' : fmt$(r.stop) + (r.stops > 1 ? `<span class="pos-sub">+${r.stops - 1} more</span>` : '')}</td>
     <td>${riskCell(r)}</td>
@@ -131,18 +167,27 @@ function renderPositionsTable() {
   // a 30s refresh must not jump a phone's sideways scroll back
   const scrolled = [...el.querySelectorAll('.positions-wrap')].map(w => w.scrollLeft);
   const asOf = new Date(p.asOf).toLocaleTimeString();
+  const cols = shownCols();
+  const value = state.posHideValue ? 'Account value hidden' : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
+  const hide = `<button class="pos-link" data-action="togglePosHideValue" aria-pressed="${state.posHideValue}" title="${state.posHideValue ? 'Show' : 'Hide'} the account value and cash">${state.posHideValue ? 'Show' : 'Hide'}</button>`;
+  const picker = state.posColsOpen ? `<div class="chip-row pos-cols" role="group" aria-label="Optional columns">${EXTRA_COLS.map(([key, label]) => {
+    const on = state.posCols.includes(key);
+    return `<button class="filter-btn${on ? ' active' : ''}" data-action="togglePosColumn" data-arg="${key}" aria-pressed="${on}">${label}</button>`;
+  }).join('')}</div>` : '';
   el.innerHTML = `<div class="card positions-card">
     <div class="positions-head">
       <span class="section-title">Schwab ••${esc(p.last4)}</span>
-      <span class="positions-meta">Account value ${fmt$(p.value)} · cash ${money(p.cash)} · as of ${asOf}</span>
+      <span class="positions-meta">${value} ${hide} · as of ${asOf}</span>
+      <button class="btn pos-cols-btn" data-action="togglePosColumnsMenu" aria-expanded="${state.posColsOpen}" title="Add or remove columns: P/L and today's P/L">Columns</button>
       ${refresh}
     </div>
+    ${picker}
     ${state.positionsError ? `<p class="shares-error" role="status">Refresh failed: ${esc(state.positionsError)} Showing ${asOf}.</p>` : ''}
     ${p.stopsMissing ? '<p class="hint">Stops unavailable: Schwab did not return this account\'s orders.</p>' : ''}
     ${p.rows.length ? `<div class="positions-wrap"><table class="positions-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th><th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
+      <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th>${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
       <tbody>${p.rows.map(positionRow).join('')}</tbody>
-      <tfoot><tr><th scope="row">Total</th><td></td><td></td><td></td><td>${money(p.total)}</td><td>${p.totalPct.toFixed(2)}%</td><td></td><td>${p.risk > 0 ? `<span class="pos-loss">−${fmt$(p.risk)}</span><span class="pos-sub">${p.riskPct.toFixed(2)}% of acct</span>` : '—'}</td></tr></tfoot>
+      <tfoot><tr><th scope="row">Total</th><td></td><td></td><td></td><td>${money(p.total)}</td>${cols.map(([, , cell]) => `<td>${cell(p)}</td>`).join('')}<td>${p.totalPct.toFixed(2)}%</td><td></td><td>${p.risk > 0 ? `<span class="pos-loss">−${fmt$(p.risk)}</span><span class="pos-sub">${p.riskPct.toFixed(2)}% of acct</span>` : '—'}</td></tr></tfoot>
     </table></div>
     <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost.</p>` : '<p class="hint">No open positions in this account.</p>'}
   </div>
