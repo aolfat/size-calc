@@ -107,6 +107,26 @@ test('several stops on one position: the nearest leads and each covers its own s
   assert.equal(row.covered, 100);
 });
 
+// Schwab's day P/L on each position; ACAT has no cost basis and no day figure
+const WITH_DAY = { ...ACCOUNT.securitiesAccount, positions: ACCOUNT.securitiesAccount.positions.map((p, i) => ({ ...p, ...[{ currentDayProfitLoss: 200 }, { currentDayProfitLoss: -40 }, { currentDayProfitLoss: 50 }, {}][i] })) };
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+
+test('each row has its P/L from average cost and today\'s P/L from Schwab, both in dollars and percent, with totals', async () => {
+  const { run } = await app();
+  const p = run(`positionRows(${JSON.stringify(WITH_DAY)}, [])`);
+  const [acat, shrt, stock, opt] = p.rows;
+  assert.equal(stock.pnl, 500); assert.equal(stock.pnlPct, 10);
+  assert.equal(stock.day, 200); assert.ok(near(stock.dayPct, 200 / 5300 * 100), 'of yesterday\'s value');
+  assert.equal(opt.pnl, 100); assert.equal(opt.pnlPct, 20, 'times the multiplier');
+  assert.equal(opt.day, -40); assert.ok(near(opt.dayPct, -6.25));
+  assert.equal(shrt.pnl, 100, 'a short gains as the price falls'); assert.equal(shrt.pnlPct, 10);
+  assert.equal(shrt.day, 50); assert.ok(near(shrt.dayPct, 50 / 950 * 100));
+  assert.equal(acat.pnl, null); assert.equal(acat.pnlPct, null);
+  assert.equal(acat.day, null); assert.equal(acat.dayPct, null);
+  assert.equal(p.pnl, 700); assert.ok(near(p.pnlPct, 700 / 6500 * 100), 'over the cost of the rows that have one');
+  assert.equal(p.day, 210); assert.ok(near(p.dayPct, 210 / 6890 * 100));
+});
+
 // ---------- the tab ----------
 
 test('without a Schwab login the tab asks to connect and calls nothing', async () => {
@@ -147,6 +167,50 @@ test('opening the tab loads the selected account live from Schwab, no Tradier ke
   assert.match(html, /covers 30 of 50/);
   assert.match(html, /−50/);
   assert.equal(elements.get('posCount').textContent, '4');
+});
+
+test('P/L columns are off until picked from Columns; picks and hiding the account value stay on this device', async () => {
+  const day = path => path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json({ securitiesAccount: WITH_DAY }) : json({}, 404);
+  const storage = connected();
+  const { run, elements } = await app({ fetch: network(day).fetch, storage });
+  run("setView('positions')");
+  await settle();
+  const html = () => elements.get('positionsSection').innerHTML;
+  assert.doesNotMatch(html(), /<th[^>]*>P\/L/);
+  assert.doesNotMatch(html(), /data-action="togglePosColumn"/, 'the picker starts closed');
+  assert.match(html(), /data-action="togglePosColumnsMenu"[^>]*aria-expanded="false"/);
+
+  run('togglePosColumnsMenu()');
+  for (const col of ['pnl', 'pnlPct', 'day', 'dayPct']) assert.match(html(), new RegExp(`data-action="togglePosColumn" data-arg="${col}"[^>]*aria-pressed="false"`));
+  run("togglePosColumn('pnlPct')");
+  run("togglePosColumn('dayPct')");
+  assert.match(html(), /<th scope="col">P\/L %<\/th>/);
+  assert.match(html(), /<th scope="col">Today %<\/th>/);
+  assert.doesNotMatch(html(), /<th scope="col">P\/L<\/th>/);
+  const stock = html().split('<tr>').find(r => r.includes('<b>TEST</b>'));
+  assert.match(stock, /\+10\.00%/);
+  assert.match(stock, /\+3\.77%/);
+  const opt = html().split('<tr>').find(r => r.includes('<b>TEST 12/18/26'));
+  assert.match(opt, /−6\.25%/);
+  assert.match(html().split('<tfoot>')[1], /\+10\.77%/, 'the total row');
+  assert.equal(storage.get('positions_cols'), JSON.stringify(['pnlPct', 'dayPct']));
+  run("togglePosColumn('pnlPct')");
+  assert.doesNotMatch(html(), /<th scope="col">P\/L %<\/th>/);
+
+  assert.match(html(), /Account value \$100,000\.00 · cash \$25,000\.00/);
+  run('togglePosHideValue()');
+  assert.doesNotMatch(html(), /\$100,000|\$25,000/);
+  assert.match(html(), /Account value hidden/);
+  assert.match(html(), /data-action="togglePosHideValue"[^>]*>Show</);
+  assert.equal(storage.get('positions_hide_value'), '1');
+
+  // a new visit keeps both
+  const again = await app({ fetch: network(day).fetch, storage });
+  again.run("setView('positions')");
+  await settle();
+  const next = again.elements.get('positionsSection').innerHTML;
+  assert.match(next, /<th scope="col">Today %<\/th>/);
+  assert.match(next, /Account value hidden/);
 });
 
 test('the table refreshes every 30 seconds while it is open and visible, one call at a time', async () => {

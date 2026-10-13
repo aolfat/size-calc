@@ -4,6 +4,11 @@
 .positions-head .section-title::after { display: none; }
 .positions-meta { font-size: 12px; color: var(--text2); font-family: var(--num); }
 .positions-head .btn { margin-left: auto; font-size: 12px; padding: 6px 12px; }
+.positions-head .pos-cols-btn { margin-left: auto; }
+.positions-head .pos-cols-btn + .btn { margin-left: 0; }
+.pos-link { background: none; border: none; padding: 0; color: var(--blue); font: inherit; cursor: pointer; }
+.pos-cols { margin: -4px 0 12px; }
+.pos-cols .filter-btn.active { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
 .positions-card .shares-error { padding: 0 0 8px; }
 .positions-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 /* separate borders: collapsed ones let scrolled cells show through the pinned column */

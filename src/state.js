@@ -6,6 +6,8 @@ export const DAILY_RANGES = [21, 63, 126, 252]; // 1M / 3M / 6M / 1Y range chips
 
 export function createState() {
   const dailyRange = DAILY_RANGES.includes(+store.get('daily_range')) ? +store.get('daily_range') : 63;
+  let posCols = [];
+  try { posCols = JSON.parse(store.get('positions_cols') || '[]'); } catch(e) {}
   return {
     quoteData: null,
     chainData: [],
@@ -93,6 +95,9 @@ export function createState() {
     posTradeBusy: false,
     posLast: null, // { hash, symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat on that account and symbol for a while
     cancelTicket: null, // the working-order cancel the review sheet shows, frozen when it opens
+    posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)
+    posColsOpen: false, // the Columns picker showing
+    posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChart: null, // the open position chart: { symbol, bars, view, range, loading, error, hover, hoverY, price, qty } (price and qty = the target form)
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,

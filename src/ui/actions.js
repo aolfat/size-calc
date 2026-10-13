@@ -17,7 +17,8 @@ import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearc
 import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
-import { refreshPositions } from './positions.js';
+import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue } from './positions.js';
+import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
@@ -157,6 +158,10 @@ export const actions = {
   posChartToday: () => posChartToday(),
   posTargetChanged: () => posTargetChanged(),
   setPosTargetPortion: el => setPosTargetPortion(num(el)),
+  simPosition: el => simPosition(arg(el)),
+  togglePosColumnsMenu: () => togglePosColumnsMenu(),
+  togglePosColumn: el => togglePosColumn(arg(el)),
+  togglePosHideValue: () => togglePosHideValue(),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),

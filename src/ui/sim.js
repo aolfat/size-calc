@@ -16,13 +16,17 @@ export function openSim(o) {
   if (!(o.iv > 0)) { showError('No IV on this contract — cannot simulate.'); return; }
   if (!(o.entry > 0)) { showError('No entry price to measure returns from.'); return; }
   if (o.sizing === 'allocation' && o.qty < 1) { showError('No contracts fit this allocation.'); return; }
-  document.querySelectorAll('#simOverlay button').forEach(b => { if (['stop', '1R', '2R'].includes(b.textContent.trim())) b.style.display = o.sizing === 'allocation' ? 'none' : ''; });
+  // a held position has no underlying stop: ±1σ chips instead of stop and R
+  const em = o.em > 0, rChips = !em && o.sizing !== 'allocation';
+  for (const id of ['simRChips', 'simRChips2']) document.getElementById(id).style.display = rChips ? '' : 'none';
+  for (const id of ['simEmChips', 'simEmChips2']) document.getElementById(id).style.display = em ? '' : 'none';
   state.simState = o;
   state.simHover = -1;
   document.getElementById('simTitle').textContent = o.label;
-  document.getElementById('simMeta').textContent = `${o.credit ? 'credit' : 'entry'} ${fmt$(o.entry)}/${o.sizing === 'allocation' ? 'share' : 'ct'} · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant${o.shortPut ? ' · return on assignment notional' : ''}`;
+  document.getElementById('simMeta').textContent = `${o.entryWord || (o.credit ? 'credit' : 'entry')} ${fmt$(o.entry)}/${o.sizing === 'allocation' ? 'share' : 'ct'} · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant${o.shortPut ? ' · return on assignment notional' : ''}`;
   const sl = document.getElementById('simPrice');
-  const span = Math.max(o.spot * 0.12, (state.adrValue || 0) * 2.5);
+  // a position isn't the loaded ticker, so its range comes from its own expected move, not the calculator's ADR
+  const span = em ? Math.max(o.spot * 0.12, o.em * 1.5) : Math.max(o.spot * 0.12, (state.adrValue || 0) * 2.5);
   sl.min = Math.max(0.01, o.spot - span).toFixed(2);
   sl.max = (o.spot + span).toFixed(2);
   sl.step = '0.01'; // penny steps so the stop/1R/2R chips land exactly
@@ -36,7 +40,7 @@ export function closeSim() {
   state.simState = null;
 }
 
-export function simSetPrice(mult) { // chips: stop / current / 1R / 2R
+export function simSetPrice(mult) { // chips: stop / current / 1R / 2R, or −1σ / +1σ
   const o = state.simState;
   if (!o) return;
   // freshest price we have: the live quote when it matches this ticker, else the open-time snapshot
@@ -45,6 +49,7 @@ export function simSetPrice(mult) { // chips: stop / current / 1R / 2R
   const rDist = bull ? o.spot - o.stop : o.stop - o.spot;
   const target = mult === 'stop' ? o.stop
     : mult === 'current' ? cur
+    : mult === '+em' || mult === '-em' ? o.spot + (mult === '+em' ? 1 : -1) * o.em
     : o.spot + (bull ? 1 : -1) * rDist * mult;
   const sl = document.getElementById('simPrice');
   if (target > +sl.max) sl.max = target.toFixed(2);
@@ -123,12 +128,14 @@ export function drawSim() {
     ctx.fillStyle = cText3;
     ctx.fillText((g > 0 ? '+' : '') + g + '%', w - padR + 6, y(g) + 3);
   }
-  // max loss floor
-  ctx.save();
-  ctx.strokeStyle = cRed; ctx.setLineDash([4, 4]); ctx.globalAlpha = 0.6;
-  ctx.beginPath(); ctx.moveTo(padL, y(-100)); ctx.lineTo(w - padR, y(-100)); ctx.stroke();
-  ctx.restore();
-  ctx.fillStyle = cRed; ctx.fillText('max loss', w - padR - 52, y(-100) - 4);
+  // max loss floor; a lone sold option measured on its premium has none there (−100% is just the credit lost again)
+  if (!(o.credit && !o.shortPut && !(o.width > 0))) {
+    ctx.save();
+    ctx.strokeStyle = cRed; ctx.setLineDash([4, 4]); ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.moveTo(padL, y(-100)); ctx.lineTo(w - padR, y(-100)); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = cRed; ctx.fillText('max loss', w - padR - 52, y(-100) - 4);
+  }
 
   // date ticks
   ctx.fillStyle = cText3;
