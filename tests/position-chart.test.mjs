@@ -340,3 +340,40 @@ test('an option\'s hover readout shows the bar\'s time', async () => {
   assert.match(elements.get('posChartOhlc').innerHTML, /\(\+10\.0% from now\) &nbsp; 5m 10\/12 10:15 &nbsp; O 3\.00/);
   delete globalThis.getComputedStyle;
 });
+
+test('Avg hides the average cost line and lets the scale fit without it; the choice stays on this device', async () => {
+  const { run, elements, storage } = await chartApp();
+  run(`togglePositionChart('${OPT}')`);
+  await settle();
+  const texts = [];
+  elements.get('posChart').clientWidth = 458;
+  elements.get('posChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }), fillText: t => texts.push(t) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
+  const btn = elements.get('posChartAvgBtn');
+  run('drawPositionChart()');
+  assert.ok(texts.includes('avg 2.50'), 'shown by default');
+  assert.equal(btn.getAttribute('aria-pressed'), 'true');
+  assert.ok(btn.classList.contains('active'));
+
+  texts.length = 0;
+  run('actions.togglePosChartAvg()');
+  assert.ok(!texts.includes('avg 2.50'));
+  assert.ok(texts.includes('stop 2.00 ×2'), 'the other lines stay');
+  assert.equal(btn.getAttribute('aria-pressed'), 'false');
+  assert.ok(!btn.classList.contains('active'));
+  assert.equal(storage.get('pos_chart_avg'), '0');
+  // a stock's chart hides it too, and the scale fits the bars, not a cost far from them: TSLA's $262 against bars of $39 to $46
+  run("togglePositionChart('TSLA')");
+  await settle();
+  texts.length = 0;
+  run('drawPositionChart()');
+  assert.ok(!texts.some(t => t.startsWith('avg ')));
+  assert.ok(texts.includes('$46.35'), 'top gridline: the $46 high plus 5% of the range');
+  run('actions.togglePosChartAvg()');
+  assert.ok(texts.includes('avg 262.00'));
+  run('actions.togglePosChartAvg()'); // off again: a new visit starts with it hidden
+  delete globalThis.getComputedStyle;
+
+  const again = await app({ fetch: async () => json({}), storage });
+  assert.equal(again.run('posChartAvg'), false);
+});

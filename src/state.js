@@ -98,6 +98,7 @@ export function createState() {
     posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)
     posColsOpen: false, // the Columns picker showing
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
+    posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
     posChart: null, // the open position chart: { symbol, option, label, bars, view, range, loading, error, hover, hoverY, price, qty } (range: sessions; price and qty = the target form)
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,

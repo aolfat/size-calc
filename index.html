@@ -379,7 +379,7 @@
     </div>
     <p class="hint" id="posChartStatus" role="status"></p>
     <div id="posChartPlot" style="display:none;">
-      <div class="chart-cap" id="posChartCap"><span id="posChartKind">Daily</span><span class="pos-chart-ranges" id="posChartRanges"></span></div>
+      <div class="chart-cap" id="posChartCap"><span id="posChartKind">Daily</span><span class="pos-chart-ranges" id="posChartRanges"></span><button class="filter-btn active pos-chart-avg" id="posChartAvgBtn" data-action="togglePosChartAvg" aria-pressed="true" title="Show or hide your average cost on the chart">Avg</button></div>
       <div class="pos-chart-canvas"><canvas id="posChart" height="260"></canvas><button class="filter-btn" id="posChartToday" data-action="posChartToday" style="display:none;" title="Back to the latest session">Today →</button></div>
       <div class="chart-hint">Tap the chart to set the target; near a candle's high or low it takes that exact price. Pinch or ctrl+scroll to zoom, drag to pan. Lines: <span style="color:var(--blue);">avg cost</span> · <span style="color:var(--red);">stops</span> · <span style="color:var(--green);">targets</span> · <span style="color:var(--purple);">8 EMA</span></div>
     </div>

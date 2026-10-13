@@ -1,6 +1,7 @@
 // Position chart: one Schwab position's chart with its average cost, stops and targets drawn on it: a stock or ETF's daily
 // (Tradier history), an option's own 5-minute bars (Tradier timesales). And the profit-target form: tap the chart (or type)
 // for the price, pick a portion, review it in the position sheet.
+import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { clampView, viewRange } from '../core/chart-view.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
@@ -118,6 +119,13 @@ export function positionTargetPlaced(symbol) {
   renderPositionChart();
 }
 
+/** Avg: shows or hides your average cost, and the scale fits without it while hidden */
+export function togglePosChartAvg() {
+  state.posChartAvg = !state.posChartAvg;
+  store.set('pos_chart_avg', state.posChartAvg ? '1' : '0');
+  drawPositionChart();
+}
+
 export function setPosChartRange(count) {
   const c = state.posChart;
   if (!c) return;
@@ -182,16 +190,19 @@ export function renderPositionChart() {
   drawPositionChart();
 }
 
+// the levels drawn: your average cost only while Avg is on
+const levels = row => row ? positionLevels(row).filter(l => l.kind !== 'avg' || state.posChartAvg) : [];
+
 function chartGeom(w) {
   const c = state.posChart, row = chartRow();
-  return candleGeom(c.bars, c.view, w, [...(row ? positionLevels(row).map(l => l.price) : []), c.price || 0]);
+  return candleGeom(c.bars, c.view, w, [...levels(row).map(l => l.price), c.price || 0]);
 }
 
 function chartLines(c, row) {
   const css = getComputedStyle(document.documentElement);
   const color = name => css.getPropertyValue(name).trim();
   const size = q => ' ×' + q.toLocaleString('en-US');
-  const lines = (row ? positionLevels(row) : []).map(l => l.kind === 'avg'
+  const lines = levels(row).map(l => l.kind === 'avg'
     ? { price: l.price, color: color('--blue'), label: 'avg ' + l.price.toFixed(2), left: true }
     : { price: l.price, color: color(l.kind === 'stop' ? '--red' : '--green'), label: `${l.kind} ${l.price.toFixed(2)}${size(l.qty)}` });
   if (c.price > 0) lines.push({ price: c.price, color: color('--green'), label: `new target ${c.price.toFixed(2)}${c.qty > 0 ? size(c.qty) : ''}`, solid: true });
@@ -205,6 +216,9 @@ export function drawPositionChart() {
   // a chip lights while the view shows exactly its range
   const active = n && Math.round(clampView(c.view, n).count) === Math.round(clampView(rangeView(c), n).count) ? c.range : 0;
   document.getElementById('posChartKind').textContent = c.option ? '5 min' : 'Daily';
+  const avg = document.getElementById('posChartAvgBtn');
+  avg.classList.toggle('active', state.posChartAvg);
+  avg.setAttribute('aria-pressed', String(state.posChartAvg));
   const chips = (c.option ? OPTION_CHIPS : DAILY_CHIPS).map(([count, label]) =>
     `<button class="filter-btn${count === active ? ' active' : ''}" data-action="setPosChartRange" data-arg="${count}">${label}</button>`).join('');
   const ranges = document.getElementById('posChartRanges');

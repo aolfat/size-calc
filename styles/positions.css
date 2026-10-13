@@ -59,6 +59,7 @@
 .pos-chart #posChartStatus:empty { display: none; }
 .pos-chart .chart-cap { display: flex; gap: 5px; align-items: center; }
 .pos-chart .chart-cap .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
+.pos-chart .chart-cap .pos-chart-avg { margin-left: auto; }
 .pos-chart-ranges { display: contents; } /* range chips: 1M to 1Y on a stock's daily, 1D to 10D on an option's 5-minute */
 .pos-chart-canvas { position: relative; }
 #posChartToday { position: absolute; right: 58px; bottom: 28px; padding: 2px 8px; font-size: 11px; }
