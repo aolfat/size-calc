@@ -1,10 +1,12 @@
-// Daily candle canvas shared by the calculator's daily pane and the position chart: the fitted scale, the painting
-// (candles, 8 EMA, level lines, crosshair) and the gestures (zoom, pan, hover, tap to pick a price).
+// Candle canvas shared by the calculator's daily pane and the position chart (daily bars, or an option's 5-minute bars,
+// which carry a time): the fitted scale, the painting (candles, 8 EMA, level lines, crosshair) and the gestures (zoom, pan, hover, tap to pick a price).
 import { panView, viewRange, zoomView } from '../core/chart-view.js';
 import { SANS_FONT } from '../lib/media.js';
 import { attachTouchCrosshair } from './chart.js';
 
 export const CANDLE_H = 260;
+
+const monthDay = date => { const p = (date || '').split('-'); return p.length === 3 ? +p[1] + '/' + +p[2] : ''; };
 
 // one scale for the candles, the hover and taps: the visible window, fitted to its bars plus the level lines
 export function candleGeom(bars, view, w, levels = []) {
@@ -63,9 +65,13 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null } = {})
   }
   // date ticks sit on fixed bars so they ride along with a pan instead of reshuffling
   const tickEvery = Math.max(1, Math.round((end - start) / 5));
+  // a daily tick is its date; an intraday tick is its time, or its date when it's the first tick on that day
+  let tickDay = '';
   for (let i = Math.ceil(start / tickEvery) * tickEvery; i < end; i += tickEvery) {
-    const parts = (bars[i].date || '').split('-');
-    if (parts.length === 3 && x(i) - 10 >= 0 && x(i) + 14 <= w - padR) ctx.fillText(+parts[1] + '/' + +parts[2], x(i) - 10, h - 8);
+    const b = bars[i], label = b.time && b.date === tickDay ? b.time : monthDay(b.date);
+    if (!label || x(i) - 10 < 0 || x(i) + 14 > w - padR) continue;
+    ctx.fillText(label, x(i) - 10, h - 8);
+    tickDay = b.date;
   }
 
   const drawn = lines.filter(l => l.price > 0);
@@ -85,7 +91,7 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null } = {})
     ctx.fillRect(x(i) - bw / 2, top, bw, Math.max(1, bot - top));
   }
 
-  // 8 EMA of daily closes, warmed up on the full history and clipped to the plot (it can lag outside the window's range)
+  // 8 EMA of the closes, warmed up on the full history and clipped to the plot (it can lag outside the window's range)
   const k = 2 / 9;
   let e = bars[0].close;
   ctx.save();
@@ -129,7 +135,7 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null } = {})
 export function ohlcText(b) {
   const css = getComputedStyle(document.documentElement);
   const chg = b.close - b.open;
-  return `1D ${b.date} &nbsp; O ${b.open.toFixed(2)} &nbsp; H ${b.high.toFixed(2)} &nbsp; L ${b.low.toFixed(2)} &nbsp; C <span style="color:${css.getPropertyValue(chg >= 0 ? '--green' : '--red').trim()}">${b.close.toFixed(2)}</span>`;
+  return `${b.time ? `5m ${monthDay(b.date)} ${b.time}` : `1D ${b.date}`} &nbsp; O ${b.open.toFixed(2)} &nbsp; H ${b.high.toFixed(2)} &nbsp; L ${b.low.toFixed(2)} &nbsp; C <span style="color:${css.getPropertyValue(chg >= 0 ? '--green' : '--red').trim()}">${b.close.toFixed(2)}</span>`;
 }
 
 /**
