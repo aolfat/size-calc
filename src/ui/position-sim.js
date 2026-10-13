@@ -3,6 +3,7 @@
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { yearsToExp } from '../core/options.js';
+import { tradierSymbol } from '../core/positions.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { effects } from './effects.js';
 import { showError } from './feedback.js';
@@ -12,7 +13,7 @@ export async function simPosition(symbol) {
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
   if (!row || !row.option) return;
   if (!requireKey()) return;
-  const occ = symbol.replace(/\s+/g, ''); // Schwab pads the root to six characters; Tradier doesn't
+  const occ = tradierSymbol(symbol);
   let quotes;
   try {
     const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(row.under + ',' + occ)}&greeks=true`, { headers: headers() });

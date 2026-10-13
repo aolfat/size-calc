@@ -16,6 +16,7 @@ import { openSheet } from './sheets.js';
 const UNCONFIRMED_WAIT = 120000;
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const units = (row, n) => `${n.toLocaleString('en-US')} ${row.tradeAs === 'OPTION' ? (n === 1 ? 'contract' : 'contracts') : (n === 1 ? 'share' : 'shares')}`;
+const have = n => n === 1 ? 'has' : 'have';
 const statusWord = s => String(s || 'unknown').toLowerCase().replace(/_/g, ' ');
 
 function orderWord(row, was) {
@@ -166,9 +167,9 @@ function buildWarnings(t, now) {
   }
   if ((t.kind === 'target' || limit) && t.stop > 0 && t.stopDuration === 'DAY') {
     const what = t.kind === 'target' ? 'target' : 'limit', n = t.kind === 'target' ? t.target.qty : t.close.qty;
-    warn('today', `Today only: at the close the ${what} and the stop paired with it both end, and those ${units(row, n)} have no stop.`);
+    warn('today', `Today only: at the close the ${what} and the stop paired with it both end, and ${n === 1 ? 'that' : 'those'} ${units(row, n)} ${have(n)} no stop.`);
   }
-  if (row.tradeAs === 'OPTION' && !(limit && !t.stop)) warn('option', t.kind === 'close' && !limit ? 'A market order on an option can fill far from the mark.' : 'An option stop triggers on the option\'s own price, which jumps with its spread.');
+  if (row.tradeAs === 'OPTION' && !((limit || t.kind === 'target') && !t.stop)) warn('option', t.kind === 'close' && !limit ? 'A market order on an option can fill far from the mark.' : 'An option stop triggers on the option\'s own price, which jumps with its spread.');
   for (const w of pairingWarnings(t)) warn(w, w);
   const last = state.tradeLast;
   if (last && last.symbol === row.symbol && now - last.at < UNCONFIRMED_WAIT) warn('repeat', `You sent a ${row.label} order ${Math.round((now - last.at) / 1000)}s ago.`);
@@ -362,7 +363,7 @@ function choicePrompt(t) {
   const { keep, pair, cancel } = t.options;
   const limitCount = inWay.filter(o => o.orderType === 'LIMIT').length;
   const targets = limitCount ? ` You lose the ${limitCount > 1 ? 'targets' : 'target'}.` : '';
-  const keepSub = keep.error || `Breakeven stop for the ${units(row, keep.rest)} outside the ${many ? 'limits' : 'limit'}. ${many ? 'The limits stay as they are' : 'The limit stays as it is'}${keep.bare ? `; ${many ? 'their' : 'its'} ${units(row, keep.bare)} have no stop.` : ', with its own stop where it is.'}`;
+  const keepSub = keep.error || `Breakeven stop for the ${units(row, keep.rest)} outside the ${many ? 'limits' : 'limit'}. ${many ? 'The limits stay as they are' : 'The limit stays as it is'}${keep.bare ? `; ${many ? 'their' : 'its'} ${units(row, keep.bare)} ${have(keep.bare)} no stop.` : ', with its own stop where it is.'}`;
   const pairSub = pair.error || `Every share gets a breakeven stop. The ${many ? 'limits are' : 'limit is'} cancelled and placed again with ${many ? 'their' : 'its'} own stop.`;
   const cancelSub = cancel.error || `${many ? 'Cancel them' : 'Cancel it'}, then one breakeven stop for all ${units(row, held)}.${targets}`;
   const opt = (mode, title, sub, off) => `<button class="pos-choice-opt${t.mode === mode ? ' active' : ''}" aria-pressed="${t.mode === mode}" data-action="setPositionBeMode" data-arg="${mode}"${off || t.sent ? ' disabled' : ''}><strong>${esc(title)}</strong><span>${esc(sub)}</span></button>`;
@@ -386,10 +387,10 @@ function targetRows(t, duration) {
 }
 
 function targetHint(t) {
-  const row = t.row, verb = INSTRUCTION_WORDS[row.qty > 0 ? 'SELL' : 'BUY_TO_COVER'];
+  const row = t.row, verb = INSTRUCTION_WORDS[closingInstruction(row.tradeAs, row.qty > 0)], same = row.tradeAs === 'OPTION' ? 'contracts' : 'shares';
   const pairing = t.moved > 0
-    ? `Schwab won't take orders to ${verb} more than you hold, so the target is paired with a stop for the same shares (one cancels the other) and your stop is cut to make room. While the target goes in, ${units(row, t.moved)} have no stop for a moment.`
-    : t.stop > 0 ? `The target is paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)} for the same shares: one cancels the other.`
+    ? `Schwab won't take orders to ${verb} more than you hold, so the target is paired with a stop for the same ${same} (one cancels the other) and your stop is cut to make room. While the target goes in, ${units(row, t.moved)} ${have(t.moved)} no stop for a moment.`
+    : t.stop > 0 ? `The target is paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)} for the same ${same}: one cancels the other.`
     : 'This position has no stop, so the target goes alone.';
   return pairing + ' A limit fills at the target or better, and only if the price gets there.';
 }
@@ -429,7 +430,7 @@ function closeHint(t) {
     ? (t.steps.length > 1 ? 'Orders that would close it are cancelled first, so nothing closes twice. If a cancel fails, the close is not sent.' : '')
     : t.moved > 0 ? `Schwab won't take orders to ${verb} more than you hold, so your stops are cut to fit. Your targets stay.` : '';
   const pair = !limit ? '' : t.stop > 0
-    ? `The limit is paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)} for the same ${row.tradeAs === 'OPTION' ? 'contracts' : 'shares'}: one cancels the other.${c.qty === held ? ` While it goes in, ${units(row, held)} have no stop for a moment.` : ''}`
+    ? `The limit is paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)} for the same ${row.tradeAs === 'OPTION' ? 'contracts' : 'shares'}: one cancels the other.${c.qty === held ? ` While it goes in, ${units(row, held)} ${have(held)} no stop for a moment.` : ''}`
     : 'This position has no stop, so the limit goes alone.';
   return [room, pair, limit ? 'A limit fills at your price or better, and only if the price gets there.' : ''].filter(Boolean).join(' ');
 }
@@ -462,7 +463,7 @@ export function renderPositionTradeSheet(form = true) {
   const hint = t.kind === 'close' ? closeHint(t)
     : t.kind === 'target' ? targetHint(t)
     : `${pairedQty
-      ? `Schwab won't take orders to ${INSTRUCTION_WORDS[row.qty > 0 ? (row.tradeAs === 'OPTION' ? 'SELL_TO_CLOSE' : 'SELL') : (row.tradeAs === 'OPTION' ? 'BUY_TO_CLOSE' : 'BUY_TO_COVER')]} more than you hold, so shares in a limit get their stop paired with it, and the rest get one stop. While ${t.paired.length === 1 ? 'the limit is' : 'the limits are'} placed again, ${units(row, pairedQty)} have no stop for a moment.`
+      ? `Schwab won't take orders to ${INSTRUCTION_WORDS[row.qty > 0 ? (row.tradeAs === 'OPTION' ? 'SELL_TO_CLOSE' : 'SELL') : (row.tradeAs === 'OPTION' ? 'BUY_TO_CLOSE' : 'BUY_TO_COVER')]} more than you hold, so shares in a limit get their stop paired with it, and the rest get one stop. While ${t.paired.length === 1 ? 'the limit is' : 'the limits are'} placed again, ${units(row, pairedQty)} ${have(pairedQty)} no stop for a moment.`
       : 'Other stops are cancelled first, then Schwab swaps the nearest one for the new stop.'}${t.kept ? ' Stops already past breakeven stay where they are.' : ''} A triggered stop becomes a market order and can fill past it.`;
   const closeWords = () => `${cap(INSTRUCTION_WORDS[closingInstruction(row.tradeAs, row.qty > 0)])} ${(t.close.qty || 0).toLocaleString('en-US')} ${row.label}`
     + (t.close.type === 'LIMIT' ? `, limit ${px(t.planError ? t.close.price : t.price)}` : ' at market');

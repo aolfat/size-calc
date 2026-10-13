@@ -612,6 +612,27 @@ test('a target on a short buys back below the price, paired with the stop above'
   assert.match(run(targetFor('TSLA', 260, 20) + '.error'), /The target \$260\.00 is at or above the price \$255\.30\. It would buy back right away/);
 });
 
+test('an option target sells to close on the option grid, paired with the option\'s own stop', async () => {
+  const { run } = await app();
+  const optStop = [single(301, 'STOP', OPT, 'SELL_TO_CLOSE', 2, 4.5)];
+  const plan = plain(run(targetFor(OPT, 8.07, 1, optStop)));
+  assert.equal(plan.error, '');
+  assert.equal(plan.price, 8.1, '$0.10 steps from $3');
+  assert.equal(plan.stop, 4.5);
+  assert.equal(plan.moved, 1);
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId ?? null]), [['replace', 301], ['place', null]]);
+  const leg = qty => [{ instruction: 'SELL_TO_CLOSE', quantity: qty, instrument: { symbol: OPT, assetType: 'OPTION' } }];
+  assert.deepEqual(plan.steps[0].order.orderLegCollection, leg(1), 'the stop cut to the contract left');
+  assert.deepEqual(plan.steps[1].order, { orderStrategyType: 'OCO', childOrderStrategies: [
+    { orderType: 'LIMIT', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', orderStrategyType: 'SINGLE', price: 8.1, orderLegCollection: leg(1) },
+    { orderType: 'STOP', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', orderStrategyType: 'SINGLE', stopPrice: 4.5, orderLegCollection: leg(1) },
+  ] });
+  assert.equal(plain(run(targetFor(OPT, 6.62, 2, []))).price, 6.6);
+  assert.match(run(targetFor(OPT, 6, 1, optStop) + '.error'), /The target \$6\.00 is at or below the price \$6\.10\. It would sell right away/);
+  assert.match(run(targetFor(OPT, 9, 3, optStop) + '.error'), /The target is for 3 contracts and you hold 2/);
+  assert.match(run(targetFor(OPT, 9, 0, optStop) + '.error'), /Pick how many contracts the target sells/);
+});
+
 test('a position without a stop gets the target alone', async () => {
   const { run } = await app();
   const plan = plain(run(targetFor('NVDA', 125, 50, [])));
@@ -621,7 +642,7 @@ test('a position without a stop gets the target alone', async () => {
   assert.deepEqual(plan.steps.map(s => s.order.orderType), ['LIMIT']);
 });
 
-test('a target is refused through the price, over what other targets leave, for options, or with an order in the way', async () => {
+test('a target is refused through the price, over what other targets leave, or with an order in the way', async () => {
   const { run } = await app();
   assert.match(run(targetFor('HOOD', 41, 100) + '.error'), /The target \$41\.00 is at or below the price \$41\.10\. It would sell right away/);
   assert.match(run(targetFor('HOOD', 0, 100) + '.error'), /Set a target price/);
@@ -630,7 +651,6 @@ test('a target is refused through the price, over what other targets leave, for 
   assert.match(run(targetFor('HOOD', 50, 400) + '.error'), /The target is for 400 shares and you hold 300/);
   assert.match(run(targetFor('HOOD', 50, 250, ORDERS) + '.error'), /Your other targets hold 100 of the 300 shares, so this one can take up to 200/);
   assert.match(run(targetFor('AMD', 180, 10, ORDERS) + '.error'), /Your targets already hold all 50 shares/);
-  assert.match(run(targetFor(OPT, 9, 1, ORDERS) + '.error'), /stocks and ETFs/);
   assert.match(run(targetFor('HOOD', 50, 100, [...onlyStop, single(105, 'MARKET', 'HOOD', 'SELL', 20, 0)]) + '.error'), /A market order for 20 is waiting/);
   assert.deepEqual({ ...run(`targetRoom(${rowWith('HOOD', ORDERS)})`) }, { error: '', held: 300, reserved: 100, free: 200 });
 });

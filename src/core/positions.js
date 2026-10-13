@@ -34,6 +34,9 @@ export function parseSchwabOption(symbol) {
   return m ? { root: m[1], exp: `20${m[2]}-${m[3]}-${m[4]}`, type: m[5], strike: Number(m[6]) / 1000 } : null;
 }
 
+/** Schwab's padded option symbol as Tradier takes it: 'AAPL  260620C00245000' → 'AAPL260620C00245000'. @param {string} symbol */
+export const tradierSymbol = symbol => String(symbol || '').replace(/\s+/g, '');
+
 /** what the table shows: the symbol, or 'AAPL 6/20/26 245C' for an option. @param {Instrument} instrument */
 export function positionLabel(instrument) {
   const o = instrument.assetType === 'OPTION' ? parseSchwabOption(instrument.symbol || '') : null;
@@ -448,34 +451,35 @@ export function targetRoom(row) {
  * when the position has a stop, the target goes in paired with a stop for the same shares at the nearest stop's price
  * (one cancels the other), and the plain stops are cut to the shares left outside every limit: the farthest go first,
  * the nearest stays longest, and a stop that is cut keeps its price and how long it lasts. The shares cut out of plain
- * stops (moved) have no stop until the pair is in. Stocks and ETFs only.
+ * stops (moved) have no stop until the pair is in. Stocks, ETFs and options: an option's target is on the option's own
+ * price, on its grid ($0.05 under $3, $0.10 from $3), and pairs with the option's stop.
  * @param {Row} row @param {{ price: number, qty: number, duration: StopDuration }} target @returns {Plan}
  */
 export function targetPlan(row, { price, qty, duration }) {
   const fail = (/** @type {string} */ error) => ({ error, stop: 0, steps: [], paired: [], rest: 0, bare: 0, price: 0, moved: 0 });
-  if (row.tradeAs === 'OPTION') return fail('Targets from here are for stocks and ETFs.');
   const blocked = tradeError(row);
   if (blocked) return fail(blocked);
-  const long = row.qty > 0, held = Math.abs(row.qty), symbol = row.symbol;
+  const long = row.qty > 0, held = Math.abs(row.qty), symbol = row.symbol, assetType = row.tradeAs || 'EQUITY';
+  const unit = assetType === 'OPTION' ? 'contracts' : 'shares', px = (/** @type {number} */ p) => fmtPositionPrice(p, assetType);
   if (!(price > 0)) return fail('Set a target price: tap the chart or type one.');
-  const limit = priceTick(price);
+  const limit = assetType === 'OPTION' ? optionPriceTick(price) : priceTick(price);
   if (long ? !(limit > row.price) : !(limit < row.price)) {
-    return fail(`The target ${fmtTick(limit)} is at or ${long ? 'below' : 'above'} the price ${fmtTick(row.price)}. It would ${long ? 'sell' : 'buy back'} right away.`);
+    return fail(`The target ${px(limit)} is at or ${long ? 'below' : 'above'} the price ${px(row.price)}. It would ${long ? 'sell' : 'buy back'} right away.`);
   }
   const holding = limitsHolding(row);
   if (holding.error) return fail(holding.error);
   const free = held - holding.reserved;
-  if (!Number.isInteger(qty) || qty < 1) return fail(`Pick how many shares the target ${long ? 'sells' : 'buys back'}.`);
+  if (!Number.isInteger(qty) || qty < 1) return fail(`Pick how many ${unit} the target ${long ? 'sells' : 'buys back'}.`);
   if (qty > free) {
-    return fail(!holding.reserved ? `The target is for ${qty} shares and you hold ${held}.`
-      : free > 0 ? `Your other targets hold ${holding.reserved} of the ${held} shares, so this one can take up to ${free}.`
-      : `Your targets already hold all ${held} shares.`);
+    return fail(!holding.reserved ? `The target is for ${qty} ${unit} and you hold ${held}.`
+      : free > 0 ? `Your other targets hold ${holding.reserved} of the ${held} ${unit}, so this one can take up to ${free}.`
+      : `Your targets already hold all ${held} ${unit}.`);
   }
   const { steps, moved, error } = cutStops(row, free - qty, duration);
   if (error) return fail(error);
   const stop = row.stop; // the nearest stop of any kind
-  const target = closeLimitOrder({ symbol, assetType: 'EQUITY', isLong: long, qty, price: limit, duration });
-  steps.push({ kind: 'place', order: stop === null ? target : ocoOrder(target, closeStopOrder({ symbol, assetType: 'EQUITY', isLong: long, qty, stop, stopDuration: duration })) });
+  const target = closeLimitOrder({ symbol, assetType, isLong: long, qty, price: limit, duration });
+  steps.push({ kind: 'place', order: stop === null ? target : ocoOrder(target, closeStopOrder({ symbol, assetType, isLong: long, qty, stop, stopDuration: duration })) });
   return { error: unnamed(steps), stop: stop ?? 0, steps, paired: [], rest: free - qty, bare: stop === null ? qty : 0, price: limit, moved };
 }
 
