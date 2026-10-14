@@ -104,3 +104,11 @@
 .journal-card .positions-head .journal-actions { margin-left: auto; display: inline-flex; gap: 8px; }
 .journal-card .positions-head .journal-actions .btn { margin-left: 0; }
 .journal-soon .sheet-label, .journal-soon .sheet-status, .journal-soon .hint { color: var(--text3); }
+.journal-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 10px; }
+.journal-controls .seg button { padding: 6px 12px; font-size: 12px; }
+.journal-controls input[type="search"] { width: 130px; padding: 6px 10px; font-family: inherit; font-size: 13px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); outline: none; }
+.journal-controls input[type="search"]:focus { border-color: var(--blue); }
+.journal-controls input[type="search"]::placeholder { color: var(--text2); }
+.journal-summary { color: var(--text2); margin-bottom: 8px; }
+.journal-tag { font-size: 10.5px; font-weight: 600; color: var(--blue); border: 1px solid var(--blue-bd); background: var(--blue-bg); border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; }
+.positions-table .journal-open td { background: color-mix(in srgb, var(--blue-bg) 35%, var(--bg2)); } /* opaque: the pinned symbol cell takes the tint too */

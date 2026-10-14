@@ -3,9 +3,9 @@
 // summary of what's been kept. The grouping into trades comes later (docs/journal-step-2.md); this only reads.
 import { positionLabel, schwabTime } from './positions.js';
 
-/** @typedef {{ kind: string, record_id: string, entered_at?: string | null, data: any }} SavedRecord */
+/** @typedef {{ kind: string, record_id: string, account?: string, entered_at?: string | null, data: any }} SavedRecord */
 /**
- * @typedef {{ id: string, orderId: string, time: string, symbol: string, label: string, assetType: string,
+ * @typedef {{ id: string, orderId: string, account?: string, time: string, symbol: string, label: string, assetType: string,
  *   instruction: string, side: 'buy' | 'sell', qty: number, price: number }} Fill
  */
 
@@ -62,7 +62,7 @@ export function fillsFrom(records) {
   const fills = [];
   for (const r of records) {
     if (r.kind !== 'order') continue;
-    for (const f of orderFills(r.data)) if (!seen.has(f.id)) { seen.add(f.id); fills.push(f); }
+    for (const f of orderFills(r.data)) if (!seen.has(f.id)) { seen.add(f.id); fills.push({ ...f, account: r.account || '' }); }
   }
   return fills.sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0));
 }

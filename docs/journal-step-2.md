@@ -83,7 +83,7 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - **Signed out:** it asks you to sign in.
   - **Not connected to Schwab:** it points to Settings.
 
-### 2. Trades
+### 2. Trades (built)
 
 - **`core/journal.js`:** fills become trades, from flat back to flat.
   - first-in first-out, with scale-ins, partial exits and flips
@@ -93,7 +93,17 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 - **Trades are computed every time, never stored.** Trading-Journal-AI stores its trades, and much of its import code exists only to keep them consistent: it rebuilds stored trades that share a day with new fills, because its trade names (close date plus a counter that restarts each import) collide. Computing from kept fills avoids that whole class of bugs. Keying by open time, not close date, also keeps an open trade's key from changing when it closes.
 - **Identical-looking fills are real.** A large order split into pieces can report fills with the same time, price and quantity. They stay separate because they're keyed by Schwab's execution ids, never deduped by content.
 - **A trade's P&L belongs to its close date** (the day it was realized) in the calendar and in daily stats. Open trades are listed apart.
-- **Trade list:** date, symbol, long or short, size, average entry and exit, P&L, hold time, open or closed, R when there's a stop. You can filter by symbol, side and date.
+- **Trade list (built):**
+  - **On the Journal:** a Trades | Fills switch, with Trades by default.
+  - **Columns:** symbol, P&L and R first (phones see them before scrolling), then side, size, average entry and exit, hold time, and when it opened (ET). Open trades are marked.
+  - **Filters:** side and symbol. A date filter comes with the calendar.
+  - **Summary line:** closed trades, wins and win rate, P&L before fees, average R, open trades.
+- **Initial stop and R (built):**
+  - **The stop:** the first Schwab stop order that closes the position. It must be entered from 5 minutes before the first fill (a trigger's stop goes in with its entry) until the close, and sit on the loss side of the average entry.
+  - **R:** P&L ÷ (|entry − stop| × quantity × multiplier).
+  - **A long option with no stop** risks its premium.
+  - **No stop at all:** no R yet. Step 3's review card asks.
+- **Fees:** P&L is before fees for now. Schwab's orders carry none, so fees come from transactions once their real format is checked.
 
 ### 3. Trade page
 

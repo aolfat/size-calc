@@ -6,11 +6,11 @@ import { supabaseClient } from './supabase.js';
 /** how many records one read brings back; plenty for months of trading, raised once slices 2 to 4 need everything */
 export const JOURNAL_READ_LIMIT = 5000;
 
-/** @returns {Promise<{ kind: string, record_id: string, entered_at: string | null, data: any }[]>} */
+/** @returns {Promise<{ kind: string, record_id: string, account: string, entered_at: string | null, data: any }[]>} */
 export async function loadSavedRecords() {
   if (!state.session) throw new Error('Sign in with Google to see your journal.');
   const client = await supabaseClient();
-  const res = await client.from('schwab_records').select('kind,record_id,entered_at,data')
+  const res = await client.from('schwab_records').select('kind,record_id,account,entered_at,data')
     .order('entered_at', { ascending: false }).limit(JOURNAL_READ_LIMIT);
   if (res?.error) {
     const err = new Error(res.error.message || 'Supabase refused the read.');

@@ -1,8 +1,9 @@
-// Journal tab (#journalSection, setView('journal'), key j): what's kept from Schwab in your account, the fills inside your
-// saved orders (newest first), and the Import and Export sheets: Import lists the sources (Schwab now, file upload later),
+// Journal tab (#journalSection, setView('journal'), key j): what's kept from Schwab in your account, your trades (fills grouped
+// flat to flat, with P&L, R and hold time) or the raw fills, filtered by side and symbol, and the Import and Export sheets: Import lists the sources (Schwab now, file upload later),
 // Export the files you can take (Schwab history now, trades later). Trades, P&L and stats come in later slices.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
+import { holdWords, journalTrades, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
@@ -44,6 +45,82 @@ function fillRow(f) {
   </tr>`;
 }
 
+const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' ? 'OPTION' : null);
+const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
+const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
+const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`; // the same minus sign as money
+
+function tradeRow(t) {
+  const open = t.status === 'open';
+  const rTitle = t.rBasis === 'stop' ? `Initial stop ${px(t.stop, t.assetType)}, risk ${fmt$(t.risk)}` : t.rBasis === 'premium' ? `No stop order: the premium paid, ${fmt$(t.risk)}, is the risk` : 'No stop order found';
+  return `<tr${open ? ' class="journal-open"' : ''}>
+    <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}</td>
+    <td class="${pnlClass(t.pnl)}">${open && !t.exits ? '—' : signed$(t.pnl)}${open && t.exits ? '<span class="pos-sub">so far</span>' : ''}</td>
+    <td title="${esc(rTitle)}">${t.r === null ? '—' : signedR(t.r)}</td>
+    <td class="${t.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${t.direction === 'long' ? 'Long' : 'Short'}</td>
+    <td>${t.entryQty}${open && t.openQty !== t.entryQty ? `<span class="pos-sub">${t.openQty} open</span>` : ''}</td>
+    <td>${px(t.avgEntry, t.assetType)}</td>
+    <td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td>
+    <td>${open ? 'open' : esc(holdWords(t.holdMs))}</td>
+    <td>${esc(marketTime(t.openedAt))}</td>
+  </tr>`;
+}
+
+/** the trades and fills the filters let through */
+function filtered(list, sideOf) {
+  const q = state.journalSymbol.trim().toUpperCase();
+  return list.filter(x => (state.journalSide === 'all' || sideOf(x) === state.journalSide) && (!q || (x.label || x.symbol).toUpperCase().includes(q)));
+}
+
+function summaryLine(trades) {
+  const s = tradesSummary(trades);
+  if (!s.closed && !s.open) return 'No trades match.';
+  const parts = [`${s.closed} closed`];
+  if (s.closed) parts.push(`${s.wins} won (${s.winRate}%)`, `<span class="${pnlClass(s.pnl)}">${signed$(s.pnl)}</span> before fees`);
+  if (s.avgR !== null) parts.push(`average ${signedR(s.avgR)} over ${s.withR}`);
+  if (s.open) parts.push(`${s.open} open`);
+  return parts.join(' · ');
+}
+
+function controls() {
+  const on = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
+  const tab = (v, label) => `<button ${on(state.journalTab, v)} data-action="setJournalTab" data-arg="${v}">${label}</button>`;
+  const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
+  return `<div class="journal-controls">
+    <div class="seg" aria-label="Show">${tab('trades', 'Trades')}${tab('fills', 'Fills')}</div>
+    <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
+    <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
+  </div>`;
+}
+
+function tradesView(trades) {
+  if (!trades.length) return '<p class="hint">No trades match.</p>';
+  return `<p class="hint journal-summary">${summaryLine(trades)}</p>
+    <div class="positions-wrap"><table class="positions-table journal-table">
+      <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
+      <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
+    </table></div>
+    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. P&amp;L is before fees. R uses the first Schwab stop order on the loss side of your entry; a long option with no stop risks its premium.</p>`;
+}
+
+function fillsView(fills) {
+  if (!fills.length) return '<p class="hint">No fills match.</p>';
+  return `<div class="positions-wrap"><table class="positions-table journal-table">
+      <thead><tr><th scope="col">Symbol</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Time (ET)</th></tr></thead>
+      <tbody>${fills.slice(0, JOURNAL_SHOWN).map(fillRow).join('')}</tbody>
+    </table></div>
+    <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders.</p>`;
+}
+
+export function setJournalTab(tab) { state.journalTab = tab === 'fills' ? 'fills' : 'trades'; renderJournal(); }
+export function setJournalSide(side) { state.journalSide = ['long', 'short'].includes(side) ? side : 'all'; renderJournal(); }
+export function journalSymbolChanged() {
+  state.journalSymbol = document.getElementById('journalSymbol').value;
+  renderJournal();
+  const el = document.getElementById('journalSymbol'); // the redraw replaced the box: keep typing in it
+  if (el && el.focus) { el.focus(); if (el.setSelectionRange) el.setSelectionRange(el.value.length, el.value.length); }
+}
+
 export function renderJournal() {
   const el = document.getElementById('journalSection');
   if (!el) return;
@@ -69,11 +146,9 @@ export function renderJournal() {
     </div>
     <p class="hint" id="journalStatus" role="status">${statusLine()}</p>
     ${state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
-    ${fills.length ? `<div class="positions-wrap"><table class="positions-table journal-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Time (ET)</th></tr></thead>
-      <tbody>${fills.slice(0, JOURNAL_SHOWN).map(fillRow).join('')}</tbody>
-    </table></div>
-    <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders. Trades, P&amp;L and stats come next.</p>`
+    ${fills.length ? controls() + (state.journalTab === 'fills'
+      ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
+      : tradesView(filtered(journalTrades(fills, records), t => t.direction)))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
 }
