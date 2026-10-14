@@ -3,7 +3,7 @@
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 
-export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration', 'schwab_acct_size', 'schwab_acct_source'];
+export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration', 'schwab_acct_size', 'schwab_acct_source', 'schwab_callback'];
 const REFRESH_LIFE = 7 * 24 * 60 * 60 * 1000; // Schwab ends a login seven days after it starts; refreshes don't extend it
 
 export function schwabProxy() { return (store.get('schwab_proxy') || '').trim().replace(/\/+$/, ''); }
@@ -27,11 +27,39 @@ export function schwabAccount() {
 
 export function schwabConnected() { return !!(schwabSession() && schwabAccount()); }
 
+/** the worker's callback as last read: { proxy, callback }, kept per worker URL so a new worker is asked again */
+export function schwabCallbackCached() {
+  try {
+    const c = JSON.parse(store.get('schwab_callback') || 'null');
+    return c && c.proxy === schwabProxy() && typeof c.callback === 'string' ? c.callback : null;
+  } catch(e) { return null; }
+}
+
+/** ask the worker where Schwab sends the browser after login. null when it doesn't say (a worker from before /callback) */
+export async function schwabFetchCallback() {
+  const proxy = schwabProxy();
+  const res = await fetch(proxy + '/callback');
+  const body = res.ok ? await res.json().catch(() => null) : null;
+  const callback = typeof body?.callback === 'string' ? body.callback : null;
+  if (callback) store.set('schwab_callback', JSON.stringify({ proxy, callback }));
+  else store.del('schwab_callback');
+  return callback;
+}
+
+/** true when the callback is this app's own page (any trailing slash, query or hash aside), so it finishes the login itself */
+export function callbackIsHere(callback, href) {
+  try {
+    const a = new URL(callback), b = new URL(href);
+    const path = u => u.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
+    return a.origin === b.origin && path(a) === path(b);
+  } catch(e) { return false; }
+}
+
 /** how long a stop placed from here lasts: Today or Until canceled (the default) */
 export function schwabStopDuration() { return store.get('schwab_stop_duration') === 'DAY' ? 'DAY' : 'GOOD_TILL_CANCEL'; }
 
 // the worker URL and your preferences outlast a logout
-const KEPT = ['schwab_proxy', 'schwab_stop_duration', 'schwab_acct_source'];
+const KEPT = ['schwab_proxy', 'schwab_stop_duration', 'schwab_acct_source', 'schwab_callback'];
 export function schwabDisconnect() { SCHWAB_KEYS.filter(k => !KEPT.includes(k)).forEach(k => store.del(k)); }
 
 // Schwab's errors come as { message, errors: [...] }, { error, error_description }, or nothing at all

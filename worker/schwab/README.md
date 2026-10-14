@@ -5,6 +5,7 @@ can't call `api.schwabapi.com` directly, and the token exchange needs your app
 secret, which should not live in a web page. This worker:
 
 - `GET /login?state=…` redirects to Schwab's login with your app key and callback URL
+- `GET /callback` tells the app the callback URL, so it can drop the paste box when the callback is the app itself
 - `POST /token` swaps the code from the callback for tokens (uses the secret)
 - `POST /refresh` swaps a refresh token for a fresh access token (uses the secret)
 - `/trader/v1/*` relays Trader API calls with the app's bearer token
@@ -44,13 +45,15 @@ Schwab.
 After the Schwab login, Schwab sends the browser to your callback URL with a
 `code` in the address.
 
-- **Callback is `https://127.0.0.1` (the usual default):** the page fails to
-  load. That's expected. Copy the whole address from the address bar and paste
-  it into the app within about 30 seconds (the code expires fast).
-- **Callback is the app's own URL** (for example
+- **Callback is the app's own URL** (recommended, for example
   `https://aolfat.github.io/size-calc/`): the app finishes the login by itself.
-  Changing the callback in the portal can put the app back into review, so
-  only do this if you're fine waiting.
+  The worker reports its callback at `/callback`, and when it's the app's own
+  page, Settings hides the paste box. The portal takes one HTTPS address (a
+  comma list was rejected). Changing the callback can put the app back into
+  review, so do it right after a fresh login.
+- **Callback is `https://127.0.0.1`:** the page fails to load. That's
+  expected. Copy the whole address from the address bar and paste it into the
+  app within about 30 seconds (the code expires fast).
 
 Schwab ends every login after 7 days. The app says when it's time to log in
 again.
