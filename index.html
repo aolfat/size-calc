@@ -559,9 +559,10 @@
       </div>
       <div class="sheet-section" id="schwabSection">
         <div class="sheet-label">Schwab trading <span class="sheet-status" id="schwabStatus"></span></div>
-        <div class="field">
+        <p class="hint" id="schwabProxyLine" style="display:none;">Worker: <span id="schwabProxyHost"></span> · <button class="link-btn" data-action="editSchwabProxy">Change</button></p>
+        <div class="field" id="schwabProxyField">
           <label for="schwabProxy">Schwab worker URL</label>
-          <input type="url" id="schwabProxy" placeholder="https://size-calc-schwab.you.workers.dev" autocomplete="off" spellcheck="false" data-input="schwabProxyChanged" />
+          <input type="url" id="schwabProxy" placeholder="https://size-calc-schwab.you.workers.dev" autocomplete="off" spellcheck="false" data-input="schwabProxyChanged" data-change="schwabProxyDone" />
         </div>
         <div id="schwabLogin">
           <div class="row" style="align-items:center;gap:8px;">

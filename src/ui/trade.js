@@ -27,6 +27,24 @@ export function schwabProxyChanged() {
   state.schwabCallbackTimer = setTimeout(refreshSchwabCallback, 600); // ask the worker once typing settles
 }
 
+/** the worker URL shows as one line once it's set and known to work (it answered, or you're logged in through it) */
+export function schwabProxySettled() {
+  return proxyOk(schwabProxy()) && (!!schwabCallbackCached() || !!schwabSession()) && !state.schwabProxyEditing;
+}
+
+/** Change: bring the worker URL box back */
+export function editSchwabProxy() {
+  state.schwabProxyEditing = true;
+  updateSchwabUi();
+  document.getElementById('schwabProxy').focus();
+}
+
+/** leaving the box (or Enter) ends editing; it folds back to one line once the worker answers */
+export function schwabProxyDone() {
+  state.schwabProxyEditing = false;
+  updateSchwabUi();
+}
+
 /** true when Schwab sends the browser back to this page after login, so no address needs pasting */
 export function schwabReturnsHere() {
   const callback = schwabCallbackCached();
@@ -125,6 +143,10 @@ export function updateSchwabUi() {
   const acct = schwabAccount();
   const proxyEl = document.getElementById('schwabProxy');
   if (document.activeElement !== proxyEl) proxyEl.value = store.get('schwab_proxy') || '';
+  const settled = schwabProxySettled() && document.activeElement !== proxyEl; // never fold away while typing
+  document.getElementById('schwabProxyLine').style.display = settled ? '' : 'none';
+  document.getElementById('schwabProxyField').style.display = settled ? 'none' : '';
+  if (settled) document.getElementById('schwabProxyHost').textContent = new URL(schwabProxy()).host;
   document.getElementById('schwabLogin').style.display = session ? 'none' : '';
   document.getElementById('schwabPaste').style.display = schwabReturnsHere() ? 'none' : '';
   document.getElementById('schwabAccountRow').style.display = session ? '' : 'none';
