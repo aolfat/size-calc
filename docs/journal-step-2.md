@@ -50,6 +50,20 @@ Every account number and hash is masked. A summary at the top says how many rows
 2. I turn it into anonymized test fixtures. Your real file never goes in the repo.
 3. The button is removed once the importer lands.
 
+### 1a. Raw capture (built)
+
+Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, with account numbers masked, in Supabase's `schwab_records`. This works before the parsing is designed: storing raw JSON doesn't depend on its format, so history stops expiring right away.
+
+- **When it runs:**
+  - **Automatically,** at most every 6 hours, once you're signed in with Google and connected to Schwab. It runs on sign-in, on connecting Schwab, and when you come back to the app.
+  - **Save now** in Settings → Schwab trading.
+  - **The status line** under the account row says when it last saved, and how many orders and trades.
+- **What it reads:**
+  - orders from the last 59 days
+  - transactions a year back the first time, falling back to 59 days if Schwab refuses, then from a week before the last save
+- **Storage:** one row per order (child orders stay inside their parent) and per transaction, keyed by Schwab's id. Re-reading an order updates it (working, then filled or canceled), and a record without an id is counted but not kept.
+- **What comes later:** fills, stop orders, trades and stats are derived from these rows, so a parsing fix re-runs over everything kept.
+
 ### 1. Capture
 
 - **Migration:** `fills`, `stop_orders`, `bars_5m`, `import_runs`. Row-level security on every table, the user's rows deleted with the account, the existing `tests/rls.test.mjs` checks applying automatically.
@@ -89,6 +103,7 @@ Trade at Schwab tickets, and Positions' breakeven stops, targets and closes, sav
 
 | Table | One row per | Holds |
 |---|---|---|
+| `schwab_records` (built) | Order or transaction | Kind, Schwab's id, account (last 4 digits), entered time, Schwab's JSON whole with account numbers masked |
 | `fills` | Fill | Schwab id (unique per account), order id, symbol (options by full contract symbol), underlying, asset type, side, quantity, price, fee, time, open or close |
 | `stop_orders` | Stop order | Order id, symbol, side, quantity, stop price, entered, status, what replaced it |
 | `bars_5m` | Symbol per day | That day's 5-minute bars packed in one value |

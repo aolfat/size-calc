@@ -106,6 +106,8 @@ export function createState() {
     schwabRefreshing: null, // the one in-flight token refresh, shared by concurrent calls
     schwabCallbackTimer: null, // asks the worker for its callback once the URL stops changing
     historyBusy: false, // the journal spike's Schwab history export is reading
+    captureBusy: false, // raw capture is reading Schwab and saving to Supabase
+    captureError: '', // the last capture's failure, shown on its status line
     schwabProxyEditing: false, // Change pressed: the worker URL box stays open until you leave it
     acctSizeBusy: false, // the daily account size read is in flight
     tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent

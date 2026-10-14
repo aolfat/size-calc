@@ -13,6 +13,7 @@ import { renderShares, sharesPlan } from './shares.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
 import { refreshQuote } from './ticker.js';
+import { maybeCapture, renderCaptureStatus } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
 const mask = last4 => '••' + last4;
@@ -94,7 +95,7 @@ export async function finishSchwab(text = document.getElementById('schwabRedirec
   document.getElementById('schwabRedirect').value = '';
   setSchwabNote('');
   const ok = await reloadSchwabAccounts();
-  if (ok) showToast(`Schwab connected. Account ${mask(schwabAccount().last4)}.`);
+  if (ok) { showToast(`Schwab connected. Account ${mask(schwabAccount().last4)}.`); maybeCapture(); }
   return ok;
 }
 
@@ -157,6 +158,7 @@ export function updateSchwabUi() {
   document.getElementById('schwabStatus').innerHTML = session
     ? `<span style="color:var(--green)">●</span> ${acct ? 'Connected · ' + esc(mask(acct.last4)) : 'Logged in, no account'} · ${loginLeft(session.refreshExp - Date.now())}`
     : store.get('schwab_tokens') ? '<span style="color:var(--amber)">●</span> Login expired' : '○ Not connected';
+  renderCaptureStatus();
   updateTradeButton();
   updateAccountSourceUi();
 }
@@ -386,7 +388,7 @@ export async function initSchwab(href = location.href) {
   updateSchwabUi();
   refreshSchwabCallback(); // a worker whose callback is this app hides the paste box
   // a login finished in another tab shows up here, and a new day's account size comes in
-  window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); });
+  window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); maybeCapture(); });
   const url = new URL(href);
   if (url.searchParams.get('login') === 'google') { dailyAccountSize(); return; } // Google's return through Supabase carries a code too: not ours
   if (!url.searchParams.get('code')) { dailyAccountSize(); return; }
