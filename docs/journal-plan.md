@@ -111,15 +111,16 @@ Rough size: about 5 to 7 MB a year of active trading, most of it 5-minute bars, 
 
 ### Plans and R
 
-- **A plan is recorded whenever you size a trade:**
-  - a Trade at Schwab ticket, saved when Schwab confirms the order (today the ticket disappears when the sheet closes)
-  - a pinned card or quick lookup card
-- **Saved positions retire.** The card's "save" becomes "plan", and open trades come from imported fills.
-- **R comes from, in order:**
-  1. the plan made in the app
-  2. the first stop order on the position
-  3. the review card asking for the stop you had in mind
-- **Matching fills to plans:** by order id when the app placed the order. Otherwise by symbol (the full contract symbol for options) within a time window, which is still to be set.
+Updated 2026-10-14: trades are often placed outside the app, so the plan doesn't have to come from it. Details in [step 2](journal-step-2.md).
+
+- **Initial stop, in order:**
+  1. the first stop order working on the position at entry, from Schwab's order history
+  2. a plan saved in the app, if you sized the trade here
+  3. the review card asking, with one-tap picks from the saved bars (entry day's low, entry candle's low, prior day's low; highs for shorts)
+- **R** = P&L ÷ (entry − initial stop) × quantity × multiplier, blank without a stop.
+- **Option risk is chosen per trade:** a stop on the underlying (the chain's loss model), the premium paid, or a stop on the option price. Default: a Schwab stop order on the option if there is one, otherwise premium paid.
+- **Saving plans from the app** is a small extra at the end of step 2, not a prerequisite.
+- **Saved positions are retired** (done on `main`): Positions shows live Schwab positions.
 
 ### Labels
 
@@ -223,11 +224,8 @@ The cutoffs are still to be set.
 
 ## Phases
 
-1. **Foundation**
-   - **First, [step 1](journal-step-1-supabase.md):** Supabase and Google sign-in. Move today's settings, Tradier key, and saved positions into Supabase, and remove the Cloudflare sync.
-   - **Then:** the journal tables, the device cache, and export.
-   - Can ship earlier on its own: save the Trade at Schwab ticket as a plan when the order is placed. Until then, every order loses its plan.
-2. **Schwab import:** fills, stop orders, fees, dedupe, grouping into trades, 5-minute bars, today's fills on open.
+1. **Foundation, [step 1](journal-step-1-supabase.md) (done):** Supabase, Google sign-in, settings and the Tradier key in the account, the Cloudflare sync removed.
+2. **The journal, [step 2](journal-step-2.md):** a data spike, then capture (fills, stop orders, bars, imports), trades, the trade page, calendar and stats, and saving plans from the app.
 3. **Journal tab:** trade list, trade page (charts with fills, labels, notes), P&L calendar, dashboard stats.
 4. **Review deck:** cards, the banner, required fields, labels picked by hand.
 5. **Guesses and flags:**

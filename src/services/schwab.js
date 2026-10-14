@@ -244,6 +244,19 @@ export async function schwabRecentOrders(now = Date.now(), hash) {
   return body;
 }
 
+/**
+ * TRADE transactions between two times. Schwab decides how far back this reaches (sources say 60 days or a year);
+ * the journal spike's export tries several ranges to find out.
+ * @param {number} from ms @param {number} to ms @param {string} [hash]
+ */
+export async function schwabTransactions(from, to, hash) {
+  const q = new URLSearchParams({ startDate: new Date(from).toISOString(), endDate: new Date(to).toISOString(), types: 'TRADE' });
+  const res = await schwabApi(`${accountPath(hash)}/transactions?${q}`);
+  const body = await readJson(res);
+  if (!res.ok || !Array.isArray(body)) throw schwabError(body, res.status);
+  return body;
+}
+
 /** where to send the browser to log in; state ties the callback to this attempt */
 export function schwabLoginUrl() {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
