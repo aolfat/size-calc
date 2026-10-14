@@ -1,6 +1,6 @@
 // Returns simulator modal: Black-Scholes return % from now to expiry at a chosen underlying price.
 import { state } from '../state.js';
-import { RISK_FREE, bsPrice } from '../core/black-scholes.js';
+import { RISK_FREE, bsPrice, impliedVolatility } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
 import { expiryCloseMs, spreadWidth, strikesLabel, typeLabel } from '../core/options.js';
@@ -13,9 +13,21 @@ import { effects } from './effects.js';
 
 export function openSim(o) {
   if (!o) return;
-  if (!(o.iv > 0)) { showError('No IV on this contract — cannot simulate.'); return; }
   if (!(o.entry > 0)) { showError('No entry price to measure returns from.'); return; }
   if (o.sizing === 'allocation' && o.qty < 1) { showError('No contracts fit this allocation.'); return; }
+  if (o.mark != null) {
+    const asOf = o.asOf ?? Date.now(), spot = +Number(o.spot).toFixed(2);
+    const T = (expiryCloseMs(o.expStr) - asOf) / (365 * 24 * 3600 * 1000);
+    // Fit each leg to its own quote. Work on copies so the card retains its supplied IV and prices.
+    const legs = o.legs?.map(L => ({ ...L, iv: impliedVolatility(o.isCall, L.mid, spot, L.K, T, RISK_FREE) }));
+    const iv = legs ? legs[0]?.iv : impliedVolatility(o.isCall, o.mark, spot, o.K, T, RISK_FREE);
+    if (!(iv > 0) || legs?.some(L => !(L.iv > 0))) {
+      showError(`Cannot fit a simulation to the ${o.markSource || 'Schwab'} price for ${o.label}. Refresh the quote and try again.`);
+      return;
+    }
+    o = { ...o, spot, iv, legs, asOf };
+  }
+  if (!(o.iv > 0)) { showError('No IV on this contract — cannot simulate.'); return; }
   // a held position has no underlying stop: ±1σ chips instead of stop and R
   const em = o.em > 0, rChips = !em && o.sizing !== 'allocation';
   for (const id of ['simRChips', 'simRChips2']) document.getElementById(id).style.display = rChips ? '' : 'none';
@@ -23,7 +35,9 @@ export function openSim(o) {
   state.simState = o;
   state.simHover = -1;
   document.getElementById('simTitle').textContent = o.label;
-  document.getElementById('simMeta').textContent = `${o.entryWord || (o.credit ? 'credit' : 'entry')} ${fmt$(o.entry)}/${o.sizing === 'allocation' ? 'share' : 'ct'} · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% held constant${o.shortPut ? ' · return on assignment notional' : ''}`;
+  const markTime = typeof o.markAsOf === 'number' ? new Date(o.markAsOf).toLocaleTimeString() : o.markAsOf;
+  const mark = o.mark != null ? `${o.markSource || 'Schwab'} ${fmt$(o.mark)}/ct${markTime ? ` as of ${markTime}` : ''} · ` : '';
+  document.getElementById('simMeta').textContent = `${mark}${o.entryWord || (o.credit ? 'credit' : 'entry')} ${fmt$(o.entry)}/${o.sizing === 'allocation' ? 'share' : 'ct'} · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% ${o.mark != null ? 'fitted, ' : ''}held constant${o.shortPut ? ' · return on assignment notional' : ''}`;
   const sl = document.getElementById('simPrice');
   // a position isn't the loaded ticker, so its range comes from its own expected move, not the calculator's ADR
   const span = em ? Math.max(o.spot * 0.12, o.em * 1.5) : Math.max(o.spot * 0.12, (state.adrValue || 0) * 2.5);
@@ -43,8 +57,8 @@ export function closeSim() {
 export function simSetPrice(mult) { // chips: stop / current / 1R / 2R, or −1σ / +1σ
   const o = state.simState;
   if (!o) return;
-  // freshest price we have: the live quote when it matches this ticker, else the open-time snapshot
-  const cur = (state.quoteData && state.quoteData.symbol === o.parsedTicker && effectivePrice(state.quoteData)) || o.spot;
+  // A fitted position keeps its price snapshot; the calculator's quote may be older or move independently.
+  const cur = o.asOf != null ? o.spot : (state.quoteData && state.quoteData.symbol === o.parsedTicker && effectivePrice(state.quoteData)) || o.spot;
   const bull = o.credit ? !o.isCall : o.isCall;
   const rDist = bull ? o.spot - o.stop : o.stop - o.spot;
   const target = mult === 'stop' ? o.stop
@@ -71,16 +85,18 @@ export function simPriceTyped(el) {
 
 export function simCurve(S) {
   const exp = expiryCloseMs(state.simState.expStr); // the 4pm New York close, not the browser's 4pm
-  const now = Date.now();
+  const now = state.simState.asOf ?? Date.now(); // redraws must not age a price snapshot while its fitted IV stays fixed
   const total = Math.max(exp - now, 3600 * 1000);
   const N = 80;
   const pts = [];
   for (let i = 0; i <= N; i++) {
     const t = now + total * i / N;
     const T = (exp - t) / (365 * 24 * 3600 * 1000);
-    pts.push({ t, v: state.simState.legs
+    const v = state.simState.legs
       ? state.simState.legs.reduce((a, L) => a + L.side * bsPrice(state.simState.isCall, S, L.K, Math.max(0, T), L.iv || state.simState.iv, RISK_FREE), 0)
-      : bsPrice(state.simState.isCall, S, state.simState.K, T, state.simState.iv, RISK_FREE) });
+      : bsPrice(state.simState.isCall, S, state.simState.K, T, state.simState.iv, RISK_FREE);
+    // At the quoted starting point, avoid solver round-off showing a tiny loss or negative zero.
+    pts.push({ t, v: i === 0 && S === state.simState.spot && state.simState.mark != null ? state.simState.mark : v });
   }
   return pts;
 }
@@ -193,6 +209,7 @@ export function drawSim() {
 export function simParamsFromCard(d, entry, qty) {
   return {
     isCall: d.isCall, K: d.parsed.strike, expStr: d.parsed.expStr, iv: d.iv, legs: d.legs,
+    mark: d.mid, markSource: 'Tradier mid', markAsOf: d.asOf,
     credit: !!d.credit, shortPut: !!d.shortPut, sizing: d.sizing, width: spreadWidth(d),
     entry, qty: d.sizing === 'allocation' ? qty : Math.max(1, qty), spot: d.underlyingPrice, stop: d.stopLevel,
     parsedTicker: d.parsed.ticker,
