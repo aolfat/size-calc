@@ -214,6 +214,7 @@ The cutoffs are still to be set.
 - Cross-analysis between labels.
 
 **[Trading-Journal-AI](https://github.com/simonro/Trading-Journal-AI) (MIT)**
+- *Read again on 2026-10-14; what step 2 and step 3 take from its source is listed in [step 2](journal-step-2.md#for-step-3-review-from-trading-journal-ai).*
 - Tracking whether you or the app set each label.
 - Showing low-confidence guesses first.
 - Starter mistake and emotion lists.

@@ -90,22 +90,62 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - the ×100 for options
   - a stable trade key (account, symbol, direction, open time), so notes added later never come loose
   - ported from LuxAlgo's MIT round-trip engine and tested against the spike's fixtures
+- **Trades are computed every time, never stored.** Trading-Journal-AI stores its trades, and much of its import code exists only to keep them consistent: it rebuilds stored trades that share a day with new fills, because its trade names (close date plus a counter that restarts each import) collide. Computing from kept fills avoids that whole class of bugs. Keying by open time, not close date, also keeps an open trade's key from changing when it closes.
+- **Identical-looking fills are real.** A large order split into pieces can report fills with the same time, price and quantity. They stay separate because they're keyed by Schwab's execution ids, never deduped by content.
+- **A trade's P&L belongs to its close date** (the day it was realized) in the calendar and in daily stats. Open trades are listed apart.
 - **Trade list:** date, symbol, long or short, size, average entry and exit, P&L, hold time, open or closed, R when there's a stop. You can filter by symbol, side and date.
 
 ### 3. Trade page
 
 - **Charts:** daily and 5-minute, with entries, exits and stops drawn on them. This reuses `ui/candles.js` and the position chart's drawing.
 - **Detail:** the fills table, the stop orders over time, P&L, R, hold time.
+- **Excursions, computed from the saved 5-minute bars over the hold.** Trading-Journal-AI defines these well but only fills them with demo data:
+  - **MFE:** the best unrealized gain reached.
+  - **MAE:** the worst unrealized loss reached.
+  - **Exit efficiency:** realized gain ÷ MFE, the share of the move you captured. It's averaged over **winners only**, since a loser has no gain to capture.
+  - **MAE is reported for winners and losers separately,** because the gap between the two calibrates the stop.
 
 ### 4. Calendar and stats
 
 - **Calendar:** daily P&L with weekly totals.
 - **Headline stats:** win rate, profit factor, average win and loss, expectancy, P&L over time.
-- **Breakdowns:** by symbol, side, time of day, weekday and hold time. Groups under 10 trades are marked thin.
+- **Equity over time:** an equity curve, drawdown from the running peak, monthly results, and win and loss streaks.
+- **Breakdowns:**
+  - **By symbol:** top 40, with a warning when one name carries the account.
+  - **By side, weekday and instrument.**
+  - **By time of day,** bucketed on the first entry: 9:30–9:45, 9:45–10:30, 10:30–11:00, 11:00–13:30, 13:30–15:30, 15:30–16:00 (from Trading-Journal-AI).
+  - **By hold time,** with winners' hold time against losers'.
+  - **Scaled out against all-or-nothing:** more than one exit, or exactly one.
+  - **R-multiple distribution,** for trades with an initial stop.
+  - **Exit efficiency by setup,** once setups exist in step 3.
+- **Every bucket shows the same stats:**
+  - trades, net P&L, average and **median** P&L
+  - win rate, average win and loss, profit factor
+  - a count of big losses, measured in R (worse than −1.5R) so it scales with size, rather than a fixed dollar amount
+- **Groups under 10 trades are marked thin.**
 
 ### 5. Saving plans from the app
 
 Trade at Schwab tickets, and Positions' breakeven stops, targets and closes, save the plan (entry, stop, risk $, quantity, order id). Imports match it to the trade by order id.
+
+### 6. Squash the migrations
+
+The schema is new and lives in one database, so once slices 1 to 5 settle, the migrations fold into one baseline:
+1. **Write one migration** with the final schema. Steps that cancel out disappear, like `saved_positions`, created and then dropped.
+2. **Delete the old migration files.**
+3. **Update Supabase's migration history** with `npx supabase migration repair`: the old versions marked reverted and the new one marked applied. The database itself doesn't change.
+4. **Check the single file** against a scratch project. `tests/rls.test.mjs` keeps checking the rules either way.
+
+Done once, at the end of step 2, after the journal's own tables exist.
+
+## For step 3 (review), from Trading-Journal-AI
+
+Not part of step 2, noted so the review design picks them up:
+- **Goals:** targets for win rate, profit factor, day win rate, expectancy, average win/loss and exit efficiency. The dashboard measures you against them.
+- **A setup grade, A++ to F,** on each trade, plus a "by grade" report that checks the ladder: if A trades don't beat C trades, the grading isn't telling you anything.
+- **Idea source as a label:** where the idea came from (a scanner, a person, an alert, option flow), scored like setups and tags.
+- **A label library that remembers aliases:** merging "ORB" into "Opening range" rewrites past trades and keeps the alias, so the old name maps to the kept one from then on.
+- **The weekly review's shape:** your most repeated mistake, your most consistent edge, and one rule for next week. Trading-Journal-AI has AI write it; ours could start from plain stats (the most costly mistake in R).
 
 ## Tables (draft, settled after the spike)
 
