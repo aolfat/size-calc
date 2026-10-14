@@ -78,7 +78,8 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
   run("setView('journal')");
   await run('loadJournal()');
-  assert.ok(supabase.reads.some(r => r.cols === 'kind,record_id,entered_at,data'), 'the list reads the kept records');
+  assert.ok(supabase.reads.some(r => r.cols === 'kind,record_id,account,entered_at,data'), 'the list reads the kept records');
+  run("setJournalTab('fills')");
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026/);
   const rows = [...out.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td class="journal-(buy|sell)">([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/g)].map(m => m.slice(1, 7));
@@ -95,6 +96,38 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   assert.match(out, /data-action="openJournalExport"[^>]*>Export</);
   assert.doesNotMatch(out, /schwabHistoryBtn/, 'the history file is in Export, not the card');
   assert.doesNotMatch(html.match(/id="settingsSheet"[\s\S]*?id="tradeSheet"/)[0], /schwabHistoryBtn/, 'and not in Settings');
+});
+
+test('Trades is the default view: fills grouped into trades, with P&L, R, hold time, and a summary', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const { run, elements } = await app({ storage: connected(), supabase: fakeSupabase(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = elements.get('journalSection').innerHTML;
+  assert.match(out, /data-action="setJournalTab" data-arg="trades">Trades/);
+  assert.match(out, /class="active" aria-pressed="true" data-action="setJournalTab" data-arg="trades"/, 'Trades is on by default');
+  assert.match(out, /1 closed · 0 won \(0%\) · <span class="journal-sell">−\$504\.00<\/span> before fees · average −1\.00R over 1 · 1 open/);
+  const rows = [...out.matchAll(/<tr( class="journal-open")?>\s*<td><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
+  assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
+  assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L and R lead, so phones see them before scrolling');
+  assert.match(out, /<td><b>AAPL<\/b><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<td>2d 0h<\/td>/);
+  assert.match(out, /P&amp;L is before fees/);
+});
+
+test('filters: side and symbol narrow the trades, and Fills shows the raw fills', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const { run, elements } = await app({ storage: connected(), supabase: fakeSupabase(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  run("setJournalSide('short')");
+  assert.match(elements.get('journalSection').innerHTML, /No trades match/);
+  run("setJournalSide('all'); document.getElementById('journalSymbol').value = '245c'; journalSymbolChanged()");
+  const out = elements.get('journalSection').innerHTML;
+  assert.match(out, /AAPL 12\/18\/26 245C/);
+  assert.doesNotMatch(out, /<td><b>AAPL<\/b>/, 'the stock trade is filtered out');
+  run("document.getElementById('journalSymbol').value = ''; journalSymbolChanged(); setJournalTab('fills')");
+  assert.match(elements.get('journalSection').innerHTML, /4 fills\. Fills are read from your saved Schwab orders/);
 });
 
 test('Import lists the sources: Schwab with its last import and Import now, file upload coming', async () => {
