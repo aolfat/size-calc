@@ -103,4 +103,4 @@
 .journal-sell { color: var(--red); font-weight: 600; }
 .journal-card .positions-head .journal-actions { margin-left: auto; display: inline-flex; gap: 8px; }
 .journal-card .positions-head .journal-actions .btn { margin-left: 0; }
-.journal-soon .sheet-label, .journal-soon .hint { color: var(--text3); }
+.journal-soon .sheet-label, .journal-soon .sheet-status, .journal-soon .hint { color: var(--text3); }
