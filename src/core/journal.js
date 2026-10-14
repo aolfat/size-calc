@@ -15,10 +15,10 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
 /**
  * @typedef {{ id: string, orderId: string, account?: string, time: string, symbol: string, label: string, assetType: string,
  *   instruction: string, side: 'buy' | 'sell', qty: number, price: number }} Fill
- * @typedef {{ orderId: string, account: string, symbol: string, instruction: string, stopPrice: number, entered: string, status: string }} StopOrder
+ * @typedef {{ orderId: string, rootId: string, account: string, symbol: string, instruction: string, stopPrice: number, entered: string, status: string }} StopOrder
  * @typedef {{ key: string, account: string, symbol: string, label: string, assetType: string, multiplier: number,
  *   direction: 'long' | 'short', openedAt: string, closedAt: string | null, entryQty: number, openQty: number,
- *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], holdMs: number | null,
+ *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
  *   status: 'open' | 'win' | 'loss' | 'breakeven', stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | null, r: number | null }} Trade
  */
@@ -32,7 +32,7 @@ function startTrade(fill, account, direction) {
     key: `${account}|${fill.symbol}|${direction}|${fill.time}`,
     account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
-    pnl: 0, exits: 0, fillIds: [], lots: /** @type {{ qty: number, price: number }[]} */ ([]),
+    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), lots: /** @type {{ qty: number, price: number }[]} */ ([]),
   };
 }
 
@@ -47,7 +47,7 @@ function finish(t) {
     entryQty: t.entryQty, openQty: closed ? 0 : openQty,
     avgEntry: t.entryQty ? t.entryNotional / t.entryQty : 0,
     avgExit: t.exitQty ? t.exitNotional / t.exitQty : null,
-    pnl, exits: t.exits, fillIds: t.fillIds,
+    pnl, exits: t.exits, fillIds: t.fillIds, entryOrderIds: t.entryOrderIds,
     holdMs: closed && t.closedAt ? Date.parse(t.closedAt) - Date.parse(t.openedAt) : null,
     status: !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
     stop: null, stopOrderId: '', risk: null, rBasis: null, r: null,
@@ -86,6 +86,7 @@ export function buildTrades(fills) {
         t.lots.push({ qty, price: f.price });
         t.entryQty += qty;
         t.entryNotional += qty * f.price;
+        if (!t.entryOrderIds.includes(f.orderId)) t.entryOrderIds.push(f.orderId);
         continue;
       }
       // reducing: match the oldest lots first
@@ -111,6 +112,7 @@ export function buildTrades(fills) {
           t.lots.push({ qty, price: f.price });
           t.entryQty += qty;
           t.entryNotional += qty * f.price;
+          t.entryOrderIds.push(f.orderId);
         }
       }
     }
@@ -124,14 +126,14 @@ const CLOSES = { long: /^(SELL|SELL_TO_CLOSE)$/, short: /^(BUY|BUY_TO_COVER|BUY_
 /**
  * Every stop order in the kept orders, children of triggers and one-cancels-other pairs included, whatever happened to it
  * (a stop that was replaced or canceled still says where you first put it). A child without its own entered time takes
- * its parent's: the stop of a trigger goes in with its entry.
+ * its parent's: the stop of a trigger goes in with its entry. rootId is the top order, a trigger's entry.
  * @param {{ kind: string, account?: string, data: any }[]} records
  * @returns {StopOrder[]}
  */
 export function stopOrdersFrom(records) {
   /** @type {StopOrder[]} */
   const out = [];
-  const walk = (/** @type {any} */ o, /** @type {string} */ account, /** @type {string} */ parentEntered) => {
+  const walk = (/** @type {any} */ o, /** @type {string} */ account, /** @type {string} */ parentEntered, /** @type {string} */ rootId) => {
     if (!o || typeof o !== 'object') return;
     const enteredRaw = o.enteredTime || parentEntered;
     const stopPrice = Number(o.stopPrice);
@@ -139,19 +141,20 @@ export function stopOrdersFrom(records) {
       const leg = (o.orderLegCollection || [])[0] || {};
       const ms = schwabTime(enteredRaw);
       out.push({
-        orderId: String(o.orderId ?? ''), account, symbol: leg.instrument?.symbol || '', instruction: leg.instruction || '',
+        orderId: String(o.orderId ?? ''), rootId, account, symbol: leg.instrument?.symbol || '', instruction: leg.instruction || '',
         stopPrice, entered: Number.isFinite(ms) ? new Date(ms).toISOString() : '', status: o.status || '',
       });
     }
-    (o.childOrderStrategies || []).forEach((/** @type {any} */ c) => walk(c, account, enteredRaw));
+    (o.childOrderStrategies || []).forEach((/** @type {any} */ c) => walk(c, account, enteredRaw, rootId));
   };
-  for (const r of records) if (r.kind === 'order') walk(r.data, r.account || '', '');
+  for (const r of records) if (r.kind === 'order') walk(r.data, r.account || '', '', String(r.data?.orderId ?? ''));
   return out;
 }
 
 /**
  * The trade's initial stop and R. The stop is the first stop order that closes this position, entered from just before
- * the first fill until the trade closed, on the loss side of the entry (a stop above a long's entry protects profit, it
+ * the first fill until the trade closed (or attached to an order that opened it, whenever that was entered: a resting
+ * entry's stop goes in with it, hours before the fill), on the loss side of the entry (a stop above a long's entry protects profit, it
  * isn't the risk). R = P&L ÷ risk, risk = |entry − stop| × quantity × multiplier. A long option with no stop risks its
  * premium. Open trades get their stop and risk, but no R yet.
  * @param {Trade} trade @param {StopOrder[]} stops
@@ -163,7 +166,7 @@ export function withRisk(trade, stops) {
   const lossSide = (/** @type {number} */ p) => trade.direction === 'long' ? p < trade.avgEntry : p > trade.avgEntry;
   const first = stops
     .filter(s => s.account === trade.account && s.symbol === trade.symbol && CLOSES[trade.direction].test(s.instruction) && lossSide(s.stopPrice))
-    .filter(s => { const t = Date.parse(s.entered); return t >= opened - STOP_LEAD_MS && t <= until; })
+    .filter(s => trade.entryOrderIds.includes(s.rootId) || (t => t >= opened - STOP_LEAD_MS && t <= until)(Date.parse(s.entered)))
     .sort((a, b) => (a.entered < b.entered ? -1 : a.entered > b.entered ? 1 : 0))[0];
   let risk = null, rBasis = /** @type {Trade['rBasis']} */ (null);
   if (first) {

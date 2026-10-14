@@ -100,6 +100,19 @@ test('a trigger child stop counts though it was entered with its entry, seconds 
   assert.equal(t.r, -1, 'stopped out for −1R (slippage of 2 cents, on a $5.02 risk)');
 });
 
+test('a resting entry: its attached stop counts though it was entered hours before the fill', async () => {
+  const child = { orderId: 602, orderType: 'STOP', stopPrice: 95, status: 'FILLED', orderLegCollection: [{ instruction: 'SELL', instrument: { symbol: 'AAPL', assetType: 'EQUITY' } }] };
+  const parent = { orderId: 601, orderType: 'LIMIT', enteredTime: '2026-10-01T13:00:00+0000', childOrderStrategies: [child] };
+  const fills = [fill('e', '2026-10-01T16:00:00.000Z', 'buy', 100, 100, { orderId: '601' }), fill('x', '2026-10-02T15:00:00.000Z', 'sell', 100, 95)];
+  const [t] = await trades(fills, [{ kind: 'order', account: '6789', data: parent }]);
+  assert.equal(t.stop, 95, 'attached to the entry, so it counts');
+  assert.equal(t.r, -1);
+  const [own] = await trades(fills, [{ kind: 'order', account: '6789', data: { ...parent, childOrderStrategies: [{ ...child, enteredTime: '2026-10-01T13:00:00+0000' }] } }]);
+  assert.equal(own.stop, 95, 'with its own entered time too');
+  const [other] = await trades(fills, [{ kind: 'order', account: '6789', data: { ...parent, orderId: 700 } }]);
+  assert.equal(other.stop, null, 'a stop on some other order, entered hours before, is not this trade\'s');
+});
+
 test('identical-looking fills from a split order are both kept, and accounts never mix', async () => {
   const list = await trades([
     fill('p1', '2026-10-01T14:30:00.000Z', 'buy', 100, 50),

@@ -99,7 +99,7 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - **Filters:** side and symbol. A date filter comes with the calendar.
   - **Summary line:** closed trades, wins and win rate, P&L before fees, average R, open trades.
 - **Initial stop and R (built):**
-  - **The stop:** the first Schwab stop order that closes the position. It must be entered from 5 minutes before the first fill (a trigger's stop goes in with its entry) until the close, and sit on the loss side of the average entry.
+  - **The stop:** the first Schwab stop order that closes the position. It must be entered from 5 minutes before the first fill until the close, or be attached to the order that opened the trade (a resting entry's stop, entered hours before it fills), and sit on the loss side of the average entry.
   - **R:** P&L ÷ (|entry − stop| × quantity × multiplier).
   - **A long option with no stop** risks its premium.
   - **No stop at all:** no R yet. Step 3's review card asks.
