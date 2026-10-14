@@ -207,6 +207,39 @@ test('the paste box hides when the worker says Schwab sends you back to this app
   assert.equal(old.elements.get('schwabPaste').style.display, '', "a worker that can't say keeps the box");
 });
 
+test('the worker URL folds to one line once it works, and Change opens it again', async () => {
+  const cached = JSON.stringify({ proxy: PROXY, callback: 'https://aolfat.github.io/size-calc/' });
+  const shown = (els, id) => els.get(id).style.display !== 'none';
+
+  const fresh = await app({ storage: new Map() });
+  fresh.run('updateSchwabUi()');
+  assert.ok(shown(fresh.elements, 'schwabProxyField'), 'no worker yet: the box is where setup starts');
+  assert.ok(!shown(fresh.elements, 'schwabProxyLine'));
+
+  const unanswered = await app({ storage: new Map([['schwab_proxy', PROXY]]) });
+  unanswered.run('updateSchwabUi()');
+  assert.ok(shown(unanswered.elements, 'schwabProxyField'), "a worker that hasn't answered keeps the box");
+
+  const known = await app({ storage: new Map([['schwab_proxy', PROXY], ['schwab_callback', cached]]) });
+  known.run('updateSchwabUi()');
+  assert.ok(!shown(known.elements, 'schwabProxyField'));
+  assert.ok(shown(known.elements, 'schwabProxyLine'));
+  assert.equal(known.elements.get('schwabProxyHost').textContent, 'size-calc-schwab.test.workers.dev');
+
+  known.run('editSchwabProxy()');
+  assert.ok(shown(known.elements, 'schwabProxyField'), 'Change brings the box back');
+  known.run('schwabProxyDone()');
+  assert.ok(!shown(known.elements, 'schwabProxyField'), 'leaving it folds it again');
+
+  const loggedIn = await app({ storage: connected() });
+  loggedIn.run('updateSchwabUi()');
+  assert.ok(!shown(loggedIn.elements, 'schwabProxyField'), 'a working login proves the worker too');
+
+  const typing = await app({ storage: new Map([['schwab_proxy', PROXY], ['schwab_callback', cached]]) });
+  typing.run("document.activeElement = document.getElementById('schwabProxy'); updateSchwabUi()");
+  assert.ok(shown(typing.elements, 'schwabProxyField'), 'never folds away while you type');
+});
+
 test('the callback answer is kept per worker URL and survives a logout', async () => {
   const storage = connected([['schwab_callback', JSON.stringify({ proxy: PROXY, callback: 'https://aolfat.github.io/size-calc/' })]]);
   const { run } = await app({ storage });
