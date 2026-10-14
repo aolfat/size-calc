@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fmtTick, inRegularHours, sharesStopOrder, sharesTicketError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
-import { parseSchwabRedirect, proxyOk, schwabAccount, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStopDuration } from '../services/schwab.js';
+import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStopDuration } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
@@ -23,6 +23,21 @@ const unreachable = 'Could not reach the Schwab worker. Check its URL in Setting
 export function schwabProxyChanged() {
   store.set('schwab_proxy', document.getElementById('schwabProxy').value.trim());
   updateSchwabUi();
+  clearTimeout(state.schwabCallbackTimer);
+  state.schwabCallbackTimer = setTimeout(refreshSchwabCallback, 600); // ask the worker once typing settles
+}
+
+/** true when Schwab sends the browser back to this page after login, so no address needs pasting */
+export function schwabReturnsHere() {
+  const callback = schwabCallbackCached();
+  return !!callback && callbackIsHere(callback, globalThis.location?.href || '');
+}
+
+/** ask the worker for its callback and show or hide the paste box; a worker that can't say keeps the box */
+export async function refreshSchwabCallback() {
+  if (!proxyOk(schwabProxy())) return;
+  try { await schwabFetchCallback(); } catch(e) { return; } // offline: the last answer stands
+  updateSchwabUi();
 }
 
 export function connectSchwab() {
@@ -32,8 +47,12 @@ export function connectSchwab() {
     return;
   }
   window.open(schwabLoginUrl(), '_blank', 'noopener');
-  setSchwabNote('Log in at Schwab. Then copy the address you land on and paste it here.');
-  document.getElementById('schwabRedirect').focus();
+  if (schwabReturnsHere()) {
+    setSchwabNote('Log in at Schwab in the new tab. It comes back to this app and connects by itself.');
+  } else {
+    setSchwabNote('Log in at Schwab. Then copy the address you land on and paste it here.');
+    document.getElementById('schwabRedirect').focus();
+  }
 }
 
 /** finish a login from the callback address: pasted by hand, or this page's own address when the app is the callback */
@@ -107,6 +126,7 @@ export function updateSchwabUi() {
   const proxyEl = document.getElementById('schwabProxy');
   if (document.activeElement !== proxyEl) proxyEl.value = store.get('schwab_proxy') || '';
   document.getElementById('schwabLogin').style.display = session ? 'none' : '';
+  document.getElementById('schwabPaste').style.display = schwabReturnsHere() ? 'none' : '';
   document.getElementById('schwabAccountRow').style.display = session ? '' : 'none';
   const accounts = schwabAccounts();
   document.getElementById('schwabAccount').innerHTML = accounts.length
@@ -342,6 +362,7 @@ export function renderTradeSheet() {
 
 export async function initSchwab(href = location.href) {
   updateSchwabUi();
+  refreshSchwabCallback(); // a worker whose callback is this app hides the paste box
   // a login finished in another tab shows up here, and a new day's account size comes in
   window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); });
   const url = new URL(href);

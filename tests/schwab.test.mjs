@@ -29,7 +29,8 @@ function network(schwab) {
     if (url.includes('/markets/quotes')) return json({ quotes: { quote: QUOTE } });
     return json({});
   };
-  return { calls, fetch, schwabCalls: () => calls.filter(c => c.url.startsWith(PROXY)) };
+  // schwabCalls leaves out the /callback lookup: it only reads the worker's setting, never touches a login
+  return { calls, fetch, schwabCalls: () => calls.filter(c => c.url.startsWith(PROXY) && !c.url.endsWith('/callback')) };
 }
 
 // the status line under the review's buttons (rendered into the sheet body)
@@ -175,6 +176,49 @@ test('an expired access token refreshes once before the call; a refused refresh 
   const second = await app({ fetch: refused.fetch, storage: over });
   await assert.rejects(second.run("schwabApi('/accounts/accountNumbers')"), /login expired/);
   assert.equal(over.has('schwab_tokens'), false);
+});
+
+test('the paste box hides when the worker says Schwab sends you back to this app', async () => {
+  const APP = 'https://aolfat.github.io/size-calc/';
+  const setup = async callback => {
+    const net = network(async path => path === '/callback'
+      ? (callback === undefined ? json({ message: 'not found' }, 404) : json({ callback }))
+      : json({}, 500));
+    const h = await app({ fetch: net.fetch, storage: new Map([['schwab_proxy', PROXY]]) });
+    h.run(`location = { href: '${APP}' }; window.open = () => null`);
+    await h.run('refreshSchwabCallback()');
+    return h;
+  };
+
+  const own = await setup('https://aolfat.github.io/size-calc/');
+  assert.equal(own.elements.get('schwabPaste').style.display, 'none');
+  own.run('connectSchwab()');
+  assert.match(own.elements.get('schwabNote').textContent, /connects by itself/);
+
+  const noSlash = await setup('https://aolfat.github.io/size-calc');
+  assert.equal(noSlash.elements.get('schwabPaste').style.display, 'none', 'a trailing slash is the same page');
+
+  const dead = await setup('https://127.0.0.1');
+  assert.equal(dead.elements.get('schwabPaste').style.display, '', 'a 127.0.0.1 callback still needs the paste');
+  dead.run('connectSchwab()');
+  assert.match(dead.elements.get('schwabNote').textContent, /paste it here/);
+
+  const old = await setup(undefined);
+  assert.equal(old.elements.get('schwabPaste').style.display, '', "a worker that can't say keeps the box");
+});
+
+test('the callback answer is kept per worker URL and survives a logout', async () => {
+  const storage = connected([['schwab_callback', JSON.stringify({ proxy: PROXY, callback: 'https://aolfat.github.io/size-calc/' })]]);
+  const { run } = await app({ storage });
+  run("location = { href: 'https://aolfat.github.io/size-calc/' }");
+  assert.equal(run('schwabReturnsHere()'), true);
+  run("store.set('schwab_proxy', 'https://other.workers.dev')");
+  assert.equal(run('schwabReturnsHere()'), false, 'a different worker is asked again');
+  run(`store.set('schwab_proxy', '${PROXY}'); schwabDisconnect()`);
+  assert.equal(run('schwabReturnsHere()'), true);
+  assert.equal(run("callbackIsHere('https://aolfat.github.io/size-calc/', 'http://localhost:8765/')"), false);
+  assert.equal(run("callbackIsHere('https://aolfat.github.io/size-calc/', 'https://aolfat.github.io/size-calc/index.html?x=1#market')"), true);
+  assert.equal(run("callbackIsHere('not a url', 'https://aolfat.github.io/')"), false);
 });
 
 // ---------- the trade button and review sheet ----------
@@ -333,6 +377,15 @@ test('worker: Trader calls pass the bearer through and expose the new order id',
   assert.equal(bare.status, 401);
   const other = await worker.fetch(new Request('https://w.test/v1/oauth/token', { headers: ORIGIN }), ENV);
   assert.equal(other.status, 404);
+});
+
+test('worker: the app can read the callback, other sites cannot', async () => {
+  const res = await worker.fetch(new Request('https://w.test/callback', { headers: ORIGIN }), ENV);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { callback: 'https://127.0.0.1' });
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://aolfat.github.io');
+  const other = await worker.fetch(new Request('https://w.test/callback', { headers: { Origin: 'https://evil.example' } }), ENV);
+  assert.equal(other.status, 403);
 });
 
 test('worker: a missing app key, secret, or callback says so instead of half working', async () => {

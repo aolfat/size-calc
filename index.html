@@ -568,7 +568,7 @@
             <button class="btn" id="schwabConnect" data-action="connectSchwab">Log in to Schwab</button>
           </div>
           <p class="hint" id="schwabNote" role="status" style="display:none;"></p>
-          <div class="row" style="align-items:flex-end;">
+          <div class="row" id="schwabPaste" style="align-items:flex-end;">
             <div class="field" style="flex:2;">
               <label for="schwabRedirect">Address you landed on</label>
               <input type="text" id="schwabRedirect" placeholder="https://127.0.0.1/?code=…" autocomplete="off" spellcheck="false" data-enter="finishSchwab" />
@@ -591,7 +591,7 @@
           </div>
         </div>
         <p class="hint">Sends shares orders from the shares card: a market entry, then your stop once it fills. The login stays in this browser, never in your account. Schwab asks you to log in again every 7 days.</p>
-        <details class="hint-details"><summary>Setup</summary>Deploy the worker in <b>worker/schwab</b> with your app key, secret, and callback URL (its README has the steps), then paste its URL above. Log in to Schwab. If your callback is https://127.0.0.1, the page you land on won't load: copy its whole address and paste it here within about 30 seconds.</details>
+        <details class="hint-details"><summary>Setup</summary>Deploy the worker in <b>worker/schwab</b> with your app key, secret, and callback URL (its README has the steps), then paste its URL above. Set the callback to this app's address and Schwab sends you straight back here after you log in. With https://127.0.0.1 as the callback, the page you land on won't load: copy its whole address and paste it here within about 30 seconds.</details>
       </div>
     </div>
   </div>

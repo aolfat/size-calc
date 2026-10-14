@@ -40,6 +40,9 @@ export default {
     if (!cors) return new Response('origin not allowed', { status: 403 });
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
+    // where Schwab sends the browser after login: when it's the app itself, the app finishes the login with no paste
+    if (req.method === 'GET' && url.pathname === '/callback') return json({ callback: env.SCHWAB_CALLBACK_URL }, 200, cors);
+
     // code or refresh token in, tokens out; the secret never leaves this worker
     if (req.method === 'POST' && (url.pathname === '/token' || url.pathname === '/refresh')) {
       const j = await req.json().catch(() => ({}));
