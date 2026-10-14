@@ -13,7 +13,7 @@ import { renderShares, sharesPlan } from './shares.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
 import { refreshQuote } from './ticker.js';
-import { maybeCapture, renderCaptureStatus } from './schwab-capture.js';
+import { maybeCapture } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
 const mask = last4 => '••' + last4;
@@ -158,7 +158,6 @@ export function updateSchwabUi() {
   document.getElementById('schwabStatus').innerHTML = session
     ? `<span style="color:var(--green)">●</span> ${acct ? 'Connected · ' + esc(mask(acct.last4)) : 'Logged in, no account'} · ${loginLeft(session.refreshExp - Date.now())}`
     : store.get('schwab_tokens') ? '<span style="color:var(--amber)">●</span> Login expired' : '○ Not connected';
-  renderCaptureStatus();
   updateTradeButton();
   updateAccountSourceUi();
 }

@@ -52,6 +52,10 @@ export function createState() {
     },
     positionsView: false,
     utilsView: false,
+    journalView: false,
+    journalRecords: null, // the kept Schwab records, newest first, once read
+    journalLoading: false,
+    journalError: '',
     marketView: false,
     levDir: 'both', // both | long | short — a display filter, re-renders the last result
     levLast: null,

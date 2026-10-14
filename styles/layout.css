@@ -11,7 +11,7 @@
 #modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection, #futuresSection { order: 6; }
 #optionTicket { order: 7; } #chartWrap { order: 8; }
 #quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #positionsSection { order: 12; }
-#optionsSection { order: 14; } #marketSection, #utilsSection { order: 15; }
+#optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection { order: 15; }
 
 /* Desktop shell (calculator and positions): the page holds still and each pane scrolls on its own.
    Rail = the ticket (inputs + answer), main = quote, charts, chain. Nothing is position:sticky. */
@@ -28,8 +28,9 @@
   .app.positions-view #mainPane { grid-column: 1 / -1; }
   /* Tools, Futures and Market scroll as a page, but the header stays where the shell puts it (full width, same height)
      so switching views never moves the tabs; their content is a centered column under it */
-  .app.utils-view, .app.futures-view, .app.market-view { max-width: none; padding: 0 20px 60px; }
+  .app.utils-view, .app.futures-view, .app.market-view, .app.journal-view { max-width: none; padding: 0 20px 60px; }
   .app.utils-view .pane > *, .app.futures-view .pane > * { width: 100%; max-width: 888px; margin-inline: auto; }
+  .app.journal-view .pane > * { width: 100%; max-width: 1100px; margin-inline: auto; }
   .app.market-view .pane > * { width: 100%; max-width: 1468px; margin-inline: auto; }
 
   /* the rail is phone-width: reuse the phone's compact ticket rows */

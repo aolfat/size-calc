@@ -83,7 +83,7 @@ function updateDailyControls() {
 
 export function updateChartVisibility() {
   const has5 = state.chartBars.length > 0, hasD = state.dailyBars.length > 0 && state.showDaily;
-  document.getElementById('chartWrap').style.display = !state.positionsView && !state.utilsView && !state.marketView && state.currentMode !== 'futures' && (has5 || hasD) ? 'block' : 'none';
+  document.getElementById('chartWrap').style.display = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView && state.currentMode !== 'futures' && (has5 || hasD) ? 'block' : 'none';
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
   document.getElementById('dailyToggle').classList.toggle('active', state.showDaily);

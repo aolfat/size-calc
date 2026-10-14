@@ -37,7 +37,7 @@ export function initShortcuts() {
     if (typing && e.key === '/' && e.target.id === 'ticker') { e.preventDefault(); e.target.select(); return; } // '/' re-selects even from inside the field
     if (typing || state.openSheetName || state.simState) return; // never hijack keys while filling a field or working in a sheet or the simulator
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
-    if (state.marketView && !['/', 'm', 's', 'o', 'f', 'v', 't', 'u', 'r', '?'].includes(e.key)) return;
+    if (state.marketView && !['/', 'm', 's', 'o', 'f', 'v', 'j', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
       case '/': {
         if (!state.marketView && state.currentMode === 'futures') { setView('calc'); focus('futuresContract'); break; }
@@ -49,6 +49,7 @@ export function initShortcuts() {
       case 'o': setMode('options'); break;
       case 'f': setMode('futures'); break;
       case 'v': setView(state.positionsView ? 'calc' : 'positions'); break;
+      case 'j': setView(state.journalView ? 'calc' : 'journal'); break;
       case 't':
       case 'u': setView(state.utilsView ? 'calc' : 'utils'); break;
       case 'm': setView(state.marketView ? 'calc' : 'market'); break;

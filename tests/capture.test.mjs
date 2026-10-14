@@ -89,12 +89,11 @@ test('nothing is kept without both logins, and a failed save keeps the last good
   assert.equal(JSON.parse(ok.storage.get('schwab_capture')).at, NOW);
 });
 
-test('the automatic save runs only when due, quietly, and the status line says when it last saved', async () => {
+test('the automatic save runs only when due, and quietly; Save now runs any time', async () => {
   const w = world();
   const { run, elements } = await app({ fetch: w.fetch, storage: connected(), supabase: w.supabase, session: SESSION });
   await run('maybeCapture()');
   assert.equal(w.saved.length, 3);
-  assert.match(elements.get('schwabCaptureStatus').innerHTML, /^History saved .* · 2 orders, 2 trades · <button[^>]*data-action="captureNow"/);
   assert.equal(elements.get('errorBox').textContent, '', 'quiet: no toast');
   await run('maybeCapture()');
   assert.equal(w.saved.length, 3, 'not due again for 6 hours');
@@ -104,10 +103,6 @@ test('the automatic save runs only when due, quietly, and the status line says w
 
   const other = await app({ fetch: w.fetch, storage: connected([['schwab_capture', JSON.stringify({ at: Date.now(), user: 'someone-else', account: '6789', orders: 1, transactions: 1 })]]), supabase: w.supabase, session: SESSION });
   assert.equal(other.run('captureDue()'), true, "another Google user's capture doesn't count");
-
-  const signedOut = await app({ storage: connected() });
-  signedOut.run('renderCaptureStatus()');
-  assert.match(signedOut.elements.get('schwabCaptureStatus').innerHTML, /Sign in with Google/);
 });
 
 test('the rows builder keeps ids as text and times as ISO', async () => {

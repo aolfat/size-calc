@@ -176,7 +176,7 @@ export function updateApiStatus() {
 // the friendly first step: shown in the calculator until a key is saved
 
 export function updateSetupNotice() {
-  const calc = !state.positionsView && !state.utilsView && !state.marketView && state.currentMode !== 'futures';
+  const calc = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView && state.currentMode !== 'futures';
   document.getElementById('setupNotice').style.display = calc && !document.getElementById('apiKey').value.trim() ? '' : 'none';
 }
 

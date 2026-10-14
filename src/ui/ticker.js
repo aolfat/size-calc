@@ -100,7 +100,7 @@ export async function fetchQuote() {
     // a newer Load owns the button and the sections; otherwise show whatever quote is loaded now
     if (current()) {
       document.getElementById('fetchBtnText').innerHTML = state.currentMode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
-      setQuoteVisible(!!state.quoteData && !(state.positionsView || state.utilsView || state.marketView || state.currentMode === 'futures'));
+      setQuoteVisible(!!state.quoteData && !(state.positionsView || state.utilsView || state.marketView || state.journalView || state.currentMode === 'futures'));
     }
   }
 }

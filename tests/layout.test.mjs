@@ -26,7 +26,7 @@ const shown = el => el.style.display !== 'none';
 
 test('header carries the view nav with Positions and the settings button', async () => {
   const header = block('appHeader');
-  for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandTools', 'settingsBtn']) {
+  for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandJournal', 'brandTools', 'settingsBtn']) {
     assert.match(header, new RegExp(`id="${id}"`), id);
   }
   assert.doesNotMatch(header, /id="riskPill"/, 'risk is adjusted in the page, not behind a pill');
@@ -229,7 +229,7 @@ test('closing details clears the rail ticket too', async () => {
 // ---------- phone layout: bottom tabs, screen title, one search box ----------
 
 test('phones get the view tabs as a bottom bar with icons, clear of the home indicator', async () => {
-  for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandTools']) {
+  for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandJournal', 'brandTools']) {
     assert.match(block(id), /<svg class="tab-icon"/, `${id} has an icon for the bottom bar`);
   }
   assert.match(html, /name="viewport" content="[^"]*viewport-fit=cover/, 'safe-area insets need viewport-fit=cover');
