@@ -110,7 +110,9 @@ test('Trades is the default view: fills grouped into trades, with P&L, R, hold t
   const rows = [...out.matchAll(/<tr( class="journal-open")?>\s*<td><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
   assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
   assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L and R lead, so phones see them before scrolling');
-  assert.match(out, /<td><b>AAPL<\/b><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<td><b>AAPL<\/b><span class="pos-sub"><button class="pos-link" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z"[^>]*>Edit<\/button><\/span><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<th scope="col">R<\/th><th scope="col">Stop<\/th>/);
+  assert.match(out, /aria-label="Set a stop for AAPL 12\/18\/26 245C">Set<\/button><span class="pos-sub">premium<\/span>/, 'the call has no stop: Set, and the premium is its risk');
   assert.match(out, /<td>2d 0h<\/td>/);
   assert.match(out, /P&amp;L is before fees/);
 });
@@ -204,4 +206,97 @@ test('fills: matched to their order leg, zero quantities skipped, words for ever
   assert.deepEqual(fills.map(f => [f.symbol, f.side, f.qty, f.time]), [['NVDA', 'buy', 5, '2026-10-01T14:30:00.000Z']], 'no execution time: the order time');
   assert.equal(run("instructionWords('SELL_SHORT')"), 'Sell short');
   assert.equal(run("instructionWords('BUY_TO_COVER')"), 'Buy to cover');
+});
+
+// ---------- your stop and hidden trades (trade_reviews) ----------
+
+const STOCK = '6789|AAPL|long|2026-10-01T14:30:01.000Z';
+const OPTION = '6789|AAPL  261218C00245000|long|2026-10-06T14:00:02.000Z';
+async function journalWith(reviews = [], tweak) {
+  const supabase = fakeRecords(RECORDS.map(r => ({ ...r, account: '6789' })), reviews);
+  if (tweak) tweak(supabase);
+  const a = await app({ storage: connected(), supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  return { ...a, supabase, out: () => a.elements.get('journalSection').innerHTML, sheet: () => a.elements.get('tradeReviewBody').innerHTML };
+}
+
+test('your stop: set it from the trade sheet, R counts from it, and Schwab\'s is one tap back', async () => {
+  const { run, state, supabase, out, sheet, elements } = await journalWith();
+  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,hidden'), 'your reviews are read with the records');
+  run(`openTradeReview('${STOCK}')`);
+  assert.equal(state.openSheetName, 'tradeReview');
+  assert.equal(elements.get('tradeReviewTitle').textContent, 'AAPL');
+  assert.match(sheet(), /Using Schwab's first stop, \$95\.00 \(10\/1, 10:30 AM\)\. Risk \$502\.00\./);
+  assert.match(sheet(), /data-action="pickTradeStop" data-arg="95">\$95\.00/, 'Schwab\'s stops are listed to pick');
+
+  run("document.getElementById('tradeStopInput').value = '101'; tradeStopPreview()");
+  assert.equal(elements.get('tradeStopPreview').textContent, "A long's stop goes below the entry.");
+  assert.equal(elements.get('tradeStopSave').disabled, true);
+  run("document.getElementById('tradeStopInput').value = '97.5'; tradeStopPreview()");
+  assert.equal(elements.get('tradeStopPreview').textContent, 'Risk $252.00 · −2.00R');
+  assert.equal(elements.get('tradeStopSave').disabled, false);
+
+  await run('saveTradeStop()');
+  const w = supabase.writes.filter(x => x.table === 'trade_reviews');
+  assert.deepEqual(w.map(x => [x.trade_key, x.stop, x.hidden, x.onConflict]), [[STOCK, 97.5, false, 'user_id,trade_key']]);
+  assert.equal(state.openSheetName, null, 'saved: the sheet closes');
+  assert.match(elements.get('errorBox').textContent, /Stop saved: R counts from \$97\.50\./);
+  assert.match(out(), /title="Your stop \$97\.50, risk \$252\.00">−2\.00R<\/td>\s*<td><button[^>]*>\$97\.50<\/button><span class="pos-sub">yours<\/span>/);
+
+  run(`openTradeReview('${STOCK}')`);
+  assert.match(sheet(), /Using your stop, \$97\.50\. Risk \$252\.00\. Schwab's first was \$95\.00\./);
+  await run('clearTradeStop()');
+  assert.equal(supabase.reviewRows()[0].stop, null);
+  assert.equal(supabase.reviewRows()[0].hidden, false, 'clearing the stop keeps the rest of the row');
+  assert.match(out(), /title="Initial stop \$95\.00, risk \$502\.00">−1\.00R/);
+});
+
+test('an option\'s mental stop is a price on the option, and replaces the premium as its risk', async () => {
+  const { run, sheet, out } = await journalWith();
+  run(`openTradeReview('${OPTION}')`);
+  assert.match(sheet(), /No stop: the premium paid, \$1,235\.00, is the risk/);
+  assert.match(sheet(), /For an option, the stop is a price on the option itself/);
+  run("document.getElementById('tradeStopInput').value = '2.5'; tradeStopPreview()");
+  assert.match(run("document.getElementById('tradeStopPreview').textContent"), /Risk \$485\.00, R once it closes/, '(4.1167 − 2.50) × 3 × 100, and it\'s still open');
+  await run('saveTradeStop()');
+  assert.match(out(), /\$2\.50<\/button><span class="pos-sub">yours<\/span>/);
+});
+
+test('hide a trade that doesn\'t belong: out of the list and the stats, and back with Show', async () => {
+  const { run, supabase, out, sheet } = await journalWith();
+  run(`openTradeReview('${STOCK}')`);
+  assert.match(sheet(), /data-action="hideTrade"[^>]*>Hide this trade/);
+  await run('hideTrade()');
+  assert.deepEqual(supabase.reviewRows().map(r => [r.trade_key, r.hidden, r.stop]), [[STOCK, true, null]]);
+  assert.doesNotMatch(out(), /<td><b>AAPL<\/b>/, 'gone from the list');
+  assert.match(out(), /0 closed · 1 open · 1 hidden <button class="pos-link" data-action="toggleHiddenTrades">Show<\/button>/, 'and from the stats');
+  run('toggleHiddenTrades()');
+  assert.match(out(), /<tr class="journal-hidden">\s*<td><b>AAPL<\/b> <span class="journal-tag">hidden<\/span>/, 'shown dimmed to bring it back');
+  assert.match(out(), /0 closed · 1 open · 1 hidden/, 'still not counted');
+  run(`openTradeReview('${STOCK}')`);
+  await run('unhideTrade()');
+  assert.equal(supabase.reviewRows()[0].hidden, false);
+  assert.match(out(), /1 closed · 0 won/);
+});
+
+test('reviews read when the journal opens; a refused save goes back; a missing table still shows the trades', async () => {
+  const kept = await journalWith([{ trade_key: STOCK, stop: '97.5', hidden: false }, { trade_key: OPTION, stop: null, hidden: true }]);
+  assert.match(kept.out(), /\$97\.50<\/button><span class="pos-sub">yours<\/span>/, 'Postgres numerics arrive as text');
+  assert.match(kept.out(), /1 hidden/);
+
+  kept.run(`openTradeReview('${STOCK}')`);
+  kept.supabase.fail({ status: 500, message: 'nope' });
+  await kept.run('hideTrade()');
+  assert.match(kept.sheet(), /Couldn't save: nope/);
+  assert.equal(kept.state.openSheetName, 'tradeReview', 'the sheet stays open');
+  assert.match(kept.out(), /<td><b>AAPL<\/b>/, 'and the trade comes back');
+
+  const missing = await journalWith([], s => s.failTable('trade_reviews'));
+  assert.match(missing.out(), /Your stops and hidden trades couldn't load \(the database doesn(?:'|&#39;)t have the trade_reviews table yet\)\. Trades show with Schwab's stops\./);
+  assert.match(missing.out(), /−1\.00R/, 'the trades still show');
+  missing.run(`openTradeReview('${STOCK}')`);
+  assert.match(missing.sheet(), /saving is off until they do/);
+  await missing.run('hideTrade()');
+  assert.equal(missing.supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing written over a row it couldn\'t read');
 });

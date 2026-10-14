@@ -1,7 +1,8 @@
 // @ts-check
 // Journal trades, pure: kept fills grouped into trades (flat back to flat, first in first out, scale-ins, partial exits,
 // flips, ×100 for options), each with P&L, hold time, its initial stop and R. Trades are computed every time from the kept
-// fills, never stored (docs/journal-step-2.md). Schwab's orders carry no fees, so P&L here is before fees.
+// fills, never stored (docs/journal-step-2.md). Schwab's orders carry no fees, so P&L here is before fees. Your own word on
+// a trade (trade_reviews, keyed by the trade key) overrides its stop and can hide it.
 import { schwabTime } from './positions.js';
 
 const EPS = 1e-9;
@@ -20,7 +21,9 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  *   direction: 'long' | 'short', openedAt: string, closedAt: string | null, entryQty: number, openQty: number,
  *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
  *   status: 'open' | 'win' | 'loss' | 'breakeven', stop: number | null, stopOrderId: string, risk: number | null,
- *   rBasis: 'stop' | 'premium' | null, r: number | null }} Trade
+ *   rBasis: 'stop' | 'premium' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
+ *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, hidden: boolean }} Trade
+ * @typedef {{ stop?: number | null, hidden?: boolean }} TradeReview
  */
 
 /**
@@ -51,6 +54,7 @@ function finish(t) {
     holdMs: closed && t.closedAt ? Date.parse(t.closedAt) - Date.parse(t.openedAt) : null,
     status: !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
     stop: null, stopOrderId: '', risk: null, rBasis: null, r: null,
+    stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, hidden: false,
   };
 }
 
@@ -151,43 +155,71 @@ export function stopOrdersFrom(records) {
   return out;
 }
 
+/** the dollars at risk from the average entry to a stop, for the whole entry. @param {Trade} trade @param {number} stop */
+export const riskAt = (trade, stop) => Math.abs(trade.avgEntry - stop) * trade.entryQty * trade.multiplier;
+
+/** a stop on the loss side of the trade's average entry: below a long's, above a short's. @param {Trade} trade @param {number} p */
+const lossSide = (trade, p) => trade.direction === 'long' ? p < trade.avgEntry : p > trade.avgEntry;
+
 /**
- * The trade's initial stop and R. The stop is the first stop order that closes this position, entered from just before
- * the first fill until the trade closed (or attached to an order that opened it, whenever that was entered: a resting
- * entry's stop goes in with it, hours before the fill), on the loss side of the entry (a stop above a long's entry protects profit, it
- * isn't the risk). R = P&L ÷ risk, risk = |entry − stop| × quantity × multiplier. A long option with no stop risks its
- * premium. Open trades get their stop and risk, but no R yet.
- * @param {Trade} trade @param {StopOrder[]} stops
+ * Why a stop you type can't be this trade's, or '' when it can: a price, on the loss side of the average entry.
+ * @param {Trade} trade @param {number} price
+ */
+export function ownStopError(trade, price) {
+  if (!Number.isFinite(price) || price <= 0) return 'Type a stop price.';
+  if (!lossSide(trade, price)) return `A ${trade.direction}'s stop goes ${trade.direction === 'long' ? 'below' : 'above'} the entry.`;
+  return '';
+}
+
+/**
+ * The trade's initial stop and R. Your own stop wins when you've set one (an option's mental stop, or a correction).
+ * Otherwise it's the first stop order that closes this position, entered from just before the first fill until the
+ * trade closed (or attached to an order that opened it, whenever that was entered: a resting entry's stop goes in with
+ * it, hours before the fill), on the loss side of the entry (a stop above a long's entry protects profit, it isn't the
+ * risk). A moved stop doesn't change R: it's measured against the risk at entry, and the trail of stops shows the moves.
+ * R = P&L ÷ risk, risk = |entry − stop| × quantity × multiplier. A long option with no stop risks its premium. Open
+ * trades get their stop and risk, but no R yet.
+ * @param {Trade} trade @param {StopOrder[]} stops @param {number | null} [ownStop]
  * @returns {Trade}
  */
-export function withRisk(trade, stops) {
+export function withRisk(trade, stops, ownStop = null) {
   const opened = Date.parse(trade.openedAt);
   const until = trade.closedAt ? Date.parse(trade.closedAt) : Infinity;
-  const lossSide = (/** @type {number} */ p) => trade.direction === 'long' ? p < trade.avgEntry : p > trade.avgEntry;
-  const first = stops
-    .filter(s => s.account === trade.account && s.symbol === trade.symbol && CLOSES[trade.direction].test(s.instruction) && lossSide(s.stopPrice))
+  const trail = stops
+    .filter(s => s.account === trade.account && s.symbol === trade.symbol && CLOSES[trade.direction].test(s.instruction))
     .filter(s => trade.entryOrderIds.includes(s.rootId) || (t => t >= opened - STOP_LEAD_MS && t <= until)(Date.parse(s.entered)))
-    .sort((a, b) => (a.entered < b.entered ? -1 : a.entered > b.entered ? 1 : 0))[0];
+    .sort((a, b) => (a.entered < b.entered ? -1 : a.entered > b.entered ? 1 : 0));
+  const first = trail.find(s => lossSide(trade, s.stopPrice));
+  const last = trail[trail.length - 1];
+  const own = ownStop !== null && ownStop !== undefined && !ownStopError(trade, ownStop) ? ownStop : null;
+  const stop = own ?? (first ? first.stopPrice : null);
   let risk = null, rBasis = /** @type {Trade['rBasis']} */ (null);
-  if (first) {
-    risk = Math.abs(trade.avgEntry - first.stopPrice) * trade.entryQty * trade.multiplier;
+  if (stop !== null) {
+    risk = riskAt(trade, stop);
     rBasis = 'stop';
   } else if (trade.assetType === 'OPTION' && trade.direction === 'long') {
     risk = trade.avgEntry * trade.entryQty * trade.multiplier;
     rBasis = 'premium';
   }
   const r = risk && risk > EPS && trade.status !== 'open' ? Math.round((trade.pnl / risk) * 100) / 100 : null;
-  return { ...trade, stop: first ? first.stopPrice : null, stopOrderId: first ? first.orderId : '', risk: risk ? Math.round(risk * 100) / 100 : null, rBasis, r };
+  return {
+    ...trade, stop, stopOrderId: own === null && first ? first.orderId : '', risk: risk ? Math.round(risk * 100) / 100 : null, rBasis, r,
+    stopSource: own !== null ? 'yours' : first ? 'schwab' : null, schwabStop: first ? first.stopPrice : null,
+    stopTrail: trail, movedTo: first && last && last !== first && last.stopPrice !== first.stopPrice ? last.stopPrice : null,
+    ownStopIgnored: ownStop !== null && ownStop !== undefined && own === null,
+  };
 }
 
 /**
- * The journal's trades from its kept records: fills grouped, each given its stop and R, newest first (by when it
- * closed, or opened if it's still open).
+ * The journal's trades from its kept records: fills grouped, each given its stop and R (your stop first) and your
+ * hidden flag, newest first (by when it closed, or opened if it's still open). Hidden trades stay in the list, flagged:
+ * their fills still group with the rest, and the view decides whether to show them.
  * @param {Fill[]} fills @param {{ kind: string, account?: string, data: any }[]} records
+ * @param {Record<string, TradeReview>} [reviews]
  */
-export function journalTrades(fills, records) {
+export function journalTrades(fills, records, reviews = {}) {
   const stops = stopOrdersFrom(records);
-  return buildTrades(fills).map(t => withRisk(t, stops))
+  return buildTrades(fills).map(t => { const rv = reviews[t.key] || {}; return { ...withRisk(t, stops, rv.stop ?? null), hidden: !!rv.hidden }; })
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
 }
 
