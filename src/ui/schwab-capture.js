@@ -1,52 +1,44 @@
-// Settings → Schwab trading: the line saying when your Schwab history was last saved to your account, Save now, and
-// the quiet automatic save (at most every 6 hours, once both the Google and Schwab logins are in place).
-import { captureDue, captureReady, captureSchwab, lastCapture } from '../services/capture.js';
+// Raw capture's triggers: the quiet automatic save (at most every 6 hours, once both the Google and Schwab logins are
+// in place), Save now from the Journal, and a hook the Journal listens on to redraw when a save starts or finishes.
+import { captureDue, captureReady, captureSchwab } from '../services/capture.js';
 import { state } from '../state.js';
 import { showError, showToast } from './feedback.js';
 
-const clock = ms => new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-
-export function renderCaptureStatus() {
-  const el = document.getElementById('schwabCaptureStatus');
-  if (!el) return;
-  if (!state.session) { el.innerHTML = 'Sign in with Google to keep your Schwab history.'; return; }
-  if (state.captureBusy) { el.innerHTML = 'Saving your Schwab history…'; return; }
-  const last = lastCapture();
-  const now = '<button class="link-btn" data-action="captureNow">Save now</button>';
-  el.innerHTML = last
-    ? `History saved ${clock(last.at)} · ${last.orders} orders, ${last.transactions} trades · ${now}`
-    : `History not saved yet · ${now}`;
-  if (state.captureError) el.innerHTML += ` · <span style="color:var(--amber)">last try failed</span>`;
-}
+/** @type {((saved: boolean) => void)[]} */
+const listeners = [];
+/** the Journal registers here: called with false when a save starts or fails, true when one lands */
+export function onCaptureChange(fn) { listeners.push(fn); }
+const tell = saved => listeners.forEach(fn => fn(saved));
 
 async function run(quiet) {
   if (state.captureBusy || !captureReady()) return null;
   state.captureBusy = true;
-  renderCaptureStatus();
+  tell(false);
+  let saved = false;
   try {
     const r = await captureSchwab();
     state.captureError = '';
+    saved = true;
     if (!quiet) showToast(`Saved ${r.orders} orders and ${r.transactions} trades to your account.`);
     return r;
   } catch(e) {
     state.captureError = String(e?.message || e);
-    if (!quiet) showError("Couldn't save your Schwab history. " + state.captureError);
+    if (!quiet) showError("Couldn't import from Schwab. " + state.captureError);
     return null;
   } finally {
     state.captureBusy = false;
-    renderCaptureStatus();
+    tell(saved);
   }
 }
 
-/** Save now: any time both logins are in place */
+/** Import (Save now): any time both logins are in place */
 export function captureNow() {
   if (!state.session) { showError('Sign in with Google first, so there is an account to save into.'); return null; }
   if (!captureReady()) { showError('Log in to Schwab first.'); return null; }
   return run(false);
 }
 
-/** the automatic save: only when due, and quietly (a failure shows on the status line, not as a toast) */
+/** the automatic save: only when due, and quietly (a failure shows on the Journal's status line, not as a toast) */
 export function maybeCapture() {
-  renderCaptureStatus();
   return captureReady() && captureDue() ? run(true) : null;
 }

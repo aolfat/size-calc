@@ -96,3 +96,8 @@
   .orders-table { min-width: 600px; }
   .orders-table td.pos-order { min-width: 130px; max-width: 150px; }
 }
+
+/* Journal tab: the same card and table as Positions, with buys and sells told apart */
+.journal-table { min-width: 560px; }
+.journal-buy { color: var(--green); font-weight: 600; }
+.journal-sell { color: var(--red); font-weight: 600; }

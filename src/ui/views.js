@@ -1,4 +1,4 @@
-// Top-level views (Market, Size, Positions, Tools) and the Shares / Options / Futures switch.
+// Top-level views (Market, Size, Positions, Journal, Tools) and the Shares / Options / Futures switch.
 import { state } from '../state.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { fetchChain, markActiveExp, renderExpTabs } from './chain.js';
@@ -6,6 +6,7 @@ import { drawChart } from './chart.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { renderFutures } from './futures.js';
 import { pauseLive, resumeLive, stopLive } from './live.js';
+import { openJournal } from './journal.js';
 import { loadMarket, marketScheduleRefresh } from './market.js';
 import { refreshPositions, stopPositions } from './positions.js';
 import { recalcAll } from './risk.js';
@@ -20,23 +21,25 @@ export function setView(v) {
   state.positionsView = v === 'positions';
   state.utilsView = v === 'utils';
   state.marketView = v === 'market';
-  const calc = !state.positionsView && !state.utilsView && !state.marketView;
+  state.journalView = v === 'journal';
+  const calc = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView;
   const futures = calc && state.currentMode === 'futures';
   const app = document.getElementById('app');
   app.classList.toggle('futures-view', futures);
   app.classList.toggle('calc-view', calc && !futures);
   app.classList.toggle('positions-view', state.positionsView);
   app.classList.toggle('utils-view', state.utilsView);
+  app.classList.toggle('journal-view', state.journalView);
   document.getElementById('modeShares').classList.toggle('active', calc && state.currentMode === 'shares');
   document.getElementById('modeOptions').classList.toggle('active', calc && state.currentMode === 'options');
   document.getElementById('modeFutures').classList.toggle('active', futures);
-  [['brandSize', calc], ['brandPositions', state.positionsView], ['brandTools', state.utilsView], ['brandMarket', state.marketView]].forEach(([id, active]) => {
+  [['brandSize', calc], ['brandPositions', state.positionsView], ['brandJournal', state.journalView], ['brandTools', state.utilsView], ['brandMarket', state.marketView]].forEach(([id, active]) => {
     const button = document.getElementById(id);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
-  document.getElementById('viewTitle').textContent = state.marketView ? 'Market' : state.positionsView ? 'Positions' : state.utilsView ? 'Tools' : 'Size';
+  document.getElementById('viewTitle').textContent = state.marketView ? 'Market' : state.positionsView ? 'Positions' : state.journalView ? 'Journal' : state.utilsView ? 'Tools' : 'Size';
   document.querySelector('.app').classList.toggle('market-view', state.marketView);
-  document.getElementById('lastUpdated').style.display = state.marketView || state.utilsView || futures ? 'none' : '';
+  document.getElementById('lastUpdated').style.display = state.marketView || state.utilsView || state.journalView || futures ? 'none' : '';
   document.getElementById('modeCard').style.display = calc ? '' : 'none';
   document.getElementById('riskStrip').style.display = calc ? '' : 'none';
   updateSetupNotice();
@@ -55,12 +58,14 @@ export function setView(v) {
   document.getElementById('positionsSection').style.display = state.positionsView ? '' : 'none';
   document.getElementById('posChartSection').style.display = state.positionsView && state.posChart ? '' : 'none';
   document.getElementById('utilsSection').style.display = state.utilsView ? '' : 'none';
+  document.getElementById('journalSection').style.display = state.journalView ? '' : 'none';
   document.getElementById('marketSection').style.display = state.marketView ? '' : 'none';
   marketScheduleRefresh();
   if (state.marketView) { pauseLive(); loadMarket(); }
   else if (calc && !document.hidden) resumeLive();
   if (state.utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
   if (state.positionsView) refreshPositions(); else stopPositions();
+  if (state.journalView) openJournal();
   updateStickyBar();
 }
 
