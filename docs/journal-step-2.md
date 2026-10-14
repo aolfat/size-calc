@@ -125,6 +125,16 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 
 Trade at Schwab tickets, and Positions' breakeven stops, targets and closes, save the plan (entry, stop, risk $, quantity, order id). Imports match it to the trade by order id.
 
+### 6. Squash the migrations
+
+The schema is new and lives in one database, so once slices 1 to 5 settle, the migrations fold into one baseline:
+1. **Write one migration** with the final schema. Steps that cancel out disappear, like `saved_positions`, created and then dropped.
+2. **Delete the old migration files.**
+3. **Update Supabase's migration history** with `npx supabase migration repair`: the old versions marked reverted and the new one marked applied. The database itself doesn't change.
+4. **Check the single file** against a scratch project. `tests/rls.test.mjs` keeps checking the rules either way.
+
+Done once, at the end of step 2, after the journal's own tables exist.
+
 ## For step 3 (review), from Trading-Journal-AI
 
 Not part of step 2, noted so the review design picks them up:
