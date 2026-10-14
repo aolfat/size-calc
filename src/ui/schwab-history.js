@@ -1,4 +1,4 @@
-// Journal spike: Settings → Schwab trading → Download Schwab history. One file with your positions, the last 59 days
+// Journal spike: the Journal tab's Download Schwab history link. One file with your positions, the last 59 days
 // of orders, and TRADE transactions over several ranges (to learn how far back Schwab goes), account numbers masked.
 // Temporary: it exists so the journal's importer is built against real data, and goes once the importer is in.
 import { scrubAccounts, spanOf, maskAccount } from '../core/schwab-history.js';
@@ -39,9 +39,8 @@ export async function downloadSchwabHistory() {
   if (!schwabConnected()) { showError('Log in to Schwab first.'); return; }
   if (state.historyBusy) return;
   state.historyBusy = true;
-  const btn = document.getElementById('schwabHistoryBtn');
-  btn.disabled = true;
-  btn.textContent = 'Reading Schwab…';
+  const label = text => { const btn = document.getElementById('schwabHistoryBtn'); if (btn) { btn.disabled = text !== 'Download Schwab history'; btn.textContent = text; } };
+  label('Reading Schwab…'); // the Journal also draws it from state.historyBusy, so a redraw mid-read keeps it
   try {
     const out = await buildSchwabHistory();
     effects.downloadText(`schwab-history-${out.exported.slice(0, 10)}.json`, JSON.stringify(out, null, 2));
@@ -50,7 +49,6 @@ export async function downloadSchwabHistory() {
     showError("Couldn't build the Schwab history file. " + (e?.message || ''));
   } finally {
     state.historyBusy = false;
-    btn.disabled = false;
-    btn.textContent = 'Download Schwab history';
+    label('Download Schwab history');
   }
 }

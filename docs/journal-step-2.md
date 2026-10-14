@@ -33,7 +33,7 @@ A journal that fills itself from Schwab: every trade you make, wherever you plac
 
 ### 0. Data spike (built)
 
-Settings → Schwab trading → **Download Schwab history** saves one JSON file:
+The Journal's **Download Schwab history** link (at the foot of the card, when you're connected to Schwab) saves one JSON file:
 - your positions
 - the last 59 days of orders
 - `TRADE` transactions over 30, 60, 90, 180 and 365 days

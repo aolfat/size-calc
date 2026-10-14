@@ -105,6 +105,8 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   assert.match(out, /<td>10\/3, 11:00 AM<\/td>/, 'times in New York, whatever the device zone');
   assert.match(out, /Time \(ET\)/);
   assert.match(out, /data-action="journalImport"(?! disabled)[^>]*>Import</);
+  assert.match(out, /id="schwabHistoryBtn" data-action="downloadSchwabHistory"[^>]*>Download Schwab history</, 'the history file lives in the Journal');
+  assert.doesNotMatch(html.match(/id="settingsSheet"[\s\S]*?id="tradeSheet"/)[0], /schwabHistoryBtn/, 'and not in Settings');
 });
 
 test('not connected to Schwab, Import waits and the Journal says where to connect', async () => {
@@ -114,6 +116,7 @@ test('not connected to Schwab, Import waits and the Journal says where to connec
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /id="journalImportBtn" data-action="journalImport" disabled/);
   assert.match(out, /Connect Schwab to import/);
+  assert.doesNotMatch(out, /schwabHistoryBtn/, 'no download without a Schwab login');
   assert.match(out, /Nothing kept yet/);
   assert.match(out, /Import saves your last 60 days of Schwab orders and up to a year of trades/);
 });

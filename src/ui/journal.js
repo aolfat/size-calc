@@ -67,6 +67,7 @@ export function renderJournal() {
     </table></div>
     <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders. Trades, P&amp;L and stats come next.</p>`
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
+    ${canImport ? `<p class="hint"><button class="link-btn" id="schwabHistoryBtn" data-action="downloadSchwabHistory"${state.historyBusy ? ' disabled' : ''} title="Your last 60 days of orders and up to a year of trades as a file, account number masked">${state.historyBusy ? 'Reading Schwab…' : 'Download Schwab history'}</button> · a file of your orders and trades, account number masked</p>` : ''}
   </div>`;
 }
 
