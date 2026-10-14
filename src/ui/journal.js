@@ -3,6 +3,7 @@
 // Export the files you can take (Schwab history now, trades later). Trades, P&L and stats come in later slices.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
+import { importWords } from '../core/schwab-history.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
@@ -24,7 +25,9 @@ export const marketTime = iso => iso ? new Date(iso).toLocaleString('en-US', { t
 function statusLine() {
   if (state.captureBusy) return '<span class="spinner" style="vertical-align:middle;margin-right:6px;"></span>Importing from Schwab…';
   const last = lastCapture();
-  const parts = [last ? `Last import ${when(new Date(last.at).toISOString())}: ${last.orders} orders, ${last.transactions} trades` : 'Not imported yet'];
+  // an import from before delta counts has only totals: show those rather than a made-up 'nothing new'
+  const what = last && 'kept' in last ? importWords(last) : last ? `${last.orders} orders, ${last.transactions} trades` : '';
+  const parts = [last ? `Last import ${when(new Date(last.at).toISOString())}: ${what}` : 'Not imported yet'];
   if (state.captureError) parts.push(`<span style="color:var(--amber)">last try failed: ${esc(state.captureError)}</span>`);
   return parts.join(' · ');
 }

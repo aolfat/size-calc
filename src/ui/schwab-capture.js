@@ -1,6 +1,7 @@
 // Raw capture's triggers: the quiet automatic save (at most every 6 hours, once both the Google and Schwab logins are
 // in place), Save now from the Journal, and a hook the Journal listens on to redraw when a save starts or finishes.
 import { captureDue, captureReady, captureSchwab } from '../services/capture.js';
+import { importWords } from '../core/schwab-history.js';
 import { state } from '../state.js';
 import { showError, showToast } from './feedback.js';
 
@@ -19,7 +20,7 @@ async function run(quiet) {
     const r = await captureSchwab();
     state.captureError = '';
     saved = true;
-    if (!quiet) showToast(`Saved ${r.orders} orders and ${r.transactions} trades to your account.`);
+    if (!quiet) showToast(importWords(r) + '.');
     return r;
   } catch(e) {
     state.captureError = String(e?.message || e);
