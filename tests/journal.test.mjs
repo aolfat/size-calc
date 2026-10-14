@@ -94,7 +94,7 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   assert.deepEqual(supabase.reads[0], { table: 'schwab_records', cols: 'kind,record_id,entered_at,data' });
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026/);
-  const rows = [...out.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td>[^<]*<\/td>\s*<td class="journal-(buy|sell)">([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/g)].map(m => m.slice(1));
+  const rows = [...out.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td class="journal-(buy|sell)">([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/g)].map(m => m.slice(1, 7));
   assert.deepEqual(rows, [
     ['AAPL 12/18/26 245C', 'buy', 'Buy to open', '1', '$4.15', '$415.00'],
     ['AAPL 12/18/26 245C', 'buy', 'Buy to open', '2', '$4.10', '$820.00'],
@@ -102,6 +102,8 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
     ['AAPL', 'buy', 'Buy', '100', '$100.02', '$10,002.00'],
   ], 'a canceled order has no fills; the stop that filled is its own fill');
   assert.match(out, /4 fills\. Fills are read from your saved Schwab orders/);
+  assert.match(out, /<td>10\/3, 11:00 AM<\/td>/, 'times in New York, whatever the device zone');
+  assert.match(out, /Time \(ET\)/);
   assert.match(out, /data-action="journalImport"(?! disabled)[^>]*>Import</);
 });
 

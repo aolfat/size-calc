@@ -14,6 +14,8 @@ export const JOURNAL_SHOWN = 200;
 
 const day = iso => iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 const when = iso => iso ? new Date(iso).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+/** a fill's time in market time (New York), whatever the device's zone: '10/13, 11:47 AM' */
+export const marketTime = iso => iso ? new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 
 /** the line under the title: importing, the last import, or why it can't run */
 function statusLine() {
@@ -28,11 +30,11 @@ function fillRow(f) {
   const mult = f.assetType === 'OPTION' ? 100 : 1;
   return `<tr>
     <td><b>${esc(f.label || f.symbol)}</b></td>
-    <td>${esc(when(f.time))}</td>
     <td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(instructionWords(f.instruction))}</td>
     <td>${f.qty}</td>
     <td>${fmtPositionPrice(f.price, f.assetType === 'OPTION' ? 'OPTION' : null)}</td>
     <td>${fmt$(f.qty * f.price * mult)}</td>
+    <td>${esc(marketTime(f.time))}</td>
   </tr>`;
 }
 
@@ -60,7 +62,7 @@ export function renderJournal() {
     ${canImport ? '' : `<p class="hint">Connect Schwab to import: <button class="pos-link" data-action="openSheet" data-arg="settings">Settings, Schwab trading</button>.</p>`}
     ${state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${fills.length ? `<div class="positions-wrap"><table class="positions-table journal-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">Time</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">Value</th></tr></thead>
+      <thead><tr><th scope="col">Symbol</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Time (ET)</th></tr></thead>
       <tbody>${fills.slice(0, JOURNAL_SHOWN).map(fillRow).join('')}</tbody>
     </table></div>
     <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders. Trades, P&amp;L and stats come next.</p>`
