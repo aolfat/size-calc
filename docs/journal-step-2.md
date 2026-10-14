@@ -33,7 +33,7 @@ A journal that fills itself from Schwab: every trade you make, wherever you plac
 
 ### 0. Data spike (built)
 
-The Journal's **Download Schwab history** link (at the foot of the card, when you're connected to Schwab) saves one JSON file:
+The Journal's **Export** sheet → **Download Schwab history** (when you're connected to Schwab) saves one JSON file:
 - your positions
 - the last 59 days of orders
 - `TRADE` transactions over 30, 60, 90, 180 and 365 days
@@ -56,7 +56,7 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 
 - **When it runs:**
   - **Automatically,** at most every 6 hours, once you're signed in with Google and connected to Schwab. It runs on sign-in, on connecting Schwab, and when you come back to the app.
-  - **Import** on the Journal tab, any time, and opening the Journal imports quietly when it's due.
+  - **Import** on the Journal tab opens a sheet listing the sources: Schwab (with Import now) and file upload (coming soon). Opening the Journal also imports quietly when it's due.
   - **The Journal's status line** says when it last imported, and how many orders and trades.
 - **What it reads:**
   - orders from the last 59 days
@@ -75,7 +75,8 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 - **Bars:** each held day's 5-minute bars are saved at import, one row per symbol per day.
 - **Journal tab (built):**
   - **Placement:** a header tab between Positions and Tools, key `j`.
-  - **What it shows:** what's kept ("46 orders and 31 trades kept · Aug 17 to Oct 14"), the Import button, the last import's result, and a table of the fills inside your saved orders (symbol, time, action, quantity, price, value), newest first.
+  - **What it shows:** what's kept ("46 orders and 31 trades kept · Aug 17 to Oct 14"), Import and Export buttons, the last import's result, and a table of the fills inside your saved orders (symbol, action, quantity, price, value, time), newest first.
+  - **Import and Export are separate,** as in LuxAlgo's journal. Import is a sheet of sources (Schwab now, file upload later). Export is a sheet of files (Schwab history now, trades as CSV later).
   - **Signed out:** it asks you to sign in.
   - **Not connected to Schwab:** it points to Settings.
 

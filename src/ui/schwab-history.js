@@ -1,4 +1,4 @@
-// Journal spike: the Journal tab's Download Schwab history link. One file with your positions, the last 59 days
+// Journal spike: the Journal's Export sheet → Download Schwab history. One file with your positions, the last 59 days
 // of orders, and TRADE transactions over several ranges (to learn how far back Schwab goes), account numbers masked.
 // Temporary: it exists so the journal's importer is built against real data, and goes once the importer is in.
 import { scrubAccounts, spanOf, maskAccount } from '../core/schwab-history.js';

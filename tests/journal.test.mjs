@@ -104,19 +104,52 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   assert.match(out, /4 fills\. Fills are read from your saved Schwab orders/);
   assert.match(out, /<td>10\/3, 11:00 AM<\/td>/, 'times in New York, whatever the device zone');
   assert.match(out, /Time \(ET\)/);
-  assert.match(out, /data-action="journalImport"(?! disabled)[^>]*>Import</);
-  assert.match(out, /id="schwabHistoryBtn" data-action="downloadSchwabHistory"[^>]*>Download Schwab history</, 'the history file lives in the Journal');
+  assert.match(out, /data-action="openJournalImport"[^>]*>Import</, 'Import and Export sit in the header');
+  assert.match(out, /data-action="openJournalExport"[^>]*>Export</);
+  assert.doesNotMatch(out, /schwabHistoryBtn/, 'the history file is in Export, not the card');
   assert.doesNotMatch(html.match(/id="settingsSheet"[\s\S]*?id="tradeSheet"/)[0], /schwabHistoryBtn/, 'and not in Settings');
 });
 
-test('not connected to Schwab, Import waits and the Journal says where to connect', async () => {
+test('Import lists the sources: Schwab with its last import and Import now, file upload coming', async () => {
+  const supabase = fakeSupabase();
+  const storage = connected();
+  storage.set('schwab_capture', JSON.stringify({ at: Date.now(), user: 'user-1', account: '6789', orders: 46, transactions: 31 }));
+  const { run, elements, state } = await app({ storage, supabase, session: SESSION });
+  run("setView('journal'); openJournalImport()");
+  assert.equal(state.openSheetName, 'journalImport');
+  assert.ok(shown(elements.get('journalImportSheet')));
+  const body = elements.get('journalImportBody').innerHTML;
+  assert.match(body, /Schwab <span class="sheet-status">.*Connected · ••6789/);
+  assert.match(body, /Last import .*: 46 orders, 31 trades/);
+  assert.match(body, /data-action="journalImport"[^>]*>Import now</);
+  assert.match(body, /File upload <span class="sheet-status">Coming soon/);
+
+  const off = await app({ supabase: fakeSupabase([]), session: SESSION });
+  off.run("setView('journal'); openJournalImport()");
+  const offBody = off.elements.get('journalImportBody').innerHTML;
+  assert.match(offBody, /○ Not connected/);
+  assert.match(offBody, /data-action="openSheet" data-arg="settings">Connect Schwab</);
+  assert.doesNotMatch(offBody, /Import now/);
+});
+
+test('Export offers the Schwab history file when connected, and trades as CSV later', async () => {
+  const { run, elements, state } = await app({ storage: connected(), supabase: fakeSupabase(), session: SESSION });
+  run('openJournalExport()');
+  assert.equal(state.openSheetName, 'journalExport');
+  const body = elements.get('journalExportBody').innerHTML;
+  assert.match(body, /id="schwabHistoryBtn" data-action="downloadSchwabHistory"[^>]*>Download Schwab history</);
+  assert.match(body, /Trades \(CSV\) <span class="sheet-status">Coming soon/);
+
+  const off = await app({ supabase: fakeSupabase([]), session: SESSION });
+  off.run('openJournalExport()');
+  assert.doesNotMatch(off.elements.get('journalExportBody').innerHTML, /schwabHistoryBtn/, 'no download without a Schwab login');
+});
+
+test('with nothing kept, the Journal says so and how Import fills it', async () => {
   const { run, elements } = await app({ supabase: fakeSupabase([]), session: SESSION });
   run("setView('journal')");
   await run('loadJournal()');
   const out = elements.get('journalSection').innerHTML;
-  assert.match(out, /id="journalImportBtn" data-action="journalImport" disabled/);
-  assert.match(out, /Connect Schwab to import/);
-  assert.doesNotMatch(out, /schwabHistoryBtn/, 'no download without a Schwab login');
   assert.match(out, /Nothing kept yet/);
   assert.match(out, /Import saves your last 60 days of Schwab orders and up to a year of trades/);
 });

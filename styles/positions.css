@@ -101,3 +101,6 @@
 .journal-table { min-width: 560px; }
 .journal-buy { color: var(--green); font-weight: 600; }
 .journal-sell { color: var(--red); font-weight: 600; }
+.journal-card .positions-head .journal-actions { margin-left: auto; display: inline-flex; gap: 8px; }
+.journal-card .positions-head .journal-actions .btn { margin-left: 0; }
+.journal-soon .sheet-label, .journal-soon .hint { color: var(--text3); }
