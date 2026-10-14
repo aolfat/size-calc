@@ -5,6 +5,7 @@ import { store } from '../lib/store.js';
 import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { effects } from './effects.js';
+import { maybeCapture } from './schwab-capture.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -98,6 +99,7 @@ async function startSession(session) {
     if (state.cloudPending.size) await cloudPush();
   }
   updateApiStatus();
+  maybeCapture(); // signed in and connected to Schwab: keep the history (at most every 6 hours)
 }
 
 async function resumeSession() {

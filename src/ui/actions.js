@@ -22,6 +22,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
+import { captureNow } from './schwab-capture.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -58,6 +59,7 @@ export const actions = {
   // ---------- settings: Schwab login ----------
   schwabProxyChanged: () => schwabProxyChanged(),
   downloadSchwabHistory: () => downloadSchwabHistory(),
+  captureNow: () => captureNow(),
   schwabProxyDone: () => schwabProxyDone(),
   editSchwabProxy: () => editSchwabProxy(),
   connectSchwab: () => connectSchwab(),
