@@ -62,6 +62,9 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - orders from the last 59 days
   - transactions a year back the first time, falling back to 59 days if Schwab refuses, then from a week before the last save
 - **Storage:** one row per order (child orders stay inside their parent) and per transaction, keyed by Schwab's id. Re-reading an order updates it (working, then filled or canceled), and a record without an id is counted but not kept.
+- **Each import is a delta (built):**
+  - **What gets sent:** every record gets a fingerprint of its JSON. The import reads the fingerprints kept for the ids it just read, then sends only new orders, orders whose copy changed (a status or a fill), and new trades. A trade never changes once posted, so a kept one is skipped and never overwritten.
+  - **What it reports:** the toast and status line say what happened, like "3 new trades, 2 orders updated, 71 already kept", or "Nothing new, 77 already kept".
 - **What comes later:** fills, stop orders, trades and stats are derived from these rows, so a parsing fix re-runs over everything kept.
 
 ### 1. Capture

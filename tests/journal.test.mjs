@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app, html } from './helpers/app.mjs';
+import { fakeRecords } from './helpers/supabase.mjs';
 
 const PROXY = 'https://size-calc-schwab.test.workers.dev';
 const DAY = 86400000;
@@ -40,22 +41,8 @@ const RECORDS = [
   { kind: 'transaction', record_id: '9001', entered_at: '2026-09-15T15:00:00Z', data: { activityId: 9001, type: 'TRADE' } },
 ];
 
-// a fake Supabase: reads return the kept records (newest first); upserts are kept too
-function fakeSupabase(records = RECORDS) {
-  const reads = [];
-  const upserts = [];
-  return {
-    reads, upserts,
-    from: table => ({
-      select: cols => {
-        reads.push({ table, cols });
-        const q = { order: () => q, limit: () => q, then: (res, rej) => Promise.resolve({ data: records.map(r => ({ ...r })), error: null }).then(res, rej) };
-        return q;
-      },
-      upsert: async rows => { upserts.push(...rows); return { error: null }; },
-    }),
-  };
-}
+// a fake Supabase table holding the kept records
+const fakeSupabase = (records = RECORDS) => fakeRecords(records);
 
 const shown = el => el.style.display !== 'none';
 // let pending reads and saves (fake network, fake Supabase) finish
@@ -91,7 +78,7 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
   run("setView('journal')");
   await run('loadJournal()');
-  assert.deepEqual(supabase.reads[0], { table: 'schwab_records', cols: 'kind,record_id,entered_at,data' });
+  assert.ok(supabase.reads.some(r => r.cols === 'kind,record_id,entered_at,data'), 'the list reads the kept records');
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026/);
   const rows = [...out.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td class="journal-(buy|sell)">([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/g)].map(m => m.slice(1, 7));
@@ -165,15 +152,15 @@ test('Import saves the latest from Schwab, then reads the kept records again', a
   const { run, elements } = await app({ fetch, storage: connected(), supabase, session: SESSION });
   run("setView('journal')");
   await settle();
-  assert.deepEqual(supabase.upserts.map(r => r.record_id), ['501'], 'opening the tab imports on its own when due');
+  assert.deepEqual(supabase.writes.map(r => r.record_id), ['501'], 'opening the tab imports on its own when due: 501 was kept without a fingerprint, so it gets one');
   assert.equal(elements.get('errorBox').textContent, '', 'quietly');
   const before = supabase.reads.length;
   await run('journalImport()');
   await settle();
-  assert.deepEqual(supabase.upserts.map(r => r.record_id), ['501', '501'], 'Import saves again any time');
+  assert.deepEqual(supabase.writes.map(r => r.record_id), ['501'], 'Import again sends nothing already kept');
   assert.ok(supabase.reads.length > before, 'the list is read again after the save');
-  assert.match(elements.get('errorBox').textContent, /Saved 1 orders and 0 trades/);
-  assert.match(elements.get('journalSection').innerHTML, /Last import .*: 1 orders, 0 trades/);
+  assert.match(elements.get('errorBox').textContent, /^Nothing new, 1 already kept\.$/);
+  assert.match(elements.get('journalSection').innerHTML, /Last import .*: Nothing new, 1 already kept/);
 });
 
 test('fills: matched to their order leg, zero quantities skipped, words for every instruction', async () => {

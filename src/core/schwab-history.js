@@ -79,5 +79,61 @@ export function captureRows({ orders, transactions, last4, userId }) {
   };
   for (const o of orders) add('order', o, o?.orderId, o?.enteredTime);
   for (const t of transactions) add('transaction', t, t?.activityId, t?.time || t?.tradeDate);
-  return { rows, skipped };
+  // the same record twice in one read (Schwab repeating a row): the later copy wins, one row per id
+  const byKey = new Map(rows.map(r => [r.kind + ':' + r.record_id, r]));
+  return { rows: [...byKey.values()], skipped };
+}
+
+/**
+ * JSON with object keys sorted, so the same record fingerprints the same however it was stored (Postgres jsonb
+ * reorders keys) or sent (Schwab's key order isn't promised).
+ * @param {any} v
+ * @returns {string}
+ */
+export function stableJson(v) {
+  if (Array.isArray(v)) return '[' + v.map(x => stableJson(x === undefined ? null : x)).join(',') + ']';
+  if (v && typeof v === 'object') {
+    return '{' + Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + stableJson(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v === undefined ? null : v);
+}
+
+/**
+ * What an import sends, against what's already kept (stored: 'kind:id' → fingerprint, or null when the row predates
+ * fingerprints). A trade (transaction) never changes once posted: new ones are sent, kept ones skipped. An order is
+ * sent when it's new or its fingerprint changed (status, fills); a kept row with no fingerprint is rewritten to fill
+ * one in, counted as kept, not changed.
+ * @template {{ kind: string, record_id: string, fingerprint: string }} R
+ * @param {R[]} rows @param {Map<string, string | null>} stored
+ */
+export function planDelta(rows, stored) {
+  /** @type {R[]} */
+  const orders = [];
+  /** @type {R[]} */
+  const trades = [];
+  let newOrders = 0, updatedOrders = 0, newTrades = 0, kept = 0;
+  for (const r of rows) {
+    const key = r.kind + ':' + r.record_id;
+    const have = stored.has(key);
+    const was = stored.get(key);
+    if (r.kind === 'transaction') {
+      if (have) { kept++; if (was === null) trades.push(r); continue; }
+      newTrades++; trades.push(r);
+    } else if (!have) { newOrders++; orders.push(r); }
+    else if (was === null) { kept++; orders.push(r); }
+    else if (was !== r.fingerprint) { updatedOrders++; orders.push(r); }
+    else kept++;
+  }
+  return { orders, trades, newOrders, updatedOrders, newTrades, kept };
+}
+
+/** what an import did, in words: '3 new trades, 2 orders updated, 71 already kept'. @param {{ newOrders?: number, updatedOrders?: number, newTrades?: number, kept?: number }} r */
+export function importWords(r) {
+  const n = (/** @type {number | undefined} */ k, /** @type {string} */ one, /** @type {string} */ many) => `${k} ${k === 1 ? one : many}`;
+  const parts = [];
+  if (r.newTrades) parts.push(n(r.newTrades, 'new trade', 'new trades'));
+  if (r.newOrders) parts.push(n(r.newOrders, 'new order', 'new orders'));
+  if (r.updatedOrders) parts.push(n(r.updatedOrders, 'order updated', 'orders updated'));
+  const kept = `${r.kept || 0} already kept`;
+  return parts.length ? `${parts.join(', ')}, ${kept}` : `Nothing new, ${kept}`;
 }
