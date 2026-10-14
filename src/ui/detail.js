@@ -49,6 +49,7 @@ export function showDetail(tr, c, acct) {
   state.detailReg[c.opt.symbol] = c;
   state.simReg[c.opt.symbol] = c.allocation ? simParamsFromCard(c.card, c.mid, c.contracts) : {
     isCall: c.isCall, K: c.opt.strike, expStr: state.selectedExp, iv: c.iv,
+    mark: c.mid, markSource: 'Tradier mid',
     entry: c.entryPrem, qty: Math.max(1, c.contracts), spot: effectivePrice(state.quoteData),
     stop: c.stop, parsedTicker: state.quoteData.symbol,
     label: `${state.quoteData.symbol} $${c.opt.strike} ${c.isCall ? 'call' : 'put'} ${state.selectedExp}`

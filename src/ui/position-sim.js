@@ -1,39 +1,52 @@
 // Position sim: an option position's Simulate button opens the return simulator at your average cost and size,
-// with the underlying price and the contract's IV from one Tradier quotes call.
+// fitting IV to Schwab's displayed premium and one Tradier underlying quote.
 import { state } from '../state.js';
+import { impliedVolatility, RISK_FREE } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';
-import { yearsToExp } from '../core/options.js';
-import { tradierSymbol } from '../core/positions.js';
+import { fmt$ } from '../core/format.js';
+import { expiryCloseMs } from '../core/options.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { effects } from './effects.js';
 import { showError } from './feedback.js';
 import { requireKey } from './settings.js';
 
 export async function simPosition(symbol) {
-  const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
+  let positions = state.positions;
+  let row = positions && positions.rows.find(r => r.symbol === symbol);
   if (!row || !row.option) return;
   if (!requireKey()) return;
-  const occ = tradierSymbol(symbol);
   let quotes;
   try {
-    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(row.under + ',' + occ)}&greeks=true`, { headers: headers() });
+    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(row.under)}`, { headers: headers() });
     const raw = (await res.json())?.quotes?.quote;
     quotes = raw ? (Array.isArray(raw) ? raw : [raw]) : [];
   } catch(e) {
     showError('Could not reach Tradier for this contract.');
     return;
   }
-  const uq = quotes.find(q => q.symbol === row.under), oq = quotes.find(q => q.symbol === occ);
-  const spot = uq ? effectivePrice(uq) : 0;
-  if (!oq || !(spot > 0)) { showError(`Tradier has no quote for ${row.label}.`); return; }
+  // A refresh may have landed while the quote was in flight. Fit what holdings shows now.
+  if (!state.positions || state.positions.hash !== positions.hash) return;
+  positions = state.positions;
+  row = positions.rows.find(r => r.symbol === symbol);
+  if (!row || !row.option) return;
+  const uq = quotes.find(q => q.symbol === row.under);
+  const spot = uq ? +effectivePrice(uq).toFixed(2) : 0; // match the simulator's penny-step underlying control
+  if (!(spot > 0)) { showError(`Tradier has no quote for ${row.label}.`); return; }
   const { type, strike, exp } = row.option;
-  const iv = oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0;
+  const asOf = Date.now(), T = (expiryCloseMs(exp) - asOf) / (365 * 24 * 3600 * 1000);
+  if (!(T > 0)) { showError(`${row.label} has expired — cannot simulate.`); return; }
+  const iv = impliedVolatility(type === 'C', row.price, spot, strike, T, RISK_FREE);
+  if (iv === null) {
+    showError(`Cannot fit a simulation to Schwab's ${fmt$(row.price)} price for ${row.label} with ${row.under} at ${fmt$(spot)}. Refresh positions and try again.`);
+    return;
+  }
   const short = row.qty < 0;
   effects.openSim({
     isCall: type === 'C', K: strike, expStr: exp, iv,
+    mark: row.price, markAsOf: positions.asOf, asOf,
     credit: short, shortPut: false, width: 0, // a sold option measures against its premium, puts too: on notional a held put barely moves
     entry: row.avg, entryWord: short ? 'sold at' : 'avg cost', qty: Math.abs(row.qty), spot, stop: null,
-    em: spot * iv * Math.sqrt(yearsToExp(exp)), // one standard deviation by expiry at this IV
+    em: spot * iv * Math.sqrt(T), // one standard deviation by expiry at the fitted IV
     parsedTicker: row.under, label: row.label,
   });
 }
