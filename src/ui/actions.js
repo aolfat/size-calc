@@ -22,7 +22,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { journalImport, journalSymbolChanged, openJournalExport, openJournalImport, setJournalSide, setJournalTab } from './journal.js';
+import { clearJournalPicks, journalImport, journalSymbolChanged, mergePicked, mergeSuggested, openJournalExport, openJournalImport, separateTrade, setJournalSide, setJournalTab, skipSuggestion, toggleJournalPick } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -65,6 +65,12 @@ export const actions = {
   setJournalTab: el => setJournalTab(arg(el)),
   setJournalSide: el => setJournalSide(arg(el)),
   journalSymbolChanged: () => journalSymbolChanged(),
+  toggleJournalPick: el => toggleJournalPick(arg(el)),
+  clearJournalPicks: () => clearJournalPicks(),
+  mergePicked: () => mergePicked(),
+  mergeSuggested: el => mergeSuggested(arg(el)),
+  skipSuggestion: el => skipSuggestion(arg(el)),
+  separateTrade: el => separateTrade(arg(el)),
   schwabProxyDone: () => schwabProxyDone(),
   editSchwabProxy: () => editSchwabProxy(),
   connectSchwab: () => connectSchwab(),

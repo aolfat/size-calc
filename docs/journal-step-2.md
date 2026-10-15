@@ -103,6 +103,15 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - **R:** P&L ÷ (|entry − stop| × quantity × multiplier).
   - **A long option with no stop** risks its premium.
   - **No stop at all:** no R yet. Step 3's review card asks.
+- **Merge and separate (built):**
+  - **Why:** flat-to-flat grouping is right most of the time, but you sometimes see two of its trades as one: a re-entry after going flat, or a spread's legs (each contract groups on its own, so a debit spread is a long call and a short call).
+  - **Merge:** a checkbox on each trade; tick two or more and Merge. Allowed: same account and underlying, and either one symbol on one side, or option contracts (a spread). Shares with options aren't supported yet. Refusals say why in the pick bar.
+  - **Stored as identity, not numbers:** one row in `trades` per merge, holding the fill ids it claims. A row claims every trade holding one of its fills, so a merge that took in an open trade keeps the fills that land later. Rows that share a trade make one trade. Merging a merged trade with another updates its oldest row, so its id (what reviews will point at) stays.
+  - **Numbers:** one symbol = quantities added, weighted entry and exit, first open to last close, the stop and R found again over the whole span. A spread = counted in spreads (the legs' greatest common size), net debit or credit in and out per spread, risk = the debit, or width − credit for a two-leg vertical credit spread, like the calculator's spread cards.
+  - **Side is the bet on the stock,** not bought or sold: calls bought and puts sold are long, puts bought and calls sold are short; a spread of one type goes by its strikes: bought below what's sold is long, above is short. That makes call debit and put credit verticals long, put debit and call credit short, a put diagonal (a longer-dated put bought, shorter-dated puts sold above it, rolled or not) long, and a poor man's covered call long. One strike over two expirations (a time spread) is neutral, and other mixes add up their legs (an iron condor is neutral). The spread's kind ('call debit') shows under it, and the side filter uses the same rule.
+  - **Separate:** deletes the rows, so the trades group on their own again.
+  - **Spread suggestions:** legs that opened in one Schwab order (one order id, several contracts) and aren't one trade yet are offered as one: Merge as one trade, or Keep apart (remembered on this device, `journal_spread_skip`).
+  - **Not built:** splitting one trade at a fill (later, as two rows claiming different fills).
 - **Fees:** P&L is before fees for now. Schwab's orders carry none, so fees come from transactions once their real format is checked.
 
 ### 3. Trade page
@@ -162,6 +171,7 @@ Not part of step 2, noted so the review design picks them up:
 | Table | One row per | Holds |
 |---|---|---|
 | `schwab_records` (built) | Order or transaction | Kind, Schwab's id, account (last 4 digits), entered time, Schwab's JSON whole with account numbers masked |
+| `trades` (built) | Trade you shaped (merged, a spread) | Account (last 4 digits), the fill ids it claims; numbers are computed from them |
 | `fills` | Fill | Schwab id (unique per account), order id, symbol (options by full contract symbol), underlying, asset type, side, quantity, price, fee, time, open or close |
 | `stop_orders` | Stop order | Order id, symbol, side, quantity, stop price, entered, status, what replaced it |
 | `bars_5m` | Symbol per day | That day's 5-minute bars packed in one value |

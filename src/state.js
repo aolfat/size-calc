@@ -59,6 +59,10 @@ export function createState() {
     journalTab: 'trades', // trades | fills
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
+    journalSaved: [], // the trades you shaped (merged trades, spreads): Supabase trades rows, { id, account, fill_ids, created_at }
+    journalSavedError: '', // why the trades table couldn't be read; trades still show, unmerged
+    journalPicked: [], // trade keys ticked for Merge
+    journalMerging: false, // a merge or separate is being saved
     marketView: false,
     levDir: 'both', // both | long | short — a display filter, re-renders the last result
     levLast: null,

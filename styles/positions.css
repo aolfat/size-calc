@@ -112,3 +112,18 @@
 .journal-summary { color: var(--text2); margin-bottom: 8px; }
 .journal-tag { font-size: 10.5px; font-weight: 600; color: var(--blue); border: 1px solid var(--blue-bd); background: var(--blue-bg); border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; }
 .positions-table .journal-open td { background: color-mix(in srgb, var(--blue-bg) 35%, var(--bg2)); } /* opaque: the pinned symbol cell takes the tint too */
+/* merge: a checkbox before each trade's symbol, the pick bar (sticks to the bottom while you tick), and spread suggestions */
+.journal-pick { display: inline-flex; vertical-align: -3px; margin-right: 8px; padding: 2px; cursor: pointer; }
+.journal-pick input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); cursor: pointer; }
+.journal-pickbar, .journal-suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; margin: 10px 0; border: 1px solid var(--border2); background: var(--bg2); border-radius: var(--radius); font-size: 13px; color: var(--text2); }
+.journal-pickbar { position: sticky; bottom: 12px; z-index: 3; border-color: var(--blue-bd); background: color-mix(in srgb, var(--blue-bg) 45%, var(--bg2)); color: var(--text); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
+.journal-suggest { margin: 0 0 10px; }
+.journal-suggest b { color: var(--text); }
+.journal-why { color: var(--amber); }
+.journal-pickbar-acts { margin-left: auto; display: inline-flex; gap: 8px; }
+.journal-pickbar .btn, .journal-suggest .btn { margin: 0; padding: 6px 12px; font-size: 12px; }
+.journal-pickbar .btn:disabled { opacity: 0.45; cursor: default; }
+@media (max-width: 600px) {
+  .journal-pickbar { bottom: calc(70px + env(safe-area-inset-bottom)); } /* above the tab bar */
+  .journal-pick input { width: 18px; height: 18px; }
+}

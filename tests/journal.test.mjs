@@ -107,10 +107,10 @@ test('Trades is the default view: fills grouped into trades, with P&L, R, hold t
   assert.match(out, /data-action="setJournalTab" data-arg="trades">Trades/);
   assert.match(out, /class="active" aria-pressed="true" data-action="setJournalTab" data-arg="trades"/, 'Trades is on by default');
   assert.match(out, /1 closed · 0 won \(0%\) · <span class="journal-sell">−\$504\.00<\/span> before fees · average −1\.00R over 1 · 1 open/);
-  const rows = [...out.matchAll(/<tr( class="journal-open")?>\s*<td><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
+  const rows = [...out.matchAll(/<tr( class="journal-open")?>\s*<td><label class="journal-pick">[\s\S]*?<\/label><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
   assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
   assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L and R lead, so phones see them before scrolling');
-  assert.match(out, /<td><b>AAPL<\/b><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<\/label><b>AAPL<\/b><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td class="journal-buy">Long<\/td>/);
   assert.match(out, /<td>2d 0h<\/td>/);
   assert.match(out, /P&amp;L is before fees/);
 });
@@ -125,7 +125,7 @@ test('filters: side and symbol narrow the trades, and Fills shows the raw fills'
   run("setJournalSide('all'); document.getElementById('journalSymbol').value = '245c'; journalSymbolChanged()");
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /AAPL 12\/18\/26 245C/);
-  assert.doesNotMatch(out, /<td><b>AAPL<\/b>/, 'the stock trade is filtered out');
+  assert.doesNotMatch(out, /<b>AAPL<\/b>/, 'the stock trade is filtered out');
   run("document.getElementById('journalSymbol').value = ''; journalSymbolChanged(); setJournalTab('fills')");
   assert.match(elements.get('journalSection').innerHTML, /4 fills\. Fills are read from your saved Schwab orders/);
 });
@@ -204,4 +204,122 @@ test('fills: matched to their order leg, zero quantities skipped, words for ever
   assert.deepEqual(fills.map(f => [f.symbol, f.side, f.qty, f.time]), [['NVDA', 'buy', 5, '2026-10-01T14:30:00.000Z']], 'no execution time: the order time');
   assert.equal(run("instructionWords('SELL_SHORT')"), 'Sell short');
   assert.equal(run("instructionWords('BUY_TO_COVER')"), 'Buy to cover');
+});
+
+// ---------- merge and separate: tick trades, Merge, and the merge is kept in your account's trades table ----------
+
+// a filled order: one leg, or several (a spread order fills every leg under one order id)
+const order = (id, time, legs) => ({
+  kind: 'order', record_id: String(id), account: '6789', entered_at: time,
+  data: {
+    orderId: id, enteredTime: time.replace('Z', '+0000'), status: 'FILLED',
+    orderLegCollection: legs.map(([instruction, qty, , symbol = 'AAPL'], i) => ({ legId: i + 1, instruction, quantity: qty, instrument: { symbol, assetType: symbol.includes(' ') ? 'OPTION' : 'EQUITY' } })),
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: legs.map(([, qty, price], i) => ({ legId: i + 1, quantity: qty, price, time: time.replace('Z', '+0000') })) }],
+  },
+});
+// two AAPL round trips (flat on Oct 2), and one MSFT
+const ROUND_TRIPS = [
+  order(1, '2026-10-01T14:30:00Z', [['BUY', 100, 20]]),
+  order(2, '2026-10-02T14:30:00Z', [['SELL', 100, 21]]),
+  order(3, '2026-10-05T14:30:00Z', [['BUY', 50, 21.5]]),
+  order(4, '2026-10-06T14:30:00Z', [['SELL', 50, 23]]),
+  order(5, '2026-10-07T14:30:00Z', [['BUY', 10, 400, 'MSFT']]),
+  order(6, '2026-10-07T15:30:00Z', [['SELL', 10, 401, 'MSFT']]),
+];
+const C245 = 'AAPL  261218C00245000', C250 = 'AAPL  261218C00250000';
+const SPREAD = [
+  order(11, '2026-10-08T14:00:00Z', [['BUY_TO_OPEN', 2, 4.1, C245], ['SELL_TO_OPEN', 2, 1.6, C250]]),
+  order(12, '2026-10-09T15:00:00Z', [['SELL_TO_CLOSE', 2, 6, C245], ['BUY_TO_CLOSE', 2, 2.5, C250]]),
+];
+const KEY_A = '6789|AAPL|long|2026-10-01T14:30:00.000Z', KEY_B = '6789|AAPL|long|2026-10-05T14:30:00.000Z', KEY_M = '6789|MSFT|long|2026-10-07T14:30:00.000Z';
+const symbolCells = out => [...out.matchAll(/<tr[^>]*>\s*<td><label class="journal-pick">[\s\S]*?<\/label><b>([^<]*)<\/b>/g)].map(m => m[1]);
+
+async function journal(records, trades = []) {
+  const supabase = fakeRecords(records, trades);
+  const a = await app({ storage: connected(), supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  return { ...a, supabase, out: () => a.elements.get('journalSection').innerHTML };
+}
+
+test('tick two trades and Merge: kept as one trade in your account; Separate splits it back', async () => {
+  const { run, out, supabase, elements } = await journal(ROUND_TRIPS);
+  assert.ok(supabase.reads.some(r => r.table === 'trades' && r.cols === 'id,account,fill_ids,created_at'), 'merges are read with the records');
+  assert.deepEqual(symbolCells(out()), ['MSFT', 'AAPL', 'AAPL']);
+  assert.match(out(), new RegExp(`<input type="checkbox" data-change="toggleJournalPick" data-arg="${KEY_A.replace(/[|.]/g, '\\$&')}" aria-label="Pick AAPL"`));
+  assert.doesNotMatch(out(), /journal-pickbar/, 'no bar until something is ticked');
+
+  run(`toggleJournalPick('${KEY_A}'); toggleJournalPick('${KEY_B}')`);
+  assert.match(out(), /class="journal-pickbar"[\s\S]*2 picked[\s\S]*<button class="btn primary" data-action="mergePicked">Merge into one trade<\/button>/);
+  assert.match(out(), /data-arg="6789\|AAPL\|long\|2026-10-01T14:30:00\.000Z" aria-label="Pick AAPL" checked/);
+
+  await run('mergePicked()');
+  const [row] = [...supabase.trades.values()];
+  assert.equal(supabase.trades.size, 1);
+  assert.equal(row.account, '6789');
+  assert.deepEqual(row.fill_ids.sort(), ['1:10:1:0', '2:20:1:0', '3:30:1:0', '4:40:1:0'], 'the merge is its fills, by Schwab id');
+  assert.equal(elements.get('errorBox').textContent, 'Merged 2 trades into one.');
+  assert.deepEqual(symbolCells(out()), ['MSFT', 'AAPL']);
+  assert.match(out(), /2 trades merged · <button class="pos-link" data-action="separateTrade" data-arg="[0-9a-f-]{36}">Separate<\/button>/);
+  assert.match(out(), /2 closed · 2 won/);
+  assert.doesNotMatch(out(), /journal-pickbar/, 'the picks clear');
+
+  await run(`separateTrade('${row.id}')`);
+  assert.equal(supabase.trades.size, 0);
+  assert.equal(elements.get('errorBox').textContent, 'Separated into 2 trades.');
+  assert.deepEqual(symbolCells(out()), ['MSFT', 'AAPL', 'AAPL']);
+});
+
+test('trades that cannot be one say why, and Merge stays off', async () => {
+  const { run, out, supabase } = await journal(ROUND_TRIPS);
+  run(`toggleJournalPick('${KEY_A}'); toggleJournalPick('${KEY_M}')`);
+  assert.match(out(), /2 picked · <span class="journal-why">Pick trades on the same symbol\.<\/span>/);
+  assert.match(out(), /data-action="mergePicked" disabled/);
+  await run('mergePicked()');
+  assert.equal(supabase.trades.size, 0);
+  run('clearJournalPicks()');
+  assert.doesNotMatch(out(), /journal-pickbar/);
+});
+
+test('merging a merged trade with another keeps its saved row (so what hangs on it stays put)', async () => {
+  const more = [...ROUND_TRIPS, order(7, '2026-10-12T14:30:00Z', [['BUY', 10, 22]]), order(8, '2026-10-12T15:30:00Z', [['SELL', 10, 22.5]])];
+  const kept = { id: '11111111-1111-4111-8111-111111111111', account: '6789', fill_ids: ['1:10:1:0', '3:30:1:0'], created_at: '2026-10-09T00:00:00.000Z' };
+  const { run, out, supabase } = await journal(more, [kept]);
+  run(`toggleJournalPick('trade:${kept.id}'); toggleJournalPick('6789|AAPL|long|2026-10-12T14:30:00.000Z')`);
+  await run('mergePicked()');
+  assert.deepEqual(supabase.tradeOps.map(o => o.op), ['update']);
+  assert.equal(supabase.trades.size, 1);
+  assert.ok(supabase.trades.get(kept.id).fill_ids.includes('7:70:1:0'));
+  assert.match(out(), /3 trades merged/);
+});
+
+test('legs that went in as one order are suggested as a spread: Merge saves it, Keep apart hides it on this device', async () => {
+  const { run, out, supabase } = await journal(SPREAD);
+  const keys = `6789|${C245}|long|2026-10-08T14:00:00.000Z,6789|${C250}|short|2026-10-08T14:00:00.000Z`;
+  assert.match(out(), /class="journal-suggest"[\s\S]*AAPL 12\/18\/26 245\/250C[\s\S]*went in as one order/);
+  assert.ok(out().includes(`data-action="mergeSuggested" data-arg="${keys}"`));
+  await run(`mergeSuggested('${keys}')`);
+  assert.equal(supabase.trades.size, 1);
+  assert.doesNotMatch(out(), /journal-suggest/);
+  assert.deepEqual(symbolCells(out()), ['AAPL 12/18/26 245/250C']);
+  assert.match(out(), /2 legs · <button class="pos-link" data-action="separateTrade"/);
+  assert.match(out(), /<td class="journal-buy">Long<span class="pos-sub">call debit<\/span><\/td>/, 'a call debit spread is long');
+  assert.match(out(), /<td title="Defined risk: the debit, \$500\.00">\+0\.40R<\/td>/);
+
+  const other = await journal(SPREAD);
+  other.run(`skipSuggestion('${keys}')`);
+  assert.doesNotMatch(other.out(), /journal-suggest/);
+  assert.deepEqual(JSON.parse(other.run("store.get('journal_spread_skip')")), [keys]);
+  assert.equal(other.supabase.trades.size, 0, 'nothing saved');
+});
+
+test('without the trades table, trades still show, and merges say why they are unavailable', async () => {
+  const supabase = fakeRecords(ROUND_TRIPS);
+  supabase.failTrades();
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = elements.get('journalSection').innerHTML;
+  assert.deepEqual(symbolCells(out), ['MSFT', 'AAPL', 'AAPL']);
+  assert.match(out, /Merges unavailable: relation &quot;public\.trades&quot; does not exist/);
 });

@@ -1,16 +1,19 @@
 // Journal tab (#journalSection, setView('journal'), key j): what's kept from Schwab in your account, your trades (fills grouped
 // flat to flat, with P&L, R and hold time) or the raw fills, filtered by side and symbol, and the Import and Export sheets: Import lists the sources (Schwab now, file upload later),
-// Export the files you can take (Schwab history now, trades later). Trades, P&L and stats come in later slices.
+// Export the files you can take (Schwab history now, trades later). Tick trades and Merge to make them one trade (a re-entry, a
+// spread's legs), kept in your account's trades table; Separate undoes it. Legs that went in as one order are suggested.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
-import { holdWords, journalTrades, tradesSummary } from '../core/journal.js';
+import { holdWords, journalTrades, mergeProblem, spreadSuggestions, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
-import { loadSavedRecords } from '../services/journal.js';
+import { deleteSavedTrades, insertSavedTrade, loadSavedRecords, loadSavedTrades, updateSavedTrade } from '../services/journal.js';
+import { store } from '../lib/store.js';
 import { schwabConnected } from '../services/schwab.js';
 import { state } from '../state.js';
+import { showError, showToast } from './feedback.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { openSheet } from './sheets.js';
 
@@ -50,14 +53,33 @@ const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`; // the same minus sign as money
 
+/** why this R: the stop it came from, the premium, or the spread's defined risk */
+function rTitle(t) {
+  if (t.rBasis === 'stop') return `Initial stop ${px(t.stop, t.assetType)}, risk ${fmt$(t.risk)}`;
+  if (t.rBasis === 'premium') return `No stop order: the premium paid, ${fmt$(t.risk)}, is the risk`;
+  if (t.rBasis === 'spread') return t.net === 'debit' ? `Defined risk: the debit, ${fmt$(t.risk)}` : `Defined risk: the width less the credit, ${fmt$(t.risk)}`;
+  return t.kind === 'spread' ? 'No defined risk for this mix of legs' : 'No stop order found';
+}
+
+/** under a merged trade or spread: what it's made of, and Separate */
+function partsLine(t) {
+  if (t.kind === 'single') return '';
+  const legs = new Set(t.parts.map(k => k.split('|')[1])).size;
+  const what = t.kind === 'spread' ? `${legs} legs` : `${t.parts.length} trades merged`;
+  return `<span class="pos-sub">${what} · <button class="pos-link" data-action="separateTrade" data-arg="${esc(t.id)}">Separate</button></span>`;
+}
+
 function tradeRow(t) {
   const open = t.status === 'open';
-  const rTitle = t.rBasis === 'stop' ? `Initial stop ${px(t.stop, t.assetType)}, risk ${fmt$(t.risk)}` : t.rBasis === 'premium' ? `No stop order: the premium paid, ${fmt$(t.risk)}, is the risk` : 'No stop order found';
+  const picked = state.journalPicked.includes(t.key);
+  // the side is the bet on the stock (a put bought is short); a spread says what it is under it
+  const side = { long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias];
+  const sideClass = { long: 'journal-buy', short: 'journal-sell', neutral: '' }[t.bias];
   return `<tr${open ? ' class="journal-open"' : ''}>
-    <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}</td>
+    <td><label class="journal-pick"><input type="checkbox" data-change="toggleJournalPick" data-arg="${esc(t.key)}" aria-label="Pick ${esc(t.label)}"${picked ? ' checked' : ''} /></label><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}${partsLine(t)}</td>
     <td class="${pnlClass(t.pnl)}">${open && !t.exits ? '—' : signed$(t.pnl)}${open && t.exits ? '<span class="pos-sub">so far</span>' : ''}</td>
-    <td title="${esc(rTitle)}">${t.r === null ? '—' : signedR(t.r)}</td>
-    <td class="${t.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${t.direction === 'long' ? 'Long' : 'Short'}</td>
+    <td title="${esc(rTitle(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
+    <td class="${sideClass}">${side}${t.structure ? `<span class="pos-sub">${esc(t.structure)}</span>` : ''}</td>
     <td>${t.entryQty}${open && t.openQty !== t.entryQty ? `<span class="pos-sub">${t.openQty} open</span>` : ''}</td>
     <td>${px(t.avgEntry, t.assetType)}</td>
     <td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td>
@@ -93,14 +115,37 @@ function controls() {
   </div>`;
 }
 
-function tradesView(trades) {
-  if (!trades.length) return '<p class="hint">No trades match.</p>';
-  return `<p class="hint journal-summary">${summaryLine(trades)}</p>
+/** what's ticked, why it can't be one trade (or Merge), and Clear */
+function pickBar(all) {
+  const picked = all.filter(t => state.journalPicked.includes(t.key));
+  if (!picked.length) return '';
+  const why = picked.length > 1 ? mergeProblem(picked) : '';
+  const off = why || picked.length < 2 || state.journalMerging ? ' disabled' : '';
+  const note = why ? ` · <span class="journal-why">${esc(why)}</span>` : picked.length < 2 ? ' · tick another to merge' : '';
+  return `<div class="journal-pickbar" role="status">${picked.length} picked${note}
+    <span class="journal-pickbar-acts"><button class="btn primary" data-action="mergePicked"${off}>${state.journalMerging ? 'Merging…' : 'Merge into one trade'}</button><button class="btn" data-action="clearJournalPicks">Clear</button></span></div>`;
+}
+
+const skipped = () => { try { return JSON.parse(store.get('journal_spread_skip') || '[]'); } catch(e) { return []; } };
+
+/** legs that went in as one order, not yet one trade: Merge, or Keep apart (remembered on this device) */
+function suggestions(all) {
+  const skip = new Set(skipped());
+  const list = spreadSuggestions(all).filter(s => !skip.has(s.keys.join(',')));
+  return list.map(s => `<div class="journal-suggest"><span><b>${esc(s.label)}</b> went in as one order. One trade?</span>
+    <span class="journal-pickbar-acts"><button class="btn primary" data-action="mergeSuggested" data-arg="${esc(s.keys.join(','))}"${state.journalMerging ? ' disabled' : ''}>Merge as one trade</button><button class="btn" data-action="skipSuggestion" data-arg="${esc(s.keys.join(','))}">Keep apart</button></span></div>`).join('');
+}
+
+function tradesView(trades, all) {
+  const merges = state.journalSavedError ? `<p class="hint" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}</p>` : '';
+  if (!trades.length) return `${merges}${suggestions(all)}${pickBar(all)}<p class="hint">No trades match.</p>`;
+  // the pick bar follows the table and sticks to the bottom of the screen, so it stays in reach while you tick down the list
+  return `<p class="hint journal-summary">${summaryLine(trades)}</p>${merges}${suggestions(all)}
     <div class="positions-wrap"><table class="positions-table journal-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
       <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
-    </table></div>
-    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. P&amp;L is before fees. R uses the first Schwab stop order on the loss side of your entry; a long option with no stop risks its premium.</p>`;
+    </table></div>${pickBar(all)}
+    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out; tick two or more and Merge to make them one (a re-entry, a spread's legs). P&amp;L is before fees. R uses the first Schwab stop order on the loss side of your entry; a long option with no stop risks its premium.</p>`;
 }
 
 function fillsView(fills) {
@@ -110,6 +155,84 @@ function fillsView(fills) {
       <tbody>${fills.slice(0, JOURNAL_SHOWN).map(fillRow).join('')}</tbody>
     </table></div>
     <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders.</p>`;
+}
+
+/** the trades as the table shows them, before the filters: your merges applied */
+const currentTrades = () => journalTrades(fillsFrom(state.journalRecords || []), state.journalRecords || [], state.journalSaved);
+
+export function toggleJournalPick(key) {
+  state.journalPicked = state.journalPicked.includes(key) ? state.journalPicked.filter(k => k !== key) : [...state.journalPicked, key];
+  renderJournal();
+}
+export function clearJournalPicks() { state.journalPicked = []; renderJournal(); }
+
+/**
+ * Save trades as one: a new row claiming their fills, or, when one of them is already a merge, its oldest row takes the
+ * rest in (so what's attached to it stays put) and the other rows go.
+ */
+async function mergeTrades(picked) {
+  const problem = mergeProblem(picked);
+  if (problem) { showError(problem); return; }
+  if (state.journalMerging) return;
+  state.journalMerging = true;
+  renderJournal();
+  const fillIds = [...new Set(picked.flatMap(t => t.fillIds))];
+  const savedIds = picked.flatMap(t => t.savedIds);
+  const rows = state.journalSaved.filter(r => savedIds.includes(r.id)).sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  try {
+    let keep;
+    if (rows.length) {
+      keep = { ...rows[0], fill_ids: fillIds };
+      await updateSavedTrade(keep.id, fillIds);
+    } else {
+      keep = { id: crypto.randomUUID(), account: picked[0].account, fill_ids: fillIds };
+      await insertSavedTrade(keep);
+      keep.created_at = new Date().toISOString();
+    }
+    state.journalSaved = [...state.journalSaved.filter(r => r.id !== keep.id), keep];
+    const extra = rows.slice(1).map(r => r.id);
+    // a leftover row still overlaps the kept one, so the trade shows as one either way
+    try { await deleteSavedTrades(extra); state.journalSaved = state.journalSaved.filter(r => !extra.includes(r.id)); } catch(e) {}
+    state.journalPicked = [];
+    const n = new Set(picked.flatMap(t => t.kind === 'single' ? [t.key] : t.parts)).size;
+    showToast(`Merged ${n} trades into one.`);
+  } catch(e) {
+    showError(`Couldn't merge: ${e?.message || e}`);
+  } finally {
+    state.journalMerging = false;
+    renderJournal();
+  }
+}
+
+export async function mergePicked() {
+  await mergeTrades(currentTrades().filter(t => state.journalPicked.includes(t.key)));
+}
+
+export async function mergeSuggested(keys) {
+  const list = String(keys).split(',');
+  await mergeTrades(currentTrades().filter(t => list.includes(t.key)));
+}
+
+export function skipSuggestion(keys) {
+  store.set('journal_spread_skip', JSON.stringify([...new Set([...skipped(), String(keys)])]));
+  renderJournal();
+}
+
+/** a merged trade or spread back into its parts: its saved rows deleted */
+export async function separateTrade(id) {
+  const t = currentTrades().find(x => x.id === id);
+  if (!t || state.journalMerging) return;
+  state.journalMerging = true;
+  try {
+    await deleteSavedTrades(t.savedIds);
+    state.journalSaved = state.journalSaved.filter(r => !t.savedIds.includes(r.id));
+    showToast(`Separated into ${t.parts.length} trades.`);
+  } catch(e) {
+    showError(`Couldn't separate: ${e?.message || e}`);
+  } finally {
+    state.journalMerging = false;
+    renderJournal();
+  }
 }
 
 export function setJournalTab(tab) { state.journalTab = tab === 'fills' ? 'fills' : 'trades'; renderJournal(); }
@@ -131,10 +254,14 @@ export function renderJournal() {
   const records = state.journalRecords || [];
   const kept = recordsSummary(records);
   const fills = fillsFrom(records);
+  const all = journalTrades(fills, records, state.journalSaved);
+  const keys = new Set(all.map(t => t.key));
+  state.journalPicked = state.journalPicked.filter(k => keys.has(k)); // a merge or re-read can retire a key
   const canImport = schwabConnected();
   const keptLine = kept.orders || kept.transactions
     ? `${kept.orders} orders and ${kept.transactions} trades kept · ${day(kept.first)} to ${day(kept.last)}`
     : state.journalLoading ? 'Loading…' : 'Nothing kept yet';
+  const scrolled = el.querySelector?.('.positions-wrap')?.scrollLeft || 0; // a tick redraws the table: keep it where it was sideways
   el.innerHTML = `<div class="card positions-card journal-card">
     <div class="positions-head">
       <span class="section-title">Journal</span>
@@ -148,9 +275,10 @@ export function renderJournal() {
     ${state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${fills.length ? controls() + (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
-      : tradesView(filtered(journalTrades(fills, records), t => t.direction)))
+      : tradesView(filtered(all, t => t.bias), all))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
-  </div>`;
+  </div>`;  const wrap = scrolled && el.querySelector?.('.positions-wrap');
+  if (wrap) wrap.scrollLeft = scrolled;
 }
 
 // ---------- Import and Export sheets ----------
@@ -199,7 +327,13 @@ export async function loadJournal() {
   state.journalLoading = true;
   renderJournal();
   try {
-    state.journalRecords = await loadSavedRecords();
+    // merges are read alongside; without them (no trades table yet) the trades still show, unmerged
+    const [records, saved] = await Promise.all([
+      loadSavedRecords(),
+      loadSavedTrades().then(rows => { state.journalSavedError = ''; return rows; }, e => { state.journalSavedError = String(e?.message || e); return state.journalSaved; }),
+    ]);
+    state.journalRecords = records;
+    state.journalSaved = saved;
     state.journalError = '';
   } catch(e) {
     state.journalError = String(e?.message || e);
