@@ -24,7 +24,7 @@ test('a scale-in, a partial exit and a flip: first in first out, P&L per share m
     fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 100),
     fill('b', '2026-10-01T14:40:00.000Z', 'buy', 50, 101),
     fill('c', '2026-10-01T15:00:00.000Z', 'sell', 100, 103),
-    fill('d', '2026-10-02T15:00:00.000Z', 'sell', 80, 104), // closes the last 50, then 30 short
+    fill('d', '2026-10-02T15:00:00.000Z', 'sell', 80, 104, { instruction: '' }), // closes the last 50, then 30 short (an instruction that doesn't say it only closes, like a file import's)
   ]);
   assert.equal(list.length, 2);
   const long = list.find(t => t.direction === 'long'), short = list.find(t => t.direction === 'short');
@@ -100,6 +100,19 @@ test('a trigger child stop counts though it was entered with its entry, seconds 
   assert.equal(t.r, -1, 'stopped out for −1R (slippage of 2 cents, on a $5.02 risk)');
 });
 
+test('a resting entry: its attached stop counts though it was entered hours before the fill', async () => {
+  const child = { orderId: 602, orderType: 'STOP', stopPrice: 95, status: 'FILLED', orderLegCollection: [{ instruction: 'SELL', instrument: { symbol: 'AAPL', assetType: 'EQUITY' } }] };
+  const parent = { orderId: 601, orderType: 'LIMIT', enteredTime: '2026-10-01T13:00:00+0000', childOrderStrategies: [child] };
+  const fills = [fill('e', '2026-10-01T16:00:00.000Z', 'buy', 100, 100, { orderId: '601' }), fill('x', '2026-10-02T15:00:00.000Z', 'sell', 100, 95)];
+  const [t] = await trades(fills, [{ kind: 'order', account: '6789', data: parent }]);
+  assert.equal(t.stop, 95, 'attached to the entry, so it counts');
+  assert.equal(t.r, -1);
+  const [own] = await trades(fills, [{ kind: 'order', account: '6789', data: { ...parent, childOrderStrategies: [{ ...child, enteredTime: '2026-10-01T13:00:00+0000' }] } }]);
+  assert.equal(own.stop, 95, 'with its own entered time too');
+  const [other] = await trades(fills, [{ kind: 'order', account: '6789', data: { ...parent, orderId: 700 } }]);
+  assert.equal(other.stop, null, 'a stop on some other order, entered hours before, is not this trade\'s');
+});
+
 test('identical-looking fills from a split order are both kept, and accounts never mix', async () => {
   const list = await trades([
     fill('p1', '2026-10-01T14:30:00.000Z', 'buy', 100, 50),
@@ -129,16 +142,210 @@ test('an open trade shows what it has realized so far, but no R until it closes'
 test('summary and hold time in words', async () => {
   const { run } = await app();
   const s = JSON.parse(run(`JSON.stringify(tradesSummary([{ status: 'win', pnl: 300, r: 1.5 }, { status: 'loss', pnl: -100, r: -1 }, { status: 'win', pnl: 50, r: null }, { status: 'open', pnl: 0, r: null }]))`));
-  assert.deepEqual(s, { closed: 3, open: 1, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2 });
+  assert.deepEqual(s, { closed: 3, open: 1, history: 0, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2, fees: 0, feesMissing: 0 });
   assert.equal(run('holdWords(45 * 60000)'), '45m');
   assert.equal(run('holdWords((3 * 60 + 10) * 60000)'), '3h 10m');
   assert.equal(run('holdWords((52) * 3600000)'), '2d 4h');
   assert.equal(run('holdWords(null)'), '');
 });
 
+test('a moved stop: R stays on the first, the move is shown; your stop overrides; one past the entry is ignored', async () => {
+  const entry = fill('e', '2026-10-01T14:30:00.000Z', 'buy', 100, 100);
+  const exit = fill('x', '2026-10-01T16:00:00.000Z', 'sell', 100, 99);
+  const stops = [stopOrder(1, '2026-10-01T14:30:30+0000', 'SELL', 98), stopOrder(2, '2026-10-01T15:00:00+0000', 'SELL', 96), stopOrder(3, '2026-10-01T15:30:00+0000', 'SELL', 100.2)];
+  const [t] = await trades([entry, exit], stops);
+  assert.equal(t.stop, 98);
+  assert.equal(t.r, -0.5, 'widened to 96 and then raised past the entry: R still counts from 98');
+  assert.equal(t.movedTo, 100.2, 'the last stop it had');
+  assert.equal(t.stopSource, 'schwab');
+  assert.deepEqual(t.stopTrail.map(s => s.stopPrice), [98, 96, 100.2], 'every stop on it, oldest first, past the entry included');
+
+  const { run } = await app();
+  const key = t.key;
+  const withOwn = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 99.5, hidden: true } }))`))[0];
+  assert.equal(withOwn.stop, 99.5);
+  assert.equal(withOwn.stopSource, 'yours');
+  assert.equal(withOwn.schwabStop, 98);
+  assert.equal(withOwn.r, -2);
+  assert.equal(withOwn.deleted, true, 'the review\'s hidden column is the delete mark');
+  const past = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 101 } }))`))[0];
+  assert.equal(past.stop, 98, 'a stop of yours past the entry isn\'t used');
+  assert.equal(past.ownStopIgnored, true);
+  assert.equal(run(`ownStopError(${JSON.stringify(t)}, 101)`), "A long's stop goes below the entry.");
+  assert.equal(run(`ownStopError(${JSON.stringify(t)}, 0)`), 'Type a stop price.');
+  assert.equal(run(`ownStopError(${JSON.stringify(t)}, 97)`), '');
+});
+
+// Schwab's TRADE transactions: the fill's instrument item, plus one item per fee with a feeType, charged as a negative cost
+const tx = (orderId, fees, extra = {}) => ({
+  kind: 'transaction', account: '6789',
+  data: { activityId: Number(orderId) * 10 + Object.keys(fees).length, type: 'TRADE', orderId, transferItems: [
+    { instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: 100, cost: -10000, price: 100, positionEffect: 'OPENING' },
+    ...Object.entries(fees).map(([feeType, cost]) => ({ instrument: { symbol: 'CURRENCY_USD', assetType: 'CURRENCY' }, amount: 0, cost, feeType })),
+  ], ...extra },
+});
+
+test('fees per order: fee items add up, pieces of one order add up, other items and other transactions don\'t count', async () => {
+  const { run } = await app();
+  const fees = JSON.parse(run(`JSON.stringify([...feesByOrder(${JSON.stringify([
+    tx(1, { COMMISSION: -0.65, OPT_REG_FEE: -0.02 }),
+    tx(1, { COMMISSION: -1.3 }), // the same order, filled in a second piece
+    tx(2, { SEC_FEE: -0.26, TAF_FEE: -0.02 }),
+    tx(3, { COMMISSION: 0 }),
+    { kind: 'transaction', data: { type: 'DIVIDEND_OR_INTEREST', orderId: 4, transferItems: [{ feeType: 'COMMISSION', cost: -5 }] } },
+    { kind: 'order', data: { orderId: 5 } },
+  ])})])`));
+  assert.deepEqual(fees.map(([k, v]) => [k, Math.round(v * 100) / 100]), [['1', 1.97], ['2', 0.28], ['3', 0]]);
+});
+
+test('after fees: P&L, the result and R are net; a flip splits its order\'s fees by quantity; missing ones are counted', async () => {
+  const fills = [
+    fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 100, { orderId: '1' }),
+    fill('b', '2026-10-01T15:00:00.000Z', 'sell', 150, 100.02, { orderId: '2', instruction: '' }), // closes 100, opens 50 short
+    fill('c', '2026-10-01T15:30:00.000Z', 'buy', 50, 99, { orderId: '3' }),
+  ];
+  const records = [stopOrder(9, '2026-10-01T14:30:10+0000', 'SELL', 99), tx(1, { COMMISSION: -1 }), tx(2, { COMMISSION: -3 })];
+  const { run } = await app();
+  const get = after => JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, ${JSON.stringify(records)}, {}, { afterFees: ${after} }))`));
+  const before = get(false), after = get(true);
+  const long = list => list.find(t => t.direction === 'long'), short = list => list.find(t => t.direction === 'short');
+  assert.equal(long(before).pnl, 2, 'before fees: 100 × $0.02');
+  assert.equal(long(before).status, 'win');
+  assert.equal(long(before).fees, 3, 'shown either way: $1 entry + $2 of the $3 flip (100 of its 150 shares)');
+  assert.equal(long(after).pnl, -1, 'a $2 win is a $1 loss after $3 of fees');
+  assert.equal(long(after).grossPnl, 2);
+  assert.equal(long(after).status, 'loss');
+  assert.equal(long(after).r, -0.01, 'R on the net: −1 ÷ (100 × $1)');
+  assert.equal(short(after).fees, 1, 'the other $1 of the flip');
+  assert.equal(short(after).feesMissing, 1, 'its cover (order 3) has no transaction yet');
+  assert.equal(short(after).pnl, 50, '50 × $1.02, less its $1');
+  const { run: r2 } = await app();
+  const s = JSON.parse(r2(`JSON.stringify(tradesSummary(${JSON.stringify(after)}))`));
+  assert.equal(s.fees, 4);
+  assert.equal(s.feesMissing, 1);
+  assert.equal(s.wins, 1);
+  assert.equal(s.losses, 1);
+});
+
+test('a close with nothing open was opened before the history: its own trade, out of the stats, never a flip', async () => {
+  const list = await trades([
+    fill('s1', '2026-10-01T14:30:00.000Z', 'sell', 60, 50), // sold shares bought before the 60 days
+    fill('s2', '2026-10-01T14:40:00.000Z', 'sell', 40, 51),
+    fill('b', '2026-10-02T14:30:00.000Z', 'buy', 100, 48),
+    fill('x', '2026-10-03T14:30:00.000Z', 'sell', 150, 49), // 100 of this trade, 50 more than the history holds
+    fill('c', '2026-10-04T14:30:00.000Z', 'buy', 20, 30, { instruction: 'BUY_TO_COVER' }), // a short from before
+  ]);
+  const hist = list.filter(t => t.status === 'history');
+  assert.deepEqual(hist.map(t => [t.direction, t.entryQty, Math.round(t.avgExit * 100) / 100]).sort(), [['long', 100, 50.4], ['long', 50, 49], ['short', 20, 30]].sort(),
+    'the two sells from flat are one trade; the extra 50 and the cover are their own');
+  assert.ok(hist.every(t => t.pnl === 0 && t.avgEntry === 0 && t.r === null && t.stop === null), 'entry and P&L unknown');
+  assert.match(hist.find(t => t.entryQty === 100).key, /^6789\|AAPL\|long\|before\|2026-10-01T14:30:00\.000Z$/, 'a stable key, so a delete sticks');
+  const real = list.filter(t => t.status !== 'history');
+  assert.equal(real.length, 1, 'no made-up short');
+  assert.equal(real[0].pnl, 100);
+  const { run } = await app();
+  const s = JSON.parse(run(`JSON.stringify(tradesSummary(${JSON.stringify(list)}))`));
+  assert.deepEqual([s.closed, s.open, s.history, s.pnl], [1, 0, 3, 100], 'history trades never count');
+});
+
+test('an option still open after its expiry closes at $0 at 4pm New York; before then it stays open', async () => {
+  const o = { symbol: 'AAPL  261016C00245000', label: 'AAPL 10/16/26 245C', assetType: 'OPTION' };
+  const longCall = [fill('o', '2026-10-09T14:05:03.000Z', 'buy', 2, 1.5, { ...o, instruction: 'BUY_TO_OPEN' })];
+  const shortPut = [fill('p', '2026-10-09T14:05:03.000Z', 'sell', 1, 0.8, { ...o, symbol: 'AAPL  261016P00230000', label: 'AAPL 10/16/26 230P', instruction: 'SELL_TO_OPEN' })];
+  const { run } = await app();
+  const at = (fills, now) => JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, [], {}, { now: ${now} }))`))[0];
+  const close = Date.parse('2026-10-16T20:00:00.000Z'); // 4pm EDT
+  assert.equal(at(longCall, close - 1).status, 'open', 'not before the close');
+  const t = at(longCall, close + 1);
+  assert.equal(t.expired, true);
+  assert.equal(t.status, 'loss');
+  assert.equal(t.pnl, -300, '2 × $1.50 × 100, the whole premium');
+  assert.equal(t.avgExit, 0);
+  assert.equal(t.closedAt, '2026-10-16T20:00:00.000Z');
+  assert.equal(t.r, -1, 'premium risk: −1R');
+  const p = at(shortPut, close + 1);
+  assert.equal(p.status, 'win');
+  assert.equal(p.pnl, 80, 'a sold option kept its premium');
+  assert.equal(at(longCall, undefined)?.status, 'open', 'no clock, no expiry');
+});
+
+// ---------- spreads ----------
+const leg = (id, orderId, time, side, qty, price, symbol, instruction) => fill(id, time, side, qty, price, {
+  orderId, symbol, label: `AAPL 12/18/26 ${Number(symbol.slice(-8)) / 1000}${symbol.at(-9)}`, assetType: 'OPTION', instruction,
+});
+const C245 = 'AAPL  261218C00245000', C255 = 'AAPL  261218C00255000';
+
+test('a multi-leg order is one spread: net debit, legs summed, the debit is its risk', async () => {
+  const list = await trades([
+    leg('a', '700', '2026-10-01T14:30:00.000Z', 'buy', 3, 6.2, C245, 'BUY_TO_OPEN'),
+    leg('b', '700', '2026-10-01T14:30:00.000Z', 'sell', 3, 2.7, C255, 'SELL_TO_OPEN'),
+    leg('c', '701', '2026-10-08T15:00:00.000Z', 'sell', 3, 8.1, C245, 'SELL_TO_CLOSE'),
+    leg('d', '701', '2026-10-08T15:00:00.000Z', 'buy', 3, 3.3, C255, 'BUY_TO_CLOSE'),
+  ]);
+  assert.equal(list.length, 1, 'one trade, not two');
+  const [t] = list;
+  assert.equal(t.label, 'AAPL 12/18/26 245/255C');
+  assert.equal(t.spreadKind, 'debit');
+  assert.equal(t.group, 'auto');
+  assert.equal(t.entryQty, 3);
+  assert.equal(t.avgEntry.toFixed(2), '3.50', '6.20 − 2.70 paid per spread');
+  assert.equal(t.avgExit.toFixed(2), '4.80', '8.10 − 3.30 taken back');
+  assert.equal(t.pnl, 390, '+570 on the long leg, −180 on the short');
+  assert.equal(t.rBasis, 'debit');
+  assert.equal(t.risk, 1050);
+  assert.equal(t.r, 0.37);
+  assert.equal(t.key, '6789|AAPL|spread|2026-10-01T14:30:00.000Z');
+  assert.equal(t.legs.length, 2);
+  const { run } = await app();
+  assert.equal(run(`legWords(${JSON.stringify(t.legs)})`), '+3 245C −3 255C');
+});
+
+test('a credit vertical risks its width less the credit; your combine and split override the order', async () => {
+  const legged = [
+    leg('s', '710', '2026-10-01T14:30:00.000Z', 'sell', 2, 4.0, C245, 'SELL_TO_OPEN'), // legged in: two orders
+    leg('l', '711', '2026-10-01T14:35:00.000Z', 'buy', 2, 1.5, C255, 'BUY_TO_OPEN'),
+  ];
+  const apart = await trades(legged);
+  assert.equal(apart.length, 2, 'separate orders stay separate trades');
+  const { run } = await app();
+  const g = '6789|AAPL|spread|2026-10-01T14:30:00.000Z';
+  const keys = apart.map(t => t.key);
+  const joined = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(legged)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: g }])))}))`));
+  assert.equal(joined.length, 1);
+  const [t] = joined;
+  assert.equal(t.group, 'yours');
+  assert.equal(t.spreadKind, 'credit');
+  assert.equal(t.avgEntry.toFixed(2), '2.50', 'took in 4.00 − 1.50');
+  assert.equal(t.rBasis, 'width');
+  assert.equal(t.risk, 1500, '(10 wide − 2.50) × 2 × 100');
+  assert.equal(t.status, 'open');
+
+  const oneOrder = legged.map(f => ({ ...f, orderId: '720' }));
+  const auto = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, []))`));
+  assert.equal(auto.length, 1, 'one order: combined on its own');
+  const solo = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: 'solo' }])))}))`));
+  assert.equal(solo.length, 2, "split: 'solo' keeps them apart");
+});
+
+test('combine candidates: other legs on the same underlying and account that overlap in time', async () => {
+  const fills = [
+    leg('a', '1', '2026-10-01T14:30:00.000Z', 'buy', 1, 5, C245, 'BUY_TO_OPEN'),
+    leg('b', '2', '2026-10-02T14:30:00.000Z', 'sell', 1, 2, C255, 'SELL_TO_OPEN'), // overlaps a
+    leg('c', '3', '2026-10-05T14:30:00.000Z', 'sell', 1, 6, C245, 'SELL_TO_CLOSE'), // a closes 10/5
+    leg('d', '4', '2026-10-09T14:30:00.000Z', 'buy', 1, 3, 'AAPL  261218P00230000', 'BUY_TO_OPEN'), // after a closed
+    fill('e', '2026-10-02T14:30:00.000Z', 'buy', 100, 240), // the stock
+    { ...leg('f', '6', '2026-10-02T14:30:00.000Z', 'buy', 1, 1, 'MSFT  261218C00500000', 'BUY_TO_OPEN'), label: 'MSFT 12/18/26 500C' },
+  ];
+  const { run } = await app();
+  const all = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, []))`));
+  const a = all.find(t => t.symbol === C245);
+  const c = JSON.parse(run(`JSON.stringify(combineCandidates(${JSON.stringify(all)}, '${a.key}'))`));
+  assert.deepEqual(c.map(t => t.symbol), [C255], 'not the later put, the stock, or MSFT');
+});
+
 // ---------- merged trades: trades you said are one, kept as their fills in Supabase's trades table ----------
 
-const C245 = { symbol: 'AAPL  261218C00245000', label: 'AAPL 12/18/26 245C', assetType: 'OPTION' };
+const C245o = { symbol: 'AAPL  261218C00245000', label: 'AAPL 12/18/26 245C', assetType: 'OPTION' };
 const C250 = { symbol: 'AAPL  261218C00250000', label: 'AAPL 12/18/26 250C', assetType: 'OPTION' };
 const P245 = { symbol: 'AAPL  261218P00245000', label: 'AAPL 12/18/26 245P', assetType: 'OPTION' };
 const P250 = { symbol: 'AAPL  261218P00250000', label: 'AAPL 12/18/26 250P', assetType: 'OPTION' };
@@ -153,7 +360,7 @@ const TWO = [
 const saved = (id, fillIds, extra = {}) => ({ id, account: '6789', fill_ids: fillIds, created_at: '2026-10-09T00:00:00.000Z', ...extra });
 async function merged(fills, records, rows) {
   const { run } = await app();
-  return JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, ${JSON.stringify(records)}, ${JSON.stringify(rows)}))`));
+  return JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, ${JSON.stringify(records)}, {}, { saved: ${JSON.stringify(rows)} }))`));
 }
 
 test('two trades on one symbol merged: P&L added, weighted entry and exit, first open to last close, R off the first stop', async () => {
@@ -215,23 +422,24 @@ test('saved merges that share a trade make one trade; a merge left with one trad
 
 test('a call debit spread merged: net debit in, net credit out, risk = the debit', async () => {
   const fills = [
-    fill('l1', '2026-10-06T14:00:00.000Z', 'buy', 2, 4.1, { ...C245, instruction: 'BUY_TO_OPEN', orderId: 'S1' }),
+    fill('l1', '2026-10-06T14:00:00.000Z', 'buy', 2, 4.1, { ...C245o, instruction: 'BUY_TO_OPEN', orderId: 'S1' }),
     fill('s1', '2026-10-06T14:00:00.000Z', 'sell', 2, 1.6, { ...C250, instruction: 'SELL_TO_OPEN', orderId: 'S1' }),
-    fill('l2', '2026-10-09T15:00:00.000Z', 'sell', 2, 6, { ...C245, instruction: 'SELL_TO_CLOSE', orderId: 'S2' }),
+    fill('l2', '2026-10-09T15:00:00.000Z', 'sell', 2, 6, { ...C245o, instruction: 'SELL_TO_CLOSE', orderId: 'S2' }),
     fill('s2', '2026-10-09T15:00:00.000Z', 'buy', 2, 2.5, { ...C250, instruction: 'BUY_TO_CLOSE', orderId: 'S2' }),
   ];
   const [t] = await merged(fills, [], [saved('sp', ['l1', 's1'])]);
   assert.equal(t.kind, 'spread');
   assert.equal(t.label, 'AAPL 12/18/26 245/250C');
-  assert.equal(t.net, 'debit', 'paid to open');
+  assert.equal(t.spreadKind, 'debit', 'paid to open');
+  assert.equal(t.group, 'yours');
   assert.equal(t.bias, 'long', 'a call debit spread is long');
   assert.equal(t.structure, 'call debit');
   assert.equal(t.entryQty, 2, 'two spreads');
-  assert.equal(t.avgEntry, 2.5, 'net debit per spread');
-  assert.equal(t.avgExit, 3.5, 'net credit per spread at the close');
+  assert.equal(t.avgEntry.toFixed(2), '2.50', 'net debit per spread');
+  assert.equal(t.avgExit.toFixed(2), '3.50', 'net credit per spread at the close');
   assert.equal(t.pnl, 200, '+380 on the 245C, −180 on the 250C');
   assert.equal(t.multiplier, 100);
-  assert.equal(t.rBasis, 'spread');
+  assert.equal(t.rBasis, 'debit');
   assert.equal(t.risk, 500, 'the debit is all it can lose');
   assert.equal(t.r, 0.4);
 });
@@ -245,12 +453,13 @@ test('a put credit spread merged: net credit in, risk = width − credit', async
   ];
   const [t] = await merged(fills, [], [saved('sp', ['s1', 'l1', 's2', 'l2'])]);
   assert.equal(t.label, 'AAPL 12/18/26 245/250P');
-  assert.equal(t.net, 'credit', 'received to open');
+  assert.equal(t.spreadKind, 'credit', 'received to open');
   assert.equal(t.bias, 'long', 'a put credit spread is long');
   assert.equal(t.structure, 'put credit');
-  assert.equal(t.avgEntry, 1.8, 'net credit');
-  assert.equal(t.avgExit, 0.7, 'net debit to close');
+  assert.equal(t.avgEntry.toFixed(2), '1.80', 'net credit');
+  assert.equal(t.avgExit.toFixed(2), '0.70', 'net debit to close');
   assert.equal(t.pnl, 110);
+  assert.equal(t.rBasis, 'width');
   assert.equal(t.risk, 320, '$5 wide × 100 − $180 credit');
   assert.equal(t.r, 0.34);
 });
@@ -264,59 +473,22 @@ test('what can be merged: same account and underlying; one symbol on one side, o
   assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'short')]), 'Pick trades on the same side.');
   assert.equal(problem([t('AAPL', 'long'), t('MSFT', 'long')]), 'Pick trades on the same symbol.');
   assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'long', { account: '1111' })]), 'Those trades are in different accounts.');
-  assert.equal(problem([t(C245.symbol, 'long'), t(C250.symbol, 'short')]), '', 'a spread');
-  assert.equal(problem([t(C245.symbol, 'long'), t('MSFT  261218C00245000', 'short')]), 'Pick trades on the same symbol.');
+  assert.equal(problem([t(C245o.symbol, 'long'), t(C250.symbol, 'short')]), '', 'a spread');
+  assert.equal(problem([t(C245o.symbol, 'long'), t('MSFT  261218C00245000', 'short')]), 'Pick trades on the same symbol.');
   assert.equal(problem([t('AAPL', 'long'), t(C250.symbol, 'short')]), "Shares and options can't be one trade yet.");
+  assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'long', { status: 'history' })]), "Trades from before your history can't be merged.");
+  assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'long', { deleted: true })]), 'Restore deleted trades before merging them.');
+  assert.equal(problem([t('AAPL', 'long', { assetType: 'SPREAD' }), t(C250.symbol, 'short')]), '', 'a leg added to a spread');
 });
 
-test('spread suggestions: legs that went in as one Schwab order, until they are merged', async () => {
+test('a multi-leg order is a spread on its own, and a row with one of its legs keeps that leg apart', async () => {
   const fills = [
-    fill('l1', '2026-10-06T14:00:00.000Z', 'buy', 1, 4.1, { ...C245, instruction: 'BUY_TO_OPEN', orderId: 'S1' }),
+    fill('l1', '2026-10-06T14:00:00.000Z', 'buy', 1, 4.1, { ...C245o, instruction: 'BUY_TO_OPEN', orderId: 'S1' }),
     fill('s1', '2026-10-06T14:00:00.000Z', 'sell', 1, 1.6, { ...C250, instruction: 'SELL_TO_OPEN', orderId: 'S1' }),
-    ...TWO,
   ];
-  const { run } = await app();
-  const suggest = rows => JSON.parse(run(`JSON.stringify(spreadSuggestions(journalTrades(${JSON.stringify(fills)}, [], ${JSON.stringify(rows)})))`));
-  const [s, ...rest] = suggest([]);
-  assert.equal(rest.length, 0, 'the two stock trades were separate orders');
-  assert.equal(s.label, 'AAPL 12/18/26 245/250C');
-  assert.deepEqual(s.keys, ['6789|AAPL  261218C00245000|long|2026-10-06T14:00:00.000Z', '6789|AAPL  261218C00250000|short|2026-10-06T14:00:00.000Z']);
-  assert.deepEqual(suggest([saved('sp', ['l1', 's1'])]), [], 'merged: nothing to suggest');
-});
-
-test('the side is the bet on the stock: calls bought long, puts bought short, verticals by type and debit, time spreads neutral', async () => {
-  const opt = (symbol, label) => ({ symbol, label, assetType: 'OPTION' });
-  const C245N = opt('AAPL  261120C00245000', 'AAPL 11/20/26 245C');
-  const P240 = opt('AAPL  261218P00240000', 'AAPL 12/18/26 240P'), C255 = opt('AAPL  261218C00255000', 'AAPL 12/18/26 255C');
-  let n = 0;
-  const leg = (side, leg, price = 2) => fill(`f${++n}`, '2026-10-06T14:00:00.000Z', side, 1, price, { ...leg, orderId: 'S' });
-  const one = async (legs) => { const fills = legs; const list = await merged(fills, [], [saved('x', fills.map(f => f.id))]); assert.equal(list.length, 1); return list[0]; };
-
-  const singles = await merged([leg('buy', C245), leg('sell', C250), leg('buy', P245), leg('sell', P250), fill('st', '2026-10-06T14:00:00.000Z', 'sell', 10, 50, { symbol: 'TSLA', label: 'TSLA' })], [], []);
-  const bias = label => singles.find(t => t.label === label).bias;
-  assert.equal(bias('AAPL 12/18/26 245C'), 'long', 'a call bought');
-  assert.equal(bias('AAPL 12/18/26 250C'), 'short', 'a call sold');
-  assert.equal(bias('AAPL 12/18/26 245P'), 'short', 'a put bought');
-  assert.equal(bias('AAPL 12/18/26 250P'), 'long', 'a put sold');
-  assert.equal(bias('TSLA'), 'short', 'shares sold short');
-
-  const putDebit = await one([leg('buy', P250, 3), leg('sell', P245, 1.2)]);
-  assert.deepEqual([putDebit.structure, putDebit.bias], ['put debit', 'short']);
-  const callCredit = await one([leg('sell', C245, 4.1), leg('buy', C250, 1.6)]);
-  assert.deepEqual([callCredit.structure, callCredit.bias], ['call credit', 'short']);
-  const calendar = await one([leg('sell', C245N, 3), leg('buy', C245, 4)]);
-  assert.deepEqual([calendar.structure, calendar.bias, calendar.label], ['time spread', 'neutral', 'AAPL 11/20/26 245C / AAPL 12/18/26 245C']);
-  // diagonals go by strikes like a vertical: bought below what's sold = long, for puts and calls
-  const P240J = opt('AAPL  270115P00240000', 'AAPL 1/15/27 240P'), P245N = opt('AAPL  261120P00245000', 'AAPL 11/20/26 245P');
-  const P250J = opt('AAPL  270115P00250000', 'AAPL 1/15/27 250P'), C200J = opt('AAPL  270115C00200000', 'AAPL 1/15/27 200C');
-  const putDiag = await one([leg('buy', P240J, 6), leg('sell', P245N, 3)]);
-  assert.deepEqual([putDiag.structure, putDiag.bias], ['put diagonal', 'long'], 'a longer-dated put bought, a shorter-dated put sold above it');
-  const rolled = await one([leg('buy', P240J, 6), leg('sell', P245N, 3), leg('sell', P245, 3.5)]);
-  assert.deepEqual([rolled.structure, rolled.bias], ['put diagonal', 'long'], 'shorter-dated puts sold again and again against it');
-  const bearDiag = await one([leg('buy', P250J, 9), leg('sell', opt('AAPL  261120P00240000', 'AAPL 11/20/26 240P'), 1)]);
-  assert.deepEqual([bearDiag.structure, bearDiag.bias], ['put diagonal', 'short'], 'bought above what is sold: a put debit spread over time');
-  const pmcc = await one([leg('buy', C200J, 40), leg('sell', C250, 2)]);
-  assert.deepEqual([pmcc.structure, pmcc.bias], ['call diagonal', 'long'], "a poor man's covered call");
-  const condor = await one([leg('buy', P240, 0.8), leg('sell', P245, 1.5), leg('sell', C250, 1.6), leg('buy', C255, 0.7)]);
-  assert.deepEqual([condor.structure, condor.bias], ['', 'neutral'], 'an iron condor: the legs cancel');
+  const [auto] = await merged(fills, [], []);
+  assert.deepEqual([auto.kind, auto.group, auto.bias, auto.structure], ['spread', 'auto', 'long', 'call debit']);
+  assert.deepEqual(auto.savedIds, [], 'no row behind it');
+  const apart = await merged(fills, [], [saved('solo1', ['l1']), saved('solo2', ['s1'])]);
+  assert.deepEqual(apart.map(t => [t.kind, t.savedIds[0]]).sort(), [['single', 'solo1'], ['single', 'solo2']]);
 });

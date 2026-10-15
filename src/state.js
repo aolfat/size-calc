@@ -59,10 +59,18 @@ export function createState() {
     journalTab: 'trades', // trades | fills
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
-    journalSaved: [], // the trades you shaped (merged trades, spreads): Supabase trades rows, { id, account, fill_ids, created_at }
-    journalSavedError: '', // why the trades table couldn't be read; trades still show, unmerged
+    tradeReviews: null, // your word on each trade, by trade key: { stop, hidden (= deleted) }, once read
+    tradeGroups: true, // the database has trade_reviews.group_key (retired: read only to convert old combined spreads)
+    journalSaved: [], // the trades you shaped (merged trades, spreads, legs kept apart): trades rows, { id, account, fill_ids, created_at }
+    journalSavedError: '', // the trades table couldn't be read (no migration yet): trades show as the app groups them, merging is off
     journalPicked: [], // trade keys ticked for Merge
     journalMerging: false, // a merge or separate is being saved
+    tradeReviewsError: '', // the reviews couldn't be read (the trades still show, with Schwab's stops)
+    journalShowDeleted: false, // deleted trades shown, dimmed, to restore one
+    tradeReviewKey: null, // the trade open in the trade sheet
+    tradeReviewMode: 'edit', // edit | delete (the confirm step)
+    tradeReviewBusy: false, // a save is on its way
+    tradeReviewError: '',
     marketView: false,
     levDir: 'both', // both | long | short — a display filter, re-renders the last result
     levLast: null,

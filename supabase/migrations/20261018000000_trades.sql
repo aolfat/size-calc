@@ -1,7 +1,9 @@
 -- Journal trades you shaped (docs/journal-step-2.md): a trade the app's flat-to-flat grouping split, merged into one,
 -- or a spread's legs as one trade. A row is the trade's identity and the fills it claims, by their Schwab ids; P&L, R
 -- and the rest are computed in the browser from those fills, so a calculation fix still reaches every trade. Trades
--- nobody touched have no row. Separate = delete the row. Reviews and notes (step 3) will point at the row's id.
+-- nobody touched have no row; a row with one trade keeps it on its own (a multi-leg order's leg split off). Separate =
+-- delete the row. trade_reviews keeps your stop and delete on a shaped trade under 'trade:<id>'. This replaces
+-- trade_reviews.group_key (20261017000000), which the app converts to rows on load; the column goes in the squash.
 
 create table public.trades (
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,

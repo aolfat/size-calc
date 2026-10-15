@@ -112,16 +112,36 @@
 .journal-summary { color: var(--text2); margin-bottom: 8px; }
 .journal-tag { font-size: 10.5px; font-weight: 600; color: var(--blue); border: 1px solid var(--blue-bd); background: var(--blue-bg); border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; }
 .positions-table .journal-open td { background: color-mix(in srgb, var(--blue-bg) 35%, var(--bg2)); } /* opaque: the pinned symbol cell takes the tint too */
-/* merge: a checkbox before each trade's symbol, the pick bar (sticks to the bottom while you tick), and spread suggestions */
+.positions-table .journal-deleted td { opacity: .55; }
+.journal-row-acts { display: flex; gap: 12px; }
+.journal-delete { color: var(--red); }
+.journal-fees-missing { color: var(--amber); }
+.journal-tag-history { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.journal-tag-quiet { color: var(--text2); border-color: var(--border2); background: transparent; }
+.btn.journal-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border2)); }
+.journal-table .pos-sub .pos-link { font-size: inherit; }
+.journal-stop-chips { margin: 4px 0 12px; }
+.journal-stop-chips .filter-btn:disabled { opacity: 0.45; cursor: default; }
+.journal-chip-time { margin-left: 6px; font-size: 11px; color: var(--text3); }
+.journal-stop-row { align-items: flex-end; gap: 8px; }
+.journal-stop-row .field { flex: 0 1 200px; }
+.journal-legs { color: var(--text2); }
+.journal-legs-table { min-width: 0; width: 100%; }
+.journal-legs-table th, .journal-legs-table td { position: static; }
+@media (max-width: 600px) {
+  /* the pinned symbol column wraps its tags under the name, so P&L and R stay on screen */
+  .journal-table td:first-child { white-space: normal; min-width: 170px; max-width: 190px; }
+  .journal-table td:first-child b, .journal-table td:first-child .journal-legs, .journal-table td:first-child .journal-tag { white-space: nowrap; }
+  .journal-table td:first-child .journal-tag { display: inline-block; margin: 2px 4px 0 0; }
+}
+/* merge: a checkbox before each trade's symbol, and the pick bar (sticks to the bottom while you tick) */
 .journal-pick { display: inline-flex; vertical-align: -3px; margin-right: 8px; padding: 2px; cursor: pointer; }
 .journal-pick input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); cursor: pointer; }
-.journal-pickbar, .journal-suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; margin: 10px 0; border: 1px solid var(--border2); background: var(--bg2); border-radius: var(--radius); font-size: 13px; color: var(--text2); }
+.journal-pickbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; margin: 10px 0; border: 1px solid var(--border2); border-radius: var(--radius); font-size: 13px; }
 .journal-pickbar { position: sticky; bottom: 12px; z-index: 3; border-color: var(--blue-bd); background: color-mix(in srgb, var(--blue-bg) 45%, var(--bg2)); color: var(--text); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
-.journal-suggest { margin: 0 0 10px; }
-.journal-suggest b { color: var(--text); }
 .journal-why { color: var(--amber); }
 .journal-pickbar-acts { margin-left: auto; display: inline-flex; gap: 8px; }
-.journal-pickbar .btn, .journal-suggest .btn { margin: 0; padding: 6px 12px; font-size: 12px; }
+.journal-pickbar .btn { margin: 0; padding: 6px 12px; font-size: 12px; }
 .journal-pickbar .btn:disabled { opacity: 0.45; cursor: default; }
 @media (max-width: 600px) {
   .journal-pickbar { bottom: calc(70px + env(safe-area-inset-bottom)); } /* above the tab bar */

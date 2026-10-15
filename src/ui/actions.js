@@ -22,7 +22,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearJournalPicks, journalImport, journalSymbolChanged, mergePicked, mergeSuggested, openJournalExport, openJournalImport, separateTrade, setJournalSide, setJournalTab, skipSuggestion, toggleJournalPick } from './journal.js';
+import { clearJournalPicks, clearTradeStop, combineTrade, confirmDeleteTrade, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -65,11 +65,21 @@ export const actions = {
   setJournalTab: el => setJournalTab(arg(el)),
   setJournalSide: el => setJournalSide(arg(el)),
   journalSymbolChanged: () => journalSymbolChanged(),
+  toggleDeletedTrades: () => toggleDeletedTrades(),
+  setJournalFees: el => setJournalFees(arg(el)),
+  openTradeReview: el => openTradeReview(arg(el)),
+  tradeStopPreview: () => tradeStopPreview(),
+  pickTradeStop: el => pickTradeStop(arg(el)),
+  saveTradeStop: el => { if (el.tagName === 'INPUT') el.blur(); saveTradeStop(); },
+  clearTradeStop: () => clearTradeStop(),
+  confirmDeleteTrade: el => confirmDeleteTrade(arg(el)),
+  deleteTrade: () => deleteTrade(),
+  restoreTrade: el => restoreTrade(arg(el)),
+  combineTrade: el => combineTrade(arg(el)),
+  splitSpread: () => splitSpread(),
   toggleJournalPick: el => toggleJournalPick(arg(el)),
   clearJournalPicks: () => clearJournalPicks(),
   mergePicked: () => mergePicked(),
-  mergeSuggested: el => mergeSuggested(arg(el)),
-  skipSuggestion: el => skipSuggestion(arg(el)),
   separateTrade: el => separateTrade(arg(el)),
   schwabProxyDone: () => schwabProxyDone(),
   editSchwabProxy: () => editSchwabProxy(),

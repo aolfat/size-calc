@@ -92,7 +92,7 @@ Rough size: about 5 to 7 MB a year of active trading, most of it 5-minute bars, 
 | `settings` | User per key | Account size, risk %, presets, stop strategy, last ticker, Tradier environment. One row per key, so edits to different settings on two devices don't overwrite each other. The Tradier key is kept in Vault, not here |
 | `saved_positions` | Position | Temporary. Today's saved cards, until open trades come from imported fills. A delete sets `deleted_at` |
 
-**Trades are identities, not numbers.** A trade you shaped (merged trades, a spread's legs) is a `trades` row: a permanent id and the fills it claims. Every number is still rebuilt from fills, so a calculation fix reaches every trade. Trades nobody touched have no row and are keyed by account, symbol, direction, open time. Reviews and labels point to the row's id when there is one, otherwise the key. Neither open-source journal merges trades: LuxAlgo caches computed trades in a table whose annotation columns survive rebuilds by key, Trading-Journal-AI stores trades with their executions inside.
+**Trades are identities, not numbers.** A trade you shaped (merged trades, a spread's legs) is a `trades` row: a permanent id and the fills it claims. Every number is still rebuilt from fills, so a calculation fix reaches every trade. Trades nobody touched have no row and are keyed by account, symbol, direction, open time. Reviews and labels point to the row's key (`trade:<id>`) when there is one, otherwise the trade key. `trade_reviews` already works this way for your stop and deletes. Neither open-source journal merges trades: LuxAlgo caches computed trades in a table whose annotation columns survive rebuilds by key, Trading-Journal-AI stores trades with their executions inside.
 
 ### Hosting
 

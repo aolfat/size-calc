@@ -110,7 +110,9 @@ test('Trades is the default view: fills grouped into trades, with P&L, R, hold t
   const rows = [...out.matchAll(/<tr( class="journal-open")?>\s*<td><label class="journal-pick">[\s\S]*?<\/label><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
   assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
   assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L and R lead, so phones see them before scrolling');
-  assert.match(out, /<\/label><b>AAPL<\/b><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<\/label><b>AAPL<\/b><span class="pos-sub journal-row-acts"><button class="pos-link" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z"[^>]*>Edit<\/button><button class="pos-link journal-delete" data-action="confirmDeleteTrade"[^>]*>Delete<\/button><\/span><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<th scope="col">R<\/th><th scope="col">Stop<\/th>/);
+  assert.match(out, /aria-label="Set a stop for AAPL 12\/18\/26 245C">Set<\/button><span class="pos-sub">premium<\/span>/, 'the call has no stop: Set, and the premium is its risk');
   assert.match(out, /<td>2d 0h<\/td>/);
   assert.match(out, /P&amp;L is before fees/);
 });
@@ -125,7 +127,7 @@ test('filters: side and symbol narrow the trades, and Fills shows the raw fills'
   run("setJournalSide('all'); document.getElementById('journalSymbol').value = '245c'; journalSymbolChanged()");
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /AAPL 12\/18\/26 245C/);
-  assert.doesNotMatch(out, /<b>AAPL<\/b>/, 'the stock trade is filtered out');
+  assert.doesNotMatch(out, /<\/label><b>AAPL<\/b>/, 'the stock trade is filtered out');
   run("document.getElementById('journalSymbol').value = ''; journalSymbolChanged(); setJournalTab('fills')");
   assert.match(elements.get('journalSection').innerHTML, /4 fills\. Fills are read from your saved Schwab orders/);
 });
@@ -206,10 +208,278 @@ test('fills: matched to their order leg, zero quantities skipped, words for ever
   assert.equal(run("instructionWords('BUY_TO_COVER')"), 'Buy to cover');
 });
 
-// ---------- merge and separate: tick trades, Merge, and the merge is kept in your account's trades table ----------
+// ---------- your stop and deleted trades (trade_reviews; its hidden column is the delete mark) ----------
 
-// a filled order: one leg, or several (a spread order fills every leg under one order id)
-const order = (id, time, legs) => ({
+const STOCK = '6789|AAPL|long|2026-10-01T14:30:01.000Z';
+const OPTION = '6789|AAPL  261218C00245000|long|2026-10-06T14:00:02.000Z';
+async function journalWith(reviews = [], tweak) {
+  const supabase = fakeRecords(RECORDS.map(r => ({ ...r, account: '6789' })), reviews);
+  if (tweak) tweak(supabase);
+  const a = await app({ storage: connected(), supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  return { ...a, supabase, out: () => a.elements.get('journalSection').innerHTML, sheet: () => a.elements.get('tradeReviewBody').innerHTML };
+}
+
+test('your stop: set it from the trade sheet, R counts from it, and Schwab\'s is one tap back', async () => {
+  const { run, state, supabase, out, sheet, elements } = await journalWith();
+  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,hidden,group_key'), 'your reviews are read with the records');
+  run(`openTradeReview('${STOCK}')`);
+  assert.equal(state.openSheetName, 'tradeReview');
+  assert.equal(elements.get('tradeReviewTitle').textContent, 'AAPL');
+  assert.match(sheet(), /Using Schwab's first stop, \$95\.00 \(10\/1, 10:30 AM\)\. Risk \$502\.00\./);
+  assert.match(sheet(), /data-action="pickTradeStop" data-arg="95">\$95\.00/, 'Schwab\'s stops are listed to pick');
+
+  run("document.getElementById('tradeStopInput').value = '101'; tradeStopPreview()");
+  assert.equal(elements.get('tradeStopPreview').textContent, "A long's stop goes below the entry.");
+  assert.equal(elements.get('tradeStopSave').disabled, true);
+  run("document.getElementById('tradeStopInput').value = '97.5'; tradeStopPreview()");
+  assert.equal(elements.get('tradeStopPreview').textContent, 'Risk $252.00 · −2.00R');
+  assert.equal(elements.get('tradeStopSave').disabled, false);
+
+  await run('saveTradeStop()');
+  const w = supabase.writes.filter(x => x.table === 'trade_reviews');
+  assert.deepEqual(w.map(x => [x.trade_key, x.stop, x.hidden, x.onConflict]), [[STOCK, 97.5, false, 'user_id,trade_key']]);
+  assert.equal(state.openSheetName, null, 'saved: the sheet closes');
+  assert.match(elements.get('errorBox').textContent, /Stop saved: R counts from \$97\.50\./);
+  assert.match(out(), /title="Your stop \$97\.50, risk \$252\.00">−2\.00R<\/td>\s*<td><button[^>]*>\$97\.50<\/button><span class="pos-sub">yours<\/span>/);
+
+  run(`openTradeReview('${STOCK}')`);
+  assert.match(sheet(), /Using your stop, \$97\.50\. Risk \$252\.00\. Schwab's first was \$95\.00\./);
+  await run('clearTradeStop()');
+  assert.equal(supabase.reviewRows()[0].stop, null);
+  assert.equal(supabase.reviewRows()[0].hidden, false, 'clearing the stop keeps the rest of the row');
+  assert.match(out(), /title="Initial stop \$95\.00, risk \$502\.00">−1\.00R/);
+});
+
+test('an option\'s mental stop is a price on the option, and replaces the premium as its risk', async () => {
+  const { run, sheet, out } = await journalWith();
+  run(`openTradeReview('${OPTION}')`);
+  assert.match(sheet(), /No stop: the premium paid, \$1,235\.00, is the risk/);
+  assert.match(sheet(), /For an option, the stop is a price on the option itself/);
+  run("document.getElementById('tradeStopInput').value = '2.5'; tradeStopPreview()");
+  assert.match(run("document.getElementById('tradeStopPreview').textContent"), /Risk \$485\.00, R once it closes/, '(4.1167 − 2.50) × 3 × 100, and it\'s still open');
+  await run('saveTradeStop()');
+  assert.match(out(), /\$2\.50<\/button><span class="pos-sub">yours<\/span>/);
+});
+
+test('delete a trade that doesn\'t belong: a button on the row, asked once, out of the list and the stats, and imports can\'t bring it back', async () => {
+  const { run, state, supabase, out, sheet, elements } = await journalWith();
+  assert.match(out(), /data-action="confirmDeleteTrade" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Delete the AAPL trade">Delete<\/button>/, 'Delete sits on the row');
+  run(`confirmDeleteTrade('${STOCK}')`);
+  assert.equal(state.openSheetName, 'tradeReview');
+  assert.equal(elements.get('tradeReviewTitle').textContent, 'Delete AAPL?', 'it asks first');
+  assert.match(sheet(), /Imports won(?:'|&#39;)t bring it back/);
+  assert.equal(supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing saved by asking');
+  await run('deleteTrade()');
+  assert.deepEqual(supabase.reviewRows().map(r => [r.trade_key, r.hidden, r.stop]), [[STOCK, true, null]], 'the mark is on the trade key');
+  assert.match(elements.get('errorBox').textContent, /AAPL trade deleted\./);
+  assert.doesNotMatch(out(), /<\/label><b>AAPL<\/b>/, 'gone from the list');
+  assert.match(out(), /0 closed · 1 open · 1 deleted <button class="pos-link" data-action="toggleDeletedTrades">Show<\/button>/, 'and from the stats');
+
+  // an import brings Schwab's orders again: the trade stays deleted
+  await run('loadJournal()');
+  assert.doesNotMatch(out(), /<\/label><b>AAPL<\/b>/, 'still gone after the records are read again');
+  assert.equal(supabase.rows().filter(r => r.record_id === '501').length, 1, 'its orders are still kept');
+
+  run('toggleDeletedTrades()');
+  assert.match(out(), /<tr class="journal-deleted">\s*<td><b>AAPL<\/b> <span class="journal-tag">deleted<\/span>/, 'shown dimmed to restore it');
+  assert.match(out(), /data-action="restoreTrade" data-arg="6789\|AAPL[^"]*"[^>]*>Restore</);
+  assert.match(out(), /0 closed · 1 open · 1 deleted/, 'still not counted');
+  await run(`restoreTrade('${STOCK}')`);
+  assert.equal(supabase.reviewRows()[0].hidden, false);
+  assert.match(out(), /1 closed · 0 won/);
+
+  run(`openTradeReview('${STOCK}')`);
+  assert.match(sheet(), /data-action="confirmDeleteTrade"[^>]*>Delete this trade/, 'the trade sheet has it too');
+  run(`confirmDeleteTrade('${STOCK}')`);
+  assert.equal(elements.get('tradeReviewTitle').textContent, 'Delete AAPL?', 'and asks the same way');
+});
+
+test('reviews read when the journal opens; a refused save goes back; a missing table still shows the trades', async () => {
+  const kept = await journalWith([{ trade_key: STOCK, stop: '97.5', hidden: false }, { trade_key: OPTION, stop: null, hidden: true }]);
+  assert.match(kept.out(), /\$97\.50<\/button><span class="pos-sub">yours<\/span>/, 'Postgres numerics arrive as text');
+  assert.match(kept.out(), /1 deleted/);
+
+  kept.run(`confirmDeleteTrade('${STOCK}')`);
+  kept.supabase.fail({ status: 500, message: 'nope' });
+  await kept.run('deleteTrade()');
+  assert.match(kept.sheet(), /Couldn't delete: nope/);
+  assert.equal(kept.state.openSheetName, 'tradeReview', 'the sheet stays open');
+  assert.match(kept.out(), /<\/label><b>AAPL<\/b>/, 'and the trade comes back');
+
+  const missing = await journalWith([], s => s.failTable('trade_reviews'));
+  assert.match(missing.out(), /Your stops and deleted trades couldn't load \(the database doesn(?:'|&#39;)t have the trade_reviews table yet\)\. Trades show with Schwab's stops, deleted ones included\./);
+  assert.match(missing.out(), /−1\.00R/, 'the trades still show');
+  missing.run(`openTradeReview('${STOCK}')`);
+  assert.match(missing.sheet(), /saving is off until they do/);
+  missing.run(`confirmDeleteTrade('${STOCK}')`);
+  await missing.run('deleteTrade()');
+  assert.equal(missing.supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing written over a row it couldn\'t read');
+});
+
+test('fees: before by default; After fees takes out Schwab\'s fees per trade, says when they haven\'t come in, and syncs', async () => {
+  const fee = (id, orderId, items) => ({ kind: 'transaction', record_id: String(id), account: '6789', entered_at: '2026-10-03T15:00:00Z', data: { activityId: id, type: 'TRADE', orderId, transferItems: items } });
+  const records = [...RECORDS.map(r => ({ ...r, account: '6789' })),
+    fee(9101, 501, [{ instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: 100, cost: -10002, price: 100.02 }, { amount: 0, cost: 0, feeType: 'COMMISSION' }]),
+    fee(9102, 502, [{ instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: -100, cost: 9498, price: 94.98 }, { amount: 0, cost: -0.26, feeType: 'SEC_FEE' }, { amount: 0, cost: -0.02, feeType: 'TAF_FEE' }]),
+  ];
+  const { run, elements, storage } = await app({ storage: connected(), supabase: fakeRecords(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(out(), /class="active" aria-pressed="true" data-action="setJournalFees" data-arg="before">Before fees/, 'before fees unless you choose');
+  assert.match(out(), /−\$504\.00<\/span> before fees/);
+  assert.match(out(), /P&amp;L is before fees\./);
+
+  run("setJournalFees('after')");
+  assert.equal(storage.get('journal_fees'), 'after');
+  assert.ok(run("CLOUD_KEYS.includes('journal_fees')"), 'the choice goes with your account');
+  assert.match(out(), /<td class="journal-sell" title="Before fees −\$504\.00, fees \$0\.28">−\$504\.28<span class="pos-sub">fees \$0\.28<\/span><\/td>/);
+  assert.match(out(), /−1\.00R/, '−504.28 ÷ 502 still rounds to −1.00R');
+  assert.match(out(), /−\$504\.28<\/span> after fees \(fees \$0\.28\)/);
+  assert.match(out(), /P&amp;L is after Schwab(?:'|&#39;)s fees/);
+  assert.match(out(), /<td class="" title="Before fees \$0\.00, fees \$0\.00, 1 order without fees yet">—<\/td>/, 'an open trade with nothing sold shows a plain dash, not a red one');
+
+  run("setJournalTab('fills')");
+  assert.doesNotMatch(out(), /setJournalFees/, 'fees are a trades setting');
+});
+
+test('after fees, an order without its transaction yet says so instead of a made-up zero', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const storage = connected();
+  storage.set('journal_fees', 'after');
+  const { run, elements } = await app({ storage, supabase: fakeRecords(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = elements.get('journalSection').innerHTML;
+  assert.match(out, /−\$504\.00<span class="pos-sub"><span class="journal-fees-missing">fees not in yet<\/span><\/span>/);
+  assert.match(out, /fees not in yet on 1/);
+});
+
+test('a sell whose purchase is older than the history: marked, kept out of the stats, deletable; an expired option says so', async () => {
+  const sell = {
+    orderId: 801, enteredTime: '2026-09-02T14:00:00+0000', status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction: 'SELL', quantity: 40, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 7801, executionLegs: [{ legId: 1, quantity: 40, price: 510, time: '2026-09-02T14:00:01+0000' }] }],
+  };
+  const expiredCall = {
+    orderId: 802, enteredTime: '2026-09-02T14:10:00+0000', status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction: 'BUY_TO_OPEN', quantity: 1, instrument: { symbol: 'MSFT  260918C00520000', assetType: 'OPTION' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 7802, executionLegs: [{ legId: 1, quantity: 1, price: 2.4, time: '2026-09-02T14:10:01+0000' }] }],
+  };
+  const records = [...RECORDS, { kind: 'order', record_id: '801', entered_at: '2026-09-02T14:00:00Z', data: sell }, { kind: 'order', record_id: '802', entered_at: '2026-09-02T14:10:00Z', data: expiredCall }]
+    .map(r => ({ ...r, account: '6789' }));
+  const supabase = fakeRecords(records);
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(out(), /<tr class="journal-history"[^>]*>\s*<td><b>MSFT<\/b> <span class="journal-tag journal-tag-history">before your history<\/span>/);
+  assert.match(out(), /data-action="confirmDeleteTrade" data-arg="6789\|MSFT\|long\|before\|2026-09-02T14:00:01\.000Z"/, 'it can be deleted');
+  assert.doesNotMatch(out(), /Short<\/td>\s*<td>40</, 'no made-up short');
+  assert.match(out(), /2 closed · 0 won \(0%\) · <span class="journal-sell">−\$744\.00<\/span> before fees/, 'the stock and the expired call count; the history sell doesn\'t');
+  assert.match(out(), /1 from before your history/);
+  assert.match(out(), /MSFT 9\/18\/26 520C<\/b> <span class="journal-tag journal-tag-quiet" title="Closed at \$0 at the 4pm close on expiry/);
+  assert.match(out(), /−\$240\.00/, 'the whole premium');
+  assert.match(out(), /Options still open after expiry close at \$0/);
+
+  run("confirmDeleteTrade('6789|MSFT|long|before|2026-09-02T14:00:01.000Z')");
+  assert.match(elements.get('tradeReviewBody').innerHTML, /Sold 40 at \$510\.00 · bought before your history, so no P&amp;L/);
+  await run('deleteTrade()');
+  assert.doesNotMatch(out(), /before your history<\/span>/);
+  assert.match(out(), /1 deleted/);
+});
+
+test('spreads: a multi-leg order is one row; Split writes solo; Combine joins legs and stays on the spread', async () => {
+  const exec = (id, legs) => [{ activityType: 'EXECUTION', activityId: id, executionLegs: legs }];
+  const LEGS = [
+    { legId: 1, instruction: 'BUY_TO_OPEN', quantity: 2, instrument: { symbol: 'AAPL  261218C00250000', assetType: 'OPTION' } },
+    { legId: 2, instruction: 'SELL_TO_OPEN', quantity: 2, instrument: { symbol: 'AAPL  261218C00260000', assetType: 'OPTION' } },
+  ];
+  const vertical = { orderId: 901, enteredTime: '2026-10-08T14:00:00+0000', status: 'FILLED', orderLegCollection: LEGS,
+    orderActivityCollection: exec(7901, [{ legId: 1, quantity: 2, price: 6.2, time: '2026-10-08T14:00:01+0000' }, { legId: 2, quantity: 2, price: 2.7, time: '2026-10-08T14:00:01+0000' }]) };
+  const records = [...RECORDS, { kind: 'order', record_id: '901', entered_at: '2026-10-08T14:00:00Z', data: vertical }].map(r => ({ ...r, account: '6789' }));
+  const supabase = fakeRecords(records);
+  const { run, elements, state } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  const sheet = () => elements.get('tradeReviewBody').innerHTML;
+  const SPREAD = '6789|AAPL|spread|2026-10-08T14:00:01.000Z';
+  assert.match(out(), /<b>AAPL 12\/18\/26 250\/260C<\/b> <span class="journal-tag journal-tag-quiet">call debit<\/span> <span class="journal-tag">open<\/span><span class="pos-sub journal-legs">\+2 250C −2 260C<\/span>/);
+  assert.match(out(), /journal-buy">Long<\/td>\s*<td>2<\/td>\s*<td>\$3\.50<\/td>/, 'a call debit spread is long; net debit per spread');
+  assert.match(out(), new RegExp(`data-action="separateTrade" data-arg="${SPREAD.replace(/[|.]/g, '\\$&')}"`), 'Separate on the row');
+
+  run(`openTradeReview('${SPREAD}')`);
+  assert.match(sheet(), /Paid \$3\.50 × 2/);
+  assert.match(sheet(), /Opened in one order, so its legs are one trade\. The debit paid, \$700\.00, is the risk\./);
+  assert.match(sheet(), /data-action="splitSpread"/);
+  await run('splitSpread()');
+  const solos = [...supabase.trades.values()];
+  assert.equal(solos.length, 2, 'one trades row per leg keeps them apart, though one order opened them');
+  assert.ok(solos.every(r => r.fill_ids.length === 1));
+  assert.equal(supabase.reviewRows().length, 0, 'nothing written to trade_reviews');
+  assert.match(out(), /<b>AAPL 12\/18\/26 260C<\/b>/, 'two legs again');
+  assert.doesNotMatch(out(), /call debit/);
+
+  const legKey = strike => out().match(new RegExp(`data-change="toggleJournalPick" data-arg="(6789\\|AAPL  261218C00${strike}000[^"]*)"`))[1];
+  const LONG = legKey('250'), SHORT = legKey('260');
+  run(`openTradeReview('${LONG}')`);
+  assert.match(sheet(), /Combine into a spread/);
+  assert.match(sheet(), new RegExp(`data-action="combineTrade" data-arg="${SHORT.replace(/[|.]/g, '\\$&')}"`), 'the short call is offered');
+  await run(`combineTrade('${SHORT}')`);
+  const [joined, ...rest] = [...supabase.trades.values()];
+  assert.equal(rest.length, 0, 'the legs\' rows become one');
+  assert.equal(joined.fill_ids.length, 2);
+  assert.equal(state.openSheetName, 'tradeReview', 'the sheet stays open');
+  assert.equal(state.tradeReviewKey, `trade:${joined.id}`, 'on the spread');
+  assert.match(sheet(), /You combined these legs/);
+  assert.match(out(), /call debit/);
+});
+
+test('spreads combined with the retired group_key become trades rows on load, their delete kept', async () => {
+  const exec = (id, legs) => [{ activityType: 'EXECUTION', activityId: id, executionLegs: legs }];
+  const order = (id, instruction, symbol, price, time) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), data: {
+    orderId: id, enteredTime: time, status: 'FILLED', orderLegCollection: [{ legId: 1, instruction, quantity: 1, instrument: { symbol, assetType: 'OPTION' } }],
+    orderActivityCollection: exec(id * 10, [{ legId: 1, quantity: 1, price, time }]) } });
+  const records = [order(951, 'SELL_TO_OPEN', 'AAPL  261218C00245000', 4, '2026-10-08T14:00:00+0000'), order(952, 'BUY_TO_OPEN', 'AAPL  261218C00255000', 1.5, '2026-10-08T14:05:00+0000')];
+  const g = '6789|AAPL|spread|2026-10-08T14:00:00.000Z';
+  const legs = ['6789|AAPL  261218C00245000|short|2026-10-08T14:00:00.000Z', '6789|AAPL  261218C00255000|long|2026-10-08T14:05:00.000Z'];
+  const supabase = fakeRecords(records, [...legs.map(k => ({ trade_key: k, stop: null, hidden: false, group_key: g })), { trade_key: g, stop: null, hidden: true }]);
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const [row, ...more] = [...supabase.trades.values()];
+  assert.equal(more.length, 0);
+  assert.equal(row.fill_ids.length, 2, 'one row claims both legs');
+  assert.deepEqual(legs.map(k => supabase.reviews.get(`user-1:${k}`).group_key), [null, null], 'group_key cleared');
+  assert.equal(supabase.reviews.get(`user-1:trade:${row.id}`).hidden, true, 'the spread stays deleted under its new key');
+  assert.match(elements.get('journalSection').innerHTML, /1 deleted/);
+});
+
+test('before the trades table is pushed: stops and deletes still load, merging and combining say what they need', async () => {
+  const supabase = fakeRecords(RECORDS.map(r => ({ ...r, account: '6789' })), [{ trade_key: STOCK, stop: 97.5, hidden: false }]);
+  supabase.dropColumn('trade_reviews', 'group_key');
+  supabase.failTable('trades');
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(out(), /\$97\.50<\/button><span class="pos-sub">yours<\/span>/, 'your stop still loads');
+  assert.doesNotMatch(out(), /couldn(?:'|&#39;)t load/);
+  assert.match(out(), /Merges unavailable: the database doesn(?:'|&#39;)t have the trades table yet/);
+  run(`toggleJournalPick('${STOCK}'); toggleJournalPick('${OPTION}')`);
+  assert.match(out(), /journal-why">Merging needs the database update: npx supabase db push\./);
+  run(`openTradeReview('${OPTION}')`);
+  assert.match(elements.get('tradeReviewBody').innerHTML, /Combining needs the database update: npx supabase db push\./);
+});
+
+
+// ---------- merge and separate: tick trades, Merge, kept as a row in your account's trades table ----------
+
+// a filled order: one leg per [instruction, quantity, price, symbol]
+const filled = (id, time, legs) => ({
   kind: 'order', record_id: String(id), account: '6789', entered_at: time,
   data: {
     orderId: id, enteredTime: time.replace('Z', '+0000'), status: 'FILLED',
@@ -219,23 +489,19 @@ const order = (id, time, legs) => ({
 });
 // two AAPL round trips (flat on Oct 2), and one MSFT
 const ROUND_TRIPS = [
-  order(1, '2026-10-01T14:30:00Z', [['BUY', 100, 20]]),
-  order(2, '2026-10-02T14:30:00Z', [['SELL', 100, 21]]),
-  order(3, '2026-10-05T14:30:00Z', [['BUY', 50, 21.5]]),
-  order(4, '2026-10-06T14:30:00Z', [['SELL', 50, 23]]),
-  order(5, '2026-10-07T14:30:00Z', [['BUY', 10, 400, 'MSFT']]),
-  order(6, '2026-10-07T15:30:00Z', [['SELL', 10, 401, 'MSFT']]),
-];
-const C245 = 'AAPL  261218C00245000', C250 = 'AAPL  261218C00250000';
-const SPREAD = [
-  order(11, '2026-10-08T14:00:00Z', [['BUY_TO_OPEN', 2, 4.1, C245], ['SELL_TO_OPEN', 2, 1.6, C250]]),
-  order(12, '2026-10-09T15:00:00Z', [['SELL_TO_CLOSE', 2, 6, C245], ['BUY_TO_CLOSE', 2, 2.5, C250]]),
+  filled(1, '2026-10-01T14:30:00Z', [['BUY', 100, 20]]),
+  filled(2, '2026-10-02T14:30:00Z', [['SELL', 100, 21]]),
+  filled(3, '2026-10-05T14:30:00Z', [['BUY', 50, 21.5]]),
+  filled(4, '2026-10-06T14:30:00Z', [['SELL', 50, 23]]),
+  filled(5, '2026-10-07T14:30:00Z', [['BUY', 10, 400, 'MSFT']]),
+  filled(6, '2026-10-07T15:30:00Z', [['SELL', 10, 401, 'MSFT']]),
 ];
 const KEY_A = '6789|AAPL|long|2026-10-01T14:30:00.000Z', KEY_B = '6789|AAPL|long|2026-10-05T14:30:00.000Z', KEY_M = '6789|MSFT|long|2026-10-07T14:30:00.000Z';
 const symbolCells = out => [...out.matchAll(/<tr[^>]*>\s*<td><label class="journal-pick">[\s\S]*?<\/label><b>([^<]*)<\/b>/g)].map(m => m[1]);
+const reKey = k => k.replace(/[|.]/g, '\\$&');
 
-async function journal(records, trades = []) {
-  const supabase = fakeRecords(records, trades);
+async function journalOf(records, trades = []) {
+  const supabase = fakeRecords(records, [], trades);
   const a = await app({ storage: connected(), supabase, session: SESSION });
   a.run("setView('journal')");
   await a.run('loadJournal()');
@@ -243,35 +509,38 @@ async function journal(records, trades = []) {
 }
 
 test('tick two trades and Merge: kept as one trade in your account; Separate splits it back', async () => {
-  const { run, out, supabase, elements } = await journal(ROUND_TRIPS);
+  const { run, out, supabase, elements } = await journalOf(ROUND_TRIPS);
   assert.ok(supabase.reads.some(r => r.table === 'trades' && r.cols === 'id,account,fill_ids,created_at'), 'merges are read with the records');
   assert.deepEqual(symbolCells(out()), ['MSFT', 'AAPL', 'AAPL']);
-  assert.match(out(), new RegExp(`<input type="checkbox" data-change="toggleJournalPick" data-arg="${KEY_A.replace(/[|.]/g, '\\$&')}" aria-label="Pick AAPL"`));
+  assert.match(out(), new RegExp(`<input type="checkbox" data-change="toggleJournalPick" data-arg="${reKey(KEY_A)}" aria-label="Pick AAPL"`));
   assert.doesNotMatch(out(), /journal-pickbar/, 'no bar until something is ticked');
 
-  run(`toggleJournalPick('${KEY_A}'); toggleJournalPick('${KEY_B}')`);
-  assert.match(out(), /class="journal-pickbar"[\s\S]*2 picked[\s\S]*<button class="btn primary" data-action="mergePicked">Merge into one trade<\/button>/);
-  assert.match(out(), /data-arg="6789\|AAPL\|long\|2026-10-01T14:30:00\.000Z" aria-label="Pick AAPL" checked/);
+  run(`toggleJournalPick('${KEY_A}')`);
+  assert.match(out(), /1 picked · tick another to merge[\s\S]*data-action="mergePicked" disabled/);
+  run(`toggleJournalPick('${KEY_B}')`);
+  assert.match(out(), /class="journal-pickbar"[\s\S]*2 picked\s*<span class="journal-pickbar-acts"><button class="btn primary" data-action="mergePicked">Merge into one trade<\/button>/);
+  assert.match(out(), new RegExp(`data-arg="${reKey(KEY_A)}" aria-label="Pick AAPL" checked`));
 
   await run('mergePicked()');
   const [row] = [...supabase.trades.values()];
   assert.equal(supabase.trades.size, 1);
   assert.equal(row.account, '6789');
-  assert.deepEqual(row.fill_ids.sort(), ['1:10:1:0', '2:20:1:0', '3:30:1:0', '4:40:1:0'], 'the merge is its fills, by Schwab id');
+  assert.deepEqual([...row.fill_ids].sort(), ['1:10:1:0', '2:20:1:0', '3:30:1:0', '4:40:1:0'], 'the merge is its fills, by Schwab id');
   assert.equal(elements.get('errorBox').textContent, 'Merged 2 trades into one.');
   assert.deepEqual(symbolCells(out()), ['MSFT', 'AAPL']);
-  assert.match(out(), /2 trades merged · <button class="pos-link" data-action="separateTrade" data-arg="[0-9a-f-]{36}">Separate<\/button>/);
+  assert.match(out(), /<span class="pos-sub journal-legs">2 trades merged<\/span>/);
+  assert.match(out(), new RegExp(`data-action="separateTrade" data-arg="trade:${row.id}"`));
   assert.match(out(), /2 closed · 2 won/);
   assert.doesNotMatch(out(), /journal-pickbar/, 'the picks clear');
 
-  await run(`separateTrade('${row.id}')`);
+  await run(`separateTrade('trade:${row.id}')`);
   assert.equal(supabase.trades.size, 0);
   assert.equal(elements.get('errorBox').textContent, 'Separated into 2 trades.');
   assert.deepEqual(symbolCells(out()), ['MSFT', 'AAPL', 'AAPL']);
 });
 
 test('trades that cannot be one say why, and Merge stays off', async () => {
-  const { run, out, supabase } = await journal(ROUND_TRIPS);
+  const { run, out, supabase } = await journalOf(ROUND_TRIPS);
   run(`toggleJournalPick('${KEY_A}'); toggleJournalPick('${KEY_M}')`);
   assert.match(out(), /2 picked · <span class="journal-why">Pick trades on the same symbol\.<\/span>/);
   assert.match(out(), /data-action="mergePicked" disabled/);
@@ -281,45 +550,13 @@ test('trades that cannot be one say why, and Merge stays off', async () => {
   assert.doesNotMatch(out(), /journal-pickbar/);
 });
 
-test('merging a merged trade with another keeps its saved row (so what hangs on it stays put)', async () => {
-  const more = [...ROUND_TRIPS, order(7, '2026-10-12T14:30:00Z', [['BUY', 10, 22]]), order(8, '2026-10-12T15:30:00Z', [['SELL', 10, 22.5]])];
+test('merging a merged trade with another keeps its row, so its key (and your stop on it) stays put', async () => {
+  const more = [...ROUND_TRIPS, filled(7, '2026-10-12T14:30:00Z', [['BUY', 10, 22]]), filled(8, '2026-10-12T15:30:00Z', [['SELL', 10, 22.5]])];
   const kept = { id: '11111111-1111-4111-8111-111111111111', account: '6789', fill_ids: ['1:10:1:0', '3:30:1:0'], created_at: '2026-10-09T00:00:00.000Z' };
-  const { run, out, supabase } = await journal(more, [kept]);
+  const { run, out, supabase } = await journalOf(more, [kept]);
   run(`toggleJournalPick('trade:${kept.id}'); toggleJournalPick('6789|AAPL|long|2026-10-12T14:30:00.000Z')`);
   await run('mergePicked()');
   assert.deepEqual(supabase.tradeOps.map(o => o.op), ['update']);
-  assert.equal(supabase.trades.size, 1);
   assert.ok(supabase.trades.get(kept.id).fill_ids.includes('7:70:1:0'));
   assert.match(out(), /3 trades merged/);
-});
-
-test('legs that went in as one order are suggested as a spread: Merge saves it, Keep apart hides it on this device', async () => {
-  const { run, out, supabase } = await journal(SPREAD);
-  const keys = `6789|${C245}|long|2026-10-08T14:00:00.000Z,6789|${C250}|short|2026-10-08T14:00:00.000Z`;
-  assert.match(out(), /class="journal-suggest"[\s\S]*AAPL 12\/18\/26 245\/250C[\s\S]*went in as one order/);
-  assert.ok(out().includes(`data-action="mergeSuggested" data-arg="${keys}"`));
-  await run(`mergeSuggested('${keys}')`);
-  assert.equal(supabase.trades.size, 1);
-  assert.doesNotMatch(out(), /journal-suggest/);
-  assert.deepEqual(symbolCells(out()), ['AAPL 12/18/26 245/250C']);
-  assert.match(out(), /2 legs · <button class="pos-link" data-action="separateTrade"/);
-  assert.match(out(), /<td class="journal-buy">Long<span class="pos-sub">call debit<\/span><\/td>/, 'a call debit spread is long');
-  assert.match(out(), /<td title="Defined risk: the debit, \$500\.00">\+0\.40R<\/td>/);
-
-  const other = await journal(SPREAD);
-  other.run(`skipSuggestion('${keys}')`);
-  assert.doesNotMatch(other.out(), /journal-suggest/);
-  assert.deepEqual(JSON.parse(other.run("store.get('journal_spread_skip')")), [keys]);
-  assert.equal(other.supabase.trades.size, 0, 'nothing saved');
-});
-
-test('without the trades table, trades still show, and merges say why they are unavailable', async () => {
-  const supabase = fakeRecords(ROUND_TRIPS);
-  supabase.failTrades();
-  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
-  run("setView('journal')");
-  await run('loadJournal()');
-  const out = elements.get('journalSection').innerHTML;
-  assert.deepEqual(symbolCells(out), ['MSFT', 'AAPL', 'AAPL']);
-  assert.match(out, /Merges unavailable: relation &quot;public\.trades&quot; does not exist/);
 });

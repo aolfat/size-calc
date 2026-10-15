@@ -90,29 +90,53 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - the ×100 for options
   - a stable trade key (account, symbol, direction, open time), so notes added later never come loose
   - ported from LuxAlgo's MIT round-trip engine and tested against the spike's fixtures
-- **Trades are computed every time, never stored.** Trading-Journal-AI stores its trades, and much of its import code exists only to keep them consistent: it rebuilds stored trades that share a day with new fills, because its trade names (close date plus a counter that restarts each import) collide. Computing from kept fills avoids that whole class of bugs. Keying by open time, not close date, also keeps an open trade's key from changing when it closes.
+- **Trades are computed every time; only the trades you shape are stored** (see Merge and separate below), as identities with the fills they claim, never their numbers. Trading-Journal-AI stores its trades, and much of its import code exists only to keep them consistent: it rebuilds stored trades that share a day with new fills, because its trade names (close date plus a counter that restarts each import) collide. Computing from kept fills avoids that whole class of bugs. Keying by open time, not close date, also keeps an open trade's key from changing when it closes.
 - **Identical-looking fills are real.** A large order split into pieces can report fills with the same time, price and quantity. They stay separate because they're keyed by Schwab's execution ids, never deduped by content.
 - **A trade's P&L belongs to its close date** (the day it was realized) in the calendar and in daily stats. Open trades are listed apart.
 - **Trade list (built):**
   - **On the Journal:** a Trades | Fills switch, with Trades by default.
-  - **Columns:** symbol, P&L and R first (phones see them before scrolling), then side, size, average entry and exit, hold time, and when it opened (ET). Open trades are marked.
+  - **Columns:** symbol, P&L, R and the stop first (phones see them before scrolling), then side, size, average entry and exit, hold time, and when it opened (ET). Open trades are marked.
   - **Filters:** side and symbol. A date filter comes with the calendar.
   - **Summary line:** closed trades, wins and win rate, P&L before fees, average R, open trades.
 - **Initial stop and R (built):**
-  - **The stop:** the first Schwab stop order that closes the position. It must be entered from 5 minutes before the first fill (a trigger's stop goes in with its entry) until the close, and sit on the loss side of the average entry.
+  - **The stop:** the first Schwab stop order that closes the position. It must be entered from 5 minutes before the first fill until the close, or be attached to the order that opened the trade (a resting entry's stop, entered hours before it fills), and sit on the loss side of the average entry.
   - **R:** P&L ÷ (|entry − stop| × quantity × multiplier).
   - **A long option with no stop** risks its premium.
-  - **No stop at all:** no R yet. Step 3's review card asks.
-- **Merge and separate (built):**
-  - **Why:** flat-to-flat grouping is right most of the time, but you sometimes see two of its trades as one: a re-entry after going flat, or a spread's legs (each contract groups on its own, so a debit spread is a long call and a short call).
-  - **Merge:** a checkbox on each trade; tick two or more and Merge. Allowed: same account and underlying, and either one symbol on one side, or option contracts (a spread). Shares with options aren't supported yet. Refusals say why in the pick bar.
-  - **Stored as identity, not numbers:** one row in `trades` per merge, holding the fill ids it claims. A row claims every trade holding one of its fills, so a merge that took in an open trade keeps the fills that land later. Rows that share a trade make one trade. Merging a merged trade with another updates its oldest row, so its id (what reviews will point at) stays.
-  - **Numbers:** one symbol = quantities added, weighted entry and exit, first open to last close, the stop and R found again over the whole span. A spread = counted in spreads (the legs' greatest common size), net debit or credit in and out per spread, risk = the debit, or width − credit for a two-leg vertical credit spread, like the calculator's spread cards.
-  - **Side is the bet on the stock,** not bought or sold: calls bought and puts sold are long, puts bought and calls sold are short; a spread of one type goes by its strikes: bought below what's sold is long, above is short. That makes call debit and put credit verticals long, put debit and call credit short, a put diagonal (a longer-dated put bought, shorter-dated puts sold above it, rolled or not) long, and a poor man's covered call long. One strike over two expirations (a time spread) is neutral, and other mixes add up their legs (an iron condor is neutral). The spread's kind ('call debit') shows under it, and the side filter uses the same rule.
-  - **Separate:** deletes the rows, so the trades group on their own again.
-  - **Spread suggestions:** legs that opened in one Schwab order (one order id, several contracts) and aren't one trade yet are offered as one: Merge as one trade, or Keep apart (remembered on this device, `journal_spread_skip`).
+  - **No stop at all:** no R yet. Set one yourself, or step 3's review card asks.
+  - **A moved stop doesn't change R.** R counts from the first stop, the risk at entry. The table shows where it was moved to.
+- **Your word on a trade (built), in `trade_reviews`:**
+  - **Your stop:** set on any trade, and it wins over Schwab's. It's for mental stops (most option trades) and corrections. On an option it's a price on the option. A stop on the underlying, priced through the chain's loss model, can come later.
+  - **Delete:** for a trade that was imported but doesn't belong. Delete sits on the row and asks once. The trade leaves the list and the stats.
+    - **What an import does afterwards:** Schwab keeps sending the trade's orders, and they stay kept. They'd come back anyway inside Schwab's 60-day window, and the trades around it need its fills to add up. The delete mark is on the trade key, so every import and every device keeps it deleted.
+    - **The one way it comes back:** an earlier fill imported later changes the trade's open time, which makes it a new trade.
+    - **Restore:** Show lists deleted trades, dimmed, each with Restore.
+  - **Where:** tap a trade's stop, or Edit under its symbol. The sheet lists Schwab's stops on the trade to pick from, and previews the risk and R as you type.
+- **Trades opened before the history (built):** Schwab's API gives 60 days of orders, so selling shares bought earlier shows a sell with nothing open.
+  - A plain Sell (or Buy to cover, Sell to close, Buy to close) only ever closes, so it never becomes a made-up short.
+  - Those closes become one "before your history" trade: exits known, entry and P&L not, kept out of the stats, and deletable.
+  - File upload (older history from Schwab's website) will fill them in.
+- **Spreads (built):** option legs become one trade.
+  - **Automatic:** legs opened in one multi-leg order.
+  - **Combined by you:** legged-in spreads, from Combine in a leg's sheet or by ticking the legs and Merge. That's a row in `trades` (below). Split undoes it, and works on a multi-leg order too: each leg gets a row of its own so the order can't fold them back.
+  - **`group_key`, retired:** the first version kept combines in each leg's `trade_reviews.group_key` ('solo' for a split). It's still read, so nothing comes apart, and converted to `trades` rows on load (the spread's own stop and delete move with it), then cleared. The column goes in slice 6's squash.
+  - **The numbers:** entry and exit are net per spread. P&L and fees add up. A debit risks what it paid; a credit vertical risks its width less the credit. Other combinations have no R yet.
+  - **Limit:** a contract held on its own and also inside a spread is one leg, so that spread shows mixed sizes.
+- **Merge and separate (built), in `trades`:**
+  - **Why:** flat-to-flat grouping is right most of the time, but you sometimes see two of its trades as one: a re-entry after going flat, or legs you entered one at a time.
+  - **Merge:** a checkbox on each trade; tick two or more and Merge. Allowed: same account and underlying, and either one symbol on one side, or option contracts (a spread). Shares with options, trades from before your history and deleted trades aren't. Refusals say why in the pick bar.
+  - **Stored as identity, not numbers:** one row per shaped trade, holding the fill ids it claims. A row claims every trade holding one of its fills, so a merge that took in an open trade keeps the fills that land later. Rows that share a trade make one trade, named by the oldest row (`trade:<id>`, what your stop and delete on it are kept under). Merging a merged trade again updates its oldest row, so its key stays. A row with one trade keeps it on its own.
+  - **Numbers:** one symbol = quantities, P&L and fees added up, weighted entry and exit, first open to last close, the stop and R found again over the whole span. Option contracts = a spread, as above.
+  - **Separate:** deletes the rows, so the trades group on their own again (legs one order opened together get a row each, so they stay apart).
+  - **Side is the bet on the stock,** not bought or sold: calls bought and puts sold are long, puts bought and calls sold are short. A spread of one type goes by its strikes: bought below what's sold is long, above is short. That makes call debit and put credit verticals long, put debit and call credit short, a put diagonal (a longer-dated put bought, shorter-dated puts sold above it, rolled or not) long, and a poor man's covered call long. One strike over two expirations (a time spread) is neutral, and other mixes add up their legs (an iron condor is neutral). The spread's kind ('call debit') shows as its tag, and the side filter uses the same rule.
   - **Not built:** splitting one trade at a fill (later, as two rows claiming different fills).
-- **Fees:** P&L is before fees for now. Schwab's orders carry none, so fees come from transactions once their real format is checked.
+- **Expired options (built):** an option still open after its expiry's 4pm New York close closes there at $0.
+  - **The assumption:** it expired worthless. An exercise or assignment isn't in the orders.
+  - **Later:** keeping Schwab's RECEIVE_AND_DELIVER transactions (expirations, exercises, assignments) would tell them apart. Their format still has to be checked.
+- **Fees (built):** your choice, Before fees or After fees, on the trades view and synced to your account.
+  - **Where they come from:** Schwab's TRADE transactions, which name their order and list each fee (commission, SEC, TAF, option regulatory) as an item with a fee type.
+  - **Split by quantity:** a trade gets its orders' fees, and an order that closes one trade and opens the next splits them.
+  - **After fees:** P&L, the win or loss, and R are net. A trade whose order has no transaction yet says "fees not in yet", rather than showing a zero.
+  - **To check:** the format follows Schwab's documentation. A real import should confirm it.
 
 ### 3. Trade page
 
@@ -155,6 +179,8 @@ The schema is new and lives in one database, so once slices 1 to 5 settle, the m
 3. **Update Supabase's migration history** with `npx supabase migration repair`: the old versions marked reverted and the new one marked applied. The database itself doesn't change.
 4. **Check the single file** against a scratch project. `tests/rls.test.mjs` keeps checking the rules either way.
 
+**Renames go first, as their own migration,** because the squash itself never changes the database: `trade_reviews.hidden` becomes `deleted` (it was named before hiding became deleting), and `trade_reviews.group_key` is dropped once every device has converted it to `trades` rows.
+
 Done once, at the end of step 2, after the journal's own tables exist.
 
 ## For step 3 (review), from Trading-Journal-AI
@@ -171,7 +197,8 @@ Not part of step 2, noted so the review design picks them up:
 | Table | One row per | Holds |
 |---|---|---|
 | `schwab_records` (built) | Order or transaction | Kind, Schwab's id, account (last 4 digits), entered time, Schwab's JSON whole with account numbers masked |
-| `trades` (built) | Trade you shaped (merged, a spread) | Account (last 4 digits), the fill ids it claims; numbers are computed from them |
+| `trades` (built) | Trade you shaped (merged, a spread, a leg kept apart) | Account (last 4 digits), the fill ids it claims; numbers are computed from them |
+| `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, `hidden` (the delete mark; renamed `deleted` in slice 6's squash). Step 3's grades and notes join it |
 | `fills` | Fill | Schwab id (unique per account), order id, symbol (options by full contract symbol), underlying, asset type, side, quantity, price, fee, time, open or close |
 | `stop_orders` | Stop order | Order id, symbol, side, quantity, stop price, entered, status, what replaced it |
 | `bars_5m` | Symbol per day | That day's 5-minute bars packed in one value |
