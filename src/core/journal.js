@@ -28,7 +28,7 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  *   status: 'open' | 'win' | 'loss' | 'breakeven' | 'history', expired: boolean, stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | 'debit' | 'width' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
  *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean,
- *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean,
+ *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean, realized: Realized[],
  *   legs?: Trade[], group?: 'auto' | 'yours', spreadKind?: 'debit' | 'credit',
  *   kind?: 'single' | 'merged' | 'spread', id?: string, savedIds?: string[], parts?: string[],
  *   bias?: 'long' | 'short' | 'neutral', structure?: string }} Trade
@@ -36,6 +36,8 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
  * parts = the trade keys it's made of.
  * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
+ * realized = the P&L each exit took, when it took it (a trim's profit is that day's, even while the rest stays open).
+ * @typedef {{ at: string, qty: number, pnl: number }} Realized one exit: its time, the quantity it closed, its P&L (net after fees)
  * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
  * @typedef {{ id: string, account: string, fill_ids: string[], created_at?: string }} SavedTrade a trades row
  */
@@ -53,6 +55,7 @@ function startTrade(fill, account, direction) {
     account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
     pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, lots: /** @type {{ qty: number, price: number }[]} */ ([]),
+    realized: /** @type {Realized[]} */ ([]),
   };
 }
 
@@ -72,7 +75,7 @@ function finish(t) {
     status: t.history ? 'history' : !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: !!t.expired,
     stop: null, stopOrderId: '', risk: null, rBasis: null, r: null,
     stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: false,
-    fees: 0, feesMissing: 0, grossPnl: pnl, afterFees: false,
+    fees: 0, feesMissing: 0, grossPnl: pnl, afterFees: false, realized: t.realized,
   };
 }
 
@@ -140,10 +143,11 @@ export function buildTrades(fills, opts = {}) {
       t.exits++;
       const before = qty;
       const sign = t.direction === 'long' ? 1 : -1;
+      let took = 0;
       while (qty > EPS && t.lots.length) {
         const lot = t.lots[0];
         const take = Math.min(lot.qty, qty);
-        t.pnl += (f.price - lot.price) * take * sign * t.multiplier;
+        took += (f.price - lot.price) * take * sign * t.multiplier;
         t.exitQty += take;
         t.exitNotional += take * f.price;
         lot.qty -= take;
@@ -151,6 +155,8 @@ export function buildTrades(fills, opts = {}) {
         if (lot.qty <= EPS) t.lots.shift();
       }
       used(before - qty);
+      t.pnl += took;
+      t.realized.push({ at: f.time, qty: before - qty, pnl: took });
       if (!t.lots.length) {
         t.closedAt = f.time;
         const direction = t.direction;
@@ -181,13 +187,17 @@ function expire(t, now) {
   const close = opt ? expiryCloseMs(opt.exp) : NaN;
   if (!Number.isFinite(close) || now <= close) return;
   const sign = t.direction === 'long' ? 1 : -1;
+  let took = 0, qty = 0;
   for (const lot of t.lots) {
-    t.pnl += (0 - lot.price) * lot.qty * sign * t.multiplier;
+    took += (0 - lot.price) * lot.qty * sign * t.multiplier;
+    qty += lot.qty;
     t.exitQty += lot.qty;
   }
+  t.pnl += took;
   t.lots = [];
   t.exits++;
   t.closedAt = new Date(close).toISOString();
+  t.realized.push({ at: t.closedAt, qty, pnl: took });
   t.expired = true;
 }
 
@@ -305,7 +315,8 @@ export function feesByOrder(records) {
 /**
  * The trade's share of its orders' fees, by quantity: an order that closes one trade and opens the next (a flip) splits
  * its fees between them. feesMissing counts the trade's orders with no transaction yet (Schwab posts them after the
- * fill, and orders older than the kept transactions have none). With afterFees, P&L, the result and R are net of them.
+ * fill, and orders older than the kept transactions have none). With afterFees, P&L, the result and R are net of them,
+ * and so is each exit's realized P&L: it carries the fees for the share of the entry it closed (all of them once flat).
  * @param {Trade} trade @param {Map<string, number>} fees @param {Map<string, number>} orderTotals @param {boolean} afterFees
  * @returns {Trade}
  */
@@ -321,8 +332,9 @@ export function withFees(trade, fees, orderTotals, afterFees) {
   if (!afterFees || trade.status === 'history') return { ...trade, fees: feesRounded, feesMissing: missing, grossPnl: trade.pnl, afterFees: false };
   const pnl = Math.round((trade.pnl - total) * 100) / 100;
   const closed = trade.status !== 'open';
+  const realized = (trade.realized || []).map(e => ({ ...e, pnl: e.pnl - (trade.entryQty > EPS ? total * e.qty / trade.entryQty : 0) }));
   return {
-    ...trade, fees: feesRounded, feesMissing: missing, grossPnl: trade.pnl, afterFees: true, pnl,
+    ...trade, fees: feesRounded, feesMissing: missing, grossPnl: trade.pnl, afterFees: true, pnl, realized,
     status: !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
     r: closed && trade.risk && trade.risk > EPS ? Math.round((pnl / trade.risk) * 100) / 100 : trade.r,
   };
@@ -444,6 +456,7 @@ function mergedTrade(parts, key, reviews, stops) {
   const open = parts.some(p => p.status === 'open');
   const closedAt = open ? null : parts.reduce((m, p) => (p.closedAt && p.closedAt > m ? p.closedAt : m), '');
   const pnl = round2(sum(p => p.pnl));
+  const realized = parts.flatMap(p => p.realized || []).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   /** @type {Record<string, number>} */
   const orderQty = {};
   for (const p of parts) for (const [id, q] of Object.entries(p.orderQty)) orderQty[id] = (orderQty[id] || 0) + q;
@@ -453,7 +466,7 @@ function mergedTrade(parts, key, reviews, stops) {
     avgEntry: round8(sum(p => p.avgEntry * p.entryQty) / entryQty),
     avgExit: exitQty > EPS ? round8(sum(p => (p.avgExit || 0) * (p.entryQty - p.openQty)) / exitQty) : null,
     pnl, grossPnl: round2(sum(p => p.grossPnl)), fees: round2(sum(p => p.fees)), feesMissing: sum(p => p.feesMissing),
-    exits: sum(p => p.exits), fillIds: parts.flatMap(p => p.fillIds), entryOrderIds: [...new Set(parts.flatMap(p => p.entryOrderIds))], orderQty,
+    exits: sum(p => p.exits), fillIds: parts.flatMap(p => p.fillIds), entryOrderIds: [...new Set(parts.flatMap(p => p.entryOrderIds))], orderQty, realized,
     holdMs: closedAt ? Date.parse(closedAt) - Date.parse(parts[0].openedAt) : null,
     status: open ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: parts.every(p => p.expired),
     deleted: !!reviews[key]?.deleted,
@@ -614,6 +627,7 @@ export function spreadTrade(key, group, legs, reviews = {}) {
     stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: !!reviews[key]?.deleted,
     fees: Math.round(legs.reduce((n, l) => n + l.fees, 0) * 100) / 100, feesMissing: legs.reduce((n, l) => n + l.feesMissing, 0),
     grossPnl: Math.round(legs.reduce((n, l) => n + l.grossPnl, 0) * 100) / 100, afterFees: legs[0].afterFees,
+    realized: legs.flatMap(l => l.realized || []).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)),
     legs, group, spreadKind: kind,
   };
 }

@@ -1,10 +1,11 @@
 // Journal Calendar and Stats tabs (journal step 2, slice 4; core/journal-stats.js does the numbers): the calendar is a
-// month of daily P&L with weekly totals, a day tapped shows its trades; the stats are the headline numbers, the equity
+// month of realized P&L by day (each exit on its own day, trims included) with weekly totals, a day tapped shows the
+// trades with an exit then, This month comes back to today's; the stats are the headline numbers, the equity
 // curve with its drawdown, monthly results, streaks and the breakdowns, each group with the same stats, thin under 10.
 // The Journal's side, symbol and fee choices apply here too.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, monthlyResults, streaks, THIN } from '../core/journal-stats.js';
+import { activeMonths, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, monthlyResults, nyParts, streaks, THIN } from '../core/journal-stats.js';
 import { SANS_FONT } from '../lib/media.js';
 import { state } from '../state.js';
 
@@ -21,9 +22,12 @@ const shiftMonth = (m, by) => { const [y, mo] = m.split('-').map(Number); const 
 
 // ---------- Calendar ----------
 
-/** the month shown: your pick, else the newest with closed trades, else this one */
+/** this month in New York, 'YYYY-MM' */
+export const thisMonth = () => nyParts(new Date().toISOString()).day.slice(0, 7);
+
+/** the month shown: your pick, else the newest with exits, else this one */
 function shownMonth(daily) {
-  return state.journalMonth || activeMonths(daily)[0] || new Date().toISOString().slice(0, 7);
+  return state.journalMonth || activeMonths(daily)[0] || thisMonth();
 }
 
 export function calendarView(trades) {
@@ -39,15 +43,16 @@ export function calendarView(trades) {
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
       <span class="jc-title">${esc(monthName(month))}</span>
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
-      <span class="positions-meta">${cal.trades ? `<span class="${pnlClass(cal.pnl)}">${signed$(cal.pnl)}</span> · ${cal.trades} trade${cal.trades === 1 ? '' : 's'} · ${cal.green} green day${cal.green === 1 ? '' : 's'}, ${cal.red} red` : 'No closed trades this month'}</span>
+      <button class="btn jc-today" data-action="journalThisMonth"${month === thisMonth() ? ' disabled' : ''}>This month</button>
+      <span class="positions-meta">${cal.trades ? `<span class="${pnlClass(cal.pnl)}">${signed$(cal.pnl)}</span> · ${cal.trades} trade${cal.trades === 1 ? '' : 's'} · ${cal.green} green day${cal.green === 1 ? '' : 's'}, ${cal.red} red` : 'No exits this month'}</span>
     </div>
     <table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cells}</tbody></table>
-    <p class="hint">Each trade's P&amp;L goes on the day it closed, New York time. Tap a day for its trades.</p>`;
+    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. Tap a day for its trades.</p>`;
 }
 
 /** ‹ or ›: the month before or after the one shown */
 export function nextJournalMonth(by) {
-  const from = state.journalMonth || state.journalMonthShown || new Date().toISOString().slice(0, 7);
+  const from = state.journalMonth || state.journalMonthShown || thisMonth();
   return shiftMonth(from, Number(by) || 0);
 }
 
