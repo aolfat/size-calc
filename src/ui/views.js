@@ -7,6 +7,7 @@ import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { renderFutures } from './futures.js';
 import { pauseLive, resumeLive, stopLive } from './live.js';
 import { openJournal } from './journal.js';
+import { closeModelImage } from './model-books.js';
 import { loadMarket, marketScheduleRefresh } from './market.js';
 import { refreshPositions, stopPositions } from './positions.js';
 import { recalcAll } from './risk.js';
@@ -29,6 +30,7 @@ function rememberView(v) {
 }
 
 export function setView(v) {
+  if (v !== 'journal' && state.modelBooks.viewerId) closeModelImage();
   rememberView(v);
   state.positionsView = v === 'positions';
   state.utilsView = v === 'utils';

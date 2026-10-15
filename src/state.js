@@ -78,7 +78,13 @@ export function createState() {
     reviewNoteDraft: null, // { key, text }: the note being typed, so a redraw never loses it
     journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, view5, viewD, loading/status per chart, hover }
-    journalTab: 'trades', // trades | calendar | stats | fills
+    journalTab: 'trades', // trades | calendar | stats | books | fills
+    modelBooks: {
+      owner: '', loading: false, pending: null, loaded: false, error: '',
+      books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'books',
+      draft: null, bookDraft: null, busy: false, preparing: false, deleteKey: '',
+      viewerId: '', signing: false, imageError: '',
+    },
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
