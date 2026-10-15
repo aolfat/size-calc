@@ -95,17 +95,24 @@ const EXPIRED_TITLE = "Closed at $0 at the 4pm close on expiry, assumed worthles
 /** the side is the bet on the stock: a put bought is short, a call debit spread long, a time spread neutral */
 const sideCell = t => `<td class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${{ long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias] || ''}</td>`;
 
-/** the tick box that picks a trade for Merge (not on deleted trades or ones from before the history) */
-const pickBox = t => t.deleted || t.status === 'history' ? ''
+/** the tick box that picks a trade for Merge or Delete (not on deleted trades: an empty slot keeps their names in line) */
+const pickBox = t => t.deleted ? '<span class="journal-pick" aria-hidden="true"></span>'
   : `<label class="journal-pick"><input type="checkbox" data-change="toggleJournalPick" data-arg="${esc(t.key)}" aria-label="Pick ${esc(t.label)}"${state.journalPicked.includes(t.key) ? ' checked' : ''} /></label>`;
 
-/** a close whose purchase is older than the history: what's known (the exits), the rest blank, and Delete */
+/** the symbol cell: the tick box in its own slot, then the name and its lines lined up after it */
+const symCell = (t, main) => `<td><div class="journal-sym">${pickBox(t)}<div class="journal-sym-main">${main}</div></div></td>`;
+
+/** the trade's name: it opens the trade sheet (a deleted one only offers Restore) */
+const nameOf = t => t.deleted ? `<b>${esc(t.label)}</b>`
+  : `<button class="journal-name" data-action="openTradeReview" data-arg="${esc(t.key)}" aria-label="Open the ${esc(t.label)} trade"><b>${esc(t.label)}</b></button>`;
+const restoreLink = t => t.deleted ? `<span class="pos-sub journal-row-acts"><button class="pos-link" data-action="restoreTrade" data-arg="${esc(t.key)}" aria-label="Restore the ${esc(t.label)} trade">Restore</button></span>` : '';
+/** a row opens its trade wherever it's tapped, except the tick box and the stop link (they have their own jobs) */
+const rowOpen = t => t.deleted ? '' : ` data-action="openTradeRow" data-arg="${esc(t.key)}"`;
+
+/** a close whose purchase is older than the history: what's known (the exits), the rest blank */
 function historyRow(t) {
-  const key = esc(t.key), name = esc(t.label);
-  return `<tr class="journal-history${t.deleted ? ' journal-deleted' : ''}" title="${esc(HISTORY_TITLE)}">
-    <td><b>${name}</b> <span class="journal-tag journal-tag-history">before your history</span>${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}<span class="pos-sub journal-row-acts">${t.deleted
-      ? `<button class="pos-link" data-action="restoreTrade" data-arg="${key}" aria-label="Restore the ${name} trade">Restore</button>`
-      : `<button class="pos-link journal-delete" data-action="confirmDeleteTrade" data-arg="${key}" aria-label="Delete the ${name} trade">Delete</button>`}</span></td>
+  return `<tr class="journal-history${t.deleted ? ' journal-deleted' : ''}" title="${esc(HISTORY_TITLE)}"${rowOpen(t)}>
+    ${symCell(t, `${nameOf(t)} <span class="journal-tag journal-tag-history">before your history</span>${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${restoreLink(t)}`)}
     <td>—</td><td>—</td><td>—</td>
     ${sideCell(t)}
     <td>${t.entryQty}</td><td>—</td><td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td><td>—</td><td>earlier</td>
@@ -116,11 +123,8 @@ function tradeRow(t) {
   if (t.status === 'history') return historyRow(t);
   const open = t.status === 'open';
   const cls = [open ? 'journal-open' : '', t.deleted ? 'journal-deleted' : ''].filter(Boolean).join(' ');
-  const key = esc(t.key), name = esc(t.label);
-  return `<tr${cls ? ` class="${cls}"` : ''}>
-    <td>${pickBox(t)}<b>${esc(t.label)}</b>${t.legs ? ` <span class="journal-tag journal-tag-quiet">${esc(t.structure || `${t.spreadKind} spread`)}</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : t.kind === 'merged' ? `<span class="pos-sub journal-legs">${t.parts.length} trades merged</span>` : ''}<span class="pos-sub journal-row-acts">${t.deleted
-      ? `<button class="pos-link" data-action="restoreTrade" data-arg="${key}" aria-label="Restore the ${name} trade">Restore</button>`
-      : `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Edit the ${name} trade">Edit</button>${t.kind === 'merged' || t.legs ? `<button class="pos-link" data-action="separateTrade" data-arg="${key}" aria-label="Separate the ${name} trade">Separate</button>` : ''}<button class="pos-link journal-delete" data-action="confirmDeleteTrade" data-arg="${key}" aria-label="Delete the ${name} trade">Delete</button>`}</span></td>
+  return `<tr${cls ? ` class="${cls}"` : ''}${rowOpen(t)}>
+    ${symCell(t, `${nameOf(t)}${t.legs ? ` <span class="journal-tag journal-tag-quiet">${esc(t.structure || `${t.spreadKind} spread`)}</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : t.kind === 'merged' ? `<span class="pos-sub journal-legs">${t.parts.length} trades merged</span>` : ''}${restoreLink(t)}`)}
     <td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>
     <td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
     <td>${stopCell(t)}</td>
@@ -166,14 +170,16 @@ function controls() {
   </div>`;
 }
 
-/** what's ticked, why it can't be one trade (or Merge), and Clear; it follows the table and sticks to the screen's bottom */
+/** what's ticked, Delete beside the count (away from Merge), why it can't be one trade (or Merge), and Clear;
+ * it follows the table and sticks to the screen's bottom */
 function pickBar(all) {
   const picked = all.filter(t => state.journalPicked.includes(t.key));
   if (!picked.length) return '';
   const why = state.journalSavedError ? 'Merging needs the database update: npx supabase db push.' : picked.length > 1 ? mergeProblem(picked) : '';
   const off = why || picked.length < 2 || state.journalMerging ? ' disabled' : '';
-  const note = why ? ` · <span class="journal-why">${esc(why)}</span>` : picked.length < 2 ? ' · tick another to merge' : '';
-  return `<div class="journal-pickbar" role="status">${picked.length} picked${note}
+  const note = why ? `<span class="journal-why">${esc(why)}</span>` : picked.length < 2 ? '<span>Tick another to merge.</span>' : '';
+  const delOff = state.tradeReviewsError || state.tradeReviewBusy ? ' disabled' : '';
+  return `<div class="journal-pickbar" role="status"><span>${picked.length} picked</span><button class="btn journal-danger" data-action="deletePicked"${delOff}>Delete</button>${note}
     <span class="journal-pickbar-acts"><button class="btn primary" data-action="mergePicked"${off}>${state.journalMerging ? 'Merging…' : 'Merge into one trade'}</button><button class="btn" data-action="clearJournalPicks">Clear</button></span></div>`;
 }
 
@@ -188,9 +194,9 @@ function tradesView(all) {
       <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
       <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
     </table></div>${pickBar(trades)}
-    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out; tick two or more and Merge to make them one (a re-entry, a spread's legs). ${journalAfterFees()
+    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. Tap a trade to open it: your stop, separate, delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
       ? 'P&amp;L is after Schwab\'s fees (commission, SEC, TAF and option fees, from its trade records), split by quantity when one order covers two trades.'
-      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium. Tap a stop, or Edit, to set yours. Delete takes out a trade that doesn't belong; imports won't bring it back.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}</p>`;
+      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}</p>`;
 }
 
 function fillsView(fills) {
@@ -375,20 +381,18 @@ const tradeFacts = t => t.legs
   : [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(marketTime(t.openedAt))} ET`,
   t.status === 'open' ? 'open' : `${signed$(t.pnl)} ${t.afterFees ? `after fees${t.fees ? ` of ${fmt$(t.fees)}` : ''}` : 'before fees'}`].join(' · ');
 
-/** the delete step: what it does, and what an import does afterwards */
-function deleteConfirm(t, locked) {
+/** the sheet's Delete: out at once, with Undo on the toast */
+const deleteSection = (t, locked, what = 'trade') => `<div class="sheet-section">
+      <div class="sheet-label">Delete</div>
+      <p class="hint">For a ${what} that doesn't belong in your journal. Imports won't bring it back.</p>
+      <div class="row" style="gap:8px;"><button class="btn journal-danger" id="tradeDeleteBtn" data-action="deleteTrade"${locked ? ' disabled' : ''}>${state.tradeReviewBusy ? 'Deleting…' : `Delete this ${what}`}</button></div>
+    </div>`;
+
+/** a close from before the history: what's known, and Delete (there's no entry to set a stop against) */
+function historySheet(t, locked) {
   return `<div class="sheet-section"><p class="hint" style="margin:0">${tradeFacts(t)}</p>
-      ${state.tradeReviewsError ? `<p class="hint" style="color:var(--amber)">Your stops and deleted trades couldn't load, so saving is off until they do.</p>` : ''}</div>
-    <div class="sheet-section">
-      <p class="hint">It leaves the journal: the list and the stats.</p>
-      <p class="hint">Imports won't bring it back. Schwab keeps sending its orders, and they stay kept so the trades around it still add up, but your journal remembers this trade is deleted, on every device.</p>
-      <p class="hint">Changed your mind? Show the deleted trades from the line above the table, and restore it.</p>
-      <div class="row" style="gap:8px;">
-        <button class="btn journal-danger" id="tradeDeleteBtn" data-action="deleteTrade"${locked ? ' disabled' : ''}>${state.tradeReviewBusy ? 'Deleting…' : 'Delete trade'}</button>
-        <button class="btn" data-action="closeSheet">Cancel</button>
-      </div>
-    </div>
-    ${state.tradeReviewError ? `<p class="shares-error" role="status">Couldn't delete: ${esc(state.tradeReviewError)}</p>` : ''}`;
+      <p class="hint">${esc(HISTORY_TITLE)}</p></div>
+    ${deleteSection(t, locked)}`;
 }
 
 /** the option legs this one can combine with, each a button; or why combining is off */
@@ -417,11 +421,7 @@ function spreadSheet(t, locked) {
       <p class="hint">Back to ${t.legs.length} separate trades.</p>
       <div class="row" style="gap:8px;"><button class="btn" data-action="splitSpread"${locked || state.journalSavedError || state.journalMerging ? ' disabled' : ''}>Split into legs</button></div>
     </div>
-    <div class="sheet-section">
-      <div class="sheet-label">Delete</div>
-      <p class="hint">For a spread that doesn't belong in your journal.</p>
-      <div class="row" style="gap:8px;"><button class="btn journal-danger" data-action="confirmDeleteTrade" data-arg="${esc(t.key)}"${locked ? ' disabled' : ''}>Delete this spread</button></div>
-    </div>
+    ${deleteSection(t, locked, 'spread')}
     ${state.tradeReviewError ? `<p class="shares-error" role="status">Couldn't save: ${esc(state.tradeReviewError)}</p>` : ''}`;
 }
 
@@ -433,8 +433,8 @@ export function renderTradeReview() {
   if (!t) { el.innerHTML = '<p class="hint">This trade isn\'t in the journal any more.</p>'; if (title) title.textContent = 'Trade'; return; }
   const rv = reviewOf(t.key);
   const locked = !!state.tradeReviewsError || state.tradeReviewBusy;
-  if (state.tradeReviewMode === 'delete') { if (title) title.textContent = `Delete ${t.label}?`; el.innerHTML = deleteConfirm(t, locked); return; }
   if (title) title.textContent = t.label;
+  if (t.status === 'history') { el.innerHTML = historySheet(t, locked); return; }
   if (t.legs) { el.innerHTML = spreadSheet(t, locked); return; }
   const typed = rv.stop ?? '';
   const preview = stopPreview(t, typed);
@@ -464,17 +464,12 @@ export function renderTradeReview() {
       <p class="hint">You merged ${t.parts.length} trades into this one. Back to ${t.parts.length} separate trades.</p>
       <div class="row" style="gap:8px;"><button class="btn" data-action="separateTrade" data-arg="${esc(t.key)}"${locked || state.journalSavedError || state.journalMerging ? ' disabled' : ''}>Separate</button></div>
     </div>` : ''}
-    <div class="sheet-section">
-      <div class="sheet-label">Delete</div>
-      <p class="hint">For a trade that doesn't belong in your journal.</p>
-      <div class="row" style="gap:8px;"><button class="btn journal-danger" data-action="confirmDeleteTrade" data-arg="${esc(t.key)}"${locked ? ' disabled' : ''}>Delete this trade</button></div>
-    </div>
+    ${deleteSection(t, locked)}
     ${state.tradeReviewError ? `<p class="shares-error" role="status">Couldn't save: ${esc(state.tradeReviewError)}</p>` : ''}`;
 }
 
-export function openTradeReview(key, mode = 'edit') {
+export function openTradeReview(key) {
   state.tradeReviewKey = key;
-  state.tradeReviewMode = mode === 'delete' ? 'delete' : 'edit';
   state.tradeReviewError = '';
   renderTradeReview();
   openSheet('tradeReview');
@@ -521,7 +516,7 @@ async function saveReviews(rows, done, then) {
   try {
     await saveTradeReviews(rows);
     state.tradeReviewBusy = false;
-    if (then) { state.tradeReviewKey = then; state.tradeReviewMode = 'edit'; renderTradeReview(); }
+    if (then) { state.tradeReviewKey = then; renderTradeReview(); }
     else if (state.openSheetName === 'tradeReview' && state.tradeReviewKey === key) closeSheet();
     showToast(done);
   } catch(e) {
@@ -548,24 +543,80 @@ export function clearTradeStop() {
   return saveReview({ ...reviewOf(t.key), stop: null }, t.schwabStop !== null ? `Back to Schwab's stop, ${px(t.schwabStop, t.assetType)}.` : 'Your stop is removed.');
 }
 
-/** Delete on a row (or in the sheet): ask first, in the sheet */
-export function confirmDeleteTrade(key) {
-  if (state.openSheetName === 'tradeReview' && state.tradeReviewKey === key) { state.tradeReviewMode = 'delete'; state.tradeReviewError = ''; renderTradeReview(); return; }
-  openTradeReview(key, 'delete');
+/** a row tapped anywhere but its tick box opens the trade (the stop link and the name are buttons of their own) */
+export function openTradeRow(key, event) {
+  if (event?.target?.closest?.('.journal-pick')) return;
+  openTradeReview(key);
 }
 
-export function deleteTrade() {
+/**
+ * delete trades (the sheet's, or the ticked ones): out of the list at once, the toast offers Undo; back if Supabase refuses
+ * @param {string[]} keys
+ */
+async function deleteTrades(keys) {
+  if (!keys.length || state.tradeReviewBusy || state.tradeReviewsError) return false;
+  const trades = currentTrades().filter(t => keys.includes(t.key));
+  const rows = Object.fromEntries(keys.map(k => [k, { ...reviewOf(k), deleted: true }]));
+  const undo = Object.fromEntries(keys.map(k => [k, { ...reviewOf(k), deleted: false }]));
+  const ok = await applyReviews(rows, trades.length === 1 ? `Deleted ${trades[0].label}.` : `Deleted ${keys.length} trades.`, undo);
+  if (ok) { state.journalPicked = state.journalPicked.filter(k => !keys.includes(k)); renderJournal(); }
+  return ok;
+}
+
+/**
+ * save review rows from the table (no sheet in the way); the toast says done (with Undo when `undo` holds the rows
+ * that put it back), or the error if Supabase refuses
+ * @param {Record<string, any>} rows @param {string} done @param {Record<string, any>} [undo]
+ */
+async function applyReviews(rows, done, undo) {
+  if (state.tradeReviewBusy || state.tradeReviewsError) return false;
+  const before = state.tradeReviews || {};
+  state.tradeReviews = { ...before, ...rows };
+  state.tradeReviewBusy = true;
+  state.tradeReviewError = '';
+  renderJournal();
+  renderTradeReview();
+  try {
+    await saveTradeReviews(rows);
+    state.journalUndo = undo || null;
+    showToast(done, undo ? '<button class="pos-link toast-act" data-action="undoDeleteTrades">Undo</button>' : undefined);
+    return true;
+  } catch(e) {
+    state.tradeReviews = before;
+    state.tradeReviewError = String(e?.message || e);
+    showError(`Couldn't save: ${state.tradeReviewError}`);
+    return false;
+  } finally {
+    state.tradeReviewBusy = false;
+    renderJournal();
+    renderTradeReview();
+  }
+}
+
+/** Delete in the trade sheet: no question (Undo is on the toast); the sheet closes once it's saved */
+export async function deleteTrade() {
   const t = reviewedTrade();
   if (!t) return;
-  return saveReview({ ...reviewOf(t.key), deleted: true }, `${t.label} trade deleted.`);
+  if (await deleteTrades([t.key]) && state.openSheetName === 'tradeReview') closeSheet();
+}
+
+/** Delete on the pick bar: every ticked trade */
+export function deletePicked() { return deleteTrades([...state.journalPicked]); }
+
+/** Undo on the toast: the last delete comes back */
+export async function undoDeleteTrades() {
+  const rows = state.journalUndo;
+  if (!rows) return;
+  state.journalUndo = null;
+  const n = Object.keys(rows).length;
+  await applyReviews(rows, n === 1 ? 'Trade restored.' : `${n} trades restored.`);
 }
 
 /** Restore on a deleted row: no question, it only brings it back */
 export function restoreTrade(key) {
-  state.tradeReviewKey = key;
-  const t = reviewedTrade();
+  const t = currentTrades().find(x => x.key === key);
   if (!t) return;
-  return saveReview({ ...reviewOf(t.key), deleted: false }, `${t.label} trade restored.`);
+  return applyReviews({ [key]: { ...reviewOf(key), deleted: false } }, `${t.label} trade restored.`);
 }
 
 /** combine the open trade (a leg or a spread) with another leg: a merge, and the sheet stays open on the spread */
@@ -632,7 +683,7 @@ async function mergeTrades(picked, opts = {}) {
       try { await saveTradeReviews(carry); state.tradeReviews = { ...(state.tradeReviews || {}), ...carry }; } catch(e) {}
     }
     state.journalPicked = [];
-    if (opts.stay) { state.tradeReviewKey = key; state.tradeReviewMode = 'edit'; }
+    if (opts.stay) state.tradeReviewKey = key;
     const n = new Set(picked.flatMap(t => t.parts?.length ? t.parts : [t.key])).size;
     showToast(opts.done ? opts.done(legs) : `Merged ${n} trades into one.`);
     ok = true;

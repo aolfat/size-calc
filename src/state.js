@@ -67,7 +67,7 @@ export function createState() {
     tradeReviewsError: '', // the reviews couldn't be read (the trades still show, with Schwab's stops)
     journalShowDeleted: false, // deleted trades shown, dimmed, to restore one
     tradeReviewKey: null, // the trade open in the trade sheet
-    tradeReviewMode: 'edit', // edit | delete (the confirm step)
+    journalUndo: null, // the review rows that put the last delete back (Undo on its toast)
     tradeReviewBusy: false, // a save is on its way
     tradeReviewError: '',
     marketView: false,
