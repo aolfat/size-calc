@@ -24,6 +24,7 @@ import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
 import { clearJournalDay, pickJournalDay, shiftJournalMonth } from './journal.js';
+import { closeJournalTrade, editJournalTrade } from './journal-trade.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
@@ -78,6 +79,8 @@ export const actions = {
   saveTradeStop: el => { if (el.tagName === 'INPUT') el.blur(); saveTradeStop(); },
   clearTradeStop: () => clearTradeStop(),
   openTradeRow: (el, e) => openTradeRow(arg(el), e),
+  closeJournalTrade: () => closeJournalTrade(),
+  editJournalTrade: () => editJournalTrade(),
   deletePicked: () => deletePicked(),
   undoDeleteTrades: () => undoDeleteTrades(),
   deleteTrade: () => deleteTrade(),

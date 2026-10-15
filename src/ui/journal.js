@@ -18,6 +18,8 @@ import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView } from './journal-stats.js';
+import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
+import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -199,7 +201,7 @@ function tradesView(all) {
       <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
       <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
     </table></div>${pickBar(trades)}
-    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. Tap a trade to open it: your stop, separate, delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
+    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
       ? 'P&amp;L is after Schwab\'s fees (commission, SEC, TAF and option fees, from its trade records), split by quantity when one order covers two trades.'
       : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}</p>`;
 }
@@ -231,6 +233,8 @@ export function journalSymbolChanged() {
 export function renderJournal() {
   const el = document.getElementById('journalSection');
   if (!el) return;
+  syncJournalPage();
+  if (state.journalTrade) renderJournalTrade(); // the page reads the same records, stops and deletes
   if (!state.session) {
     el.innerHTML = `<div class="card empty-card"><div class="setup-title">Sign in to keep your journal</div><p>Your Schwab orders and trades are kept in your account, so sign in with Google first. Then connect Schwab and import.</p><button class="btn primary" data-action="openSheet" data-arg="settings">Open settings</button></div>`;
     return;
@@ -287,6 +291,10 @@ export function renderImportSheet() {
       <p class="hint">Log in to Schwab to import your orders and trades.</p>
       <div class="row" style="align-items:center;gap:8px;"><button class="btn" data-action="openSheet" data-arg="settings">Connect Schwab</button></div>`;
   el.innerHTML = `<div class="sheet-section">${schwab}</div>
+    <div class="sheet-section">
+      <div class="sheet-label">5-minute bars <span class="sheet-status">for your trades' charts</span></div>
+      <p class="hint" id="journalBarsStatus" role="status">${barsLine()}</p>
+    </div>
     <div class="sheet-section journal-soon">
       <div class="sheet-label">File upload <span class="sheet-status">Coming soon</span></div>
       <p class="hint">For history older than Schwab's API reaches (Schwab's website export) and for Robinhood's account activity CSV. You'll see what will be added before anything is saved.</p>
@@ -322,6 +330,7 @@ export async function loadJournal() {
     if (records.status === 'rejected') throw records.reason;
     state.journalRecords = records.value;
     state.journalError = '';
+    maybeSaveBars({ records: records.value }); // quietly, in the background: the charts' bars before Tradier drops them
   } catch(e) {
     state.journalError = String(e?.message || e);
   } finally {
@@ -349,6 +358,7 @@ export async function journalImport() {
 // a capture started or finished: redraw (the Import sheet too when it's open), and after a save read the records again
 onCaptureChange(saved => {
   if (state.openSheetName === 'journalImport') renderImportSheet();
+  if (saved && !state.journalView) maybeSaveBars({ force: true }); // an import landed: its trades' bars, journal open or not
   if (!state.journalView) return;
   if (saved) loadJournal(); else renderJournal();
 });
@@ -356,6 +366,7 @@ onCaptureChange(saved => {
 // ---------- the trade sheet: your stop, and hiding a trade that doesn't belong ----------
 
 /** the trades as the Journal has them now (your stops and deletes applied) */
+export const journalTradeList = () => currentTrades();
 function currentTrades() {
   const records = state.journalRecords || [];
   return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now(), saved: state.journalSaved });
@@ -556,9 +567,10 @@ export function clearTradeStop() {
 }
 
 /** a row tapped anywhere but its tick box opens the trade (the stop link and the name are buttons of their own) */
+/** a row: its trade page (Edit there opens the trade sheet) */
 export function openTradeRow(key, event) {
   if (event?.target?.closest?.('.journal-pick')) return;
-  openTradeReview(key);
+  openJournalTrade(key);
 }
 
 /**
@@ -744,3 +756,6 @@ export async function separateTrade(key) {
   }
   return ok;
 }
+
+// a bars run ended: the Import sheet's line changes
+onBarsChange(() => { if (state.openSheetName === 'journalImport') renderImportSheet(); });

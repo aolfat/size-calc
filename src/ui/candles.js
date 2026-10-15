@@ -1,5 +1,6 @@
 // Candle canvas shared by the calculator's daily pane and the position chart (daily bars, or an option's 5-minute bars,
-// which carry a time): the fitted scale, the painting (candles, 8 EMA, level lines, crosshair) and the gestures (zoom, pan, hover, tap to pick a price).
+// which carry a time) and the Journal's trade page: the fitted scale, the painting (candles, 8 EMA, level lines, fill marks, crosshair)
+// and the gestures (zoom, pan, hover, tap to pick a price).
 import { panView, viewRange, zoomView } from '../core/chart-view.js';
 import { SANS_FONT } from '../lib/media.js';
 import { attachTouchCrosshair } from './chart.js';
@@ -38,7 +39,8 @@ export function snapToBar(g, bar, yy, px = 6) {
  * Paint the window g describes. lines: [{ price, color, label, solid?, left? }], dashed unless solid, under the candles,
  * labelled over them on the right (left = on the left edge). hover: { index, y } draws the crosshair, the price tag when y is on the plot.
  */
-export function paintCandles(canvas, g, bars, { lines = [], hover = null } = {}) {
+// marks: [{ index, side }] fills, a buy as an up triangle under its bar's low, a sell as a down triangle over its high
+export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks = [] } = {}) {
   const { w, h, padL, padR, padT, padB, plotW, plotH, start, end, slot, lo, hi, x, y } = g;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr; canvas.height = h * dpr;
@@ -103,6 +105,23 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null } = {})
     if (i > start) ctx.lineTo(x(i), y(e)); else if (i === start) ctx.moveTo(x(i), y(e));
   }
   ctx.stroke(); ctx.restore();
+
+  // fills: buys under the bar, sells over it, so the candle stays readable
+  const cBlue = css.getPropertyValue('--blue').trim(), cAmber = css.getPropertyValue('--amber').trim();
+  for (const m of marks) {
+    if (m.index < start || m.index >= end) continue;
+    const b = bars[m.index], buy = m.side === 'buy', cx = x(m.index), s = 5;
+    const tip = buy ? y(b.low) + 4 : y(b.high) - 4;
+    ctx.save();
+    ctx.fillStyle = buy ? cBlue : cAmber;
+    ctx.strokeStyle = 'rgba(11,13,18,0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (buy) { ctx.moveTo(cx, tip); ctx.lineTo(cx - s, tip + s * 1.6); ctx.lineTo(cx + s, tip + s * 1.6); }
+    else { ctx.moveTo(cx, tip); ctx.lineTo(cx - s, tip - s * 1.6); ctx.lineTo(cx + s, tip - s * 1.6); }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
 
   // line labels on top of the candles, on a backing so a candle can't hide them
   for (const l of drawn) {

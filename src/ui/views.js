@@ -58,7 +58,8 @@ export function setView(v) {
   document.getElementById('positionsSection').style.display = state.positionsView ? '' : 'none';
   document.getElementById('posChartSection').style.display = state.positionsView && state.posChart ? '' : 'none';
   document.getElementById('utilsSection').style.display = state.utilsView ? '' : 'none';
-  document.getElementById('journalSection').style.display = state.journalView ? '' : 'none';
+  document.getElementById('journalSection').style.display = state.journalView && !state.journalTrade ? '' : 'none';
+  document.getElementById('journalTradeSection').style.display = state.journalView && state.journalTrade ? '' : 'none';
   document.getElementById('marketSection').style.display = state.marketView ? '' : 'none';
   marketScheduleRefresh();
   if (state.marketView) { pauseLive(); loadMarket(); }

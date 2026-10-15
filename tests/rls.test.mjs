@@ -55,8 +55,9 @@ test('functions that run with elevated rights fix their search path and are call
   }
 });
 
-test('one baseline migration, safe to run on a database that already has some of it', () => {
-  assert.equal(files.length, 1, 'the schema is one file (docs/journal-step-2.md, slice 6)');
+test('one baseline migration first, and every migration safe to run on a database that already has some of it', () => {
+  assert.match(files[0], /_baseline\.sql$/, 'the schema starts from one baseline (docs/journal-step-2.md, slice 6)');
+  assert.equal(files.filter(f => /_baseline\.sql$/.test(f)).length, 1, 'and only one: changes since are their own files after it, never edits to it');
   assert.doesNotMatch(sql, /create table public\./i, 'tables: create table if not exists');
   assert.doesNotMatch(sql, /create function /i, 'functions: create or replace');
   assert.doesNotMatch(sql, /create trigger /i, 'triggers: create or replace');
