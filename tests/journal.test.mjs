@@ -110,7 +110,7 @@ test('Trades is the default view: fills grouped into trades, with P&L, R, hold t
   const rows = [...out.matchAll(/<tr( class="journal-open")?>\s*<td><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
   assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
   assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L and R lead, so phones see them before scrolling');
-  assert.match(out, /<td><b>AAPL<\/b><span class="pos-sub"><button class="pos-link" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z"[^>]*>Edit<\/button><\/span><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<td><b>AAPL<\/b><span class="pos-sub journal-row-acts"><button class="pos-link" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z"[^>]*>Edit<\/button><button class="pos-link journal-delete" data-action="confirmDeleteTrade"[^>]*>Delete<\/button><\/span><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-buy">Long<\/td>/);
   assert.match(out, /<th scope="col">R<\/th><th scope="col">Stop<\/th>/);
   assert.match(out, /aria-label="Set a stop for AAPL 12\/18\/26 245C">Set<\/button><span class="pos-sub">premium<\/span>/, 'the call has no stop: Set, and the premium is its risk');
   assert.match(out, /<td>2d 0h<\/td>/);
@@ -208,7 +208,7 @@ test('fills: matched to their order leg, zero quantities skipped, words for ever
   assert.equal(run("instructionWords('BUY_TO_COVER')"), 'Buy to cover');
 });
 
-// ---------- your stop and hidden trades (trade_reviews) ----------
+// ---------- your stop and deleted trades (trade_reviews; its hidden column is the delete mark) ----------
 
 const STOCK = '6789|AAPL|long|2026-10-01T14:30:01.000Z';
 const OPTION = '6789|AAPL  261218C00245000|long|2026-10-06T14:00:02.000Z';
@@ -263,40 +263,57 @@ test('an option\'s mental stop is a price on the option, and replaces the premiu
   assert.match(out(), /\$2\.50<\/button><span class="pos-sub">yours<\/span>/);
 });
 
-test('hide a trade that doesn\'t belong: out of the list and the stats, and back with Show', async () => {
-  const { run, supabase, out, sheet } = await journalWith();
-  run(`openTradeReview('${STOCK}')`);
-  assert.match(sheet(), /data-action="hideTrade"[^>]*>Hide this trade/);
-  await run('hideTrade()');
-  assert.deepEqual(supabase.reviewRows().map(r => [r.trade_key, r.hidden, r.stop]), [[STOCK, true, null]]);
+test('delete a trade that doesn\'t belong: a button on the row, asked once, out of the list and the stats, and imports can\'t bring it back', async () => {
+  const { run, state, supabase, out, sheet, elements } = await journalWith();
+  assert.match(out(), /data-action="confirmDeleteTrade" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Delete the AAPL trade">Delete<\/button>/, 'Delete sits on the row');
+  run(`confirmDeleteTrade('${STOCK}')`);
+  assert.equal(state.openSheetName, 'tradeReview');
+  assert.equal(elements.get('tradeReviewTitle').textContent, 'Delete AAPL?', 'it asks first');
+  assert.match(sheet(), /Imports won(?:'|&#39;)t bring it back/);
+  assert.equal(supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing saved by asking');
+  await run('deleteTrade()');
+  assert.deepEqual(supabase.reviewRows().map(r => [r.trade_key, r.hidden, r.stop]), [[STOCK, true, null]], 'the mark is on the trade key');
+  assert.match(elements.get('errorBox').textContent, /AAPL trade deleted\./);
   assert.doesNotMatch(out(), /<td><b>AAPL<\/b>/, 'gone from the list');
-  assert.match(out(), /0 closed · 1 open · 1 hidden <button class="pos-link" data-action="toggleHiddenTrades">Show<\/button>/, 'and from the stats');
-  run('toggleHiddenTrades()');
-  assert.match(out(), /<tr class="journal-hidden">\s*<td><b>AAPL<\/b> <span class="journal-tag">hidden<\/span>/, 'shown dimmed to bring it back');
-  assert.match(out(), /0 closed · 1 open · 1 hidden/, 'still not counted');
-  run(`openTradeReview('${STOCK}')`);
-  await run('unhideTrade()');
+  assert.match(out(), /0 closed · 1 open · 1 deleted <button class="pos-link" data-action="toggleDeletedTrades">Show<\/button>/, 'and from the stats');
+
+  // an import brings Schwab's orders again: the trade stays deleted
+  await run('loadJournal()');
+  assert.doesNotMatch(out(), /<td><b>AAPL<\/b>/, 'still gone after the records are read again');
+  assert.equal(supabase.rows().filter(r => r.record_id === '501').length, 1, 'its orders are still kept');
+
+  run('toggleDeletedTrades()');
+  assert.match(out(), /<tr class="journal-deleted">\s*<td><b>AAPL<\/b> <span class="journal-tag">deleted<\/span>/, 'shown dimmed to restore it');
+  assert.match(out(), /data-action="restoreTrade" data-arg="6789\|AAPL[^"]*"[^>]*>Restore</);
+  assert.match(out(), /0 closed · 1 open · 1 deleted/, 'still not counted');
+  await run(`restoreTrade('${STOCK}')`);
   assert.equal(supabase.reviewRows()[0].hidden, false);
   assert.match(out(), /1 closed · 0 won/);
+
+  run(`openTradeReview('${STOCK}')`);
+  assert.match(sheet(), /data-action="confirmDeleteTrade"[^>]*>Delete this trade/, 'the trade sheet has it too');
+  run(`confirmDeleteTrade('${STOCK}')`);
+  assert.equal(elements.get('tradeReviewTitle').textContent, 'Delete AAPL?', 'and asks the same way');
 });
 
 test('reviews read when the journal opens; a refused save goes back; a missing table still shows the trades', async () => {
   const kept = await journalWith([{ trade_key: STOCK, stop: '97.5', hidden: false }, { trade_key: OPTION, stop: null, hidden: true }]);
   assert.match(kept.out(), /\$97\.50<\/button><span class="pos-sub">yours<\/span>/, 'Postgres numerics arrive as text');
-  assert.match(kept.out(), /1 hidden/);
+  assert.match(kept.out(), /1 deleted/);
 
-  kept.run(`openTradeReview('${STOCK}')`);
+  kept.run(`confirmDeleteTrade('${STOCK}')`);
   kept.supabase.fail({ status: 500, message: 'nope' });
-  await kept.run('hideTrade()');
-  assert.match(kept.sheet(), /Couldn't save: nope/);
+  await kept.run('deleteTrade()');
+  assert.match(kept.sheet(), /Couldn't delete: nope/);
   assert.equal(kept.state.openSheetName, 'tradeReview', 'the sheet stays open');
   assert.match(kept.out(), /<td><b>AAPL<\/b>/, 'and the trade comes back');
 
   const missing = await journalWith([], s => s.failTable('trade_reviews'));
-  assert.match(missing.out(), /Your stops and hidden trades couldn't load \(the database doesn(?:'|&#39;)t have the trade_reviews table yet\)\. Trades show with Schwab's stops\./);
+  assert.match(missing.out(), /Your stops and deleted trades couldn't load \(the database doesn(?:'|&#39;)t have the trade_reviews table yet\)\. Trades show with Schwab's stops, deleted ones included\./);
   assert.match(missing.out(), /−1\.00R/, 'the trades still show');
   missing.run(`openTradeReview('${STOCK}')`);
   assert.match(missing.sheet(), /saving is off until they do/);
-  await missing.run('hideTrade()');
+  missing.run(`confirmDeleteTrade('${STOCK}')`);
+  await missing.run('deleteTrade()');
   assert.equal(missing.supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing written over a row it couldn\'t read');
 });

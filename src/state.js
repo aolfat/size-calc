@@ -59,10 +59,11 @@ export function createState() {
     journalTab: 'trades', // trades | fills
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
-    tradeReviews: null, // your word on each trade, by trade key: { stop, hidden }, once read
+    tradeReviews: null, // your word on each trade, by trade key: { stop, hidden (= deleted) }, once read
     tradeReviewsError: '', // the reviews couldn't be read (the trades still show, with Schwab's stops)
-    journalShowHidden: false, // hidden trades shown, dimmed, to bring one back
+    journalShowDeleted: false, // deleted trades shown, dimmed, to restore one
     tradeReviewKey: null, // the trade open in the trade sheet
+    tradeReviewMode: 'edit', // edit | delete (the confirm step)
     tradeReviewBusy: false, // a save is on its way
     tradeReviewError: '',
     marketView: false,

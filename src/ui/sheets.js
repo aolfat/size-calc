@@ -1,4 +1,4 @@
-// Sheets: settings, account & risk, the Schwab order reviews (new trade, held position, cancelling a working order), the Journal's Import and Export, and a journal trade (your stop, hiding it), a panel under the header on desktop and a bottom sheet on phones.
+// Sheets: settings, account & risk, the Schwab order reviews (new trade, held position, cancelling a working order), the Journal's Import and Export, and a journal trade (your stop, deleting it), a panel under the header on desktop and a bottom sheet on phones.
 import { state } from '../state.js';
 
 export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', cancel: 'cancelSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', tradeReview: 'tradeReviewSheet' };

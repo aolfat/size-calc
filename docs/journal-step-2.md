@@ -106,7 +106,10 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - **A moved stop doesn't change R.** R counts from the first stop, the risk at entry. The table shows where it was moved to.
 - **Your word on a trade (built), in `trade_reviews`:**
   - **Your stop:** set on any trade, and it wins over Schwab's. It's for mental stops (most option trades) and corrections. On an option it's a price on the option. A stop on the underlying, priced through the chain's loss model, can come later.
-  - **Hide:** for a trade that was imported but doesn't belong. It leaves the list and the stats. Its fills stay kept and grouped, so an import can't bring it back and other trades on that symbol stay right. Show brings it back.
+  - **Delete:** for a trade that was imported but doesn't belong. Delete sits on the row and asks once. The trade leaves the list and the stats.
+    - **What an import does afterwards:** Schwab keeps sending the trade's orders, and they stay kept. They'd come back anyway inside Schwab's 60-day window, and the trades around it need its fills to add up. The delete mark is on the trade key, so every import and every device keeps it deleted.
+    - **The one way it comes back:** an earlier fill imported later changes the trade's open time, which makes it a new trade.
+    - **Restore:** Show lists deleted trades, dimmed, each with Restore.
   - **Where:** tap a trade's stop, or Edit under its symbol. The sheet lists Schwab's stops on the trade to pick from, and previews the risk and R as you type.
 - **Fees:** P&L is before fees for now. Schwab's orders carry none, so fees come from transactions once their real format is checked.
 
@@ -151,6 +154,8 @@ The schema is new and lives in one database, so once slices 1 to 5 settle, the m
 3. **Update Supabase's migration history** with `npx supabase migration repair`: the old versions marked reverted and the new one marked applied. The database itself doesn't change.
 4. **Check the single file** against a scratch project. `tests/rls.test.mjs` keeps checking the rules either way.
 
+**Renames go first, as their own migration,** because the squash itself never changes the database: `trade_reviews.hidden` becomes `deleted` (it was named before hiding became deleting).
+
 Done once, at the end of step 2, after the journal's own tables exist.
 
 ## For step 3 (review), from Trading-Journal-AI
@@ -167,7 +172,7 @@ Not part of step 2, noted so the review design picks them up:
 | Table | One row per | Holds |
 |---|---|---|
 | `schwab_records` (built) | Order or transaction | Kind, Schwab's id, account (last 4 digits), entered time, Schwab's JSON whole with account numbers masked |
-| `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, hidden. Step 3's grades and notes join it |
+| `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, `hidden` (the delete mark; renamed `deleted` in slice 6's squash). Step 3's grades and notes join it |
 | `fills` | Fill | Schwab id (unique per account), order id, symbol (options by full contract symbol), underlying, asset type, side, quantity, price, fee, time, open or close |
 | `stop_orders` | Stop order | Order id, symbol, side, quantity, stop price, entered, status, what replaced it |
 | `bars_5m` | Symbol per day | That day's 5-minute bars packed in one value |

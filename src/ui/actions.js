@@ -22,7 +22,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearTradeStop, hideTrade, journalImport, journalSymbolChanged, openJournalExport, openJournalImport, openTradeReview, pickTradeStop, saveTradeStop, setJournalSide, setJournalTab, toggleHiddenTrades, tradeStopPreview, unhideTrade } from './journal.js';
+import { clearTradeStop, confirmDeleteTrade, deleteTrade, journalImport, journalSymbolChanged, openJournalExport, openJournalImport, openTradeReview, pickTradeStop, restoreTrade, saveTradeStop, setJournalSide, setJournalTab, toggleDeletedTrades, tradeStopPreview } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -65,14 +65,15 @@ export const actions = {
   setJournalTab: el => setJournalTab(arg(el)),
   setJournalSide: el => setJournalSide(arg(el)),
   journalSymbolChanged: () => journalSymbolChanged(),
-  toggleHiddenTrades: () => toggleHiddenTrades(),
+  toggleDeletedTrades: () => toggleDeletedTrades(),
   openTradeReview: el => openTradeReview(arg(el)),
   tradeStopPreview: () => tradeStopPreview(),
   pickTradeStop: el => pickTradeStop(arg(el)),
   saveTradeStop: el => { if (el.tagName === 'INPUT') el.blur(); saveTradeStop(); },
   clearTradeStop: () => clearTradeStop(),
-  hideTrade: () => hideTrade(),
-  unhideTrade: () => unhideTrade(),
+  confirmDeleteTrade: el => confirmDeleteTrade(arg(el)),
+  deleteTrade: () => deleteTrade(),
+  restoreTrade: el => restoreTrade(arg(el)),
   schwabProxyDone: () => schwabProxyDone(),
   editSchwabProxy: () => editSchwabProxy(),
   connectSchwab: () => connectSchwab(),

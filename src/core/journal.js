@@ -2,7 +2,7 @@
 // Journal trades, pure: kept fills grouped into trades (flat back to flat, first in first out, scale-ins, partial exits,
 // flips, ×100 for options), each with P&L, hold time, its initial stop and R. Trades are computed every time from the kept
 // fills, never stored (docs/journal-step-2.md). Schwab's orders carry no fees, so P&L here is before fees. Your own word on
-// a trade (trade_reviews, keyed by the trade key) overrides its stop and can hide it.
+// a trade (trade_reviews, keyed by the trade key) overrides its stop and can delete it from the journal.
 import { schwabTime } from './positions.js';
 
 const EPS = 1e-9;
@@ -22,8 +22,8 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
  *   status: 'open' | 'win' | 'loss' | 'breakeven', stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
- *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, hidden: boolean }} Trade
- * @typedef {{ stop?: number | null, hidden?: boolean }} TradeReview
+ *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean }} Trade
+ * @typedef {{ stop?: number | null, hidden?: boolean }} TradeReview  hidden is the delete marker (the column's first name)
  */
 
 /**
@@ -54,7 +54,7 @@ function finish(t) {
     holdMs: closed && t.closedAt ? Date.parse(t.closedAt) - Date.parse(t.openedAt) : null,
     status: !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
     stop: null, stopOrderId: '', risk: null, rBasis: null, r: null,
-    stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, hidden: false,
+    stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: false,
   };
 }
 
@@ -211,15 +211,16 @@ export function withRisk(trade, stops, ownStop = null) {
 }
 
 /**
- * The journal's trades from its kept records: fills grouped, each given its stop and R (your stop first) and your
- * hidden flag, newest first (by when it closed, or opened if it's still open). Hidden trades stay in the list, flagged:
- * their fills still group with the rest, and the view decides whether to show them.
+ * The journal's trades from its kept records: fills grouped, each given its stop and R (your stop first) and whether
+ * you deleted it, newest first (by when it closed, or opened if it's still open). Deleted trades stay in the list,
+ * flagged: their fills still group with the rest (so the trades around them add up), and the view leaves them out.
+ * Imports can't bring one back, since the mark is on the trade key, not on Schwab's records.
  * @param {Fill[]} fills @param {{ kind: string, account?: string, data: any }[]} records
  * @param {Record<string, TradeReview>} [reviews]
  */
 export function journalTrades(fills, records, reviews = {}) {
   const stops = stopOrdersFrom(records);
-  return buildTrades(fills).map(t => { const rv = reviews[t.key] || {}; return { ...withRisk(t, stops, rv.stop ?? null), hidden: !!rv.hidden }; })
+  return buildTrades(fills).map(t => { const rv = reviews[t.key] || {}; return { ...withRisk(t, stops, rv.stop ?? null), deleted: !!rv.hidden }; })
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
 }
 
