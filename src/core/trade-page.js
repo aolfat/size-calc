@@ -116,3 +116,22 @@ export function excursions(trade, bars) {
     efficiency: closed && trade.pnl > 0 && mfe > 0 ? Math.min(1, Math.round((trade.pnl / mfe) * 1000) / 1000) : null,
   };
 }
+
+/**
+ * The exit in words: one exit's price, or the average of several; while it's open, how much is closed and what closing
+ * it was called (sold, bought back, closed for a spread). Null before any exit.
+ * @param {{ avgExit: number | null, exits: number, entryQty: number, openQty: number, direction: string, legs?: any[] }} trade
+ * @returns {{ avg: boolean, closed: number, verb: string } | null}
+ */
+export function exitParts(trade) {
+  if (trade.avgExit === null) return null;
+  return { avg: trade.exits > 1, closed: Math.round((trade.entryQty - trade.openQty) * 1e4) / 1e4,
+    verb: trade.legs ? 'closed' : trade.direction === 'short' ? 'bought back' : 'sold' };
+}
+
+/** the exit line's label on the trade's chart: 'exit 0.71', 'avg exit 0.71', and while open 'avg exit 0.71 · 60 of 100' */
+export function exitLineLabel(/** @type {Parameters<typeof exitParts>[0] & { status: string }} */ trade) {
+  const x = exitParts(trade);
+  if (!x || trade.avgExit === null) return '';
+  return `${x.avg ? 'avg exit' : 'exit'} ${trade.avgExit.toFixed(2)}${trade.status === 'open' ? ` · ${x.closed} of ${trade.entryQty}` : ''}`;
+}

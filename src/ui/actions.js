@@ -23,7 +23,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearJournalDay, openJournalStats, pickJournalDay, setJournalPeriod, shiftJournalMonth, stepJournalPeriod } from './journal.js';
+import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade } from './journal-trade.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
@@ -69,6 +69,7 @@ export const actions = {
   pickJournalDay: el => pickJournalDay(arg(el)),
   clearJournalDay: () => clearJournalDay(),
   shiftJournalMonth: el => shiftJournalMonth(arg(el)),
+  journalThisMonth: () => journalThisMonth(),
   setJournalPeriod: el => setJournalPeriod(arg(el)),
   stepJournalPeriod: el => stepJournalPeriod(arg(el)),
   openJournalStats: el => openJournalStats(arg(el), el.dataset.arg2 || ''),

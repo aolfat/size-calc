@@ -1,6 +1,7 @@
 // Journal Calendar and Stats tabs (journal step 2, slice 4; core/journal-stats.js does the numbers): the calendar is a
-// month of daily P&L (each day with its win rate and profit factor) under the month's own numbers, with weekly totals; a
-// day tapped shows its trades, a week's total its stats. The stats cover all time or one day, week or month (‹ › step
+// month of realized P&L by day (each exit on its own day, trims included; each day with its win rate and profit factor)
+// under the month's own numbers, with weekly totals; a day tapped shows the trades with an exit then, a week's total its
+// stats, This month comes back to today's. The stats cover all time or one day, week or month of closed trades (‹ › step
 // through the ones with trades): the headline numbers, the equity curve with its drawdown, results by month (or by day),
 // streaks and the breakdowns, each group with the same stats, thin under 10. The Journal's side, symbol and fee choices
 // apply here too.
@@ -23,9 +24,12 @@ const shiftMonth = (m, by) => { const [y, mo] = m.split('-').map(Number); const 
 
 // ---------- Calendar ----------
 
-/** the month shown: your pick, else the newest with closed trades, else this one */
+/** this month in New York, 'YYYY-MM' */
+export const thisMonth = () => nyParts(new Date().toISOString()).day.slice(0, 7);
+
+/** the month shown: your pick, else the newest with exits, else this one */
 function shownMonth(daily) {
-  return state.journalMonth || activeMonths(daily)[0] || new Date().toISOString().slice(0, 7);
+  return state.journalMonth || activeMonths(daily)[0] || thisMonth();
 }
 
 const pct = v => `${Math.round(v)}%`;
@@ -45,14 +49,13 @@ function weekCell(w) {
   return `<td class="jc-week"><button class="jc-weekbtn" data-action="openJournalStats" data-arg="week" data-arg2="${w.start}" aria-label="${esc(label)}" title="The week's stats"><span class="${pnlClass(w.pnl)}">${compact$(w.pnl)}</span><span class="jc-n">${w.trades} trade${w.trades === 1 ? '' : 's'} · ${pct(w.winRate)}</span></button></td>`;
 }
 
-/** the month's own numbers over the grid: P&L, win rate, profit factor, green days */
-function monthStats(trades, month, cal) {
-  if (!cal.trades) return '<p class="hint">No closed trades this month.</p>';
-  const s = groupStats(inPeriod(trades, 'month', month));
+/** the month's own numbers over the grid, realized like the days: P&L, win rate, profit factor, green days */
+function monthStats(cal) {
+  if (!cal.trades) return '<p class="hint">No exits this month.</p>';
   return `<dl class="js-stats jc-stats">
-    ${statCell('Net P&amp;L', signed$(s.net), `${s.trades} trade${s.trades === 1 ? '' : 's'}`, pnlClass(s.net))}
-    ${statCell('Win rate', `${s.winRate}%`, `${s.wins} won, ${s.losses} lost`)}
-    ${statCell('Profit factor', s.profitFactor === null ? '—' : s.profitFactor.toFixed(2), s.profitFactor === null ? 'no losses' : 'gross wins ÷ gross losses')}
+    ${statCell('Net P&amp;L', signed$(cal.pnl), `${cal.trades} trade${cal.trades === 1 ? '' : 's'}`, pnlClass(cal.pnl))}
+    ${statCell('Win rate', `${cal.winRate}%`, `${cal.wins} won, ${cal.losses} lost`)}
+    ${statCell('Profit factor', cal.profitFactor === null ? '—' : cal.profitFactor.toFixed(2), cal.profitFactor === null ? 'no losses' : 'gross wins ÷ gross losses')}
     ${statCell('Green days', `${cal.green} of ${cal.days}`, `${cal.red} red`)}
   </dl>`;
 }
@@ -67,16 +70,17 @@ export function calendarView(trades) {
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
       <span class="jc-title">${esc(monthName(month))}</span>
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
+      <button class="btn jc-today" data-action="journalThisMonth"${month === thisMonth() ? ' disabled' : ''}>This month</button>
       ${cal.trades ? `<button class="pos-link" data-action="openJournalStats" data-arg="month" data-arg2="${month}">All of the month's stats</button>` : ''}
     </div>
-    ${monthStats(trades, month, cal)}
+    ${monthStats(cal)}
     <table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cells}</tbody></table>
-    <p class="hint">Each trade's P&amp;L goes on the day it closed, New York time. Days show the win rate and the profit factor (PF, none on a day without a loss; phones show the win rate). Tap a day for its trades, a week's total for its stats.</p>`;
+    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its trades, a week's total for its stats.</p>`;
 }
 
 /** ‹ or ›: the month before or after the one shown */
 export function nextJournalMonth(by) {
-  const from = state.journalMonth || state.journalMonthShown || new Date().toISOString().slice(0, 7);
+  const from = state.journalMonth || state.journalMonthShown || thisMonth();
   return shiftMonth(from, Number(by) || 0);
 }
 

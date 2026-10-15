@@ -25,7 +25,7 @@ import { updateStickyBar } from './ui/sticky-bar.js';
 import { updateStopVisibility } from './ui/stops.js';
 import { fetchQuote, renderRecentTickers } from './ui/ticker.js';
 import { initSchwab } from './ui/trade.js';
-import { setView } from './ui/views.js';
+import { setView, viewFromHash } from './ui/views.js';
 
 delegate(document, actions); // every data-action / data-input / data-change / data-enter in the page
 
@@ -55,7 +55,7 @@ updateChainControls();
 updateRiskStatus();
 applyQuickOpen();
 updateStopVisibility();
-setView(location.hash === '#market' ? 'market' : 'calc'); // direct link to Market; sizing remains the default
+setView(viewFromHash(location.hash)); // a reload stays on its tab (#journal, #market, ...); sizing remains the default
 updateIntervalChips();
 
 // page listeners

@@ -115,6 +115,8 @@
 .jc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 10px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
 .jc-nav { padding: 4px 12px; }
+.jc-today { padding: 4px 12px; font-size: 12.5px; }
+.jc-today:disabled { opacity: 0.45; cursor: default; }
 .jc-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 4px; }
 .jc-grid th { font-size: 11px; font-weight: 500; color: var(--text3); text-align: left; padding: 0 6px; }
 .jc-grid td { vertical-align: top; padding: 0; }

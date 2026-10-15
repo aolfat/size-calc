@@ -1,11 +1,12 @@
 // @ts-check
-// Journal calendar and stats, pure (docs/journal-step-2.md, slice 4): the closed trades in numbers. A trade's P&L goes on
-// the New York day it closed. Every group (the whole set, a symbol, a weekday, a time of day...) gets the same stats, and a
+// Journal calendar and stats, pure (docs/journal-step-2.md, slice 4): the closed trades in numbers. The calendar puts each
+// exit's P&L on the New York day it was taken (a trim counts that day, even while the rest is still open). Every group (the whole set, a symbol, a weekday, a time of day...) gets the same stats, and a
 // group under 10 trades is thin. Trades still open, deleted, or from before the history never count.
 
 /** @typedef {{ key: string, symbol: string, label: string, assetType: string, status: string, bias?: string, direction: string,
  *   openedAt: string, closedAt: string | null, pnl: number, r: number | null, exits: number, holdMs: number | null,
- *   deleted?: boolean, legs?: any[] }} StatTrade */
+ *   deleted?: boolean, legs?: any[], realized?: { at: string, qty: number, pnl: number }[] }} StatTrade
+ * @typedef {{ pnl: number, keys: string[], byTrade: Record<string, number>, trades: number, wins: number, losses: number, winRate: number | null, profitFactor: number | null }} Day */
 
 /** groups smaller than this are marked thin: a handful of trades says little */
 export const THIN = 10;
@@ -58,25 +59,61 @@ export function groupStats(trades) {
   };
 }
 
-/** @typedef {{ pnl: number, trades: number, wins: number, losses: number, winRate: number | null, profitFactor: number | null }} DayResult */
-
 /** the New York day a counted trade closed, 'YYYY-MM-DD'. @param {StatTrade} t */
 export const closeDay = t => nyParts(/** @type {string} */ (t.closedAt)).day;
 
-/** P&L per New York day each trade closed, oldest first: 'YYYY-MM-DD' → { pnl, trades, wins, losses, winRate, profitFactor }. @param {StatTrade[]} trades */
+/**
+ * A trade's exits as realized P&L: each one's own when the trade has them, else its whole P&L at the close. Open trades
+ * count their exits so far; deleted ones and trades from before the history (no entry, so no P&L) have none.
+ * @param {StatTrade} t @returns {{ at: string, pnl: number }[]}
+ */
+export function exitsOf(t) {
+  if (t.deleted || t.status === 'history') return [];
+  if (t.realized) return t.realized;
+  return t.closedAt && t.status !== 'open' ? [{ at: t.closedAt, pnl: t.pnl }] : [];
+}
+
+/** the New York days a trade took P&L on. @param {StatTrade} t */
+export const exitDays = t => new Set(exitsOf(t).map(e => nyParts(e.at).day));
+
+/**
+ * Win rate and profit factor over a span (a day, a week, a month) of realized P&L: each trade's exits in the span added
+ * up, a win above zero and a loss below it; profit factor = gross wins ÷ gross losses, null without a loss.
+ * @param {Map<string, number>} byTrade trade key → its realized P&L in the span
+ */
+function tally(byTrade) {
+  const v = [...byTrade.values()].map(round2), wins = v.filter(p => p > 0), losses = v.filter(p => p < 0);
+  const gw = wins.reduce((n, p) => n + p, 0), gl = -losses.reduce((n, p) => n + p, 0);
+  return {
+    trades: v.length, wins: wins.length, losses: losses.length,
+    winRate: v.length ? Math.round((wins.length / v.length) * 1000) / 10 : null,
+    profitFactor: gl > 0 ? Math.round((gw / gl) * 100) / 100 : null,
+  };
+}
+/** @param {Map<string, number>} into @param {Record<string, number>} from */
+const addUp = (into, from) => { for (const [k, p] of Object.entries(from)) into.set(k, (into.get(k) || 0) + p); };
+
+/**
+ * Realized P&L per New York day, every exit on the day it was taken: 'YYYY-MM-DD' → { pnl, keys (the trades with an exit
+ * that day), byTrade (each one's P&L that day), trades, wins, losses, winRate, profitFactor }, days in order.
+ * @param {StatTrade[]} trades
+ */
 export function dailyPnl(trades) {
-  /** @type {Map<string, StatTrade[]>} */
+  /** @type {Map<string, { pnl: number, byTrade: Map<string, number> }>} */
   const by = new Map();
-  for (const t of countedTrades(trades)) {
-    const d = closeDay(t);
-    if (!by.has(d)) by.set(d, []);
-    /** @type {StatTrade[]} */ (by.get(d)).push(t);
+  for (const t of trades) {
+    for (const e of exitsOf(t)) {
+      const d = nyParts(e.at).day;
+      const c = by.get(d) || { pnl: 0, byTrade: new Map() };
+      c.pnl += e.pnl; c.byTrade.set(t.key, (c.byTrade.get(t.key) || 0) + e.pnl);
+      by.set(d, c);
+    }
   }
-  /** @type {Map<string, DayResult>} */
+  /** @type {Map<string, Day>} */
   const out = new Map();
-  for (const [d, list] of [...by].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const s = groupStats(list);
-    out.set(d, { pnl: s.net, trades: s.trades, wins: s.wins, losses: s.losses, winRate: s.winRate, profitFactor: s.profitFactor });
+  for (const d of [...by.keys()].sort()) {
+    const c = /** @type {{ pnl: number, byTrade: Map<string, number> }} */ (by.get(d));
+    out.set(d, { pnl: round2(c.pnl), keys: [...c.byTrade.keys()], byTrade: Object.fromEntries([...c.byTrade].map(([k, p]) => [k, round2(p)])), ...tally(c.byTrade) });
   }
   return out;
 }
@@ -121,9 +158,10 @@ export function switchPeriod(trades, fromUnit, fromKey, toUnit) {
 
 /**
  * A month as weeks of weekdays (Mon to Fri), each day with its P&L, trade count, win rate and profit factor, and each week's
- * total (start = its Monday); weekend closes (rare: a late fill stamped Saturday) fold into that week's total. Days outside
- * the month are null.
- * @param {Map<string, DayResult>} daily @param {string} month 'YYYY-MM'
+ * total, trades and win rate (start = its Monday); weekend exits (rare: a late fill stamped Saturday) fold into that week's
+ * total. A trade trimmed on two days counts once in the week and the month, its exits there added up. Days outside the
+ * month are null. The month's own: P&L, trades, wins, losses, win rate, profit factor, and its green and red days.
+ * @param {Map<string, Day>} daily @param {string} month 'YYYY-MM'
  */
 export function calendarMonth(daily, month) {
   const [y, m] = month.split('-').map(Number);
@@ -131,24 +169,30 @@ export function calendarMonth(daily, month) {
   // back to the Monday on or before the 1st
   const start = new Date(first.getTime() - ((first.getUTCDay() + 6) % 7) * 864e5);
   /** @typedef {{ day: string, pnl: number | null, trades: number, winRate: number | null, profitFactor: number | null } | null} CalDay */
-  /** @type {{ start: string, days: CalDay[], pnl: number, trades: number, wins: number, winRate: number | null }[]} */
+  /** @type {({ start: string, days: CalDay[], pnl: number } & ReturnType<typeof tally>)[]} */
   const weeks = [];
   for (let t = start.getTime(); t <= last.getTime(); t += 7 * 864e5) {
-    const week = { start: isoDay(t), days: /** @type {CalDay[]} */ ([]), pnl: 0, trades: 0, wins: 0, winRate: /** @type {number | null} */ (null) };
+    /** @type {CalDay[]} */
+    const days = [];
+    /** @type {Map<string, number>} */
+    const byTrade = new Map();
+    let pnl = 0;
     for (let i = 0; i < 7; i++) {
       const d = new Date(t + i * 864e5), day = d.toISOString().slice(0, 10), inMonth = d.getUTCMonth() === m - 1;
       const c = daily.get(day);
-      if (inMonth && c) { week.pnl = round2(week.pnl + c.pnl); week.trades += c.trades; week.wins += c.wins; }
-      if (i < 5) week.days.push(inMonth ? { day, pnl: c ? c.pnl : null, trades: c ? c.trades : 0, winRate: c ? c.winRate : null, profitFactor: c ? c.profitFactor : null } : null);
+      if (inMonth && c) { pnl = round2(pnl + c.pnl); addUp(byTrade, c.byTrade); }
+      if (i < 5) days.push(inMonth ? { day, pnl: c ? c.pnl : null, trades: c ? c.trades : 0, winRate: c ? c.winRate : null, profitFactor: c ? c.profitFactor : null } : null);
     }
-    if (week.trades) week.winRate = Math.round((week.wins / week.trades) * 1000) / 10;
-    weeks.push(week);
+    weeks.push({ start: isoDay(t), days, pnl, ...tally(byTrade) });
   }
   const days = [...daily].filter(([d]) => d.startsWith(month));
-  return { month, weeks, days: days.length, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), trades: days.reduce((n, [, c]) => n + c.trades, 0), green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
+  /** @type {Map<string, number>} */
+  const byTrade = new Map();
+  for (const [, c] of days) addUp(byTrade, c.byTrade);
+  return { month, weeks, days: days.length, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), ...tally(byTrade), green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
 }
 
-/** the months that have closed trades, newest first ('YYYY-MM'). @param {Map<string, any>} daily */
+/** the months with exits, newest first ('YYYY-MM'). @param {Map<string, any>} daily */
 export const activeMonths = daily => [...new Set([...daily.keys()].map(d => d.slice(0, 7)))].sort().reverse();
 
 /**

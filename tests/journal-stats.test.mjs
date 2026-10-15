@@ -1,6 +1,6 @@
 // Run with: node --test
-// Journal calendar and stats: which trades count, the per-group stats, daily P&L on the close's New York day, the month
-// grid, the equity curve and drawdown, streaks, the breakdowns, and the Calendar and Stats tabs.
+// Journal calendar and stats: which trades count, the per-group stats, daily P&L on each exit's New York day (trims
+// included, open trades too), the month grid, the equity curve and drawdown, streaks, the breakdowns, and the Calendar and Stats tabs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -36,9 +36,9 @@ test('group stats: net, average and median, win rate, average win and loss, prof
 test('daily P&L lands on the New York day each trade closed, and the month grid adds up its weeks', async () => {
   const { run } = await app();
   const daily = json(run, `[...dailyPnl(${JSON.stringify(TRADES)})]`);
-  const D = (pnl, trades, wins, losses, winRate, profitFactor) => ({ pnl, trades, wins, losses, winRate, profitFactor });
-  assert.deepEqual(daily, [['2026-10-05', D(300, 1, 1, 0, 100, null)], ['2026-10-06', D(-350, 2, 0, 2, 0, 0)], ['2026-10-13', D(50, 1, 1, 0, 100, null)], ['2026-10-15', D(0, 1, 0, 0, 0, null)]],
-    'the 1:30 AM UTC close is the evening of 10/13 in New York; a day without a loss has no profit factor');
+  const D = (pnl, keys, byTrade, wins, losses, winRate, profitFactor) => ({ pnl, keys, byTrade, trades: keys.length, wins, losses, winRate, profitFactor });
+  assert.deepEqual(daily, [['2026-10-05', D(300, ['a'], { a: 300 }, 1, 0, 100, null)], ['2026-10-06', D(-350, ['b', 'c'], { b: -100, c: -250 }, 0, 2, 0, 0)], ['2026-10-13', D(50, ['d'], { d: 50 }, 1, 0, 100, null)], ['2026-10-15', D(0, ['e'], { e: 0 }, 0, 0, 0, null)]],
+    'the 1:30 AM UTC close is the evening of 10/13 in New York; without exits, an open trade adds nothing; a day without a loss has no profit factor');
   const cal = json(run, `calendarMonth(dailyPnl(${JSON.stringify(TRADES)}), '2026-10')`);
   assert.equal(cal.weeks[0].days[0], null, 'Mon 9/28 is September');
   assert.deepEqual(cal.weeks[0].days[3], { day: '2026-10-01', pnl: null, trades: 0, winRate: null, profitFactor: null });
@@ -49,7 +49,50 @@ test('daily P&L lands on the New York day each trade closed, and the month grid 
   assert.deepEqual([cal.weeks[2].pnl, cal.weeks[2].trades, cal.weeks[2].winRate], [50, 2, 50], 'the breakeven counts as a trade');
   assert.equal(cal.weeks.length, 5, 'Sep 28 through Nov 1');
   assert.deepEqual([cal.pnl, cal.trades, cal.days, cal.green, cal.red], [0, 5, 4, 2, 1]);
+  assert.deepEqual([cal.wins, cal.losses, cal.winRate, cal.profitFactor], [2, 2, 40, 1], 'the month: 350 won over 350 lost');
   assert.deepEqual(json(run, `activeMonths(dailyPnl(${JSON.stringify(TRADES)}))`), ['2026-10']);
+});
+
+const fill = (id, side, time, qty, price, symbol = 'AAPL', assetType = 'EQUITY', orderId = id) => ({
+  id, orderId, account: '6789', time, symbol, label: symbol, assetType, instruction: side === 'buy' ? 'BUY' : 'SELL', side, qty, price,
+});
+// AAPL bought 100, trimmed 50 on Monday (+$150), the rest sold Wednesday (+$200); an XLU call trimmed and still open
+const TRIMS = [
+  fill('1', 'buy', '2026-10-05T13:35:00.000Z', 100, 100), fill('2', 'sell', '2026-10-05T15:00:00.000Z', 50, 103), fill('3', 'sell', '2026-10-07T15:00:00.000Z', 50, 104),
+  fill('4', 'buy', '2026-10-13T14:00:00.000Z', 10, 2, 'XLU   270319C00045000', 'OPTION'), fill('5', 'sell', '2026-10-14T15:00:00.000Z', 5, 3, 'XLU   270319C00045000', 'OPTION'),
+];
+
+test('trims: each exit\'s P&L goes on the day it was taken, open trades included, a trade counted once a week', async () => {
+  const { run } = await app();
+  const trades = json(run, `buildTrades(${JSON.stringify(TRIMS)})`);
+  const aapl = trades.find(t => t.symbol === 'AAPL'), xlu = trades.find(t => t.symbol !== 'AAPL');
+  assert.deepEqual(aapl.realized, [{ at: '2026-10-05T15:00:00.000Z', qty: 50, pnl: 150 }, { at: '2026-10-07T15:00:00.000Z', qty: 50, pnl: 200 }]);
+  assert.equal(aapl.pnl, 350);
+  assert.equal(xlu.status, 'open');
+  assert.deepEqual(xlu.realized, [{ at: '2026-10-14T15:00:00.000Z', qty: 5, pnl: 500 }], 'an option exit is ×100');
+  const daily = json(run, `[...dailyPnl(buildTrades(${JSON.stringify(TRIMS)}))].map(([d, c]) => [d, c.pnl, c.trades])`);
+  assert.deepEqual(daily, [['2026-10-05', 150, 1], ['2026-10-07', 200, 1], ['2026-10-14', 500, 1]], 'the trim lands Monday, the open call\'s trim Wednesday');
+  const cal = json(run, `calendarMonth(dailyPnl(buildTrades(${JSON.stringify(TRIMS)})), '2026-10')`);
+  assert.deepEqual([cal.weeks[1].pnl, cal.weeks[1].trades], [350, 1], 'one trade over two days counts once in the week');
+  assert.deepEqual([cal.pnl, cal.trades, cal.green], [850, 2, 3]);
+  assert.deepEqual(json(run, `[...exitDays(buildTrades(${JSON.stringify(TRIMS)})[0])]`), ['2026-10-05', '2026-10-07']);
+  assert.deepEqual(json(run, `[...dailyPnl(buildTrades(${JSON.stringify(TRIMS)}).map(t => ({ ...t, deleted: true })))]`), [], 'deleted trades add nothing');
+});
+
+test('trims after fees: each exit carries the fees for the part of the entry it closed; spreads and merges keep their legs\' exits', async () => {
+  const { run } = await app();
+  const net = json(run, `withFees(buildTrades(${JSON.stringify(TRIMS.slice(0, 3))})[0], new Map([['1', 1], ['2', 0.5], ['3', 0.5]]), new Map([['1', 100], ['2', 50], ['3', 50]]), true)`);
+  assert.equal(net.pnl, 348);
+  assert.deepEqual(net.realized.map(e => e.pnl), [149, 199], 'half the entry closed each time: half of $2 each');
+  const C245 = 'AAPL  261218C00245000', C255 = 'AAPL  261218C00255000';
+  const legs = [
+    { ...fill('a', 'buy', '2026-10-05T14:00:00.000Z', 1, 5, C245, 'OPTION', 'o1'), instruction: 'BUY_TO_OPEN' }, { ...fill('b', 'sell', '2026-10-05T14:00:00.000Z', 1, 2, C255, 'OPTION', 'o1'), instruction: 'SELL_TO_OPEN' },
+    { ...fill('c', 'sell', '2026-10-06T15:00:00.000Z', 1, 7, C245, 'OPTION'), instruction: 'SELL_TO_CLOSE' }, { ...fill('d', 'buy', '2026-10-07T15:00:00.000Z', 1, 3, C255, 'OPTION'), instruction: 'BUY_TO_CLOSE' },
+  ];
+  const spread = json(run, `spreadTrade('s', 'auto', buildTrades(${JSON.stringify(legs)}))`);
+  assert.deepEqual(spread.realized.map(e => [e.at.slice(0, 10), e.pnl]), [['2026-10-06', 200], ['2026-10-07', -100]], 'each leg\'s close on its own day');
+  const merged = json(run, `shapeTrades(buildTrades(${JSON.stringify([...TRIMS.slice(0, 3), fill('6', 'buy', '2026-10-08T14:00:00.000Z', 10, 100), fill('7', 'sell', '2026-10-09T14:00:00.000Z', 10, 99)])}), [{ id: 'm', account: '6789', fill_ids: ['1', '6'] }])`);
+  assert.deepEqual(merged[0].realized.map(e => e.pnl), [150, 200, -10], 'a merged trade keeps every part\'s exits, in order');
 });
 
 test('equity curve with its drawdown, streaks, and months', async () => {
@@ -60,6 +103,20 @@ test('equity curve with its drawdown, streaks, and months', async () => {
   assert.equal(eq.maxDrawdownAt, '2026-10-06T19:00:00.000Z');
   assert.deepEqual(json(run, `streaks(${JSON.stringify(TRADES)})`), { longestWin: 1, longestLoss: 2, current: null }, 'a breakeven ends the run');
   assert.deepEqual(json(run, `monthlyResults(${JSON.stringify(TRADES)})`).map(m => [m.month, m.trades, m.net]), [['2026-10', 5, 0]]);
+});
+
+test('realized win rate and profit factor: each trade\'s exits in the day, week or month added up', async () => {
+  const { run } = await app();
+  const X = T('x', '2026-10-07T15:00:00.000Z', 20, { realized: [{ at: '2026-10-05T14:00:00.000Z', qty: 50, pnl: 100 }, { at: '2026-10-05T15:00:00.000Z', qty: 20, pnl: -30 }, { at: '2026-10-07T15:00:00.000Z', qty: 30, pnl: -50 }] });
+  const Y = T('y', '2026-10-05T16:00:00.000Z', -40);
+  const daily = `dailyPnl(${JSON.stringify([X, Y])})`;
+  const d5 = json(run, `${daily}.get('2026-10-05')`);
+  assert.deepEqual([d5.pnl, d5.trades, d5.wins, d5.losses, d5.winRate, d5.profitFactor], [30, 2, 1, 1, 50, 1.75], 'x took +70 net that day, y lost 40');
+  const d7 = json(run, `${daily}.get('2026-10-07')`);
+  assert.deepEqual([d7.trades, d7.winRate, d7.profitFactor], [1, 0, 0], 'x\'s last exit lost');
+  const cal = json(run, `calendarMonth(${daily}, '2026-10')`);
+  assert.deepEqual([cal.weeks[1].trades, cal.weeks[1].wins, cal.weeks[1].winRate, cal.weeks[1].profitFactor], [2, 1, 50, 0.5], 'the week: x +20 over its three exits, y −40');
+  assert.deepEqual([cal.trades, cal.pnl, cal.winRate, cal.profitFactor], [2, -20, 50, 0.5]);
 });
 
 test('periods: a day, its week (named by the Monday, weekends folded in), its month; the ones with trades; stepping and switching', async () => {
@@ -119,8 +176,8 @@ const RECORDS = [
   order(3, 'BUY', '2026-10-06T13:40:00+0000', 50, 200, 'MSFT'), order(4, 'SELL', '2026-10-06T15:00:00+0000', 50, 198, 'MSFT'),
 ];
 
-async function journal() {
-  const a = await app({ supabase: fakeRecords(RECORDS), session: SESSION });
+async function journal(records = RECORDS) {
+  const a = await app({ supabase: fakeRecords(records), session: SESSION });
   a.run("setView('journal')");
   await a.run('loadJournal()');
   return { ...a, out: () => a.elements.get('journalSection').innerHTML };
@@ -140,18 +197,40 @@ test('the Calendar tab: the month of the latest close, a day tapped shows its tr
   assert.match(out(), /data-action="openJournalStats" data-arg="week" data-arg2="2026-10-05"[^>]*><span class="journal-buy">\+\$200<\/span><span class="jc-n">2 trades · 50%</);
   run("pickJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'trades');
-  assert.match(out(), /data-action="clearJournalDay"[^>]*>Closed 10\/6 ×<\/button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="2026-10-06">The day's stats</);
+  assert.match(out(), /data-action="clearJournalDay"[^>]*>Exits 10\/6 ×<\/button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="2026-10-06">The day's stats</);
   assert.match(out(), /<b>MSFT<\/b>/);
   assert.doesNotMatch(out(), /<b>AAPL<\/b>/, 'only that day\'s trades');
   run('clearJournalDay()');
   assert.match(out(), /<b>AAPL<\/b>/);
   run("setJournalTab('calendar'); shiftJournalMonth('-1')");
-  assert.match(out(), /September 2026<\/span>[\s\S]*No closed trades this month/);
+  assert.match(out(), /September 2026<\/span>[\s\S]*No exits this month/);
   run("shiftJournalMonth('1')");
   assert.match(out(), /October 2026/);
   run("openJournalStats('month', '2026-10')");
   assert.equal(state.journalTab, 'stats');
   assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="month">Month</);
+  run("setJournalTab('calendar')");
+  // This month: back to today's month in New York, whatever month is shown
+  const now = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'long', year: 'numeric' }).format(new Date());
+  run("shiftJournalMonth('-5')");
+  assert.match(out(), /data-action="journalThisMonth">This month</);
+  run('journalThisMonth()');
+  assert.match(out(), new RegExp(`class="jc-title">${now}<`));
+  assert.match(out(), /data-action="journalThisMonth" disabled>This month</, 'already there: nothing to do');
+});
+
+test('the Calendar tab: a trim shows on its day, and that day lists the trade even while it is open', async () => {
+  const { run, out } = await journal([
+    order(1, 'BUY', '2026-10-05T13:35:00+0000', 100, 100), order(2, 'SELL', '2026-10-05T15:00:00+0000', 50, 103), order(3, 'SELL', '2026-10-07T15:00:00+0000', 20, 104),
+  ]);
+  run("setJournalTab('calendar')");
+  assert.match(out(), /data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$150<\/span>/);
+  assert.match(out(), /data-arg="2026-10-07"[^>]*><span class="jc-num">7<\/span><span class="jc-pnl">\+\$80<\/span>/);
+  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$230\.00<span class="pos-sub">1 trade<\/span>/, 'trimmed on two days, counted once in the month');
+  assert.match(out(), /<dt>Win rate<\/dt><dd class="">100%<span class="pos-sub">1 won, 0 lost</);
+  assert.match(out(), /<dt>Green days<\/dt><dd class="">2 of 2</);
+  run("pickJournalDay('2026-10-05')");
+  assert.match(out(), /<b>AAPL<\/b>/, 'the open trade trimmed that day');
 });
 
 test('the Stats tab: headline numbers, the equity canvas, tables by group, thin groups marked, filters apply', async () => {
