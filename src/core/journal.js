@@ -1,8 +1,9 @@
 // @ts-check
 // Journal trades, pure: kept fills grouped into trades (flat back to flat, first in first out, scale-ins, partial exits,
 // flips, ×100 for options), each with P&L, hold time, its initial stop and R. Trades are computed every time from the kept
-// fills, never stored (docs/journal-step-2.md). Schwab's orders carry no fees, so P&L here is before fees. Your own word on
-// a trade (trade_reviews, keyed by the trade key) overrides its stop and can delete it from the journal.
+// fills, never stored (docs/journal-step-2.md). Schwab's orders carry no fees; they come from its TRADE transactions
+// (feesByOrder), split across trades by quantity, and P&L is before or after them by your choice (withFees). Your own word
+// on a trade (trade_reviews, keyed by the trade key) overrides its stop and can delete it from the journal.
 import { schwabTime } from './positions.js';
 
 const EPS = 1e-9;
@@ -22,7 +23,8 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
  *   status: 'open' | 'win' | 'loss' | 'breakeven', stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
- *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean }} Trade
+ *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean,
+ *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean }} Trade
  * @typedef {{ stop?: number | null, hidden?: boolean }} TradeReview  hidden is the delete marker (the column's first name)
  */
 
@@ -35,7 +37,7 @@ function startTrade(fill, account, direction) {
     key: `${account}|${fill.symbol}|${direction}|${fill.time}`,
     account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
-    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), lots: /** @type {{ qty: number, price: number }[]} */ ([]),
+    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), lots: /** @type {{ qty: number, price: number }[]} */ ([]),
   };
 }
 
@@ -50,11 +52,12 @@ function finish(t) {
     entryQty: t.entryQty, openQty: closed ? 0 : openQty,
     avgEntry: t.entryQty ? t.entryNotional / t.entryQty : 0,
     avgExit: t.exitQty ? t.exitNotional / t.exitQty : null,
-    pnl, exits: t.exits, fillIds: t.fillIds, entryOrderIds: t.entryOrderIds,
+    pnl, exits: t.exits, fillIds: t.fillIds, entryOrderIds: t.entryOrderIds, orderQty: t.orderQty,
     holdMs: closed && t.closedAt ? Date.parse(t.closedAt) - Date.parse(t.openedAt) : null,
     status: !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
     stop: null, stopOrderId: '', risk: null, rBasis: null, r: null,
     stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: false,
+    fees: 0, feesMissing: 0, grossPnl: pnl, afterFees: false,
   };
 }
 
@@ -86,7 +89,9 @@ export function buildTrades(fills) {
       if (!t) t = startTrade(f, account, buying ? 'long' : 'short');
       const adds = (t.direction === 'long') === buying;
       t.fillIds.push(f.id);
+      const used = (/** @type {number} */ n) => { t.orderQty[f.orderId] = (t.orderQty[f.orderId] || 0) + n; };
       if (adds) {
+        used(qty);
         t.lots.push({ qty, price: f.price });
         t.entryQty += qty;
         t.entryNotional += qty * f.price;
@@ -95,6 +100,7 @@ export function buildTrades(fills) {
       }
       // reducing: match the oldest lots first
       t.exits++;
+      const before = qty;
       const sign = t.direction === 'long' ? 1 : -1;
       while (qty > EPS && t.lots.length) {
         const lot = t.lots[0];
@@ -106,6 +112,7 @@ export function buildTrades(fills) {
         qty -= take;
         if (lot.qty <= EPS) t.lots.shift();
       }
+      used(before - qty);
       if (!t.lots.length) {
         t.closedAt = f.time;
         trades.push(finish(t));
@@ -117,6 +124,7 @@ export function buildTrades(fills) {
           t.entryQty += qty;
           t.entryNotional += qty * f.price;
           t.entryOrderIds.push(f.orderId);
+          t.orderQty[f.orderId] = qty;
         }
       }
     }
@@ -211,20 +219,78 @@ export function withRisk(trade, stops, ownStop = null) {
 }
 
 /**
+ * Fees per order, from Schwab's TRADE transactions: each one names its order (orderId) and lists its fees as transfer
+ * items with a feeType (COMMISSION, SEC_FEE, TAF_FEE, OPT_REG_FEE, ...), charged as a negative cost. An order filled in
+ * pieces has a transaction per piece, so they add up. Only orders with a transaction are in the map.
+ * @param {{ kind: string, data: any }[]} records
+ * @returns {Map<string, number>}
+ */
+export function feesByOrder(records) {
+  /** @type {Map<string, number>} */
+  const out = new Map();
+  for (const r of records) {
+    const tx = r.kind === 'transaction' ? r.data : null;
+    if (!tx || tx.type !== 'TRADE' || tx.orderId === undefined || tx.orderId === null) continue;
+    let fee = 0;
+    for (const item of Array.isArray(tx.transferItems) ? tx.transferItems : []) {
+      if (!item?.feeType) continue;
+      const v = Number(item.cost ?? item.amount);
+      if (Number.isFinite(v)) fee -= v; // charged as a negative cost; a rebate comes back positive
+    }
+    const k = String(tx.orderId);
+    out.set(k, (out.get(k) || 0) + fee);
+  }
+  return out;
+}
+
+/**
+ * The trade's share of its orders' fees, by quantity: an order that closes one trade and opens the next (a flip) splits
+ * its fees between them. feesMissing counts the trade's orders with no transaction yet (Schwab posts them after the
+ * fill, and orders older than the kept transactions have none). With afterFees, P&L, the result and R are net of them.
+ * @param {Trade} trade @param {Map<string, number>} fees @param {Map<string, number>} orderTotals @param {boolean} afterFees
+ * @returns {Trade}
+ */
+export function withFees(trade, fees, orderTotals, afterFees) {
+  let total = 0, missing = 0;
+  for (const [id, qty] of Object.entries(trade.orderQty)) {
+    const fee = fees.get(id);
+    if (fee === undefined) { missing++; continue; }
+    const all = orderTotals.get(id) || qty;
+    total += fee * (all > 0 ? qty / all : 1);
+  }
+  const feesRounded = Math.round(total * 100) / 100;
+  if (!afterFees) return { ...trade, fees: feesRounded, feesMissing: missing, grossPnl: trade.pnl, afterFees: false };
+  const pnl = Math.round((trade.pnl - total) * 100) / 100;
+  const closed = trade.status !== 'open';
+  return {
+    ...trade, fees: feesRounded, feesMissing: missing, grossPnl: trade.pnl, afterFees: true, pnl,
+    status: !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
+    r: closed && trade.risk && trade.risk > EPS ? Math.round((pnl / trade.risk) * 100) / 100 : trade.r,
+  };
+}
+
+/**
  * The journal's trades from its kept records: fills grouped, each given its stop and R (your stop first) and whether
  * you deleted it, newest first (by when it closed, or opened if it's still open). Deleted trades stay in the list,
  * flagged: their fills still group with the rest (so the trades around them add up), and the view leaves them out.
  * Imports can't bring one back, since the mark is on the trade key, not on Schwab's records.
  * @param {Fill[]} fills @param {{ kind: string, account?: string, data: any }[]} records
- * @param {Record<string, TradeReview>} [reviews]
+ * @param {Record<string, TradeReview>} [reviews] @param {{ afterFees?: boolean }} [opts]
  */
-export function journalTrades(fills, records, reviews = {}) {
+export function journalTrades(fills, records, reviews = {}, opts = {}) {
   const stops = stopOrdersFrom(records);
-  return buildTrades(fills).map(t => { const rv = reviews[t.key] || {}; return { ...withRisk(t, stops, rv.stop ?? null), deleted: !!rv.hidden }; })
+  const fees = feesByOrder(records);
+  /** @type {Map<string, number>} */
+  const orderTotals = new Map();
+  for (const f of fills) orderTotals.set(f.orderId, (orderTotals.get(f.orderId) || 0) + f.qty);
+  return buildTrades(fills).map(t => {
+    const rv = reviews[t.key] || {};
+    return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.hidden };
+  })
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
 }
 
-/** closed trades in numbers: count, wins, losses, win rate, P&L, average R (over trades that have one). @param {Trade[]} trades */
+/** closed trades in numbers: count, wins, losses, win rate, P&L, average R (over trades that have one), fees. @param {Trade[]} trades */
 export function tradesSummary(trades) {
   const closed = trades.filter(t => t.status !== 'open');
   const wins = closed.filter(t => t.status === 'win').length;
@@ -236,6 +302,8 @@ export function tradesSummary(trades) {
     pnl: Math.round(closed.reduce((n, t) => n + t.pnl, 0) * 100) / 100,
     avgR: rs.length ? Math.round((rs.reduce((n, r) => n + /** @type {number} */ (r), 0) / rs.length) * 100) / 100 : null,
     withR: rs.length,
+    fees: Math.round(closed.reduce((n, t) => n + (t.fees || 0), 0) * 100) / 100,
+    feesMissing: closed.filter(t => t.feesMissing > 0).length,
   };
 }
 
