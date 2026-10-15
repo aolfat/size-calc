@@ -229,15 +229,7 @@ The cutoffs are still to be set.
 
 1. **Foundation, [step 1](journal-step-1-supabase.md) (done):** Supabase, Google sign-in, settings and the Tradier key in the account, the Cloudflare sync removed.
 2. **The journal, [step 2](journal-step-2.md):** a data spike, then capture (fills, stop orders, bars, imports), trades, the trade page, calendar and stats, and saving plans from the app.
-3. **Journal tab:** trade list, trade page (charts with fills, labels, notes), P&L calendar, dashboard stats.
-4. **Review deck:** cards, the banner, required fields, labels picked by hand.
-5. **Guesses and flags:**
-   - market and sector rules
-   - daily setup detection
-   - pivot and 6/20 detection
-   - mistake flags
-   - library management
-6. **Reports:** breakdowns and cross-tabs by every label, the weekly review.
+3. **Reviewing trades, [step 3](journal-step-3.md):** labels, grades and notes on the trade page, then the review deck, then the app's guesses (pivots, setups, market, sector), mistake flags, reports by label, and the weekly review.
 7. **Passkeys,** through Supabase's beta.
 8. **More data in:** Schwab CSV backfill for older history, Robinhood CSV, onboarding for other users.
 
