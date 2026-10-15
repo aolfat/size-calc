@@ -111,6 +111,59 @@
 .journal-controls input[type="search"]:focus { border-color: var(--blue); }
 .journal-controls input[type="search"]::placeholder { color: var(--text2); }
 .journal-summary { color: var(--text2); margin-bottom: 8px; }
+/* the Journal's review: labels, grades and a note on the trade page; the review choices sheet */
+.jr { margin-top: 18px; padding-top: 4px; }
+.jr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; }
+.jr-head .js-sub { margin: 0; }
+.jr-status { font-size: 12.5px; color: var(--amber); }
+.jr-status.journal-buy { color: var(--green); }
+.jr-head .pos-link { margin-left: auto; font-size: 12.5px; }
+.jr-row { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; align-items: start; padding: 8px 0; border-top: 1px solid var(--border); }
+.jr-label { font-size: 12.5px; color: var(--text2); padding-top: 6px; }
+.jr-missing .jr-label { color: var(--amber); }
+.jr-sub { display: block; font-size: 11px; color: var(--text3); margin-top: 2px; }
+.jr-sub .pos-link { font-size: inherit; }
+.jr-chips { margin-top: 0; gap: 6px; }
+.jr-chips .filter-btn { padding: 5px 10px; font-size: 12.5px; }
+.jr-chips .filter-btn.active { color: #fff; background: color-mix(in srgb, var(--blue) 30%, var(--bg2)); border-color: color-mix(in srgb, var(--blue) 70%, var(--border)); }
+.jr-row.jr-mistakes .filter-btn.active { background: color-mix(in srgb, var(--red) 26%, var(--bg2)); border-color: color-mix(in srgb, var(--red) 65%, var(--border)); }
+.jr-new { font-size: 12.5px; padding: 5px 2px; }
+.jr-newbox { display: inline-flex; gap: 6px; align-items: center; }
+.jr-newbox input { width: 150px; padding: 5px 8px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jr-setups { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-bottom: 4px; }
+.jr-setup { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; font-size: 12.5px; border-radius: 999px; background: color-mix(in srgb, var(--blue) 16%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--blue) 40%, var(--border)); }
+.jr-setup .pos-link { font-size: 14px; line-height: 1; padding: 0 2px; }
+.jr-step { font-size: 12.5px; color: var(--blue); padding: 5px 2px; }
+.jr-draft { width: 100%; display: grid; gap: 8px; padding: 10px 12px; margin-top: 4px; border: 1px solid var(--border2); border-radius: 10px; background: var(--bg2); }
+.jr-draft-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.jr-draft-row .filter-btn { padding: 5px 10px; font-size: 12.5px; }
+.jr-draft-row .filter-btn.active { color: #fff; background: color-mix(in srgb, var(--blue) 30%, var(--bg2)); border-color: color-mix(in srgb, var(--blue) 70%, var(--border)); }
+.jr-draft-q { flex: 0 0 110px; font-size: 12px; color: var(--text2); }
+.jr-draft-row input { flex: 1 1 200px; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jr-fit { width: 100%; font-size: 11.5px; color: var(--text3); }
+.jr-have { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text2); }
+.jr-links { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; padding: 8px 10px; border: 1px dashed var(--border2); border-radius: 10px; }
+.jr-links input { flex: 1 1 240px; min-width: 0; padding: 6px 8px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jr-link { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; font-size: 12.5px; border-radius: 999px; border: 1px solid var(--border2); background: var(--bg2); }
+.jr-link a { color: var(--blue); text-decoration: none; }
+.jr-link .pos-link { font-size: 14px; line-height: 1; padding: 0 3px; color: var(--text3); }
+.jl-parts { flex: none; font-size: 11.5px; color: var(--text3); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) { .jr-draft-q { flex-basis: 100%; } }
+.jr-or { font-size: 12px; color: var(--text3); padding: 5px 4px; }
+.jr textarea { width: 100%; min-height: 70px; padding: 8px 10px; font: inherit; font-size: 13.5px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); resize: vertical; }
+.jr textarea:focus, .jr-newbox input:focus { outline: none; border-color: var(--blue); }
+.journal-tag.journal-tag-done { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, transparent); background: color-mix(in srgb, var(--green) 10%, transparent); }
+.jl-list { display: grid; gap: 6px; }
+.jl-row { display: flex; align-items: center; gap: 10px; }
+.jl-row input { flex: 1 1 auto; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jl-row select { flex: 0 0 132px; padding: 6px 6px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jl-row .pos-link { flex: none; font-size: 12.5px; }
+.jl-row .journal-tag { flex: none; margin: 0; }
+.jl-off input { color: var(--text3); }
+@media (max-width: 600px) {
+  .jr-row { grid-template-columns: 1fr; gap: 4px; }
+  .jr-label { padding-top: 0; }
+}
 /* the Journal's calendar */
 .jc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 10px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
