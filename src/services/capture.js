@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { captureRows, planDelta, stableJson, transactionStart, FALLBACK_DAYS } from '../core/schwab-history.js';
-import { schwabAccount, schwabConnected, schwabRecentOrders, schwabTransactions } from './schwab.js';
+import { schwabAccount, schwabConnected, schwabRecentOrders, schwabSession, schwabTransactions } from './schwab.js';
 import { supabaseClient } from './supabase.js';
 
 const DAY = 86400000;
@@ -26,13 +26,15 @@ function refused(res, fallback) {
 }
 
 /** what's kept for these rows: 'kind:id' → fingerprint (null for rows saved before fingerprints) */
-async function keptFingerprints(client, rows) {
+async function keptFingerprints(client, rows, ensureCurrent) {
   /** @type {Map<string, string | null>} */
   const stored = new Map();
   for (const kind of ['order', 'transaction']) {
     const ids = rows.filter(r => r.kind === kind).map(r => r.record_id);
     for (let i = 0; i < ids.length; i += BATCH) {
+      ensureCurrent();
       const res = await client.from('schwab_records').select('record_id,fingerprint').eq('kind', kind).in('record_id', ids.slice(i, i + BATCH));
+      ensureCurrent();
       if (res?.error) throw refused(res, 'Supabase refused the read.');
       for (const r of res.data || []) stored.set(kind + ':' + r.record_id, r.fingerprint ?? null);
     }
@@ -69,31 +71,45 @@ export async function captureSchwab(now = Date.now()) {
   if (!state.session) throw new Error('Sign in with Google to keep your Schwab history.');
   if (!schwabConnected()) throw new Error('Log in to Schwab first.');
   const acct = schwabAccount();
+  const userId = state.session.user.id;
+  const connectionId = schwabSession().connectionId;
+  const ensureCurrent = () => {
+    if (state.session?.user?.id !== userId || schwabSession()?.connectionId !== connectionId || schwabAccount()?.hash !== acct.hash) {
+      throw new Error('Your Google or Schwab account changed. Import canceled.');
+    }
+  };
   const last = lastHere();
   const start = transactionStart(now, last ? last.at : undefined);
-  const orders = await schwabRecentOrders(now);
+  const orders = await schwabRecentOrders(now, acct.hash);
+  ensureCurrent();
   let transactions;
   try {
-    transactions = await schwabTransactions(start, now);
+    transactions = await schwabTransactions(start, now, acct.hash);
   } catch(e) {
+    ensureCurrent();
     if (!e?.status || now - start <= FALLBACK_DAYS * DAY) throw e; // a network failure, or already the short range
-    transactions = await schwabTransactions(now - FALLBACK_DAYS * DAY, now);
+    transactions = await schwabTransactions(now - FALLBACK_DAYS * DAY, now, acct.hash);
   }
-  const { rows: read, skipped } = captureRows({ orders, transactions, last4: acct.last4, userId: state.session.user.id });
+  ensureCurrent();
+  const { rows: read, skipped } = captureRows({ orders, transactions, last4: acct.last4, userId });
   const rows = await Promise.all(read.map(async r => ({ ...r, fingerprint: await sha256(stableJson(r.data)) })));
   const client = await supabaseClient();
-  const delta = planDelta(rows, await keptFingerprints(client, rows));
+  ensureCurrent();
+  const delta = planDelta(rows, await keptFingerprints(client, rows, ensureCurrent));
   // an order's newer copy replaces the kept one; a trade never changes, so a kept one is never overwritten (do nothing on conflict)
   for (const [list, opts] of [[delta.orders, undefined], [delta.trades, { onConflict: 'user_id,kind,record_id', ignoreDuplicates: true }]]) {
     for (let i = 0; i < list.length; i += BATCH) {
+      ensureCurrent();
       const res = await client.from('schwab_records').upsert(list.slice(i, i + BATCH), opts);
+      ensureCurrent();
       if (res?.error) throw refused(res, 'Supabase refused the records.');
     }
   }
   const result = {
-    at: now, user: state.session.user.id, account: acct.last4, orders: orders.length, transactions: transactions.length, skipped,
+    at: now, user: userId, account: acct.last4, orders: orders.length, transactions: transactions.length, skipped,
     newOrders: delta.newOrders, updatedOrders: delta.updatedOrders, newTrades: delta.newTrades, kept: delta.kept,
   };
+  ensureCurrent();
   store.set('schwab_capture', JSON.stringify(result));
   return result;
 }

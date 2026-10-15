@@ -2,8 +2,10 @@
 import { state } from '../state.js';
 import { normalizeAtrMultiplier, normalizeStopStrategy, parseStopPercent } from '../core/stops.js';
 import { store } from '../lib/store.js';
+import { CREDENTIAL_ORIGIN_MESSAGE, credentialOriginAllowed } from '../lib/credential-origin.js';
 import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
-import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
+import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, SESSION_KEY, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
+import { schwabDisconnect, schwabSession } from '../services/schwab.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
 import { loadJournal, renderJournal } from './journal.js';
@@ -14,12 +16,14 @@ import { updateStopVisibility } from './stops.js';
 import { updateSchwabUi } from './trade.js';
 
 export function saveKey() {
+  if (!credentialOriginAllowed()) { clearUnsafeCredentials(); showError(CREDENTIAL_ORIGIN_MESSAGE); return; }
   store.set('tradier_key', document.getElementById('apiKey').value.trim());
   store.set('tradier_env', document.getElementById('apiEnv').value);
   updateApiStatus();
 }
 
 export function loadKey() {
+  if (!credentialOriginAllowed()) clearUnsafeCredentials();
   document.getElementById('apiKey').value = store.get('tradier_key') || '';
   document.getElementById('apiEnv').value = store.get('tradier_env') || 'production';
   // a setting that isn't stored shows the page's default (a sign-in that cleared another account's values)
@@ -38,6 +42,13 @@ export function loadKey() {
   document.getElementById('stopPercent').value = String(state.stopPercent);
   updateStopVisibility();
   syncRiskDollar();
+}
+
+function clearUnsafeCredentials() {
+  schwabDisconnect();
+  for (const key of ['tradier_key', SESSION_KEY, SESSION_KEY + '-code-verifier']) store.del(key);
+  document.getElementById('apiKey').value = '';
+  state.session = null;
 }
 
 // re-read storage into the UI without a page reload (imports and sign-out reload; synced changes shouldn't)
@@ -79,14 +90,17 @@ export async function signOut() {
     return;
   }
   state.signOutArmed = false;
-  await signOutSupabase();
-  cloudClearDevice();
+  state.signingOut = true;
+  schwabDisconnect(); // stop trading and invalidate in-flight broker responses before waiting for the network
+  try { await signOutSupabase(); } finally { cloudClearDevice(); state.signingOut = false; }
   effects.reloadPage();
 }
 
 // a session on this device: the first one merges with the account, later ones catch up and send what's pending
 async function startSession(session) {
   state.session = session;
+  // Legacy, anonymous, or another user's broker tokens must never follow a new Google account.
+  if (!schwabSession()) schwabDisconnect();
   if (state.journalView) loadJournal(); // a reload on the Journal: its records, now that there's a session to read them
   setCloudUi('Syncing…');
   if (store.get('cloud_user') !== session.user.id) {
@@ -102,6 +116,7 @@ async function startSession(session) {
     if (state.cloudPending.size) await cloudPush();
   }
   updateApiStatus();
+  updateSchwabUi();
   maybeCapture(); // signed in and connected to Schwab: keep the history (at most every 6 hours)
 }
 
@@ -123,20 +138,24 @@ onCloudView({ status: setCloudUi, applied: cloudRehydrate, pulled: () => showToa
 
 export function setCloudUi(status) {
   const s = state.session;
+  const allowed = credentialOriginAllowed();
+  for (const id of ['apiKey', 'signInBtn', 'schwabConnect', 'schwabRedirect', 'schwabFinish']) document.getElementById(id).disabled = !allowed;
   document.getElementById('signInBtn').style.display = s ? 'none' : '';
   document.getElementById('signOutBtn').style.display = s ? '' : 'none';
   const who = document.getElementById('accountEmail');
   who.textContent = s ? 'Signed in as ' + (s.user.email || 'your Google account') : '';
   who.style.display = s ? '' : 'none';
   document.getElementById('cloudStatus').textContent = status || '';
-  document.getElementById('accountHint').textContent = s
-    ? 'Your settings and Tradier key sync across your devices. Signing out keeps Schwab logged in here: use Disconnect under Schwab trading.'
-    : 'Sync your settings and Tradier key across devices. The calculator works without signing in.';
-  document.getElementById('apiNotice').innerHTML = (s ? 'Saved to your account, encrypted. ' : 'Stored in this browser. ')
-    + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.';
+  document.getElementById('accountHint').textContent = !allowed ? CREDENTIAL_ORIGIN_MESSAGE : s
+    ? 'Your settings and Tradier key sync across your devices. Signing out disconnects Schwab on this device.'
+    : 'Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. The calculator works without signing in.';
+  document.getElementById('apiNotice').innerHTML = !allowed ? 'API keys are disabled on this address.'
+    : (s ? 'Saved to your account, encrypted. The app administrator can decrypt synced keys. ' : 'Stored in this browser. ')
+      + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.';
 }
 
 export async function initCloud(href = location.href) {
+  if (!credentialOriginAllowed()) { clearUnsafeCredentials(); setCloudUi('Credentials disabled on this address'); return; }
   loadPending();
   setCloudUi('');
   if (isGoogleReturn(href)) {
@@ -162,6 +181,17 @@ export async function initCloud(href = location.href) {
     }
   } else if (hasStoredSession()) {
     await resumeSession().catch(() => setCloudUi('Offline, will retry'));
+  }
+  // Supabase broadcasts auth changes between tabs. Never await Supabase work inside this callback.
+  if (!state.authSubscription && state.supabase?.auth.onAuthStateChange) {
+    state.authSubscription = state.supabase.auth.onAuthStateChange((event, next) => {
+      if (event === 'INITIAL_SESSION' || state.signingOut) return;
+      if ((next?.user?.id || null) !== (state.session?.user?.id || null)) {
+        schwabDisconnect();
+        state.session = null;
+        effects.reloadPage(); // first sign-in on reload handles the old account's local settings
+      } else if (next) state.session = next;
+    }).data.subscription;
   }
   // gentle poll keeps an open idle device current; it also retries failed saves and a session that couldn't load
   setInterval(() => {

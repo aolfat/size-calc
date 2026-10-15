@@ -12,7 +12,7 @@ const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r =>
 // tokens outlast the clock jumps below, so no refresh call gets in the way
 const connected = (extra = []) => new Map([
   ['schwab_proxy', PROXY],
-  ['schwab_tokens', JSON.stringify({ access: 'acc-1', accessExp: Date.now() + 5 * DAY, refresh: 'ref-1', refreshExp: Date.now() + 6 * DAY })],
+  ['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'acc-1', accessExp: Date.now() + 5 * DAY, refresh: 'ref-1', refreshExp: Date.now() + 6 * DAY })],
   ['schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }, { hash: 'HASH2', last4: '4321' }])],
   ['schwab_account', 'HASH1'],
   ...extra,

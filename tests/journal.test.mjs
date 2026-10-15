@@ -12,7 +12,7 @@ const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const connected = () => new Map([
   ['schwab_proxy', PROXY],
-  ['schwab_tokens', JSON.stringify({ access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
+  ['schwab_tokens', JSON.stringify({ userId: SESSION.user.id, proxy: PROXY, connectionId: 'test-connection', access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
   ['schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }])],
   ['schwab_account', 'HASH1'],
 ]);
@@ -69,7 +69,7 @@ test('Journal is a header tab between Positions and Tools, with an icon for the 
 
 test('the open tab rides in the address, so a reload on the Journal opens it again with your records', async t => {
   const urls = [];
-  globalThis.location = { href: 'https://aolfat.github.io/size-calc/#journal', pathname: '/size-calc/', search: '', hash: '#journal' };
+  globalThis.location = { href: 'https://size-calc.example.workers.dev/size-calc/#journal', pathname: '/size-calc/', search: '', hash: '#journal' };
   globalThis.history = { replaceState: (_, __, url) => { urls.push(url); globalThis.location.hash = url.includes('#') ? url.slice(url.indexOf('#')) : ''; } };
   t.after(() => { delete globalThis.location; delete globalThis.history; });
   const supabase = fakeSupabase();
@@ -101,7 +101,7 @@ test('a stored session that is gone leaves the Journal asking you to sign in', a
   const storage = new Map([['sb-dhohfavttsxwutanvcuj-auth-token', '{"access_token":"old"}']]);
   const { run, elements } = await app({ storage, supabase });
   run("setView('journal')");
-  await run("initCloud('https://aolfat.github.io/size-calc/#journal')");
+  await run("initCloud('https://size-calc.example.workers.dev/size-calc/#journal')");
   assert.match(elements.get('journalSection').innerHTML, /Sign in to keep your journal/);
 });
 

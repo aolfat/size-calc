@@ -12,7 +12,7 @@ const json = (body, status = 200, headers = {}) => new Response(body === null ? 
 // a device that already logged in: live tokens and one account picked
 const connected = (extra = []) => new Map([
   ['schwab_proxy', PROXY],
-  ['schwab_tokens', JSON.stringify({ access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
+  ['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
   ['schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }])],
   ['schwab_account', 'HASH1'],
   ...extra,
@@ -135,10 +135,64 @@ test('a callback page with someone else\'s state is ignored', async () => {
   const net = network(async () => json({}, 500));
   const storage = new Map([['schwab_proxy', PROXY], ['schwab_oauth_state', 'mine']]);
   const { run, elements } = await app({ fetch: net.fetch, storage });
-  await run("initSchwab('https://aolfat.github.io/size-calc/?code=attacker&state=theirs')");
-  await run("initSchwab('https://aolfat.github.io/size-calc/?code=attacker')");
+  await run("initSchwab('https://size-calc.example.workers.dev/size-calc/?code=attacker&state=theirs')");
+  await run("initSchwab('https://size-calc.example.workers.dev/size-calc/?code=attacker')");
   assert.equal(net.schwabCalls().length, 0);
   assert.match(elements.get('errorBox').textContent, /another attempt/);
+});
+
+test('a brokerage connection is usable only by the Google user and worker it was created for', async () => {
+  const storage = connected();
+  const tokens = JSON.parse(storage.get('schwab_tokens'));
+  Object.assign(tokens, { userId: 'alice', proxy: PROXY, connectionId: 'connection-1' });
+  storage.set('schwab_tokens', JSON.stringify(tokens));
+  const { run, state } = await app({ storage, session: { user: { id: 'alice' } } });
+  assert.equal(run('schwabConnected()'), true);
+  state.session = { user: { id: 'bob' } };
+  assert.equal(run('schwabConnected()'), false);
+  await assert.rejects(run("schwabApi('/accounts/accountNumbers')"), /Log in/);
+  state.session = { user: { id: 'alice' } };
+  storage.set('schwab_proxy', 'https://another-worker.example');
+  assert.equal(run('schwabConnected()'), false);
+});
+
+test('a legacy connection without an owner and worker binding requires a new broker login', async () => {
+  const storage = connected();
+  const tokens = JSON.parse(storage.get('schwab_tokens'));
+  delete tokens.userId;
+  delete tokens.proxy;
+  delete tokens.connectionId;
+  storage.set('schwab_tokens', JSON.stringify(tokens));
+  const { run } = await app({ storage });
+  assert.equal(run('schwabConnected()'), false);
+});
+
+test('a code exchange finishing after the Google user changes cannot restore the old connection', async () => {
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const net = network(async () => { await gate; return json({ access_token: 'dummy', refresh_token: 'dummy', expires_in: 1800 }); });
+  const storage = new Map([['schwab_proxy', PROXY]]);
+  const { run, state } = await app({ fetch: net.fetch, storage, session: { user: { id: 'alice' } } });
+  const exchange = run("schwabExchangeCode('dummy-code')");
+  state.session = { user: { id: 'bob' } };
+  release();
+  await assert.rejects(exchange, /changed/);
+  assert.equal(storage.has('schwab_tokens'), false);
+});
+
+test('an accounts response body finishing after disconnect cannot restore account details', async () => {
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const net = network(async () => ({ ok: true, status: 200, async text() { await gate; return JSON.stringify([{ accountNumber: '11111111', hashValue: 'OLD' }]); } }));
+  const storage = connected();
+  const { run } = await app({ fetch: net.fetch, storage });
+  const accounts = run('schwabFetchAccounts()');
+  await settle();
+  run('schwabDisconnect()');
+  release();
+  await assert.rejects(accounts, /changed/);
+  assert.equal(storage.has('schwab_accounts'), false);
+  assert.equal(storage.has('schwab_account'), false);
 });
 
 test('Schwab logins never travel in the account; only the worker URL syncs', async () => {
@@ -155,13 +209,13 @@ test('Google\'s return carries a code too, and the Schwab callback leaves it alo
   const storage = new Map([['schwab_proxy', PROXY], ['schwab_oauth_state', 'mine']]);
   const net = network(async () => json({}, 500));
   const { run, elements } = await app({ fetch: net.fetch, storage });
-  await run("initSchwab('https://aolfat.github.io/size-calc/?login=google&code=from-google')");
+  await run("initSchwab('https://size-calc.example.workers.dev/size-calc/?login=google&code=from-google')");
   assert.equal(net.schwabCalls().length, 0);
   assert.equal(elements.get('errorBox').textContent, '', 'no Schwab error for a Google sign-in');
 });
 
 test('an expired access token refreshes once before the call; a refused refresh ends the login', async () => {
-  const stale = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: Date.now() - 1000, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const stale = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: Date.now() - 1000, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
   const net = network(async path => path === '/refresh' ? json({ access_token: 'fresh', expires_in: 1800 }) : json([]));
   const { run } = await app({ fetch: net.fetch, storage: stale });
   await run("Promise.all([schwabApi('/accounts/accountNumbers'), schwabApi('/accounts/accountNumbers')])");
@@ -171,7 +225,7 @@ test('an expired access token refreshes once before the call; a refused refresh 
   assert.ok(calls.slice(1).every(c => c.headers.Authorization === 'Bearer fresh'));
   assert.equal(JSON.parse(stale.get('schwab_tokens')).refresh, 'ref-1', 'the refresh token carries over when Schwab sends none');
 
-  const over = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: 0, refresh: 'dead', refreshExp: Date.now() + DAY })]]);
+  const over = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: 0, refresh: 'dead', refreshExp: Date.now() + DAY })]]);
   const refused = network(async () => json({ error: 'invalid_grant' }, 400));
   const second = await app({ fetch: refused.fetch, storage: over });
   await assert.rejects(second.run("schwabApi('/accounts/accountNumbers')"), /login expired/);
@@ -179,7 +233,7 @@ test('an expired access token refreshes once before the call; a refused refresh 
 });
 
 test('the paste box hides when the worker says Schwab sends you back to this app', async () => {
-  const APP = 'https://aolfat.github.io/size-calc/';
+  const APP = 'https://size-calc.example.workers.dev/size-calc/';
   const setup = async callback => {
     const net = network(async path => path === '/callback'
       ? (callback === undefined ? json({ message: 'not found' }, 404) : json({ callback }))
@@ -190,12 +244,12 @@ test('the paste box hides when the worker says Schwab sends you back to this app
     return h;
   };
 
-  const own = await setup('https://aolfat.github.io/size-calc/');
+  const own = await setup('https://size-calc.example.workers.dev/size-calc/');
   assert.equal(own.elements.get('schwabPaste').style.display, 'none');
   own.run('connectSchwab()');
   assert.match(own.elements.get('schwabNote').textContent, /connects by itself/);
 
-  const noSlash = await setup('https://aolfat.github.io/size-calc');
+  const noSlash = await setup('https://size-calc.example.workers.dev/size-calc');
   assert.equal(noSlash.elements.get('schwabPaste').style.display, 'none', 'a trailing slash is the same page');
 
   const dead = await setup('https://127.0.0.1');
@@ -208,7 +262,7 @@ test('the paste box hides when the worker says Schwab sends you back to this app
 });
 
 test('the worker URL folds to one line once it works, and Change opens it again', async () => {
-  const cached = JSON.stringify({ proxy: PROXY, callback: 'https://aolfat.github.io/size-calc/' });
+  const cached = JSON.stringify({ proxy: PROXY, callback: 'https://size-calc.example.workers.dev/size-calc/' });
   const shown = (els, id) => els.get(id).style.display !== 'none';
 
   const fresh = await app({ storage: new Map() });
@@ -241,17 +295,17 @@ test('the worker URL folds to one line once it works, and Change opens it again'
 });
 
 test('the callback answer is kept per worker URL and survives a logout', async () => {
-  const storage = connected([['schwab_callback', JSON.stringify({ proxy: PROXY, callback: 'https://aolfat.github.io/size-calc/' })]]);
+  const storage = connected([['schwab_callback', JSON.stringify({ proxy: PROXY, callback: 'https://size-calc.example.workers.dev/size-calc/' })]]);
   const { run } = await app({ storage });
-  run("location = { href: 'https://aolfat.github.io/size-calc/' }");
+  run("location = { href: 'https://size-calc.example.workers.dev/size-calc/' }");
   assert.equal(run('schwabReturnsHere()'), true);
   run("store.set('schwab_proxy', 'https://other.workers.dev')");
   assert.equal(run('schwabReturnsHere()'), false, 'a different worker is asked again');
   run(`store.set('schwab_proxy', '${PROXY}'); schwabDisconnect()`);
   assert.equal(run('schwabReturnsHere()'), true);
-  assert.equal(run("callbackIsHere('https://aolfat.github.io/size-calc/', 'http://localhost:8765/')"), false);
-  assert.equal(run("callbackIsHere('https://aolfat.github.io/size-calc/', 'https://aolfat.github.io/size-calc/index.html?x=1#market')"), true);
-  assert.equal(run("callbackIsHere('not a url', 'https://aolfat.github.io/')"), false);
+  assert.equal(run("callbackIsHere('https://size-calc.example.workers.dev/size-calc/', 'http://localhost:8765/')"), false);
+  assert.equal(run("callbackIsHere('https://size-calc.example.workers.dev/size-calc/', 'https://size-calc.example.workers.dev/size-calc/index.html?x=1#market')"), true);
+  assert.equal(run("callbackIsHere('not a url', 'https://size-calc.example.workers.dev/')"), false);
 });
 
 // ---------- the trade button and review sheet ----------
@@ -355,8 +409,8 @@ test('the review flags off-hours fills and risk above the plan', async () => {
 
 // ---------- the worker ----------
 
-const ENV = { SCHWAB_APP_KEY: 'appkey', SCHWAB_APP_SECRET: 'secret', SCHWAB_CALLBACK_URL: 'https://127.0.0.1', ALLOWED_ORIGINS: 'https://aolfat.github.io, http://localhost:8765' };
-const ORIGIN = { Origin: 'https://aolfat.github.io' };
+const ENV = { SCHWAB_APP_KEY: 'appkey', SCHWAB_APP_SECRET: 'secret', SCHWAB_CALLBACK_URL: 'https://127.0.0.1', ALLOWED_ORIGINS: 'https://size-calc.example.workers.dev, http://localhost:8765' };
+const ORIGIN = { Origin: 'https://size-calc.example.workers.dev' };
 
 async function upstream(respond, fn) {
   const calls = [];
@@ -381,7 +435,7 @@ test('worker: browsers from other sites get nothing', async () => {
   assert.equal(calls.length, 0);
   const pre = await worker.fetch(new Request('https://w.test/trader/v1/accounts', { method: 'OPTIONS', headers: ORIGIN }), ENV);
   assert.equal(pre.status, 204);
-  assert.equal(pre.headers.get('Access-Control-Allow-Origin'), 'https://aolfat.github.io');
+  assert.equal(pre.headers.get('Access-Control-Allow-Origin'), 'https://size-calc.example.workers.dev');
   assert.match(pre.headers.get('Access-Control-Expose-Headers'), /Location/);
 });
 
@@ -393,6 +447,7 @@ test('worker: the code swap uses the secret and returns only the tokens', async 
   assert.equal(calls[0].headers.Authorization, 'Basic ' + btoa('appkey:secret'));
   assert.equal(calls[0].body, 'grant_type=authorization_code&code=C0.abc%40def&redirect_uri=https%3A%2F%2F127.0.0.1');
   assert.deepEqual(await res.json(), { access_token: 'a', refresh_token: 'r', expires_in: 1800 });
+  assert.equal(res.headers.get('Cache-Control'), 'no-store');
 });
 
 test('worker: Trader calls pass the bearer through and expose the new order id', async () => {
@@ -404,6 +459,7 @@ test('worker: Trader calls pass the bearer through and expose the new order id',
   assert.equal(calls[0].headers.Authorization, 'Bearer tok');
   assert.equal(calls[0].body, order);
   assert.equal(res.status, 201);
+  assert.equal(res.headers.get('Cache-Control'), 'no-store');
   assert.match(res.headers.get('Location'), /\/orders\/77$/);
 
   const bare = await worker.fetch(new Request('https://w.test/trader/v1/accounts', { headers: ORIGIN }), ENV);
@@ -416,7 +472,7 @@ test('worker: the app can read the callback, other sites cannot', async () => {
   const res = await worker.fetch(new Request('https://w.test/callback', { headers: ORIGIN }), ENV);
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { callback: 'https://127.0.0.1' });
-  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://aolfat.github.io');
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://size-calc.example.workers.dev');
   const other = await worker.fetch(new Request('https://w.test/callback', { headers: { Origin: 'https://evil.example' } }), ENV);
   assert.equal(other.status, 403);
 });
@@ -512,7 +568,7 @@ test('a filled entry whose stop Schwab rejected is a loud warning, not a success
 });
 
 test('a refresh that fails before the order leaves says nothing reached Schwab, and arms no repeat warning', async () => {
-  const stale = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const stale = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
   const net = quotes([QUOTE], async path => { if (path === '/refresh') throw new TypeError('Failed to fetch'); return json({}, 404); });
   const { run, state } = await sharesCard({ fetch: net.fetch, storage: stale });
   await run('openTrade()');
@@ -527,7 +583,7 @@ test('a refresh that fails before the order leaves says nothing reached Schwab, 
 test('a refresh that lands after a logout is not saved; a refusal after a new login does not end it', async () => {
   let release;
   const gate = new Promise(r => { release = r; });
-  const stale = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const stale = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
   const net = network(async path => { if (path === '/refresh') { await gate; return json({ access_token: 'fresh', refresh_token: 'ref-9', expires_in: 1800 }); } return json([]); });
   const { run } = await app({ fetch: net.fetch, storage: stale });
   const call = run("schwabApi('/accounts/accountNumbers')");
@@ -539,12 +595,12 @@ test('a refresh that lands after a logout is not saved; a refusal after a new lo
 
   let refuse;
   const later = new Promise(r => { refuse = r; });
-  const over = connected([['schwab_tokens', JSON.stringify({ access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const over = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
   const refused = network(async path => { if (path === '/refresh') { await later; return json({ error: 'invalid_grant' }, 400); } return json([]); });
   const second = await app({ fetch: refused.fetch, storage: over });
   const pending = second.run("schwabApi('/accounts/accountNumbers')");
   await settle();
-  const fresh = JSON.stringify({ access: 'new', accessExp: Date.now() + 20 * 60000, refresh: 'ref-2', refreshExp: Date.now() + 5 * DAY });
+  const fresh = JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'new', accessExp: Date.now() + 20 * 60000, refresh: 'ref-2', refreshExp: Date.now() + 5 * DAY });
   over.set('schwab_tokens', fresh); // logged in again meanwhile
   refuse();
   await assert.rejects(pending, /login changed/);

@@ -2,8 +2,9 @@
 // and relays /trader/v1 calls. Login tokens are device-local: not in CLOUD_KEYS, so never in the account. Only the worker URL syncs.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
+import { assertCredentialOrigin, credentialOriginAllowed } from '../lib/credential-origin.js';
 
-export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration', 'schwab_acct_size', 'schwab_acct_source', 'schwab_callback'];
+export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration', 'schwab_acct_size', 'schwab_acct_source', 'schwab_callback', 'schwab_capture'];
 const REFRESH_LIFE = 7 * 24 * 60 * 60 * 1000; // Schwab ends a login seven days after it starts; refreshes don't extend it
 
 export function schwabProxy() { return (store.get('schwab_proxy') || '').trim().replace(/\/+$/, ''); }
@@ -11,11 +12,15 @@ export function schwabProxy() { return (store.get('schwab_proxy') || '').trim().
 export function proxyOk(url) { return /^https:\/\/[^/\s]+/.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(url); }
 
 function readTokens() { try { return JSON.parse(store.get('schwab_tokens') || 'null'); } catch(e) { return null; } }
+const googleUser = () => state.session?.user?.id || null;
+const loginChanged = () => new Error('Your Schwab login changed. Log in again.');
 
 /** a live login, or null once the seven days are up */
 export function schwabSession() {
+  if (!credentialOriginAllowed()) return null;
   const t = readTokens();
-  return t && t.refresh && t.refreshExp > Date.now() ? t : null;
+  return t && t.refresh && t.refreshExp > Date.now() && typeof t.connectionId === 'string'
+    && Object.hasOwn(t, 'userId') && t.userId === googleUser() && t.proxy === schwabProxy() ? t : null;
 }
 
 export function schwabAccounts() { try { return JSON.parse(store.get('schwab_accounts') || '[]'); } catch(e) { return []; } }
@@ -81,41 +86,46 @@ async function readJson(res) {
   try { return text ? JSON.parse(text) : null; } catch(e) { return { message: text.slice(0, 200) }; }
 }
 
-async function tokenCall(path, payload) {
-  const res = await fetch(schwabProxy() + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+async function tokenCall(path, payload, proxy = schwabProxy()) {
+  assertCredentialOrigin();
+  const res = await fetch(proxy + path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const body = await readJson(res);
   if (!res.ok || !body?.access_token) throw schwabError(body, res.status);
   return body;
 }
 
-function saveTokens(j, refreshExp) {
-  const t = { access: j.access_token, accessExp: Date.now() + (Number(j.expires_in) || 1800) * 1000, refresh: j.refresh_token, refreshExp };
+function saveTokens(j, refreshExp, binding) {
+  const t = { userId: binding.userId, proxy: binding.proxy, connectionId: binding.connectionId,
+    access: j.access_token, accessExp: Date.now() + (Number(j.expires_in) || 1800) * 1000, refresh: j.refresh_token, refreshExp };
   store.set('schwab_tokens', JSON.stringify(t));
   return t;
 }
 
 /** the code Schwab put in the callback address, swapped for tokens by the worker */
 export async function schwabExchangeCode(code) {
-  const j = await tokenCall('/token', { code });
+  const binding = { userId: googleUser(), proxy: schwabProxy(), connectionId: crypto.randomUUID() };
+  const attempt = store.get('schwab_oauth_state');
+  const j = await tokenCall('/token', { code }, binding.proxy);
+  if (binding.userId !== googleUser() || binding.proxy !== schwabProxy() || attempt !== store.get('schwab_oauth_state')) throw loginChanged();
   if (!j.refresh_token) throw new Error('Schwab sent no refresh token.');
-  saveTokens(j, Date.now() + REFRESH_LIFE);
+  schwabDisconnect();
+  saveTokens(j, Date.now() + REFRESH_LIFE, binding);
 }
 
 async function refreshTokens(t) {
   // a logout or a new login while the refresh was out wins: its answer is neither saved nor allowed to end that login
-  const same = () => readTokens()?.refresh === t.refresh;
-  const changed = () => new Error('Your Schwab login changed. Try again.');
+  const same = () => schwabSession()?.connectionId === t.connectionId && readTokens()?.refresh === t.refresh;
   let j;
   try {
-    j = await tokenCall('/refresh', { refresh_token: t.refresh });
+    j = await tokenCall('/refresh', { refresh_token: t.refresh }, t.proxy);
   } catch(e) {
-    if (!same()) throw changed();
+    if (!same()) throw loginChanged();
     // a refused refresh means the login is over; a network blip leaves it in place for the next try
     if (e.status === 400 || e.status === 401) { store.del('schwab_tokens'); throw new Error('Your Schwab login expired. Log in again in Settings.'); }
     throw e;
   }
-  if (!same()) throw changed();
-  return saveTokens({ ...j, refresh_token: j.refresh_token || t.refresh }, t.refreshExp).access;
+  if (!same()) throw loginChanged();
+  return saveTokens({ ...j, refresh_token: j.refresh_token || t.refresh }, t.refreshExp, t).access;
 }
 
 /** an error from before any request reached Schwab: nothing went out, so there is nothing to check there */
@@ -137,14 +147,16 @@ const READ_TIMEOUT = 15000;
 
 /** one Trader API call, never cached and never retried here, so an order is never sent twice; a login that fails first is tagged notSent */
 export async function schwabApi(path, { method = 'GET', body } = {}) {
+  const connection = schwabSession();
   let token;
   try { token = await schwabAccessToken(); } catch(e) { throw notSent(e); }
+  if (!connection || schwabSession()?.connectionId !== connection.connectionId) throw notSent(loginChanged());
   // a read gives up after 15s so a hung call can't leave Refresh dead; an order waits, since giving up wouldn't unsend it
   const ctrl = method === 'GET' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), READ_TIMEOUT) : 0;
   let res;
   try {
-    res = await fetch(schwabProxy() + '/trader/v1' + path, {
+    res = await fetch(connection.proxy + '/trader/v1' + path, {
       method,
       cache: 'no-store',
       headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
@@ -161,13 +173,16 @@ export async function schwabApi(path, { method = 'GET', body } = {}) {
     const t = readTokens();
     if (t && t.access === token) store.set('schwab_tokens', JSON.stringify({ ...t, accessExp: 0 }));
   }
+  if (schwabSession()?.connectionId !== connection.connectionId) throw loginChanged();
   return res;
 }
 
 /** linked accounts as { hash, last4 }; the full account number is not kept */
 export async function schwabFetchAccounts() {
+  const connectionId = schwabSession()?.connectionId;
   const res = await schwabApi('/accounts/accountNumbers');
   const body = await readJson(res);
+  if (schwabSession()?.connectionId !== connectionId) throw loginChanged();
   if (!res.ok || !Array.isArray(body)) throw schwabError(body, res.status);
   const list = body.filter(a => a?.hashValue).map(a => ({ hash: a.hashValue, last4: String(a.accountNumber || '').slice(-4) }));
   store.set('schwab_accounts', JSON.stringify(list));
@@ -259,6 +274,7 @@ export async function schwabTransactions(from, to, hash) {
 
 /** where to send the browser to log in; state ties the callback to this attempt */
 export function schwabLoginUrl() {
+  assertCredentialOrigin();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   const oauthState = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
   store.set('schwab_oauth_state', oauthState);
