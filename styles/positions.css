@@ -128,15 +128,25 @@ button.jc-day:hover { border-color: var(--border2); }
 .jc-day.journal-buy .jc-pnl { color: var(--green); }
 .jc-day.journal-sell .jc-pnl { color: var(--red); }
 .jc-n { font-size: 10.5px; color: var(--text3); }
-.jc-week { padding: 6px 4px !important; font-weight: 600; font-family: var(--num); display: flex; flex-direction: column; gap: 1px; }
+.jc-rate { font-size: 10.5px; color: var(--text2); }
+.jc-week { padding: 6px 4px !important; font-weight: 600; font-family: var(--num); }
+.jc-weekbtn { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.jc-weekbtn:hover > span:first-child { text-decoration: underline; }
+.jc-stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.jc-stats dd { font-size: 16px; }
+.js-period { margin-bottom: 12px; }
+.js-period-nav { display: inline-flex; align-items: center; gap: 6px; }
+.js-period .seg button { padding: 6px 12px; font-size: 12px; }
+.jc-nav:disabled { opacity: 0.4; cursor: default; }
 .jc-out { opacity: 0; }
 .jc-daychip { padding: 5px 10px; font-size: 12px; }
 @media (max-width: 600px) {
   .jc-grid { border-spacing: 2px; }
   .jc-day { min-height: 54px; padding: 4px; }
   .jc-pnl { font-size: 12.5px; }
-  .jc-n { display: none; }
+  .jc-n, .jc-wide { display: none; }
   .jc-grid th { padding: 0 2px; }
+  .js-period .jc-title { min-width: 0; }
 }
 /* the Journal's stats */
 .js-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 4px 0 10px; }

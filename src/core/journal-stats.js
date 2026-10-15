@@ -58,43 +58,94 @@ export function groupStats(trades) {
   };
 }
 
-/** P&L per New York day each trade closed: 'YYYY-MM-DD' → { pnl, trades }. @param {StatTrade[]} trades */
+/** @typedef {{ pnl: number, trades: number, wins: number, losses: number, winRate: number | null, profitFactor: number | null }} DayResult */
+
+/** the New York day a counted trade closed, 'YYYY-MM-DD'. @param {StatTrade} t */
+export const closeDay = t => nyParts(/** @type {string} */ (t.closedAt)).day;
+
+/** P&L per New York day each trade closed, oldest first: 'YYYY-MM-DD' → { pnl, trades, wins, losses, winRate, profitFactor }. @param {StatTrade[]} trades */
 export function dailyPnl(trades) {
-  /** @type {Map<string, { pnl: number, trades: number }>} */
-  const out = new Map();
+  /** @type {Map<string, StatTrade[]>} */
+  const by = new Map();
   for (const t of countedTrades(trades)) {
-    const d = nyParts(/** @type {string} */ (t.closedAt)).day;
-    const c = out.get(d) || { pnl: 0, trades: 0 };
-    c.pnl = round2(c.pnl + t.pnl); c.trades++;
-    out.set(d, c);
+    const d = closeDay(t);
+    if (!by.has(d)) by.set(d, []);
+    /** @type {StatTrade[]} */ (by.get(d)).push(t);
+  }
+  /** @type {Map<string, DayResult>} */
+  const out = new Map();
+  for (const [d, list] of [...by].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const s = groupStats(list);
+    out.set(d, { pnl: s.net, trades: s.trades, wins: s.wins, losses: s.losses, winRate: s.winRate, profitFactor: s.profitFactor });
   }
   return out;
 }
 
+/** the periods the stats can be narrowed to */
+export const PERIODS = ['day', 'week', 'month'];
+/** @param {number} ms */
+const isoDay = ms => new Date(ms).toISOString().slice(0, 10);
 /**
- * A month as weeks of weekdays (Mon to Fri), each day with its P&L and trade count, and each week's total; weekend closes
- * (rare: a late fill stamped Saturday) fold into that week's total. Days outside the month are null.
- * @param {Map<string, { pnl: number, trades: number }>} daily @param {string} month 'YYYY-MM'
+ * The period a New York day falls in: a day is itself, a week is its Monday (a weekend close folds into the week before it,
+ * like the calendar), a month is 'YYYY-MM'.
+ * @param {string} day 'YYYY-MM-DD' @param {string} unit day | week | month
+ */
+export function periodKey(day, unit) {
+  if (unit === 'month') return day.slice(0, 7);
+  if (unit === 'week') { const t = Date.parse(`${day}T00:00:00Z`); return isoDay(t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5); }
+  return day;
+}
+/** the counted trades that closed in one period (every counted trade without one). @param {StatTrade[]} trades @param {string} unit @param {string} key */
+export const inPeriod = (trades, unit, key) => PERIODS.includes(unit) ? countedTrades(trades).filter(t => periodKey(closeDay(t), unit) === key) : countedTrades(trades);
+/** the periods with closed trades, newest first. @param {StatTrade[]} trades @param {string} unit */
+export const activePeriods = (trades, unit) => [...new Set(countedTrades(trades).map(t => periodKey(closeDay(t), unit)))].sort().reverse();
+/**
+ * ‹ or ›: the nearest period with closed trades before (by < 0) or after the one shown, or null at the end.
+ * @param {string[]} active newest first @param {string} key @param {number} by
+ */
+export function stepPeriod(active, key, by) {
+  if (by < 0) return active.find(k => k < key) || null;
+  const newer = active.filter(k => k > key);
+  return newer.length ? newer[newer.length - 1] : null;
+}
+/**
+ * Switching day / week / month keeps your place: the newest close inside what's shown now (or its first day when it has
+ * none) picks the new period; from all time, the newest close of all.
+ * @param {StatTrade[]} trades @param {string} fromUnit @param {string} fromKey @param {string} toUnit
+ */
+export function switchPeriod(trades, fromUnit, fromKey, toUnit) {
+  const days = inPeriod(trades, fromUnit, fromKey).map(closeDay).sort();
+  const anchor = days[days.length - 1] || (PERIODS.includes(fromUnit) && fromKey ? (fromKey.length === 7 ? `${fromKey}-01` : fromKey) : '');
+  return anchor && PERIODS.includes(toUnit) ? periodKey(anchor, toUnit) : '';
+}
+
+/**
+ * A month as weeks of weekdays (Mon to Fri), each day with its P&L, trade count, win rate and profit factor, and each week's
+ * total (start = its Monday); weekend closes (rare: a late fill stamped Saturday) fold into that week's total. Days outside
+ * the month are null.
+ * @param {Map<string, DayResult>} daily @param {string} month 'YYYY-MM'
  */
 export function calendarMonth(daily, month) {
   const [y, m] = month.split('-').map(Number);
   const first = new Date(Date.UTC(y, m - 1, 1)), last = new Date(Date.UTC(y, m, 0));
   // back to the Monday on or before the 1st
   const start = new Date(first.getTime() - ((first.getUTCDay() + 6) % 7) * 864e5);
-  /** @type {{ days: ({ day: string, pnl: number | null, trades: number } | null)[], pnl: number, trades: number }[]} */
+  /** @typedef {{ day: string, pnl: number | null, trades: number, winRate: number | null, profitFactor: number | null } | null} CalDay */
+  /** @type {{ start: string, days: CalDay[], pnl: number, trades: number, wins: number, winRate: number | null }[]} */
   const weeks = [];
   for (let t = start.getTime(); t <= last.getTime(); t += 7 * 864e5) {
-    const week = { days: /** @type {({ day: string, pnl: number | null, trades: number } | null)[]} */ ([]), pnl: 0, trades: 0 };
+    const week = { start: isoDay(t), days: /** @type {CalDay[]} */ ([]), pnl: 0, trades: 0, wins: 0, winRate: /** @type {number | null} */ (null) };
     for (let i = 0; i < 7; i++) {
       const d = new Date(t + i * 864e5), day = d.toISOString().slice(0, 10), inMonth = d.getUTCMonth() === m - 1;
       const c = daily.get(day);
-      if (inMonth && c) { week.pnl = round2(week.pnl + c.pnl); week.trades += c.trades; }
-      if (i < 5) week.days.push(inMonth ? { day, pnl: c ? c.pnl : null, trades: c ? c.trades : 0 } : null);
+      if (inMonth && c) { week.pnl = round2(week.pnl + c.pnl); week.trades += c.trades; week.wins += c.wins; }
+      if (i < 5) week.days.push(inMonth ? { day, pnl: c ? c.pnl : null, trades: c ? c.trades : 0, winRate: c ? c.winRate : null, profitFactor: c ? c.profitFactor : null } : null);
     }
+    if (week.trades) week.winRate = Math.round((week.wins / week.trades) * 1000) / 10;
     weeks.push(week);
   }
   const days = [...daily].filter(([d]) => d.startsWith(month));
-  return { month, weeks, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), trades: days.reduce((n, [, c]) => n + c.trades, 0), green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
+  return { month, weeks, days: days.length, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), trades: days.reduce((n, [, c]) => n + c.trades, 0), green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
 }
 
 /** the months that have closed trades, newest first ('YYYY-MM'). @param {Map<string, any>} daily */
@@ -132,17 +183,20 @@ export function streaks(trades) {
   return { longestWin: win, longestLoss: loss, current: kind ? { kind, count: run } : null };
 }
 
-/** P&L per month, newest first: [{ month, ...groupStats }]. @param {StatTrade[]} trades */
-export function monthlyResults(trades) {
+/** the stats per day, week or month the trades closed, newest first: [{ key, ...groupStats }]. @param {StatTrade[]} trades @param {string} unit */
+export function periodResults(trades, unit) {
   /** @type {Map<string, StatTrade[]>} */
   const by = new Map();
   for (const t of countedTrades(trades)) {
-    const m = nyParts(/** @type {string} */ (t.closedAt)).day.slice(0, 7);
-    if (!by.has(m)) by.set(m, []);
-    /** @type {StatTrade[]} */ (by.get(m)).push(t);
+    const k = periodKey(closeDay(t), unit);
+    if (!by.has(k)) by.set(k, []);
+    /** @type {StatTrade[]} */ (by.get(k)).push(t);
   }
-  return [...by].sort((a, b) => b[0].localeCompare(a[0])).map(([month, list]) => ({ month, ...groupStats(list) }));
+  return [...by].sort((a, b) => b[0].localeCompare(a[0])).map(([key, list]) => ({ key, ...groupStats(list) }));
 }
+
+/** P&L per month, newest first: [{ month, ...groupStats }]. @param {StatTrade[]} trades */
+export const monthlyResults = trades => periodResults(trades, 'month').map(({ key, ...s }) => ({ month: key, ...s }));
 
 // the time-of-day buckets on the first entry, New York time (from Trading-Journal-AI)
 const TIME_BUCKETS = [['09:30', '09:45', '9:30–9:45'], ['09:45', '10:30', '9:45–10:30'], ['10:30', '11:00', '10:30–11:00'], ['11:00', '13:30', '11:00–1:30'], ['13:30', '15:30', '1:30–3:30'], ['15:30', '16:00', '3:30–4:00']];

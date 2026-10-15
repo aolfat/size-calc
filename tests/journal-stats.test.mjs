@@ -36,16 +36,19 @@ test('group stats: net, average and median, win rate, average win and loss, prof
 test('daily P&L lands on the New York day each trade closed, and the month grid adds up its weeks', async () => {
   const { run } = await app();
   const daily = json(run, `[...dailyPnl(${JSON.stringify(TRADES)})]`);
-  assert.deepEqual(daily, [['2026-10-05', { pnl: 300, trades: 1 }], ['2026-10-06', { pnl: -350, trades: 2 }], ['2026-10-13', { pnl: 50, trades: 1 }], ['2026-10-15', { pnl: 0, trades: 1 }]],
-    'the 1:30 AM UTC close is the evening of 10/13 in New York');
+  const D = (pnl, trades, wins, losses, winRate, profitFactor) => ({ pnl, trades, wins, losses, winRate, profitFactor });
+  assert.deepEqual(daily, [['2026-10-05', D(300, 1, 1, 0, 100, null)], ['2026-10-06', D(-350, 2, 0, 2, 0, 0)], ['2026-10-13', D(50, 1, 1, 0, 100, null)], ['2026-10-15', D(0, 1, 0, 0, 0, null)]],
+    'the 1:30 AM UTC close is the evening of 10/13 in New York; a day without a loss has no profit factor');
   const cal = json(run, `calendarMonth(dailyPnl(${JSON.stringify(TRADES)}), '2026-10')`);
   assert.equal(cal.weeks[0].days[0], null, 'Mon 9/28 is September');
-  assert.deepEqual(cal.weeks[0].days[3], { day: '2026-10-01', pnl: null, trades: 0 });
+  assert.deepEqual(cal.weeks[0].days[3], { day: '2026-10-01', pnl: null, trades: 0, winRate: null, profitFactor: null });
+  assert.equal(cal.weeks[0].start, '2026-09-28', 'a week is named by its Monday, even in the month before');
   assert.deepEqual(cal.weeks[1].days.map(d => d && d.pnl), [300, -350, null, null, null]);
-  assert.deepEqual([cal.weeks[1].pnl, cal.weeks[1].trades], [-50, 3]);
-  assert.deepEqual([cal.weeks[2].pnl, cal.weeks[2].trades], [50, 2], 'the breakeven counts as a trade');
+  assert.deepEqual(cal.weeks[1].days[1], { day: '2026-10-06', pnl: -350, trades: 2, winRate: 0, profitFactor: 0 });
+  assert.deepEqual([cal.weeks[1].pnl, cal.weeks[1].trades, cal.weeks[1].wins, cal.weeks[1].winRate], [-50, 3, 1, 33.3]);
+  assert.deepEqual([cal.weeks[2].pnl, cal.weeks[2].trades, cal.weeks[2].winRate], [50, 2, 50], 'the breakeven counts as a trade');
   assert.equal(cal.weeks.length, 5, 'Sep 28 through Nov 1');
-  assert.deepEqual([cal.pnl, cal.trades, cal.green, cal.red], [0, 5, 2, 1]);
+  assert.deepEqual([cal.pnl, cal.trades, cal.days, cal.green, cal.red], [0, 5, 4, 2, 1]);
   assert.deepEqual(json(run, `activeMonths(dailyPnl(${JSON.stringify(TRADES)}))`), ['2026-10']);
 });
 
@@ -57,6 +60,32 @@ test('equity curve with its drawdown, streaks, and months', async () => {
   assert.equal(eq.maxDrawdownAt, '2026-10-06T19:00:00.000Z');
   assert.deepEqual(json(run, `streaks(${JSON.stringify(TRADES)})`), { longestWin: 1, longestLoss: 2, current: null }, 'a breakeven ends the run');
   assert.deepEqual(json(run, `monthlyResults(${JSON.stringify(TRADES)})`).map(m => [m.month, m.trades, m.net]), [['2026-10', 5, 0]]);
+});
+
+test('periods: a day, its week (named by the Monday, weekends folded in), its month; the ones with trades; stepping and switching', async () => {
+  const { run } = await app();
+  assert.equal(run("periodKey('2026-10-08', 'week')"), '2026-10-05');
+  assert.equal(run("periodKey('2026-10-11', 'week')"), '2026-10-05', 'Sunday belongs to the week before');
+  assert.equal(run("periodKey('2026-10-12', 'week')"), '2026-10-12');
+  assert.equal(run("periodKey('2026-11-01', 'week')"), '2026-10-26', 'across a month end');
+  assert.equal(run("periodKey('2026-10-08', 'month')"), '2026-10');
+  assert.equal(run("periodKey('2026-10-08', 'day')"), '2026-10-08');
+  const J = JSON.stringify(TRADES);
+  assert.deepEqual(json(run, `activePeriods(${J}, 'day')`), ['2026-10-15', '2026-10-13', '2026-10-06', '2026-10-05']);
+  assert.deepEqual(json(run, `activePeriods(${J}, 'week')`), ['2026-10-12', '2026-10-05']);
+  assert.deepEqual(json(run, `inPeriod(${J}, 'week', '2026-10-12').map(t => t.key)`), ['d', 'e'], 'the 10/13 evening close and the 10/15 one');
+  assert.deepEqual(json(run, `inPeriod(${J}, 'day', '2026-10-06').map(t => t.key)`), ['b', 'c']);
+  assert.equal(json(run, `inPeriod(${J}, 'all', '').length`), 5, 'all time: every counted trade');
+  const days = `activePeriods(${J}, 'day')`;
+  assert.equal(run(`stepPeriod(${days}, '2026-10-13', -1)`), '2026-10-06', 'back skips the days without closes');
+  assert.equal(run(`stepPeriod(${days}, '2026-10-13', 1)`), '2026-10-15');
+  assert.equal(run(`stepPeriod(${days}, '2026-10-15', 1)`), null, 'nothing newer');
+  assert.equal(run(`stepPeriod(${days}, '2026-10-09', 1)`), '2026-10-13', 'from a day without trades');
+  assert.equal(run(`switchPeriod(${J}, 'all', '', 'day')`), '2026-10-15', 'from all time: the newest close');
+  assert.equal(run(`switchPeriod(${J}, 'week', '2026-10-05', 'day')`), '2026-10-06', 'a week to its newest day with a close');
+  assert.equal(run(`switchPeriod(${J}, 'day', '2026-10-06', 'month')`), '2026-10');
+  assert.equal(run(`switchPeriod(${J}, 'month', '2026-09', 'week')`), '2026-08-31', 'an empty month: its first day picks the week');
+  assert.deepEqual(json(run, `periodResults(${J}, 'day')`).map(r => [r.key, r.trades, r.net]), [['2026-10-15', 1, 0], ['2026-10-13', 1, 50], ['2026-10-06', 2, -350], ['2026-10-05', 1, 300]]);
 });
 
 test('breakdowns: by underlying, side, instrument, time of day, weekday, hold, exits, and the R distribution', async () => {
@@ -102,12 +131,16 @@ test('the Calendar tab: the month of the latest close, a day tapped shows its tr
   assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats</);
   run("setJournalTab('calendar')");
   assert.match(out(), /class="jc-title">October 2026</);
-  assert.match(out(), /<span class="journal-buy">\+\$200\.00<\/span> · 2 trades · 1 green day, 1 red/);
-  assert.match(out(), /<button class="jc-day journal-buy" data-action="pickJournalDay" data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$300<\/span><span class="jc-n">1 trade<\/span>/);
-  assert.match(out(), /data-arg="2026-10-06"[^>]*><span class="jc-num">6<\/span><span class="jc-pnl">−\$100<\/span>/);
+  assert.match(out(), /<dl class="js-stats jc-stats">\s*<div><dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 trades<\/span>/, 'the month\'s own numbers');
+  assert.match(out(), /<dt>Win rate<\/dt><dd class="">50%<span class="pos-sub">1 won, 1 lost</);
+  assert.match(out(), /<dt>Profit factor<\/dt><dd class="">3\.00</);
+  assert.match(out(), /<dt>Green days<\/dt><dd class="">1 of 2<span class="pos-sub">1 red</);
+  assert.match(out(), /<button class="jc-day journal-buy" data-action="pickJournalDay" data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$300<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">100%<span class="jc-wide"> won<\/span>/, 'no losses: no profit factor');
+  assert.match(out(), /data-arg="2026-10-06"[^>]*><span class="jc-num">6<\/span><span class="jc-pnl">−\$100<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">0%<span class="jc-wide"> won · PF 0\.00</);
+  assert.match(out(), /data-action="openJournalStats" data-arg="week" data-arg2="2026-10-05"[^>]*><span class="journal-buy">\+\$200<\/span><span class="jc-n">2 trades · 50%</);
   run("pickJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'trades');
-  assert.match(out(), /data-action="clearJournalDay"[^>]*>Closed 10\/6 ×</);
+  assert.match(out(), /data-action="clearJournalDay"[^>]*>Closed 10\/6 ×<\/button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="2026-10-06">The day's stats</);
   assert.match(out(), /<b>MSFT<\/b>/);
   assert.doesNotMatch(out(), /<b>AAPL<\/b>/, 'only that day\'s trades');
   run('clearJournalDay()');
@@ -116,6 +149,9 @@ test('the Calendar tab: the month of the latest close, a day tapped shows its tr
   assert.match(out(), /September 2026<\/span>[\s\S]*No closed trades this month/);
   run("shiftJournalMonth('1')");
   assert.match(out(), /October 2026/);
+  run("openJournalStats('month', '2026-10')");
+  assert.equal(state.journalTab, 'stats');
+  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="month">Month</);
 });
 
 test('the Stats tab: headline numbers, the equity canvas, tables by group, thin groups marked, filters apply', async () => {
@@ -131,4 +167,33 @@ test('the Stats tab: headline numbers, the equity canvas, tables by group, thin 
   assert.match(out(), /R distribution<\/div><p class="hint">No closed trades with an initial stop yet/);
   run("document.getElementById('journalSymbol').value = 'MSFT'; journalSymbolChanged()");
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00/, 'the symbol filter narrows the stats');
+});
+
+test('the Stats tab narrowed to a day, a week or a month: ‹ › step through the ones with trades, the place kept switching', async () => {
+  const { run, state, out } = await journal();
+  run("setJournalTab('stats')");
+  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="all">All time</);
+  assert.match(out(), /By month/);
+  run("setJournalPeriod('day')");
+  assert.match(out(), /class="jc-title">Tue, Oct 6, 2026</, 'the newest day with a close');
+  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 closed trade</);
+  assert.match(out(), /aria-label="Later day with trades" disabled>/, 'nothing newer');
+  assert.match(out(), /data-action="pickJournalDay" data-arg="2026-10-06">The day's trades</);
+  assert.doesNotMatch(out(), /By month|By day|By weekday/);
+  run("stepJournalPeriod('-1')");
+  assert.match(out(), /Mon, Oct 5, 2026[\s\S]*<dd class="journal-buy">\+\$300\.00/);
+  assert.match(out(), /aria-label="Earlier day with trades" disabled>/);
+  run("setJournalPeriod('week')");
+  assert.match(out(), /class="jc-title">Oct 5–9, 2026</, 'the week of the day shown');
+  assert.match(out(), /<dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 closed trades/);
+  assert.match(out(), /By day[\s\S]*<b>Tue 10\/6<\/b>[\s\S]*<b>Mon 10\/5<\/b>/, 'a week shows each day, newest first');
+  run("setJournalPeriod('month')");
+  assert.match(out(), /class="jc-title">October 2026</);
+  run("document.getElementById('journalSymbol').value = 'MSFT'; journalSymbolChanged(); setJournalPeriod('day'); stepJournalPeriod('-1')");
+  assert.equal(state.journalPeriodShown, '2026-10-06', 'only MSFT\'s day');
+  run("state.journalPeriodKey = '2026-10-05'; renderJournal()");
+  assert.match(out(), /No closed trades this day/, 'a period the filter empties says so');
+  run("setJournalPeriod('all')");
+  assert.equal(state.journalPeriodKey, '');
+  assert.match(out(), /By month/);
 });

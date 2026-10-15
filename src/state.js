@@ -62,6 +62,9 @@ export function createState() {
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
+    journalPeriod: 'all', // the stats cover: all | day | week | month
+    journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday) or 'YYYY-MM'; empty = the newest with closed trades
+    journalPeriodShown: '', // the period the stats last showed (‹ › step from it)
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
     tradeReviews: null, // your word on each trade, by trade key: { stop, deleted }, once read

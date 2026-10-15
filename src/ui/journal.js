@@ -8,7 +8,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
 import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
-import { nyParts } from '../core/journal-stats.js';
+import { activePeriods, nyParts, periodKey, PERIODS, stepPeriod, switchPeriod } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
@@ -173,7 +173,7 @@ function controls() {
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
     ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
     <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
-    ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Closed ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button>` : ''}
+    ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Closed ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : ''}
   </div>`;
 }
 
@@ -222,6 +222,31 @@ export function setJournalTab(tab) { state.journalTab = ['fills', 'calendar', 's
 export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; renderJournal(); }
 export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
 export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); renderJournal(); }
+/** the trades the stats count from: the side and symbol filters applied */
+const statsTrades = () => filtered(currentTrades(), t => t.bias);
+/** All time / Month / Week / Day on the stats: a new unit keeps your place (the newest close in what's shown now) */
+export function setJournalPeriod(unit) {
+  const to = PERIODS.includes(unit) ? unit : 'all';
+  if (to === state.journalPeriod) return;
+  state.journalPeriodKey = to === 'all' ? '' : switchPeriod(statsTrades(), state.journalPeriod, state.journalPeriodShown, to);
+  state.journalPeriod = to;
+  renderJournal();
+}
+/** ‹ or ›: the nearest day, week or month with closed trades before or after the one shown */
+export function stepJournalPeriod(by) {
+  if (!PERIODS.includes(state.journalPeriod)) return;
+  const next = stepPeriod(activePeriods(statsTrades(), state.journalPeriod), state.journalPeriodShown, Number(by) || 0);
+  if (next) { state.journalPeriodKey = next; renderJournal(); }
+}
+/** the stats for one day, week or month, from the calendar or a day's trades */
+export function openJournalStats(unit, key) {
+  const ok = PERIODS.includes(unit) && (unit === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(key || '');
+  state.journalPeriod = ok ? unit : 'all';
+  state.journalPeriodKey = ok ? periodKey(key, unit) : '';
+  state.journalTab = 'stats';
+  state.journalDay = '';
+  renderJournal();
+}
 export function setJournalSide(side) { state.journalSide = ['long', 'short'].includes(side) ? side : 'all'; renderJournal(); }
 export function journalSymbolChanged() {
   state.journalSymbol = document.getElementById('journalSymbol').value;
