@@ -11,7 +11,7 @@
 #modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection, #futuresSection { order: 6; }
 #optionTicket { order: 7; } #chartWrap { order: 8; }
 #quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #positionsSection { order: 12; }
-#optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection { order: 15; }
+#optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection, #journalTradeSection { order: 15; }
 
 /* Desktop shell (calculator and positions): the page holds still and each pane scrolls on its own.
    Rail = the ticket (inputs + answer), main = quote, charts, chain. Nothing is position:sticky. */

@@ -440,6 +440,24 @@
 
   <section id="journalSection" style="display:none;" aria-label="Journal"></section>
 
+  <section class="card positions-card journal-card chart-wrap" id="journalTradeSection" style="display:none;" aria-label="Trade">
+    <div id="jtHead"></div>
+    <div class="jt-charts" id="jtCharts">
+      <div class="jt-chart">
+        <div class="chart-cap"><span id="jtKind5">5 min</span><span class="ohlc jt-ohlc" id="jtOhlc5"></span></div>
+        <p class="hint" id="jtStatus5" role="status"></p>
+        <div class="pos-chart-canvas" id="jtCanvas5" style="display:none;"><canvas id="jtChart5" height="260"></canvas></div>
+      </div>
+      <div class="jt-chart">
+        <div class="chart-cap"><span id="jtKindD">Daily</span><span class="ohlc jt-ohlc" id="jtOhlcD"></span></div>
+        <p class="hint" id="jtStatusD" role="status"></p>
+        <div class="pos-chart-canvas" id="jtCanvasD" style="display:none;"><canvas id="jtChartD" height="260"></canvas></div>
+      </div>
+      <div class="chart-hint">Fills: <span style="color:var(--blue);">▲ buys</span> · <span style="color:var(--amber);">▼ sells</span>. Lines: <span style="color:var(--blue);">entry</span> · <span style="color:var(--amber);">exit</span> · <span style="color:var(--red);">stop</span> · <span style="color:var(--purple);">8 EMA</span>. Pinch or ctrl+scroll to zoom, drag to pan.</div>
+    </div>
+    <div id="jtBody"></div>
+  </section>
+
   <div id="utilsSection" style="display:none;">
     <div class="section-title" style="margin:4px 0 10px;">Tools</div>
     <div class="card">
