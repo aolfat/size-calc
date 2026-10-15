@@ -268,3 +268,77 @@ test('an option still open after its expiry closes at $0 at 4pm New York; before
   assert.equal(p.pnl, 80, 'a sold option kept its premium');
   assert.equal(at(longCall, undefined)?.status, 'open', 'no clock, no expiry');
 });
+
+// ---------- spreads ----------
+const leg = (id, orderId, time, side, qty, price, symbol, instruction) => fill(id, time, side, qty, price, {
+  orderId, symbol, label: `AAPL 12/18/26 ${Number(symbol.slice(-8)) / 1000}${symbol.at(-9)}`, assetType: 'OPTION', instruction,
+});
+const C245 = 'AAPL  261218C00245000', C255 = 'AAPL  261218C00255000';
+
+test('a multi-leg order is one spread: net debit, legs summed, the debit is its risk', async () => {
+  const list = await trades([
+    leg('a', '700', '2026-10-01T14:30:00.000Z', 'buy', 3, 6.2, C245, 'BUY_TO_OPEN'),
+    leg('b', '700', '2026-10-01T14:30:00.000Z', 'sell', 3, 2.7, C255, 'SELL_TO_OPEN'),
+    leg('c', '701', '2026-10-08T15:00:00.000Z', 'sell', 3, 8.1, C245, 'SELL_TO_CLOSE'),
+    leg('d', '701', '2026-10-08T15:00:00.000Z', 'buy', 3, 3.3, C255, 'BUY_TO_CLOSE'),
+  ]);
+  assert.equal(list.length, 1, 'one trade, not two');
+  const [t] = list;
+  assert.equal(t.label, 'AAPL 12/18/26 245/255C');
+  assert.equal(t.spreadKind, 'debit');
+  assert.equal(t.group, 'auto');
+  assert.equal(t.entryQty, 3);
+  assert.equal(t.avgEntry.toFixed(2), '3.50', '6.20 − 2.70 paid per spread');
+  assert.equal(t.avgExit.toFixed(2), '4.80', '8.10 − 3.30 taken back');
+  assert.equal(t.pnl, 390, '+570 on the long leg, −180 on the short');
+  assert.equal(t.rBasis, 'debit');
+  assert.equal(t.risk, 1050);
+  assert.equal(t.r, 0.37);
+  assert.equal(t.key, '6789|AAPL|spread|2026-10-01T14:30:00.000Z');
+  assert.equal(t.legs.length, 2);
+  const { run } = await app();
+  assert.equal(run(`legWords(${JSON.stringify(t.legs)})`), '+3 245C −3 255C');
+});
+
+test('a credit vertical risks its width less the credit; your combine and split override the order', async () => {
+  const legged = [
+    leg('s', '710', '2026-10-01T14:30:00.000Z', 'sell', 2, 4.0, C245, 'SELL_TO_OPEN'), // legged in: two orders
+    leg('l', '711', '2026-10-01T14:35:00.000Z', 'buy', 2, 1.5, C255, 'BUY_TO_OPEN'),
+  ];
+  const apart = await trades(legged);
+  assert.equal(apart.length, 2, 'separate orders stay separate trades');
+  const { run } = await app();
+  const g = '6789|AAPL|spread|2026-10-01T14:30:00.000Z';
+  const keys = apart.map(t => t.key);
+  const joined = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(legged)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: g }])))}))`));
+  assert.equal(joined.length, 1);
+  const [t] = joined;
+  assert.equal(t.group, 'yours');
+  assert.equal(t.spreadKind, 'credit');
+  assert.equal(t.avgEntry.toFixed(2), '2.50', 'took in 4.00 − 1.50');
+  assert.equal(t.rBasis, 'width');
+  assert.equal(t.risk, 1500, '(10 wide − 2.50) × 2 × 100');
+  assert.equal(t.status, 'open');
+
+  const oneOrder = legged.map(f => ({ ...f, orderId: '720' }));
+  const auto = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, []))`));
+  assert.equal(auto.length, 1, 'one order: combined on its own');
+  const solo = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: 'solo' }])))}))`));
+  assert.equal(solo.length, 2, "split: 'solo' keeps them apart");
+});
+
+test('combine candidates: other legs on the same underlying and account that overlap in time', async () => {
+  const fills = [
+    leg('a', '1', '2026-10-01T14:30:00.000Z', 'buy', 1, 5, C245, 'BUY_TO_OPEN'),
+    leg('b', '2', '2026-10-02T14:30:00.000Z', 'sell', 1, 2, C255, 'SELL_TO_OPEN'), // overlaps a
+    leg('c', '3', '2026-10-05T14:30:00.000Z', 'sell', 1, 6, C245, 'SELL_TO_CLOSE'), // a closes 10/5
+    leg('d', '4', '2026-10-09T14:30:00.000Z', 'buy', 1, 3, 'AAPL  261218P00230000', 'BUY_TO_OPEN'), // after a closed
+    fill('e', '2026-10-02T14:30:00.000Z', 'buy', 100, 240), // the stock
+    { ...leg('f', '6', '2026-10-02T14:30:00.000Z', 'buy', 1, 1, 'MSFT  261218C00500000', 'BUY_TO_OPEN'), label: 'MSFT 12/18/26 500C' },
+  ];
+  const { run } = await app();
+  const all = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, []))`));
+  const a = all.find(t => t.symbol === C245);
+  const c = JSON.parse(run(`JSON.stringify(combineCandidates(${JSON.stringify(all)}, '${a.key}'))`));
+  assert.deepEqual(c.map(t => t.symbol), [C255], 'not the later put, the stock, or MSFT');
+});
