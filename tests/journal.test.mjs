@@ -317,3 +317,42 @@ test('reviews read when the journal opens; a refused save goes back; a missing t
   await missing.run('deleteTrade()');
   assert.equal(missing.supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing written over a row it couldn\'t read');
 });
+
+test('fees: before by default; After fees takes out Schwab\'s fees per trade, says when they haven\'t come in, and syncs', async () => {
+  const fee = (id, orderId, items) => ({ kind: 'transaction', record_id: String(id), account: '6789', entered_at: '2026-10-03T15:00:00Z', data: { activityId: id, type: 'TRADE', orderId, transferItems: items } });
+  const records = [...RECORDS.map(r => ({ ...r, account: '6789' })),
+    fee(9101, 501, [{ instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: 100, cost: -10002, price: 100.02 }, { amount: 0, cost: 0, feeType: 'COMMISSION' }]),
+    fee(9102, 502, [{ instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: -100, cost: 9498, price: 94.98 }, { amount: 0, cost: -0.26, feeType: 'SEC_FEE' }, { amount: 0, cost: -0.02, feeType: 'TAF_FEE' }]),
+  ];
+  const { run, elements, storage } = await app({ storage: connected(), supabase: fakeRecords(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(out(), /class="active" aria-pressed="true" data-action="setJournalFees" data-arg="before">Before fees/, 'before fees unless you choose');
+  assert.match(out(), /−\$504\.00<\/span> before fees/);
+  assert.match(out(), /P&amp;L is before fees\./);
+
+  run("setJournalFees('after')");
+  assert.equal(storage.get('journal_fees'), 'after');
+  assert.ok(run("CLOUD_KEYS.includes('journal_fees')"), 'the choice goes with your account');
+  assert.match(out(), /<td class="journal-sell" title="Before fees −\$504\.00, fees \$0\.28">−\$504\.28<span class="pos-sub">fees \$0\.28<\/span><\/td>/);
+  assert.match(out(), /−1\.00R/, '−504.28 ÷ 502 still rounds to −1.00R');
+  assert.match(out(), /−\$504\.28<\/span> after fees \(fees \$0\.28\)/);
+  assert.match(out(), /P&amp;L is after Schwab(?:'|&#39;)s fees/);
+  assert.match(out(), /<td class="" title="Before fees \$0\.00, fees \$0\.00, 1 order without fees yet">—<\/td>/, 'an open trade with nothing sold shows a plain dash, not a red one');
+
+  run("setJournalTab('fills')");
+  assert.doesNotMatch(out(), /setJournalFees/, 'fees are a trades setting');
+});
+
+test('after fees, an order without its transaction yet says so instead of a made-up zero', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const storage = connected();
+  storage.set('journal_fees', 'after');
+  const { run, elements } = await app({ storage, supabase: fakeRecords(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = elements.get('journalSection').innerHTML;
+  assert.match(out, /−\$504\.00<span class="pos-sub"><span class="journal-fees-missing">fees not in yet<\/span><\/span>/);
+  assert.match(out, /fees not in yet on 1/);
+});

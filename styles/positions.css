@@ -115,6 +115,7 @@
 .positions-table .journal-deleted td { opacity: .55; }
 .journal-row-acts { display: flex; gap: 12px; }
 .journal-delete { color: var(--red); }
+.journal-fees-missing { color: var(--amber); }
 .btn.journal-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border2)); }
 .journal-table .pos-sub .pos-link { font-size: inherit; }
 .journal-stop-chips { margin: 4px 0 12px; }

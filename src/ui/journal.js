@@ -11,6 +11,7 @@ import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
 import { loadSavedRecords, loadTradeReviews, saveTradeReview } from '../services/journal.js';
 import { schwabConnected } from '../services/schwab.js';
+import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { closeSheet, openSheet } from './sheets.js';
@@ -50,6 +51,9 @@ function fillRow(f) {
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
+/** P&L before or after Schwab's fees: your choice, synced to your account as journal_fees */
+export const journalAfterFees = () => store.get('journal_fees') === 'after';
+const feeWords = () => journalAfterFees() ? 'after fees' : 'before fees';
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`; // the same minus sign as money
 
 /** the stop cell: the price in use (tap to change it), and whether it's yours or Schwab's stop moved later */
@@ -59,6 +63,19 @@ function stopCell(t) {
   const sub = t.stopSource === 'yours' ? 'yours' : t.movedTo !== null ? `moved to ${px(t.movedTo, t.assetType)}` : '';
   return `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Change the stop for ${esc(t.label)}">${px(t.stop, t.assetType)}</button>${sub ? `<span class="pos-sub">${sub}</span>` : ''}`;
 }
+
+/** under the P&L: 'so far' on an open trade, and after fees, the fees taken out or that they haven't come in */
+function pnlSub(t) {
+  const open = t.status === 'open';
+  const lines = [];
+  if (open && t.exits) lines.push('so far');
+  if (t.afterFees && (!open || t.exits)) {
+    if (t.feesMissing) lines.push('<span class="journal-fees-missing">fees not in yet</span>');
+    else if (t.fees) lines.push(`fees ${fmt$(t.fees)}`);
+  }
+  return lines.map(l => `<span class="pos-sub">${l}</span>`).join('');
+}
+const pnlTitle = t => t.afterFees ? ` title="${esc(`Before fees ${signed$(t.grossPnl)}, fees ${fmt$(t.fees)}${t.feesMissing ? `, ${t.feesMissing} order${t.feesMissing === 1 ? '' : 's'} without fees yet` : ''}`)}"` : '';
 
 function rTitleOf(t) {
   if (t.rBasis === 'stop') return `${t.stopSource === 'yours' ? 'Your stop' : 'Initial stop'} ${px(t.stop, t.assetType)}, risk ${fmt$(t.risk)}`;
@@ -74,7 +91,7 @@ function tradeRow(t) {
     <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}<span class="pos-sub journal-row-acts">${t.deleted
       ? `<button class="pos-link" data-action="restoreTrade" data-arg="${key}" aria-label="Restore the ${name} trade">Restore</button>`
       : `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Edit the ${name} trade">Edit</button><button class="pos-link journal-delete" data-action="confirmDeleteTrade" data-arg="${key}" aria-label="Delete the ${name} trade">Delete</button>`}</span></td>
-    <td class="${pnlClass(t.pnl)}">${open && !t.exits ? '—' : signed$(t.pnl)}${open && t.exits ? '<span class="pos-sub">so far</span>' : ''}</td>
+    <td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>
     <td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
     <td>${stopCell(t)}</td>
     <td class="${t.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${t.direction === 'long' ? 'Long' : 'Short'}</td>
@@ -97,7 +114,8 @@ function summaryLine(trades, deleted) {
   const deletedNote = deleted ? ` · ${deleted} deleted <button class="pos-link" data-action="toggleDeletedTrades">${state.journalShowDeleted ? 'Hide them' : 'Show'}</button>` : '';
   if (!s.closed && !s.open) return `No trades match.${deletedNote}`;
   const parts = [`${s.closed} closed`];
-  if (s.closed) parts.push(`${s.wins} won (${s.winRate}%)`, `<span class="${pnlClass(s.pnl)}">${signed$(s.pnl)}</span> before fees`);
+  if (s.closed) parts.push(`${s.wins} won (${s.winRate}%)`, `<span class="${pnlClass(s.pnl)}">${signed$(s.pnl)}</span> ${feeWords()}${journalAfterFees() && s.fees ? ` (fees ${fmt$(s.fees)})` : ''}`);
+  if (s.closed && journalAfterFees() && s.feesMissing) parts.push(`<span class="journal-fees-missing">fees not in yet on ${s.feesMissing}</span>`);
   if (s.avgR !== null) parts.push(`average ${signedR(s.avgR)} over ${s.withR}`);
   if (s.open) parts.push(`${s.open} open`);
   return parts.join(' · ') + deletedNote;
@@ -107,9 +125,12 @@ function controls() {
   const on = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
   const tab = (v, label) => `<button ${on(state.journalTab, v)} data-action="setJournalTab" data-arg="${v}">${label}</button>`;
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
+  const fees = journalAfterFees() ? 'after' : 'before';
+  const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
   return `<div class="journal-controls">
     <div class="seg" aria-label="Show">${tab('trades', 'Trades')}${tab('fills', 'Fills')}</div>
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
+    ${state.journalTab === 'trades' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
     <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
   </div>`;
 }
@@ -125,7 +146,9 @@ function tradesView(all) {
       <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
       <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
     </table></div>
-    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. P&amp;L is before fees. R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium. Tap a stop, or Edit, to set yours. Delete takes out a trade that doesn't belong; imports won't bring it back.</p>`;
+    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. ${journalAfterFees()
+      ? 'P&amp;L is after Schwab\'s fees (commission, SEC, TAF and option fees, from its trade records), split by quantity when one order covers two trades.'
+      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium. Tap a stop, or Edit, to set yours. Delete takes out a trade that doesn't belong; imports won't bring it back.</p>`;
 }
 
 function fillsView(fills) {
@@ -137,6 +160,7 @@ function fillsView(fills) {
     <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders.</p>`;
 }
 
+export function setJournalFees(v) { store.set('journal_fees', v === 'after' ? 'after' : 'before'); renderJournal(); }
 export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
 export function setJournalTab(tab) { state.journalTab = tab === 'fills' ? 'fills' : 'trades'; renderJournal(); }
 export function setJournalSide(side) { state.journalSide = ['long', 'short'].includes(side) ? side : 'all'; renderJournal(); }
@@ -175,7 +199,7 @@ export function renderJournal() {
     ${state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${fills.length ? controls() + (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
-      : tradesView(filtered(journalTrades(fills, records, state.tradeReviews || {}), t => t.direction)))
+      : tradesView(filtered(journalTrades(fills, records, state.tradeReviews || {}, { afterFees: journalAfterFees() }), t => t.direction)))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
 }
@@ -265,7 +289,7 @@ onCaptureChange(saved => {
 /** the trades as the Journal has them now (your stops and deletes applied) */
 function currentTrades() {
   const records = state.journalRecords || [];
-  return journalTrades(fillsFrom(records), records, state.tradeReviews || {});
+  return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees() });
 }
 const reviewedTrade = () => currentTrades().find(t => t.key === state.tradeReviewKey) || null;
 const reviewOf = key => (state.tradeReviews || {})[key] || { stop: null, hidden: false };
@@ -293,7 +317,7 @@ function stopNowLine(t) {
 }
 
 const tradeFacts = t => [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(marketTime(t.openedAt))} ET`,
-  t.status === 'open' ? 'open' : `${signed$(t.pnl)} before fees`].join(' · ');
+  t.status === 'open' ? 'open' : `${signed$(t.pnl)} ${t.afterFees ? `after fees${t.fees ? ` of ${fmt$(t.fees)}` : ''}` : 'before fees'}`].join(' · ');
 
 /** the delete step: what it does, and what an import does afterwards */
 function deleteConfirm(t, locked) {

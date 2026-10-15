@@ -142,7 +142,7 @@ test('an open trade shows what it has realized so far, but no R until it closes'
 test('summary and hold time in words', async () => {
   const { run } = await app();
   const s = JSON.parse(run(`JSON.stringify(tradesSummary([{ status: 'win', pnl: 300, r: 1.5 }, { status: 'loss', pnl: -100, r: -1 }, { status: 'win', pnl: 50, r: null }, { status: 'open', pnl: 0, r: null }]))`));
-  assert.deepEqual(s, { closed: 3, open: 1, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2 });
+  assert.deepEqual(s, { closed: 3, open: 1, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2, fees: 0, feesMissing: 0 });
   assert.equal(run('holdWords(45 * 60000)'), '45m');
   assert.equal(run('holdWords((3 * 60 + 10) * 60000)'), '3h 10m');
   assert.equal(run('holdWords((52) * 3600000)'), '2d 4h');
@@ -174,4 +174,55 @@ test('a moved stop: R stays on the first, the move is shown; your stop overrides
   assert.equal(run(`ownStopError(${JSON.stringify(t)}, 101)`), "A long's stop goes below the entry.");
   assert.equal(run(`ownStopError(${JSON.stringify(t)}, 0)`), 'Type a stop price.');
   assert.equal(run(`ownStopError(${JSON.stringify(t)}, 97)`), '');
+});
+
+// Schwab's TRADE transactions: the fill's instrument item, plus one item per fee with a feeType, charged as a negative cost
+const tx = (orderId, fees, extra = {}) => ({
+  kind: 'transaction', account: '6789',
+  data: { activityId: Number(orderId) * 10 + Object.keys(fees).length, type: 'TRADE', orderId, transferItems: [
+    { instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: 100, cost: -10000, price: 100, positionEffect: 'OPENING' },
+    ...Object.entries(fees).map(([feeType, cost]) => ({ instrument: { symbol: 'CURRENCY_USD', assetType: 'CURRENCY' }, amount: 0, cost, feeType })),
+  ], ...extra },
+});
+
+test('fees per order: fee items add up, pieces of one order add up, other items and other transactions don\'t count', async () => {
+  const { run } = await app();
+  const fees = JSON.parse(run(`JSON.stringify([...feesByOrder(${JSON.stringify([
+    tx(1, { COMMISSION: -0.65, OPT_REG_FEE: -0.02 }),
+    tx(1, { COMMISSION: -1.3 }), // the same order, filled in a second piece
+    tx(2, { SEC_FEE: -0.26, TAF_FEE: -0.02 }),
+    tx(3, { COMMISSION: 0 }),
+    { kind: 'transaction', data: { type: 'DIVIDEND_OR_INTEREST', orderId: 4, transferItems: [{ feeType: 'COMMISSION', cost: -5 }] } },
+    { kind: 'order', data: { orderId: 5 } },
+  ])})])`));
+  assert.deepEqual(fees.map(([k, v]) => [k, Math.round(v * 100) / 100]), [['1', 1.97], ['2', 0.28], ['3', 0]]);
+});
+
+test('after fees: P&L, the result and R are net; a flip splits its order\'s fees by quantity; missing ones are counted', async () => {
+  const fills = [
+    fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 100, { orderId: '1' }),
+    fill('b', '2026-10-01T15:00:00.000Z', 'sell', 150, 100.02, { orderId: '2' }), // closes 100, opens 50 short
+    fill('c', '2026-10-01T15:30:00.000Z', 'buy', 50, 99, { orderId: '3' }),
+  ];
+  const records = [stopOrder(9, '2026-10-01T14:30:10+0000', 'SELL', 99), tx(1, { COMMISSION: -1 }), tx(2, { COMMISSION: -3 })];
+  const { run } = await app();
+  const get = after => JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, ${JSON.stringify(records)}, {}, { afterFees: ${after} }))`));
+  const before = get(false), after = get(true);
+  const long = list => list.find(t => t.direction === 'long'), short = list => list.find(t => t.direction === 'short');
+  assert.equal(long(before).pnl, 2, 'before fees: 100 × $0.02');
+  assert.equal(long(before).status, 'win');
+  assert.equal(long(before).fees, 3, 'shown either way: $1 entry + $2 of the $3 flip (100 of its 150 shares)');
+  assert.equal(long(after).pnl, -1, 'a $2 win is a $1 loss after $3 of fees');
+  assert.equal(long(after).grossPnl, 2);
+  assert.equal(long(after).status, 'loss');
+  assert.equal(long(after).r, -0.01, 'R on the net: −1 ÷ (100 × $1)');
+  assert.equal(short(after).fees, 1, 'the other $1 of the flip');
+  assert.equal(short(after).feesMissing, 1, 'its cover (order 3) has no transaction yet');
+  assert.equal(short(after).pnl, 50, '50 × $1.02, less its $1');
+  const { run: r2 } = await app();
+  const s = JSON.parse(r2(`JSON.stringify(tradesSummary(${JSON.stringify(after)}))`));
+  assert.equal(s.fees, 4);
+  assert.equal(s.feesMissing, 1);
+  assert.equal(s.wins, 1);
+  assert.equal(s.losses, 1);
 });
