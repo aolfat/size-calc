@@ -26,6 +26,7 @@ export function createState() {
     simHoverY: -1,
     simReg: {}, // chain detail rows park their sim params here by option symbol
     session: null, // the signed-in Supabase session, or null
+    sessionResuming: false, // a stored session is being read back (boot, or the poll's retry)
     supabase: null, // the Supabase client, created on first use (tests put a fake here)
     supabaseLoading: null, // the one in-flight library load
     cloudSuppress: false, // true while applying server data or restoring storage, so those writes aren't edits

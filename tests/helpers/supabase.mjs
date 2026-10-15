@@ -9,7 +9,7 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
   const reviews = new Map(reviewSeed.map(r => [keys.trade_reviews(r), { user_id: 'user-1', ...r }]));
   const trades = new Map(tradeSeed.map(r => [r.id, { ...r }]));
   const bars = new Map();
-  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars };
+  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map() }; // settings: an account with none, for a session resumed on boot
   const tradeOps = [];
   const broken = new Set();
   const writes = [];

@@ -6,7 +6,7 @@ import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, l
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
-import { renderJournal } from './journal.js';
+import { loadJournal, renderJournal } from './journal.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -87,6 +87,7 @@ export async function signOut() {
 // a session on this device: the first one merges with the account, later ones catch up and send what's pending
 async function startSession(session) {
   state.session = session;
+  if (state.journalView) loadJournal(); // a reload on the Journal: its records, now that there's a session to read them
   setCloudUi('Syncing…');
   if (store.get('cloud_user') !== session.user.id) {
     let m;
@@ -105,9 +106,16 @@ async function startSession(session) {
 }
 
 async function resumeSession() {
-  const session = await currentSession();
-  if (session) await startSession(session);
-  else setCloudUi('');
+  state.sessionResuming = true; // the Journal says loading, not 'sign in', while the stored session comes back
+  if (state.journalView && !state.session) renderJournal();
+  try {
+    const session = await currentSession();
+    if (session) await startSession(session);
+    else setCloudUi('');
+  } finally {
+    state.sessionResuming = false;
+    if (state.journalView && !state.session) renderJournal();
+  }
 }
 
 // synced changes report here: status line, re-read storage, and a toast when another device's edits land

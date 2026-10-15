@@ -17,7 +17,19 @@ import { updateStickyBar } from './sticky-bar.js';
 import { updateStopVisibility } from './stops.js';
 import { renderGain } from './tools.js';
 
+// the open tab rides in the address, so a reload opens it again (Size has none)
+const VIEW_HASH = { market: '#market', positions: '#positions', journal: '#journal', utils: '#tools' };
+export const viewFromHash = hash => Object.keys(VIEW_HASH).find(v => VIEW_HASH[v] === hash) || 'calc';
+
+function rememberView(v) {
+  const loc = globalThis.location;
+  const want = VIEW_HASH[v] || '';
+  if (!loc || !globalThis.history?.replaceState || loc.hash === want) return;
+  globalThis.history.replaceState(null, '', loc.pathname + loc.search + want); // no new history entry per tab switch
+}
+
 export function setView(v) {
+  rememberView(v);
   state.positionsView = v === 'positions';
   state.utilsView = v === 'utils';
   state.marketView = v === 'market';
