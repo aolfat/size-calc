@@ -114,8 +114,19 @@
 .journal-tag { font-size: 10.5px; font-weight: 600; color: var(--blue); border: 1px solid var(--blue-bd); background: var(--blue-bg); border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; }
 .positions-table .journal-open td { background: color-mix(in srgb, var(--blue-bg) 35%, var(--bg2)); } /* opaque: the pinned symbol cell takes the tint too */
 .positions-table .journal-deleted td { opacity: .55; }
-.journal-row-acts { display: flex; gap: 12px; }
-.journal-delete { color: var(--red); }
+/* the symbol cell: tick box in its own slot, the name and everything under it lined up after it */
+.journal-sym { display: flex; align-items: flex-start; }
+.journal-sym-main { min-width: 0; }
+/* a row opens its trade: the name is the button (keyboard, screen readers), the rest of the row a bigger target */
+.journal-table tbody tr[data-action] { cursor: pointer; }
+.journal-name { background: none; border: none; padding: 0; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+.journal-name:hover b, .journal-name:focus-visible b, .journal-table tr[data-action]:hover .journal-name b { color: var(--blue); }
+.journal-name:hover b, .journal-name:focus-visible b { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: none) { .journal-name::after { content: '›'; margin-left: 6px; color: var(--text3); font-weight: 600; } } /* no hover on touch: say it opens */
+/* a deleted row's Restore, quiet so the figures lead */
+.journal-row-acts { display: flex; gap: 14px; margin-top: 3px; }
+.journal-row-acts .pos-link { color: var(--text2); }
+.journal-row-acts .pos-link:hover, .journal-row-acts .pos-link:focus-visible { color: var(--blue); }
 .journal-fees-missing { color: var(--amber); }
 .journal-tag-history { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); background: color-mix(in srgb, var(--amber) 10%, transparent); }
 .journal-tag-quiet { color: var(--text2); border-color: var(--border2); background: transparent; }
@@ -136,7 +147,8 @@
   .journal-table td:first-child .journal-tag { display: inline-block; margin: 2px 4px 0 0; }
 }
 /* merge: a checkbox before each trade's symbol, and the pick bar (sticks to the bottom while you tick) */
-.journal-pick { display: inline-flex; vertical-align: -3px; margin-right: 8px; padding: 2px; cursor: pointer; }
+.journal-pick { flex: none; display: inline-flex; width: 20px; margin: 0 8px 0 0; padding: 2px; cursor: pointer; }
+span.journal-pick { cursor: default; }
 .journal-pick input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); cursor: pointer; }
 .journal-pickbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; margin: 10px 0; border: 1px solid var(--border2); border-radius: var(--radius); font-size: 13px; }
 .journal-pickbar { position: sticky; bottom: 12px; z-index: 3; border-color: var(--blue-bd); background: color-mix(in srgb, var(--blue-bg) 45%, var(--bg2)); color: var(--text); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
@@ -146,5 +158,6 @@
 .journal-pickbar .btn:disabled { opacity: 0.45; cursor: default; }
 @media (max-width: 600px) {
   .journal-pickbar { bottom: calc(70px + env(safe-area-inset-bottom)); } /* above the tab bar */
+  .journal-pick { width: 22px; }
   .journal-pick input { width: 18px; height: 18px; }
 }

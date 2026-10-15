@@ -1,4 +1,5 @@
 // Feedback: self-dismissing error and success toasts, and the pulse on recalculated stats.
+import { marketEscape as esc } from '../core/format.js';
 import { state } from '../state.js';
 
 export function showError(msg) {
@@ -10,13 +11,15 @@ export function showError(msg) {
   state.errorTimer = setTimeout(clearError, 6000); // floating toast, self-dismissing
 }
 
-export function showToast(msg) {
+/** a success toast; `button` is markup for one button on it (Undo), and the toast stays up longer so there's time to press it */
+export function showToast(msg, button) {
   const b = document.getElementById('errorBox');
-  b.textContent = msg;
+  if (button) b.innerHTML = `${esc(msg)} ${button}`;
+  else b.textContent = msg;
   b.classList.add('ok');
   b.style.display = 'block';
   clearTimeout(state.errorTimer);
-  state.errorTimer = setTimeout(clearError, 5000);
+  state.errorTimer = setTimeout(clearError, button ? 8000 : 5000);
 }
 
 export function withFlash(el) {

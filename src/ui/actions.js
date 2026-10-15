@@ -23,7 +23,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearJournalPicks, clearTradeStop, combineTrade, confirmDeleteTrade, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview } from './journal.js';
+import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -73,7 +73,9 @@ export const actions = {
   pickTradeStop: el => pickTradeStop(arg(el)),
   saveTradeStop: el => { if (el.tagName === 'INPUT') el.blur(); saveTradeStop(); },
   clearTradeStop: () => clearTradeStop(),
-  confirmDeleteTrade: el => confirmDeleteTrade(arg(el)),
+  openTradeRow: (el, e) => openTradeRow(arg(el), e),
+  deletePicked: () => deletePicked(),
+  undoDeleteTrades: () => undoDeleteTrades(),
   deleteTrade: () => deleteTrade(),
   restoreTrade: el => restoreTrade(arg(el)),
   combineTrade: el => combineTrade(arg(el)),
