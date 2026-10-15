@@ -140,6 +140,12 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 
 ### 3. Trade page
 
+- **5-minute bars are saved now (built),** ahead of the page, because Tradier only serves about 40 days of them.
+  - **What's saved:** every weekday each trade was open, for the stock, or for an option both the contract and its underlying, within the last 35 days. Finished days only.
+  - **When:** after each import and when the Journal opens, at most hourly, one Tradier call per symbol for what's missing.
+  - **Holidays:** kept empty, so they're never asked for again.
+  - **Where it shows:** the Import sheet says how far it's saved.
+
 - **Charts:** daily and 5-minute, with entries, exits and stops drawn on them. This reuses `ui/candles.js` and the position chart's drawing.
 - **Detail:** the fills table, the stop orders over time, P&L, R, hold time.
 - **Excursions, computed from the saved 5-minute bars over the hold.** Trading-Journal-AI defines these well but only fills them with demo data:
@@ -202,7 +208,7 @@ Not part of step 2, noted so the review design picks them up:
 | `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, `deleted` (the delete mark). Step 3's grades and notes join it |
 | `fills` | Fill | Schwab id (unique per account), order id, symbol (options by full contract symbol), underlying, asset type, side, quantity, price, fee, time, open or close |
 | `stop_orders` | Stop order | Order id, symbol, side, quantity, stop price, entered, status, what replaced it |
-| `bars_5m` | Symbol per day | That day's 5-minute bars packed in one value |
+| `bars_5m` (built) | Symbol per day | Tradier's symbol, the New York day, that day's 5-minute bars packed as [time, open, high, low, close, volume] rows, extended hours included |
 | `import_runs` | Import | When, account (last 4 only), imported through, counts, errors |
 
 Every table follows the rules in `tests/rls.test.mjs`: a `user_id` defaulting to the signed-in user and deleted with the account, row-level security with an owner rule, and nothing granted to `anon`.

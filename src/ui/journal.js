@@ -16,6 +16,7 @@ import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
+import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -275,6 +276,10 @@ export function renderImportSheet() {
       <p class="hint">Log in to Schwab to import your orders and trades.</p>
       <div class="row" style="align-items:center;gap:8px;"><button class="btn" data-action="openSheet" data-arg="settings">Connect Schwab</button></div>`;
   el.innerHTML = `<div class="sheet-section">${schwab}</div>
+    <div class="sheet-section">
+      <div class="sheet-label">5-minute bars <span class="sheet-status">for your trades' charts</span></div>
+      <p class="hint" id="journalBarsStatus" role="status">${barsLine()}</p>
+    </div>
     <div class="sheet-section journal-soon">
       <div class="sheet-label">File upload <span class="sheet-status">Coming soon</span></div>
       <p class="hint">For history older than Schwab's API reaches (Schwab's website export) and for Robinhood's account activity CSV. You'll see what will be added before anything is saved.</p>
@@ -310,6 +315,7 @@ export async function loadJournal() {
     if (records.status === 'rejected') throw records.reason;
     state.journalRecords = records.value;
     state.journalError = '';
+    maybeSaveBars({ records: records.value }); // quietly, in the background: the charts' bars before Tradier drops them
   } catch(e) {
     state.journalError = String(e?.message || e);
   } finally {
@@ -337,6 +343,7 @@ export async function journalImport() {
 // a capture started or finished: redraw (the Import sheet too when it's open), and after a save read the records again
 onCaptureChange(saved => {
   if (state.openSheetName === 'journalImport') renderImportSheet();
+  if (saved && !state.journalView) maybeSaveBars({ force: true }); // an import landed: its trades' bars, journal open or not
   if (!state.journalView) return;
   if (saved) loadJournal(); else renderJournal();
 });
@@ -732,3 +739,6 @@ export async function separateTrade(key) {
   }
   return ok;
 }
+
+// a bars run ended: the Import sheet's line changes
+onBarsChange(() => { if (state.openSheetName === 'journalImport') renderImportSheet(); });

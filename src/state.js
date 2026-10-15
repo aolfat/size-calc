@@ -56,6 +56,7 @@ export function createState() {
     journalRecords: null, // the kept Schwab records, newest first, once read
     journalLoading: false,
     journalError: '',
+    barsBusy: false, // the journal is saving 5-minute bars
     journalTab: 'trades', // trades | fills
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
