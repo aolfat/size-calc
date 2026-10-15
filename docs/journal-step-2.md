@@ -90,7 +90,7 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - the ×100 for options
   - a stable trade key (account, symbol, direction, open time), so notes added later never come loose
   - ported from LuxAlgo's MIT round-trip engine and tested against the spike's fixtures
-- **Trades are computed every time, never stored.** Trading-Journal-AI stores its trades, and much of its import code exists only to keep them consistent: it rebuilds stored trades that share a day with new fills, because its trade names (close date plus a counter that restarts each import) collide. Computing from kept fills avoids that whole class of bugs. Keying by open time, not close date, also keeps an open trade's key from changing when it closes.
+- **Trades are computed every time; only the trades you shape are stored** (see Merge and separate below), as identities with the fills they claim, never their numbers. Trading-Journal-AI stores its trades, and much of its import code exists only to keep them consistent: it rebuilds stored trades that share a day with new fills, because its trade names (close date plus a counter that restarts each import) collide. Computing from kept fills avoids that whole class of bugs. Keying by open time, not close date, also keeps an open trade's key from changing when it closes.
 - **Identical-looking fills are real.** A large order split into pieces can report fills with the same time, price and quantity. They stay separate because they're keyed by Schwab's execution ids, never deduped by content.
 - **A trade's P&L belongs to its close date** (the day it was realized) in the calendar and in daily stats. Open trades are listed apart.
 - **Trade list (built):**
@@ -117,9 +117,18 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - File upload (older history from Schwab's website) will fill them in.
 - **Spreads (built):** option legs become one trade.
   - **Automatic:** legs opened in one multi-leg order.
-  - **Combined by you:** legged-in spreads, from Combine in a leg's sheet. Each leg's `trade_reviews` row names its spread (`group_key`). Split undoes it, and works on a multi-leg order too.
+  - **Combined by you:** legged-in spreads, from Combine in a leg's sheet or by ticking the legs and Merge. That's a row in `trades` (below). Split undoes it, and works on a multi-leg order too: each leg gets a row of its own so the order can't fold them back.
+  - **`group_key`, dropped:** the first version kept combines in each leg's `trade_reviews.group_key` ('solo' for a split). The `trades` migration drops the column; spreads combined that way come apart once and are merged again.
   - **The numbers:** entry and exit are net per spread. P&L and fees add up. A debit risks what it paid; a credit vertical risks its width less the credit. Other combinations have no R yet.
   - **Limit:** a contract held on its own and also inside a spread is one leg, so that spread shows mixed sizes.
+- **Merge and separate (built), in `trades`:**
+  - **Why:** flat-to-flat grouping is right most of the time, but you sometimes see two of its trades as one: a re-entry after going flat, or legs you entered one at a time.
+  - **Merge:** a checkbox on each trade; tick two or more and Merge. Allowed: same account and underlying, and either one symbol on one side, or option contracts (a spread). Shares with options, trades from before your history and deleted trades aren't. Refusals say why in the pick bar.
+  - **Stored as identity, not numbers:** one row per shaped trade, holding the fill ids it claims. A row claims every trade holding one of its fills, so a merge that took in an open trade keeps the fills that land later. Rows that share a trade make one trade, named by the oldest row (`trade:<id>`, what your stop and delete on it are kept under). Merging a merged trade again updates its oldest row, so its key stays. A row with one trade keeps it on its own.
+  - **Numbers:** one symbol = quantities, P&L and fees added up, weighted entry and exit, first open to last close, the stop and R found again over the whole span. Option contracts = a spread, as above.
+  - **Separate:** deletes the rows, so the trades group on their own again (legs one order opened together get a row each, so they stay apart).
+  - **Side is the bet on the stock,** not bought or sold: calls bought and puts sold are long, puts bought and calls sold are short. A spread of one type goes by its strikes: bought below what's sold is long, above is short. That makes call debit and put credit verticals long, put debit and call credit short, a put diagonal (a longer-dated put bought, shorter-dated puts sold above it, rolled or not) long, and a poor man's covered call long. One strike over two expirations (a time spread) is neutral, and other mixes add up their legs (an iron condor is neutral). The spread's kind ('call debit') shows as its tag, and the side filter uses the same rule.
+  - **Not built:** splitting one trade at a fill (later, as two rows claiming different fills).
 - **Expired options (built):** an option still open after its expiry's 4pm New York close closes there at $0.
   - **The assumption:** it expired worthless. An exercise or assignment isn't in the orders.
   - **Later:** keeping Schwab's RECEIVE_AND_DELIVER transactions (expirations, exercises, assignments) would tell them apart. Their format still has to be checked.
@@ -162,17 +171,18 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 
 Trade at Schwab tickets, and Positions' breakeven stops, targets and closes, save the plan (entry, stop, risk $, quantity, order id). Imports match it to the trade by order id.
 
-### 6. Squash the migrations
+### 6. Squash the migrations (built, early)
 
-The schema is new and lives in one database, so once slices 1 to 5 settle, the migrations fold into one baseline:
-1. **Write one migration** with the final schema. Steps that cancel out disappear, like `saved_positions`, created and then dropped.
-2. **Delete the old migration files.**
-3. **Update Supabase's migration history** with `npx supabase migration repair`: the old versions marked reverted and the new one marked applied. The database itself doesn't change.
-4. **Check the single file** against a scratch project. `tests/rls.test.mjs` keeps checking the rules either way.
-
-**Renames go first, as their own migration,** because the squash itself never changes the database: `trade_reviews.hidden` becomes `deleted` (it was named before hiding became deleting).
-
-Done once, at the end of step 2, after the journal's own tables exist.
+Done with merge and separate, since nothing was in use yet: the eight migrations of steps 1 and 2 are one file, `supabase/migrations/20261018000000_baseline.sql`.
+- **What cancels out is gone:** `saved_positions` (created, then dropped) and `trade_reviews.group_key` (added, then replaced by `trades`).
+- **Renamed:** `trade_reviews.hidden` is `deleted` (it was named before hiding became deleting).
+- **Fixed:** the settings key check didn't allow `journal_fees`, so that setting couldn't sync. A test now checks every synced setting against it.
+- **Safe on any older database:** tables and indexes are created if missing, functions and triggers replaced, policies dropped and made again, and its last section renames `hidden`, drops `group_key` and `saved_positions`, and adds `fingerprint` where they're still old. So it doesn't matter which of the old files the live database had.
+- **Checked** on Postgres 14 with Supabase's `auth`, roles and Vault stubbed: on a new database, applied twice, over all eight old files with data in them (a stop and a delete mark survive the rename, kept records stay), and over the first five; each ends with the same columns, policies and settings check, and row-level security keeps one user's trades from another and refuses anon.
+- **Applying it to the live database** (asks for the database password):
+  1. `npx supabase migration repair --status reverted 20261009000000 20261009010000 20261009020000 20261014000000 20261015000000 20261016000000 20261017000000 20261018000000` (every old version, including this PR's first `trades` file in case it was pushed, so the baseline runs; versions the database never had are simply not there to revert)
+  2. `npx supabase db push`: runs the baseline, which brings the database to the final schema and records it as applied.
+  3. `npx supabase migration list`: one version, `20261018000000`, local and remote.
 
 ## For step 3 (review), from Trading-Journal-AI
 
@@ -188,7 +198,8 @@ Not part of step 2, noted so the review design picks them up:
 | Table | One row per | Holds |
 |---|---|---|
 | `schwab_records` (built) | Order or transaction | Kind, Schwab's id, account (last 4 digits), entered time, Schwab's JSON whole with account numbers masked |
-| `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, `hidden` (the delete mark; renamed `deleted` in slice 6's squash). Step 3's grades and notes join it |
+| `trades` (built) | Trade you shaped (merged, a spread, a leg kept apart) | Account (last 4 digits), the fill ids it claims; numbers are computed from them |
+| `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, `deleted` (the delete mark). Step 3's grades and notes join it |
 | `fills` | Fill | Schwab id (unique per account), order id, symbol (options by full contract symbol), underlying, asset type, side, quantity, price, fee, time, open or close |
 | `stop_orders` | Stop order | Order id, symbol, side, quantity, stop price, entered, status, what replaced it |
 | `bars_5m` | Symbol per day | That day's 5-minute bars packed in one value |

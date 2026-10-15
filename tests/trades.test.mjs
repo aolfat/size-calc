@@ -162,12 +162,12 @@ test('a moved stop: R stays on the first, the move is shown; your stop overrides
 
   const { run } = await app();
   const key = t.key;
-  const withOwn = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 99.5, hidden: true } }))`))[0];
+  const withOwn = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 99.5, deleted: true } }))`))[0];
   assert.equal(withOwn.stop, 99.5);
   assert.equal(withOwn.stopSource, 'yours');
   assert.equal(withOwn.schwabStop, 98);
   assert.equal(withOwn.r, -2);
-  assert.equal(withOwn.deleted, true, 'the review\'s hidden column is the delete mark');
+  assert.equal(withOwn.deleted, true, 'the review\'s deleted column');
   const past = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 101 } }))`))[0];
   assert.equal(past.stop, 98, 'a stop of yours past the entry isn\'t used');
   assert.equal(past.ownStopIgnored, true);
@@ -300,7 +300,7 @@ test('a multi-leg order is one spread: net debit, legs summed, the debit is its 
   assert.equal(run(`legWords(${JSON.stringify(t.legs)})`), '+3 245C −3 255C');
 });
 
-test('a credit vertical risks its width less the credit; your combine and split override the order', async () => {
+test('a credit vertical risks its width less the credit; your trades rows combine and split over the order', async () => {
   const legged = [
     leg('s', '710', '2026-10-01T14:30:00.000Z', 'sell', 2, 4.0, C245, 'SELL_TO_OPEN'), // legged in: two orders
     leg('l', '711', '2026-10-01T14:35:00.000Z', 'buy', 2, 1.5, C255, 'BUY_TO_OPEN'),
@@ -308,9 +308,8 @@ test('a credit vertical risks its width less the credit; your combine and split 
   const apart = await trades(legged);
   assert.equal(apart.length, 2, 'separate orders stay separate trades');
   const { run } = await app();
-  const g = '6789|AAPL|spread|2026-10-01T14:30:00.000Z';
-  const keys = apart.map(t => t.key);
-  const joined = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(legged)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: g }])))}))`));
+  const row = (id, fillIds) => ({ id, account: '6789', fill_ids: fillIds, created_at: '2026-10-02T00:00:00.000Z' });
+  const joined = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(legged)}, [], {}, { saved: ${JSON.stringify([row('g1', ['s', 'l'])])} }))`));
   assert.equal(joined.length, 1);
   const [t] = joined;
   assert.equal(t.group, 'yours');
@@ -323,8 +322,8 @@ test('a credit vertical risks its width less the credit; your combine and split 
   const oneOrder = legged.map(f => ({ ...f, orderId: '720' }));
   const auto = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, []))`));
   assert.equal(auto.length, 1, 'one order: combined on its own');
-  const solo = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: 'solo' }])))}))`));
-  assert.equal(solo.length, 2, "split: 'solo' keeps them apart");
+  const solo = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, [], {}, { saved: ${JSON.stringify([row('s1', ['s']), row('s2', ['l'])])} }))`));
+  assert.equal(solo.length, 2, 'split: a row per leg keeps them apart');
 });
 
 test('combine candidates: other legs on the same underlying and account that overlap in time', async () => {
@@ -341,4 +340,154 @@ test('combine candidates: other legs on the same underlying and account that ove
   const a = all.find(t => t.symbol === C245);
   const c = JSON.parse(run(`JSON.stringify(combineCandidates(${JSON.stringify(all)}, '${a.key}'))`));
   assert.deepEqual(c.map(t => t.symbol), [C255], 'not the later put, the stock, or MSFT');
+});
+
+// ---------- merged trades: trades you said are one, kept as their fills in Supabase's trades table ----------
+
+const C245o = { symbol: 'AAPL  261218C00245000', label: 'AAPL 12/18/26 245C', assetType: 'OPTION' };
+const C250 = { symbol: 'AAPL  261218C00250000', label: 'AAPL 12/18/26 250C', assetType: 'OPTION' };
+const P245 = { symbol: 'AAPL  261218P00245000', label: 'AAPL 12/18/26 245P', assetType: 'OPTION' };
+const P250 = { symbol: 'AAPL  261218P00250000', label: 'AAPL 12/18/26 250P', assetType: 'OPTION' };
+// two AAPL trades: flat on Oct 3, back in on Oct 6
+const TWO = [
+  fill('a1', '2026-10-01T14:30:00.000Z', 'buy', 100, 20),
+  fill('a2', '2026-10-02T14:30:00.000Z', 'buy', 50, 21),
+  fill('a3', '2026-10-03T14:30:00.000Z', 'sell', 150, 22),
+  fill('b1', '2026-10-06T14:30:00.000Z', 'buy', 100, 21.5),
+  fill('b2', '2026-10-08T14:30:00.000Z', 'sell', 100, 23),
+];
+const saved = (id, fillIds, extra = {}) => ({ id, account: '6789', fill_ids: fillIds, created_at: '2026-10-09T00:00:00.000Z', ...extra });
+async function merged(fills, records, rows) {
+  const { run } = await app();
+  return JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, ${JSON.stringify(records)}, {}, { saved: ${JSON.stringify(rows)} }))`));
+}
+
+test('two trades on one symbol merged: P&L added, weighted entry and exit, first open to last close, R off the first stop', async () => {
+  const stops = [stopOrder(1, '2026-10-01T14:30:30+0000', 'SELL', 19)];
+  const apart = await merged(TWO, stops, []);
+  assert.equal(apart.length, 2);
+  assert.deepEqual(apart.map(t => t.kind), ['single', 'single']);
+  const list = await merged(TWO, stops, [saved('m1', ['a1', 'a2', 'a3', 'b1', 'b2'])]);
+  assert.equal(list.length, 1);
+  const t = list[0];
+  assert.equal(t.kind, 'merged');
+  assert.equal(t.id, 'm1');
+  assert.equal(t.key, 'trade:m1', 'keyed by the saved row, so a review sticks to it');
+  assert.deepEqual(t.savedIds, ['m1']);
+  assert.deepEqual(t.parts, apart.map(p => p.key).sort(), 'the trades it was made from, for Separate');
+  assert.equal(t.label, 'AAPL');
+  assert.equal(t.direction, 'long');
+  assert.equal(t.pnl, 400, '250 + 150');
+  assert.equal(t.entryQty, 250);
+  assert.equal(t.avgEntry, 20.8);
+  assert.equal(t.avgExit, 22.4);
+  assert.equal(t.exits, 2);
+  assert.equal(t.openedAt, '2026-10-01T14:30:00.000Z');
+  assert.equal(t.closedAt, '2026-10-08T14:30:00.000Z');
+  assert.equal(t.holdMs, 7 * 86400000);
+  assert.equal(t.status, 'win');
+  assert.equal(t.stop, 19);
+  assert.equal(t.risk, 450, '(20.80 − 19) × 250');
+  assert.equal(t.r, 0.89);
+});
+
+test('a merge that took in an open trade follows it: fills that land later still belong to it', async () => {
+  // merged while the second trade was open, before its exit b2 was imported
+  const [t] = await merged(TWO, [], [saved('m1', ['a1', 'a2', 'a3', 'b1'])]);
+  assert.equal(t.kind, 'merged');
+  assert.equal(t.pnl, 400);
+  assert.equal(t.status, 'win');
+  assert.ok(t.fillIds.includes('b2'));
+});
+
+test('saved merges that share a trade make one trade; a merge left with one trade, or across accounts, changes nothing', async () => {
+  const third = [fill('c1', '2026-10-09T14:30:00.000Z', 'buy', 10, 22), fill('c2', '2026-10-09T15:30:00.000Z', 'sell', 10, 22.5)];
+  const list = await merged([...TWO, ...third], [], [
+    saved('m2', ['b1', 'c1'], { created_at: '2026-10-10T00:00:00.000Z' }),
+    saved('m1', ['a1', 'b1']),
+  ]);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].id, 'm1', 'the oldest saved row names it');
+  assert.deepEqual(list[0].savedIds.sort(), ['m1', 'm2'], 'Separate deletes both');
+  assert.equal(list[0].pnl, 405);
+
+  const lonely = await merged(TWO, [], [saved('m1', ['a1', 'gone-fill'])]);
+  assert.deepEqual(lonely.map(t => t.kind), ['single', 'single']);
+
+  const other = { ...fill('z1', '2026-10-06T14:30:00.000Z', 'buy', 10, 21), account: '1111' };
+  const mixed = await merged([...TWO, other], [], [saved('m1', ['a1', 'z1'])]);
+  assert.equal(mixed.length, 3, 'never across accounts');
+});
+
+test('a call debit spread merged: net debit in, net credit out, risk = the debit', async () => {
+  const fills = [
+    fill('l1', '2026-10-06T14:00:00.000Z', 'buy', 2, 4.1, { ...C245o, instruction: 'BUY_TO_OPEN', orderId: 'S1' }),
+    fill('s1', '2026-10-06T14:00:00.000Z', 'sell', 2, 1.6, { ...C250, instruction: 'SELL_TO_OPEN', orderId: 'S1' }),
+    fill('l2', '2026-10-09T15:00:00.000Z', 'sell', 2, 6, { ...C245o, instruction: 'SELL_TO_CLOSE', orderId: 'S2' }),
+    fill('s2', '2026-10-09T15:00:00.000Z', 'buy', 2, 2.5, { ...C250, instruction: 'BUY_TO_CLOSE', orderId: 'S2' }),
+  ];
+  const [t] = await merged(fills, [], [saved('sp', ['l1', 's1'])]);
+  assert.equal(t.kind, 'spread');
+  assert.equal(t.label, 'AAPL 12/18/26 245/250C');
+  assert.equal(t.spreadKind, 'debit', 'paid to open');
+  assert.equal(t.group, 'yours');
+  assert.equal(t.bias, 'long', 'a call debit spread is long');
+  assert.equal(t.structure, 'call debit');
+  assert.equal(t.entryQty, 2, 'two spreads');
+  assert.equal(t.avgEntry.toFixed(2), '2.50', 'net debit per spread');
+  assert.equal(t.avgExit.toFixed(2), '3.50', 'net credit per spread at the close');
+  assert.equal(t.pnl, 200, '+380 on the 245C, −180 on the 250C');
+  assert.equal(t.multiplier, 100);
+  assert.equal(t.rBasis, 'debit');
+  assert.equal(t.risk, 500, 'the debit is all it can lose');
+  assert.equal(t.r, 0.4);
+});
+
+test('a put credit spread merged: net credit in, risk = width − credit', async () => {
+  const fills = [
+    fill('s1', '2026-10-06T14:00:00.000Z', 'sell', 1, 3, { ...P250, instruction: 'SELL_TO_OPEN', orderId: 'S1' }),
+    fill('l1', '2026-10-06T14:00:00.000Z', 'buy', 1, 1.2, { ...P245, instruction: 'BUY_TO_OPEN', orderId: 'S1' }),
+    fill('s2', '2026-10-09T15:00:00.000Z', 'buy', 1, 1, { ...P250, instruction: 'BUY_TO_CLOSE', orderId: 'S2' }),
+    fill('l2', '2026-10-09T15:00:00.000Z', 'sell', 1, 0.3, { ...P245, instruction: 'SELL_TO_CLOSE', orderId: 'S2' }),
+  ];
+  const [t] = await merged(fills, [], [saved('sp', ['s1', 'l1', 's2', 'l2'])]);
+  assert.equal(t.label, 'AAPL 12/18/26 245/250P');
+  assert.equal(t.spreadKind, 'credit', 'received to open');
+  assert.equal(t.bias, 'long', 'a put credit spread is long');
+  assert.equal(t.structure, 'put credit');
+  assert.equal(t.avgEntry.toFixed(2), '1.80', 'net credit');
+  assert.equal(t.avgExit.toFixed(2), '0.70', 'net debit to close');
+  assert.equal(t.pnl, 110);
+  assert.equal(t.rBasis, 'width');
+  assert.equal(t.risk, 320, '$5 wide × 100 − $180 credit');
+  assert.equal(t.r, 0.34);
+});
+
+test('what can be merged: same account and underlying; one symbol on one side, or option contracts', async () => {
+  const { run } = await app();
+  const problem = list => run(`mergeProblem(${JSON.stringify(list)})`);
+  const t = (symbol, direction, extra = {}) => ({ account: '6789', symbol, assetType: symbol.includes(' ') ? 'OPTION' : 'EQUITY', direction, ...extra });
+  assert.equal(problem([t('AAPL', 'long')]), 'Pick two or more trades.');
+  assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'long')]), '');
+  assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'short')]), 'Pick trades on the same side.');
+  assert.equal(problem([t('AAPL', 'long'), t('MSFT', 'long')]), 'Pick trades on the same symbol.');
+  assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'long', { account: '1111' })]), 'Those trades are in different accounts.');
+  assert.equal(problem([t(C245o.symbol, 'long'), t(C250.symbol, 'short')]), '', 'a spread');
+  assert.equal(problem([t(C245o.symbol, 'long'), t('MSFT  261218C00245000', 'short')]), 'Pick trades on the same symbol.');
+  assert.equal(problem([t('AAPL', 'long'), t(C250.symbol, 'short')]), "Shares and options can't be one trade yet.");
+  assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'long', { status: 'history' })]), "Trades from before your history can't be merged.");
+  assert.equal(problem([t('AAPL', 'long'), t('AAPL', 'long', { deleted: true })]), 'Restore deleted trades before merging them.');
+  assert.equal(problem([t('AAPL', 'long', { assetType: 'SPREAD' }), t(C250.symbol, 'short')]), '', 'a leg added to a spread');
+});
+
+test('a multi-leg order is a spread on its own, and a row with one of its legs keeps that leg apart', async () => {
+  const fills = [
+    fill('l1', '2026-10-06T14:00:00.000Z', 'buy', 1, 4.1, { ...C245o, instruction: 'BUY_TO_OPEN', orderId: 'S1' }),
+    fill('s1', '2026-10-06T14:00:00.000Z', 'sell', 1, 1.6, { ...C250, instruction: 'SELL_TO_OPEN', orderId: 'S1' }),
+  ];
+  const [auto] = await merged(fills, [], []);
+  assert.deepEqual([auto.kind, auto.group, auto.bias, auto.structure], ['spread', 'auto', 'long', 'call debit']);
+  assert.deepEqual(auto.savedIds, [], 'no row behind it');
+  const apart = await merged(fills, [], [saved('solo1', ['l1']), saved('solo2', ['s1'])]);
+  assert.deepEqual(apart.map(t => [t.kind, t.savedIds[0]]).sort(), [['single', 'solo1'], ['single', 'solo2']]);
 });

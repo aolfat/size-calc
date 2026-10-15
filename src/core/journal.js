@@ -3,8 +3,10 @@
 // flips, ×100 for options), each with P&L, hold time, its initial stop and R. Trades are computed every time from the kept
 // fills, never stored (docs/journal-step-2.md). Schwab's orders carry no fees; they come from its TRADE transactions
 // (feesByOrder), split across trades by quantity, and P&L is before or after them by your choice (withFees). Your own word
-// on a trade (trade_reviews, keyed by the trade key) overrides its stop and can delete it from the journal. Option legs
-// opened in one multi-leg order, or that you combine, become one spread trade (combineSpreads).
+// on a trade (trade_reviews, keyed by the trade key) overrides its stop and can delete it from the journal. Trades you
+// shape are rows in Supabase's trades table, each claiming fills by id: two or more trades on one symbol become one
+// merged trade, option contracts one spread, and a row with one trade keeps it on its own (shapeTrades). Option legs
+// opened in one multi-leg order that no row claims become a spread on their own. The side is the bet on the stock (bias).
 import { expiryCloseMs } from './options.js';
 import { parseSchwabOption, schwabTime } from './positions.js';
 
@@ -27,9 +29,15 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  *   rBasis: 'stop' | 'premium' | 'debit' | 'width' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
  *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean,
  *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean,
- *   legs?: Trade[], group?: 'auto' | 'yours', spreadKind?: 'debit' | 'credit' }} Trade
- * @typedef {{ stop?: number | null, hidden?: boolean, group_key?: string | null }} TradeReview  group_key: the spread
- *   it's combined into ('solo' = keep it on its own, even if its order opened other legs)  hidden is the delete marker (the column's first name)
+ *   legs?: Trade[], group?: 'auto' | 'yours', spreadKind?: 'debit' | 'credit',
+ *   kind?: 'single' | 'merged' | 'spread', id?: string, savedIds?: string[], parts?: string[],
+ *   bias?: 'long' | 'short' | 'neutral', structure?: string }} Trade
+ * kind: single = grouped flat to flat on its own; merged = trades on one symbol you made one; spread = option legs as one
+ * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
+ * parts = the trade keys it's made of.
+ * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
+ * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
+ * @typedef {{ id: string, account: string, fill_ids: string[], created_at?: string }} SavedTrade a trades row
  */
 
 /** instructions that only ever close: a plain Sell can't open a short at Schwab (that's Sell short), nor Buy to cover a long */
@@ -326,7 +334,7 @@ export function withFees(trade, fees, orderTotals, afterFees) {
  * flagged: their fills still group with the rest (so the trades around them add up), and the view leaves them out.
  * Imports can't bring one back, since the mark is on the trade key, not on Schwab's records.
  * @param {Fill[]} fills @param {{ kind: string, account?: string, data: any }[]} records
- * @param {Record<string, TradeReview>} [reviews] @param {{ afterFees?: boolean, now?: number }} [opts]
+ * @param {Record<string, TradeReview>} [reviews] @param {{ afterFees?: boolean, now?: number, saved?: SavedTrade[] }} [opts]
  */
 export function journalTrades(fills, records, reviews = {}, opts = {}) {
   const stops = stopOrdersFrom(records);
@@ -336,9 +344,9 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
   for (const f of fills) orderTotals.set(f.orderId, (orderTotals.get(f.orderId) || 0) + f.qty);
   const legs = buildTrades(fills, { now: opts.now }).map(t => {
     const rv = reviews[t.key] || {};
-    return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.hidden };
+    return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.deleted };
   });
-  return combineSpreads(legs, reviews)
+  return shapeTrades(legs, opts.saved || [], reviews, stops).map(withBias)
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
 }
 
@@ -375,40 +383,176 @@ export function holdWords(ms) {
 const isLeg = (/** @type {Trade} */ t) => t.assetType === 'OPTION' && t.status !== 'history' && !t.legs;
 const rootOf = (/** @type {Trade} */ t) => parseSchwabOption(t.symbol)?.root || t.symbol;
 
-/**
- * Which spread each option leg belongs to: the one you combined it into (its review's group_key), else, when one order
- * opened it along with other contracts (a multi-leg order), that order's spread. 'solo' keeps a leg on its own.
- * @param {Trade[]} trades @param {Record<string, TradeReview>} reviews
- * @returns {Map<string, { key: string, group: 'auto' | 'yours' }>} leg key → spread
- */
-export function spreadGroups(trades, reviews = {}) {
-  /** @type {Map<string, { key: string, group: 'auto' | 'yours' }>} */
-  const out = new Map();
-  const legs = trades.filter(isLeg);
-  for (const t of legs) {
-    const g = reviews[t.key]?.group_key;
-    if (g && g !== 'solo') out.set(t.key, { key: g, group: 'yours' });
-  }
-  // a multi-leg order: the legs it opened, by order id, each leg in one spread at most (the first order that joins it)
+/** legs one multi-leg order opened (by order id), each leg in one spread at most: the first order that joins it. @param {Trade[]} legs @returns {Trade[][]} */
+function orderSpreads(legs) {
   /** @type {Map<string, Trade[]>} */
   const byOrder = new Map();
-  for (const t of legs) {
-    if (out.has(t.key) || reviews[t.key]?.group_key === 'solo') continue;
+  for (const t of legs.filter(isLeg)) {
     for (const id of t.entryOrderIds) {
       const k = `${t.account}|${id}`;
       if (!byOrder.has(k)) byOrder.set(k, []);
       /** @type {Trade[]} */ (byOrder.get(k)).push(t);
     }
   }
-  for (const [, list] of byOrder) {
-    const free = list.filter(t => !out.has(t.key));
+  const taken = new Set();
+  /** @type {Trade[][]} */
+  const out = [];
+  for (const list of byOrder.values()) {
+    const free = list.filter(t => !taken.has(t.key));
     if (new Set(free.map(t => t.symbol)).size < 2) continue;
-    const first = free.reduce((a, b) => (a.openedAt <= b.openedAt ? a : b));
-    const key = `${first.account}|${rootOf(first)}|spread|${first.openedAt}`;
-    for (const t of free) out.set(t.key, { key, group: 'auto' });
+    free.forEach(t => taken.add(t.key));
+    out.push(free);
   }
   return out;
 }
+
+const OPTIONISH = new Set(['OPTION', 'SPREAD']);
+/** a stock's symbol, or an option's (or a spread's) root. @param {{ symbol: string, assetType: string }} t */
+const underlyingOf = t => t.assetType === 'OPTION' ? (parseSchwabOption(t.symbol)?.root || t.symbol) : t.symbol;
+
+/**
+ * Why these trades can't be one, or '' when they can: same account and underlying, and either one symbol on one side
+ * (a re-entry, a scale back in) or option contracts (a spread, a leg added to one). Shares with options, trades from
+ * before the history and deleted trades can't.
+ * @param {{ account: string, symbol: string, assetType: string, direction: string, status?: string, deleted?: boolean }[]} trades
+ */
+export function mergeProblem(trades) {
+  if (trades.length < 2) return 'Pick two or more trades.';
+  if (trades.some(t => t.status === 'history')) return "Trades from before your history can't be merged.";
+  if (trades.some(t => t.deleted)) return 'Restore deleted trades before merging them.';
+  if (new Set(trades.map(t => t.account)).size > 1) return 'Those trades are in different accounts.';
+  if (new Set(trades.map(underlyingOf)).size > 1) return 'Pick trades on the same symbol.';
+  const options = trades.filter(t => OPTIONISH.has(t.assetType)).length;
+  if (options && options < trades.length) return "Shares and options can't be one trade yet.";
+  if (new Set(trades.map(t => t.symbol)).size === 1 && new Set(trades.map(t => t.direction)).size > 1) return 'Pick trades on the same side.';
+  return '';
+}
+
+const round2 = (/** @type {number} */ v) => Math.round(v * 100) / 100;
+const round8 = (/** @type {number} */ v) => Math.round(v * 1e8) / 1e8;
+
+/**
+ * One symbol, one side: the parts as one trade. Quantities, P&L and fees add up, entry and exit are weighted by
+ * quantity, and the stop and R are found again over the whole span (your stop on the merged trade first).
+ * @param {Trade[]} parts in open order @param {string} key @param {Record<string, TradeReview>} reviews @param {StopOrder[]} stops
+ * @returns {Trade}
+ */
+function mergedTrade(parts, key, reviews, stops) {
+  const sum = (/** @type {(p: Trade) => number} */ f) => parts.reduce((n, p) => n + f(p), 0);
+  const entryQty = sum(p => p.entryQty);
+  const exitQty = sum(p => p.entryQty - p.openQty);
+  const open = parts.some(p => p.status === 'open');
+  const closedAt = open ? null : parts.reduce((m, p) => (p.closedAt && p.closedAt > m ? p.closedAt : m), '');
+  const pnl = round2(sum(p => p.pnl));
+  /** @type {Record<string, number>} */
+  const orderQty = {};
+  for (const p of parts) for (const [id, q] of Object.entries(p.orderQty)) orderQty[id] = (orderQty[id] || 0) + q;
+  /** @type {Trade} */
+  const t = {
+    ...parts[0], key, openedAt: parts[0].openedAt, closedAt, entryQty, openQty: sum(p => p.openQty),
+    avgEntry: round8(sum(p => p.avgEntry * p.entryQty) / entryQty),
+    avgExit: exitQty > EPS ? round8(sum(p => (p.avgExit || 0) * (p.entryQty - p.openQty)) / exitQty) : null,
+    pnl, grossPnl: round2(sum(p => p.grossPnl)), fees: round2(sum(p => p.fees)), feesMissing: sum(p => p.feesMissing),
+    exits: sum(p => p.exits), fillIds: parts.flatMap(p => p.fillIds), entryOrderIds: [...new Set(parts.flatMap(p => p.entryOrderIds))], orderQty,
+    holdMs: closedAt ? Date.parse(closedAt) - Date.parse(parts[0].openedAt) : null,
+    status: open ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: parts.every(p => p.expired),
+    deleted: !!reviews[key]?.deleted,
+  };
+  return withRisk(t, stops, reviews[key]?.stop ?? null);
+}
+
+/**
+ * The trades you shaped, applied. A trades row claims every trade holding one of its fills (so a merge that took in an
+ * open trade keeps the fills that land later), and rows that share a trade make one trade, named by the oldest row
+ * ('trade:<id>', what your stop and delete on it are kept under). Two or more trades on one symbol become one merged
+ * trade, option contracts one spread (spreadTrade); a row with one trade keeps it on its own, out of any multi-leg
+ * order's spread; trades that can't be one (mergeProblem) stay apart. Legs a multi-leg order opened that no row
+ * claims become that order's spread.
+ * @param {Trade[]} legs @param {SavedTrade[]} saved @param {Record<string, TradeReview>} reviews @param {StopOrder[]} stops
+ * @returns {Trade[]}
+ */
+export function shapeTrades(legs, saved = [], reviews = {}, stops = []) {
+  const rows = saved.map(r => ({ key: `trade:${r.id}`, id: r.id, account: r.account, fillIds: r.fill_ids || [], created: r.created_at || '' }));
+  /** @type {Map<string, number>} */
+  const byFill = new Map();
+  legs.forEach((t, i) => t.fillIds.forEach(id => byFill.set(`${t.account}|${id}`, i)));
+  const parent = legs.map((_, i) => i);
+  const find = (/** @type {number} */ i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+  const touched = rows.map(r => [...new Set(r.fillIds.map(id => byFill.get(`${r.account}|${id}`)).filter(i => i !== undefined))].map(Number));
+  touched.forEach(list => list.slice(1).forEach(i => { parent[find(i)] = find(list[0]); }));
+  /** @type {Map<number, typeof rows>} */
+  const rowsAt = new Map();
+  rows.forEach((r, k) => {
+    if (!touched[k].length) return;
+    const root = find(touched[k][0]);
+    if (!rowsAt.has(root)) rowsAt.set(root, []);
+    /** @type {typeof rows} */ (rowsAt.get(root)).push(r);
+  });
+  /** @type {Map<number, Trade[]>} */
+  const parts = new Map();
+  legs.forEach((t, i) => { const root = find(i); if (!parts.has(root)) parts.set(root, []); /** @type {Trade[]} */ (parts.get(root)).push(t); });
+  /** @type {Trade[]} */
+  const out = [];
+  /** @type {Trade[]} */
+  const free = [];
+  for (const [root, ps] of parts) {
+    const claim = (rowsAt.get(root) || []).sort((a, b) => a.created.localeCompare(b.created));
+    const savedIds = claim.filter(r => r.id).map(r => r.id);
+    if (!claim.length) { free.push(...ps); continue; }
+    if (ps.length === 1) { out.push({ ...ps[0], kind: 'single', savedIds, parts: [] }); continue; }
+    if (mergeProblem(ps)) { out.push(...ps.map(p => ({ ...p, kind: /** @type {'single'} */ ('single'), savedIds: [], parts: [] }))); continue; }
+    ps.sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0));
+    const key = claim[0].key;
+    const oneSymbol = new Set(ps.map(p => p.symbol)).size === 1;
+    const t = oneSymbol ? mergedTrade(ps, key, reviews, stops) : spreadTrade(key, 'yours', ps, reviews);
+    out.push({ ...t, kind: oneSymbol ? 'merged' : 'spread', id: claim[0].id, savedIds, parts: ps.map(p => p.key) });
+  }
+  const spreads = orderSpreads(free);
+  const inSpread = new Set(spreads.flat().map(t => t.key));
+  for (const ls of spreads) {
+    const first = ls.reduce((a, b) => (a.openedAt <= b.openedAt ? a : b));
+    const t = spreadTrade(`${first.account}|${rootOf(first)}|spread|${first.openedAt}`, 'auto', ls, reviews);
+    out.push({ ...t, kind: 'spread', id: '', savedIds: [], parts: ls.map(l => l.key) });
+  }
+  for (const t of free) if (!inSpread.has(t.key)) out.push({ ...t, kind: 'single', id: '', savedIds: [], parts: [] });
+  return out;
+}
+
+// ---------- the side: the bet on the stock ----------
+
+/** a stock or one option's bet: a call bought is long, a put bought short. @param {Trade} t @returns {'long' | 'short'} */
+function legBias(t) {
+  const put = t.assetType === 'OPTION' && parseSchwabOption(t.symbol)?.type === 'P';
+  return put ? (t.direction === 'long' ? 'short' : 'long') : t.direction;
+}
+
+/**
+ * A spread's bet and what it is. One type, bought and sold: by strikes, puts and calls alike: bought below what's sold
+ * (size-weighted, so puts sold again and again count together) is long, above is short, the same strike over two
+ * expirations is a time spread (neutral). On a vertical that's the debit / credit rule: call debit and put credit long,
+ * put debit and call credit short; a put diagonal selling shorter-dated puts above a longer-dated one is long, and so is
+ * a poor man's covered call. Otherwise (mixed types, or every leg bought) the legs' own bets add up: an iron condor is neutral.
+ * @param {Trade} t a spread
+ * @returns {{ bias: 'long' | 'short' | 'neutral', structure: string }}
+ */
+function spreadBias(t) {
+  const legs = t.legs || [];
+  const opts = legs.map(l => parseSchwabOption(l.symbol));
+  const avgStrike = (/** @type {Trade[]} */ ls) => { const q = ls.reduce((n, l) => n + l.entryQty, 0); return q ? ls.reduce((n, l) => n + (parseSchwabOption(l.symbol)?.strike || 0) * l.entryQty, 0) / q : null; };
+  const bought = avgStrike(legs.filter(l => l.direction === 'long')), sold = avgStrike(legs.filter(l => l.direction === 'short'));
+  const types = new Set(opts.map(o => o?.type)), exps = new Set(opts.map(o => o?.exp));
+  if (types.size === 1 && bought !== null && sold !== null) {
+    const type = opts[0]?.type === 'C' ? 'call' : 'put';
+    const bias = Math.abs(bought - sold) < EPS ? 'neutral' : bought < sold ? 'long' : 'short';
+    const structure = exps.size === 1 ? `${type} ${t.spreadKind}` : new Set(opts.map(o => o?.strike)).size === 1 ? 'time spread' : `${type} diagonal`;
+    return { bias, structure };
+  }
+  const lean = legs.reduce((n, l) => n + (legBias(l) === 'long' ? 1 : -1) * l.entryQty, 0);
+  return { bias: lean > EPS ? 'long' : lean < -EPS ? 'short' : 'neutral', structure: '' };
+}
+
+/** @param {Trade} t @returns {Trade} */
+const withBias = t => t.legs ? { ...t, ...spreadBias(t) } : { ...t, bias: legBias(t), structure: '' };
 
 /** '245/255C' for a vertical, '230P/260C' for a strangle, by strike; '' when the legs don't share an expiry. @param {Trade[]} legs */
 function spreadName(legs) {
@@ -467,33 +611,11 @@ export function spreadTrade(key, group, legs, reviews = {}) {
     orderQty, holdMs: closedAt ? Date.parse(closedAt) - Date.parse(openedAt) : null, status, expired: legs.every(l => l.expired),
     stop: null, stopOrderId: '', risk: risk ? Math.round(risk * 100) / 100 : null, rBasis,
     r: risk && !open ? Math.round((pnl / risk) * 100) / 100 : null,
-    stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: !!reviews[key]?.hidden,
+    stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: !!reviews[key]?.deleted,
     fees: Math.round(legs.reduce((n, l) => n + l.fees, 0) * 100) / 100, feesMissing: legs.reduce((n, l) => n + l.feesMissing, 0),
     grossPnl: Math.round(legs.reduce((n, l) => n + l.grossPnl, 0) * 100) / 100, afterFees: legs[0].afterFees,
     legs, group, spreadKind: kind,
   };
-}
-
-/** the trades with each spread's legs folded into one spread trade (a lone leg left in a spread stays itself). @param {Trade[]} trades @param {Record<string, TradeReview>} [reviews] */
-export function combineSpreads(trades, reviews = {}) {
-  const groups = spreadGroups(trades, reviews);
-  /** @type {Map<string, { group: 'auto' | 'yours', legs: Trade[] }>} */
-  const spreads = new Map();
-  for (const t of trades) {
-    const g = groups.get(t.key);
-    if (!g) continue;
-    if (!spreads.has(g.key)) spreads.set(g.key, { group: g.group, legs: [] });
-    /** @type {{ legs: Trade[] }} */ (spreads.get(g.key)).legs.push(t);
-  }
-  const folded = new Set();
-  /** @type {Trade[]} */
-  const out = [];
-  for (const [key, sp] of spreads) {
-    if (sp.legs.length < 2) continue;
-    sp.legs.forEach(l => folded.add(l.key));
-    out.push(spreadTrade(key, sp.group, sp.legs, reviews));
-  }
-  return [...trades.filter(t => !folded.has(t.key)), ...out];
 }
 
 /**

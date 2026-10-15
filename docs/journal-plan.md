@@ -57,7 +57,8 @@ Turn the calculator into a trade journal that imports trades on its own and make
 | | **Stop order:** order id, symbol, stop price, placed time, status, what replaced it | Feeds the "moved stop" flag and finding the first stop for R |
 | | **Plan:** symbol, direction, entry, stop, risk $, account size, quantity, setup if tagged, order id if placed from the app | Written when you size or place a trade |
 | | **5-minute bars:** one set per symbol per day held | Saved at import, one row per symbol per day with the day's bars packed in. Tradier keeps them only about 40 days |
-| **Your input** | **Review**, keyed by account, symbol, direction, and open time: plan grade, rule checks, flags kept or dismissed, note, the stop if the card asked for one | Swings get an entry review and a close review. Also saves the trade's fill ids, so it can re-attach if a late fill changes the open time |
+| **Your input** | **Trade**, only for trades you shaped (merged, a spread's legs): a permanent id and the fills it claims | Numbers are still computed from those fills. Trades nobody touched have no row |
+| | **Review**, keyed by the trade's id (a saved trade) or its key (account, symbol, direction, and open time): plan grade, rule checks, flags kept or dismissed, note, the stop if the card asked for one | Swings get an entry review and a close review. Also saves the trade's fill ids, so it can re-attach if a late fill changes the open time |
 | | **Day:** market label, daily note | |
 | | **Labels:** sector, daily setups, entry tactic, tags, market override | Their own table, one row per label on a trade. Records who set it (you or the app) and how confident a guess was |
 | | **Library:** levels, actions, patterns, entry tactics, tags, mistakes, emotions | Shared defaults, read-only and the same for everyone, plus each user's own items. A user can hide defaults they don't use. Labels store ids, not names, so renames and merges never rewrite old trades |
@@ -82,6 +83,7 @@ Rough size: about 5 to 7 MB a year of active trading, most of it 5-minute bars, 
 | `plans` | Sizing | Symbol, direction, entry, stop, risk $, account size, quantity, order id, and a snapshot of the card it came from |
 | `bars_5m` | Symbol per day | One day's 5-minute bars packed together. Per user, assumed, because sharing bars fetched with one person's Tradier key likely runs into data-redistribution rules |
 | `days` | Trading day | Market label, daily note |
+| `trades` (built) | Trade you shaped | Account (last 4), the fill ids it claims. Merging writes one, Separate deletes it |
 | `reviews` | Trade, per stage | Plan grade, rule checks, flags kept or dismissed, note, stop if asked, the trade's fill ids |
 | `trade_labels` | Label on a trade | Dimension (sector, daily setup, entry tactic, tag, market override), the library item, who set it, guess confidence |
 | `library_items` | Item | Kind (level, action, pattern, entry tactic, tag, mistake, emotion), name, settings like the pivot's minimum reds, what it merged into. No owner means a shared default |
@@ -90,7 +92,7 @@ Rough size: about 5 to 7 MB a year of active trading, most of it 5-minute bars, 
 | `settings` | User per key | Account size, risk %, presets, stop strategy, last ticker, Tradier environment. One row per key, so edits to different settings on two devices don't overwrite each other. The Tradier key is kept in Vault, not here |
 | `saved_positions` | Position | Temporary. Today's saved cards, until open trades come from imported fills. A delete sets `deleted_at` |
 
-**Trades aren't a table.** Reviews and labels point to a trade key (account, symbol, direction, open time), and the trade is rebuilt from fills.
+**Trades are identities, not numbers.** A trade you shaped (merged trades, a spread's legs) is a `trades` row: a permanent id and the fills it claims. Every number is still rebuilt from fills, so a calculation fix reaches every trade. Trades nobody touched have no row and are keyed by account, symbol, direction, open time. Reviews and labels point to the row's key (`trade:<id>`) when there is one, otherwise the trade key. `trade_reviews` already works this way for your stop and deletes. Neither open-source journal merges trades: LuxAlgo caches computed trades in a table whose annotation columns survive rebuilds by key, Trading-Journal-AI stores trades with their executions inside.
 
 ### Hosting
 
