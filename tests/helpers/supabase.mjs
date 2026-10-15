@@ -8,12 +8,16 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
   const keys = {
     schwab_records: r => `${u(r)}:${r.kind}:${r.record_id}`, trade_reviews: r => `${u(r)}:${r.trade_key}`, bars_5m: r => `${u(r)}:${r.symbol}:${r.day}`,
     trade_labels: r => `${u(r)}:${r.trade_key}:${r.kind}:${r.value}`, journal_days: r => `${u(r)}:${r.day}`, library_items: r => `${u(r)}:${r.id}`,
+    trade_shots: r => `${u(r)}:${r.id}`,
   };
   const table = new Map(seed.map(r => [keys.schwab_records(r), { user_id: 'user-1', ...r }]));
   const reviews = new Map(reviewSeed.map(r => [keys.trade_reviews(r), { user_id: 'user-1', ...r }]));
   const trades = new Map(tradeSeed.map(r => [r.id, { ...r }]));
   const bars = new Map();
-  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map() }; // settings: an account with none, for a session resumed on boot
+  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map(), trade_shots: new Map() };
+  // Storage: files by bucket and path; signed links are fake https URLs
+  const files = new Map();
+  const storageOps = []; // settings: an account with none, for a session resumed on boot
   const tradeOps = [];
   const broken = new Set();
   const writes = [];
@@ -36,7 +40,26 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
     return q;
   };
   return {
-    table, reviews, trades, bars, tables, writes, reads, tradeOps,
+    table, reviews, trades, bars, tables, writes, reads, tradeOps, files, storageOps,
+    storage: {
+      from: bucket => ({
+        upload: async (path, blob, opts = {}) => {
+          if (failure || broken.has('storage')) return { data: null, error: { message: failure ? failure.message : 'Bucket not found' } };
+          storageOps.push({ op: 'upload', bucket, path, contentType: opts.contentType, upsert: opts.upsert, size: blob?.size });
+          files.set(`${bucket}/${path}`, blob);
+          return { data: { path }, error: null };
+        },
+        createSignedUrls: async (paths, seconds) => {
+          storageOps.push({ op: 'sign', bucket, paths, seconds });
+          return { data: paths.map(p => ({ path: p, signedUrl: files.has(`${bucket}/${p}`) ? `https://fake.storage.test/${bucket}/${p}?token=t&expires=${seconds}` : null, error: files.has(`${bucket}/${p}`) ? null : 'not found' })), error: null };
+        },
+        remove: async paths => {
+          storageOps.push({ op: 'remove', bucket, paths });
+          for (const p of paths) files.delete(`${bucket}/${p}`);
+          return { data: [], error: null };
+        },
+      }),
+    },
     rows: () => [...table.values()],
     reviewRows: () => [...reviews.values()],
     fail(f = { status: 500, message: 'nope' }) { failure = f; },
@@ -45,10 +68,14 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
       insert: async rows => {
         const res = answer(null, name);
         if (res.error) return res;
+        if (name !== 'trades') { for (const r of rows) { writes.push({ table: name, op: 'insert', ...r }); tables[name].set(keys[name](r), { user_id: 'user-1', created_at: new Date().toISOString(), ...r }); } return res; }
         for (const r of rows) { tradeOps.push({ op: 'insert', ...r }); trades.set(r.id, { created_at: new Date().toISOString(), ...r }); }
         return res;
       },
-      update: patch => tradeChain(name, rows => { for (const r of rows) { tradeOps.push({ op: 'update', id: r.id, ...patch }); Object.assign(trades.get(r.id), patch); } }),
+      update: patch => tradeChain(name, rows => {
+        if (name !== 'trades') { for (const r of rows) { writes.push({ table: name, op: 'update', id: r.id, ...patch }); Object.assign(r, patch); } return; }
+        for (const r of rows) { tradeOps.push({ op: 'update', id: r.id, ...patch }); Object.assign(trades.get(r.id), patch); }
+      }),
       delete: () => tradeChain(name, rows => {
         if (name !== 'trades') { const t = tables[name]; for (const [k, v] of [...t]) if (rows.includes(v)) { t.delete(k); writes.push({ table: name, op: 'delete', ...v }); } return; }
         for (const r of rows) { tradeOps.push({ op: 'delete', id: r.id }); trades.delete(r.id); }
