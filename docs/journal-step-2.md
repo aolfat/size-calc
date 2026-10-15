@@ -146,9 +146,12 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - **Holidays:** kept empty, so they're never asked for again.
   - **Where it shows:** the Import sheet says how far it's saved.
 
-- **Charts:** daily and 5-minute, with entries, exits and stops drawn on them. This reuses `ui/candles.js` and the position chart's drawing.
-- **Detail:** the fills table, the stop orders over time, P&L, R, hold time.
-- **Excursions, computed from the saved 5-minute bars over the hold.** Trading-Journal-AI defines these well but only fills them with demo data:
+- **The page (built):** tapping a trade opens it full width. Edit opens the trade sheet (your stop, separate, delete), and ← Trades goes back.
+- **Charts (built):** daily and 5-minute, with your fills marked on the bars they happened in, and entry, exit and stop drawn. This reuses `ui/candles.js` and the position chart's drawing.
+  - **5-minute:** from the saved bars, the stock's or an option contract's own. A spread shows its underlying. Regular hours, unless a fill was outside them.
+  - **Daily:** from Tradier, framed from 40 sessions before the open to 10 after the close.
+- **Detail (built):** the fills table, the stop orders over time, P&L, R, hold time.
+- **Excursions (built), computed from the saved 5-minute bars over the hold,** on the whole entry against the average entry. Spreads come later, since the legs' bars don't add up into a spread's high and low. Trading-Journal-AI defines these well but only fills them with demo data:
   - **MFE:** the best unrealized gain reached.
   - **MAE:** the worst unrealized loss reached.
   - **Exit efficiency:** realized gain ÷ MFE, the share of the move you captured. It's averaged over **winners only**, since a loser has no gain to capture.

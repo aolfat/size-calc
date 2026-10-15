@@ -57,6 +57,7 @@ export function createState() {
     journalLoading: false,
     journalError: '',
     barsBusy: false, // the journal is saving 5-minute bars
+    journalTrade: null, // the trade page open in the Journal: { key, five, daily, view5, viewD, loading/status per chart, hover }
     journalTab: 'trades', // trades | fills
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed

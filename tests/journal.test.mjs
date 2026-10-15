@@ -268,9 +268,11 @@ test('a row opens its trade; Delete in the sheet takes it out at once with Undo,
   const name = /<\/label><div class="journal-sym-main"><button class="journal-name"[^>]*><b>AAPL<\/b>/;
   assert.doesNotMatch(out(), /journal-row-acts|>Edit<|>Delete</, 'no links on the rows');
   run(`openTradeRow('${STOCK}', { target: { closest: s => s === '.journal-pick' ? {} : null } })`);
-  assert.equal(state.openSheetName, null, 'ticking the box doesn\'t open it');
+  assert.equal(state.journalTrade, null, 'ticking the box doesn\'t open it');
   run(`openTradeRow('${STOCK}', { target: { closest: () => null } })`);
-  assert.equal(state.openSheetName, 'tradeReview', 'anywhere else on the row does');
+  assert.equal(state.journalTrade?.key, STOCK, 'anywhere else on the row opens its trade page');
+  run('editJournalTrade()');
+  assert.equal(state.openSheetName, 'tradeReview', 'and Edit there opens the trade sheet');
   assert.equal(elements.get('tradeReviewTitle').textContent, 'AAPL');
   assert.match(sheet(), /data-action="deleteTrade"[^>]*>Delete this trade/);
   assert.match(sheet(), /Imports won(?:'|&#39;)t bring it back/);

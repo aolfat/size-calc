@@ -64,3 +64,16 @@ export async function saveTradeBars(trades, now = Date.now()) {
   }
   return { saved, symbols, through, failed, needed };
 }
+
+/** the kept bars_5m rows for one symbol on these days: [{ day, bars }] */
+export async function loadTradeBars(symbol, days) {
+  if (!state.session || !days.length) return [];
+  const client = await supabaseClient();
+  const res = await client.from('bars_5m').select('day,bars').eq('symbol', symbol).in('day', days).limit(400);
+  if (res?.error) {
+    const err = new Error(/schema cache|does not exist/i.test(res.error.message || '') ? "the database doesn't have the bars_5m table yet" : res.error.message || 'Supabase refused the read.');
+    err.status = res.status || 0;
+    throw err;
+  }
+  return res.data || [];
+}
