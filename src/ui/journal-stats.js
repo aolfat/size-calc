@@ -1,11 +1,13 @@
 // Journal Calendar and Stats tabs (journal step 2, slice 4; core/journal-stats.js does the numbers): the calendar is a
-// month of realized P&L by day (each exit on its own day, trims included) with weekly totals, a day tapped shows the
-// trades with an exit then, This month comes back to today's; the stats are the headline numbers, the equity
-// curve with its drawdown, monthly results, streaks and the breakdowns, each group with the same stats, thin under 10.
-// The Journal's side, symbol and fee choices apply here too.
+// month of realized P&L by day (each exit on its own day, trims included; each day with its win rate and profit factor)
+// under the month's own numbers, with weekly totals; a day tapped shows the trades with an exit then, a week's total its
+// stats, This month comes back to today's. The stats cover all time or one day, week or month of closed trades (‹ › step
+// through the ones with trades): the headline numbers, the equity curve with its drawdown, results by month (or by day),
+// streaks and the breakdowns, each group with the same stats, thin under 10. The Journal's side, symbol and fee choices
+// apply here too.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, monthlyResults, nyParts, streaks, THIN } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN } from '../core/journal-stats.js';
 import { SANS_FONT } from '../lib/media.js';
 import { state } from '../state.js';
 
@@ -30,24 +32,50 @@ function shownMonth(daily) {
   return state.journalMonth || activeMonths(daily)[0] || thisMonth();
 }
 
+const pct = v => `${Math.round(v)}%`;
+const statCell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
+
+function dayCell(d) {
+  if (!d) return '<td class="jc-out"></td>';
+  if (!d.trades) return `<td><div class="jc-day jc-quiet"><span class="jc-num">${+d.day.slice(8)}</span></div></td>`;
+  const pf = d.profitFactor === null ? '' : d.profitFactor.toFixed(2);
+  const label = `${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${pf}` : ''}`;
+  return `<td><button class="jc-day ${pnlClass(d.pnl)}" data-action="pickJournalDay" data-arg="${d.day}" aria-label="${esc(label)}"><span class="jc-num">${+d.day.slice(8)}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span><span class="jc-rate">${pct(d.winRate)}<span class="jc-wide"> won${pf ? ` · PF ${pf}` : ''}</span></span></button></td>`;
+}
+
+function weekCell(w) {
+  if (!w.trades) return '<td class="jc-week"></td>';
+  const label = `Week of ${periodName('day', w.start)}: ${signed$(w.pnl)} over ${w.trades} trade${w.trades === 1 ? '' : 's'}, ${w.winRate}% won. Open its stats`;
+  return `<td class="jc-week"><button class="jc-weekbtn" data-action="openJournalStats" data-arg="week" data-arg2="${w.start}" aria-label="${esc(label)}" title="The week's stats"><span class="${pnlClass(w.pnl)}">${compact$(w.pnl)}</span><span class="jc-n">${w.trades} trade${w.trades === 1 ? '' : 's'} · ${pct(w.winRate)}</span></button></td>`;
+}
+
+/** the month's own numbers over the grid, realized like the days: P&L, win rate, profit factor, green days */
+function monthStats(cal) {
+  if (!cal.trades) return '<p class="hint">No exits this month.</p>';
+  return `<dl class="js-stats jc-stats">
+    ${statCell('Net P&amp;L', signed$(cal.pnl), `${cal.trades} trade${cal.trades === 1 ? '' : 's'}`, pnlClass(cal.pnl))}
+    ${statCell('Win rate', `${cal.winRate}%`, `${cal.wins} won, ${cal.losses} lost`)}
+    ${statCell('Profit factor', cal.profitFactor === null ? '—' : cal.profitFactor.toFixed(2), cal.profitFactor === null ? 'no losses' : 'gross wins ÷ gross losses')}
+    ${statCell('Green days', `${cal.green} of ${cal.days}`, `${cal.red} red`)}
+  </dl>`;
+}
+
 export function calendarView(trades) {
   const daily = dailyPnl(trades);
   const month = shownMonth(daily);
   state.journalMonthShown = month; // ‹ and › step from here
   const cal = calendarMonth(daily, month);
-  const cells = cal.weeks.map(w => `<tr>${w.days.map(d => !d ? '<td class="jc-out"></td>'
-    : d.trades ? `<td><button class="jc-day ${pnlClass(d.pnl)}" data-action="pickJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}`)}"><span class="jc-num">${+d.day.slice(8)}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span></button></td>`
-    : `<td><div class="jc-day jc-quiet"><span class="jc-num">${+d.day.slice(8)}</span></div></td>`).join('')}
-    <td class="jc-week"><span class="${pnlClass(w.pnl)}">${w.trades ? compact$(w.pnl) : ''}</span>${w.trades ? `<span class="jc-n">${w.trades}</span>` : ''}</td></tr>`).join('');
+  const cells = cal.weeks.map(w => `<tr>${w.days.map(dayCell).join('')}${weekCell(w)}</tr>`).join('');
   return `<div class="jc-head">
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
       <span class="jc-title">${esc(monthName(month))}</span>
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
       <button class="btn jc-today" data-action="journalThisMonth"${month === thisMonth() ? ' disabled' : ''}>This month</button>
-      <span class="positions-meta">${cal.trades ? `<span class="${pnlClass(cal.pnl)}">${signed$(cal.pnl)}</span> · ${cal.trades} trade${cal.trades === 1 ? '' : 's'} · ${cal.green} green day${cal.green === 1 ? '' : 's'}, ${cal.red} red` : 'No exits this month'}</span>
+      ${cal.trades ? `<button class="pos-link" data-action="openJournalStats" data-arg="month" data-arg2="${month}">All of the month's stats</button>` : ''}
     </div>
+    ${monthStats(cal)}
     <table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cells}</tbody></table>
-    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. Tap a day for its trades.</p>`;
+    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its trades, a week's total for its stats.</p>`;
 }
 
 /** ‹ or ›: the month before or after the one shown */
@@ -58,19 +86,56 @@ export function nextJournalMonth(by) {
 
 // ---------- Stats ----------
 
-function headline(list, all) {
-  const s = groupStats(list), eq = equityCurve(all), st = streaks(all);
-  const cell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
+const shortDay = d => new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const plusDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+/** 'October 2026', 'Oct 5–9, 2026' (Monday to Friday), 'Tue, Oct 6, 2026' */
+export function periodName(unit, key) {
+  if (unit === 'month') return monthName(key);
+  if (unit === 'week') {
+    const fri = plusDays(key, 4), y = fri.slice(0, 4);
+    return key.slice(0, 7) === fri.slice(0, 7) ? `${shortDay(key)}–${+fri.slice(8)}, ${y}`
+      : key.slice(0, 4) === y ? `${shortDay(key)} – ${shortDay(fri)}, ${y}` : `${shortDay(key)}, ${key.slice(0, 4)} – ${shortDay(fri)}, ${y}`;
+  }
+  return new Date(`${key}T00:00:00Z`).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+const validKey = (unit, key) => unit === 'month' ? /^\d{4}-\d{2}$/.test(key) : /^\d{4}-\d{2}-\d{2}$/.test(key);
+
+/** the period the stats show (state.journalPeriod: all | day | week | month) and its closed trades */
+export function statsScope(trades) {
+  const unit = PERIODS.includes(state.journalPeriod) ? state.journalPeriod : 'all';
+  if (unit === 'all') return { unit, key: '', active: [], list: countedTrades(trades) };
+  const active = activePeriods(trades, unit);
+  const picked = state.journalPeriodKey;
+  const key = validKey(unit, picked) ? periodKey(picked, unit) : active[0] || periodKey(nyParts(new Date().toISOString()).day, unit);
+  state.journalPeriodShown = key; // ‹ and › step from here
+  return { unit, key, active, list: inPeriod(trades, unit, key) };
+}
+
+function periodBar({ unit, key, active }) {
+  const on = v => `class="${unit === v ? 'active' : ''}" aria-pressed="${unit === v}"`;
+  const p = (v, label) => `<button ${on(v)} data-action="setJournalPeriod" data-arg="${v}">${label}</button>`;
+  const off = by => stepPeriod(active, key, by) ? '' : ' disabled';
+  return `<div class="jc-head js-period">
+    <div class="seg" aria-label="Period">${p('all', 'All time')}${p('month', 'Month')}${p('week', 'Week')}${p('day', 'Day')}</div>
+    ${unit === 'all' ? '' : `<span class="js-period-nav"><button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="-1" aria-label="Earlier ${unit} with trades"${off(-1)}>‹</button>
+      <span class="jc-title">${esc(periodName(unit, key))}</span>
+      <button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="1" aria-label="Later ${unit} with trades"${off(1)}>›</button></span>
+      ${unit === 'day' ? `<button class="pos-link" data-action="pickJournalDay" data-arg="${key}">The day's trades</button>` : ''}`}
+  </div>`;
+}
+
+function headline(list) {
+  const s = groupStats(list), eq = equityCurve(list), st = streaks(list);
   const dash = '—';
   return `<dl class="js-stats">
-    ${cell('Net P&amp;L', signed$(s.net), `${s.trades} closed trade${s.trades === 1 ? '' : 's'}`, pnlClass(s.net))}
-    ${cell('Win rate', s.winRate === null ? dash : `${s.winRate}%`, `${s.wins} won, ${s.losses} lost`)}
-    ${cell('Profit factor', s.profitFactor === null ? dash : s.profitFactor.toFixed(2), 'gross wins ÷ gross losses')}
-    ${cell('Expectancy', s.expectancy === null ? dash : signed$(s.expectancy), 'per trade', s.expectancy === null ? '' : pnlClass(s.expectancy))}
-    ${cell('Average win', s.avgWin === null ? dash : signed$(s.avgWin), s.avgLoss === null ? '' : `average loss ${signed$(s.avgLoss)}`, 'journal-buy')}
-    ${cell('Average R', s.avgR === null ? dash : signedR(s.avgR), s.bigLosses ? `${s.bigLosses} worse than −1.5R` : 'trades with a stop')}
-    ${cell('Max drawdown', eq.maxDrawdown ? signed$(eq.maxDrawdown) : '$0.00', 'from a running peak', eq.maxDrawdown < 0 ? 'journal-sell' : '')}
-    ${cell('Streaks', `${st.longestWin}W · ${st.longestLoss}L`, st.current ? `now ${st.current.count} ${st.current.kind === 'win' ? 'win' : 'loss'}${st.current.count === 1 ? '' : st.current.kind === 'win' ? 's' : 'es'}` : 'longest runs')}
+    ${statCell('Net P&amp;L', signed$(s.net), `${s.trades} closed trade${s.trades === 1 ? '' : 's'}`, pnlClass(s.net))}
+    ${statCell('Win rate', s.winRate === null ? dash : `${s.winRate}%`, `${s.wins} won, ${s.losses} lost`)}
+    ${statCell('Profit factor', s.profitFactor === null ? dash : s.profitFactor.toFixed(2), 'gross wins ÷ gross losses')}
+    ${statCell('Expectancy', s.expectancy === null ? dash : signed$(s.expectancy), 'per trade', s.expectancy === null ? '' : pnlClass(s.expectancy))}
+    ${statCell('Average win', s.avgWin === null ? dash : signed$(s.avgWin), s.avgLoss === null ? '' : `average loss ${signed$(s.avgLoss)}`, 'journal-buy')}
+    ${statCell('Average R', s.avgR === null ? dash : signedR(s.avgR), s.bigLosses ? `${s.bigLosses} worse than −1.5R` : 'trades with a stop')}
+    ${statCell('Max drawdown', eq.maxDrawdown ? signed$(eq.maxDrawdown) : '$0.00', 'from a running peak', eq.maxDrawdown < 0 ? 'journal-sell' : '')}
+    ${statCell('Streaks', `${st.longestWin}W · ${st.longestLoss}L`, st.current ? `now ${st.current.count} ${st.current.kind === 'win' ? 'win' : 'loss'}${st.current.count === 1 ? '' : st.current.kind === 'win' ? 's' : 'es'}` : 'longest runs')}
   </dl>`;
 }
 
@@ -81,10 +146,10 @@ function statRow(group, s, extra = '') {
     <td>${v(s.winRate, x => `${x}%`)}</td><td>${v(s.avgWin, signed$)}</td><td>${v(s.avgLoss, signed$)}</td><td>${v(s.profitFactor, x => x.toFixed(2))}</td><td>${s.bigLosses || ''}</td></tr>`;
 }
 
-function statTable(title, rows, note = '') {
+function statTable(title, rows, note = '', first = 'Group') {
   if (!rows.length) return '';
   return `<div class="section-title js-sub">${title}</div>${note ? `<p class="hint">${note}</p>` : ''}
-    <div class="positions-wrap"><table class="positions-table journal-table js-table"><thead><tr><th scope="col">${title === 'By month' ? 'Month' : 'Group'}</th><th scope="col">Trades</th><th scope="col">Net</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">Win %</th><th scope="col">Avg win</th><th scope="col">Avg loss</th><th scope="col">PF</th><th scope="col" title="Losses worse than −1.5R">Big losses</th></tr></thead>
+    <div class="positions-wrap"><table class="positions-table journal-table js-table"><thead><tr><th scope="col">${first}</th><th scope="col">Trades</th><th scope="col">Net</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">Win %</th><th scope="col">Avg win</th><th scope="col">Avg loss</th><th scope="col">PF</th><th scope="col" title="Losses worse than −1.5R">Big losses</th></tr></thead>
     <tbody>${rows.map(r => statRow(r.group, r.stats)).join('')}</tbody></table></div>`;
 }
 
@@ -95,27 +160,35 @@ function rBars(dist, withR) {
     <div class="js-rbars">${dist.map(d => `<div class="js-rbar"><span class="js-rlabel">${esc(d.group)}</span><span class="js-rtrack"><span class="js-rfill ${d.group.startsWith('−') || d.group.startsWith('Under') ? 'neg' : 'pos'}" style="width:${Math.round((d.count / max) * 100)}%"></span></span><span class="js-rcount">${d.count || ''}</span></div>`).join('')}</div>`;
 }
 
+/** all time: by month; a month or a week: by day; a day needs neither */
+function overTime(unit, list) {
+  if (unit === 'all') return statTable('By month', monthlyResults(list).map(m => ({ group: monthName(m.month), stats: m })), '', 'Month');
+  if (unit === 'day') return '';
+  const dayLabel = d => `${new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { weekday: 'short', timeZone: 'UTC' })} ${+d.slice(5, 7)}/${+d.slice(8)}`;
+  return statTable('By day', periodResults(list, 'day').map(({ key, ...s }) => ({ group: dayLabel(key), stats: s })), 'The day each trade closed.', 'Day');
+}
+
 export function statsView(trades) {
-  const list = countedTrades(trades);
-  if (!list.length) return '<p class="hint">No closed trades match yet.</p>';
-  const b = breakdowns(trades);
-  const months = monthlyResults(trades).map(m => ({ group: monthName(m.month), stats: m }));
+  if (!countedTrades(trades).length) return '<p class="hint">No closed trades match yet.</p>';
+  const scope = statsScope(trades), { unit, list } = scope;
+  if (!list.length) return `${periodBar(scope)}<p class="hint">No closed trades this ${unit}.</p>`;
+  const b = breakdowns(list);
   const hold = b.holdWinners !== null || b.holdLosers !== null
     ? `Winners held ${b.holdWinners === null ? '—' : holdWords(b.holdWinners)} on average, losers ${b.holdLosers === null ? '—' : holdWords(b.holdLosers)}.` : '';
-  return `${headline(list, trades)}
+  return `${periodBar(scope)}${headline(list)}
     <div class="section-title js-sub">Equity</div>
     <div class="js-equity chart-wrap"><canvas id="journalEquity" height="180"></canvas></div>
     <p class="hint">P&amp;L added up trade by trade as they closed; the red is the drawdown from the running peak.</p>
-    ${statTable('By month', months)}
+    ${overTime(unit, list)}
     ${statTable('By symbol', b.bySymbol, b.concentration ? `<span style="color:var(--amber)">${esc(b.concentration.group)} made ${b.concentration.share}% of your gross gains: one name is carrying the results.</span>` : 'Options and spreads count under their underlying.')}
     ${statTable('By side', b.bySide)}
     ${statTable('By instrument', b.byInstrument)}
     ${statTable('By time of day', b.byTimeOfDay, 'When the trade opened, New York time.')}
-    ${statTable('By weekday', b.byWeekday, 'The day it opened.')}
+    ${unit === 'day' ? '' : statTable('By weekday', b.byWeekday, 'The day it opened.')}
     ${statTable('By hold time', b.byHold, hold)}
     ${statTable('Scaled out or all at once', b.byExits, 'Scaled out: more than one exit.')}
     ${rBars(b.rDistribution, b.withR)}
-    <p class="hint">Closed trades only; open ones, deleted ones and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
+    <p class="hint">Closed trades only, by the day they closed (New York time); open ones, deleted ones and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
 }
 
 /** the equity curve: running total (blue), its peak (dashed), the drawdown between them in red */
@@ -124,7 +197,8 @@ export function drawJournalEquity(trades) {
   if (!canvas || !canvas.getContext) return;
   const w = canvas.clientWidth;
   if (!w) return;
-  const curve = equityCurve(trades).points;
+  const { unit, list } = statsScope(trades);
+  const curve = equityCurve(list).points;
   // drawn from $0 before the first trade, so the first win or loss shows as a move
   const points = curve.length ? [{ at: curve[0].at, total: 0, peak: 0, drawdown: 0 }, ...curve] : [];
   const h = 180, dpr = window.devicePixelRatio || 1;
@@ -160,7 +234,8 @@ export function drawJournalEquity(trades) {
   ctx.beginPath(); points.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.peak)) : ctx.moveTo(x(i), y(p.peak)))); ctx.stroke(); ctx.restore();
   ctx.strokeStyle = col('--blue'); ctx.lineWidth = 1.75;
   ctx.beginPath(); points.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.total)) : ctx.moveTo(x(i), y(p.total)))); ctx.stroke();
-  const md = d => { const [, m, dd] = d.split('T')[0].split('-'); return `${+m}/${+dd}`; };
+  // a day's curve is labelled by time, longer ones by date (New York)
+  const md = at => { const p = nyParts(at); return unit === 'day' ? p.time.replace(/^0/, '') : `${+p.day.slice(5, 7)}/${+p.day.slice(8)}`; };
   ctx.fillStyle = col('--text3');
   ctx.fillText(md(points[0].at), padL, h - 6);
   const lastLabel = md(points[points.length - 1].at);

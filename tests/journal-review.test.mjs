@@ -275,3 +275,21 @@ test('the Journal shows each trade\'s setups, and a setup filter narrows the lis
   run("setJournalSetupFilter(''); setJournalTab('trades')");
   assert.equal(rows('trade_labels').filter(r => r.kind === 'setup').length, 2);
 });
+
+test('a setup filter on the Stats periods: Day and ‹ › only see the trades with that setup', async () => {
+  const leg = (id, instruction, time, price) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), user_id: 'user-1', data: {
+    orderId: id, enteredTime: time, status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction, quantity: 10, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: 10, price, time }] }],
+  } });
+  const { run, t, list } = await page(sb => {
+    for (const r of [leg(601, 'BUY', '2026-10-05T14:00:00+0000', 400), leg(602, 'SELL', '2026-10-05T15:00:00+0000', 401)]) sb.table.set(`user-1:order:${r.record_id}`, r);
+  });
+  await run(`toggleSetup(${t}, 'ema21_bounce')`);
+  run('closeJournalTrade()');
+  run("setJournalTab('stats'); setJournalPeriod('day')");
+  assert.match(list(), /class="jc-title">Mon, Oct 5, 2026</, 'no filter: the newest close, MSFT\'s');
+  run("setJournalPeriod('all'); setJournalSetupFilter('ema21_bounce'); setJournalPeriod('day')");
+  assert.match(list(), /class="jc-title">Fri, Oct 2, 2026</, 'the AAPL trade with the setup, not the MSFT day');
+  assert.match(list(), /aria-label="Earlier day with trades" disabled>[\s\S]*aria-label="Later day with trades" disabled>/, 'nothing else carries the setup');
+});
