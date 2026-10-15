@@ -4,7 +4,8 @@
 // fills, never stored (docs/journal-step-2.md). Schwab's orders carry no fees; they come from its TRADE transactions
 // (feesByOrder), split across trades by quantity, and P&L is before or after them by your choice (withFees). Your own word
 // on a trade (trade_reviews, keyed by the trade key) overrides its stop and can delete it from the journal.
-import { schwabTime } from './positions.js';
+import { expiryCloseMs } from './options.js';
+import { parseSchwabOption, schwabTime } from './positions.js';
 
 const EPS = 1e-9;
 const DAY = 86400000;
@@ -21,12 +22,15 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  * @typedef {{ key: string, account: string, symbol: string, label: string, assetType: string, multiplier: number,
  *   direction: 'long' | 'short', openedAt: string, closedAt: string | null, entryQty: number, openQty: number,
  *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
- *   status: 'open' | 'win' | 'loss' | 'breakeven', stop: number | null, stopOrderId: string, risk: number | null,
+ *   status: 'open' | 'win' | 'loss' | 'breakeven' | 'history', expired: boolean, stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
  *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean,
  *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean }} Trade
  * @typedef {{ stop?: number | null, hidden?: boolean }} TradeReview  hidden is the delete marker (the column's first name)
  */
+
+/** instructions that only ever close: a plain Sell can't open a short at Schwab (that's Sell short), nor Buy to cover a long */
+const CLOSING_ONLY = { SELL: 'long', SELL_TO_CLOSE: 'long', BUY_TO_COVER: 'short', BUY_TO_CLOSE: 'short' };
 
 /**
  * a trade being built: its open lots, first in first out
@@ -37,7 +41,7 @@ function startTrade(fill, account, direction) {
     key: `${account}|${fill.symbol}|${direction}|${fill.time}`,
     account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
-    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), lots: /** @type {{ qty: number, price: number }[]} */ ([]),
+    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, lots: /** @type {{ qty: number, price: number }[]} */ ([]),
   };
 }
 
@@ -54,7 +58,7 @@ function finish(t) {
     avgExit: t.exitQty ? t.exitNotional / t.exitQty : null,
     pnl, exits: t.exits, fillIds: t.fillIds, entryOrderIds: t.entryOrderIds, orderQty: t.orderQty,
     holdMs: closed && t.closedAt ? Date.parse(t.closedAt) - Date.parse(t.openedAt) : null,
-    status: !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
+    status: t.history ? 'history' : !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: !!t.expired,
     stop: null, stopOrderId: '', risk: null, rBasis: null, r: null,
     stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: false,
     fees: 0, feesMissing: 0, grossPnl: pnl, afterFees: false,
@@ -63,11 +67,16 @@ function finish(t) {
 
 /**
  * Fills → trades, per account and symbol (an option's symbol is its contract), in time order. A fill that takes the
- * position through zero closes the trade and opens the next one in the other direction with what's left (a flip).
- * @param {Fill[]} fills
+ * position through zero closes the trade and opens the next one in the other direction with what's left (a flip), unless
+ * its instruction only ever closes (Sell, Buy to cover, Sell to close, Buy to close): then what it closes beyond the
+ * position was opened before the journal's history (Schwab's API gives 60 days of orders), and those closing fills
+ * become a 'history' trade: its exits known, its entry and P&L not, kept out of the stats. With `now`, an option still
+ * open after its expiry's 4pm New York close is closed there at $0 (expired, assumed worthless: an exercise or an
+ * assignment isn't in the orders).
+ * @param {Fill[]} fills @param {{ now?: number }} [opts]
  * @returns {Trade[]}
  */
-export function buildTrades(fills) {
+export function buildTrades(fills, opts = {}) {
   /** @type {Map<string, Fill[]>} */
   const groups = new Map();
   for (const f of fills) {
@@ -82,10 +91,28 @@ export function buildTrades(fills) {
     list.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : a.id < b.id ? -1 : 1));
     /** @type {any} */
     let t = null;
+    /** @type {any} closing fills with nothing open to close: opened before the history */
+    let gap = null;
+    const endGap = () => { if (gap) trades.push(finish(gap)); gap = null; };
+    const toGap = (/** @type {Fill} */ f, /** @type {string} */ account, /** @type {'long' | 'short'} */ direction, /** @type {number} */ qty) => {
+      if (gap && gap.direction !== direction) endGap();
+      if (!gap) { gap = startTrade(f, account, direction); gap.key = `${account}|${f.symbol}|${direction}|before|${f.time}`; gap.history = true; }
+      gap.fillIds.push(f.id);
+      gap.exits++;
+      gap.entryQty += qty;
+      gap.exitQty += qty;
+      gap.exitNotional += qty * f.price;
+      gap.orderQty[f.orderId] = (gap.orderQty[f.orderId] || 0) + qty;
+      gap.closedAt = f.time;
+    };
     for (const f of list) {
       const account = f.account || '';
       let qty = f.qty;
       const buying = f.side === 'buy';
+      const closes = /** @type {'long' | 'short' | undefined} */ (CLOSING_ONLY[/** @type {keyof typeof CLOSING_ONLY} */ (f.instruction)]);
+      // a close with nothing (or the other side) open: the position is older than the history
+      if (closes && (!t || t.direction !== closes)) { toGap(f, account, closes, qty); continue; }
+      if (!closes) endGap();
       if (!t) t = startTrade(f, account, buying ? 'long' : 'short');
       const adds = (t.direction === 'long') === buying;
       t.fillIds.push(f.id);
@@ -115,9 +142,11 @@ export function buildTrades(fills) {
       used(before - qty);
       if (!t.lots.length) {
         t.closedAt = f.time;
+        const direction = t.direction;
         trades.push(finish(t));
         t = null;
-        if (qty > EPS) { // a flip: what's left opens the other way
+        if (qty > EPS && closes) toGap(f, account, direction, qty); // sold more than the history holds
+        else if (qty > EPS) { // a flip: what's left opens the other way
           t = startTrade(f, account, buying ? 'long' : 'short');
           t.fillIds.push(f.id);
           t.lots.push({ qty, price: f.price });
@@ -128,9 +157,27 @@ export function buildTrades(fills) {
         }
       }
     }
+    endGap();
+    if (t && t.assetType === 'OPTION' && opts.now !== undefined) expire(t, opts.now);
     if (t) trades.push(finish(t));
   }
   return trades;
+}
+
+/** an option still open after its expiry's close: closed there at $0. @param {any} t @param {number} now */
+function expire(t, now) {
+  const opt = parseSchwabOption(t.symbol);
+  const close = opt ? expiryCloseMs(opt.exp) : NaN;
+  if (!Number.isFinite(close) || now <= close) return;
+  const sign = t.direction === 'long' ? 1 : -1;
+  for (const lot of t.lots) {
+    t.pnl += (0 - lot.price) * lot.qty * sign * t.multiplier;
+    t.exitQty += lot.qty;
+  }
+  t.lots = [];
+  t.exits++;
+  t.closedAt = new Date(close).toISOString();
+  t.expired = true;
 }
 
 const CLOSES = { long: /^(SELL|SELL_TO_CLOSE)$/, short: /^(BUY|BUY_TO_COVER|BUY_TO_CLOSE)$/ };
@@ -191,6 +238,7 @@ export function ownStopError(trade, price) {
  * @returns {Trade}
  */
 export function withRisk(trade, stops, ownStop = null) {
+  if (trade.status === 'history') return trade; // no entry, so no stop or risk to speak of
   const opened = Date.parse(trade.openedAt);
   const until = trade.closedAt ? Date.parse(trade.closedAt) : Infinity;
   const trail = stops
@@ -259,7 +307,7 @@ export function withFees(trade, fees, orderTotals, afterFees) {
     total += fee * (all > 0 ? qty / all : 1);
   }
   const feesRounded = Math.round(total * 100) / 100;
-  if (!afterFees) return { ...trade, fees: feesRounded, feesMissing: missing, grossPnl: trade.pnl, afterFees: false };
+  if (!afterFees || trade.status === 'history') return { ...trade, fees: feesRounded, feesMissing: missing, grossPnl: trade.pnl, afterFees: false };
   const pnl = Math.round((trade.pnl - total) * 100) / 100;
   const closed = trade.status !== 'open';
   return {
@@ -275,7 +323,7 @@ export function withFees(trade, fees, orderTotals, afterFees) {
  * flagged: their fills still group with the rest (so the trades around them add up), and the view leaves them out.
  * Imports can't bring one back, since the mark is on the trade key, not on Schwab's records.
  * @param {Fill[]} fills @param {{ kind: string, account?: string, data: any }[]} records
- * @param {Record<string, TradeReview>} [reviews] @param {{ afterFees?: boolean }} [opts]
+ * @param {Record<string, TradeReview>} [reviews] @param {{ afterFees?: boolean, now?: number }} [opts]
  */
 export function journalTrades(fills, records, reviews = {}, opts = {}) {
   const stops = stopOrdersFrom(records);
@@ -283,7 +331,7 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
   /** @type {Map<string, number>} */
   const orderTotals = new Map();
   for (const f of fills) orderTotals.set(f.orderId, (orderTotals.get(f.orderId) || 0) + f.qty);
-  return buildTrades(fills).map(t => {
+  return buildTrades(fills, { now: opts.now }).map(t => {
     const rv = reviews[t.key] || {};
     return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.hidden };
   })
@@ -292,12 +340,12 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
 
 /** closed trades in numbers: count, wins, losses, win rate, P&L, average R (over trades that have one), fees. @param {Trade[]} trades */
 export function tradesSummary(trades) {
-  const closed = trades.filter(t => t.status !== 'open');
+  const closed = trades.filter(t => t.status !== 'open' && t.status !== 'history');
   const wins = closed.filter(t => t.status === 'win').length;
   const losses = closed.filter(t => t.status === 'loss').length;
   const rs = closed.map(t => t.r).filter(r => r !== null);
   return {
-    closed: closed.length, open: trades.length - closed.length, wins, losses,
+    closed: closed.length, open: trades.filter(t => t.status === 'open').length, history: trades.filter(t => t.status === 'history').length, wins, losses,
     winRate: closed.length ? Math.round((wins / closed.length) * 1000) / 10 : null,
     pnl: Math.round(closed.reduce((n, t) => n + t.pnl, 0) * 100) / 100,
     avgR: rs.length ? Math.round((rs.reduce((n, r) => n + /** @type {number} */ (r), 0) / rs.length) * 100) / 100 : null,

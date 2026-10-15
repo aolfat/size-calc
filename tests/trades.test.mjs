@@ -24,7 +24,7 @@ test('a scale-in, a partial exit and a flip: first in first out, P&L per share m
     fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 100),
     fill('b', '2026-10-01T14:40:00.000Z', 'buy', 50, 101),
     fill('c', '2026-10-01T15:00:00.000Z', 'sell', 100, 103),
-    fill('d', '2026-10-02T15:00:00.000Z', 'sell', 80, 104), // closes the last 50, then 30 short
+    fill('d', '2026-10-02T15:00:00.000Z', 'sell', 80, 104, { instruction: '' }), // closes the last 50, then 30 short (an instruction that doesn't say it only closes, like a file import's)
   ]);
   assert.equal(list.length, 2);
   const long = list.find(t => t.direction === 'long'), short = list.find(t => t.direction === 'short');
@@ -142,7 +142,7 @@ test('an open trade shows what it has realized so far, but no R until it closes'
 test('summary and hold time in words', async () => {
   const { run } = await app();
   const s = JSON.parse(run(`JSON.stringify(tradesSummary([{ status: 'win', pnl: 300, r: 1.5 }, { status: 'loss', pnl: -100, r: -1 }, { status: 'win', pnl: 50, r: null }, { status: 'open', pnl: 0, r: null }]))`));
-  assert.deepEqual(s, { closed: 3, open: 1, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2, fees: 0, feesMissing: 0 });
+  assert.deepEqual(s, { closed: 3, open: 1, history: 0, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2, fees: 0, feesMissing: 0 });
   assert.equal(run('holdWords(45 * 60000)'), '45m');
   assert.equal(run('holdWords((3 * 60 + 10) * 60000)'), '3h 10m');
   assert.equal(run('holdWords((52) * 3600000)'), '2d 4h');
@@ -201,7 +201,7 @@ test('fees per order: fee items add up, pieces of one order add up, other items 
 test('after fees: P&L, the result and R are net; a flip splits its order\'s fees by quantity; missing ones are counted', async () => {
   const fills = [
     fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 100, { orderId: '1' }),
-    fill('b', '2026-10-01T15:00:00.000Z', 'sell', 150, 100.02, { orderId: '2' }), // closes 100, opens 50 short
+    fill('b', '2026-10-01T15:00:00.000Z', 'sell', 150, 100.02, { orderId: '2', instruction: '' }), // closes 100, opens 50 short
     fill('c', '2026-10-01T15:30:00.000Z', 'buy', 50, 99, { orderId: '3' }),
   ];
   const records = [stopOrder(9, '2026-10-01T14:30:10+0000', 'SELL', 99), tx(1, { COMMISSION: -1 }), tx(2, { COMMISSION: -3 })];
@@ -225,4 +225,46 @@ test('after fees: P&L, the result and R are net; a flip splits its order\'s fees
   assert.equal(s.feesMissing, 1);
   assert.equal(s.wins, 1);
   assert.equal(s.losses, 1);
+});
+
+test('a close with nothing open was opened before the history: its own trade, out of the stats, never a flip', async () => {
+  const list = await trades([
+    fill('s1', '2026-10-01T14:30:00.000Z', 'sell', 60, 50), // sold shares bought before the 60 days
+    fill('s2', '2026-10-01T14:40:00.000Z', 'sell', 40, 51),
+    fill('b', '2026-10-02T14:30:00.000Z', 'buy', 100, 48),
+    fill('x', '2026-10-03T14:30:00.000Z', 'sell', 150, 49), // 100 of this trade, 50 more than the history holds
+    fill('c', '2026-10-04T14:30:00.000Z', 'buy', 20, 30, { instruction: 'BUY_TO_COVER' }), // a short from before
+  ]);
+  const hist = list.filter(t => t.status === 'history');
+  assert.deepEqual(hist.map(t => [t.direction, t.entryQty, Math.round(t.avgExit * 100) / 100]).sort(), [['long', 100, 50.4], ['long', 50, 49], ['short', 20, 30]].sort(),
+    'the two sells from flat are one trade; the extra 50 and the cover are their own');
+  assert.ok(hist.every(t => t.pnl === 0 && t.avgEntry === 0 && t.r === null && t.stop === null), 'entry and P&L unknown');
+  assert.match(hist.find(t => t.entryQty === 100).key, /^6789\|AAPL\|long\|before\|2026-10-01T14:30:00\.000Z$/, 'a stable key, so a delete sticks');
+  const real = list.filter(t => t.status !== 'history');
+  assert.equal(real.length, 1, 'no made-up short');
+  assert.equal(real[0].pnl, 100);
+  const { run } = await app();
+  const s = JSON.parse(run(`JSON.stringify(tradesSummary(${JSON.stringify(list)}))`));
+  assert.deepEqual([s.closed, s.open, s.history, s.pnl], [1, 0, 3, 100], 'history trades never count');
+});
+
+test('an option still open after its expiry closes at $0 at 4pm New York; before then it stays open', async () => {
+  const o = { symbol: 'AAPL  261016C00245000', label: 'AAPL 10/16/26 245C', assetType: 'OPTION' };
+  const longCall = [fill('o', '2026-10-09T14:05:03.000Z', 'buy', 2, 1.5, { ...o, instruction: 'BUY_TO_OPEN' })];
+  const shortPut = [fill('p', '2026-10-09T14:05:03.000Z', 'sell', 1, 0.8, { ...o, symbol: 'AAPL  261016P00230000', label: 'AAPL 10/16/26 230P', instruction: 'SELL_TO_OPEN' })];
+  const { run } = await app();
+  const at = (fills, now) => JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(fills)}, [], {}, { now: ${now} }))`))[0];
+  const close = Date.parse('2026-10-16T20:00:00.000Z'); // 4pm EDT
+  assert.equal(at(longCall, close - 1).status, 'open', 'not before the close');
+  const t = at(longCall, close + 1);
+  assert.equal(t.expired, true);
+  assert.equal(t.status, 'loss');
+  assert.equal(t.pnl, -300, '2 × $1.50 × 100, the whole premium');
+  assert.equal(t.avgExit, 0);
+  assert.equal(t.closedAt, '2026-10-16T20:00:00.000Z');
+  assert.equal(t.r, -1, 'premium risk: −1R');
+  const p = at(shortPut, close + 1);
+  assert.equal(p.status, 'win');
+  assert.equal(p.pnl, 80, 'a sold option kept its premium');
+  assert.equal(at(longCall, undefined)?.status, 'open', 'no clock, no expiry');
 });

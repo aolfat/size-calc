@@ -83,12 +83,29 @@ function rTitleOf(t) {
   return 'No stop: set one to get R';
 }
 
+const HISTORY_TITLE = "Opened before the journal's history: Schwab's API gives 60 days of orders, so its entry and P&L aren't known. It doesn't count in the stats.";
+const EXPIRED_TITLE = "Closed at $0 at the 4pm close on expiry, assumed worthless. If it was exercised or assigned, that isn't in the journal yet.";
+
+/** a close whose purchase is older than the history: what's known (the exits), the rest blank, and Delete */
+function historyRow(t) {
+  const key = esc(t.key), name = esc(t.label);
+  return `<tr class="journal-history${t.deleted ? ' journal-deleted' : ''}" title="${esc(HISTORY_TITLE)}">
+    <td><b>${name}</b> <span class="journal-tag journal-tag-history">before your history</span>${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}<span class="pos-sub journal-row-acts">${t.deleted
+      ? `<button class="pos-link" data-action="restoreTrade" data-arg="${key}" aria-label="Restore the ${name} trade">Restore</button>`
+      : `<button class="pos-link journal-delete" data-action="confirmDeleteTrade" data-arg="${key}" aria-label="Delete the ${name} trade">Delete</button>`}</span></td>
+    <td>—</td><td>—</td><td>—</td>
+    <td class="${t.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${t.direction === 'long' ? 'Long' : 'Short'}</td>
+    <td>${t.entryQty}</td><td>—</td><td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td><td>—</td><td>earlier</td>
+  </tr>`;
+}
+
 function tradeRow(t) {
+  if (t.status === 'history') return historyRow(t);
   const open = t.status === 'open';
   const cls = [open ? 'journal-open' : '', t.deleted ? 'journal-deleted' : ''].filter(Boolean).join(' ');
   const key = esc(t.key), name = esc(t.label);
   return `<tr${cls ? ` class="${cls}"` : ''}>
-    <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}<span class="pos-sub journal-row-acts">${t.deleted
+    <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}<span class="pos-sub journal-row-acts">${t.deleted
       ? `<button class="pos-link" data-action="restoreTrade" data-arg="${key}" aria-label="Restore the ${name} trade">Restore</button>`
       : `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Edit the ${name} trade">Edit</button><button class="pos-link journal-delete" data-action="confirmDeleteTrade" data-arg="${key}" aria-label="Delete the ${name} trade">Delete</button>`}</span></td>
     <td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>
@@ -112,12 +129,13 @@ function filtered(list, sideOf) {
 function summaryLine(trades, deleted) {
   const s = tradesSummary(trades);
   const deletedNote = deleted ? ` · ${deleted} deleted <button class="pos-link" data-action="toggleDeletedTrades">${state.journalShowDeleted ? 'Hide them' : 'Show'}</button>` : '';
-  if (!s.closed && !s.open) return `No trades match.${deletedNote}`;
+  if (!s.closed && !s.open && !s.history) return `No trades match.${deletedNote}`;
   const parts = [`${s.closed} closed`];
   if (s.closed) parts.push(`${s.wins} won (${s.winRate}%)`, `<span class="${pnlClass(s.pnl)}">${signed$(s.pnl)}</span> ${feeWords()}${journalAfterFees() && s.fees ? ` (fees ${fmt$(s.fees)})` : ''}`);
   if (s.closed && journalAfterFees() && s.feesMissing) parts.push(`<span class="journal-fees-missing">fees not in yet on ${s.feesMissing}</span>`);
   if (s.avgR !== null) parts.push(`average ${signedR(s.avgR)} over ${s.withR}`);
   if (s.open) parts.push(`${s.open} open`);
+  if (s.history) parts.push(`<span class="journal-fees-missing" title="${esc(HISTORY_TITLE)}">${s.history} from before your history</span>`);
   return parts.join(' · ') + deletedNote;
 }
 
@@ -148,7 +166,7 @@ function tradesView(all) {
     </table></div>
     <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. ${journalAfterFees()
       ? 'P&amp;L is after Schwab\'s fees (commission, SEC, TAF and option fees, from its trade records), split by quantity when one order covers two trades.'
-      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium. Tap a stop, or Edit, to set yours. Delete takes out a trade that doesn't belong; imports won't bring it back.</p>`;
+      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium. Tap a stop, or Edit, to set yours. Delete takes out a trade that doesn't belong; imports won't bring it back.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}</p>`;
 }
 
 function fillsView(fills) {
@@ -199,7 +217,7 @@ export function renderJournal() {
     ${state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${fills.length ? controls() + (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
-      : tradesView(filtered(journalTrades(fills, records, state.tradeReviews || {}, { afterFees: journalAfterFees() }), t => t.direction)))
+      : tradesView(filtered(journalTrades(fills, records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now() }), t => t.direction)))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
 }
@@ -289,7 +307,7 @@ onCaptureChange(saved => {
 /** the trades as the Journal has them now (your stops and deletes applied) */
 function currentTrades() {
   const records = state.journalRecords || [];
-  return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees() });
+  return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now() });
 }
 const reviewedTrade = () => currentTrades().find(t => t.key === state.tradeReviewKey) || null;
 const reviewOf = key => (state.tradeReviews || {})[key] || { stop: null, hidden: false };
@@ -316,7 +334,9 @@ function stopNowLine(t) {
   return `No stop, so no R. Set the stop you had in mind.${ignored}`;
 }
 
-const tradeFacts = t => [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(marketTime(t.openedAt))} ET`,
+const tradeFacts = t => t.status === 'history'
+  ? `${t.direction === 'long' ? 'Sold' : 'Covered'} ${t.entryQty} at ${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)} · bought before your history, so no P&amp;L`
+  : [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(marketTime(t.openedAt))} ET`,
   t.status === 'open' ? 'open' : `${signed$(t.pnl)} ${t.afterFees ? `after fees${t.fees ? ` of ${fmt$(t.fees)}` : ''}` : 'before fees'}`].join(' · ');
 
 /** the delete step: what it does, and what an import does afterwards */

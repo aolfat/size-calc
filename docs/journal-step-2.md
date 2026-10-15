@@ -111,6 +111,13 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
     - **The one way it comes back:** an earlier fill imported later changes the trade's open time, which makes it a new trade.
     - **Restore:** Show lists deleted trades, dimmed, each with Restore.
   - **Where:** tap a trade's stop, or Edit under its symbol. The sheet lists Schwab's stops on the trade to pick from, and previews the risk and R as you type.
+- **Trades opened before the history (built):** Schwab's API gives 60 days of orders, so selling shares bought earlier shows a sell with nothing open.
+  - A plain Sell (or Buy to cover, Sell to close, Buy to close) only ever closes, so it never becomes a made-up short.
+  - Those closes become one "before your history" trade: exits known, entry and P&L not, kept out of the stats, and deletable.
+  - File upload (older history from Schwab's website) will fill them in.
+- **Expired options (built):** an option still open after its expiry's 4pm New York close closes there at $0.
+  - **The assumption:** it expired worthless. An exercise or assignment isn't in the orders.
+  - **Later:** keeping Schwab's RECEIVE_AND_DELIVER transactions (expirations, exercises, assignments) would tell them apart. Their format still has to be checked.
 - **Fees (built):** your choice, Before fees or After fees, on the trades view and synced to your account.
   - **Where they come from:** Schwab's TRADE transactions, which name their order and list each fee (commission, SEC, TAF, option regulatory) as an item with a fee type.
   - **Split by quantity:** a trade gets its orders' fees, and an order that closes one trade and opens the next splits them.
