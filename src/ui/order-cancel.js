@@ -84,15 +84,15 @@ export function setCancelKeep(keep) {
   renderCancelSheet();
 }
 
-/** a cancel Schwab refused: fine when the order is already on its way out, a stop when it filled */
-async function cancelStep(t) {
-  try { await schwabCancelOrder(t.order.orderId, t.hash); }
+/** a cancel Schwab refused: fine when the order is already on its way out, a stop when it filled (verb: what the run was doing to it) */
+export async function cancelWorking(w, hash, step, verb = 'cancelled') {
+  try { await schwabCancelOrder(w.orderId, hash); }
   catch(e) {
     if (e instanceof TypeError || !e.status) throw e;
-    const o = await schwabOrder(t.order.orderId, t.hash).catch(() => null);
-    if (o && o.status === 'FILLED') throw new Error(`Schwab filled the ${workingWords(t.order)} before it could be cancelled. Nothing more was sent.`);
+    const o = await schwabOrder(w.orderId, hash).catch(() => null);
+    if (o && o.status === 'FILLED') throw new Error(`Schwab filled the ${workingWords(w)} before it could be ${verb}. Nothing more was sent.`);
     if (!o || !orderGone(o.status || '')) throw e;
-    t.steps[0].note = 'already cancelled';
+    step.note = 'already cancelled';
   }
 }
 
@@ -100,26 +100,26 @@ async function cancelStep(t) {
 const PARTNER_READS = 6, PARTNER_GAP = 1000;
 
 /**
- * The other half goes back in only when Schwab shows it cancelled with nothing more filled. A fill (the target sold, so its
+ * A half of a pair goes back in only when Schwab shows it cancelled with nothing more filled. A fill (the target sold, so its
  * stop went with it), a partial fill or a half still working stops here: placing it again would sell what is already sold.
  * Schwab cancels the other half on its own schedule, so a half on its way out is read again for a few seconds first.
+ * not: what didn't happen because of it.
  */
-async function partnerCancelled(t) {
-  const q = t.partner;
+export async function shownCancelled(q, hash, not = 'it was not placed again') {
   let o = null;
   for (let i = 0; i < PARTNER_READS && q.orderId !== null; i++) {
     if (i) await effects.wait(PARTNER_GAP);
-    o = await schwabOrder(q.orderId, t.hash).catch(() => null);
+    o = await schwabOrder(q.orderId, hash).catch(() => null);
     if (o && (o.status === 'CANCELED' || o.status === 'FILLED' || (Number(o.filledQuantity) || 0) > q.filled)) break;
   }
-  if (!o) throw new Error(`Could not check the ${workingWords(q)} at Schwab, so it was not placed again. Check Schwab.`);
+  if (!o) throw new Error(`Could not check the ${workingWords(q)} at Schwab, so ${not}. Check Schwab.`);
   const filled = Number(o.filledQuantity) || 0;
-  if (o.status === 'FILLED') throw new Error(`Schwab shows the ${workingWords(q)} filled, so it was not placed again.`);
-  if (filled > q.filled) throw new Error(`Schwab shows ${filled.toLocaleString('en-US')} of the ${workingWords(q)} filled, so it was not placed again. Check Schwab.`);
-  if (o.status !== 'CANCELED') throw new Error(`Schwab shows the ${workingWords(q)} ${words(o.status) || 'in an unknown state'}, so it was not placed again. Check Schwab.`);
+  if (o.status === 'FILLED') throw new Error(`Schwab shows the ${workingWords(q)} filled, so ${not}.`);
+  if (filled > q.filled) throw new Error(`Schwab shows ${filled.toLocaleString('en-US')} of the ${workingWords(q)} filled, so ${not}. Check Schwab.`);
+  if (o.status !== 'CANCELED') throw new Error(`Schwab shows the ${workingWords(q)} ${words(o.status) || 'in an unknown state'}, so ${not}. Check Schwab.`);
 }
 
-const sendsSame = (a, b) => JSON.stringify([a.hash, a.steps.map(s => [s.kind, s.orderId ?? null, s.order || null])])
+export const sendsSame = (a, b) => JSON.stringify([a.hash, a.steps.map(s => [s.kind, s.orderId ?? null, s.order || null])])
   === JSON.stringify([b.hash, b.steps.map(s => [s.kind, s.orderId ?? null, s.order || null])]);
 
 export async function sendOrderCancel() {
@@ -147,9 +147,9 @@ export async function sendOrderCancel() {
       step.status = 'sending';
       renderCancelSheet();
       try {
-        if (step.kind === 'cancel') await cancelStep(t);
+        if (step.kind === 'cancel') await cancelWorking(t.order, t.hash, step);
         else {
-          await partnerCancelled(t);
+          await shownCancelled(t.partner, t.hash);
           step.newId = (await schwabPlaceOrder(step.order, t.hash)).orderId;
         }
         step.status = 'done';
@@ -175,7 +175,7 @@ export async function sendOrderCancel() {
 }
 
 /** an order's status in the read, children of triggers and pairs included */
-function statusOf(orders, id) {
+export function statusOf(orders, id) {
   for (const o of orders || []) {
     if (String(o.orderId) === String(id)) return o.status || '';
     const inner = statusOf(o.childOrderStrategies, id);
@@ -226,7 +226,7 @@ function pairChoice(t) {
 }
 
 /** every order Schwab lists on the symbol, any status: the ground truth when a result isn't confirmed */
-function schwabList(t) {
+export function schwabList(t) {
   const p = state.positions;
   const list = p && p.orders && t.order ? ordersFor(p.orders, t.order.symbol) : [];
   if (!list.length) return '';

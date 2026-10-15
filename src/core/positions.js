@@ -1,6 +1,6 @@
 // @ts-check
 // Schwab positions as table rows (price, share of the account, stop and risk from working stop orders), the account's
-// working orders, the levels a position chart draws, and the order plans for a breakeven stop, a profit target or a close.
+// working orders, the levels a position chart draws, and the order plans for a breakeven stop, a profit target, a close, or cancelling or changing a working order.
 import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, optionPriceTick, optionStopTick, priceTick, stopTick } from './orders.js';
 
 /**
@@ -171,6 +171,70 @@ export function cancelPlan(orders, orderId, { keep = true } = {}) {
   const steps = [{ kind: 'cancel', orderId: order.orderId }];
   if (keeping && again) steps.push({ kind: 'place', order: again });
   return { error: '', order, partner, children, keep: keeping, keepError, steps };
+}
+
+/** The order types an edit can rebuild: a single-leg stop, limit or stop limit. @param {Working} w */
+export const editable = w => w.legs === 1 && ['STOP', 'LIMIT', 'STOP_LIMIT'].includes(w.orderType);
+
+/**
+ * Change one working order: its stop, its limit, its size or how long it lasts. A plain order is replaced (Schwab cancels it and
+ * places the new one together). A half of a one-cancels-other pair can't be replaced alone, so the pair is cancelled and placed
+ * again with the change (the sender places it only once Schwab shows both halves cancelled, never over a fill); both halves keep
+ * the same size and duration. Prices snap to the tick: cents (four decimals under $1), options on the $0.05 / $0.10 grid.
+ * error = the order can't be changed from here; editError = this change can't go (through the price, too many, nothing changed).
+ * rows: the account's positions, to hold a closing order to what you hold and check it against the price.
+ * @param {Order[]} orders @param {number | string} orderId @param {{ stop?: number | null, price?: number | null, qty?: number, duration?: string }} edit @param {Row[]} [rows]
+ */
+export function editPlan(orders, orderId, edit, rows = []) {
+  const list = workingOrders(orders);
+  const order = list.find(o => o.orderId !== null && String(o.orderId) === String(orderId)) || null;
+  const result = { error: '', editError: '', order, partner: /** @type {Working | null} */ (null), stop: /** @type {number | null} */ (null), price: /** @type {number | null} */ (null),
+    qty: 0, duration: '', fills: false, steps: /** @type {Step[]} */ ([]) };
+  const fail = (/** @type {string} */ error) => ({ ...result, error });
+  if (!order) return fail('Schwab no longer shows this order as working.');
+  if (order.status === 'AWAITING_PARENT_ORDER') return fail(`This waits on its ${INSTRUCTION_WORDS[order.parent] || 'entry'} order. Change it in Schwab.`);
+  const child = list.find(o => o.parentId !== null && o.parentId === order.orderId);
+  if (child) return fail(`Its ${workingWords(child)} waits on it, and a change from here would drop it. Change it in Schwab.`);
+  if (!editable(order)) return fail(order.legs > 1 ? 'A multi-leg order can\'t be changed from here. Change it in Schwab.' : `A ${orderTypeWord(order.orderType)} can't be changed from here. Change it in Schwab.`);
+  const partner = order.oco !== null ? list.find(o => o.oco === order.oco && o !== order) || null : null;
+  if (partner && !editable(partner)) return fail(`It's paired with a ${orderTypeWord(partner.orderType)}, which can't be placed again from here. Change it in Schwab.`);
+  const option = order.assetType === 'OPTION', assetType = option ? 'OPTION' : 'EQUITY';
+  const tick = option ? optionPriceTick : priceTick, px = (/** @type {number} */ p) => fmtPositionPrice(p, assetType);
+  const open = order.qty - order.filled, unit = option ? 'contracts' : 'shares';
+  const stop = /STOP/.test(order.orderType) ? tick(Number(edit.stop ?? order.stop)) : null;
+  const price = order.orderType !== 'STOP' ? tick(Number(edit.price ?? order.price)) : null;
+  const qty = edit.qty ?? open, duration = edit.duration || order.duration;
+  Object.assign(result, { partner, stop, price, qty, duration });
+  const bad = (/** @type {string} */ editError) => ({ ...result, editError });
+  if (stop !== null && !(stop > 0)) return bad('Set a stop price.');
+  if (price !== null && !(price > 0)) return bad('Set a limit price.');
+  if (!Number.isInteger(qty) || qty < 1) return bad(`Pick how many ${unit}.`);
+  const closes = CLOSES[order.instruction];
+  const row = closes ? rows.find(r => r.symbol === order.symbol && (r.qty > 0 ? 'long' : 'short') === closes) : undefined;
+  if (row) {
+    const long = row.qty > 0, held = Math.abs(row.qty);
+    if (stop !== null && (long ? stop >= row.price : stop <= row.price)) {
+      return bad(`The stop ${px(stop)} is at or ${long ? 'above' : 'below'} the price ${px(row.price)}. It would ${INSTRUCTION_WORDS[order.instruction] || 'fill'} right away.`);
+    }
+    // Schwab won't take orders that close more than you hold: the others closing it count, a pair once
+    const mine = [order.orderId, partner?.orderId].map(String);
+    const others = row.closers.filter(o => !mine.includes(String(o.orderId)));
+    /** @type {Map<number | string, number>} */
+    const pairs = new Map();
+    for (const o of others) if (o.oco !== null) pairs.set(o.oco, Math.max(pairs.get(o.oco) || 0, o.qty));
+    const room = held - others.filter(o => o.oco === null).reduce((n, o) => n + o.qty, 0) - [...pairs.values()].reduce((n, q) => n + q, 0);
+    if (qty > open && qty > room) {
+      return bad(room > 0 && room < held ? `This can be for up to ${room} ${unit}: your other orders close ${held - room} of the ${held} you hold.`
+        : room >= held ? `This can be for up to ${held} ${unit}: you hold ${held}.` : `Your other orders already close all ${held} ${unit} you hold.`);
+    }
+    result.fills = price !== null && order.orderType === 'LIMIT' && (long ? price <= row.price : price >= row.price);
+  }
+  if (stop === order.stop && price === order.price && qty === open && duration === order.duration) return bad('Nothing changed yet: change the price, the size or how long it lasts.');
+  const next = /** @type {object} */ (singleOrder({ ...order, assetType, stop, price, qty, filled: 0, duration }));
+  if (!partner) return { ...result, steps: [{ kind: 'replace', orderId: order.orderId, order: next }] };
+  const other = /** @type {object} */ (singleOrder({ ...partner, assetType, qty, filled: 0, duration }));
+  const first = list.indexOf(order) < list.indexOf(partner);
+  return { ...result, steps: [{ kind: 'cancel', orderId: order.orderId }, { kind: 'place', order: first ? ocoOrder(next, other) : ocoOrder(other, next) }] };
 }
 
 /** Schwab's '2026-10-08T13:41:22+0000' as epoch ms (Safari won't read the offset without its colon); NaN when unreadable. @param {string} s */

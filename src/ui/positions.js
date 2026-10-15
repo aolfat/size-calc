@@ -4,7 +4,7 @@
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { INSTRUCTION_WORDS, atBreakeven, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
 import { showToast } from './feedback.js';
@@ -220,11 +220,11 @@ function orderRow(o, list) {
   const what = orderWords(o);
   const left = o.qty - o.filled;
   const lasts = (DURATION_WORDS[o.duration] || words(o.duration) || '—') + (o.session && o.session !== 'NORMAL' ? '<span class="pos-sub">extended hours</span>' : '');
-  // an order waiting on its entry goes with that entry, so only the entry gets the button
-  const cancel = o.orderId !== null && o.status !== 'AWAITING_PARENT_ORDER'
-    ? `<span class="pos-acts"><button class="pos-act" data-action="openOrderCancel" data-arg="${esc(o.orderId)}" title="Review cancelling this order">Cancel</button></span>` : '';
+  // an order waiting on its entry goes with that entry, so only the entry gets the buttons
+  const acts = o.orderId !== null && o.status !== 'AWAITING_PARENT_ORDER'
+    ? `<span class="pos-acts">${editable(o) ? `<button class="pos-act" data-action="openOrderEdit" data-arg="${esc(o.orderId)}" title="Change the price, size or how long it lasts">Edit</button>` : ''}<button class="pos-act" data-action="openOrderCancel" data-arg="${esc(o.orderId)}" title="Review cancelling this order">Cancel</button></span>` : '';
   return `<tr${o.oco !== null ? ' class="pos-oco"' : ''}>
-    <td><b>${esc(o.label)}</b>${cancel}</td>
+    <td><b>${esc(o.label)}</b>${acts}</td>
     <td class="pos-order">${esc(what.charAt(0).toUpperCase() + what.slice(1))}${note ? `<span class="pos-sub">${esc(note)}</span>` : ''}</td>
     <td>${orderPrice(o)}</td>
     <td>${o.filled > 0 ? `${left.toLocaleString('en-US')}<span class="pos-sub">of ${o.qty.toLocaleString('en-US')}, ${o.filled.toLocaleString('en-US')} filled</span>` : o.qty.toLocaleString('en-US')}</td>
