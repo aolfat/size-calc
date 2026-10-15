@@ -60,6 +60,7 @@ export function createState() {
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
     tradeReviews: null, // your word on each trade, by trade key: { stop, hidden (= deleted) }, once read
+    tradeGroups: true, // the database has trade_reviews.group_key (combining spreads saves)
     tradeReviewsError: '', // the reviews couldn't be read (the trades still show, with Schwab's stops)
     journalShowDeleted: false, // deleted trades shown, dimmed, to restore one
     tradeReviewKey: null, // the trade open in the trade sheet

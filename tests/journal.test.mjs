@@ -223,7 +223,7 @@ async function journalWith(reviews = [], tweak) {
 
 test('your stop: set it from the trade sheet, R counts from it, and Schwab\'s is one tap back', async () => {
   const { run, state, supabase, out, sheet, elements } = await journalWith();
-  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,hidden'), 'your reviews are read with the records');
+  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,hidden,group_key'), 'your reviews are read with the records');
   run(`openTradeReview('${STOCK}')`);
   assert.equal(state.openSheetName, 'tradeReview');
   assert.equal(elements.get('tradeReviewTitle').textContent, 'AAPL');
@@ -316,4 +316,131 @@ test('reviews read when the journal opens; a refused save goes back; a missing t
   missing.run(`confirmDeleteTrade('${STOCK}')`);
   await missing.run('deleteTrade()');
   assert.equal(missing.supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing written over a row it couldn\'t read');
+});
+
+test('fees: before by default; After fees takes out Schwab\'s fees per trade, says when they haven\'t come in, and syncs', async () => {
+  const fee = (id, orderId, items) => ({ kind: 'transaction', record_id: String(id), account: '6789', entered_at: '2026-10-03T15:00:00Z', data: { activityId: id, type: 'TRADE', orderId, transferItems: items } });
+  const records = [...RECORDS.map(r => ({ ...r, account: '6789' })),
+    fee(9101, 501, [{ instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: 100, cost: -10002, price: 100.02 }, { amount: 0, cost: 0, feeType: 'COMMISSION' }]),
+    fee(9102, 502, [{ instrument: { symbol: 'AAPL', assetType: 'EQUITY' }, amount: -100, cost: 9498, price: 94.98 }, { amount: 0, cost: -0.26, feeType: 'SEC_FEE' }, { amount: 0, cost: -0.02, feeType: 'TAF_FEE' }]),
+  ];
+  const { run, elements, storage } = await app({ storage: connected(), supabase: fakeRecords(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(out(), /class="active" aria-pressed="true" data-action="setJournalFees" data-arg="before">Before fees/, 'before fees unless you choose');
+  assert.match(out(), /−\$504\.00<\/span> before fees/);
+  assert.match(out(), /P&amp;L is before fees\./);
+
+  run("setJournalFees('after')");
+  assert.equal(storage.get('journal_fees'), 'after');
+  assert.ok(run("CLOUD_KEYS.includes('journal_fees')"), 'the choice goes with your account');
+  assert.match(out(), /<td class="journal-sell" title="Before fees −\$504\.00, fees \$0\.28">−\$504\.28<span class="pos-sub">fees \$0\.28<\/span><\/td>/);
+  assert.match(out(), /−1\.00R/, '−504.28 ÷ 502 still rounds to −1.00R');
+  assert.match(out(), /−\$504\.28<\/span> after fees \(fees \$0\.28\)/);
+  assert.match(out(), /P&amp;L is after Schwab(?:'|&#39;)s fees/);
+  assert.match(out(), /<td class="" title="Before fees \$0\.00, fees \$0\.00, 1 order without fees yet">—<\/td>/, 'an open trade with nothing sold shows a plain dash, not a red one');
+
+  run("setJournalTab('fills')");
+  assert.doesNotMatch(out(), /setJournalFees/, 'fees are a trades setting');
+});
+
+test('after fees, an order without its transaction yet says so instead of a made-up zero', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const storage = connected();
+  storage.set('journal_fees', 'after');
+  const { run, elements } = await app({ storage, supabase: fakeRecords(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = elements.get('journalSection').innerHTML;
+  assert.match(out, /−\$504\.00<span class="pos-sub"><span class="journal-fees-missing">fees not in yet<\/span><\/span>/);
+  assert.match(out, /fees not in yet on 1/);
+});
+
+test('a sell whose purchase is older than the history: marked, kept out of the stats, deletable; an expired option says so', async () => {
+  const sell = {
+    orderId: 801, enteredTime: '2026-09-02T14:00:00+0000', status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction: 'SELL', quantity: 40, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 7801, executionLegs: [{ legId: 1, quantity: 40, price: 510, time: '2026-09-02T14:00:01+0000' }] }],
+  };
+  const expiredCall = {
+    orderId: 802, enteredTime: '2026-09-02T14:10:00+0000', status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction: 'BUY_TO_OPEN', quantity: 1, instrument: { symbol: 'MSFT  260918C00520000', assetType: 'OPTION' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 7802, executionLegs: [{ legId: 1, quantity: 1, price: 2.4, time: '2026-09-02T14:10:01+0000' }] }],
+  };
+  const records = [...RECORDS, { kind: 'order', record_id: '801', entered_at: '2026-09-02T14:00:00Z', data: sell }, { kind: 'order', record_id: '802', entered_at: '2026-09-02T14:10:00Z', data: expiredCall }]
+    .map(r => ({ ...r, account: '6789' }));
+  const supabase = fakeRecords(records);
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(out(), /<tr class="journal-history"[^>]*>\s*<td><b>MSFT<\/b> <span class="journal-tag journal-tag-history">before your history<\/span>/);
+  assert.match(out(), /data-action="confirmDeleteTrade" data-arg="6789\|MSFT\|long\|before\|2026-09-02T14:00:01\.000Z"/, 'it can be deleted');
+  assert.doesNotMatch(out(), /Short<\/td>\s*<td>40</, 'no made-up short');
+  assert.match(out(), /2 closed · 0 won \(0%\) · <span class="journal-sell">−\$744\.00<\/span> before fees/, 'the stock and the expired call count; the history sell doesn\'t');
+  assert.match(out(), /1 from before your history/);
+  assert.match(out(), /MSFT 9\/18\/26 520C<\/b> <span class="journal-tag journal-tag-quiet" title="Closed at \$0 at the 4pm close on expiry/);
+  assert.match(out(), /−\$240\.00/, 'the whole premium');
+  assert.match(out(), /Options still open after expiry close at \$0/);
+
+  run("confirmDeleteTrade('6789|MSFT|long|before|2026-09-02T14:00:01.000Z')");
+  assert.match(elements.get('tradeReviewBody').innerHTML, /Sold 40 at \$510\.00 · bought before your history, so no P&amp;L/);
+  await run('deleteTrade()');
+  assert.doesNotMatch(out(), /before your history<\/span>/);
+  assert.match(out(), /1 deleted/);
+});
+
+test('spreads: a multi-leg order is one row; Split writes solo; Combine joins legs and stays on the spread', async () => {
+  const exec = (id, legs) => [{ activityType: 'EXECUTION', activityId: id, executionLegs: legs }];
+  const LEGS = [
+    { legId: 1, instruction: 'BUY_TO_OPEN', quantity: 2, instrument: { symbol: 'AAPL  261218C00250000', assetType: 'OPTION' } },
+    { legId: 2, instruction: 'SELL_TO_OPEN', quantity: 2, instrument: { symbol: 'AAPL  261218C00260000', assetType: 'OPTION' } },
+  ];
+  const vertical = { orderId: 901, enteredTime: '2026-10-08T14:00:00+0000', status: 'FILLED', orderLegCollection: LEGS,
+    orderActivityCollection: exec(7901, [{ legId: 1, quantity: 2, price: 6.2, time: '2026-10-08T14:00:01+0000' }, { legId: 2, quantity: 2, price: 2.7, time: '2026-10-08T14:00:01+0000' }]) };
+  const records = [...RECORDS, { kind: 'order', record_id: '901', entered_at: '2026-10-08T14:00:00Z', data: vertical }].map(r => ({ ...r, account: '6789' }));
+  const supabase = fakeRecords(records);
+  const { run, elements, state } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  const sheet = () => elements.get('tradeReviewBody').innerHTML;
+  const SPREAD = '6789|AAPL|spread|2026-10-08T14:00:01.000Z';
+  assert.match(out(), /<b>AAPL 12\/18\/26 250\/260C<\/b> <span class="journal-tag journal-tag-quiet">debit spread<\/span> <span class="journal-tag">open<\/span><span class="pos-sub journal-legs">\+2 250C −2 260C<\/span>/);
+  assert.match(out(), /journal-buy">Debit<\/td>\s*<td>2<\/td>\s*<td>\$3\.50<\/td>/, 'net debit per spread');
+
+  run(`openTradeReview('${SPREAD}')`);
+  assert.match(sheet(), /Paid \$3\.50 × 2/);
+  assert.match(sheet(), /Opened in one order, so its legs are one trade\. The debit paid, \$700\.00, is the risk\./);
+  assert.match(sheet(), /data-action="splitSpread"/);
+  await run('splitSpread()');
+  const rows = supabase.reviewRows();
+  assert.deepEqual(rows.map(r => r.group_key), ['solo', 'solo']);
+  assert.match(out(), /<b>AAPL 12\/18\/26 260C<\/b>/, 'two legs again');
+  assert.doesNotMatch(out(), /debit spread/);
+
+  const LONG = rows.find(r => r.trade_key.includes('C00250000')).trade_key, SHORT = rows.find(r => r.trade_key.includes('C00260000')).trade_key;
+  run(`openTradeReview('${LONG}')`);
+  assert.match(sheet(), /Combine into a spread/);
+  assert.match(sheet(), new RegExp(`data-action="combineTrade" data-arg="${SHORT.replace(/[|]/g, '\\|')}"`), 'the short call is offered');
+  await run(`combineTrade('${SHORT}')`);
+  const joined = supabase.reviewRows().map(r => r.group_key);
+  assert.ok(joined.every(g => g === '6789|AAPL|spread|2026-10-08T14:00:01.000Z'), 'both legs name the spread');
+  assert.equal(state.openSheetName, 'tradeReview', 'the sheet stays open');
+  assert.equal(state.tradeReviewKey, SPREAD, 'on the spread');
+  assert.match(sheet(), /You combined these legs/);
+  assert.match(out(), /debit spread/);
+});
+
+test('before the group_key column is pushed: stops and deletes still load, combining says what it needs', async () => {
+  const supabase = fakeRecords(RECORDS.map(r => ({ ...r, account: '6789' })), [{ trade_key: STOCK, stop: 97.5, hidden: false }]);
+  supabase.dropColumn('trade_reviews', 'group_key');
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  assert.match(elements.get('journalSection').innerHTML, /\$97\.50<\/button><span class="pos-sub">yours<\/span>/, 'your stop still loads');
+  assert.doesNotMatch(elements.get('journalSection').innerHTML, /couldn(?:'|&#39;)t load/);
+  run(`openTradeReview('${OPTION}')`);
+  assert.match(elements.get('tradeReviewBody').innerHTML, /Combining needs the database update: npx supabase db push\./);
 });

@@ -111,7 +111,23 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
     - **The one way it comes back:** an earlier fill imported later changes the trade's open time, which makes it a new trade.
     - **Restore:** Show lists deleted trades, dimmed, each with Restore.
   - **Where:** tap a trade's stop, or Edit under its symbol. The sheet lists Schwab's stops on the trade to pick from, and previews the risk and R as you type.
-- **Fees:** P&L is before fees for now. Schwab's orders carry none, so fees come from transactions once their real format is checked.
+- **Trades opened before the history (built):** Schwab's API gives 60 days of orders, so selling shares bought earlier shows a sell with nothing open.
+  - A plain Sell (or Buy to cover, Sell to close, Buy to close) only ever closes, so it never becomes a made-up short.
+  - Those closes become one "before your history" trade: exits known, entry and P&L not, kept out of the stats, and deletable.
+  - File upload (older history from Schwab's website) will fill them in.
+- **Spreads (built):** option legs become one trade.
+  - **Automatic:** legs opened in one multi-leg order.
+  - **Combined by you:** legged-in spreads, from Combine in a leg's sheet. Each leg's `trade_reviews` row names its spread (`group_key`). Split undoes it, and works on a multi-leg order too.
+  - **The numbers:** entry and exit are net per spread. P&L and fees add up. A debit risks what it paid; a credit vertical risks its width less the credit. Other combinations have no R yet.
+  - **Limit:** a contract held on its own and also inside a spread is one leg, so that spread shows mixed sizes.
+- **Expired options (built):** an option still open after its expiry's 4pm New York close closes there at $0.
+  - **The assumption:** it expired worthless. An exercise or assignment isn't in the orders.
+  - **Later:** keeping Schwab's RECEIVE_AND_DELIVER transactions (expirations, exercises, assignments) would tell them apart. Their format still has to be checked.
+- **Fees (built):** your choice, Before fees or After fees, on the trades view and synced to your account.
+  - **Where they come from:** Schwab's TRADE transactions, which name their order and list each fee (commission, SEC, TAF, option regulatory) as an item with a fee type.
+  - **Split by quantity:** a trade gets its orders' fees, and an order that closes one trade and opens the next splits them.
+  - **After fees:** P&L, the win or loss, and R are net. A trade whose order has no transaction yet says "fees not in yet", rather than showing a zero.
+  - **To check:** the format follows Schwab's documentation. A real import should confirm it.
 
 ### 3. Trade page
 

@@ -8,6 +8,7 @@ export function fakeRecords(seed = [], reviewSeed = []) {
   const reviews = new Map(reviewSeed.map(r => [keys.trade_reviews(r), { user_id: 'user-1', ...r }]));
   const tables = { schwab_records: table, trade_reviews: reviews };
   const broken = new Set();
+  const missingCols = {};
   const writes = [];
   const reads = [];
   let failure = null;
@@ -19,9 +20,11 @@ export function fakeRecords(seed = [], reviewSeed = []) {
     reviewRows: () => [...reviews.values()],
     fail(f = { status: 500, message: 'nope' }) { failure = f; },
     failTable(name) { broken.add(name); },
+    dropColumn(name, col) { (missingCols[name] ||= []).push(col); },
     from: name => ({
       select: cols => {
         const filters = [];
+        const missing = (missingCols[name] || []).find(c => String(cols || '').split(',').includes(c));
         let ordered = false;
         reads.push({ table: name, cols });
         const q = {
@@ -30,6 +33,7 @@ export function fakeRecords(seed = [], reviewSeed = []) {
           order: () => { ordered = true; return q; },
           limit: () => q,
           then: (resolve, reject) => {
+            if (missing) return Promise.resolve({ data: null, error: { message: `column ${name}.${missing} does not exist` }, status: 400 }).then(resolve, reject);
             let rows = [...(tables[name] || table).values()].filter(r => filters.every(f => f(r))).map(r => ({ ...r }));
             if (ordered) rows.sort((a, b) => String(b.entered_at || '').localeCompare(String(a.entered_at || '')));
             return Promise.resolve(answer(rows, name)).then(resolve, reject);

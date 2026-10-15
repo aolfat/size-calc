@@ -6,6 +6,7 @@ import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, l
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
+import { renderJournal } from './journal.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -51,6 +52,7 @@ export function cloudRehydrate() {
     updateSchwabUi(); // the worker URL syncs
     renderUsdPresets();
     recalcAll();
+    if (state.journalView) renderJournal(); // journal_fees syncs
   } finally { state.cloudSuppress = false; }
 }
 
