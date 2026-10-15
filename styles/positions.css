@@ -111,6 +111,50 @@
 .journal-controls input[type="search"]:focus { border-color: var(--blue); }
 .journal-controls input[type="search"]::placeholder { color: var(--text2); }
 .journal-summary { color: var(--text2); margin-bottom: 8px; }
+/* the Journal's calendar */
+.jc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 10px; }
+.jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
+.jc-nav { padding: 4px 12px; }
+.jc-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 4px; }
+.jc-grid th { font-size: 11px; font-weight: 500; color: var(--text3); text-align: left; padding: 0 6px; }
+.jc-grid td { vertical-align: top; padding: 0; }
+.jc-day { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 64px; padding: 6px 7px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+button.jc-day:hover { border-color: var(--border2); }
+.jc-day.journal-buy { background: color-mix(in srgb, var(--green) 12%, var(--bg2)); border-color: color-mix(in srgb, var(--green) 35%, var(--border)); }
+.jc-day.journal-sell { background: color-mix(in srgb, var(--red) 12%, var(--bg2)); border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
+.jc-quiet { cursor: default; opacity: 0.55; }
+.jc-num { font-size: 11px; color: var(--text3); }
+.jc-pnl { font-size: 15px; font-weight: 600; font-family: var(--num); }
+.jc-day.journal-buy .jc-pnl { color: var(--green); }
+.jc-day.journal-sell .jc-pnl { color: var(--red); }
+.jc-n { font-size: 10.5px; color: var(--text3); }
+.jc-week { padding: 6px 4px !important; font-weight: 600; font-family: var(--num); display: flex; flex-direction: column; gap: 1px; }
+.jc-out { opacity: 0; }
+.jc-daychip { padding: 5px 10px; font-size: 12px; }
+@media (max-width: 600px) {
+  .jc-grid { border-spacing: 2px; }
+  .jc-day { min-height: 54px; padding: 4px; }
+  .jc-pnl { font-size: 12.5px; }
+  .jc-n { display: none; }
+  .jc-grid th { padding: 0 2px; }
+}
+/* the Journal's stats */
+.js-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 4px 0 10px; }
+.js-stats dt { font-size: 12px; color: var(--text2); }
+.js-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-family: var(--num); }
+.js-stats dd .pos-sub { font-size: 11.5px; font-weight: 400; }
+.js-sub { margin-top: 16px; }
+.js-equity canvas { height: 180px; cursor: default; }
+.js-table { min-width: 720px; }
+.positions-table .journal-thin td { color: var(--text2); }
+.js-rbars { display: grid; gap: 4px; max-width: 560px; }
+.js-rbar { display: grid; grid-template-columns: 7.5em 1fr 2.5em; align-items: center; gap: 8px; font-size: 12px; }
+.js-rlabel { color: var(--text2); white-space: nowrap; }
+.js-rtrack { height: 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.js-rfill { display: block; height: 100%; border-radius: 3px; }
+.js-rfill.pos { background: color-mix(in srgb, var(--green) 70%, transparent); }
+.js-rfill.neg { background: color-mix(in srgb, var(--red) 70%, transparent); }
+.js-rcount { font-family: var(--num); color: var(--text2); }
 .journal-tag { font-size: 10.5px; font-weight: 600; color: var(--blue); border: 1px solid var(--blue-bd); background: var(--blue-bg); border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; }
 .positions-table .journal-open td { background: color-mix(in srgb, var(--blue-bg) 35%, var(--bg2)); } /* opaque: the pinned symbol cell takes the tint too */
 .positions-table .journal-deleted td { opacity: .55; }

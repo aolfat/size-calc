@@ -1,0 +1,163 @@
+// Journal Calendar and Stats tabs (journal step 2, slice 4; core/journal-stats.js does the numbers): the calendar is a
+// month of daily P&L with weekly totals, a day tapped shows its trades; the stats are the headline numbers, the equity
+// curve with its drawdown, monthly results, streaks and the breakdowns, each group with the same stats, thin under 10.
+// The Journal's side, symbol and fee choices apply here too.
+import { fmt$, marketEscape as esc } from '../core/format.js';
+import { holdWords } from '../core/journal.js';
+import { activeMonths, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, monthlyResults, streaks, THIN } from '../core/journal-stats.js';
+import { SANS_FONT } from '../lib/media.js';
+import { state } from '../state.js';
+
+const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
+const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
+const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
+/** '+$1.2k' for a calendar cell: whole dollars under $1,000, one decimal of thousands above */
+export const compact$ = v => {
+  const a = Math.abs(v), s = v > 0 ? '+' : v < 0 ? '−' : '';
+  return a >= 1000 ? `${s}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k` : `${s}$${Math.round(a)}`;
+};
+const monthName = m => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }); };
+const shiftMonth = (m, by) => { const [y, mo] = m.split('-').map(Number); const d = new Date(Date.UTC(y, mo - 1 + by, 1)); return d.toISOString().slice(0, 7); };
+
+// ---------- Calendar ----------
+
+/** the month shown: your pick, else the newest with closed trades, else this one */
+function shownMonth(daily) {
+  return state.journalMonth || activeMonths(daily)[0] || new Date().toISOString().slice(0, 7);
+}
+
+export function calendarView(trades) {
+  const daily = dailyPnl(trades);
+  const month = shownMonth(daily);
+  state.journalMonthShown = month; // ‹ and › step from here
+  const cal = calendarMonth(daily, month);
+  const cells = cal.weeks.map(w => `<tr>${w.days.map(d => !d ? '<td class="jc-out"></td>'
+    : d.trades ? `<td><button class="jc-day ${pnlClass(d.pnl)}" data-action="pickJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}`)}"><span class="jc-num">${+d.day.slice(8)}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span></button></td>`
+    : `<td><div class="jc-day jc-quiet"><span class="jc-num">${+d.day.slice(8)}</span></div></td>`).join('')}
+    <td class="jc-week"><span class="${pnlClass(w.pnl)}">${w.trades ? compact$(w.pnl) : ''}</span>${w.trades ? `<span class="jc-n">${w.trades}</span>` : ''}</td></tr>`).join('');
+  return `<div class="jc-head">
+      <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
+      <span class="jc-title">${esc(monthName(month))}</span>
+      <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
+      <span class="positions-meta">${cal.trades ? `<span class="${pnlClass(cal.pnl)}">${signed$(cal.pnl)}</span> · ${cal.trades} trade${cal.trades === 1 ? '' : 's'} · ${cal.green} green day${cal.green === 1 ? '' : 's'}, ${cal.red} red` : 'No closed trades this month'}</span>
+    </div>
+    <table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cells}</tbody></table>
+    <p class="hint">Each trade's P&amp;L goes on the day it closed, New York time. Tap a day for its trades.</p>`;
+}
+
+/** ‹ or ›: the month before or after the one shown */
+export function nextJournalMonth(by) {
+  const from = state.journalMonth || state.journalMonthShown || new Date().toISOString().slice(0, 7);
+  return shiftMonth(from, Number(by) || 0);
+}
+
+// ---------- Stats ----------
+
+function headline(list, all) {
+  const s = groupStats(list), eq = equityCurve(all), st = streaks(all);
+  const cell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
+  const dash = '—';
+  return `<dl class="js-stats">
+    ${cell('Net P&amp;L', signed$(s.net), `${s.trades} closed trade${s.trades === 1 ? '' : 's'}`, pnlClass(s.net))}
+    ${cell('Win rate', s.winRate === null ? dash : `${s.winRate}%`, `${s.wins} won, ${s.losses} lost`)}
+    ${cell('Profit factor', s.profitFactor === null ? dash : s.profitFactor.toFixed(2), 'gross wins ÷ gross losses')}
+    ${cell('Expectancy', s.expectancy === null ? dash : signed$(s.expectancy), 'per trade', s.expectancy === null ? '' : pnlClass(s.expectancy))}
+    ${cell('Average win', s.avgWin === null ? dash : signed$(s.avgWin), s.avgLoss === null ? '' : `average loss ${signed$(s.avgLoss)}`, 'journal-buy')}
+    ${cell('Average R', s.avgR === null ? dash : signedR(s.avgR), s.bigLosses ? `${s.bigLosses} worse than −1.5R` : 'trades with a stop')}
+    ${cell('Max drawdown', eq.maxDrawdown ? signed$(eq.maxDrawdown) : '$0.00', 'from a running peak', eq.maxDrawdown < 0 ? 'journal-sell' : '')}
+    ${cell('Streaks', `${st.longestWin}W · ${st.longestLoss}L`, st.current ? `now ${st.current.count} ${st.current.kind === 'win' ? 'win' : 'loss'}${st.current.count === 1 ? '' : st.current.kind === 'win' ? 's' : 'es'}` : 'longest runs')}
+  </dl>`;
+}
+
+function statRow(group, s, extra = '') {
+  const v = (x, f) => x === null || x === undefined ? '—' : f(x);
+  return `<tr${s.thin ? ' class="journal-thin"' : ''}><td><b>${esc(group)}</b>${s.thin ? ' <span class="journal-tag journal-tag-quiet" title="Fewer than 10 trades: too few to read much into">thin</span>' : ''}${extra}</td>
+    <td>${s.trades}</td><td class="${pnlClass(s.net)}">${signed$(s.net)}</td><td>${v(s.avg, signed$)}</td><td>${v(s.median, signed$)}</td>
+    <td>${v(s.winRate, x => `${x}%`)}</td><td>${v(s.avgWin, signed$)}</td><td>${v(s.avgLoss, signed$)}</td><td>${v(s.profitFactor, x => x.toFixed(2))}</td><td>${s.bigLosses || ''}</td></tr>`;
+}
+
+function statTable(title, rows, note = '') {
+  if (!rows.length) return '';
+  return `<div class="section-title js-sub">${title}</div>${note ? `<p class="hint">${note}</p>` : ''}
+    <div class="positions-wrap"><table class="positions-table journal-table js-table"><thead><tr><th scope="col">${title === 'By month' ? 'Month' : 'Group'}</th><th scope="col">Trades</th><th scope="col">Net</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">Win %</th><th scope="col">Avg win</th><th scope="col">Avg loss</th><th scope="col">PF</th><th scope="col" title="Losses worse than −1.5R">Big losses</th></tr></thead>
+    <tbody>${rows.map(r => statRow(r.group, r.stats)).join('')}</tbody></table></div>`;
+}
+
+function rBars(dist, withR) {
+  if (!withR) return '<div class="section-title js-sub">R distribution</div><p class="hint">No closed trades with an initial stop yet.</p>';
+  const max = Math.max(1, ...dist.map(d => d.count));
+  return `<div class="section-title js-sub">R distribution</div><p class="hint">${withR} trade${withR === 1 ? '' : 's'} with an initial stop.</p>
+    <div class="js-rbars">${dist.map(d => `<div class="js-rbar"><span class="js-rlabel">${esc(d.group)}</span><span class="js-rtrack"><span class="js-rfill ${d.group.startsWith('−') || d.group.startsWith('Under') ? 'neg' : 'pos'}" style="width:${Math.round((d.count / max) * 100)}%"></span></span><span class="js-rcount">${d.count || ''}</span></div>`).join('')}</div>`;
+}
+
+export function statsView(trades) {
+  const list = countedTrades(trades);
+  if (!list.length) return '<p class="hint">No closed trades match yet.</p>';
+  const b = breakdowns(trades);
+  const months = monthlyResults(trades).map(m => ({ group: monthName(m.month), stats: m }));
+  const hold = b.holdWinners !== null || b.holdLosers !== null
+    ? `Winners held ${b.holdWinners === null ? '—' : holdWords(b.holdWinners)} on average, losers ${b.holdLosers === null ? '—' : holdWords(b.holdLosers)}.` : '';
+  return `${headline(list, trades)}
+    <div class="section-title js-sub">Equity</div>
+    <div class="js-equity chart-wrap"><canvas id="journalEquity" height="180"></canvas></div>
+    <p class="hint">P&amp;L added up trade by trade as they closed; the red is the drawdown from the running peak.</p>
+    ${statTable('By month', months)}
+    ${statTable('By symbol', b.bySymbol, b.concentration ? `<span style="color:var(--amber)">${esc(b.concentration.group)} made ${b.concentration.share}% of your gross gains: one name is carrying the results.</span>` : 'Options and spreads count under their underlying.')}
+    ${statTable('By side', b.bySide)}
+    ${statTable('By instrument', b.byInstrument)}
+    ${statTable('By time of day', b.byTimeOfDay, 'When the trade opened, New York time.')}
+    ${statTable('By weekday', b.byWeekday, 'The day it opened.')}
+    ${statTable('By hold time', b.byHold, hold)}
+    ${statTable('Scaled out or all at once', b.byExits, 'Scaled out: more than one exit.')}
+    ${rBars(b.rDistribution, b.withR)}
+    <p class="hint">Closed trades only; open ones, deleted ones and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
+}
+
+/** the equity curve: running total (blue), its peak (dashed), the drawdown between them in red */
+export function drawJournalEquity(trades) {
+  const canvas = document.getElementById('journalEquity');
+  if (!canvas || !canvas.getContext) return;
+  const w = canvas.clientWidth;
+  if (!w) return;
+  const curve = equityCurve(trades).points;
+  // drawn from $0 before the first trade, so the first win or loss shows as a move
+  const points = curve.length ? [{ at: curve[0].at, total: 0, peak: 0, drawdown: 0 }, ...curve] : [];
+  const h = 180, dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  if (!points.length) return;
+  const css = getComputedStyle(document.documentElement), col = n => css.getPropertyValue(n).trim();
+  const vals = [0, ...points.map(p => p.total), ...points.map(p => p.peak)];
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.08 || 10; lo -= pad; hi += pad;
+  const padL = 8, padR = 64, padT = 10, padB = 20, plotW = w - padL - padR, plotH = h - padT - padB;
+  const x = i => padL + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
+  const y = v => padT + (hi - v) / (hi - lo) * plotH;
+  ctx.font = `10px ${SANS_FONT}`;
+  ctx.fillStyle = col('--text3');
+  ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+  for (let i = 0; i <= 3; i++) {
+    const v = lo + (hi - lo) * i / 3;
+    ctx.beginPath(); ctx.moveTo(padL, y(v)); ctx.lineTo(w - padR, y(v)); ctx.stroke();
+    ctx.fillText(compact$(v).replace('+', ''), w - padR + 6, y(v) + 3);
+  }
+  ctx.strokeStyle = col('--border2'); ctx.beginPath(); ctx.moveTo(padL, y(0)); ctx.lineTo(w - padR, y(0)); ctx.stroke();
+  // drawdown: between the peak and the total
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,93,93,0.22)';
+  ctx.beginPath();
+  points.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.peak)) : ctx.moveTo(x(i), y(p.peak))));
+  for (let i = points.length - 1; i >= 0; i--) ctx.lineTo(x(i), y(points[i].total));
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = col('--text3'); ctx.lineWidth = 1;
+  ctx.beginPath(); points.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.peak)) : ctx.moveTo(x(i), y(p.peak)))); ctx.stroke(); ctx.restore();
+  ctx.strokeStyle = col('--blue'); ctx.lineWidth = 1.75;
+  ctx.beginPath(); points.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.total)) : ctx.moveTo(x(i), y(p.total)))); ctx.stroke();
+  const md = d => { const [, m, dd] = d.split('T')[0].split('-'); return `${+m}/${+dd}`; };
+  ctx.fillStyle = col('--text3');
+  ctx.fillText(md(points[0].at), padL, h - 6);
+  const lastLabel = md(points[points.length - 1].at);
+  ctx.fillText(lastLabel, w - padR - ctx.measureText(lastLabel).width, h - 6);
+}

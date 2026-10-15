@@ -23,6 +23,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
+import { clearJournalDay, pickJournalDay, shiftJournalMonth } from './journal.js';
 import { closeJournalTrade, editJournalTrade } from './journal-trade.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
@@ -65,6 +66,9 @@ export const actions = {
   openJournalImport: () => openJournalImport(),
   openJournalExport: () => openJournalExport(),
   setJournalTab: el => setJournalTab(arg(el)),
+  pickJournalDay: el => pickJournalDay(arg(el)),
+  clearJournalDay: () => clearJournalDay(),
+  shiftJournalMonth: el => shiftJournalMonth(arg(el)),
   setJournalSide: el => setJournalSide(arg(el)),
   journalSymbolChanged: () => journalSymbolChanged(),
   toggleDeletedTrades: () => toggleDeletedTrades(),
