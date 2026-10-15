@@ -10,7 +10,7 @@ const DAY = 86400000;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const connected = () => new Map([
   ['schwab_proxy', PROXY],
-  ['schwab_tokens', JSON.stringify({ access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
+  ['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
   ['schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }])],
   ['schwab_account', 'HASH1'],
 ]);

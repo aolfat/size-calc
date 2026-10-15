@@ -1,0 +1,18 @@
+# Only browser runtime files belong on the public app host.
+*
+!index.html
+!manifest.json
+!sw.js
+!icon-180.png
+!icon-512.png
+!_headers
+!src/
+!src/**
+!styles/
+!styles/**
+!fonts/
+!fonts/**
+!vendor/
+!vendor/**
+!data/
+!data/*.csv

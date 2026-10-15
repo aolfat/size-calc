@@ -145,6 +145,24 @@ test('periods: a day, its week (named by the Monday, weekends folded in), its mo
   assert.deepEqual(json(run, `periodResults(${J}, 'day')`).map(r => [r.key, r.trades, r.net]), [['2026-10-15', 1, 0], ['2026-10-13', 1, 50], ['2026-10-06', 2, -350], ['2026-10-05', 1, 300]]);
 });
 
+test('a period counts the exits taken in it: a trim while the rest is open, or before it closes in a later week', async () => {
+  const { run } = await app();
+  const trades = `buildTrades(${JSON.stringify(TRIMS)})`;
+  // AAPL: +150 trimmed Mon 10/5, +200 closed Wed 10/7; XLU call: +500 trimmed Wed 10/14, still open
+  assert.deepEqual(json(run, `activePeriods(${trades}, 'week')`), ['2026-10-12', '2026-10-05'], 'the week with only a trim has exits');
+  const wk = json(run, `inPeriod(${trades}, 'week', '2026-10-12')`);
+  assert.deepEqual(wk.map(t => [t.symbol, t.pnl, t.status, t.closedAt, t.partial]), [['XLU   270319C00045000', 500, 'win', '2026-10-14T15:00:00.000Z', true]]);
+  assert.equal(json(run, `inPeriod(${trades}, 'week', '2026-10-05')`)[0].partial, undefined, 'every exit inside: the trade itself');
+  const mon = json(run, `inPeriod(${trades}, 'day', '2026-10-05')`);
+  assert.deepEqual(mon.map(t => [t.pnl, t.exits, t.partial]), [[150, 1, true]], 'Monday: only the trim');
+  assert.deepEqual(json(run, `periodResults(${trades}, 'day')`).map(r => [r.key, r.trades, r.net]), [['2026-10-14', 1, 500], ['2026-10-07', 1, 200], ['2026-10-05', 1, 150]]);
+  assert.deepEqual(json(run, `periodResults(inPeriod(${trades}, 'week', '2026-10-05'), 'day')`).map(r => [r.key, r.net]), [['2026-10-07', 200], ['2026-10-05', 150]], 'a week cut again by day');
+  assert.equal(json(run, `inPeriod(${trades}, 'all', '').length`), 1, 'all time: closed trades only');
+  assert.equal(run(`switchPeriod(${trades}, 'all', '', 'week')`), '2026-10-12', 'the newest exit, even on an open trade');
+  const risky = json(run, `sliceTrade({ ...${trades}[0], risk: 300 }, 'day', '2026-10-05')`);
+  assert.equal(risky.r, 0.5, 'R on the exits taken then, over the trade\'s risk');
+});
+
 test('breakdowns: by underlying, side, instrument, time of day, weekday, hold, exits, and the R distribution', async () => {
   const { run } = await app();
   const b = json(run, `breakdowns(${JSON.stringify(TRADES)})`);
@@ -233,6 +251,19 @@ test('the Calendar tab: a trim shows on its day, and that day lists the trade ev
   assert.match(out(), /<b>AAPL<\/b>/, 'the open trade trimmed that day');
 });
 
+test('a week\'s total on the calendar opens its stats even when its only exits were trims', async () => {
+  const { run, out } = await journal([
+    order(1, 'BUY', '2026-10-05T13:35:00+0000', 100, 100), order(2, 'SELL', '2026-10-05T15:00:00+0000', 50, 103), order(3, 'SELL', '2026-10-13T15:00:00+0000', 20, 104),
+  ]);
+  run("openJournalStats('week', '2026-10-12')");
+  assert.match(out(), /class="jc-title">Oct 12–16, 2026</);
+  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$80\.00<span class="pos-sub">1 trade · 1 partly closed<\/span>/);
+  assert.match(out(), /<dt>Win rate<\/dt><dd class="">100%/);
+  assert.doesNotMatch(out(), /No exits this week/);
+  run("setJournalPeriod('all')");
+  assert.match(out(), /No closed trades yet\. A trim on an open trade counts in its day, week and month/, 'all time still counts closed trades');
+});
+
 test('the Stats tab: headline numbers, the equity canvas, tables by group, thin groups marked, filters apply', async () => {
   const { run, out } = await journal();
   run("setJournalTab('stats')");
@@ -271,7 +302,7 @@ test('the Stats tab narrowed to a day, a week or a month: ‹ › step through t
   run("document.getElementById('journalSymbol').value = 'MSFT'; journalSymbolChanged(); setJournalPeriod('day'); stepJournalPeriod('-1')");
   assert.equal(state.journalPeriodShown, '2026-10-06', 'only MSFT\'s day');
   run("state.journalPeriodKey = '2026-10-05'; renderJournal()");
-  assert.match(out(), /No closed trades this day/, 'a period the filter empties says so');
+  assert.match(out(), /No exits this day/, 'a period the filter empties says so');
   run("setJournalPeriod('all')");
   assert.equal(state.journalPeriodKey, '');
   assert.match(out(), /By month/);

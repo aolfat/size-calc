@@ -1,0 +1,7 @@
+# Dedicated app origin; the existing Schwab API worker remains separate.
+name = "size-calc-app"
+compatibility_date = "2026-10-15"
+workers_dev = true
+
+[assets]
+directory = "../.."

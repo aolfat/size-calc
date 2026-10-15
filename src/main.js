@@ -70,8 +70,8 @@ window.addEventListener('online', marketScheduleRefresh);
 window.addEventListener('offline', marketScheduleRefresh);
 
 renderRecentTickers();
-initCloud(); // also finishes a Google sign-in when this page is its return (?login=google)
-initSchwab(); // also finishes a Schwab login when this page is the callback (it ignores Google's return)
+// Restore the Google owner before finishing or using a brokerage connection on this page.
+initCloud().then(() => initSchwab());
 
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {

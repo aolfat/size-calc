@@ -5,10 +5,11 @@ import { state } from '../state.js';
 import { store, onStoreWrite } from '../lib/store.js';
 import { mergeFirstSignIn, pullFrom, seenAfter, unseenRows } from '../core/cloud-merge.js';
 import { hasStoredSession, supabaseClient } from './supabase.js';
+import { schwabDisconnect } from './schwab.js';
 
 /** settings that live in the account (the Tradier key goes to Vault) */
 export const CLOUD_KEYS = ['calc_account', 'calc_risk', 'calc_allocation', 'risk_usd_presets', 'atr_multiplier', 'stop_strategy', 'stop_percent', 'last_ticker', 'tradier_env', 'schwab_proxy', 'journal_fees'];
-/** synced, but kept on sign-out: this device's own Schwab login still needs its worker */
+/** keep the worker address for the next login; credentials are always disconnected */
 const KEPT_ON_SIGN_OUT = ['schwab_proxy'];
 /** device-local bookkeeping, never sent */
 export const CLOUD_LOCAL_KEYS = ['cloud_pending', 'cloud_user', 'cloud_seen'];
@@ -113,6 +114,8 @@ export async function cloudPush() {
   if (!state.cloudPending.size) return true;
   if (!merged()) return false; // kept until the session is back
   if (state.cloudBusy) { schedulePush(1000); return false; }
+  const uid = state.session.user.id;
+  const current = () => state.session?.user?.id === uid && store.get('cloud_user') === uid;
   return exclusive(async () => {
     view.status('Saving…');
     // sent as they are now, and pending (on the device too) until the server has them: a page killed mid-save resends
@@ -121,18 +124,20 @@ export async function cloudPush() {
     const done = keys => { keys.forEach(k => { if (store.get(k) === sending.get(k)) state.cloudPending.delete(k); }); savePending(); };
     try {
       const client = await supabaseClient();
-      const uid = state.session.user.id;
+      if (!current()) return false;
       const rows = CLOUD_KEYS.filter(k => sending.has(k) && sending.get(k) !== null).map(k => ({ user_id: uid, key: k, value: sending.get(k) }));
       if (rows.length) check(await client.from('settings').upsert(rows));
+      if (!current()) return false;
       done([...sending.keys()].filter(k => k !== 'tradier_key')); // saved, removed (nothing to send), or not an account key
       if (sending.has('tradier_key')) {
         check(await client.rpc('set_tradier_key', { new_key: sending.get('tradier_key') || '' }));
+        if (!current()) return false;
         done(['tradier_key']);
       }
       view.status('Synced ' + clock());
       return !state.cloudPending.size;
     } catch(e) {
-      failed(e);
+      if (current()) failed(e);
       return false;
     }
   });
@@ -155,14 +160,18 @@ export async function cloudFlush(ms = FLUSH_WAIT) {
  */
 export async function cloudPull() {
   if (!merged() || state.cloudBusy) return;
+  const uid = state.session.user.id;
+  const current = () => state.session?.user?.id === uid && store.get('cloud_user') === uid;
   return exclusive(async () => {
     try {
       const client = await supabaseClient();
+      if (!current()) return;
       const seen = readJson('cloud_seen', {});
       let sq = client.from('settings').select(SETTINGS_COLS);
       const since = pullFrom(seen.settings);
       if (since) sq = sq.gt('updated_at', since);
       const settingRows = check(await sq).data || [];
+      if (!current()) return;
       const fresh = unseenRows(settingRows, seen.keys || {});
 
       let changed = false;
@@ -170,6 +179,7 @@ export async function cloudPull() {
       const keyBefore = store.get('tradier_key');
       if (fresh.some(r => r.key === 'tradier_key_at') && !state.cloudPending.has('tradier_key')) {
         newKey = check(await client.rpc('get_tradier_key')).data || '';
+        if (!current()) return;
       }
       state.cloudSuppress = true;
       try {
@@ -186,7 +196,7 @@ export async function cloudPull() {
       if (changed) { view.applied(); view.pulled(); }
       if (state.cloudPending.size) schedulePush(1000);
     } catch(e) {
-      failed(e);
+      if (current()) failed(e);
     }
   });
 }
@@ -201,14 +211,21 @@ export async function cloudPull() {
  * Returns { seeded: this device filled the account, foreign: it was another account's, dropped: that account's unsent edits }.
  */
 export async function cloudFirstSignIn() {
+  const uid = state.session.user.id;
+  const ensureCurrent = () => {
+    if (state.session?.user?.id !== uid) throw new Error('Your Google account changed. Sign in again.');
+  };
   await settle();
+  ensureCurrent();
   return exclusive(async () => {
     const client = await supabaseClient();
-    const uid = state.session.user.id;
+    ensureCurrent();
     const before = store.get('cloud_user');
     const foreign = !!before && before !== uid;
     const settingRows = check(await client.from('settings').select(SETTINGS_COLS)).data || [];
+    ensureCurrent();
     const cloudKey = check(await client.rpc('get_tradier_key')).data || '';
+    ensureCurrent();
 
     /** @type {Record<string, string>} */
     const localSettings = {};
@@ -221,7 +238,9 @@ export async function cloudFirstSignIn() {
 
     const uploadSettings = Object.entries(m.upload.settings).map(([key, value]) => ({ user_id: uid, key, value }));
     if (uploadSettings.length) check(await client.from('settings').upsert(uploadSettings));
+    ensureCurrent();
     if (m.upload.key) check(await client.rpc('set_tradier_key', { new_key: m.upload.key }));
+    ensureCurrent();
 
     const dropped = foreign ? state.cloudPending.size : 0;
     state.cloudSuppress = true;
@@ -244,6 +263,7 @@ export async function cloudFirstSignIn() {
 
 /** remove everything synced from this device, so a shared computer doesn't keep the key */
 export function cloudClearDevice() {
+  schwabDisconnect();
   [...CLOUD_KEYS.filter(k => !KEPT_ON_SIGN_OUT.includes(k)), 'tradier_key', ...CLOUD_LOCAL_KEYS].forEach(k => store.del(k));
   clearTimeout(state.cloudTimer);
   state.cloudPending.clear();

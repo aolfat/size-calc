@@ -18,7 +18,7 @@ function corsHeaders(req, env) {
   };
 }
 
-const json = (obj, status, headers) => new Response(JSON.stringify(obj), { status, headers: { ...headers, 'Content-Type': 'application/json' } });
+const json = (obj, status, headers) => new Response(JSON.stringify(obj), { status, headers: { ...headers, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export default {
   async fetch(req, env) {
@@ -71,6 +71,7 @@ export default {
         body: hasBody ? await req.text() : undefined,
       });
       const out = new Headers(cors);
+      out.set('Cache-Control', 'no-store');
       out.set('Content-Type', res.headers.get('Content-Type') || 'application/json');
       const location = res.headers.get('Location');
       if (location) out.set('Location', location); // a new order's id

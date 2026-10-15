@@ -560,7 +560,7 @@
           <button class="btn" id="signInBtn" data-action="signIn">Sign in with Google</button>
           <button class="btn" id="signOutBtn" data-action="signOut" style="display:none;">Sign out</button>
         </div>
-        <p class="hint" id="accountHint">Sync your settings and Tradier key across devices. The calculator works without signing in.</p>
+        <p class="hint" id="accountHint">Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. The calculator works without signing in.</p>
       </div>
       <div class="sheet-section">
         <div class="row">
@@ -596,7 +596,7 @@
               <input type="text" id="schwabRedirect" placeholder="https://127.0.0.1/?code=…" autocomplete="off" spellcheck="false" data-enter="finishSchwab" />
             </div>
             <div class="field" style="flex:0 0 auto;">
-              <button class="btn" data-action="finishSchwab">Connect</button>
+              <button class="btn" id="schwabFinish" data-action="finishSchwab">Connect</button>
             </div>
           </div>
         </div>
@@ -612,7 +612,7 @@
             </div>
           </div>
         </div>
-        <p class="hint">Sends shares orders from the shares card: a market entry, then your stop once it fills. The login stays in this browser, never in your account. Schwab asks you to log in again every 7 days.</p>
+        <p class="hint">Sends shares orders from the shares card: a market entry, then your stop once it fills. Tokens stay in this browser and pass through the worker, whose operator can access them. Signing out disconnects Schwab. Schwab asks you to log in again every 7 days.</p>
         <details class="hint-details"><summary>Setup</summary>Deploy the worker in <b>worker/schwab</b> with your app key, secret, and callback URL (its README has the steps), then paste its URL above. Set the callback to this app's address and Schwab sends you straight back here after you log in. With https://127.0.0.1 as the callback, the page you land on won't load: copy its whole address and paste it here within about 30 seconds.</details>
       </div>
     </div>
