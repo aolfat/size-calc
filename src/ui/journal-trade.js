@@ -7,7 +7,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { instructionWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords } from '../core/journal.js';
 import { BARS_KEEP_DAYS, nyDay, weekdaysBetween } from '../core/bars.js';
-import { dailyWindow, excursions, fillMarks, holdChartBars, nyStamp, unpackBars } from '../core/trade-page.js';
+import { dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, nyStamp, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
 import { loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
@@ -156,10 +156,13 @@ export function renderJournalTrade() {
     return;
   }
   const side = t.bias === 'neutral' ? 'Neutral' : (t.bias || t.direction) === 'long' ? 'Long' : 'Short';
+  const x = exitParts(t);
+  const exit = !x ? '' : t.status === 'open' ? ` · ${x.closed} ${x.verb} at ${px(t.avgExit, t.assetType)}${x.avg ? ' avg' : ''}`
+    : ` → ${px(t.avgExit, t.assetType)}${x.avg ? ' avg' : ''}`;
   head.innerHTML = `<div class="jt-head">
       <button class="pos-link" data-action="closeJournalTrade">← Trades</button>
       <span class="section-title" id="jtTitle">${esc(t.label)}</span>
-      <span class="positions-meta">${side} ${t.entryQty} at ${t.status === 'history' ? '—' : px(t.avgEntry, t.assetType)}${t.avgExit !== null ? ` → ${px(t.avgExit, t.assetType)}` : ''}${t.status === 'open' ? ' · open' : ''}${t.expired ? ' · expired' : ''}</span>
+      <span class="positions-meta">${side} ${t.entryQty} at ${t.status === 'history' ? '—' : px(t.avgEntry, t.assetType)}${exit}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}</span>
       <span class="journal-actions"><button class="btn" data-action="editJournalTrade">Edit</button></span>
     </div>`;
   const fills = tradeFills(t);
@@ -181,12 +184,12 @@ export function renderJournalTrade() {
   drawJournalTrade();
 }
 
-/** the lines on the trade's own chart: entry, exit, stop */
+/** the lines on the trade's own chart: entry, exit (the average of several, how much of it while open), stop */
 function tradeLines(t) {
   const css = getComputedStyle(document.documentElement), color = n => css.getPropertyValue(n).trim();
   const lines = [];
   if (t.avgEntry > 0) lines.push({ price: t.avgEntry, color: color('--blue'), label: 'entry ' + t.avgEntry.toFixed(2), left: true });
-  if (t.avgExit > 0) lines.push({ price: t.avgExit, color: color('--amber'), label: 'exit ' + t.avgExit.toFixed(2) });
+  if (t.avgExit > 0) lines.push({ price: t.avgExit, color: color('--amber'), label: exitLineLabel(t) });
   if (t.stop > 0) lines.push({ price: t.stop, color: color('--red'), label: `${t.stopSource === 'yours' ? 'your stop' : 'stop'} ${t.stop.toFixed(2)}` });
   return lines;
 }
