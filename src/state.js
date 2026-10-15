@@ -58,6 +58,14 @@ export function createState() {
     journalLoading: false,
     journalError: '',
     barsBusy: false, // the journal is saving 5-minute bars
+    journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
+    journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
+    journalReviewFilter: 'all', // the trades tab: all | todo (to review)
+    reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
+    reviewLevel: '', // a setup level picked, waiting for its action
+    reviewNewKind: '', // + New is open for this kind
+    reviewNewName: '', // what's typed in it
+    reviewNoteDraft: null, // { key, text }: the note being typed, so a redraw never loses it
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, view5, viewD, loading/status per chart, hover }
     journalTab: 'trades', // trades | calendar | stats | fills
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)

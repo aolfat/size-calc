@@ -15,6 +15,7 @@ import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { journalTradeList, marketTime, openTradeReview } from './journal.js';
+import { onReviewChange, reviewSectionHtml } from './journal-review.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -23,6 +24,8 @@ const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 
 /** the trade on the page, as the Journal has it now (your stops, merges and deletes applied) */
 const pageTrade = () => state.journalTrade ? journalTradeList().find(t => t.key === state.journalTrade.key) || null : null;
+/** the trade on the page, for the Review section's actions */
+export const journalPageTrade = () => pageTrade();
 
 /** the trade's fills, oldest first */
 function tradeFills(t) {
@@ -45,6 +48,8 @@ function holdDays(t) {
 }
 
 export function openJournalTrade(key) {
+  // a fresh review: no half-picked setup, new-item box or note draft carried over from another trade
+  Object.assign(state, { reviewLevel: '', reviewNewKind: '', reviewNewName: '', reviewNoteDraft: null, reviewMarketOwn: false });
   state.journalTrade = { key, five: [], daily: [], view5: { count: 78, offset: 0 }, viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '', hover5: -1, hoverY5: -1, hoverD: -1, hoverYD: -1 };
   syncJournalPage();
   renderJournalTrade();
@@ -170,6 +175,7 @@ export function renderJournalTrade() {
   body.innerHTML = `${statsHtml(t, ex)}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
+    ${reviewSectionHtml(t)}
     ${fillsHtml(t, fills)}
     ${stopsHtml(t)}`;
   drawJournalTrade();
@@ -245,3 +251,6 @@ export const journalTradeRange = which => {
   const bars = which === '5' ? p.five : p.daily;
   return viewRange(which === '5' ? p.view5 : p.viewD, bars.length);
 };
+
+// a review change redraws the page (the section, and the status line with it)
+onReviewChange(() => { if (state.journalTrade) renderJournalTrade(); });

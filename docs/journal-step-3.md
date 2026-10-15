@@ -1,6 +1,6 @@
 # Step 3: reviewing trades
 
-Status: planned. This is the next part of [the journal plan](journal-plan.md), after [step 2](journal-step-2.md), which builds trades, their charts and the stats from Schwab.
+Status: slice 1 (review on the trade page) built. This is the next part of [the journal plan](journal-plan.md), after [step 2](journal-step-2.md), which builds trades, their charts and the stats from Schwab.
 
 ## Goal
 
@@ -65,7 +65,7 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 
 ## Slices
 
-### 1. Review on the trade page
+### 1. Review on the trade page (built)
 
 - **A Review section** on the trade page, under the stats:
   - market (the day's, with "this trade only")
