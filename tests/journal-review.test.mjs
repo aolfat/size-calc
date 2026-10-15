@@ -9,6 +9,24 @@ import { fakeRecords } from './helpers/supabase.mjs';
 
 const json = (run, code) => JSON.parse(run(`JSON.stringify(${code})`));
 
+test('My setups: the starting ones, what each is made of, names for new ones, same-parts reuse, most used first', async () => {
+  const { run } = await app();
+  const mine = [{ id: 's1', kind: 'setup', name: '50 SMA/support UnR', settings: { action: 'undercut', levels: ['sma50', 'support'] } }];
+  const lib = `buildLibrary(${JSON.stringify(mine)})`;
+  assert.deepEqual(json(run, `${lib}.choices('setup').map(i => i.name)`).slice(0, 3), ['8 EMA bounce', '21 EMA bounce', '50 SMA bounce']);
+  assert.deepEqual(json(run, `${lib}.parts('ema21_unr')`), { action: 'undercut', levels: ['ema21'] });
+  assert.deepEqual(json(run, `${lib}.parts('base_breakout')`), { pattern: 'base_breakout' });
+  assert.deepEqual(json(run, `${lib}.parts('mine:s1')`), { action: 'undercut', levels: ['sma50', 'support'] }, 'yours keep what they are made of');
+  assert.equal(run(`${lib}.partsWords(${lib}.parts('mine:s1'))`), 'Undercut & rally at 50 SMA + Support');
+  assert.equal(run(`${lib}.nameOf('setup', 'mine:s1')`), '50 SMA/support UnR');
+  assert.equal(run(`setupName(${lib}, { action: 'bounce', levels: ['ema21', 'support'] })`), '21 EMA + Support bounce', 'a new setup\'s name until you type one');
+  assert.equal(run(`setupName(${lib}, { pattern: 'flag_breakout' })`), 'Pennant or flag breakout');
+  assert.equal(run(`setupName(${lib}, { action: 'bounce', levels: [] })`), '', 'not ready without a level');
+  assert.equal(run(`sameParts({ action: 'undercut', levels: ['support', 'sma50'] }, { action: 'undercut', levels: ['sma50', 'support'] })`), true);
+  const used = { a: [{ kind: 'setup', value: 'mine:s1' }], b: [{ kind: 'setup', value: 'mine:s1' }, { kind: 'setup', value: 'earnings_gap' }] };
+  assert.deepEqual(json(run, `setupsByUse(${lib}, ${JSON.stringify(used)}).map(i => i.key)`).slice(0, 3), ['mine:s1', 'earnings_gap', 'ema8_bounce'], 'most used first, then the list\'s order');
+});
+
 test('the library: defaults, your own items, a renamed and a hidden default, merges followed', async () => {
   const { run } = await app();
   const rows = [
@@ -72,7 +90,7 @@ async function page(tweak) {
   return { ...a, supabase, t, body: () => a.elements.get('jtBody').innerHTML, list: () => a.elements.get('journalSection').innerHTML, rows: name => [...supabase.tables[name].values()] };
 }
 
-test('the Review section: market for the day or this trade, sector, a setup built from a level and an action, tactic, tags, grades, the note', async () => {
+test('the Review section: market for the day or this trade, sector, My setups (one tap, or + New setup), tactic, tags, grades, the note', async () => {
   const { run, state, t, body, rows, supabase } = await page();
   assert.match(body(), /<span class="section-title js-sub">Review<\/span>\s*<span class="jr-status "[^>]*>To review: missing market, sector, setup and 4 more<\/span>/);
   assert.ok(supabase.reads.some(r => r.table === 'trade_labels') && supabase.reads.some(r => r.table === 'journal_days') && supabase.reads.some(r => r.table === 'library_items'), 'everything a review needs is read with the journal');
@@ -89,14 +107,26 @@ test('the Review section: market for the day or this trade, sector, a setup buil
   await run(`toggleReviewLabel(${t}, 'sector', 'strong')`);
   await run(`toggleReviewLabel(${t}, 'sector', 'weak')`);
   assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'sector').map(r => r.value), ['weak'], 'one sector: the new one replaces the old');
-  run("pickSetupLevel('sma50')");
-  assert.match(body(), /<span class="jr-step">50 SMA \+<\/span>/, 'the level waits for its action');
-  await run(`addSetup(${t}, { level: state.reviewLevel, action: 'bounce' })`.replace('state.reviewLevel', "'sma50'"));
-  await run(`addSetup(${t}, { pattern: 'earnings_gap' })`);
-  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'setup').map(r => r.value), ['sma50+bounce', 'pattern:earnings_gap']);
-  assert.match(body(), /<span class="jr-setup">50 SMA bounce<button class="pos-link" data-action="removeSetup" data-arg="sma50\+bounce"/);
-  await run(`removeSetup(${t}, 'pattern:earnings_gap')`);
-  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'setup').map(r => r.value), ['sma50+bounce'], 'removed');
+  assert.match(body(), /<div class="jr-label">My setups<\/div>[\s\S]*data-action="toggleSetup" data-arg="ema8_bounce" title="Bounce at 8 EMA">8 EMA bounce/, 'the starting setups, one tap each');
+  await run(`toggleSetup(${t}, 'ema21_bounce')`);
+  await run(`toggleSetup(${t}, 'earnings_gap')`);
+  await run(`toggleSetup(${t}, 'earnings_gap')`);
+  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'setup').map(r => r.value), ['ema21_bounce'], 'tapping a lit one takes it off');
+  assert.match(body(), /aria-pressed="true" data-action="toggleSetup" data-arg="ema21_bounce"/, 'lit, and first');
+
+  run('startSetupDraft()');
+  assert.match(body(), /What happened\?[\s\S]*At what\?[\s\S]*Or a pattern[\s\S]*data-action="saveSetupDraft" disabled/, 'not ready until it has an action and a level');
+  run("setDraftAction('undercut'); toggleDraftLevel('sma50'); toggleDraftLevel('support')");
+  assert.match(body(), /placeholder="50 SMA \+ Support undercut &amp; rally"/, 'named for you');
+  run("setupDraftNameInput('50 SMA/support UnR')");
+  await run(`saveSetupDraft(${t})`);
+  const mine = rows('library_items').find(r => r.kind === 'setup');
+  assert.deepEqual([mine.name, mine.settings], ['50 SMA/support UnR', { action: 'undercut', levels: ['sma50', 'support'] }], 'saved to My setups with what it is made of');
+  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'setup').map(r => r.value), ['ema21_bounce', `mine:${mine.id}`], 'and on the trade');
+  assert.equal(state.setupDraft, null);
+  run("startSetupDraft(); setDraftAction('undercut'); toggleDraftLevel('support'); toggleDraftLevel('sma50')");
+  await run(`saveSetupDraft(${t})`);
+  assert.equal(rows('library_items').filter(r => r.kind === 'setup').length, 1, 'made of the same things: the same setup, not a second one');
   await run(`toggleReviewLabel(${t}, 'tactic', 'pivot30')`);
   await run(`toggleReviewLabel(${t}, 'tag', 'option_flow')`);
   await run(`toggleReviewLabel(${t}, 'mistake', 'chased')`);
@@ -151,7 +181,7 @@ test('+ New adds your own choice to the library and the trade; the choices sheet
 
   run('openJournalLibrary()');
   assert.equal(state.openSheetName, 'journalLibrary');
-  assert.match(elements.get('journalLibraryBody').innerHTML, /Setup levels[\s\S]*value="50 SMA"/);
+  assert.match(elements.get('journalLibraryBody').innerHTML, /My setups[\s\S]*value="21 EMA bounce"[\s\S]*Bounce at 21 EMA[\s\S]*Levels[\s\S]*value="50 SMA"/);
   await run("renameLibraryItem('tactic', 'pivot30', '30m pivot')");
   await run("toggleLibraryHidden('tag', 'option_flow')");
   await run(`mergeLibraryItem('tag', 'mine:${mine[0].id}', 'option_flow')`);
@@ -173,4 +203,57 @@ test('a review save Supabase refuses goes back; before the migration is pushed, 
   assert.match(two.body(), /Reviews couldn(?:'|&#39;)t load: the database doesn(?:'|&#39;)t have the review tables yet: npx supabase db push/);
   assert.match(two.body(), /<dt>P&amp;L<\/dt>/, 'the rest of the page is there');
   assert.match(two.list(), /<b>AAPL<\/b>/, 'and so is the list');
+});
+
+test('what fits while building a setup, and links: https only, named for the flow sites', async () => {
+  const { run } = await app();
+  const lib = 'buildLibrary([])';
+  const fits = draft => json(run, `${lib}.choices('setup').filter(i => setupFits(${lib}, i.key, ${JSON.stringify(draft)})).map(i => i.key)`);
+  assert.deepEqual(fits({ action: 'undercut', levels: [] }), ['ema21_unr', 'sma50_unr'], 'what happened narrows to that action');
+  assert.deepEqual(fits({ action: 'undercut', levels: ['sma50'] }), ['sma50_unr'], 'and a level to the ones at it');
+  assert.deepEqual(fits({ action: 'undercut', levels: ['sma50', 'support'] }), [], 'nothing at both yet');
+  assert.deepEqual(fits({ action: '', levels: ['ema21'] }), ['ema21_bounce', 'ema21_unr', 'ema21_rejection'], 'a level alone: everything at it');
+  assert.deepEqual(fits({ pattern: 'earnings_gap' }), ['earnings_gap']);
+  assert.equal(run("cleanLink(' https://unusualwhales.com/flow/ticker_flows?ticker_symbol=NVDA ')"), 'https://unusualwhales.com/flow/ticker_flows?ticker_symbol=NVDA');
+  assert.equal(run("cleanLink('http://bullflow.io/x')"), '', 'https only');
+  assert.equal(run("cleanLink('javascript:alert(1)')"), '');
+  assert.equal(run("cleanLink('not a link')"), '');
+  assert.equal(run("linkLabel('https://www.unusualwhales.com/flow/x')"), 'Unusual Whales');
+  assert.equal(run("linkLabel('https://app.bullflow.io/flow?s=NVDA')"), 'Bullflow');
+  assert.equal(run("linkLabel('https://x.com/someone/status/1')"), 'x.com');
+});
+
+test('+ New setup narrows My setups as you pick and offers the one you have; Option flow takes links', async () => {
+  const { run, t, body, rows, elements } = await page();
+  run('startSetupDraft()');
+  run("setDraftAction('undercut')");
+  assert.match(body(), /<span class="jr-fit">My setups that fit:<\/span>/);
+  assert.match(body(), /data-arg="ema21_unr"[^>]*>21 EMA undercut &amp; rally/);
+  assert.doesNotMatch(body(), /data-action="toggleSetup" data-arg="ema21_bounce"/, 'bounces step aside');
+  run("toggleDraftLevel('sma50')");
+  assert.match(body(), /Already in My setups: <button class="filter-btn" aria-pressed="false" data-action="useSetupDraftMatch" data-arg="sma50_unr">50 SMA undercut &amp; rally<\/button> tap it to add/);
+  assert.doesNotMatch(body(), /data-action="saveSetupDraft"/, 'no Save: you have it');
+  await run(`useSetupDraftMatch(${t}, 'sma50_unr')`);
+  assert.deepEqual(rows('trade_labels').map(r => [r.kind, r.value]), [['setup', 'sma50_unr']]);
+  assert.equal(rows('library_items').length, 0, 'nothing new made');
+  run("startSetupDraft(); setDraftAction('undercut'); toggleDraftLevel('sma50')");
+  assert.match(body(), /Already on this trade: <b>50 SMA undercut &amp; rally<\/b>/);
+  run("toggleDraftLevel('support')");
+  assert.match(body(), /None of My setups fit yet\.[\s\S]*data-action="saveSetupDraft">Save to my setups and add/, 'nothing at both: Save makes it');
+  run('cancelSetupDraft()');
+
+  assert.doesNotMatch(body(), /id="reviewLinkInput"/, 'no link box until Option flow is on');
+  await run(`toggleReviewLabel(${t}, 'tag', 'option_flow')`);
+  assert.match(body(), /Option flow links<\/span>\s*<input type="url" id="reviewLinkInput"[^>]*placeholder="Paste an Unusual Whales or Bullflow link"/);
+  await run(`addReviewLink(${t}, 'option_flow', 'https://unusualwhales.com/flow/ticker_flows?ticker_symbol=AAPL')`);
+  await run(`addReviewLink(${t}, 'option_flow', 'https://app.bullflow.io/flow?s=AAPL')`);
+  await run(`addReviewLink(${t}, 'option_flow', 'https://app.bullflow.io/flow?s=AAPL')`);
+  const tag = rows('trade_labels').find(r => r.kind === 'tag');
+  assert.deepEqual(tag.links, ['https://unusualwhales.com/flow/ticker_flows?ticker_symbol=AAPL', 'https://app.bullflow.io/flow?s=AAPL'], 'kept on the tag, the same one once');
+  assert.match(body(), /<a href="https:\/\/unusualwhales\.com\/flow\/ticker_flows\?ticker_symbol=AAPL" target="_blank" rel="noopener noreferrer"[^>]*>Unusual Whales ↗<\/a>/);
+  assert.match(body(), />Bullflow ↗<\/a>/);
+  run(`addReviewLink(${t}, 'option_flow', 'javascript:alert(1)')`);
+  assert.match(elements.get('errorBox').textContent, /Paste a link that starts with https:\/\//);
+  await run(`removeReviewLink(${t}, 'option_flow', '0')`);
+  assert.deepEqual(rows('trade_labels').find(r => r.kind === 'tag').links, ['https://app.bullflow.io/flow?s=AAPL']);
 });

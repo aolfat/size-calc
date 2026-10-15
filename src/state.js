@@ -62,7 +62,8 @@ export function createState() {
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
     journalReviewFilter: 'all', // the trades tab: all | todo (to review)
     reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
-    reviewLevel: '', // a setup level picked, waiting for its action
+    setupDraft: null, // + New setup being made: { action, levels, pattern, name }
+    reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it
     reviewNoteDraft: null, // { key, text }: the note being typed, so a redraw never loses it

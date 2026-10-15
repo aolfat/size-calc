@@ -37,14 +37,16 @@ Defaults, in the app's code (`src/core/journal-labels.js`). Your additions live 
 | **Sector** | 1 | Strong, Weak, Neutral, N/A |
 | **Daily setup** | Any number, all equal | A level plus an action, or a pattern (below) |
 | **Entry tactic** | 1 | 6/20 (Gil Morales), 15-minute pivot, 30-minute pivot |
-| **Tags** | Any number | Option flow |
+| **Tags** | Any number | Option flow, which takes links to the trade's flow (Unusual Whales, Bullflow) |
 | **Mistakes** | Any number | Chased the entry, Oversized, Moved the stop, Revenge trade, Exited early, Didn't take the stop |
 
 **Daily setups**
 - **Levels:** 50, 100 and 200 SMA; 8 and 21 EMA; support; resistance; AVWAP from the all-time high, the all-time low, and earnings.
 - **Actions:** bounce, undercut and rally, rejection.
 - **Patterns:** base breakout, pennant or flag breakout, earnings gap.
-- **A setup is one of:** a level with an action ("50 SMA bounce", "21 EMA undercut and rally"), a level alone, or a pattern.
+- **My setups:** each setup is saved once and picked from then on. It's an action (bounce, undercut & rally, rejection) at one or more levels ("21 EMA bounce", "50 SMA + support undercut & rally"), or a pattern ("Base breakout"). The list starts with nine; you add one with "+ New setup" when nothing fits.
+  - **Search first:** picking what happened and the levels narrows My setups to the ones that fit. One you already have says so, and only a new combination gets saved.
+  - **Reports** can cut by setup, by action (every bounce), or by level (everything at the 21 EMA), since each setup keeps its parts.
 - **Counting:** a trade counts toward each of its setups, so the setup report's rows don't add up to the total. The report says so.
 
 **Entry tactics:** the pivot rules are in [the journal plan](journal-plan.md#labels). They matter in slice 3, when the app guesses.

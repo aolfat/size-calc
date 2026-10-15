@@ -25,7 +25,7 @@ import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from
 import { saveKey, signIn, signOut } from './settings.js';
 import { clearJournalDay, journalThisMonth, pickJournalDay, shiftJournalMonth } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade } from './journal-trade.js';
-import { addSetup, cancelReviewItem, mergeLibraryItem, openJournalLibrary, pickSetupLevel, removeSetup, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
+import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
@@ -89,11 +89,18 @@ export const actions = {
   setReviewMarket: el => withPageTrade(t => setReviewMarket(t, arg(el))),
   toggleReviewMarketOwn: () => withPageTrade(t => toggleReviewMarketOwn(t)),
   toggleReviewLabel: el => withPageTrade(t => toggleReviewLabel(t, arg(el), el.dataset.arg2 || '')),
-  pickSetupLevel: el => pickSetupLevel(arg(el)),
-  addSetupAction: el => withPageTrade(t => addSetup(t, { level: state.reviewLevel, action: arg(el) })),
-  addSetupLevel: () => withPageTrade(t => addSetup(t, { level: state.reviewLevel })),
-  addSetupPattern: el => withPageTrade(t => addSetup(t, { pattern: arg(el) })),
-  removeSetup: el => withPageTrade(t => removeSetup(t, arg(el))),
+  toggleSetup: el => withPageTrade(t => toggleSetup(t, arg(el))),
+  startSetupDraft: () => startSetupDraft(),
+  cancelSetupDraft: () => cancelSetupDraft(),
+  setDraftAction: el => setDraftAction(arg(el)),
+  setDraftPattern: el => setDraftPattern(arg(el)),
+  toggleDraftLevel: el => toggleDraftLevel(arg(el)),
+  setupDraftNameInput: el => setupDraftNameInput(/** @type {HTMLInputElement} */ (el).value),
+  saveSetupDraft: () => withPageTrade(t => saveSetupDraft(t)),
+  useSetupDraftMatch: el => withPageTrade(t => useSetupDraftMatch(t, arg(el))),
+  reviewLinkInput: el => reviewLinkInput(/** @type {HTMLInputElement} */ (el).value),
+  addReviewLink: el => withPageTrade(t => addReviewLink(t, arg(el), el.tagName === 'INPUT' ? /** @type {HTMLInputElement} */ (el).value : undefined)),
+  removeReviewLink: el => withPageTrade(t => removeReviewLink(t, arg(el), el.dataset.arg2 || '')),
   setSetupGrade: el => withPageTrade(t => setSetupGrade(t, arg(el))),
   setPlanFollowed: el => withPageTrade(t => setPlanFollowed(t, arg(el))),
   reviewNoteInput: el => withPageTrade(t => reviewNoteInput(t, /** @type {HTMLTextAreaElement} */ (el).value)),

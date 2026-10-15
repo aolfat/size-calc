@@ -49,7 +49,7 @@ function holdDays(t) {
 
 export function openJournalTrade(key) {
   // a fresh review: no half-picked setup, new-item box or note draft carried over from another trade
-  Object.assign(state, { reviewLevel: '', reviewNewKind: '', reviewNewName: '', reviewNoteDraft: null, reviewMarketOwn: false });
+  Object.assign(state, { setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNoteDraft: null, reviewMarketOwn: false });
   state.journalTrade = { key, five: [], daily: [], view5: { count: 78, offset: 0 }, viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '', hover5: -1, hoverY5: -1, hoverD: -1, hoverYD: -1 };
   syncJournalPage();
   renderJournalTrade();
