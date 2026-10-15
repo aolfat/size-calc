@@ -343,7 +343,7 @@ function currentTrades() {
   return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now(), saved: state.journalSaved });
 }
 const reviewedTrade = () => currentTrades().find(t => t.key === state.tradeReviewKey) || null;
-const reviewOf = key => (state.tradeReviews || {})[key] || { stop: null, hidden: false };
+const reviewOf = key => (state.tradeReviews || {})[key] || { stop: null, deleted: false };
 
 /** what the typed stop would make the risk and R, or why it can't be this trade's */
 function stopPreview(t, raw) {
@@ -557,7 +557,7 @@ export function confirmDeleteTrade(key) {
 export function deleteTrade() {
   const t = reviewedTrade();
   if (!t) return;
-  return saveReview({ ...reviewOf(t.key), hidden: true }, `${t.label} trade deleted.`);
+  return saveReview({ ...reviewOf(t.key), deleted: true }, `${t.label} trade deleted.`);
 }
 
 /** Restore on a deleted row: no question, it only brings it back */
@@ -565,7 +565,7 @@ export function restoreTrade(key) {
   state.tradeReviewKey = key;
   const t = reviewedTrade();
   if (!t) return;
-  return saveReview({ ...reviewOf(t.key), hidden: false }, `${t.label} trade restored.`);
+  return saveReview({ ...reviewOf(t.key), deleted: false }, `${t.label} trade restored.`);
 }
 
 /** combine the open trade (a leg or a spread) with another leg: a merge, and the sheet stays open on the spread */
@@ -628,7 +628,7 @@ async function mergeTrades(picked, opts = {}) {
     try { await deleteSavedTrades(extra); state.journalSaved = state.journalSaved.filter(r => !extra.includes(r.id)); } catch(e) {}
     const first = [...picked].sort((a, b) => (a.openedAt < b.openedAt ? -1 : 1))[0];
     if (!rows.length && first.stopSource === 'yours' && !first.legs) {
-      const carry = { [key]: { stop: first.stop, hidden: false } };
+      const carry = { [key]: { stop: first.stop, deleted: false } };
       try { await saveTradeReviews(carry); state.tradeReviews = { ...(state.tradeReviews || {}), ...carry }; } catch(e) {}
     }
     state.journalPicked = [];

@@ -162,12 +162,12 @@ test('a moved stop: R stays on the first, the move is shown; your stop overrides
 
   const { run } = await app();
   const key = t.key;
-  const withOwn = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 99.5, hidden: true } }))`))[0];
+  const withOwn = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 99.5, deleted: true } }))`))[0];
   assert.equal(withOwn.stop, 99.5);
   assert.equal(withOwn.stopSource, 'yours');
   assert.equal(withOwn.schwabStop, 98);
   assert.equal(withOwn.r, -2);
-  assert.equal(withOwn.deleted, true, 'the review\'s hidden column is the delete mark');
+  assert.equal(withOwn.deleted, true, 'the review\'s deleted column');
   const past = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 101 } }))`))[0];
   assert.equal(past.stop, 98, 'a stop of yours past the entry isn\'t used');
   assert.equal(past.ownStopIgnored, true);

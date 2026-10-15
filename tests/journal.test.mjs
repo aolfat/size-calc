@@ -208,7 +208,7 @@ test('fills: matched to their order leg, zero quantities skipped, words for ever
   assert.equal(run("instructionWords('BUY_TO_COVER')"), 'Buy to cover');
 });
 
-// ---------- your stop and deleted trades (trade_reviews; its hidden column is the delete mark) ----------
+// ---------- your stop and deleted trades (trade_reviews: stop, deleted) ----------
 
 const STOCK = '6789|AAPL|long|2026-10-01T14:30:01.000Z';
 const OPTION = '6789|AAPL  261218C00245000|long|2026-10-06T14:00:02.000Z';
@@ -223,7 +223,7 @@ async function journalWith(reviews = [], tweak) {
 
 test('your stop: set it from the trade sheet, R counts from it, and Schwab\'s is one tap back', async () => {
   const { run, state, supabase, out, sheet, elements } = await journalWith();
-  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,hidden'), 'your reviews are read with the records');
+  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,deleted'), 'your reviews are read with the records');
   run(`openTradeReview('${STOCK}')`);
   assert.equal(state.openSheetName, 'tradeReview');
   assert.equal(elements.get('tradeReviewTitle').textContent, 'AAPL');
@@ -239,7 +239,7 @@ test('your stop: set it from the trade sheet, R counts from it, and Schwab\'s is
 
   await run('saveTradeStop()');
   const w = supabase.writes.filter(x => x.table === 'trade_reviews');
-  assert.deepEqual(w.map(x => [x.trade_key, x.stop, x.hidden, x.onConflict]), [[STOCK, 97.5, false, 'user_id,trade_key']]);
+  assert.deepEqual(w.map(x => [x.trade_key, x.stop, x.deleted, x.onConflict]), [[STOCK, 97.5, false, 'user_id,trade_key']]);
   assert.equal(state.openSheetName, null, 'saved: the sheet closes');
   assert.match(elements.get('errorBox').textContent, /Stop saved: R counts from \$97\.50\./);
   assert.match(out(), /title="Your stop \$97\.50, risk \$252\.00">−2\.00R<\/td>\s*<td><button[^>]*>\$97\.50<\/button><span class="pos-sub">yours<\/span>/);
@@ -248,7 +248,7 @@ test('your stop: set it from the trade sheet, R counts from it, and Schwab\'s is
   assert.match(sheet(), /Using your stop, \$97\.50\. Risk \$252\.00\. Schwab's first was \$95\.00\./);
   await run('clearTradeStop()');
   assert.equal(supabase.reviewRows()[0].stop, null);
-  assert.equal(supabase.reviewRows()[0].hidden, false, 'clearing the stop keeps the rest of the row');
+  assert.equal(supabase.reviewRows()[0].deleted, false, 'clearing the stop keeps the rest of the row');
   assert.match(out(), /title="Initial stop \$95\.00, risk \$502\.00">−1\.00R/);
 });
 
@@ -272,7 +272,7 @@ test('delete a trade that doesn\'t belong: a button on the row, asked once, out 
   assert.match(sheet(), /Imports won(?:'|&#39;)t bring it back/);
   assert.equal(supabase.writes.filter(x => x.table === 'trade_reviews').length, 0, 'nothing saved by asking');
   await run('deleteTrade()');
-  assert.deepEqual(supabase.reviewRows().map(r => [r.trade_key, r.hidden, r.stop]), [[STOCK, true, null]], 'the mark is on the trade key');
+  assert.deepEqual(supabase.reviewRows().map(r => [r.trade_key, r.deleted, r.stop]), [[STOCK, true, null]], 'the mark is on the trade key');
   assert.match(elements.get('errorBox').textContent, /AAPL trade deleted\./);
   assert.doesNotMatch(out(), /<\/label><b>AAPL<\/b>/, 'gone from the list');
   assert.match(out(), /0 closed · 1 open · 1 deleted <button class="pos-link" data-action="toggleDeletedTrades">Show<\/button>/, 'and from the stats');
@@ -287,7 +287,7 @@ test('delete a trade that doesn\'t belong: a button on the row, asked once, out 
   assert.match(out(), /data-action="restoreTrade" data-arg="6789\|AAPL[^"]*"[^>]*>Restore</);
   assert.match(out(), /0 closed · 1 open · 1 deleted/, 'still not counted');
   await run(`restoreTrade('${STOCK}')`);
-  assert.equal(supabase.reviewRows()[0].hidden, false);
+  assert.equal(supabase.reviewRows()[0].deleted, false);
   assert.match(out(), /1 closed · 0 won/);
 
   run(`openTradeReview('${STOCK}')`);
@@ -297,7 +297,7 @@ test('delete a trade that doesn\'t belong: a button on the row, asked once, out 
 });
 
 test('reviews read when the journal opens; a refused save goes back; a missing table still shows the trades', async () => {
-  const kept = await journalWith([{ trade_key: STOCK, stop: '97.5', hidden: false }, { trade_key: OPTION, stop: null, hidden: true }]);
+  const kept = await journalWith([{ trade_key: STOCK, stop: '97.5', deleted: false }, { trade_key: OPTION, stop: null, deleted: true }]);
   assert.match(kept.out(), /\$97\.50<\/button><span class="pos-sub">yours<\/span>/, 'Postgres numerics arrive as text');
   assert.match(kept.out(), /1 deleted/);
 
@@ -439,7 +439,7 @@ test('spreads: a multi-leg order is one row; Split writes solo; Combine joins le
 });
 
 test('before the trades table is pushed: stops and deletes still load, merging and combining say what they need', async () => {
-  const supabase = fakeRecords(RECORDS.map(r => ({ ...r, account: '6789' })), [{ trade_key: STOCK, stop: 97.5, hidden: false }]);
+  const supabase = fakeRecords(RECORDS.map(r => ({ ...r, account: '6789' })), [{ trade_key: STOCK, stop: 97.5, deleted: false }]);
   supabase.failTable('trades');
   const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
   run("setView('journal')");

@@ -36,7 +36,7 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
  * parts = the trade keys it's made of.
  * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
- * @typedef {{ stop?: number | null, hidden?: boolean }} TradeReview  hidden is the delete marker (the column's first name)
+ * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
  * @typedef {{ id: string, account: string, fill_ids: string[], created_at?: string }} SavedTrade a trades row
  */
 
@@ -344,7 +344,7 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
   for (const f of fills) orderTotals.set(f.orderId, (orderTotals.get(f.orderId) || 0) + f.qty);
   const legs = buildTrades(fills, { now: opts.now }).map(t => {
     const rv = reviews[t.key] || {};
-    return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.hidden };
+    return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.deleted };
   });
   return shapeTrades(legs, opts.saved || [], reviews, stops).map(withBias)
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
@@ -456,7 +456,7 @@ function mergedTrade(parts, key, reviews, stops) {
     exits: sum(p => p.exits), fillIds: parts.flatMap(p => p.fillIds), entryOrderIds: [...new Set(parts.flatMap(p => p.entryOrderIds))], orderQty,
     holdMs: closedAt ? Date.parse(closedAt) - Date.parse(parts[0].openedAt) : null,
     status: open ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: parts.every(p => p.expired),
-    deleted: !!reviews[key]?.hidden,
+    deleted: !!reviews[key]?.deleted,
   };
   return withRisk(t, stops, reviews[key]?.stop ?? null);
 }
@@ -611,7 +611,7 @@ export function spreadTrade(key, group, legs, reviews = {}) {
     orderQty, holdMs: closedAt ? Date.parse(closedAt) - Date.parse(openedAt) : null, status, expired: legs.every(l => l.expired),
     stop: null, stopOrderId: '', risk: risk ? Math.round(risk * 100) / 100 : null, rBasis,
     r: risk && !open ? Math.round((pnl / risk) * 100) / 100 : null,
-    stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: !!reviews[key]?.hidden,
+    stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: !!reviews[key]?.deleted,
     fees: Math.round(legs.reduce((n, l) => n + l.fees, 0) * 100) / 100, feesMissing: legs.reduce((n, l) => n + l.feesMissing, 0),
     grossPnl: Math.round(legs.reduce((n, l) => n + l.grossPnl, 0) * 100) / 100, afterFees: legs[0].afterFees,
     legs, group, spreadKind: kind,

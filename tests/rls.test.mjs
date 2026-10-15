@@ -46,11 +46,32 @@ test('nothing is granted to the anonymous role', () => {
 });
 
 test('functions that run with elevated rights fix their search path and are callable only by signed-in users', () => {
-  const definers = [...sql.matchAll(/create function public\.(\w+)\(([^)]*)\)[^$]*?security definer[^$]*?\$\$/gi)];
+  const definers = [...sql.matchAll(/create (?:or replace )?function public\.(\w+)\(([^)]*)\)[^$]*?security definer[^$]*?\$\$/gi)];
   assert.ok(definers.length > 0);
   for (const [whole, name] of definers) {
     assert.match(whole, /set search_path = ''/i, `${name}: fixed search path`);
     assert.match(sql, new RegExp(`revoke execute on function [^;]*public\\.${name}\\(`, 'i'), `${name}: revoked from public`);
     assert.match(sql, new RegExp(`grant execute on function [^;]*public\\.${name}\\([^;]*to authenticated`, 'i'), `${name}: signed-in users only`);
   }
+});
+
+test('one baseline migration, safe to run on a database that already has some of it', () => {
+  assert.equal(files.length, 1, 'the schema is one file (docs/journal-step-2.md, slice 6)');
+  assert.doesNotMatch(sql, /create table public\./i, 'tables: create table if not exists');
+  assert.doesNotMatch(sql, /create function /i, 'functions: create or replace');
+  assert.doesNotMatch(sql, /create trigger /i, 'triggers: create or replace');
+  assert.doesNotMatch(sql, /create index (?!if not exists)/i, 'indexes: if not exists');
+  for (const [, name, table] of sql.matchAll(/create policy (\w+) on (public\.\w+)/gi)) {
+    assert.match(sql, new RegExp(`drop policy if exists ${name} on ${table.replace('.', '\\.')}`, 'i'), `${name} is dropped first`);
+  }
+});
+
+test('every synced setting is a key the settings table accepts', async () => {
+  const { app } = await import('./helpers/app.mjs');
+  const { run } = await app();
+  const allowed = sql.match(/constraint settings_key_check check \(key in \(([^)]*)\)\)/i);
+  assert.ok(allowed, 'the settings key check');
+  const keys = [...allowed[1].matchAll(/'([a-z_]+)'/g)].map(m => m[1]);
+  for (const k of JSON.parse(run('JSON.stringify(CLOUD_KEYS)'))) assert.ok(keys.includes(k), `${k} is allowed`);
+  assert.ok(keys.includes('tradier_key_at'), 'and the key stamp the Vault functions write');
 });

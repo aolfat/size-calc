@@ -2,6 +2,8 @@
 
 Status: built. This is phase 1 of [the journal plan](journal-plan.md).
 
+**Update (2026-10-14):** the migrations are squashed into `20261018000000_baseline.sql` ([step 2, slice 6](journal-step-2.md#6-squash-the-migrations-built-early)); the file names below are history.
+
 **Update (2026-10-09):** `main` retired saved position cards while this step was being built. Positions now shows live Schwab positions. So this step syncs settings and the Tradier key only. The `saved_positions` table created by the first migration is dropped by `20261009010000_drop_saved_positions.sql`, and leftover saved-position keys on older devices are never sent. Everything below about saved positions describes the original plan.
 
 ## Outcome

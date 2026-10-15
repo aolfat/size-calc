@@ -171,17 +171,18 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 
 Trade at Schwab tickets, and Positions' breakeven stops, targets and closes, save the plan (entry, stop, risk $, quantity, order id). Imports match it to the trade by order id.
 
-### 6. Squash the migrations
+### 6. Squash the migrations (built, early)
 
-The schema is new and lives in one database, so once slices 1 to 5 settle, the migrations fold into one baseline:
-1. **Write one migration** with the final schema. Steps that cancel out disappear, like `saved_positions`, created and then dropped.
-2. **Delete the old migration files.**
-3. **Update Supabase's migration history** with `npx supabase migration repair`: the old versions marked reverted and the new one marked applied. The database itself doesn't change.
-4. **Check the single file** against a scratch project. `tests/rls.test.mjs` keeps checking the rules either way.
-
-**Renames go first, as their own migration,** because the squash itself never changes the database: `trade_reviews.hidden` becomes `deleted` (it was named before hiding became deleting).
-
-Done once, at the end of step 2, after the journal's own tables exist.
+Done with merge and separate, since nothing was in use yet: the eight migrations of steps 1 and 2 are one file, `supabase/migrations/20261018000000_baseline.sql`.
+- **What cancels out is gone:** `saved_positions` (created, then dropped) and `trade_reviews.group_key` (added, then replaced by `trades`).
+- **Renamed:** `trade_reviews.hidden` is `deleted` (it was named before hiding became deleting).
+- **Fixed:** the settings key check didn't allow `journal_fees`, so that setting couldn't sync. A test now checks every synced setting against it.
+- **Safe on any older database:** tables and indexes are created if missing, functions and triggers replaced, policies dropped and made again, and its last section renames `hidden`, drops `group_key` and `saved_positions`, and adds `fingerprint` where they're still old. So it doesn't matter which of the old files the live database had.
+- **Checked** on Postgres 14 with Supabase's `auth`, roles and Vault stubbed: on a new database, applied twice, over all eight old files with data in them (a stop and a delete mark survive the rename, kept records stay), and over the first five; each ends with the same columns, policies and settings check, and row-level security keeps one user's trades from another and refuses anon.
+- **Applying it to the live database** (asks for the database password):
+  1. `npx supabase migration repair --status reverted 20261009000000 20261009010000 20261009020000 20261014000000 20261015000000 20261016000000 20261017000000 20261018000000` (every old version, including this PR's first `trades` file in case it was pushed, so the baseline runs; versions the database never had are simply not there to revert)
+  2. `npx supabase db push`: runs the baseline, which brings the database to the final schema and records it as applied.
+  3. `npx supabase migration list`: one version, `20261018000000`, local and remote.
 
 ## For step 3 (review), from Trading-Journal-AI
 
@@ -198,7 +199,7 @@ Not part of step 2, noted so the review design picks them up:
 |---|---|---|
 | `schwab_records` (built) | Order or transaction | Kind, Schwab's id, account (last 4 digits), entered time, Schwab's JSON whole with account numbers masked |
 | `trades` (built) | Trade you shaped (merged, a spread, a leg kept apart) | Account (last 4 digits), the fill ids it claims; numbers are computed from them |
-| `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, `hidden` (the delete mark; renamed `deleted` in slice 6's squash). Step 3's grades and notes join it |
+| `trade_reviews` (built) | Trade | The trade key (account, symbol, direction, open time), your stop, `deleted` (the delete mark). Step 3's grades and notes join it |
 | `fills` | Fill | Schwab id (unique per account), order id, symbol (options by full contract symbol), underlying, asset type, side, quantity, price, fee, time, open or close |
 | `stop_orders` | Stop order | Order id, symbol, side, quantity, stop price, entered, status, what replaced it |
 | `bars_5m` | Symbol per day | That day's 5-minute bars packed in one value |

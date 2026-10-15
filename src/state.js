@@ -59,7 +59,7 @@ export function createState() {
     journalTab: 'trades', // trades | fills
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
-    tradeReviews: null, // your word on each trade, by trade key: { stop, hidden (= deleted) }, once read
+    tradeReviews: null, // your word on each trade, by trade key: { stop, deleted }, once read
     journalSaved: [], // the trades you shaped (merged trades, spreads, legs kept apart): trades rows, { id, account, fill_ids, created_at }
     journalSavedError: '', // the trades table couldn't be read (no migration yet): trades show as the app groups them, merging is off
     journalPicked: [], // trade keys ticked for Merge
