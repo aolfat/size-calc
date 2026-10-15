@@ -78,6 +78,7 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 - **Chips for quick picks.** "+ New" adds your own item in place.
 - **Saves as you go.** It shows "Reviewed" once the required fields are in, and "To review: missing sector, note" until then.
 - **The trades list** gets a reviewed or to-review mark and a "To review" filter.
+- **Setups on the list (built):** a Setups column shows each trade's setups by name. An "All setups" menu narrows Trades, Calendar and Stats to one setup, which gives that setup's numbers before slice 5's reports.
 - **A Library sheet** to rename, hide and merge.
 
 ### 2. The review deck

@@ -351,6 +351,23 @@ export const renameLibraryItem = (kind, key, name) => String(name || '').trim() 
 export const toggleLibraryHidden = (kind, key) => changeLibrary(kind, key, { hidden: !library().item(kind, key)?.hidden });
 export const mergeLibraryItem = (kind, key, into) => into === '__unmerge' ? changeLibrary(kind, key, { merged_into: null }) : into ? changeLibrary(kind, key, { merged_into: into }) : null;
 
+/** a trade's setups as the list shows them: [{ key, name }], merges followed, in the order they were added */
+export function setupsOf(t) {
+  if (!state.journalReview) return [];
+  const lib = library();
+  const seen = new Set();
+  return (data().labels[t.key] || []).filter(l => l.kind === 'setup').map(l => lib.resolve('setup', l.value))
+    .filter(k => !seen.has(k) && seen.add(k)).map(key => ({ key, name: lib.nameOf('setup', key) }));
+}
+
+/** the setups these trades carry, most used first, for the list's filter: [{ key, name, count }] */
+export function setupsInUse(trades) {
+  /** @type {Map<string, { key: string, name: string, count: number }>} */
+  const by = new Map();
+  for (const t of trades) for (const s of setupsOf(t)) { const c = by.get(s.key) || { ...s, count: 0 }; c.count++; by.set(s.key, c); }
+  return [...by.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
 /** a trade's labels in words, for the list and the deck later: 'Strong · 50 SMA bounce · 30-minute pivot' */
 export function labelWords(t) {
   const lib = library();

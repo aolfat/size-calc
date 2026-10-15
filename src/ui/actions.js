@@ -23,7 +23,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearJournalDay, journalThisMonth, pickJournalDay, shiftJournalMonth } from './journal.js';
+import { clearJournalDay, journalThisMonth, pickJournalDay, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade } from './journal-trade.js';
 import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
@@ -85,6 +85,7 @@ export const actions = {
   openTradeRow: (el, e) => openTradeRow(arg(el), e),
   closeJournalTrade: () => closeJournalTrade(),
   setJournalReviewFilter: el => setJournalReviewFilter(arg(el)),
+  setJournalSetupFilter: el => setJournalSetupFilter(/** @type {HTMLSelectElement} */ (el).value),
   // the Review section acts on the trade on the page
   setReviewMarket: el => withPageTrade(t => setReviewMarket(t, arg(el))),
   toggleReviewMarketOwn: () => withPageTrade(t => toggleReviewMarketOwn(t)),
