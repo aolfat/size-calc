@@ -26,6 +26,7 @@ import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from
 import { saveKey, signIn, signOut } from './settings.js';
 import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade } from './journal-trade.js';
+import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
@@ -95,6 +96,14 @@ export const actions = {
   toggleReviewMarketOwn: () => withPageTrade(t => toggleReviewMarketOwn(t)),
   toggleReviewLabel: el => withPageTrade(t => toggleReviewLabel(t, arg(el), el.dataset.arg2 || '')),
   toggleSetup: el => withPageTrade(t => toggleSetup(t, arg(el))),
+  startReviewDeck: () => startReviewDeck(),
+  reviewSkipped: () => reviewSkipped(),
+  deckNext: () => deckNext(),
+  deckBack: () => deckBack(),
+  endReviewDeck: () => endReviewDeck(),
+  toggleDeckWeekly: () => toggleDeckWeekly(),
+  revealDeckPnl: () => revealDeckPnl(),
+  setDeckPnl: el => setDeckPnl(arg(el)),
   startSetupDraft: () => startSetupDraft(),
   cancelSetupDraft: () => cancelSetupDraft(),
   setDraftAction: el => setDraftAction(arg(el)),

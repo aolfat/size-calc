@@ -22,7 +22,8 @@ async function client() {
 
 /**
  * Everything a review reads, in one go: { reviews: key → { setup_grade, plan_followed, note, market, reviewed_at },
- * labels: key → [{ kind, value, set_by }], days: 'YYYY-MM-DD' → { market, note }, library: rows }.
+ * labels: key → [{ kind, value, set_by, links }], days: 'YYYY-MM-DD' → { market, note }, library: rows, weekly: key → when,
+ * weeklyError }.
  */
 export async function loadReviewData() {
   const c = await client();
@@ -42,7 +43,20 @@ export async function loadReviewData() {
   /** @type {Record<string, any>} */
   const days = {};
   for (const r of dy.data || []) days[String(r.day).slice(0, 10)] = { market: r.market, note: r.note };
-  return { reviews, labels, days, library: li.data || [] };
+  return { reviews, labels, days, library: li.data || [], ...await loadWeekly(c) };
+}
+
+/**
+ * The trades saved for the weekly review (trade_reviews.weekly_at, the review deck's migration): { weekly: key → when },
+ * read on its own so a database without the column yet keeps every other part of the review working (weeklyError says why).
+ */
+async function loadWeekly(c) {
+  const res = await c.from('trade_reviews').select('trade_key,weekly_at').limit(JOURNAL_READ_LIMIT);
+  if (res?.error) return { weekly: {}, weeklyError: notPushed(res) ? "the database doesn't have the weekly review column yet: npx supabase db push" : res.error.message || 'Supabase refused the read.' };
+  /** @type {Record<string, string>} */
+  const weekly = {};
+  for (const r of res.data || []) if (r.weekly_at) weekly[r.trade_key] = r.weekly_at;
+  return { weekly, weeklyError: '' };
 }
 
 /** a trade's review fields (only these columns: your stop and delete on the same row stay as they are) */

@@ -70,7 +70,7 @@ test('one baseline migration first, and every migration safe to run on a databas
 test('every synced setting is a key the settings table accepts', async () => {
   const { app } = await import('./helpers/app.mjs');
   const { run } = await app();
-  const allowed = sql.match(/constraint settings_key_check check \(key in \(([^)]*)\)\)/i);
+  const allowed = [...sql.matchAll(/constraint settings_key_check check \(key in \(([^)]*)\)\)/gi)].pop(); // the latest migration's list wins
   assert.ok(allowed, 'the settings key check');
   const keys = [...allowed[1].matchAll(/'([a-z_]+)'/g)].map(m => m[1]);
   for (const k of JSON.parse(run('JSON.stringify(CLOUD_KEYS)'))) assert.ok(keys.includes(k), `${k} is allowed`);

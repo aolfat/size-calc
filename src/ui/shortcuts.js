@@ -8,6 +8,7 @@ import { marketRefreshToday, marketSetScope } from './market.js';
 import { refreshPositions } from './positions.js';
 import { toggleQuick } from './quick-lookup.js';
 import { stepRisk } from './risk.js';
+import { deckBack, deckNext, deckOpen, endReviewDeck } from './journal-deck.js';
 import { closeSheet } from './sheets.js';
 import { closeSim } from './sim.js';
 import { cancelSpread } from './spreads.js';
@@ -30,6 +31,8 @@ export function initShortcuts() {
       if (state.simState) { closeSim(); return; }
       if (state.spreadPending) { cancelSpread(); return; }
       if (typing) { e.target.blur(); return; }
+      if (state.shotView) return; // the screenshot viewer closes first (journal-shots.js)
+      if (deckOpen()) { endReviewDeck(); return; }
       if (state.marketView && state.marketState.group) { marketSetScope('groups'); return; }
       closeDetails();
       return;
@@ -37,6 +40,7 @@ export function initShortcuts() {
     if (typing && e.key === '/' && e.target.id === 'ticker') { e.preventDefault(); e.target.select(); return; } // '/' re-selects even from inside the field
     if (typing || state.openSheetName || state.simState) return; // never hijack keys while filling a field or working in a sheet or the simulator
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
+    if (deckOpen() && !state.shotView && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); if (e.key === 'ArrowRight') deckNext(); else deckBack(); return; }
     if (state.marketView && !['/', 'm', 's', 'o', 'f', 'v', 'j', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
       case '/': {

@@ -8,7 +8,7 @@ import { hasStoredSession, supabaseClient } from './supabase.js';
 import { schwabDisconnect } from './schwab.js';
 
 /** settings that live in the account (the Tradier key goes to Vault) */
-export const CLOUD_KEYS = ['calc_account', 'calc_risk', 'calc_allocation', 'risk_usd_presets', 'atr_multiplier', 'stop_strategy', 'stop_percent', 'last_ticker', 'tradier_env', 'schwab_proxy', 'journal_fees'];
+export const CLOUD_KEYS = ['calc_account', 'calc_risk', 'calc_allocation', 'risk_usd_presets', 'atr_multiplier', 'stop_strategy', 'stop_percent', 'last_ticker', 'tradier_env', 'schwab_proxy', 'journal_fees', 'journal_deck_pnl'];
 /** keep the worker address for the next login; credentials are always disconnected */
 const KEPT_ON_SIGN_OUT = ['schwab_proxy'];
 /** device-local bookkeeping, never sent */
