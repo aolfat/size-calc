@@ -1,18 +1,20 @@
 // Journal tab (#journalSection, setView('journal'), key j): what's kept from Schwab in your account, your trades (fills grouped
-// flat to flat, with P&L, R and hold time) or the raw fills, filtered by side and symbol, and the Import and Export sheets: Import lists the sources (Schwab now, file upload later),
-// Export the files you can take (Schwab history now, trades later). Trades, P&L and stats come in later slices.
+// flat to flat, with P&L, R, stop and hold time) or the raw fills, filtered by side and symbol; the trade sheet (your
+// stop, delete a trade that doesn't belong); and the Import and Export sheets: Import lists the sources (Schwab now, file
+// upload later), Export the files you can take (Schwab history now, trades later). The trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
-import { holdWords, journalTrades, tradesSummary } from '../core/journal.js';
+import { holdWords, journalTrades, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
-import { loadSavedRecords } from '../services/journal.js';
+import { loadSavedRecords, loadTradeReviews, saveTradeReview } from '../services/journal.js';
 import { schwabConnected } from '../services/schwab.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
-import { openSheet } from './sheets.js';
+import { closeSheet, openSheet } from './sheets.js';
+import { showToast } from './feedback.js';
 
 /** fills shown at once; the rest are counted */
 export const JOURNAL_SHOWN = 200;
@@ -50,13 +52,31 @@ const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`; // the same minus sign as money
 
+/** the stop cell: the price in use (tap to change it), and whether it's yours or Schwab's stop moved later */
+function stopCell(t) {
+  const key = esc(t.key);
+  if (t.stop === null) return `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Set a stop for ${esc(t.label)}">Set</button>${t.rBasis === 'premium' ? '<span class="pos-sub">premium</span>' : ''}`;
+  const sub = t.stopSource === 'yours' ? 'yours' : t.movedTo !== null ? `moved to ${px(t.movedTo, t.assetType)}` : '';
+  return `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Change the stop for ${esc(t.label)}">${px(t.stop, t.assetType)}</button>${sub ? `<span class="pos-sub">${sub}</span>` : ''}`;
+}
+
+function rTitleOf(t) {
+  if (t.rBasis === 'stop') return `${t.stopSource === 'yours' ? 'Your stop' : 'Initial stop'} ${px(t.stop, t.assetType)}, risk ${fmt$(t.risk)}`;
+  if (t.rBasis === 'premium') return `No stop: the premium paid, ${fmt$(t.risk)}, is the risk`;
+  return 'No stop: set one to get R';
+}
+
 function tradeRow(t) {
   const open = t.status === 'open';
-  const rTitle = t.rBasis === 'stop' ? `Initial stop ${px(t.stop, t.assetType)}, risk ${fmt$(t.risk)}` : t.rBasis === 'premium' ? `No stop order: the premium paid, ${fmt$(t.risk)}, is the risk` : 'No stop order found';
-  return `<tr${open ? ' class="journal-open"' : ''}>
-    <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}</td>
+  const cls = [open ? 'journal-open' : '', t.deleted ? 'journal-deleted' : ''].filter(Boolean).join(' ');
+  const key = esc(t.key), name = esc(t.label);
+  return `<tr${cls ? ` class="${cls}"` : ''}>
+    <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}<span class="pos-sub journal-row-acts">${t.deleted
+      ? `<button class="pos-link" data-action="restoreTrade" data-arg="${key}" aria-label="Restore the ${name} trade">Restore</button>`
+      : `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Edit the ${name} trade">Edit</button><button class="pos-link journal-delete" data-action="confirmDeleteTrade" data-arg="${key}" aria-label="Delete the ${name} trade">Delete</button>`}</span></td>
     <td class="${pnlClass(t.pnl)}">${open && !t.exits ? '—' : signed$(t.pnl)}${open && t.exits ? '<span class="pos-sub">so far</span>' : ''}</td>
-    <td title="${esc(rTitle)}">${t.r === null ? '—' : signedR(t.r)}</td>
+    <td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
+    <td>${stopCell(t)}</td>
     <td class="${t.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${t.direction === 'long' ? 'Long' : 'Short'}</td>
     <td>${t.entryQty}${open && t.openQty !== t.entryQty ? `<span class="pos-sub">${t.openQty} open</span>` : ''}</td>
     <td>${px(t.avgEntry, t.assetType)}</td>
@@ -72,14 +92,15 @@ function filtered(list, sideOf) {
   return list.filter(x => (state.journalSide === 'all' || sideOf(x) === state.journalSide) && (!q || (x.label || x.symbol).toUpperCase().includes(q)));
 }
 
-function summaryLine(trades) {
+function summaryLine(trades, deleted) {
   const s = tradesSummary(trades);
-  if (!s.closed && !s.open) return 'No trades match.';
+  const deletedNote = deleted ? ` · ${deleted} deleted <button class="pos-link" data-action="toggleDeletedTrades">${state.journalShowDeleted ? 'Hide them' : 'Show'}</button>` : '';
+  if (!s.closed && !s.open) return `No trades match.${deletedNote}`;
   const parts = [`${s.closed} closed`];
   if (s.closed) parts.push(`${s.wins} won (${s.winRate}%)`, `<span class="${pnlClass(s.pnl)}">${signed$(s.pnl)}</span> before fees`);
   if (s.avgR !== null) parts.push(`average ${signedR(s.avgR)} over ${s.withR}`);
   if (s.open) parts.push(`${s.open} open`);
-  return parts.join(' · ');
+  return parts.join(' · ') + deletedNote;
 }
 
 function controls() {
@@ -93,14 +114,18 @@ function controls() {
   </div>`;
 }
 
-function tradesView(trades) {
-  if (!trades.length) return '<p class="hint">No trades match.</p>';
-  return `<p class="hint journal-summary">${summaryLine(trades)}</p>
+function tradesView(all) {
+  // deleted trades never count in the stats; shown (dimmed) only to restore one
+  const counted = all.filter(t => !t.deleted);
+  const deleted = all.length - counted.length;
+  const trades = state.journalShowDeleted ? all : counted;
+  if (!trades.length) return `<p class="hint">No trades match.${deleted ? ` ${deleted} deleted. <button class="pos-link" data-action="toggleDeletedTrades">Show</button>` : ''}</p>`;
+  return `<p class="hint journal-summary">${summaryLine(counted, deleted)}</p>
     <div class="positions-wrap"><table class="positions-table journal-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
+      <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
       <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
     </table></div>
-    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. P&amp;L is before fees. R uses the first Schwab stop order on the loss side of your entry; a long option with no stop risks its premium.</p>`;
+    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. P&amp;L is before fees. R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium. Tap a stop, or Edit, to set yours. Delete takes out a trade that doesn't belong; imports won't bring it back.</p>`;
 }
 
 function fillsView(fills) {
@@ -112,6 +137,7 @@ function fillsView(fills) {
     <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders.</p>`;
 }
 
+export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
 export function setJournalTab(tab) { state.journalTab = tab === 'fills' ? 'fills' : 'trades'; renderJournal(); }
 export function setJournalSide(side) { state.journalSide = ['long', 'short'].includes(side) ? side : 'all'; renderJournal(); }
 export function journalSymbolChanged() {
@@ -146,9 +172,10 @@ export function renderJournal() {
     </div>
     <p class="hint" id="journalStatus" role="status">${statusLine()}</p>
     ${state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
+    ${state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${fills.length ? controls() + (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
-      : tradesView(filtered(journalTrades(fills, records), t => t.direction)))
+      : tradesView(filtered(journalTrades(fills, records, state.tradeReviews || {}), t => t.direction)))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
 }
@@ -198,12 +225,17 @@ export async function loadJournal() {
   if (!state.session) { renderJournal(); return; }
   state.journalLoading = true;
   renderJournal();
+  // your stops and deletes come from their own table: if it can't be read, the trades still show
+  const [records, reviews] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews()]);
   try {
-    state.journalRecords = await loadSavedRecords();
+    if (records.status === 'rejected') throw records.reason;
+    state.journalRecords = records.value;
     state.journalError = '';
   } catch(e) {
     state.journalError = String(e?.message || e);
   } finally {
+    if (reviews.status === 'fulfilled') { state.tradeReviews = reviews.value; state.tradeReviewsError = ''; }
+    else state.tradeReviewsError = String(reviews.reason?.message || reviews.reason);
     state.journalLoading = false;
     if (state.journalView) renderJournal();
   }
@@ -227,3 +259,180 @@ onCaptureChange(saved => {
   if (!state.journalView) return;
   if (saved) loadJournal(); else renderJournal();
 });
+
+// ---------- the trade sheet: your stop, and hiding a trade that doesn't belong ----------
+
+/** the trades as the Journal has them now (your stops and deletes applied) */
+function currentTrades() {
+  const records = state.journalRecords || [];
+  return journalTrades(fillsFrom(records), records, state.tradeReviews || {});
+}
+const reviewedTrade = () => currentTrades().find(t => t.key === state.tradeReviewKey) || null;
+const reviewOf = key => (state.tradeReviews || {})[key] || { stop: null, hidden: false };
+
+/** what the typed stop would make the risk and R, or why it can't be this trade's */
+function stopPreview(t, raw) {
+  if (!String(raw).trim()) return { text: '', ok: false };
+  const price = Number(raw);
+  const err = ownStopError(t, price);
+  if (err) return { text: err, ok: false };
+  const risk = riskAt(t, price);
+  return { text: `Risk ${fmt$(risk)}${t.status === 'open' ? ', R once it closes' : ` · ${signedR(Math.round((t.pnl / risk) * 100) / 100)}`}`, ok: true };
+}
+
+function stopNowLine(t) {
+  const rv = reviewOf(t.key);
+  const ignored = t.ownStopIgnored ? ` Your stop ${px(rv.stop, t.assetType)} is past the entry, so it isn't used.` : '';
+  if (t.stopSource === 'yours') return `Using your stop, ${px(t.stop, t.assetType)}. Risk ${fmt$(t.risk)}.${t.schwabStop !== null ? ` Schwab's first was ${px(t.schwabStop, t.assetType)}.` : ''}`;
+  if (t.stopSource === 'schwab') {
+    const first = t.stopTrail.find(x => x.stopPrice === t.stop);
+    return `Using Schwab's first stop, ${px(t.stop, t.assetType)}${first ? ` (${esc(marketTime(first.entered))})` : ''}. Risk ${fmt$(t.risk)}.${t.movedTo !== null ? ` Moved to ${px(t.movedTo, t.assetType)} later: R still counts from the first.` : ''}${ignored}`;
+  }
+  if (t.rBasis === 'premium') return `No stop: the premium paid, ${fmt$(t.risk)}, is the risk. Set the stop you had in mind.${ignored}`;
+  return `No stop, so no R. Set the stop you had in mind.${ignored}`;
+}
+
+const tradeFacts = t => [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(marketTime(t.openedAt))} ET`,
+  t.status === 'open' ? 'open' : `${signed$(t.pnl)} before fees`].join(' · ');
+
+/** the delete step: what it does, and what an import does afterwards */
+function deleteConfirm(t, locked) {
+  return `<div class="sheet-section"><p class="hint" style="margin:0">${tradeFacts(t)}</p>
+      ${state.tradeReviewsError ? `<p class="hint" style="color:var(--amber)">Your stops and deleted trades couldn't load, so saving is off until they do.</p>` : ''}</div>
+    <div class="sheet-section">
+      <p class="hint">It leaves the journal: the list and the stats.</p>
+      <p class="hint">Imports won't bring it back. Schwab keeps sending its orders, and they stay kept so the trades around it still add up, but your journal remembers this trade is deleted, on every device.</p>
+      <p class="hint">Changed your mind? Show the deleted trades from the line above the table, and restore it.</p>
+      <div class="row" style="gap:8px;">
+        <button class="btn journal-danger" id="tradeDeleteBtn" data-action="deleteTrade"${locked ? ' disabled' : ''}>${state.tradeReviewBusy ? 'Deleting…' : 'Delete trade'}</button>
+        <button class="btn" data-action="closeSheet">Cancel</button>
+      </div>
+    </div>
+    ${state.tradeReviewError ? `<p class="shares-error" role="status">Couldn't delete: ${esc(state.tradeReviewError)}</p>` : ''}`;
+}
+
+export function renderTradeReview() {
+  const el = document.getElementById('tradeReviewBody');
+  if (!el) return;
+  const t = reviewedTrade();
+  const title = document.getElementById('tradeReviewTitle');
+  if (!t) { el.innerHTML = '<p class="hint">This trade isn\'t in the journal any more.</p>'; if (title) title.textContent = 'Trade'; return; }
+  const rv = reviewOf(t.key);
+  const locked = !!state.tradeReviewsError || state.tradeReviewBusy;
+  if (state.tradeReviewMode === 'delete') { if (title) title.textContent = `Delete ${t.label}?`; el.innerHTML = deleteConfirm(t, locked); return; }
+  if (title) title.textContent = t.label;
+  const typed = rv.stop ?? '';
+  const preview = stopPreview(t, typed);
+  const chips = t.stopTrail.map(x => {
+    const usable = !ownStopError(t, x.stopPrice);
+    return `<button class="filter-btn" data-action="pickTradeStop" data-arg="${x.stopPrice}"${usable ? '' : ' disabled title="Past the entry: it protected profit, it wasn\'t the risk"'}>${px(x.stopPrice, t.assetType)}<span class="journal-chip-time">${esc(marketTime(x.entered))}</span></button>`;
+  }).join('');
+  const back = t.schwabStop !== null ? 'Use Schwab\'s stop instead' : t.assetType === 'OPTION' && t.direction === 'long' ? 'Go back to the premium' : 'Remove your stop';
+  el.innerHTML = `<div class="sheet-section"><p class="hint" style="margin:0">${tradeFacts(t)}</p>
+    ${state.tradeReviewsError ? `<p class="hint" style="color:var(--amber)">Your stops and deleted trades couldn't load, so saving is off until they do.</p>` : ''}</div>
+    <div class="sheet-section">
+      <div class="sheet-label">Stop</div>
+      <p class="hint" id="tradeStopNow">${stopNowLine(t)}</p>
+      ${chips ? `<p class="hint">Schwab's stops on this trade, oldest first. Tap one to use it.</p><div class="chip-row journal-stop-chips">${chips}</div>` : ''}
+      <div class="row journal-stop-row">
+        <div class="field"><label for="tradeStopInput">${t.assetType === 'OPTION' ? 'Your stop on the option' : 'Your stop'}</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="tradeStopInput" inputmode="decimal" step="any" min="0" autocomplete="off" value="${esc(String(typed))}" data-input="tradeStopPreview" data-enter="saveTradeStop"${locked ? ' disabled' : ''} /></div></div>
+        <button class="btn primary" id="tradeStopSave" data-action="saveTradeStop"${locked || !preview.ok ? ' disabled' : ''}>${state.tradeReviewBusy ? 'Saving…' : 'Save stop'}</button>
+      </div>
+      <p class="hint" id="tradeStopPreview" role="status"${preview.ok ? '' : ' style="color:var(--amber)"'}>${preview.text}</p>
+      ${t.assetType === 'OPTION' ? '<p class="hint">For an option, the stop is a price on the option itself.</p>' : ''}
+      ${rv.stop !== null && rv.stop !== undefined ? `<button class="pos-link" data-action="clearTradeStop"${locked ? ' disabled' : ''}>${back}</button>` : ''}
+    </div>
+    <div class="sheet-section">
+      <div class="sheet-label">Delete</div>
+      <p class="hint">For a trade that doesn't belong in your journal.</p>
+      <div class="row" style="gap:8px;"><button class="btn journal-danger" data-action="confirmDeleteTrade" data-arg="${esc(t.key)}"${locked ? ' disabled' : ''}>Delete this trade</button></div>
+    </div>
+    ${state.tradeReviewError ? `<p class="shares-error" role="status">Couldn't save: ${esc(state.tradeReviewError)}</p>` : ''}`;
+}
+
+export function openTradeReview(key, mode = 'edit') {
+  state.tradeReviewKey = key;
+  state.tradeReviewMode = mode === 'delete' ? 'delete' : 'edit';
+  state.tradeReviewError = '';
+  renderTradeReview();
+  openSheet('tradeReview');
+}
+
+/** typing a stop: update the preview and the Save button only, so the cursor stays put */
+export function tradeStopPreview() {
+  const t = reviewedTrade();
+  const input = document.getElementById('tradeStopInput');
+  if (!t || !input) return;
+  const p = stopPreview(t, input.value);
+  const out = document.getElementById('tradeStopPreview');
+  out.textContent = p.text;
+  out.style.color = p.ok ? '' : 'var(--amber)';
+  document.getElementById('tradeStopSave').disabled = !p.ok || !!state.tradeReviewsError || state.tradeReviewBusy;
+}
+
+export function pickTradeStop(price) {
+  const input = document.getElementById('tradeStopInput');
+  if (!input) return;
+  input.value = String(price);
+  tradeStopPreview();
+}
+
+/** save the trade's review row; the journal shows it right away and goes back if Supabase refuses */
+async function saveReview(next, done) {
+  const key = state.tradeReviewKey;
+  if (!key || state.tradeReviewBusy || state.tradeReviewsError) return;
+  const before = state.tradeReviews || {};
+  state.tradeReviews = { ...before, [key]: next };
+  state.tradeReviewBusy = true;
+  state.tradeReviewError = '';
+  renderJournal();
+  renderTradeReview();
+  try {
+    await saveTradeReview(key, next);
+    state.tradeReviewBusy = false;
+    if (state.openSheetName === 'tradeReview' && state.tradeReviewKey === key) closeSheet();
+    showToast(done);
+  } catch(e) {
+    state.tradeReviews = before;
+    state.tradeReviewBusy = false;
+    state.tradeReviewError = String(e?.message || e);
+    renderTradeReview();
+  }
+  renderJournal();
+}
+
+export function saveTradeStop() {
+  const t = reviewedTrade();
+  const input = document.getElementById('tradeStopInput');
+  if (!t || !input) return;
+  const price = Number(input.value);
+  if (!String(input.value).trim() || ownStopError(t, price)) { tradeStopPreview(); return; }
+  return saveReview({ ...reviewOf(t.key), stop: price }, `Stop saved: R counts from ${px(price, t.assetType)}.`);
+}
+
+export function clearTradeStop() {
+  const t = reviewedTrade();
+  if (!t) return;
+  return saveReview({ ...reviewOf(t.key), stop: null }, t.schwabStop !== null ? `Back to Schwab's stop, ${px(t.schwabStop, t.assetType)}.` : 'Your stop is removed.');
+}
+
+/** Delete on a row (or in the sheet): ask first, in the sheet */
+export function confirmDeleteTrade(key) {
+  if (state.openSheetName === 'tradeReview' && state.tradeReviewKey === key) { state.tradeReviewMode = 'delete'; state.tradeReviewError = ''; renderTradeReview(); return; }
+  openTradeReview(key, 'delete');
+}
+
+export function deleteTrade() {
+  const t = reviewedTrade();
+  if (!t) return;
+  return saveReview({ ...reviewOf(t.key), hidden: true }, `${t.label} trade deleted.`);
+}
+
+/** Restore on a deleted row: no question, it only brings it back */
+export function restoreTrade(key) {
+  state.tradeReviewKey = key;
+  const t = reviewedTrade();
+  if (!t) return;
+  return saveReview({ ...reviewOf(t.key), hidden: false }, `${t.label} trade restored.`);
+}

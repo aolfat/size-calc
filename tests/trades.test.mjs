@@ -100,6 +100,19 @@ test('a trigger child stop counts though it was entered with its entry, seconds 
   assert.equal(t.r, -1, 'stopped out for −1R (slippage of 2 cents, on a $5.02 risk)');
 });
 
+test('a resting entry: its attached stop counts though it was entered hours before the fill', async () => {
+  const child = { orderId: 602, orderType: 'STOP', stopPrice: 95, status: 'FILLED', orderLegCollection: [{ instruction: 'SELL', instrument: { symbol: 'AAPL', assetType: 'EQUITY' } }] };
+  const parent = { orderId: 601, orderType: 'LIMIT', enteredTime: '2026-10-01T13:00:00+0000', childOrderStrategies: [child] };
+  const fills = [fill('e', '2026-10-01T16:00:00.000Z', 'buy', 100, 100, { orderId: '601' }), fill('x', '2026-10-02T15:00:00.000Z', 'sell', 100, 95)];
+  const [t] = await trades(fills, [{ kind: 'order', account: '6789', data: parent }]);
+  assert.equal(t.stop, 95, 'attached to the entry, so it counts');
+  assert.equal(t.r, -1);
+  const [own] = await trades(fills, [{ kind: 'order', account: '6789', data: { ...parent, childOrderStrategies: [{ ...child, enteredTime: '2026-10-01T13:00:00+0000' }] } }]);
+  assert.equal(own.stop, 95, 'with its own entered time too');
+  const [other] = await trades(fills, [{ kind: 'order', account: '6789', data: { ...parent, orderId: 700 } }]);
+  assert.equal(other.stop, null, 'a stop on some other order, entered hours before, is not this trade\'s');
+});
+
 test('identical-looking fills from a split order are both kept, and accounts never mix', async () => {
   const list = await trades([
     fill('p1', '2026-10-01T14:30:00.000Z', 'buy', 100, 50),
@@ -134,4 +147,31 @@ test('summary and hold time in words', async () => {
   assert.equal(run('holdWords((3 * 60 + 10) * 60000)'), '3h 10m');
   assert.equal(run('holdWords((52) * 3600000)'), '2d 4h');
   assert.equal(run('holdWords(null)'), '');
+});
+
+test('a moved stop: R stays on the first, the move is shown; your stop overrides; one past the entry is ignored', async () => {
+  const entry = fill('e', '2026-10-01T14:30:00.000Z', 'buy', 100, 100);
+  const exit = fill('x', '2026-10-01T16:00:00.000Z', 'sell', 100, 99);
+  const stops = [stopOrder(1, '2026-10-01T14:30:30+0000', 'SELL', 98), stopOrder(2, '2026-10-01T15:00:00+0000', 'SELL', 96), stopOrder(3, '2026-10-01T15:30:00+0000', 'SELL', 100.2)];
+  const [t] = await trades([entry, exit], stops);
+  assert.equal(t.stop, 98);
+  assert.equal(t.r, -0.5, 'widened to 96 and then raised past the entry: R still counts from 98');
+  assert.equal(t.movedTo, 100.2, 'the last stop it had');
+  assert.equal(t.stopSource, 'schwab');
+  assert.deepEqual(t.stopTrail.map(s => s.stopPrice), [98, 96, 100.2], 'every stop on it, oldest first, past the entry included');
+
+  const { run } = await app();
+  const key = t.key;
+  const withOwn = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 99.5, hidden: true } }))`))[0];
+  assert.equal(withOwn.stop, 99.5);
+  assert.equal(withOwn.stopSource, 'yours');
+  assert.equal(withOwn.schwabStop, 98);
+  assert.equal(withOwn.r, -2);
+  assert.equal(withOwn.deleted, true, 'the review\'s hidden column is the delete mark');
+  const past = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify([entry, exit])}, ${JSON.stringify(stops)}, { '${key}': { stop: 101 } }))`))[0];
+  assert.equal(past.stop, 98, 'a stop of yours past the entry isn\'t used');
+  assert.equal(past.ownStopIgnored, true);
+  assert.equal(run(`ownStopError(${JSON.stringify(t)}, 101)`), "A long's stop goes below the entry.");
+  assert.equal(run(`ownStopError(${JSON.stringify(t)}, 0)`), 'Type a stop price.');
+  assert.equal(run(`ownStopError(${JSON.stringify(t)}, 97)`), '');
 });

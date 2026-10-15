@@ -112,3 +112,13 @@
 .journal-summary { color: var(--text2); margin-bottom: 8px; }
 .journal-tag { font-size: 10.5px; font-weight: 600; color: var(--blue); border: 1px solid var(--blue-bd); background: var(--blue-bg); border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; }
 .positions-table .journal-open td { background: color-mix(in srgb, var(--blue-bg) 35%, var(--bg2)); } /* opaque: the pinned symbol cell takes the tint too */
+.positions-table .journal-deleted td { opacity: .55; }
+.journal-row-acts { display: flex; gap: 12px; }
+.journal-delete { color: var(--red); }
+.btn.journal-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border2)); }
+.journal-table .pos-sub .pos-link { font-size: inherit; }
+.journal-stop-chips { margin: 4px 0 12px; }
+.journal-stop-chips .filter-btn:disabled { opacity: 0.45; cursor: default; }
+.journal-chip-time { margin-left: 6px; font-size: 11px; color: var(--text3); }
+.journal-stop-row { align-items: flex-end; gap: 8px; }
+.journal-stop-row .field { flex: 0 1 200px; }
