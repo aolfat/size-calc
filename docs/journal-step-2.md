@@ -118,7 +118,7 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
 - **Spreads (built):** option legs become one trade.
   - **Automatic:** legs opened in one multi-leg order.
   - **Combined by you:** legged-in spreads, from Combine in a leg's sheet or by ticking the legs and Merge. That's a row in `trades` (below). Split undoes it, and works on a multi-leg order too: each leg gets a row of its own so the order can't fold them back.
-  - **`group_key`, retired:** the first version kept combines in each leg's `trade_reviews.group_key` ('solo' for a split). It's still read, so nothing comes apart, and converted to `trades` rows on load (the spread's own stop and delete move with it), then cleared. The column goes in slice 6's squash.
+  - **`group_key`, dropped:** the first version kept combines in each leg's `trade_reviews.group_key` ('solo' for a split). The `trades` migration drops the column; spreads combined that way come apart once and are merged again.
   - **The numbers:** entry and exit are net per spread. P&L and fees add up. A debit risks what it paid; a credit vertical risks its width less the credit. Other combinations have no R yet.
   - **Limit:** a contract held on its own and also inside a spread is one leg, so that spread shows mixed sizes.
 - **Merge and separate (built), in `trades`:**
@@ -179,7 +179,7 @@ The schema is new and lives in one database, so once slices 1 to 5 settle, the m
 3. **Update Supabase's migration history** with `npx supabase migration repair`: the old versions marked reverted and the new one marked applied. The database itself doesn't change.
 4. **Check the single file** against a scratch project. `tests/rls.test.mjs` keeps checking the rules either way.
 
-**Renames go first, as their own migration,** because the squash itself never changes the database: `trade_reviews.hidden` becomes `deleted` (it was named before hiding became deleting), and `trade_reviews.group_key` is dropped once every device has converted it to `trades` rows.
+**Renames go first, as their own migration,** because the squash itself never changes the database: `trade_reviews.hidden` becomes `deleted` (it was named before hiding became deleting).
 
 Done once, at the end of step 2, after the journal's own tables exist.
 

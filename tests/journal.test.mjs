@@ -223,7 +223,7 @@ async function journalWith(reviews = [], tweak) {
 
 test('your stop: set it from the trade sheet, R counts from it, and Schwab\'s is one tap back', async () => {
   const { run, state, supabase, out, sheet, elements } = await journalWith();
-  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,hidden,group_key'), 'your reviews are read with the records');
+  assert.ok(supabase.reads.some(r => r.table === 'trade_reviews' && r.cols === 'trade_key,stop,hidden'), 'your reviews are read with the records');
   run(`openTradeReview('${STOCK}')`);
   assert.equal(state.openSheetName, 'tradeReview');
   assert.equal(elements.get('tradeReviewTitle').textContent, 'AAPL');
@@ -438,29 +438,8 @@ test('spreads: a multi-leg order is one row; Split writes solo; Combine joins le
   assert.match(out(), /call debit/);
 });
 
-test('spreads combined with the retired group_key become trades rows on load, their delete kept', async () => {
-  const exec = (id, legs) => [{ activityType: 'EXECUTION', activityId: id, executionLegs: legs }];
-  const order = (id, instruction, symbol, price, time) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), data: {
-    orderId: id, enteredTime: time, status: 'FILLED', orderLegCollection: [{ legId: 1, instruction, quantity: 1, instrument: { symbol, assetType: 'OPTION' } }],
-    orderActivityCollection: exec(id * 10, [{ legId: 1, quantity: 1, price, time }]) } });
-  const records = [order(951, 'SELL_TO_OPEN', 'AAPL  261218C00245000', 4, '2026-10-08T14:00:00+0000'), order(952, 'BUY_TO_OPEN', 'AAPL  261218C00255000', 1.5, '2026-10-08T14:05:00+0000')];
-  const g = '6789|AAPL|spread|2026-10-08T14:00:00.000Z';
-  const legs = ['6789|AAPL  261218C00245000|short|2026-10-08T14:00:00.000Z', '6789|AAPL  261218C00255000|long|2026-10-08T14:05:00.000Z'];
-  const supabase = fakeRecords(records, [...legs.map(k => ({ trade_key: k, stop: null, hidden: false, group_key: g })), { trade_key: g, stop: null, hidden: true }]);
-  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
-  run("setView('journal')");
-  await run('loadJournal()');
-  const [row, ...more] = [...supabase.trades.values()];
-  assert.equal(more.length, 0);
-  assert.equal(row.fill_ids.length, 2, 'one row claims both legs');
-  assert.deepEqual(legs.map(k => supabase.reviews.get(`user-1:${k}`).group_key), [null, null], 'group_key cleared');
-  assert.equal(supabase.reviews.get(`user-1:trade:${row.id}`).hidden, true, 'the spread stays deleted under its new key');
-  assert.match(elements.get('journalSection').innerHTML, /1 deleted/);
-});
-
 test('before the trades table is pushed: stops and deletes still load, merging and combining say what they need', async () => {
   const supabase = fakeRecords(RECORDS.map(r => ({ ...r, account: '6789' })), [{ trade_key: STOCK, stop: 97.5, hidden: false }]);
-  supabase.dropColumn('trade_reviews', 'group_key');
   supabase.failTable('trades');
   const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
   run("setView('journal')");

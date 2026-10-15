@@ -300,7 +300,7 @@ test('a multi-leg order is one spread: net debit, legs summed, the debit is its 
   assert.equal(run(`legWords(${JSON.stringify(t.legs)})`), '+3 245C −3 255C');
 });
 
-test('a credit vertical risks its width less the credit; your combine and split override the order', async () => {
+test('a credit vertical risks its width less the credit; your trades rows combine and split over the order', async () => {
   const legged = [
     leg('s', '710', '2026-10-01T14:30:00.000Z', 'sell', 2, 4.0, C245, 'SELL_TO_OPEN'), // legged in: two orders
     leg('l', '711', '2026-10-01T14:35:00.000Z', 'buy', 2, 1.5, C255, 'BUY_TO_OPEN'),
@@ -308,9 +308,8 @@ test('a credit vertical risks its width less the credit; your combine and split 
   const apart = await trades(legged);
   assert.equal(apart.length, 2, 'separate orders stay separate trades');
   const { run } = await app();
-  const g = '6789|AAPL|spread|2026-10-01T14:30:00.000Z';
-  const keys = apart.map(t => t.key);
-  const joined = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(legged)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: g }])))}))`));
+  const row = (id, fillIds) => ({ id, account: '6789', fill_ids: fillIds, created_at: '2026-10-02T00:00:00.000Z' });
+  const joined = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(legged)}, [], {}, { saved: ${JSON.stringify([row('g1', ['s', 'l'])])} }))`));
   assert.equal(joined.length, 1);
   const [t] = joined;
   assert.equal(t.group, 'yours');
@@ -323,8 +322,8 @@ test('a credit vertical risks its width less the credit; your combine and split 
   const oneOrder = legged.map(f => ({ ...f, orderId: '720' }));
   const auto = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, []))`));
   assert.equal(auto.length, 1, 'one order: combined on its own');
-  const solo = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, [], ${JSON.stringify(Object.fromEntries(keys.map(k => [k, { group_key: 'solo' }])))}))`));
-  assert.equal(solo.length, 2, "split: 'solo' keeps them apart");
+  const solo = JSON.parse(run(`JSON.stringify(journalTrades(${JSON.stringify(oneOrder)}, [], {}, { saved: ${JSON.stringify([row('s1', ['s']), row('s2', ['l'])])} }))`));
+  assert.equal(solo.length, 2, 'split: a row per leg keeps them apart');
 });
 
 test('combine candidates: other legs on the same underlying and account that overlap in time', async () => {

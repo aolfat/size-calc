@@ -3,7 +3,7 @@
 -- and the rest are computed in the browser from those fills, so a calculation fix still reaches every trade. Trades
 -- nobody touched have no row; a row with one trade keeps it on its own (a multi-leg order's leg split off). Separate =
 -- delete the row. trade_reviews keeps your stop and delete on a shaped trade under 'trade:<id>'. This replaces
--- trade_reviews.group_key (20261017000000), which the app converts to rows on load; the column goes in the squash.
+-- trade_reviews.group_key (20261017000000): the column is dropped, and spreads combined with it come apart (merge again).
 
 create table public.trades (
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -25,3 +25,5 @@ create policy trades_owner on public.trades for all to authenticated
 
 revoke all on public.trades from anon;
 grant select, insert, update, delete on public.trades to authenticated;
+
+alter table public.trade_reviews drop column if exists group_key;

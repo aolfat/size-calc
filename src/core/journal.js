@@ -30,14 +30,13 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean,
  *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean,
  *   legs?: Trade[], group?: 'auto' | 'yours', spreadKind?: 'debit' | 'credit',
- *   kind?: 'single' | 'merged' | 'spread', id?: string, savedIds?: string[], parts?: string[], legacyLegs?: string[],
+ *   kind?: 'single' | 'merged' | 'spread', id?: string, savedIds?: string[], parts?: string[],
  *   bias?: 'long' | 'short' | 'neutral', structure?: string }} Trade
  * kind: single = grouped flat to flat on its own; merged = trades on one symbol you made one; spread = option legs as one
  * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
- * parts = the trade keys it's made of, legacyLegs = legs still grouped by the retired group_key (converted to rows on load).
+ * parts = the trade keys it's made of.
  * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
- * @typedef {{ stop?: number | null, hidden?: boolean, group_key?: string | null }} TradeReview  group_key: retired, read
- *   only to convert (the spread a leg was combined into; 'solo' = kept on its own)  hidden is the delete marker (the column's first name)
+ * @typedef {{ stop?: number | null, hidden?: boolean }} TradeReview  hidden is the delete marker (the column's first name)
  * @typedef {{ id: string, account: string, fill_ids: string[], created_at?: string }} SavedTrade a trades row
  */
 
@@ -463,25 +462,6 @@ function mergedTrade(parts, key, reviews, stops) {
 }
 
 /**
- * The retired group_key, read as rows so nothing you combined comes apart before it's converted: each spread named in
- * it, and each 'solo' leg on its own.
- * @param {Trade[]} legs @param {Record<string, TradeReview>} reviews
- */
-function legacyRows(legs, reviews) {
-  /** @type {Map<string, { key: string, id: string, account: string, fillIds: string[], created: string }>} */
-  const groups = new Map();
-  const solos = [];
-  for (const t of legs) {
-    const g = reviews[t.key]?.group_key;
-    if (!g) continue;
-    if (g === 'solo') { solos.push({ key: t.key, id: '', account: t.account, fillIds: t.fillIds, created: '' }); continue; }
-    if (!groups.has(g)) groups.set(g, { key: g, id: '', account: t.account, fillIds: [], created: '' });
-    /** @type {{ fillIds: string[] }} */ (groups.get(g)).fillIds.push(...t.fillIds);
-  }
-  return [...solos, ...groups.values()];
-}
-
-/**
  * The trades you shaped, applied. A trades row claims every trade holding one of its fills (so a merge that took in an
  * open trade keeps the fills that land later), and rows that share a trade make one trade, named by the oldest row
  * ('trade:<id>', what your stop and delete on it are kept under). Two or more trades on one symbol become one merged
@@ -492,10 +472,7 @@ function legacyRows(legs, reviews) {
  * @returns {Trade[]}
  */
 export function shapeTrades(legs, saved = [], reviews = {}, stops = []) {
-  const rows = [
-    ...legacyRows(legs, reviews),
-    ...saved.map(r => ({ key: `trade:${r.id}`, id: r.id, account: r.account, fillIds: r.fill_ids || [], created: r.created_at || '' })),
-  ];
+  const rows = saved.map(r => ({ key: `trade:${r.id}`, id: r.id, account: r.account, fillIds: r.fill_ids || [], created: r.created_at || '' }));
   /** @type {Map<string, number>} */
   const byFill = new Map();
   legs.forEach((t, i) => t.fillIds.forEach(id => byFill.set(`${t.account}|${id}`, i)));
@@ -514,7 +491,6 @@ export function shapeTrades(legs, saved = [], reviews = {}, stops = []) {
   /** @type {Map<number, Trade[]>} */
   const parts = new Map();
   legs.forEach((t, i) => { const root = find(i); if (!parts.has(root)) parts.set(root, []); /** @type {Trade[]} */ (parts.get(root)).push(t); });
-  const legacyOf = (/** @type {Trade[]} */ ps) => ps.filter(p => reviews[p.key]?.group_key).map(p => p.key);
   /** @type {Trade[]} */
   const out = [];
   /** @type {Trade[]} */
@@ -523,22 +499,22 @@ export function shapeTrades(legs, saved = [], reviews = {}, stops = []) {
     const claim = (rowsAt.get(root) || []).sort((a, b) => a.created.localeCompare(b.created));
     const savedIds = claim.filter(r => r.id).map(r => r.id);
     if (!claim.length) { free.push(...ps); continue; }
-    if (ps.length === 1) { out.push({ ...ps[0], kind: 'single', savedIds, parts: [], legacyLegs: legacyOf(ps) }); continue; }
-    if (mergeProblem(ps)) { out.push(...ps.map(p => ({ ...p, kind: /** @type {'single'} */ ('single'), savedIds: [], parts: [], legacyLegs: [] }))); continue; }
+    if (ps.length === 1) { out.push({ ...ps[0], kind: 'single', savedIds, parts: [] }); continue; }
+    if (mergeProblem(ps)) { out.push(...ps.map(p => ({ ...p, kind: /** @type {'single'} */ ('single'), savedIds: [], parts: [] }))); continue; }
     ps.sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0));
     const key = claim[0].key;
     const oneSymbol = new Set(ps.map(p => p.symbol)).size === 1;
     const t = oneSymbol ? mergedTrade(ps, key, reviews, stops) : spreadTrade(key, 'yours', ps, reviews);
-    out.push({ ...t, kind: oneSymbol ? 'merged' : 'spread', id: claim[0].id, savedIds, parts: ps.map(p => p.key), legacyLegs: legacyOf(ps) });
+    out.push({ ...t, kind: oneSymbol ? 'merged' : 'spread', id: claim[0].id, savedIds, parts: ps.map(p => p.key) });
   }
   const spreads = orderSpreads(free);
   const inSpread = new Set(spreads.flat().map(t => t.key));
   for (const ls of spreads) {
     const first = ls.reduce((a, b) => (a.openedAt <= b.openedAt ? a : b));
     const t = spreadTrade(`${first.account}|${rootOf(first)}|spread|${first.openedAt}`, 'auto', ls, reviews);
-    out.push({ ...t, kind: 'spread', id: '', savedIds: [], parts: ls.map(l => l.key), legacyLegs: [] });
+    out.push({ ...t, kind: 'spread', id: '', savedIds: [], parts: ls.map(l => l.key) });
   }
-  for (const t of free) if (!inSpread.has(t.key)) out.push({ ...t, kind: 'single', id: '', savedIds: [], parts: [], legacyLegs: [] });
+  for (const t of free) if (!inSpread.has(t.key)) out.push({ ...t, kind: 'single', id: '', savedIds: [], parts: [] });
   return out;
 }
 

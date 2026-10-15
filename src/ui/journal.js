@@ -2,8 +2,8 @@
 // flat to flat, with P&L, R, stop and hold time) or the raw fills, filtered by side and symbol; the trade sheet (your
 // stop, delete a trade that doesn't belong, combine or split a spread); and the Import and Export sheets: Import lists the
 // sources (Schwab now, file upload later), Export the files you can take (Schwab history now, trades later). Tick trades
-// and Merge to make them one (a re-entry, a spread's legs); Separate undoes it. Both are rows in the trades table, which
-// also takes over spreads combined with the retired group_key (converted on load). The trade page and stats come later.
+// and Merge to make them one (a re-entry, a spread's legs); Separate undoes it. Both are rows in the trades table. The
+// trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
 import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
@@ -307,14 +307,13 @@ export async function loadJournal() {
   } catch(e) {
     state.journalError = String(e?.message || e);
   } finally {
-    if (reviews.status === 'fulfilled') { state.tradeReviews = reviews.value.reviews; state.tradeGroups = reviews.value.groups; state.tradeReviewsError = ''; }
+    if (reviews.status === 'fulfilled') { state.tradeReviews = reviews.value; state.tradeReviewsError = ''; }
     else state.tradeReviewsError = String(reviews.reason?.message || reviews.reason);
     if (saved.status === 'fulfilled') { state.journalSaved = saved.value; state.journalSavedError = ''; }
     else state.journalSavedError = String(saved.reason?.message || saved.reason);
     state.journalLoading = false;
     if (state.journalView) renderJournal();
   }
-  await convertLegacyGroups();
 }
 
 /** the tab opened: show what's kept, and import quietly when it's due */
@@ -653,8 +652,7 @@ export function mergePicked() {
 
 /**
  * A merged trade or spread back into its parts: its rows go. Legs one order opened together would join again on their
- * own, so each of those gets a row of its own first (one claiming one trade keeps it apart); a spread the retired
- * group_key combined has it cleared.
+ * own, so each of those gets a row of its own first (one claiming one trade keeps it apart).
  */
 export async function separateTrade(key) {
   const t = currentTrades().find(x => x.key === key);
@@ -672,11 +670,6 @@ export async function separateTrade(key) {
     state.journalSaved = [...state.journalSaved, ...solo.map(r => ({ ...r, created_at: now }))];
     await deleteSavedTrades(t.savedIds || []);
     state.journalSaved = state.journalSaved.filter(r => !(t.savedIds || []).includes(r.id));
-    if (t.legacyLegs?.length && state.tradeGroups) {
-      const clears = Object.fromEntries(t.legacyLegs.map(k => [k, { ...reviewOf(k), group_key: null }]));
-      await saveTradeReviews(clears);
-      state.tradeReviews = { ...(state.tradeReviews || {}), ...clears };
-    }
     state.journalPicked = state.journalPicked.filter(k => k !== key);
     showToast(`Separated into ${t.parts.length} ${t.legs ? 'legs' : 'trades'}.`);
     ok = true;
@@ -687,44 +680,4 @@ export async function separateTrade(key) {
     renderJournal();
   }
   return ok;
-}
-
-/**
- * Spreads combined with the retired group_key become trades rows: one per spread (its own stop and delete move to the
- * row's key) and one per leg kept on its own, then the legs' group_key is cleared. Quiet: a failure tries again on the
- * next load, and until then the group_key still groups them.
- */
-let converting = null; // one conversion at a time: opening the tab and an import landing both load
-function convertLegacyGroups() {
-  if (!converting) converting = convertOnce().finally(() => { converting = null; });
-  return converting;
-}
-
-async function convertOnce() {
-  const reviews = state.tradeReviews || {};
-  if (state.journalSavedError || state.tradeReviewsError || !state.tradeGroups || !Object.values(reviews).some(r => r.group_key)) return;
-  const trades = currentTrades().filter(t => t.legacyLegs?.length);
-  if (!trades.length) return;
-  const inserts = [], updates = [], moved = {}, clears = {};
-  for (const t of trades) {
-    const own = (t.savedIds || []).map(savedRow).filter(Boolean).sort(byCreated)[0];
-    if (own) updates.push({ ...own, fill_ids: [...new Set([...own.fill_ids, ...t.fillIds])] });
-    else {
-      const row = { id: crypto.randomUUID(), account: t.account, fill_ids: t.fillIds };
-      inserts.push(row);
-      if (t.kind !== 'single' && reviews[t.key]) moved[`trade:${row.id}`] = { stop: reviews[t.key].stop ?? null, hidden: !!reviews[t.key].hidden };
-    }
-    for (const k of t.legacyLegs) clears[k] = { ...reviews[k], group_key: null };
-  }
-  try {
-    await insertSavedTrades(inserts);
-    for (const u of updates) await updateSavedTrade(u.id, u.fill_ids);
-    const now = new Date().toISOString();
-    state.journalSaved = [...state.journalSaved.filter(r => !updates.some(u => u.id === r.id)), ...updates, ...inserts.map(r => ({ ...r, created_at: now }))];
-    await saveTradeReviews({ ...moved, ...clears });
-    state.tradeReviews = { ...reviews, ...moved, ...clears };
-  } catch(e) {
-    return;
-  }
-  if (state.journalView) renderJournal();
 }
