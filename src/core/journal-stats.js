@@ -1,11 +1,13 @@
 // @ts-check
 // Journal calendar and stats, pure (docs/journal-step-2.md, slice 4): the closed trades in numbers. The calendar puts each
-// exit's P&L on the New York day it was taken (a trim counts that day, even while the rest is still open). Every group (the whole set, a symbol, a weekday, a time of day...) gets the same stats, and a
-// group under 10 trades is thin. Trades still open, deleted, or from before the history never count.
+// exit's P&L on the New York day it was taken (a trim counts that day, even while the rest is still open), and a day, week
+// or month of stats counts the same exits (sliceTrade); all time counts closed trades. Every group (the whole set, a symbol,
+// a weekday, a time of day...) gets the same stats, and a group under 10 trades is thin. Deleted trades and trades from
+// before the history never count.
 
 /** @typedef {{ key: string, symbol: string, label: string, assetType: string, status: string, bias?: string, direction: string,
  *   openedAt: string, closedAt: string | null, pnl: number, r: number | null, exits: number, holdMs: number | null,
- *   deleted?: boolean, legs?: any[], realized?: { at: string, qty: number, pnl: number }[] }} StatTrade
+ *   risk?: number | null, partial?: boolean, deleted?: boolean, legs?: any[], realized?: { at: string, qty: number, pnl: number }[] }} StatTrade
  * @typedef {{ pnl: number, keys: string[], byTrade: Record<string, number>, trades: number, wins: number, losses: number, winRate: number | null, profitFactor: number | null }} Day */
 
 /** groups smaller than this are marked thin: a handful of trades says little */
@@ -132,12 +134,33 @@ export function periodKey(day, unit) {
   if (unit === 'week') { const t = Date.parse(`${day}T00:00:00Z`); return isoDay(t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5); }
   return day;
 }
-/** the counted trades that closed in one period (every counted trade without one). @param {StatTrade[]} trades @param {string} unit @param {string} key */
-export const inPeriod = (trades, unit, key) => PERIODS.includes(unit) ? countedTrades(trades).filter(t => periodKey(closeDay(t), unit) === key) : countedTrades(trades);
-/** the periods with closed trades, newest first. @param {StatTrade[]} trades @param {string} unit */
-export const activePeriods = (trades, unit) => [...new Set(countedTrades(trades).map(t => periodKey(closeDay(t), unit)))].sort().reverse();
 /**
- * ‹ or ›: the nearest period with closed trades before (by < 0) or after the one shown, or null at the end.
+ * A trade as it counts in one period: only the exits taken then, their P&L added up, closed at the last of them, R on that
+ * P&L over the trade's risk (partial: true). A trim counts in its period like on the calendar, even while the rest is still
+ * open or closes later. A trade with every exit inside is itself. Its realized list is cut to the period, so a week's
+ * slice can be cut again by day. Null without an exit then.
+ * @param {StatTrade} t @param {string} unit @param {string} key @returns {StatTrade | null}
+ */
+export function sliceTrade(t, unit, key) {
+  const exits = exitsOf(t), inside = exits.filter(e => periodKey(nyParts(e.at).day, unit) === key);
+  if (!inside.length) return null;
+  if (inside.length === exits.length && t.closedAt && t.status !== 'open') return t;
+  const pnl = round2(inside.reduce((n, e) => n + e.pnl, 0));
+  return {
+    ...t, pnl, r: t.risk && t.risk > 0.005 ? Math.round((pnl / t.risk) * 100) / 100 : null,
+    status: pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', closedAt: inside[inside.length - 1].at,
+    exits: inside.length, realized: /** @type {any[]} */ (inside), partial: true,
+  };
+}
+/** the trades with exits in one period, as they count there (sliceTrade); all time: every counted trade. @param {StatTrade[]} trades @param {string} unit @param {string} key */
+export const inPeriod = (trades, unit, key) => PERIODS.includes(unit)
+  ? /** @type {StatTrade[]} */ (trades.map(t => sliceTrade(t, unit, key)).filter(Boolean)) : countedTrades(trades);
+/** the New York days of every exit. @param {StatTrade[]} trades */
+const exitDayList = trades => trades.flatMap(t => exitsOf(t).map(e => nyParts(e.at).day));
+/** the periods with exits, newest first. @param {StatTrade[]} trades @param {string} unit */
+export const activePeriods = (trades, unit) => [...new Set(exitDayList(trades).map(d => periodKey(d, unit)))].sort().reverse();
+/**
+ * ‹ or ›: the nearest period with exits before (by < 0) or after the one shown, or null at the end.
  * @param {string[]} active newest first @param {string} key @param {number} by
  */
 export function stepPeriod(active, key, by) {
@@ -146,12 +169,12 @@ export function stepPeriod(active, key, by) {
   return newer.length ? newer[newer.length - 1] : null;
 }
 /**
- * Switching day / week / month keeps your place: the newest close inside what's shown now (or its first day when it has
- * none) picks the new period; from all time, the newest close of all.
+ * Switching day / week / month keeps your place: the newest exit inside what's shown now (or its first day when it has
+ * none) picks the new period; from all time, the newest exit of all.
  * @param {StatTrade[]} trades @param {string} fromUnit @param {string} fromKey @param {string} toUnit
  */
 export function switchPeriod(trades, fromUnit, fromKey, toUnit) {
-  const days = inPeriod(trades, fromUnit, fromKey).map(closeDay).sort();
+  const days = exitDayList(PERIODS.includes(fromUnit) ? inPeriod(trades, fromUnit, fromKey) : trades).sort();
   const anchor = days[days.length - 1] || (PERIODS.includes(fromUnit) && fromKey ? (fromKey.length === 7 ? `${fromKey}-01` : fromKey) : '');
   return anchor && PERIODS.includes(toUnit) ? periodKey(anchor, toUnit) : '';
 }
@@ -227,17 +250,8 @@ export function streaks(trades) {
   return { longestWin: win, longestLoss: loss, current: kind ? { kind, count: run } : null };
 }
 
-/** the stats per day, week or month the trades closed, newest first: [{ key, ...groupStats }]. @param {StatTrade[]} trades @param {string} unit */
-export function periodResults(trades, unit) {
-  /** @type {Map<string, StatTrade[]>} */
-  const by = new Map();
-  for (const t of countedTrades(trades)) {
-    const k = periodKey(closeDay(t), unit);
-    if (!by.has(k)) by.set(k, []);
-    /** @type {StatTrade[]} */ (by.get(k)).push(t);
-  }
-  return [...by].sort((a, b) => b[0].localeCompare(a[0])).map(([key, list]) => ({ key, ...groupStats(list) }));
-}
+/** the stats per day, week or month, each over the exits taken then (inPeriod), newest first: [{ key, ...groupStats }]. @param {StatTrade[]} trades @param {string} unit */
+export const periodResults = (trades, unit) => activePeriods(trades, unit).map(key => ({ key, ...groupStats(inPeriod(trades, unit, key)) }));
 
 /** P&L per month, newest first: [{ month, ...groupStats }]. @param {StatTrade[]} trades */
 export const monthlyResults = trades => periodResults(trades, 'month').map(({ key, ...s }) => ({ month: key, ...s }));
