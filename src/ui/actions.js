@@ -2,7 +2,7 @@
 // and in rendered templates maps to one call here. Adapters turn data-arg strings into arguments.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
-import { addTradeShots, closeShotViewer, deleteTradeShot, openShot, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
+import { addTradeShots, closeShotViewer, deleteTradeShot, openShot, pasteTradeShot, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
 import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
@@ -103,6 +103,7 @@ export const actions = {
   setupDraftNameInput: el => setupDraftNameInput(/** @type {HTMLInputElement} */ (el).value),
   saveSetupDraft: () => withPageTrade(t => saveSetupDraft(t)),
   useSetupDraftMatch: el => withPageTrade(t => useSetupDraftMatch(t, arg(el))),
+  pasteTradeShot: () => withPageTrade(t => pasteTradeShot(t)),
   pickTradeShots: () => pickTradeShots(),
   addTradeShotsFromInput: el => withPageTrade(t => { const files = /** @type {HTMLInputElement} */ (el).files; const p = addTradeShots(t, files); /** @type {HTMLInputElement} */ (el).value = ''; return p; }),
   openShot: el => openShot(arg(el)),

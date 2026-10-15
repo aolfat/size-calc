@@ -3,7 +3,7 @@
 import { copyPlainText } from './copy-text.js';
 import { drawShareCard, shareCanvasToClipboard } from './share-image.js';
 import { openSim } from './sim.js';
-import { prepareImage } from './image-prep.js';
+import { prepareImage, readClipboardImages } from './image-prep.js';
 
 /** after signing out, start over from a clean page */
 export function reloadPage() { location.reload(); }
@@ -20,4 +20,4 @@ export function downloadText(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-export const effects = { copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage };
+export const effects = { copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages };
