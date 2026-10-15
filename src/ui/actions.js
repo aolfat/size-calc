@@ -16,6 +16,7 @@ import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
 import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
+import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
 import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue } from './positions.js';
 import { simPosition } from './position-sim.js';
@@ -175,6 +176,12 @@ export const actions = {
   openOrderCancel: el => openOrderCancel(arg(el)),
   setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
   sendOrderCancel: () => sendOrderCancel(),
+  openOrderEdit: el => openOrderEdit(arg(el)),
+  setEditStop: el => setEditStop(el.value),
+  setEditPrice: el => setEditPrice(el.value),
+  setEditQty: el => setEditQty(el.value),
+  setEditDuration: el => setEditDuration(arg(el)),
+  sendOrderEdit: () => sendOrderEdit(),
   togglePositionChart: el => togglePositionChart(arg(el)),
   closePositionChart: () => closePositionChart(),
   setPosChartRange: el => setPosChartRange(num(el)),

@@ -95,6 +95,7 @@
   .orders-card .positions-meta { order: 0; flex-basis: auto; } /* the count stays on the title's line */
   .orders-table { min-width: 600px; }
   .orders-table td.pos-order { min-width: 130px; max-width: 150px; }
+  .orders-table .pos-acts { flex-direction: column; align-items: flex-start; gap: 4px; } /* Edit over Cancel keeps the pinned column narrow, so the price stays in view */
 }
 
 /* Journal tab: the same card and table as Positions, with buys and sells told apart */
