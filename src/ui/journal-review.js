@@ -9,6 +9,7 @@ import { addTradeLabel, loadReviewData, removeTradeLabel, saveJournalDay, saveLa
 import { state } from '../state.js';
 import { showError } from './feedback.js';
 import { openSheet } from './sheets.js';
+import { shotsRowHtml } from './journal-shots.js';
 
 const EMPTY = { reviews: {}, labels: {}, days: {}, library: [] };
 const data = () => state.journalReview || EMPTY;
@@ -286,6 +287,7 @@ export function reviewSectionHtml(t) {
     ${row('Followed the plan', PLAN_FOLLOWED.map(([v, w]) => chip(w, rv.plan_followed === v, `data-action="setPlanFollowed" data-arg="${v}"`)).join(''), miss.has('plan followed'))}
     <div class="jr-row${miss.has('note') ? ' jr-missing' : ''}"><label class="jr-label" for="reviewNote">Note</label>
       <textarea id="reviewNote" rows="3" maxlength="5000" placeholder="What you saw, what you did, what you'd do again" data-input="reviewNoteInput" data-change="reviewNoteSave">${esc(draft)}</textarea></div>
+    ${shotsRowHtml(t)}
   </div>`;
 }
 

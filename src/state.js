@@ -63,6 +63,12 @@ export function createState() {
     journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
     journalReviewFilter: 'all', // the trades tab: all | todo (to review)
     reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
+    journalShots: null, // your screenshots once read: [{ id, trade_key, path, caption, width, height, bytes, created_at }]
+    journalShotsError: '', // they couldn't be read (the migration not pushed yet, say)
+    journalShotUrls: {}, // path → signed link (an hour)
+    shotsBusy: 0, // screenshots being shrunk and kept
+    shotView: null, // the screenshot open in the viewer (its id)
+    shotDeleteArmed: false, // Delete was tapped once: the next tap deletes
     setupDraft: null, // + New setup being made: { action, levels, pattern, name }
     reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind

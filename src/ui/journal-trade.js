@@ -16,6 +16,7 @@ import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { journalTradeList, marketTime, openTradeReview, renderJournal } from './journal.js';
 import { onReviewChange, reviewSectionHtml } from './journal-review.js';
+import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -49,7 +50,7 @@ function holdDays(t) {
 
 export function openJournalTrade(key) {
   // a fresh review: no half-picked setup, new-item box or note draft carried over from another trade
-  Object.assign(state, { setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNoteDraft: null, reviewMarketOwn: false });
+  Object.assign(state, { shotView: null, shotDeleteArmed: false, setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNoteDraft: null, reviewMarketOwn: false });
   state.journalTrade = { key, five: [], daily: [], view5: { count: 78, offset: 0 }, viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '', hover5: -1, hoverY5: -1, hoverD: -1, hoverYD: -1 };
   syncJournalPage();
   renderJournalTrade();
@@ -221,6 +222,7 @@ export function drawJournalTrade() {
 }
 
 export function initJournalTradeEvents() {
+  initTradeShotEvents(() => pageTrade());
   for (const which of ['5', 'D']) {
     const canvas = document.getElementById(which === '5' ? 'jtChart5' : 'jtChartD');
     if (!canvas) continue;
@@ -258,3 +260,4 @@ export const journalTradeRange = which => {
 
 // a review change redraws the page (the section, and the status line with it)
 onReviewChange(() => { if (state.journalTrade) renderJournalTrade(); });
+onShotsChange(() => { if (state.journalTrade) renderJournalTrade(); renderShotViewer(); });

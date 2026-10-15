@@ -2,6 +2,7 @@
 // and in rendered templates maps to one call here. Adapters turn data-arg strings into arguments.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
+import { addTradeShots, closeShotViewer, deleteTradeShot, openShot, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
 import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
@@ -99,6 +100,12 @@ export const actions = {
   setupDraftNameInput: el => setupDraftNameInput(/** @type {HTMLInputElement} */ (el).value),
   saveSetupDraft: () => withPageTrade(t => saveSetupDraft(t)),
   useSetupDraftMatch: el => withPageTrade(t => useSetupDraftMatch(t, arg(el))),
+  pickTradeShots: () => pickTradeShots(),
+  addTradeShotsFromInput: el => withPageTrade(t => { const files = /** @type {HTMLInputElement} */ (el).files; const p = addTradeShots(t, files); /** @type {HTMLInputElement} */ (el).value = ''; return p; }),
+  openShot: el => openShot(arg(el)),
+  closeShotViewer: () => closeShotViewer(),
+  deleteTradeShot: () => deleteTradeShot(),
+  saveTradeShotCaption: el => saveTradeShotCaption(/** @type {HTMLInputElement} */ (el).value),
   reviewLinkInput: el => reviewLinkInput(/** @type {HTMLInputElement} */ (el).value),
   addReviewLink: el => withPageTrade(t => addReviewLink(t, arg(el), el.tagName === 'INPUT' ? /** @type {HTMLInputElement} */ (el).value : undefined)),
   removeReviewLink: el => withPageTrade(t => removeReviewLink(t, arg(el), el.dataset.arg2 || '')),
