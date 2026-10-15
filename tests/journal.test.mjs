@@ -356,3 +356,37 @@ test('after fees, an order without its transaction yet says so instead of a made
   assert.match(out, /−\$504\.00<span class="pos-sub"><span class="journal-fees-missing">fees not in yet<\/span><\/span>/);
   assert.match(out, /fees not in yet on 1/);
 });
+
+test('a sell whose purchase is older than the history: marked, kept out of the stats, deletable; an expired option says so', async () => {
+  const sell = {
+    orderId: 801, enteredTime: '2026-09-02T14:00:00+0000', status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction: 'SELL', quantity: 40, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 7801, executionLegs: [{ legId: 1, quantity: 40, price: 510, time: '2026-09-02T14:00:01+0000' }] }],
+  };
+  const expiredCall = {
+    orderId: 802, enteredTime: '2026-09-02T14:10:00+0000', status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction: 'BUY_TO_OPEN', quantity: 1, instrument: { symbol: 'MSFT  260918C00520000', assetType: 'OPTION' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 7802, executionLegs: [{ legId: 1, quantity: 1, price: 2.4, time: '2026-09-02T14:10:01+0000' }] }],
+  };
+  const records = [...RECORDS, { kind: 'order', record_id: '801', entered_at: '2026-09-02T14:00:00Z', data: sell }, { kind: 'order', record_id: '802', entered_at: '2026-09-02T14:10:00Z', data: expiredCall }]
+    .map(r => ({ ...r, account: '6789' }));
+  const supabase = fakeRecords(records);
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(out(), /<tr class="journal-history"[^>]*>\s*<td><b>MSFT<\/b> <span class="journal-tag journal-tag-history">before your history<\/span>/);
+  assert.match(out(), /data-action="confirmDeleteTrade" data-arg="6789\|MSFT\|long\|before\|2026-09-02T14:00:01\.000Z"/, 'it can be deleted');
+  assert.doesNotMatch(out(), /Short<\/td>\s*<td>40</, 'no made-up short');
+  assert.match(out(), /2 closed · 0 won \(0%\) · <span class="journal-sell">−\$744\.00<\/span> before fees/, 'the stock and the expired call count; the history sell doesn\'t');
+  assert.match(out(), /1 from before your history/);
+  assert.match(out(), /MSFT 9\/18\/26 520C<\/b> <span class="journal-tag journal-tag-quiet" title="Closed at \$0 at the 4pm close on expiry/);
+  assert.match(out(), /−\$240\.00/, 'the whole premium');
+  assert.match(out(), /Options still open after expiry close at \$0/);
+
+  run("confirmDeleteTrade('6789|MSFT|long|before|2026-09-02T14:00:01.000Z')");
+  assert.match(elements.get('tradeReviewBody').innerHTML, /Sold 40 at \$510\.00 · bought before your history, so no P&amp;L/);
+  await run('deleteTrade()');
+  assert.doesNotMatch(out(), /before your history<\/span>/);
+  assert.match(out(), /1 deleted/);
+});
