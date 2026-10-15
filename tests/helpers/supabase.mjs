@@ -2,7 +2,8 @@
 // for the journal tests: select(...).eq().in().order().limit() reads rows (records newest first when ordered),
 // upsert(rows, { ignoreDuplicates }) inserts or replaces by the table's key ((user, kind, record id), or (user, trade
 // key)), insert / update().eq() / delete().in() write trades rows by id (logged in tradeOps), fail() makes every call
-// answer with an error, and failTable(name) only that table's (a migration not applied yet).
+// answer with an error, failTable(name) only that table's (a migration not applied yet), and failColumn(name, col) only
+// the reads and writes that name that column (a column a migration adds).
 export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
   const u = r => r.user_id || 'user-1';
   const keys = {
@@ -20,6 +21,9 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
   const storageOps = []; // settings: an account with none, for a session resumed on boot
   const tradeOps = [];
   const broken = new Set();
+  const brokenCols = [];
+  const colGone = (name, cols) => brokenCols.find(([n, c]) => n === name && cols.includes(c));
+  const noColumn = (name, col) => ({ data: null, error: { message: `column ${name}.${col} does not exist` }, status: 400 });
   const writes = [];
   const reads = [];
   let failure = null;
@@ -64,6 +68,7 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
     reviewRows: () => [...reviews.values()],
     fail(f = { status: 500, message: 'nope' }) { failure = f; },
     failTable(name) { broken.add(name); },
+    failColumn(name, col) { brokenCols.push([name, col]); },
     from: name => ({
       insert: async rows => {
         const res = answer(null, name);
@@ -93,13 +98,16 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
           then: (resolve, reject) => {
             let rows = [...(tables[name] || table).values()].filter(r => filters.every(f => f(r))).map(r => ({ ...r }));
             if (ordered && name !== 'trades') rows.sort((a, b) => String(b.entered_at || '').localeCompare(String(a.entered_at || '')));
-            return Promise.resolve(answer(rows, name)).then(resolve, reject);
+            const gone = colGone(name, String(cols || '').split(','));
+            return Promise.resolve(gone ? noColumn(name, gone[1]) : answer(rows, name)).then(resolve, reject);
           },
         };
         return q;
       },
       upsert: async (rows, opts = {}) => {
         if (failure || broken.has(name)) return answer(null, name);
+        const gone = colGone(name, rows.flatMap(r => Object.keys(r)));
+        if (gone) return noColumn(name, gone[1]);
         const t = tables[name] || table, key = keys[name] || keys.schwab_records;
         for (const r of rows) {
           writes.push({ table: name, ignoreDuplicates: !!opts.ignoreDuplicates, ...(opts.onConflict ? { onConflict: opts.onConflict } : {}), ...r });

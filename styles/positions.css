@@ -301,3 +301,24 @@ span.journal-pick { cursor: default; }
 .jt-stats dd .pos-sub { font-size: 11.5px; font-weight: 400; }
 .jt-sub { margin-top: 14px; }
 .jt-table { min-width: 0; width: 100%; }
+/* the review deck: a bar on each card (in the header on desktop, fixed above the tab bar on phones), the hidden P&L, the end */
+.jt-deck { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; margin: 0 0 12px; border: 1px solid var(--blue-bd); border-radius: var(--radius); background: color-mix(in srgb, var(--blue-bg) 45%, var(--bg2)); font-size: 13px; }
+.jt-deck-count { font-weight: 600; font-family: var(--num); }
+.jt-deck-pass { color: var(--text2); }
+.jt-deck-pass.journal-buy { color: var(--green); }
+.jt-deck-acts { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.jt-deck .btn { margin: 0; padding: 6px 12px; font-size: 12.5px; }
+.jt-deck .btn:disabled { opacity: 0.45; cursor: default; }
+.jt-deck .btn[aria-pressed="true"] { color: var(--blue); border-color: var(--blue-bd); }
+.jt-wait { font-size: 14px; font-weight: 500; color: var(--text3); }
+.jt-deck-pnl { margin: -2px 0 10px; }
+.jr-queue { margin: 4px 0 8px; }
+.jt-deck-end { padding: 8px 0 4px; }
+.jt-deck-end .setup-title { margin: 0 0 12px; }
+@media (max-width: 600px) {
+  .jt-deck { position: fixed; left: 8px; right: 8px; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 90; margin: 0; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); background: color-mix(in srgb, var(--blue-bg) 30%, var(--bg2)); }
+  .jt-deck-acts { margin-left: 0; width: 100%; display: grid; grid-template-columns: 1.4fr 1fr 1.2fr 0.9fr; }
+  .jt-deck .btn { min-height: 40px; padding: 6px 4px; justify-content: center; }
+  #journalTradeSection.jt-decking { padding-bottom: 120px; } /* the last of the card clears the bar */
+  .app:has(input:focus, select:focus, textarea:focus) .jt-deck { display: none; } /* the keyboard owns the bottom while typing */
+}

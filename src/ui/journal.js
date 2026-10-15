@@ -22,6 +22,7 @@ import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { loadJournalReview, reviewedMark, setupsInUse, setupsOf, toReview } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
+import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -288,11 +289,13 @@ export function renderJournal() {
   if (!el) return;
   syncJournalPage();
   if (state.journalTrade) renderJournalTrade(); // the page reads the same records, stops and deletes
+  else if (state.journalDeck?.finished) renderDeckEnd();
   if (!state.session && state.sessionResuming) {
     el.innerHTML = `<div class="card empty-card"><p>Loading your journal…</p></div>`;
     return;
   }
   if (!state.session) {
+    syncJournalBadge(null);
     el.innerHTML = `<div class="card empty-card"><div class="setup-title">Sign in to keep your journal</div><p>Your Schwab orders and trades are kept in your account, so sign in with Google first. Then connect Schwab and import.</p><button class="btn primary" data-action="openSheet" data-arg="settings">Open settings</button></div>`;
     return;
   }
@@ -301,6 +304,7 @@ export function renderJournal() {
   const fills = fillsFrom(records);
   const canImport = schwabConnected();
   const all = fills.length ? currentTrades() : [];
+  syncJournalBadge(all);
   const keys = new Set(all.map(t => t.key));
   state.journalPicked = state.journalPicked.filter(k => keys.has(k)); // a merge or a re-read can retire a key
   const scrolled = el.querySelector?.('.positions-wrap')?.scrollLeft || 0; // a tick redraws the table: keep it where it was sideways
@@ -312,11 +316,13 @@ export function renderJournal() {
       <span class="section-title">Journal</span>
       <span class="positions-meta" id="journalKept">${keptLine}</span>
       <span class="journal-actions">
+        ${deckButtonHtml(all)}
         <button class="btn" id="journalImportBtn" data-action="openJournalImport" title="Bring in trades: Schwab now, files later">${state.captureBusy ? 'Importing…' : 'Import'}</button>
         <button class="btn" id="journalExportBtn" data-action="openJournalExport" title="Take your data with you as a file">Export</button>
       </span>
     </div>
     <p class="hint" id="journalStatus" role="status">${statusLine()}</p>
+    ${deckLineHtml(all)}
     ${state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}

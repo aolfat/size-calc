@@ -1,7 +1,8 @@
 // @ts-check
 // Journal review, pure (docs/journal-step-3.md): the label defaults, your library on top of them (your own items,
 // renamed / hidden / merged defaults), My setups (each an action at one or more levels, or a pattern, saved once and
-// picked from then on), and whether a trade is reviewed: market, sector, a setup, a tactic, both grades and a note.
+// picked from then on), whether a trade is reviewed (market, sector, a setup, a tactic, both grades and a note), and the
+// review deck's queue (the pass each trade needs: opening while it's open, the grade and note once it closes).
 
 /** @typedef {'market' | 'sector' | 'setup' | 'level' | 'action' | 'pattern' | 'tactic' | 'tag' | 'mistake'} ItemKind */
 /** @typedef {{ action?: string, levels?: string[], pattern?: string }} SetupParts  an action at its levels, or a pattern */
@@ -160,6 +161,33 @@ export function reviewState(review, labels, dayMarket) {
   ];
   const missing = checks.filter(([, ok]) => !ok).map(([name]) => name);
   return { market, marketOwn: !!review?.market, missing, reviewed: !missing.length, started: missing.length < REQUIRED.length };
+}
+
+/** what a trade still open needs before it leaves the review deck: the labels and the plan; the grade and note wait for the close */
+export const OPENING_PASS = ['market', 'sector', 'setup', 'tactic', 'plan followed'];
+
+/**
+ * The pass a trade needs in the review deck, or null for none. Open: 'opening' until the opening fields are in. Closed
+ * and not reviewed: 'closing' when only the grade and note are left, else 'full'. Deleted and before-history trades none.
+ * @param {{ status?: string, deleted?: boolean }} t @param {{ missing: string[], reviewed: boolean }} st
+ * @returns {'opening' | 'closing' | 'full' | null}
+ */
+export function reviewPass(t, st) {
+  if (t.status === 'history' || t.deleted) return null;
+  const openingDone = !st.missing.some(m => OPENING_PASS.includes(m));
+  if (t.status === 'open') return openingDone ? null : 'opening';
+  if (st.reviewed) return null;
+  return openingDone ? 'closing' : 'full';
+}
+
+/**
+ * The review deck's queue: every trade that needs a pass, oldest first (by open time, then key). No filters.
+ * @template {{ key: string, openedAt?: string | null, status?: string, deleted?: boolean }} T
+ * @param {T[]} trades @param {(t: T) => { missing: string[], reviewed: boolean }} stateOf
+ */
+export function deckQueue(trades, stateOf) {
+  return trades.filter(t => reviewPass(t, stateOf(t)))
+    .sort((a, b) => (a.openedAt || '') < (b.openedAt || '') ? -1 : (a.openedAt || '') > (b.openedAt || '') ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 }
 
 /** 'missing sector, note' in words: the first few, then how many more. @param {string[]} missing */

@@ -1,10 +1,10 @@
 # Step 3: reviewing trades
 
-Status: slice 1 (review on the trade page) built. This is the next part of [the journal plan](journal-plan.md), after [step 2](journal-step-2.md), which builds trades, their charts and the stats from Schwab.
+Status: slices 1 (review on the trade page) and 2 (the review deck) built. This is the next part of [the journal plan](journal-plan.md), after [step 2](journal-step-2.md), which builds trades, their charts and the stats from Schwab.
 
 ## Goal
 
-Every trade gets reviewed: what the market and its sector were doing, which setups and entry tactic it was, how good the setup was, whether you followed your plan, and what you think now. Reviewing has to be quick enough that it actually happens, so it lives on the trade page first and in a swipe-through deck next. The app's guesses come after that, and the stats can then be cut by any label.
+Every trade gets reviewed: what the market and its sector were doing, which setups and entry tactic it was, how good the setup was, whether you followed your plan, and what you think now. Reviewing has to be quick enough that it actually happens, so it lives on the trade page first and in a deck you go through one card at a time next. The app's guesses come after that, and the stats can then be cut by any label.
 
 ## Principles
 
@@ -72,7 +72,7 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 - **A Review section** on the trade page, under the stats:
   - market (the day's, with "this trade only")
   - sector
-  - setups (pick a level, then an optional action, or a pattern)
+  - setups (My setups: what happened, at what level, or a pattern)
   - tactic, tags, mistakes
   - both grades, and the note
 - **Chips for quick picks.** "+ New" adds your own item in place.
@@ -82,13 +82,39 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 - **Screenshots (built):** attach images to a trade with Paste from clipboard, by picking a file, by pressing ⌘V on the page, or by dropping them. They're shrunk, kept in a private bucket under your own folder, and shown through signed links. Each has a caption, and Delete asks once. Ten a trade.
 - **A Library sheet** to rename, hide and merge.
 
-### 2. The review deck
+### 2. The review deck (built)
 
-- **"Review N trades"** from the Journal, and a banner above the risk strip ("N trades to review") that never blocks anything.
-- **Cards:** one per trade, oldest unreviewed first, with the same charts and Review section. Swipes on the phone, arrow keys on desktop.
-- **P&L is hidden until you grade.** A setting can show it up front.
-- **Swings get two passes:** labels and plan when they open, the grade and note when they close.
-- **Gestures (proposed):** right = done, left = back, up = save for the weekly review.
+Going through the trades you haven't reviewed one after another, without going back to the list in between. A card is the trade page you already have, in deck mode. There's no new layout.
+
+- **Where it starts:**
+  - **Review N trades** in the Journal's header, beside Import and Export. It's hidden when nothing is waiting.
+  - **A count on the Journal tab,** like the one on Positions, once the journal has been read.
+  - **A line at the top of the Journal:** "12 trades to review · Start". It never blocks anything.
+  - There's no banner on the Size tab. The risk strip stays the first thing there, with no nag in the way while you trade.
+- **The queue:** every trade that needs a pass, oldest first. Deleted trades and trades from before your history are left out. **No filters:** the Journal's side, symbol and setup filters don't touch it, so the count is always the full number. Done leaves at any point, and the next time it starts again from the oldest trade still waiting.
+- **Two passes for a trade held open:**
+  - **Opening pass,** while it's open: market, sector, a setup, the tactic, and followed the plan. With those in, it leaves the queue.
+  - **Closing pass,** once it's closed: it comes back for the grade and the note. The first pass's fields are already filled in.
+  - A trade that opens and closes between reviews gets one pass with everything.
+  - The queue works this out from what's filled in and whether the trade is open, so no column records it.
+- **A card** is the trade page with a deck bar: "3 of 12", the pass, ‹ Back, Next ›, Save for the weekly review (a toggle, with a "for weekly" tag), and Done. The bar is fixed at the bottom on phones, above the tab bar, and at the top of the page on desktop. ← and → move between cards and Esc leaves, except while you're typing.
+- **No swipes for now:**
+  - A sideways swipe already pans the daily chart.
+  - The chip rows scroll sideways on a phone.
+  - Up is page scroll.
+  Buttons and keys work everywhere. Swipes could come later, on the header only.
+- **Next on an unfinished trade** moves on anyway. The trade stays in the queue, and the count drops only when a pass is done. Trades reviewed on another device meanwhile are passed over. After the last card: "All caught up: 8 done, 3 skipped, 2 saved for the weekly review", with **Go through the 3 skipped**.
+- **P&L is hidden until you grade.**
+  - P&L, R and exit efficiency show "Grade first", with a Show button.
+  - They come back once the setup grade is in.
+  - The chart, the fills and the exit price stay. You need them to judge the execution.
+  - A switch under the stats, "Always show" or "Hide until I grade", saves `journal_deck_pnl` to your account.
+  - The trade page outside the deck always shows P&L.
+- **Storage** (migration `20261023000000_review_deck.sql`):
+  - `trade_reviews.weekly_at` is the toggle (null means not saved). Nothing reads it until slice 6.
+  - `journal_deck_pnl` is added to the settings keys.
+  - Before the push, the toggle says it needs it and everything else works.
+- **Not in the address:** a reload lands on the trades list, the same as an open trade page.
 
 ### 3. Guesses
 
@@ -125,5 +151,4 @@ Low-confidence guesses come first in the deck.
 - **Market guess rule:** SPY and QQQ against which moving averages, and what counts as choppy (slice 3).
 - **Sector guess rule:** relative strength of the group ETF against SPY over which window (slice 3).
 - **Mistake cutoffs:** how many minutes counts as revenge, how far over plan counts as oversized (slice 4).
-- **Deck gestures,** and whether P&L hides by default (slice 2).
 - **Emotions as their own label** (fear, FOMO, calm), or just tags.

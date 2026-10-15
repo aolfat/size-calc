@@ -3,7 +3,7 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, GRADES, linkLabel, MAX_LINKS, missingWords, parseSetup, PLAN_FOLLOWED, reviewState, sameParts, setupFits, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, deckQueue, GRADES, linkLabel, MAX_LINKS, missingWords, parseSetup, PLAN_FOLLOWED, reviewPass, reviewState, sameParts, setupFits, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
 import { addTradeLabel, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
 import { state } from '../state.js';
@@ -11,7 +11,7 @@ import { showError } from './feedback.js';
 import { openSheet } from './sheets.js';
 import { shotsRowHtml } from './journal-shots.js';
 
-const EMPTY = { reviews: {}, labels: {}, days: {}, library: [] };
+const EMPTY = { reviews: {}, labels: {}, days: {}, library: [], weekly: {}, weeklyError: '' };
 const data = () => state.journalReview || EMPTY;
 const library = () => buildLibrary(data().library);
 /** the New York day a trade's market label belongs to: the day it opened */
@@ -23,10 +23,17 @@ export function tradeReviewState(t) {
   return reviewState(d.reviews[t.key], d.labels[t.key] || [], d.days[dayOf(t)]?.market);
 }
 
-/** the list's mark: a quiet "reviewed" tag on a reviewed trade, nothing else (most are still to review) */
-export const reviewedMark = t => state.journalReview && t.status !== 'history' && tradeReviewState(t).reviewed ? ' <span class="journal-tag journal-tag-done">reviewed</span>' : '';
-/** the To review filter: trades with an entry that aren't reviewed yet */
-export const toReview = t => t.status !== 'history' && !t.deleted && !tradeReviewState(t).reviewed;
+/** the list's marks: a quiet "reviewed" tag on a reviewed trade (most are still to review), and "for weekly" on one saved for the weekly review */
+export const reviewedMark = t => !state.journalReview || t.status === 'history' ? ''
+  : `${tradeReviewState(t).reviewed ? ' <span class="journal-tag journal-tag-done">reviewed</span>' : ''}${savedForWeekly(t) ? ' <span class="journal-tag journal-tag-quiet">for weekly</span>' : ''}`;
+/** the pass a trade needs (core/journal-labels.js reviewPass): opening while it's open, the grade and note once it closes */
+export const tradePass = t => reviewPass(t, tradeReviewState(t));
+/** the To review filter: the trades the review deck would show (an open trade with its opening pass done waits for its close) */
+export const toReview = t => !!tradePass(t);
+/** the review deck's queue, oldest first; empty until the reviews have been read */
+export const reviewQueue = trades => state.journalReview && !state.journalReviewError ? deckQueue(trades, tradeReviewState) : [];
+/** saved for the weekly review (trade_reviews.weekly_at) */
+export const savedForWeekly = t => !!data().weekly?.[t.key];
 
 /** read everything a review needs; a failure keeps the journal working and says why in the section */
 export async function loadJournalReview() {
@@ -197,6 +204,13 @@ function linksHtml(t, lib) {
       <input type="url" id="reviewLinkInput" inputmode="url" autocomplete="off" placeholder="Paste an Unusual Whales or Bullflow link" value="${esc(state.reviewLinkDraft || '')}" data-input="reviewLinkInput" data-enter="addReviewLink" data-arg="${esc(l.value)}" aria-label="Add a link" />
       <button class="btn" data-action="addReviewLink" data-arg="${esc(l.value)}">Add</button></div>`;
   }).join('');
+}
+
+/** Save for the weekly review: weekly_at stamped, or cleared again; before the migration it says it needs it */
+export function toggleWeekly(t) {
+  if (data().weeklyError) { showError(`Saving for the weekly review needs a database update: ${data().weeklyError}`); return; }
+  const at = savedForWeekly(t) ? null : new Date().toISOString();
+  return apply(d => { d.weekly = { ...(d.weekly || {}) }; if (at) d.weekly[t.key] = at; else delete d.weekly[t.key]; }, () => saveReviewFields(t.key, { weekly_at: at }));
 }
 
 export const setSetupGrade = (t, g) => setFields(t, { setup_grade: data().reviews[t.key]?.setup_grade === g ? null : g });
