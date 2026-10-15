@@ -60,6 +60,7 @@ export function createState() {
     barsBusy: false, // the journal is saving 5-minute bars
     journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
+    journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
     journalReviewFilter: 'all', // the trades tab: all | todo (to review)
     reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
     journalShots: null, // your screenshots once read: [{ id, trade_key, path, caption, width, height, bytes, created_at }]

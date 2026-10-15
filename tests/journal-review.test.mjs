@@ -257,3 +257,21 @@ test('+ New setup narrows My setups as you pick and offers the one you have; Opt
   await run(`removeReviewLink(${t}, 'option_flow', '0')`);
   assert.deepEqual(rows('trade_labels').find(r => r.kind === 'tag').links, ['https://app.bullflow.io/flow?s=AAPL']);
 });
+
+test('the Journal shows each trade\'s setups, and a setup filter narrows the list, calendar and stats', async () => {
+  const { run, t, list, rows } = await page();
+  await run(`toggleSetup(${t}, 'ema21_bounce')`);
+  await run(`toggleSetup(${t}, 'base_breakout')`);
+  run('closeJournalTrade()');
+  assert.match(list(), /<td class="journal-setups"><span class="journal-setup">21 EMA bounce<\/span><span class="journal-setup">Base breakout<\/span><\/td>/, 'both, by name');
+  assert.match(list(), /<select id="journalSetupFilter" class="journal-setup-filter" data-change="setJournalSetupFilter" aria-label="Filter by setup">\s*<option value="">All setups<\/option><option value="ema21_bounce">21 EMA bounce \(1\)<\/option><option value="base_breakout">Base breakout \(1\)<\/option>/, 'most used first, then by name');
+  run("setJournalSetupFilter('ema21_flag')");
+  assert.match(list(), /No trades match/, 'a setup no trade has: nothing');
+  run("setJournalSetupFilter('ema21_bounce')");
+  assert.match(list(), /<b>AAPL<\/b>/, 'the trade with that setup');
+  assert.match(list(), /class="journal-setup-filter active"/);
+  run("setJournalTab('stats')");
+  assert.match(list(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$504\.00/, 'the stats for that setup');
+  run("setJournalSetupFilter(''); setJournalTab('trades')");
+  assert.equal(rows('trade_labels').filter(r => r.kind === 'setup').length, 2);
+});

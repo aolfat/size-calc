@@ -14,7 +14,7 @@ import { loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.j
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
-import { journalTradeList, marketTime, openTradeReview } from './journal.js';
+import { journalTradeList, marketTime, openTradeReview, renderJournal } from './journal.js';
 import { onReviewChange, reviewSectionHtml } from './journal-review.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 
@@ -58,9 +58,10 @@ export function openJournalTrade(key) {
   loadCharts(state.journalTrade);
 }
 
+/** back to the list, redrawn: what you just reviewed (setups, the reviewed mark) shows there */
 export function closeJournalTrade() {
   state.journalTrade = null;
-  syncJournalPage();
+  renderJournal();
 }
 
 export function editJournalTrade() {

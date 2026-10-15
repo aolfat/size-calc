@@ -20,7 +20,7 @@ import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
-import { loadJournalReview, reviewedMark, toReview } from './journal-review.js';
+import { loadJournalReview, reviewedMark, setupsInUse, setupsOf, toReview } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
@@ -115,11 +115,17 @@ const restoreLink = t => t.deleted ? `<span class="pos-sub journal-row-acts"><bu
 /** a row opens its trade wherever it's tapped, except the tick box and the stop link (they have their own jobs) */
 const rowOpen = t => t.deleted ? '' : ` data-action="openTradeRow" data-arg="${esc(t.key)}"`;
 
+/** the trade's setups, by name; a dash before any are picked */
+function setupsCell(t) {
+  const list = setupsOf(t);
+  return list.length ? `<td class="journal-setups">${list.map(s => `<span class="journal-setup">${esc(s.name)}</span>`).join('')}</td>` : '<td class="journal-setups-none">—</td>';
+}
+
 /** a close whose purchase is older than the history: what's known (the exits), the rest blank */
 function historyRow(t) {
   return `<tr class="journal-history${t.deleted ? ' journal-deleted' : ''}" title="${esc(HISTORY_TITLE)}"${rowOpen(t)}>
     ${symCell(t, `${nameOf(t)} <span class="journal-tag journal-tag-history">before your history</span>${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${restoreLink(t)}`)}
-    <td>—</td><td>—</td><td>—</td>
+    <td>—</td><td>—</td><td>—</td><td>—</td>
     ${sideCell(t)}
     <td>${t.entryQty}</td><td>—</td><td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td><td>—</td><td>earlier</td>
   </tr>`;
@@ -134,6 +140,7 @@ function tradeRow(t) {
     <td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>
     <td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
     <td>${stopCell(t)}</td>
+    ${setupsCell(t)}
     ${sideCell(t)}
     <td>${t.entryQty}${open && t.openQty !== t.entryQty ? `<span class="pos-sub">${t.openQty} open</span>` : ''}</td>
     <td>${px(t.avgEntry, t.assetType)}</td>
@@ -151,6 +158,9 @@ function filtered(list, sideOf) {
 /** the trades tab, narrowed to a day picked on the calendar (the trades with an exit that New York day) */
 /** the To review filter: only the trades still to review */
 const onReviewFilter = list => state.journalReviewFilter === 'todo' ? list.filter(toReview) : list;
+/** the setup filter: only the trades that carry that setup (Trades, Calendar and Stats) */
+const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupsOf(t).some(s => s.key === state.journalSetupFilter)) : list;
+export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v || ''); renderJournal(); }
 export function setJournalReviewFilter(v) { state.journalReviewFilter = v === 'todo' ? 'todo' : 'all'; renderJournal(); }
 const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
 
@@ -167,7 +177,17 @@ function summaryLine(trades, deleted) {
   return parts.join(' · ') + deletedNote;
 }
 
-function controls() {
+/** the setup filter's menu: every setup the trades carry, most used first; shown once there's one */
+function setupFilter(all) {
+  if (state.journalTab === 'fills') return '';
+  const used = setupsInUse(all);
+  if (!used.length && !state.journalSetupFilter) return '';
+  return `<select id="journalSetupFilter" class="journal-setup-filter${state.journalSetupFilter ? ' active' : ''}" data-change="setJournalSetupFilter" aria-label="Filter by setup">
+      <option value="">All setups</option>${used.map(s => `<option value="${esc(s.key)}"${s.key === state.journalSetupFilter ? ' selected' : ''}>${esc(s.name)} (${s.count})</option>`).join('')}
+    </select>`;
+}
+
+function controls(all = []) {
   const on = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
   const tab = (v, label) => `<button ${on(state.journalTab, v)} data-action="setJournalTab" data-arg="${v}">${label}</button>`;
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
@@ -178,6 +198,7 @@ function controls() {
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
     ${state.journalTab === 'trades' ? `<div class="seg" aria-label="Review"><button ${on(state.journalReviewFilter, 'all')} data-action="setJournalReviewFilter" data-arg="all">Any</button><button ${on(state.journalReviewFilter, 'todo')} data-action="setJournalReviewFilter" data-arg="todo">To review</button></div>` : ''}
     ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
+    ${setupFilter(all)}
     <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
     ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button>` : ''}
   </div>`;
@@ -204,7 +225,7 @@ function tradesView(all) {
   if (!trades.length) return `<p class="hint">No trades match.${deleted ? ` ${deleted} deleted. <button class="pos-link" data-action="toggleDeletedTrades">Show</button>` : ''}</p>`;
   return `<p class="hint journal-summary">${summaryLine(counted, deleted)}</p>
     <div class="positions-wrap"><table class="positions-table journal-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
+      <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Setups</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
       <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
     </table></div>${pickBar(trades)}
     <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades and a note; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
@@ -274,16 +295,16 @@ export function renderJournal() {
     ${state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
-    ${fills.length ? controls() + (state.journalTab === 'fills'
+    ${fills.length ? controls(all) + (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
-      : state.journalTab === 'calendar' ? calendarView(filtered(all, t => t.bias))
-      : state.journalTab === 'stats' ? statsView(filtered(all, t => t.bias))
-      : tradesView(onReviewFilter(onPickedDay(filtered(all, t => t.bias)))))
+      : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias)))
+      : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
+      : tradesView(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))))))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
   const wrap = scrolled && el.querySelector?.('.positions-wrap');
   if (wrap) wrap.scrollLeft = scrolled;
-  if (state.journalTab === 'stats' && fills.length) drawJournalEquity(filtered(all, t => t.bias));
+  if (state.journalTab === 'stats' && fills.length) drawJournalEquity(onSetupFilter(filtered(all, t => t.bias)));
 }
 
 // ---------- Import and Export sheets ----------
