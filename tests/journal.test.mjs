@@ -67,6 +67,44 @@ test('Journal is a header tab between Positions and Tools, with an icon for the 
   assert.equal(run('journalView'), true, 'j opens it');
 });
 
+test('the open tab rides in the address, so a reload on the Journal opens it again with your records', async t => {
+  const urls = [];
+  globalThis.location = { href: 'https://aolfat.github.io/size-calc/#journal', pathname: '/size-calc/', search: '', hash: '#journal' };
+  globalThis.history = { replaceState: (_, __, url) => { urls.push(url); globalThis.location.hash = url.includes('#') ? url.slice(url.indexOf('#')) : ''; } };
+  t.after(() => { delete globalThis.location; delete globalThis.history; });
+  const supabase = fakeSupabase();
+  supabase.auth = { getSession: async () => ({ data: { session: SESSION } }) };
+  const storage = connected();
+  storage.set('cloud_user', SESSION.user.id);
+  storage.set('sb-dhohfavttsxwutanvcuj-auth-token', '{"access_token":"jwt"}');
+  const { run, elements } = await app({ storage, supabase });
+
+  run('setView(viewFromHash(location.hash))'); // what main.js does on load
+  assert.equal(run('journalView'), true);
+  assert.deepEqual(urls, [], 'already the address');
+  run('initCloud(location.href)');
+  assert.match(elements.get('journalSection').innerHTML, /Loading your journal/, "not 'sign in' while the stored session comes back");
+  await settle();
+  assert.match(elements.get('journalSection').innerHTML, /3 orders and 1 trades kept/, 'the records load once it does');
+
+  run("setView('positions')");
+  run("setView('utils')");
+  run("setView('calc')");
+  run("setView('market')");
+  assert.deepEqual(urls, ['/size-calc/#positions', '/size-calc/#tools', '/size-calc/', '/size-calc/#market']);
+  assert.deepEqual(['#positions', '#tools', '#market', '', '#nope'].map(h => run(`viewFromHash('${h}')`)), ['positions', 'utils', 'market', 'calc', 'calc']);
+});
+
+test('a stored session that is gone leaves the Journal asking you to sign in', async () => {
+  const supabase = fakeSupabase();
+  supabase.auth = { getSession: async () => ({ data: { session: null } }) };
+  const storage = new Map([['sb-dhohfavttsxwutanvcuj-auth-token', '{"access_token":"old"}']]);
+  const { run, elements } = await app({ storage, supabase });
+  run("setView('journal')");
+  await run("initCloud('https://aolfat.github.io/size-calc/#journal')");
+  assert.match(elements.get('journalSection').innerHTML, /Sign in to keep your journal/);
+});
+
 test('signed out, the Journal asks you to sign in', async () => {
   const { run, elements } = await app();
   run("setView('journal')");

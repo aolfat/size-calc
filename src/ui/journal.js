@@ -235,6 +235,10 @@ export function renderJournal() {
   if (!el) return;
   syncJournalPage();
   if (state.journalTrade) renderJournalTrade(); // the page reads the same records, stops and deletes
+  if (!state.session && state.sessionResuming) {
+    el.innerHTML = `<div class="card empty-card"><p>Loading your journal…</p></div>`;
+    return;
+  }
   if (!state.session) {
     el.innerHTML = `<div class="card empty-card"><div class="setup-title">Sign in to keep your journal</div><p>Your Schwab orders and trades are kept in your account, so sign in with Google first. Then connect Schwab and import.</p><button class="btn primary" data-action="openSheet" data-arg="settings">Open settings</button></div>`;
     return;
