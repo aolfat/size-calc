@@ -1,8 +1,8 @@
 // Journal Calendar and Stats tabs (journal step 2, slice 4; core/journal-stats.js does the numbers): the calendar is a
 // month of realized P&L by day (each exit on its own day, trims included; each day with its win rate and profit factor)
 // under the month's own numbers, with weekly totals; a day tapped shows the trades with an exit then, a week's total its
-// stats, This month comes back to today's. The stats cover all time or one day, week or month of closed trades (‹ › step
-// through the ones with trades): the headline numbers, the equity curve with its drawdown, results by month (or by day),
+// stats, This month comes back to today's. The stats cover all time (closed trades) or one day, week or month of exits, the
+// same ones the calendar adds up (‹ › step through the ones with exits): the headline numbers, the equity curve with its drawdown, results by month (or by day),
 // streaks and the breakdowns, each group with the same stats, thin under 10. The Journal's side, symbol and fee choices
 // apply here too.
 import { fmt$, marketEscape as esc } from '../core/format.js';
@@ -100,7 +100,7 @@ export function periodName(unit, key) {
 }
 const validKey = (unit, key) => unit === 'month' ? /^\d{4}-\d{2}$/.test(key) : /^\d{4}-\d{2}-\d{2}$/.test(key);
 
-/** the period the stats show (state.journalPeriod: all | day | week | month) and its closed trades */
+/** the period the stats show (state.journalPeriod: all | day | week | month) and its trades: all time's closed ones, a period's exits */
 export function statsScope(trades) {
   const unit = PERIODS.includes(state.journalPeriod) ? state.journalPeriod : 'all';
   if (unit === 'all') return { unit, key: '', active: [], list: countedTrades(trades) };
@@ -126,9 +126,10 @@ function periodBar({ unit, key, active }) {
 
 function headline(list) {
   const s = groupStats(list), eq = equityCurve(list), st = streaks(list);
-  const dash = '—';
+  const dash = '—', partial = list.filter(t => t.partial).length;
+  const count = partial ? `${s.trades} trade${s.trades === 1 ? '' : 's'} · ${partial} partly closed` : `${s.trades} closed trade${s.trades === 1 ? '' : 's'}`;
   return `<dl class="js-stats">
-    ${statCell('Net P&amp;L', signed$(s.net), `${s.trades} closed trade${s.trades === 1 ? '' : 's'}`, pnlClass(s.net))}
+    ${statCell('Net P&amp;L', signed$(s.net), count, pnlClass(s.net))}
     ${statCell('Win rate', s.winRate === null ? dash : `${s.winRate}%`, `${s.wins} won, ${s.losses} lost`)}
     ${statCell('Profit factor', s.profitFactor === null ? dash : s.profitFactor.toFixed(2), 'gross wins ÷ gross losses')}
     ${statCell('Expectancy', s.expectancy === null ? dash : signed$(s.expectancy), 'per trade', s.expectancy === null ? '' : pnlClass(s.expectancy))}
@@ -165,13 +166,13 @@ function overTime(unit, list) {
   if (unit === 'all') return statTable('By month', monthlyResults(list).map(m => ({ group: monthName(m.month), stats: m })), '', 'Month');
   if (unit === 'day') return '';
   const dayLabel = d => `${new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { weekday: 'short', timeZone: 'UTC' })} ${+d.slice(5, 7)}/${+d.slice(8)}`;
-  return statTable('By day', periodResults(list, 'day').map(({ key, ...s }) => ({ group: dayLabel(key), stats: s })), 'The day each trade closed.', 'Day');
+  return statTable('By day', periodResults(list, 'day').map(({ key, ...s }) => ({ group: dayLabel(key), stats: s })), 'The day of each exit.', 'Day');
 }
 
 export function statsView(trades) {
-  if (!countedTrades(trades).length) return '<p class="hint">No closed trades match yet.</p>';
+  if (!countedTrades(trades).length && !activePeriods(trades, 'day').length) return '<p class="hint">No closed trades match yet.</p>';
   const scope = statsScope(trades), { unit, list } = scope;
-  if (!list.length) return `${periodBar(scope)}<p class="hint">No closed trades this ${unit}.</p>`;
+  if (!list.length) return `${periodBar(scope)}<p class="hint">${unit === 'all' ? 'No closed trades yet. A trim on an open trade counts in its day, week and month.' : `No exits this ${unit}.`}</p>`;
   const b = breakdowns(list);
   const hold = b.holdWinners !== null || b.holdLosers !== null
     ? `Winners held ${b.holdWinners === null ? '—' : holdWords(b.holdWinners)} on average, losers ${b.holdLosers === null ? '—' : holdWords(b.holdLosers)}.` : '';
@@ -188,7 +189,7 @@ export function statsView(trades) {
     ${statTable('By hold time', b.byHold, hold)}
     ${statTable('Scaled out or all at once', b.byExits, 'Scaled out: more than one exit.')}
     ${rBars(b.rDistribution, b.withR)}
-    <p class="hint">Closed trades only, by the day they closed (New York time); open ones, deleted ones and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
+    <p class="hint">${unit === 'all' ? 'Closed trades only, by the day they closed' : `The exits taken this ${unit}, like the calendar: a trim counts here even while the rest is still open or closes later`} (New York time). Deleted trades and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
 }
 
 /** the equity curve: running total (blue), its peak (dashed), the drawdown between them in red */
