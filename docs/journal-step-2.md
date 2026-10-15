@@ -148,7 +148,10 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - **Exit efficiency:** realized gain ÷ MFE, the share of the move you captured. It's averaged over **winners only**, since a loser has no gain to capture.
   - **MAE is reported for winners and losers separately,** because the gap between the two calibrates the stop.
 
-### 4. Calendar and stats
+### 4. Calendar and stats (built)
+
+- **Where:** two Journal tabs, Calendar and Stats, beside Trades and Fills. The side, symbol and fee choices apply to them too. Tapping a calendar day shows that day's trades.
+- **Not built yet:** exit efficiency by setup (it needs step 3's setups), and MAE for winners against losers across all trades (it needs every trade's bars).
 
 - **Calendar:** daily P&L with weekly totals.
 - **Headline stats:** win rate, profit factor, average win and loss, expectancy, P&L over time.

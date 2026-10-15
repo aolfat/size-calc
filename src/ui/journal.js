@@ -8,6 +8,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
 import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
+import { nyParts } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
@@ -16,6 +17,7 @@ import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
+import { calendarView, drawJournalEquity, nextJournalMonth, statsView } from './journal-stats.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -142,6 +144,8 @@ function filtered(list, sideOf) {
   const q = state.journalSymbol.trim().toUpperCase();
   return list.filter(x => (state.journalSide === 'all' || sideOf(x) === state.journalSide) && (!q || (x.label || x.symbol).toUpperCase().includes(q)));
 }
+/** the trades tab, narrowed to a day picked on the calendar (the New York day they closed) */
+const onPickedDay = list => state.journalDay ? list.filter(t => t.closedAt && nyParts(t.closedAt).day === state.journalDay) : list;
 
 function summaryLine(trades, deleted) {
   const s = tradesSummary(trades);
@@ -163,10 +167,11 @@ function controls() {
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
   return `<div class="journal-controls">
-    <div class="seg" aria-label="Show">${tab('trades', 'Trades')}${tab('fills', 'Fills')}</div>
+    <div class="seg" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('fills', 'Fills')}</div>
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
-    ${state.journalTab === 'trades' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
+    ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
     <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
+    ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Closed ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button>` : ''}
   </div>`;
 }
 
@@ -210,7 +215,11 @@ function fillsView(fills) {
 
 export function setJournalFees(v) { store.set('journal_fees', v === 'after' ? 'after' : 'before'); renderJournal(); }
 export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
-export function setJournalTab(tab) { state.journalTab = tab === 'fills' ? 'fills' : 'trades'; renderJournal(); }
+export function setJournalTab(tab) { state.journalTab = ['fills', 'calendar', 'stats'].includes(tab) ? tab : 'trades'; if (state.journalTab !== 'trades') state.journalDay = ''; renderJournal(); }
+/** a day on the calendar: the trades that closed then */
+export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; renderJournal(); }
+export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
+export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); renderJournal(); }
 export function setJournalSide(side) { state.journalSide = ['long', 'short'].includes(side) ? side : 'all'; renderJournal(); }
 export function journalSymbolChanged() {
   state.journalSymbol = document.getElementById('journalSymbol').value;
@@ -252,11 +261,14 @@ export function renderJournal() {
     ${state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
     ${fills.length ? controls() + (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
-      : tradesView(filtered(all, t => t.bias)))
+      : state.journalTab === 'calendar' ? calendarView(filtered(all, t => t.bias))
+      : state.journalTab === 'stats' ? statsView(filtered(all, t => t.bias))
+      : tradesView(onPickedDay(filtered(all, t => t.bias))))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
   const wrap = scrolled && el.querySelector?.('.positions-wrap');
   if (wrap) wrap.scrollLeft = scrolled;
+  if (state.journalTab === 'stats' && fills.length) drawJournalEquity(filtered(all, t => t.bias));
 }
 
 // ---------- Import and Export sheets ----------
