@@ -38,7 +38,7 @@ const png = (size = 900000) => `{ type: 'image/png', size: ${size}, name: 'shot.
 
 test('a screenshot is shrunk, kept in your folder of the private bucket with its row, and shown by a signed link', async () => {
   const { run, t, body, shots, supabase, elements } = await page();
-  assert.match(body(), /<div class="jr-label">Screenshots<span class="jr-sub">paste or drop one here too<\/span><\/div>[\s\S]*data-action="pickTradeShots">\+ Add screenshot<\/button>\s*<input type="file" id="tradeShotInput" accept="image\/\*" multiple hidden data-change="addTradeShotsFromInput"/);
+  assert.match(body(), /<div class="jr-label">Screenshots<span class="jr-sub">or press (?:⌘V|Ctrl\+V) on this page, or drop one here<\/span><\/div>[\s\S]*data-action="pasteTradeShot">Paste from clipboard<\/button>\s*<button class="btn" data-action="pickTradeShots">\+ Add screenshot<\/button>\s*<input type="file" id="tradeShotInput" accept="image\/\*" multiple hidden data-change="addTradeShotsFromInput"/);
   assert.ok(supabase.reads.some(r => r.table === 'trade_shots'), 'read with the journal');
   await run(`addTradeShots(${t}, [${png()}])`);
   await settle();
@@ -104,4 +104,29 @@ test('if Storage refuses the file, no row is saved; before the migration, the ro
   const two = await page(s => s.failTable('trade_shots'));
   assert.match(two.body(), /Screenshots unavailable: the database doesn(?:'|&#39;)t have screenshots yet: npx supabase db push/);
   assert.match(two.body(), /<dt>P&amp;L<\/dt>/, 'the rest of the page is there');
+});
+
+test('Paste from clipboard reads the copied image; an empty clipboard or a refusal says what to do instead', async () => {
+  const { run, t, shots, elements, dispatch } = await page();
+  run("effects.readClipboardImages = async () => [{ type: 'image/png', size: 400000 }]");
+  await run(`pasteTradeShot(${t})`);
+  await settle();
+  assert.equal(shots().length, 1, 'the copied screenshot is kept');
+  assert.match(elements.get('errorBox').textContent, /Screenshot kept\./);
+  run("effects.readClipboardImages = async () => []");
+  await run(`pasteTradeShot(${t})`);
+  assert.match(elements.get('errorBox').textContent, /No image on the clipboard\. Copy a screenshot first, then Paste\./);
+  run("effects.readClipboardImages = async () => { throw Object.assign(new Error('no'), { name: 'NotAllowedError' }); }");
+  await run(`pasteTradeShot(${t})`);
+  assert.match(elements.get('errorBox').textContent, /The browser didn(?:'|’)t allow reading the clipboard\. Press (?:⌘V|Ctrl\+V) on this page instead, or use \+ Add screenshot\./);
+  run("effects.readClipboardImages = async () => { throw Object.assign(new Error('unsupported'), { name: 'NotSupportedError' }); }");
+  await run(`pasteTradeShot(${t})`);
+  assert.match(elements.get('errorBox').textContent, /This browser can(?:'|’)t paste images from a button\./);
+  assert.equal(shots().length, 1);
+
+  // a paste where the browser hands the image over only as an item
+  run('initTradeShotEvents(() => journalPageTrade())');
+  dispatch('paste', { clipboardData: { files: [], items: [{ kind: 'file', type: 'image/png', getAsFile: () => ({ type: 'image/png', size: 2000 }) }, { kind: 'string', type: 'text/plain' }] }, preventDefault() {} });
+  await settle();
+  assert.equal(shots().length, 2, 'taken from the items');
 });

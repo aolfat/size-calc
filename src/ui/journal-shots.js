@@ -5,6 +5,7 @@ import { marketEscape as esc } from '../core/format.js';
 import { deleteShot, loadShots, MAX_SHOT_BYTES, MAX_SHOTS, saveShotCaption, signShots, uploadShot } from '../services/journal-shots.js';
 import { state } from '../state.js';
 import { effects } from './effects.js';
+import { pastedImages } from './image-prep.js';
 import { showError, showToast } from './feedback.js';
 
 /** a picked or pasted file bigger than this isn't read at all */
@@ -70,6 +71,24 @@ export async function addTradeShots(t, fileList) {
   if (kept) { showToast(kept === 1 ? 'Screenshot kept.' : `${kept} screenshots kept.`); sign(t); }
 }
 
+/** the paste key on this device, for the hint: ⌘V on a Mac or iPad, Ctrl+V elsewhere */
+const pasteKey = () => /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') ? '⌘V' : 'Ctrl+V';
+/** a touch screen with no keyboard to press it on: the hint points at the button instead */
+const touchOnly = () => !!globalThis.matchMedia?.('(pointer: coarse)')?.matches && !globalThis.matchMedia?.('(pointer: fine)')?.matches;
+
+/** Paste from clipboard: the image you copied, straight from the clipboard */
+export async function pasteTradeShot(t) {
+  let images;
+  try { images = await effects.readClipboardImages(); }
+  catch(e) {
+    const why = e?.name === 'NotAllowedError' ? 'The browser didn\'t allow reading the clipboard.' : 'This browser can\'t paste images from a button.';
+    showError(`${why} Press ${pasteKey()} on this page instead, or use + Add screenshot.`);
+    return;
+  }
+  if (!images.length) { showError('No image on the clipboard. Copy a screenshot first, then Paste.'); return; }
+  return addTradeShots(t, images);
+}
+
 /** Add screenshot: the hidden file picker (the photo library on a phone) */
 export function pickTradeShots() { document.getElementById('tradeShotInput')?.click?.(); }
 
@@ -86,8 +105,9 @@ export function shotsRowHtml(t) {
   }).join('');
   const busy = state.shotsBusy ? `<span class="jr-shot-busy">Keeping ${state.shotsBusy}…</span>` : '';
   const full = shots.length >= MAX_SHOTS;
-  return `<div class="jr-row"><div class="jr-label">Screenshots<span class="jr-sub">paste or drop one here too</span></div>
+  return `<div class="jr-row"><div class="jr-label">Screenshots<span class="jr-sub">${touchOnly() ? 'copy a screenshot, then tap Paste' : `or press ${pasteKey()} on this page, or drop one here`}</span></div>
     <div class="chip-row jr-chips jr-shots">${thumbs}${busy}
+      <button class="btn" data-action="pasteTradeShot"${full ? ' disabled title="Ten a trade at most"' : ''}>Paste from clipboard</button>
       <button class="btn" data-action="pickTradeShots"${full ? ' disabled title="Ten a trade at most"' : ''}>+ Add screenshot</button>
       <input type="file" id="tradeShotInput" accept="image/*" multiple hidden data-change="addTradeShotsFromInput" />
     </div></div>`;
@@ -157,7 +177,7 @@ export function initTradeShotEvents(pageTrade) {
   const onPage = () => state.journalView && state.journalTrade;
   document.addEventListener('paste', e => {
     if (!onPage()) return;
-    const files = [...(e.clipboardData?.files || [])].filter(f => /^image\//.test(f.type || ''));
+    const files = pastedImages(e.clipboardData);
     if (!files.length) return; // text pastes into the note as usual
     e.preventDefault();
     addTradeShots(pageTrade(), files);
