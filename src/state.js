@@ -110,6 +110,7 @@ export function createState() {
     posTradeBusy: false,
     posLast: null, // { hash, symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat on that account and symbol for a while
     cancelTicket: null, // the working-order cancel the review sheet shows, frozen when it opens
+    editTicket: null, // the working-order change the review sheet shows, re-planned as the form changes
     posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)
     posColsOpen: false, // the Columns picker showing
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header

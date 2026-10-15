@@ -1,7 +1,7 @@
-// Sheets: settings, account & risk, the Schwab order reviews (new trade, held position, cancelling a working order), the Journal's Import and Export, and a journal trade (your stop, deleting it), a panel under the header on desktop and a bottom sheet on phones.
+// Sheets: settings, account & risk, the Schwab order reviews (new trade, held position, cancelling or changing a working order), the Journal's Import and Export, and a journal trade (your stop, deleting it), a panel under the header on desktop and a bottom sheet on phones.
 import { state } from '../state.js';
 
-export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', cancel: 'cancelSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', tradeReview: 'tradeReviewSheet' };
+export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', cancel: 'cancelSheet', edit: 'editSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', tradeReview: 'tradeReviewSheet' };
 // the page behind a sheet goes inert (no clicks, no Tab stops, hidden from screen readers); the toast stays live
 export const SHEET_BACKGROUND = ['stickyBar', 'appHeader', 'sidePane', 'mainPane', 'simOverlay'];
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
