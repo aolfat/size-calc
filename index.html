@@ -670,6 +670,27 @@
     <div id="journalExportBody" aria-live="polite"></div>
   </div>
 
+  <div class="shot-viewer" id="shotViewer" style="display:none;" role="dialog" aria-modal="true" aria-label="Screenshot">
+    <div class="shot-viewer-backdrop" data-action="closeShotViewer"></div>
+    <div class="shot-viewer-inner">
+      <img id="shotViewerImg" alt="Screenshot" />
+      <div class="shot-viewer-bar">
+        <input type="text" id="shotCaption" maxlength="300" placeholder="Caption" autocomplete="off" data-change="saveTradeShotCaption" aria-label="Caption" />
+        <a class="pos-link" id="shotOpen" href="#" target="_blank" rel="noopener noreferrer">Open full size ↗</a>
+        <button class="btn journal-danger" id="shotDelete" data-action="deleteTradeShot">Delete</button>
+        <button class="btn" data-action="closeShotViewer">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet" id="journalLibrarySheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="journalLibraryTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="journalLibraryTitle">Review choices</h2>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close review choices">×</button>
+    </div>
+    <div id="journalLibraryBody" aria-live="polite"></div>
+  </div>
+
   <div class="sheet" id="tradeReviewSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="tradeReviewTitle" tabindex="-1">
     <div class="sheet-head">
       <h2 id="tradeReviewTitle">Trade</h2>

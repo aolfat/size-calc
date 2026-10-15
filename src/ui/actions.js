@@ -2,6 +2,7 @@
 // and in rendered templates maps to one call here. Adapters turn data-arg strings into arguments.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
+import { addTradeShots, closeShotViewer, deleteTradeShot, openShot, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
 import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
@@ -23,8 +24,9 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, shiftJournalMonth, stepJournalPeriod } from './journal.js';
-import { closeJournalTrade, editJournalTrade } from './journal-trade.js';
+import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
+import { closeJournalTrade, editJournalTrade, journalPageTrade } from './journal-trade.js';
+import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
@@ -41,6 +43,8 @@ import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, openTr
 import { setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
+/** run a Review action on the trade open on the Journal's trade page */
+const withPageTrade = fn => { const t = journalPageTrade(); return t ? fn(t) : undefined; };
 const num = el => Number(el.dataset.arg);
 
 /** @type {Record<string, import('../lib/delegate.js').Handler>} */
@@ -84,6 +88,42 @@ export const actions = {
   clearTradeStop: () => clearTradeStop(),
   openTradeRow: (el, e) => openTradeRow(arg(el), e),
   closeJournalTrade: () => closeJournalTrade(),
+  setJournalReviewFilter: el => setJournalReviewFilter(arg(el)),
+  setJournalSetupFilter: el => setJournalSetupFilter(/** @type {HTMLSelectElement} */ (el).value),
+  // the Review section acts on the trade on the page
+  setReviewMarket: el => withPageTrade(t => setReviewMarket(t, arg(el))),
+  toggleReviewMarketOwn: () => withPageTrade(t => toggleReviewMarketOwn(t)),
+  toggleReviewLabel: el => withPageTrade(t => toggleReviewLabel(t, arg(el), el.dataset.arg2 || '')),
+  toggleSetup: el => withPageTrade(t => toggleSetup(t, arg(el))),
+  startSetupDraft: () => startSetupDraft(),
+  cancelSetupDraft: () => cancelSetupDraft(),
+  setDraftAction: el => setDraftAction(arg(el)),
+  setDraftPattern: el => setDraftPattern(arg(el)),
+  toggleDraftLevel: el => toggleDraftLevel(arg(el)),
+  setupDraftNameInput: el => setupDraftNameInput(/** @type {HTMLInputElement} */ (el).value),
+  saveSetupDraft: () => withPageTrade(t => saveSetupDraft(t)),
+  useSetupDraftMatch: el => withPageTrade(t => useSetupDraftMatch(t, arg(el))),
+  pickTradeShots: () => pickTradeShots(),
+  addTradeShotsFromInput: el => withPageTrade(t => { const files = /** @type {HTMLInputElement} */ (el).files; const p = addTradeShots(t, files); /** @type {HTMLInputElement} */ (el).value = ''; return p; }),
+  openShot: el => openShot(arg(el)),
+  closeShotViewer: () => closeShotViewer(),
+  deleteTradeShot: () => deleteTradeShot(),
+  saveTradeShotCaption: el => saveTradeShotCaption(/** @type {HTMLInputElement} */ (el).value),
+  reviewLinkInput: el => reviewLinkInput(/** @type {HTMLInputElement} */ (el).value),
+  addReviewLink: el => withPageTrade(t => addReviewLink(t, arg(el), el.tagName === 'INPUT' ? /** @type {HTMLInputElement} */ (el).value : undefined)),
+  removeReviewLink: el => withPageTrade(t => removeReviewLink(t, arg(el), el.dataset.arg2 || '')),
+  setSetupGrade: el => withPageTrade(t => setSetupGrade(t, arg(el))),
+  setPlanFollowed: el => withPageTrade(t => setPlanFollowed(t, arg(el))),
+  reviewNoteInput: el => withPageTrade(t => reviewNoteInput(t, /** @type {HTMLTextAreaElement} */ (el).value)),
+  reviewNoteSave: el => withPageTrade(t => reviewNoteSave(t, /** @type {HTMLTextAreaElement} */ (el).value)),
+  startReviewItem: el => startReviewItem(arg(el)),
+  cancelReviewItem: () => cancelReviewItem(),
+  reviewNewNameInput: el => { state.reviewNewName = /** @type {HTMLInputElement} */ (el).value; },
+  saveReviewItem: () => withPageTrade(t => saveReviewItem(t, state.reviewNewName || /** @type {HTMLInputElement | null} */ (document.getElementById('reviewNewName'))?.value || '')),
+  openJournalLibrary: () => openJournalLibrary(),
+  renameLibraryItem: el => renameLibraryItem(arg(el), el.dataset.arg2 || '', /** @type {HTMLInputElement} */ (el).value),
+  toggleLibraryHidden: el => toggleLibraryHidden(arg(el), el.dataset.arg2 || ''),
+  mergeLibraryItem: el => mergeLibraryItem(arg(el), el.dataset.arg2 || '', /** @type {HTMLSelectElement} */ (el).value),
   editJournalTrade: () => editJournalTrade(),
   deletePicked: () => deletePicked(),
   undoDeleteTrades: () => undoDeleteTrades(),
