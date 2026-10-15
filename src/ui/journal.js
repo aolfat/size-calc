@@ -4,12 +4,12 @@
 // upload later), Export the files you can take (Schwab history now, trades later). The trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
-import { holdWords, journalTrades, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
+import { combineCandidates, holdWords, journalTrades, legWords, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
-import { loadSavedRecords, loadTradeReviews, saveTradeReview } from '../services/journal.js';
+import { loadSavedRecords, loadTradeReviews, saveTradeReviews } from '../services/journal.js';
 import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
@@ -48,7 +48,7 @@ function fillRow(f) {
   </tr>`;
 }
 
-const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' ? 'OPTION' : null);
+const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 /** P&L before or after Schwab's fees: your choice, synced to your account as journal_fees */
@@ -59,6 +59,7 @@ const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2
 /** the stop cell: the price in use (tap to change it), and whether it's yours or Schwab's stop moved later */
 function stopCell(t) {
   const key = esc(t.key);
+  if (t.legs) return `<span title="A spread's risk is its defined risk">—</span>`;
   if (t.stop === null) return `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Set a stop for ${esc(t.label)}">Set</button>${t.rBasis === 'premium' ? '<span class="pos-sub">premium</span>' : ''}`;
   const sub = t.stopSource === 'yours' ? 'yours' : t.movedTo !== null ? `moved to ${px(t.movedTo, t.assetType)}` : '';
   return `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Change the stop for ${esc(t.label)}">${px(t.stop, t.assetType)}</button>${sub ? `<span class="pos-sub">${sub}</span>` : ''}`;
@@ -78,6 +79,9 @@ function pnlSub(t) {
 const pnlTitle = t => t.afterFees ? ` title="${esc(`Before fees ${signed$(t.grossPnl)}, fees ${fmt$(t.fees)}${t.feesMissing ? `, ${t.feesMissing} order${t.feesMissing === 1 ? '' : 's'} without fees yet` : ''}`)}"` : '';
 
 function rTitleOf(t) {
+  if (t.rBasis === 'debit') return `The debit paid, ${fmt$(t.risk)}, is the risk`;
+  if (t.rBasis === 'width') return `The width less the credit, ${fmt$(t.risk)}, is the risk`;
+  if (t.legs) return 'No defined risk for this combination yet';
   if (t.rBasis === 'stop') return `${t.stopSource === 'yours' ? 'Your stop' : 'Initial stop'} ${px(t.stop, t.assetType)}, risk ${fmt$(t.risk)}`;
   if (t.rBasis === 'premium') return `No stop: the premium paid, ${fmt$(t.risk)}, is the risk`;
   return 'No stop: set one to get R';
@@ -105,13 +109,13 @@ function tradeRow(t) {
   const cls = [open ? 'journal-open' : '', t.deleted ? 'journal-deleted' : ''].filter(Boolean).join(' ');
   const key = esc(t.key), name = esc(t.label);
   return `<tr${cls ? ` class="${cls}"` : ''}>
-    <td><b>${esc(t.label)}</b>${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}<span class="pos-sub journal-row-acts">${t.deleted
+    <td><b>${esc(t.label)}</b>${t.legs ? ` <span class="journal-tag journal-tag-quiet">${t.spreadKind} spread</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : ''}<span class="pos-sub journal-row-acts">${t.deleted
       ? `<button class="pos-link" data-action="restoreTrade" data-arg="${key}" aria-label="Restore the ${name} trade">Restore</button>`
       : `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Edit the ${name} trade">Edit</button><button class="pos-link journal-delete" data-action="confirmDeleteTrade" data-arg="${key}" aria-label="Delete the ${name} trade">Delete</button>`}</span></td>
     <td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>
     <td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
     <td>${stopCell(t)}</td>
-    <td class="${t.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${t.direction === 'long' ? 'Long' : 'Short'}</td>
+    <td class="${t.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${t.legs ? (t.spreadKind === 'debit' ? 'Debit' : 'Credit') : t.direction === 'long' ? 'Long' : 'Short'}</td>
     <td>${t.entryQty}${open && t.openQty !== t.entryQty ? `<span class="pos-sub">${t.openQty} open</span>` : ''}</td>
     <td>${px(t.avgEntry, t.assetType)}</td>
     <td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td>
@@ -276,7 +280,7 @@ export async function loadJournal() {
   } catch(e) {
     state.journalError = String(e?.message || e);
   } finally {
-    if (reviews.status === 'fulfilled') { state.tradeReviews = reviews.value; state.tradeReviewsError = ''; }
+    if (reviews.status === 'fulfilled') { state.tradeReviews = reviews.value.reviews; state.tradeGroups = reviews.value.groups; state.tradeReviewsError = ''; }
     else state.tradeReviewsError = String(reviews.reason?.message || reviews.reason);
     state.journalLoading = false;
     if (state.journalView) renderJournal();
@@ -334,7 +338,10 @@ function stopNowLine(t) {
   return `No stop, so no R. Set the stop you had in mind.${ignored}`;
 }
 
-const tradeFacts = t => t.status === 'history'
+const tradeFacts = t => t.legs
+  ? [`${t.spreadKind === 'debit' ? 'Paid' : 'Took in'} ${px(t.avgEntry, 'SPREAD')} × ${t.entryQty}`, `opened ${esc(marketTime(t.openedAt))} ET`,
+    t.status === 'open' ? 'open' : `${signed$(t.pnl)} ${t.afterFees ? 'after' : 'before'} fees`].join(' · ')
+  : t.status === 'history'
   ? `${t.direction === 'long' ? 'Sold' : 'Covered'} ${t.entryQty} at ${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)} · bought before your history, so no P&amp;L`
   : [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(marketTime(t.openedAt))} ET`,
   t.status === 'open' ? 'open' : `${signed$(t.pnl)} ${t.afterFees ? `after fees${t.fees ? ` of ${fmt$(t.fees)}` : ''}` : 'before fees'}`].join(' · ');
@@ -355,6 +362,40 @@ function deleteConfirm(t, locked) {
     ${state.tradeReviewError ? `<p class="shares-error" role="status">Couldn't delete: ${esc(state.tradeReviewError)}</p>` : ''}`;
 }
 
+/** the option legs this one can combine with, each a button; or why combining is off */
+function combineSection(t, locked) {
+  const list = combineCandidates(currentTrades(), t.key);
+  const off = locked || !state.tradeGroups;
+  const buttons = list.map(c => `<button class="filter-btn" data-action="combineTrade" data-arg="${esc(c.key)}"${off ? ' disabled' : ''}>${esc(legWords([c]))}<span class="journal-chip-time">${esc(c.label)}</span></button>`).join('');
+  return `<div class="sheet-section">
+      <div class="sheet-label">${t.legs ? 'Add a leg' : 'Combine into a spread'}</div>
+      ${!state.tradeGroups ? '<p class="hint" style="color:var(--amber)">Combining needs the database update: npx supabase db push.</p>' : ''}
+      ${buttons ? `<p class="hint">Other ${esc(t.legs ? t.symbol : t.label.split(' ')[0])} options open at the same time. Tap one to make them one trade.</p><div class="chip-row journal-stop-chips">${buttons}</div>`
+        : `<p class="hint">No other ${esc(t.legs ? t.symbol : t.label.split(' ')[0])} options overlap this trade.</p>`}
+    </div>`;
+}
+
+/** a spread: its legs, Add a leg, Split, Delete */
+function spreadSheet(t, locked) {
+  const strike = l => { const n = esc(l.label); return n.split(' ').slice(-1)[0]; };
+  const rows = t.legs.map(l => `<tr><td><b>${strike(l)}</b></td><td class="${l.direction === 'long' ? 'journal-buy' : 'journal-sell'}">${l.direction === 'long' ? 'Bought' : 'Sold'} ${l.entryQty}</td><td>${px(l.avgEntry, 'OPTION')} → ${l.avgExit === null ? 'open' : px(l.avgExit, 'OPTION')}</td><td class="${pnlClass(l.pnl)}">${l.status === 'open' && !l.exits ? '—' : signed$(l.pnl)}</td></tr>`).join('');
+  return `<div class="sheet-section"><p class="hint" style="margin:0">${tradeFacts(t)}</p>
+      <p class="hint">${t.group === 'auto' ? 'Opened in one order, so its legs are one trade.' : 'You combined these legs.'} ${rTitleOf(t)}.</p>
+      <div class="positions-wrap"><table class="positions-table journal-table journal-legs-table"><thead><tr><th scope="col">Leg</th><th scope="col">Side</th><th scope="col">Entry → exit</th><th scope="col">P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    ${combineSection(t, locked)}
+    <div class="sheet-section">
+      <div class="sheet-label">Split</div>
+      <p class="hint">Back to ${t.legs.length} separate trades.</p>
+      <div class="row" style="gap:8px;"><button class="btn" data-action="splitSpread"${locked || !state.tradeGroups ? ' disabled' : ''}>Split into legs</button></div>
+    </div>
+    <div class="sheet-section">
+      <div class="sheet-label">Delete</div>
+      <p class="hint">For a spread that doesn't belong in your journal.</p>
+      <div class="row" style="gap:8px;"><button class="btn journal-danger" data-action="confirmDeleteTrade" data-arg="${esc(t.key)}"${locked ? ' disabled' : ''}>Delete this spread</button></div>
+    </div>
+    ${state.tradeReviewError ? `<p class="shares-error" role="status">Couldn't save: ${esc(state.tradeReviewError)}</p>` : ''}`;
+}
+
 export function renderTradeReview() {
   const el = document.getElementById('tradeReviewBody');
   if (!el) return;
@@ -365,6 +406,7 @@ export function renderTradeReview() {
   const locked = !!state.tradeReviewsError || state.tradeReviewBusy;
   if (state.tradeReviewMode === 'delete') { if (title) title.textContent = `Delete ${t.label}?`; el.innerHTML = deleteConfirm(t, locked); return; }
   if (title) title.textContent = t.label;
+  if (t.legs) { el.innerHTML = spreadSheet(t, locked); return; }
   const typed = rv.stop ?? '';
   const preview = stopPreview(t, typed);
   const chips = t.stopTrail.map(x => {
@@ -387,6 +429,7 @@ export function renderTradeReview() {
       ${t.assetType === 'OPTION' ? '<p class="hint">For an option, the stop is a price on the option itself.</p>' : ''}
       ${rv.stop !== null && rv.stop !== undefined ? `<button class="pos-link" data-action="clearTradeStop"${locked ? ' disabled' : ''}>${back}</button>` : ''}
     </div>
+    ${t.assetType === 'OPTION' && t.status !== 'history' ? combineSection(t, locked) : ''}
     <div class="sheet-section">
       <div class="sheet-label">Delete</div>
       <p class="hint">For a trade that doesn't belong in your journal.</p>
@@ -424,18 +467,28 @@ export function pickTradeStop(price) {
 
 /** save the trade's review row; the journal shows it right away and goes back if Supabase refuses */
 async function saveReview(next, done) {
+  return saveReviews({ [state.tradeReviewKey]: next }, done);
+}
+
+/**
+ * save review rows (one trade's, or a spread's legs); the journal shows them right away and goes back if Supabase
+ * refuses. `then` = the trade to show in the sheet afterwards (combining keeps it open on the spread); otherwise it closes.
+ * @param {Record<string, any>} rows @param {string} done @param {string} [then]
+ */
+async function saveReviews(rows, done, then) {
   const key = state.tradeReviewKey;
   if (!key || state.tradeReviewBusy || state.tradeReviewsError) return;
   const before = state.tradeReviews || {};
-  state.tradeReviews = { ...before, [key]: next };
+  state.tradeReviews = { ...before, ...rows };
   state.tradeReviewBusy = true;
   state.tradeReviewError = '';
   renderJournal();
   renderTradeReview();
   try {
-    await saveTradeReview(key, next);
+    await saveTradeReviews(rows);
     state.tradeReviewBusy = false;
-    if (state.openSheetName === 'tradeReview' && state.tradeReviewKey === key) closeSheet();
+    if (then) { state.tradeReviewKey = then; state.tradeReviewMode = 'edit'; renderTradeReview(); }
+    else if (state.openSheetName === 'tradeReview' && state.tradeReviewKey === key) closeSheet();
     showToast(done);
   } catch(e) {
     state.tradeReviews = before;
@@ -479,4 +532,25 @@ export function restoreTrade(key) {
   const t = reviewedTrade();
   if (!t) return;
   return saveReview({ ...reviewOf(t.key), hidden: false }, `${t.label} trade restored.`);
+}
+
+/** combine the open trade (a leg or a spread) with another leg: every leg's row names the spread */
+export function combineTrade(otherKey) {
+  const t = reviewedTrade();
+  const trades = currentTrades();
+  const other = trades.find(x => x.key === otherKey);
+  if (!t || !other || !state.tradeGroups) return;
+  const legs = [...(t.legs || [t]), other];
+  const first = legs.reduce((a, b) => (a.openedAt <= b.openedAt ? a : b));
+  const group = t.legs ? t.key : `${first.account}|${(first.label || '').split(' ')[0]}|spread|${first.openedAt}`;
+  const rows = Object.fromEntries(legs.map(l => [l.key, { ...reviewOf(l.key), group_key: group }]));
+  return saveReviews(rows, `Combined: ${legWords(legs)}.`, group);
+}
+
+/** a spread back into its legs ('solo' also keeps a multi-leg order's legs apart) */
+export function splitSpread() {
+  const t = reviewedTrade();
+  if (!t || !t.legs || !state.tradeGroups) return;
+  const rows = Object.fromEntries(t.legs.map(l => [l.key, { ...reviewOf(l.key), group_key: 'solo' }]));
+  return saveReviews(rows, `Split into ${t.legs.length} legs.`);
 }

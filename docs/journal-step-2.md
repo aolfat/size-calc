@@ -115,6 +115,11 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - A plain Sell (or Buy to cover, Sell to close, Buy to close) only ever closes, so it never becomes a made-up short.
   - Those closes become one "before your history" trade: exits known, entry and P&L not, kept out of the stats, and deletable.
   - File upload (older history from Schwab's website) will fill them in.
+- **Spreads (built):** option legs become one trade.
+  - **Automatic:** legs opened in one multi-leg order.
+  - **Combined by you:** legged-in spreads, from Combine in a leg's sheet. Each leg's `trade_reviews` row names its spread (`group_key`). Split undoes it, and works on a multi-leg order too.
+  - **The numbers:** entry and exit are net per spread. P&L and fees add up. A debit risks what it paid; a credit vertical risks its width less the credit. Other combinations have no R yet.
+  - **Limit:** a contract held on its own and also inside a spread is one leg, so that spread shows mixed sizes.
 - **Expired options (built):** an option still open after its expiry's 4pm New York close closes there at $0.
   - **The assumption:** it expired worthless. An exercise or assignment isn't in the orders.
   - **Later:** keeping Schwab's RECEIVE_AND_DELIVER transactions (expirations, exercises, assignments) would tell them apart. Their format still has to be checked.

@@ -22,7 +22,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearTradeStop, confirmDeleteTrade, deleteTrade, journalImport, journalSymbolChanged, openJournalExport, openJournalImport, openTradeReview, pickTradeStop, restoreTrade, saveTradeStop, setJournalFees, setJournalSide, setJournalTab, toggleDeletedTrades, tradeStopPreview } from './journal.js';
+import { clearTradeStop, combineTrade, confirmDeleteTrade, deleteTrade, journalImport, journalSymbolChanged, openJournalExport, openJournalImport, openTradeReview, pickTradeStop, restoreTrade, saveTradeStop, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, tradeStopPreview } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -75,6 +75,8 @@ export const actions = {
   confirmDeleteTrade: el => confirmDeleteTrade(arg(el)),
   deleteTrade: () => deleteTrade(),
   restoreTrade: el => restoreTrade(arg(el)),
+  combineTrade: el => combineTrade(arg(el)),
+  splitSpread: () => splitSpread(),
   schwabProxyDone: () => schwabProxyDone(),
   editSchwabProxy: () => editSchwabProxy(),
   connectSchwab: () => connectSchwab(),

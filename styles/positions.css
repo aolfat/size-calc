@@ -125,3 +125,12 @@
 .journal-chip-time { margin-left: 6px; font-size: 11px; color: var(--text3); }
 .journal-stop-row { align-items: flex-end; gap: 8px; }
 .journal-stop-row .field { flex: 0 1 200px; }
+.journal-legs { color: var(--text2); }
+.journal-legs-table { min-width: 0; width: 100%; }
+.journal-legs-table th, .journal-legs-table td { position: static; }
+@media (max-width: 600px) {
+  /* the pinned symbol column wraps its tags under the name, so P&L and R stay on screen */
+  .journal-table td:first-child { white-space: normal; min-width: 170px; max-width: 190px; }
+  .journal-table td:first-child b, .journal-table td:first-child .journal-legs, .journal-table td:first-child .journal-tag { white-space: nowrap; }
+  .journal-table td:first-child .journal-tag { display: inline-block; margin: 2px 4px 0 0; }
+}
