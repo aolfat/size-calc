@@ -1,11 +1,12 @@
 // @ts-check
-// Journal calendar and stats, pure (docs/journal-step-2.md, slice 4): the closed trades in numbers. A trade's P&L goes on
-// the New York day it closed. Every group (the whole set, a symbol, a weekday, a time of day...) gets the same stats, and a
+// Journal calendar and stats, pure (docs/journal-step-2.md, slice 4): the closed trades in numbers. The calendar puts each
+// exit's P&L on the New York day it was taken (a trim counts that day, even while the rest is still open). Every group (the whole set, a symbol, a weekday, a time of day...) gets the same stats, and a
 // group under 10 trades is thin. Trades still open, deleted, or from before the history never count.
 
 /** @typedef {{ key: string, symbol: string, label: string, assetType: string, status: string, bias?: string, direction: string,
  *   openedAt: string, closedAt: string | null, pnl: number, r: number | null, exits: number, holdMs: number | null,
- *   deleted?: boolean, legs?: any[] }} StatTrade */
+ *   deleted?: boolean, legs?: any[], realized?: { at: string, qty: number, pnl: number }[] }} StatTrade
+ * @typedef {{ pnl: number, trades: number, keys: string[] }} Day */
 
 /** groups smaller than this are marked thin: a handful of trades says little */
 export const THIN = 10;
@@ -58,23 +59,47 @@ export function groupStats(trades) {
   };
 }
 
-/** P&L per New York day each trade closed: 'YYYY-MM-DD' → { pnl, trades }. @param {StatTrade[]} trades */
+/**
+ * A trade's exits as realized P&L: each one's own when the trade has them, else its whole P&L at the close. Open trades
+ * count their exits so far; deleted ones and trades from before the history (no entry, so no P&L) have none.
+ * @param {StatTrade} t @returns {{ at: string, pnl: number }[]}
+ */
+export function exitsOf(t) {
+  if (t.deleted || t.status === 'history') return [];
+  if (t.realized) return t.realized;
+  return t.closedAt && t.status !== 'open' ? [{ at: t.closedAt, pnl: t.pnl }] : [];
+}
+
+/** the New York days a trade took P&L on. @param {StatTrade} t */
+export const exitDays = t => new Set(exitsOf(t).map(e => nyParts(e.at).day));
+
+/**
+ * Realized P&L per New York day, every exit on the day it was taken: 'YYYY-MM-DD' → { pnl, trades, keys } (the trades with
+ * an exit that day), days in order.
+ * @param {StatTrade[]} trades
+ */
 export function dailyPnl(trades) {
-  /** @type {Map<string, { pnl: number, trades: number }>} */
-  const out = new Map();
-  for (const t of countedTrades(trades)) {
-    const d = nyParts(/** @type {string} */ (t.closedAt)).day;
-    const c = out.get(d) || { pnl: 0, trades: 0 };
-    c.pnl = round2(c.pnl + t.pnl); c.trades++;
-    out.set(d, c);
+  /** @type {Map<string, { pnl: number, keys: Set<string> }>} */
+  const by = new Map();
+  for (const t of trades) {
+    for (const e of exitsOf(t)) {
+      const d = nyParts(e.at).day;
+      const c = by.get(d) || { pnl: 0, keys: new Set() };
+      c.pnl += e.pnl; c.keys.add(t.key);
+      by.set(d, c);
+    }
   }
+  /** @type {Map<string, Day>} */
+  const out = new Map();
+  for (const d of [...by.keys()].sort()) { const c = /** @type {{ pnl: number, keys: Set<string> }} */ (by.get(d)); out.set(d, { pnl: round2(c.pnl), trades: c.keys.size, keys: [...c.keys] }); }
   return out;
 }
 
 /**
- * A month as weeks of weekdays (Mon to Fri), each day with its P&L and trade count, and each week's total; weekend closes
- * (rare: a late fill stamped Saturday) fold into that week's total. Days outside the month are null.
- * @param {Map<string, { pnl: number, trades: number }>} daily @param {string} month 'YYYY-MM'
+ * A month as weeks of weekdays (Mon to Fri), each day with its P&L and trade count, and each week's total; weekend exits
+ * (rare: a late fill stamped Saturday) fold into that week's total. A trade trimmed on two days counts once in the week
+ * and the month. Days outside the month are null.
+ * @param {Map<string, Day>} daily @param {string} month 'YYYY-MM'
  */
 export function calendarMonth(daily, month) {
   const [y, m] = month.split('-').map(Number);
@@ -85,19 +110,22 @@ export function calendarMonth(daily, month) {
   const weeks = [];
   for (let t = start.getTime(); t <= last.getTime(); t += 7 * 864e5) {
     const week = { days: /** @type {({ day: string, pnl: number | null, trades: number } | null)[]} */ ([]), pnl: 0, trades: 0 };
+    const keys = new Set();
     for (let i = 0; i < 7; i++) {
       const d = new Date(t + i * 864e5), day = d.toISOString().slice(0, 10), inMonth = d.getUTCMonth() === m - 1;
       const c = daily.get(day);
-      if (inMonth && c) { week.pnl = round2(week.pnl + c.pnl); week.trades += c.trades; }
+      if (inMonth && c) { week.pnl = round2(week.pnl + c.pnl); c.keys.forEach(k => keys.add(k)); }
       if (i < 5) week.days.push(inMonth ? { day, pnl: c ? c.pnl : null, trades: c ? c.trades : 0 } : null);
     }
+    week.trades = keys.size;
     weeks.push(week);
   }
   const days = [...daily].filter(([d]) => d.startsWith(month));
-  return { month, weeks, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), trades: days.reduce((n, [, c]) => n + c.trades, 0), green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
+  const trades = new Set(days.flatMap(([, c]) => c.keys)).size;
+  return { month, weeks, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), trades, green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
 }
 
-/** the months that have closed trades, newest first ('YYYY-MM'). @param {Map<string, any>} daily */
+/** the months with exits, newest first ('YYYY-MM'). @param {Map<string, any>} daily */
 export const activeMonths = daily => [...new Set([...daily.keys()].map(d => d.slice(0, 7)))].sort().reverse();
 
 /**
