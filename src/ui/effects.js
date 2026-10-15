@@ -1,8 +1,9 @@
-// Side effects behind one seam: clipboard text, share images, the returns simulator, reloading the page, waiting, and file downloads.
+// Side effects behind one seam: clipboard text, share images, the returns simulator, reloading the page, waiting, file downloads, and shrinking a screenshot.
 // Callers go through `effects`, so tests can observe or replace one without patching the module that owns it.
 import { copyPlainText } from './copy-text.js';
 import { drawShareCard, shareCanvasToClipboard } from './share-image.js';
 import { openSim } from './sim.js';
+import { prepareImage } from './image-prep.js';
 
 /** after signing out, start over from a clean page */
 export function reloadPage() { location.reload(); }
@@ -19,4 +20,4 @@ export function downloadText(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-export const effects = { copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText };
+export const effects = { copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage };
