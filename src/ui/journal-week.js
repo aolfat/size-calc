@@ -1,16 +1,20 @@
-// Week and month reviews (docs/journal-step-3.md, slice 6, part 1): a week's total on the calendar, or Review the month,
-// opens the period's review under the grid (state.journalReviewPeriod): the headline against the period before, the best
-// and worst trade, the trades saved for the weekly review, and each part of a self-assessment with its numbers
-// (core/journal-week.js). The whole period, no filters. Exit efficiency and heat come from the trades' saved 5-minute bars,
-// read once per trade (state.journalExcursions).
+// Week and month reviews (docs/journal-step-3.md, slice 6, parts 1 and 2): a week's total on the calendar, or Review the
+// month, opens the period's review under the grid (state.journalReviewPeriod): the headline against the period before, the
+// best and worst trade, the trades saved for the weekly review, and each part of a self-assessment with its numbers
+// (core/journal-week.js), its grade and its note; last week's rule with Kept it? on top, the rule for next week at the
+// bottom. The whole period, no filters. Exit efficiency and heat come from the trades' saved 5-minute bars, read once per
+// trade (state.journalExcursions). Grades and notes are period_reviews rows (state.periodReviews), shown at once and put
+// back with a toast if Supabase refuses; a note is a draft while you type and saves when the box loses focus.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
-import { periodReview, reviewTrades } from '../core/journal-week.js';
+import { gradeColumn, MAX_PERIOD_NOTE, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, periodMissingWords, periodOver, periodReview, periodReviewState, previousPeriod, reviewTrades, RULE_KEPT } from '../core/journal-week.js';
 import { excursions, unpackBars } from '../core/trade-page.js';
 import { nyDay, weekdaysBetween } from '../core/bars.js';
 import { parseSchwabOption } from '../core/positions.js';
 import { loadTradeBars } from '../services/bars.js';
+import { loadPeriodReviews, savePeriodFields } from '../services/journal-review.js';
 import { state } from '../state.js';
+import { showError } from './feedback.js';
 import { periodReviewContext } from './journal-review.js';
 import { periodName } from './journal-stats.js';
 import { journalTradeList, renderJournal } from './journal.js';
@@ -83,6 +87,113 @@ export function stepPeriodReview(by) {
   loadExcursions(p.unit, next);
 }
 
+// ---------- grades and notes (period_reviews) ----------
+
+const CATEGORY_KEYS = new Set(PERIOD_CATEGORIES.map(([k]) => k));
+const rowId = (unit, key) => `${unit}|${key}`;
+const rowOf = (unit, key) => state.periodReviews?.[rowId(unit, key)] || null;
+const unitWord = unit => unit === 'month' ? 'month' : 'week';
+
+/** read every period's grades and notes; a failure (the table not pushed yet) keeps the numbers working and says why */
+export async function loadPeriodReviewRows() {
+  try {
+    const rows = await loadPeriodReviews();
+    state.periodReviews = Object.fromEntries(rows.map(r => [rowId(r.unit, r.period_key), r]));
+    state.periodReviewsError = '';
+  } catch(e) {
+    state.periodReviewsError = String(e?.message || e);
+  }
+}
+
+/** where a week's or month's review stands, or null before the rows are read (or when they can't be) */
+export function periodStatus(unit, key) {
+  if (!state.periodReviews || state.periodReviewsError) return null;
+  return periodReviewState(rowOf(unit, key));
+}
+
+/** the calendar's mark on a week or month: reviewed, or (once it's over) still to review */
+export function periodMark(unit, key) {
+  const st = periodStatus(unit, key);
+  if (!st) return '';
+  if (st.reviewed) return '<span class="jc-rev jc-rev-done">✓ reviewed</span>';
+  return periodOver(unit, key, new Date(Date.now()).toISOString()) ? `<span class="jc-rev jc-rev-due">review ${unitWord(unit)}</span>` : '';
+}
+
+/** the redraw replaces the panel: keep the box you're in */
+function redraw() {
+  const id = document.activeElement?.id;
+  renderJournal();
+  const el = id ? document.getElementById(id) : null;
+  if (el && el.focus && el !== document.activeElement) el.focus();
+}
+
+/** shown at once; if Supabase refuses, the fields this save sent go back (unless changed since) and a toast says why */
+async function savePeriod(fields) {
+  const p = state.journalReviewPeriod;
+  if (!p || !state.periodReviews || state.periodReviewsError) return;
+  const id = rowId(p.unit, p.key), before = rowOf(p.unit, p.key);
+  const next = { unit: p.unit, period_key: p.key, ...(before || {}), ...fields };
+  const reviewed = periodReviewState(next).reviewed;
+  if (reviewed !== !!next.reviewed_at) fields = { ...fields, reviewed_at: next.reviewed_at = reviewed ? new Date(Date.now()).toISOString() : null };
+  state.periodReviews[id] = next;
+  redraw();
+  try { await savePeriodFields(p.unit, p.key, fields); }
+  catch(e) {
+    const now = state.periodReviews?.[id];
+    if (now) for (const [f, v] of Object.entries(fields)) if (now[f] === v) now[f] = before?.[f] ?? null;
+    showError(`Couldn't save the review: ${String(e?.message || e)}`);
+    redraw();
+  }
+}
+
+/** a part's grade (the blank choice clears it) */
+export function setPeriodGrade(cat, grade) {
+  if (!CATEGORY_KEYS.has(cat)) return;
+  return savePeriod({ [gradeColumn(cat)]: PERIOD_GRADES.includes(grade) ? grade : null });
+}
+/** Kept it? on the period before's rule (tapping the lit one clears it) */
+export function setRuleKept(value) {
+  const p = state.journalReviewPeriod;
+  if (!p) return;
+  const now = rowOf(p.unit, p.key)?.rule_kept || null;
+  return savePeriod({ rule_kept: RULE_KEPT.some(([v]) => v === value) && value !== now ? value : null });
+}
+
+/** a part's note ('selection' … 'consistency') or the rule for next week ('rule'): its column and longest text */
+const textField = field => field === 'rule' ? { col: 'rule_next', max: MAX_RULE } : CATEGORY_KEYS.has(field) ? { col: noteColumn(field), max: MAX_PERIOD_NOTE } : null;
+/** typing: a draft (a redraw never loses it) */
+export function periodTextInput(field, text) {
+  const p = state.journalReviewPeriod;
+  if (p && textField(field)) state.periodNoteDraft = { unit: p.unit, key: p.key, field, text };
+}
+/** the box lost focus: saved, unless nothing changed */
+export function periodTextSave(field, text) {
+  const p = state.journalReviewPeriod, f = textField(field);
+  state.periodNoteDraft = null;
+  if (!p || !f) return;
+  const value = String(text || '').trim().slice(0, f.max);
+  if (value === (rowOf(p.unit, p.key)?.[f.col] || '').trim()) return;
+  return savePeriod({ [f.col]: value || null });
+}
+/** what a box shows: the draft being typed, else what's saved */
+function textOf(unit, key, field) {
+  const d = state.periodNoteDraft, f = textField(field);
+  if (d && d.unit === unit && d.key === key && d.field === field) return d.text;
+  return f ? rowOf(unit, key)?.[f.col] || '' : '';
+}
+
+const gradeTone = g => !g ? '' : g.startsWith('A') ? ' jw-grade-good' : g.startsWith('D') || g === 'F' ? ' jw-grade-bad' : '';
+
+/** a part's grade picker and note box; disabled while the rows can't be read or saved */
+function gradeAndNote(c, p, off) {
+  const row = rowOf(p.unit, p.key), g = row?.[gradeColumn(c.key)] || '';
+  const options = ['', ...PERIOD_GRADES].map(v => `<option value="${v}"${v === g ? ' selected' : ''}>${v || 'Grade'}</option>`).join('');
+  return {
+    grade: `<select class="jw-grade${gradeTone(g)}${g ? '' : ' jw-grade-empty'}" id="jwGrade-${c.key}" data-change="setPeriodGrade" data-arg="${c.key}" aria-label="${esc(c.name)} grade"${off}>${options}</select>`,
+    note: `<textarea class="jw-note" id="jwNote-${c.key}" rows="2" maxlength="${MAX_PERIOD_NOTE}" placeholder="Notes" aria-label="${esc(c.name)} notes" data-input="periodTextInput" data-change="periodTextSave" data-arg="${c.key}"${off}>${esc(textOf(p.unit, p.key, c.key))}</textarea>`,
+  };
+}
+
 const cell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
 
 function headline(r, word) {
@@ -98,10 +209,35 @@ function headline(r, word) {
 
 const tradeLink = (t, extra = '') => `<button class="pos-link" data-action="openTradeRow" data-arg="${esc(t.key)}">${esc(underlyingOf(t))}</button>${extra}`;
 
-function category(c) {
+function category(c, p, off) {
   const facts = c.facts.length ? c.facts.map(f => `<li class="${f.tone === 'good' ? 'jw-good' : f.tone === 'bad' ? 'jw-bad' : ''}">${esc(f.text)}</li>`).join('')
     : '<li class="jw-none">Nothing to go on yet.</li>';
-  return `<section class="jw-cat"><div class="jw-cat-name">${esc(c.name)}</div><ul class="jw-facts">${facts}</ul></section>`;
+  const g = gradeAndNote(c, p, off);
+  const missing = !off && !rowOf(p.unit, p.key)?.[gradeColumn(c.key)];
+  return `<section class="jw-cat${missing ? ' jw-cat-open' : ''}"><div class="jw-cat-top"><div class="jw-cat-name">${esc(c.name)}</div>${g.grade}</div><ul class="jw-facts">${facts}</ul>${g.note}</section>`;
+}
+
+const chip = (label, on, attrs) => `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" ${attrs}>${esc(label)}</button>`;
+
+/** over the parts: where the review stands (or why it can't be saved), and the period before's rule with Kept it? */
+function reviewTop(p, off) {
+  const word = unitWord(p.unit);
+  if (state.periodReviewsError) return `<p class="hint jw-db">Grades and notes need a database update: ${esc(state.periodReviewsError)}. The numbers still work.</p>`;
+  if (!state.periodReviews) return '<p class="hint jw-status">Loading your grades and notes…</p>';
+  const st = periodReviewState(rowOf(p.unit, p.key));
+  const status = st.reviewed ? `<p class="jw-status"><span class="journal-tag journal-tag-done">reviewed</span> Every part graded and the rule for next ${word} set.</p>`
+    : `<p class="jw-status jw-status-open">To finish: ${esc(periodMissingWords(st, p.unit))}.</p>`;
+  const before = rowOf(p.unit, previousPeriod(p.unit, p.key)), kept = rowOf(p.unit, p.key)?.rule_kept || '';
+  const rule = before?.rule_next ? `<div class="jw-rule jw-rule-last"><div class="jw-rule-label">Last ${word}'s rule</div><p class="jw-rule-text">${esc(before.rule_next)}</p>
+      <div class="jw-kept" role="group" aria-label="Kept last ${word}'s rule?"><span class="jw-kept-q">Kept it?</span>${RULE_KEPT.map(([v, w]) => chip(w, kept === v, `data-action="setRuleKept" data-arg="${v}"${off}`)).join('')}</div></div>` : '';
+  return status + rule;
+}
+
+/** under the parts: the one rule for next week (or month) */
+function ruleNext(p, off) {
+  const word = unitWord(p.unit), missing = !off && !periodReviewState(rowOf(p.unit, p.key)).rule;
+  return `<div class="jw-rule${missing ? ' jw-cat-open' : ''}"><label class="jw-rule-label" for="jwRuleNext">Rule for next ${word}</label>
+    <input type="text" class="jw-rule-input" id="jwRuleNext" maxlength="${MAX_RULE}" autocomplete="off" placeholder="One rule to hold yourself to" data-input="periodTextInput" data-change="periodTextSave" data-arg="rule" value="${esc(textOf(p.unit, p.key, 'rule'))}"${off} /></div>`;
 }
 
 /** the review open under the calendar, or nothing */
@@ -110,6 +246,7 @@ export function periodReviewHtml(trades) {
   if (!p) return '';
   const r = periodReview(trades, p.unit, p.key, { ...periodReviewContext(), excursion: excursionOf, barsPending: state.periodBarsBusy });
   const word = p.unit === 'month' ? 'month' : 'week';
+  const lock = state.periodReviews && !state.periodReviewsError ? '' : ' disabled';
   const active = activePeriods(trades, p.unit);
   const off = by => stepPeriod(active, p.key, by) ? '' : ' disabled';
   const title = p.unit === 'month' ? periodName('month', p.key) : `Week of ${periodName('week', p.key)}`;
@@ -130,8 +267,10 @@ export function periodReviewHtml(trades) {
     </div>
     ${r.trades ? `${headline(r, word)}
       ${lines.length ? `<p class="hint jw-lines">${lines.join('<br>')}</p>` : ''}
-      <div class="jw-cats">${r.categories.map(category).join('')}</div>
-      <p class="hint">The whole ${word}: the side, symbol and setup filters don't apply. Results count the exits taken this ${word}, like the calendar; entries, notes and trades per day count the trades opened in it. The best move and heat come from each trade's saved 5-minute bars. Green reads well, amber is worth a look.</p>`
+      ${reviewTop(p, lock)}
+      <div class="jw-cats">${r.categories.map(c => category(c, p, lock)).join('')}</div>
+      ${ruleNext(p, lock)}
+      <p class="hint">The whole ${word}: the side, symbol and setup filters don't apply. Results count the exits taken this ${word}, like the calendar; entries, notes and trades per day count the trades opened in it. The best move and heat come from each trade's saved 5-minute bars. Green reads well, amber is worth a look. A ${word} is reviewed once every part has a grade and the rule for next ${word} is set; notes save when you leave the box.</p>`
     : `<p class="hint">No trades this ${word}.</p>`}
   </div>`;
 }

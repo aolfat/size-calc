@@ -220,9 +220,36 @@ button.jc-day:hover { border-color: var(--border2); }
 .jw-good { color: var(--green); }
 .jw-bad { color: var(--amber); }
 .jw-none { list-style: none; margin-left: -16px !important; color: var(--text3); }
+/* grades and notes: a grade beside each part's name, a note under its numbers, the rules above and below */
+.jw-grade, .jw-note, .jw-rule-input { font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jw-note, .jw-rule-input { padding: 7px 10px; }
+.jw-grade:focus, .jw-note:focus, .jw-rule-input:focus { outline: none; border-color: var(--blue); }
+.jw-grade:disabled, .jw-note:disabled, .jw-rule-input:disabled { opacity: .5; }
+.jw-cat-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.jw-cat-top .jw-cat-name { margin-bottom: 0; flex: 1; min-width: 0; }
+.jw-grade { flex: none; width: auto; min-width: 72px; padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 6px; }
+.jw-grade-empty { color: var(--text3); font-weight: 400; }
+.jw-grade-good { color: var(--green); border-color: var(--green); }
+.jw-grade-bad { color: var(--amber); border-color: var(--amber); }
+.jw-note { display: block; width: 100%; margin-top: 8px; font-size: 13px; resize: vertical; min-height: 44px; }
+.jw-cat-open { border-color: color-mix(in srgb, var(--amber) 45%, var(--border)); }
+.jw-status { margin: 10px 0 0; font-size: 13px; }
+.jw-status-open { color: var(--amber); }
+.jw-db { color: var(--amber); }
+.jw-rule { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.jw-rule-label { display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 6px; }
+.jw-rule-text { margin: 0 0 8px; font-size: 13.5px; }
+.jw-rule-input { width: 100%; }
+.jw-kept { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.jw-kept-q { font-size: 12.5px; color: var(--text2); margin-right: 2px; }
+.jc-rev { font-size: 11px; font-weight: 500; }
+.jc-rev-done { color: var(--green); }
+.jc-rev-due { color: var(--amber); }
 @media (max-width: 600px) {
   .jw-panel { padding: 10px; }
   .jw-cat { padding: 8px 10px; }
+  .jw-grade { min-height: 36px; }
+  .jc-rev { font-size: 10px; }
   .jw-head .jc-title { min-width: 0; font-size: 14px; }
   .js-stats.jw-stats dd { font-size: 16px; }
 }

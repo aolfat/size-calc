@@ -24,7 +24,7 @@ import { loadJournalReview, reviewedMark, setupsInUse, setupsOf, toReview } from
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks } from './model-books.js';
-import { periodReviewHtml } from './journal-week.js';
+import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -405,7 +405,7 @@ export async function loadJournal() {
   state.journalLoading = true;
   renderJournal();
   // your stops and deletes come from their own table: if it can't be read, the trades still show
-  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
+  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), loadPeriodReviewRows(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
   try {
     if (records.status === 'rejected') throw records.reason;
     state.journalRecords = records.value;

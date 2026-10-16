@@ -1,6 +1,8 @@
 // Journal review reads and writes (docs/journal-step-3.md): each trade's grades and note (its trade_reviews row, saved
 // apart from your stop and delete so neither overwrites the other), its labels (trade_labels), the market per day
-// (journal_days), and your library (library_items). Row-level security returns only your rows. Never touches the page.
+// (journal_days), your library (library_items), and the week and month reviews (period_reviews). Row-level security
+// returns only your rows. Never touches the page.
+import { cleanPeriodRow, PERIOD_COLUMNS } from '../core/journal-week.js';
 import { state } from '../state.js';
 import { JOURNAL_READ_LIMIT } from './journal.js';
 import { supabaseClient } from './supabase.js';
@@ -105,4 +107,22 @@ export async function saveLibraryItem(row) {
 export async function saveLabelLinks(key, kind, value, links) {
   const c = await client();
   refused(await c.from('trade_labels').upsert([{ trade_key: key, kind, value, links }], { onConflict: 'user_id,trade_key,kind,value' }), 'Supabase refused the save.');
+}
+
+/** the week and month reviews' grades and notes (period_reviews, slice 6 part 2's migration): rows, newest first */
+export async function loadPeriodReviews() {
+  const c = await client();
+  const res = await c.from('period_reviews').select(['unit', 'period_key', ...PERIOD_COLUMNS].join(',')).limit(2000);
+  if (res?.error) {
+    const err = new Error(notPushed(res) ? "the database doesn't have the period_reviews table yet: npx supabase db push" : res.error.message || 'Supabase refused the read.');
+    err.status = res.status || 0;
+    throw err;
+  }
+  return (res.data || []).map(cleanPeriodRow).filter(Boolean);
+}
+
+/** a week's or month's review fields (only these columns: the other parts' grades and notes stay as they are) */
+export async function savePeriodFields(unit, key, fields) {
+  const c = await client();
+  refused(await c.from('period_reviews').upsert([{ unit, period_key: key, ...fields }], { onConflict: 'user_id,unit,period_key' }), 'Supabase refused the save.');
 }
