@@ -205,6 +205,27 @@ button.jc-day:hover { border-color: var(--border2); }
 .jc-week { padding: 6px 4px !important; font-weight: 600; font-family: var(--num); }
 .jc-weekbtn { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .jc-weekbtn:hover > span:first-child { text-decoration: underline; }
+.jc-weekbtn.active { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+/* a week's or month's review, under the calendar */
+.jw-panel { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg2); }
+.jw-head { margin-top: 0; }
+.jw-close { margin-left: auto; padding: 2px 10px; font-size: 16px; line-height: 1.2; }
+.jw-lines { line-height: 1.7; }
+.jw-cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; margin: 10px 0; }
+.js-stats.jw-stats { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.jw-cat { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.jw-cat-name { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+.jw-facts { margin: 0; padding-left: 16px; font-size: 12.5px; line-height: 1.55; color: var(--text2); }
+.jw-facts li { margin: 2px 0; }
+.jw-good { color: var(--green); }
+.jw-bad { color: var(--amber); }
+.jw-none { list-style: none; margin-left: -16px !important; color: var(--text3); }
+@media (max-width: 600px) {
+  .jw-panel { padding: 10px; }
+  .jw-cat { padding: 8px 10px; }
+  .jw-head .jc-title { min-width: 0; font-size: 14px; }
+  .js-stats.jw-stats dd { font-size: 16px; }
+}
 .jc-stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 .jc-stats dd { font-size: 16px; }
 .js-period { margin-bottom: 12px; }

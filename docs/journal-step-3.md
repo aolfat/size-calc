@@ -134,7 +134,7 @@ Going through the trades you haven't reviewed one after another, without going b
   - A switch under the stats, "Always show" or "Hide until I grade", saves `journal_deck_pnl` to your account.
   - The trade page outside the deck always shows P&L.
 - **Storage** (migration `20261023000000_review_deck.sql`):
-  - `trade_reviews.weekly_at` is the toggle (null means not saved). Nothing reads it until slice 6.
+  - `trade_reviews.weekly_at` is the toggle (null means not saved). The week review (slice 6) lists them.
   - `journal_deck_pnl` is added to the settings keys.
   - Before the push, the toggle says it needs it and everything else works.
 - **Not in the address:** a reload lands on the trades list, the same as an open trade page.
@@ -164,10 +164,30 @@ Low-confidence guesses come first in the deck.
 - **Followed the plan or not:** compared like LuxAlgo's playbook rules.
 - **Combinations:** a setup in a bullish market, for example.
 
-### 6. Weekly review and goals
+### 6. Week and month reviews
 
-- **The week in one card:** your costliest mistake (in R), your most consistent edge, and one rule for next week.
-- **Goals** for win rate, profit factor, expectancy and exit efficiency, with the dashboard measured against them.
+Reviewing a week (or a month) is a self-assessment: each part of how you trade gets a grade and a note, like a trader's end-of-week sheet. Blank boxes don't get filled in, so every category opens with the period's own numbers, and later a suggested grade and a draft note.
+
+- **Where:** in the Calendar. A week's total opens its review under the grid; "Review the month" beside the month's numbers opens the month's. "All of the week's stats" still goes to the Stats tab.
+- **Which trades:** the whole period, with no filters. Results count the exits taken in it, like the calendar. Entry habits (timing, preparation, trades per day) count the trades opened in it.
+- **The categories** and what each one shows:
+  - **Trade selection:** won of closed, setup grades, best and worst setup.
+  - **Entry timing:** average heat (MAE in R), entries before 9:45, results by entry tactic, "Chased the entry".
+  - **Exit discipline:** the share of the best move kept on winners (exit efficiency), realized against best as a % of cost, winners that gave back over half, losers that were up 1R first, "Exited early".
+  - **Risk management:** the biggest loss, losses past −1.5R, risk per trade from smallest to largest, trades with no stop, stops moved farther away.
+  - **Emotional control:** trades opened within 15 minutes of a loss, the busiest day, "Revenge trade".
+  - **Market awareness:** results by the day's market and by sector strength, trades against the market.
+  - **Preparedness:** entry notes and labels written.
+  - **Execution consistency:** followed the plan (yes, partly, no) with each one's P&L, A grades against C and below, how many are reviewed.
+- **Headline:** net, win rate, profit factor and average R against the period before, the best and worst trade, and the trades saved for the weekly review (each opens its page).
+- **The bars:** MFE and exit efficiency need the 5-minute bars the journal saves. Trades without them are counted and named.
+
+Parts, each usable alone:
+1. **The numbers (built):** the review panel with every category's numbers, for a week or a month. Nothing to save yet.
+2. **Grades and notes:** a grade (A+ to F, with pluses and minuses) and a note per category, last week's rule with "Kept it?" at the top, and one rule for next week at the bottom. A `period_reviews` table, one row per week or month. Weeks marked reviewed on the calendar.
+3. **Help writing it:** one category at a time, like the deck. A suggested grade from the numbers, a draft sentence, the exit notes and mistakes you wrote on the period's trades, a few questions, and quick phrases you can edit.
+4. **The month:** each category's grade across the month's weeks side by side, a month grade, notes and one focus for next month.
+5. **Goals** for win rate, profit factor, expectancy and exit efficiency, measured against.
 
 ## Open questions
 

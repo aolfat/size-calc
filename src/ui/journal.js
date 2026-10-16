@@ -24,6 +24,7 @@ import { loadJournalReview, reviewedMark, setupsInUse, setupsOf, toReview } from
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks } from './model-books.js';
+import { periodReviewHtml } from './journal-week.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -262,8 +263,8 @@ export function setJournalTab(tab) {
 /** a day on the calendar: the trades with an exit then */
 export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; renderJournal(); }
 export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
-export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); renderJournal(); }
-export function journalThisMonth() { state.journalMonth = thisMonth(); renderJournal(); }
+export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); state.journalReviewPeriod = null; renderJournal(); }
+export function journalThisMonth() { state.journalMonth = thisMonth(); state.journalReviewPeriod = null; renderJournal(); }
 /** the trades the stats count from: the side, symbol and setup filters applied, as the Stats tab shows them */
 const statsTrades = () => onSetupFilter(filtered(currentTrades(), t => t.bias));
 /** All time / Month / Week / Day on the stats: a new unit keeps your place (the newest close in what's shown now) */
@@ -343,7 +344,7 @@ export function renderJournal() {
     ${controls(all, !fills.length)}
     ${books ? '<div id="modelBooksBody"></div>' : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
-      : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias)))
+      : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
       : tradesView(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))))))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}

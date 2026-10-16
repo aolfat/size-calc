@@ -212,7 +212,7 @@ test('the Calendar tab: the month of the latest close, a day tapped shows its tr
   assert.match(out(), /<dt>Green days<\/dt><dd class="">1 of 2<span class="pos-sub">1 red</);
   assert.match(out(), /<button class="jc-day journal-buy" data-action="pickJournalDay" data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$300<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">100%<span class="jc-wide"> won<\/span>/, 'no losses: no profit factor');
   assert.match(out(), /data-arg="2026-10-06"[^>]*><span class="jc-num">6<\/span><span class="jc-pnl">−\$100<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">0%<span class="jc-wide"> won · PF 0\.00</);
-  assert.match(out(), /data-action="openJournalStats" data-arg="week" data-arg2="2026-10-05"[^>]*><span class="journal-buy">\+\$200<\/span><span class="jc-n">2 trades · 50%</);
+  assert.match(out(), /data-action="openPeriodReview" data-arg="week" data-arg2="2026-10-05"[^>]*><span class="journal-buy">\+\$200<\/span><span class="jc-n">2 trades · 50%</);
   run("pickJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'trades');
   assert.match(out(), /data-action="clearJournalDay"[^>]*>Exits 10\/6 ×<\/button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="2026-10-06">The day's stats</);
@@ -251,7 +251,7 @@ test('the Calendar tab: a trim shows on its day, and that day lists the trade ev
   assert.match(out(), /<b>AAPL<\/b>/, 'the open trade trimmed that day');
 });
 
-test('a week\'s total on the calendar opens its stats even when its only exits were trims', async () => {
+test('a week\'s stats count it even when its only exits were trims', async () => {
   const { run, out } = await journal([
     order(1, 'BUY', '2026-10-05T13:35:00+0000', 100, 100), order(2, 'SELL', '2026-10-05T15:00:00+0000', 50, 103), order(3, 'SELL', '2026-10-13T15:00:00+0000', 20, 104),
   ]);
