@@ -65,7 +65,10 @@ export function schwabStopDuration() { return store.get('schwab_stop_duration') 
 
 // the worker URL and your preferences outlast a logout
 const KEPT = ['schwab_proxy', 'schwab_stop_duration', 'schwab_acct_source', 'schwab_callback'];
-export function schwabDisconnect() { SCHWAB_KEYS.filter(k => !KEPT.includes(k)).forEach(k => store.del(k)); }
+/** end the login on this device; keepAttempt leaves a login just started here (its state) to finish on the callback page */
+export function schwabDisconnect({ keepAttempt = false } = {}) {
+  SCHWAB_KEYS.filter(k => !KEPT.includes(k) && !(keepAttempt && k === 'schwab_oauth_state')).forEach(k => store.del(k));
+}
 
 // Schwab's errors come as { message, errors: [...] }, { error, error_description }, or nothing at all
 export function schwabMessage(body, status) {
