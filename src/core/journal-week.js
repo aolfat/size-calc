@@ -58,6 +58,70 @@ export function previousPeriod(unit, key) {
   return new Date(Date.parse(`${key}T00:00:00Z`) - 7 * 864e5).toISOString().slice(0, 10);
 }
 
+// ---------- grades and notes (part 2: a period_reviews row per week or month) ----------
+
+/** a part's grade, best first */
+export const PERIOD_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'];
+/** Kept it? for the period before's rule */
+export const RULE_KEPT = /** @type {[string, string][]} */ ([['yes', 'Yes'], ['partly', 'Partly'], ['no', 'No']]);
+/** the longest rule for next week, and the longest note */
+export const MAX_RULE = 500;
+export const MAX_PERIOD_NOTE = 5000;
+/** a part's grade and note columns on its period_reviews row: 'exit_grade', 'exit_note'. @param {string} k */
+export const gradeColumn = k => `${k}_grade`;
+export const noteColumn = (/** @type {string} */ k) => `${k}_note`;
+/** the columns a period_reviews row carries, besides its unit and key */
+export const PERIOD_COLUMNS = [...PERIOD_CATEGORIES.flatMap(([k]) => [gradeColumn(k), noteColumn(k)]), 'rule_next', 'rule_kept', 'reviewed_at'];
+
+/**
+ * Where a period's review stands: reviewed once every part has a grade and the rule for the next one is set (notes and
+ * Kept it? never count). ungraded = the parts without a grade, in order.
+ * @param {Record<string, any> | null | undefined} row
+ */
+export function periodReviewState(row) {
+  const ungraded = PERIOD_CATEGORIES.filter(([k]) => !PERIOD_GRADES.includes(row?.[gradeColumn(k)])).map(([k]) => k);
+  const rule = !!String(row?.rule_next || '').trim();
+  return { reviewed: !ungraded.length && rule, ungraded, graded: PERIOD_CATEGORIES.length - ungraded.length, rule };
+}
+
+/** what's left, in words: 'grades on 3 parts and the rule for next week'. @param {ReturnType<typeof periodReviewState>} st @param {string} unit */
+export function periodMissingWords(st, unit) {
+  const n = st.ungraded.length;
+  const grades = !n ? '' : n === 1 ? `a grade on ${(PERIOD_CATEGORIES.find(([k]) => k === st.ungraded[0]) || ['', ''])[1].replace(/^./, c => c.toLowerCase())}` : `grades on ${n} parts`;
+  const rule = st.rule ? '' : `the rule for next ${unit === 'month' ? 'month' : 'week'}`;
+  return [grades, rule].filter(Boolean).join(' and ');
+}
+
+/**
+ * A period is over: a week once New York is past its Friday's 4pm close, a month once New York is in a later month.
+ * @param {string} unit @param {string} key its Monday or 'YYYY-MM' @param {string} nowIso
+ */
+export function periodOver(unit, key, nowIso) {
+  const { day, time } = nyParts(nowIso);
+  if (unit === 'month') return day.slice(0, 7) > key;
+  const fri = new Date(Date.parse(`${key}T00:00:00Z`) + 4 * 864e5).toISOString().slice(0, 10);
+  return day > fri || (day === fri && time >= '16:00');
+}
+
+/**
+ * A period_reviews row as the app keeps it: only known columns, grades and Kept it? from their lists, text trimmed to
+ * its limit; null for anything that isn't a row.
+ * @param {Record<string, any> | null | undefined} raw
+ */
+export function cleanPeriodRow(raw) {
+  if (!raw || !['week', 'month'].includes(raw.unit) || typeof raw.period_key !== 'string') return null;
+  /** @type {Record<string, any>} */
+  const row = { unit: raw.unit, period_key: raw.period_key };
+  for (const [k] of PERIOD_CATEGORIES) {
+    row[gradeColumn(k)] = PERIOD_GRADES.includes(raw[gradeColumn(k)]) ? raw[gradeColumn(k)] : null;
+    row[noteColumn(k)] = typeof raw[noteColumn(k)] === 'string' && raw[noteColumn(k)] ? raw[noteColumn(k)].slice(0, MAX_PERIOD_NOTE) : null;
+  }
+  row.rule_next = typeof raw.rule_next === 'string' && raw.rule_next.trim() ? raw.rule_next.slice(0, MAX_RULE) : null;
+  row.rule_kept = RULE_KEPT.some(([v]) => v === raw.rule_kept) ? raw.rule_kept : null;
+  row.reviewed_at = raw.reviewed_at || null;
+  return row;
+}
+
 /** a stamp falls in the period. @param {string | null | undefined} iso @param {string} unit @param {string} key */
 const inside = (iso, unit, key) => !!iso && periodKey(nyParts(iso).day, unit) === key;
 

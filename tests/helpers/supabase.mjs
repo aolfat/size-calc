@@ -1,4 +1,4 @@
-// A fake Supabase client over in-memory schwab_records, trade_reviews, trades, bars_5m, trade_labels, journal_days and library_items tables, close enough to the real ones
+// A fake Supabase client over in-memory schwab_records, trade_reviews, trades, bars_5m, trade_labels, journal_days, library_items and period_reviews tables, close enough to the real ones
 // for the journal tests: select(...).eq().in().order().limit() reads rows (records newest first when ordered),
 // upsert(rows, { ignoreDuplicates }) inserts or replaces by the table's key ((user, kind, record id), or (user, trade
 // key)), insert / update().eq() / delete().in() write trades rows by id (logged in tradeOps), fail() makes every call
@@ -11,12 +11,13 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
     trade_labels: r => `${u(r)}:${r.trade_key}:${r.kind}:${r.value}`, journal_days: r => `${u(r)}:${r.day}`, library_items: r => `${u(r)}:${r.id}`,
     trade_shots: r => `${u(r)}:${r.id}`,
     model_books: r => `${u(r)}:${r.id}`, model_examples: r => `${u(r)}:${r.id}`,
+    period_reviews: r => `${u(r)}:${r.unit}:${r.period_key}`,
   };
   const table = new Map(seed.map(r => [keys.schwab_records(r), { user_id: 'user-1', ...r }]));
   const reviews = new Map(reviewSeed.map(r => [keys.trade_reviews(r), { user_id: 'user-1', ...r }]));
   const trades = new Map(tradeSeed.map(r => [r.id, { ...r }]));
   const bars = new Map();
-  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map(), trade_shots: new Map(), model_books: new Map(), model_examples: new Map() };
+  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map(), trade_shots: new Map(), model_books: new Map(), model_examples: new Map(), period_reviews: new Map() };
   // Storage: files by bucket and path; signed links are fake https URLs
   const files = new Map();
   const storageOps = []; // settings: an account with none, for a session resumed on boot

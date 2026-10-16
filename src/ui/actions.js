@@ -25,7 +25,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { closePeriodReview, openPeriodReview, stepPeriodReview } from './journal-week.js';
+import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, toggleJournalLog } from './journal-trade.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
@@ -105,6 +105,10 @@ export const actions = {
   openPeriodReview: el => openPeriodReview(arg(el), el.dataset.arg2 || ''),
   closePeriodReview: () => closePeriodReview(),
   stepPeriodReview: el => stepPeriodReview(arg(el)),
+  setPeriodGrade: el => setPeriodGrade(arg(el), /** @type {HTMLSelectElement} */ (el).value),
+  setRuleKept: el => setRuleKept(arg(el)),
+  periodTextInput: el => periodTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
+  periodTextSave: el => periodTextSave(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
   setJournalSide: el => setJournalSide(arg(el)),
   journalSymbolChanged: () => journalSymbolChanged(),
   toggleDeletedTrades: () => toggleDeletedTrades(),

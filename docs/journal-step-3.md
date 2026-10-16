@@ -185,8 +185,13 @@ Reviewing a week (or a month) is a self-assessment: each part of how you trade g
 - **The bars:** MFE and exit efficiency need the 5-minute bars the journal saves. Trades without them are counted and named.
 
 Parts, each usable alone:
-1. **The numbers (built):** the review panel with every category's numbers, for a week or a month. Nothing to save yet.
-2. **Grades and notes:** a grade (A+ to F, with pluses and minuses) and a note per category, last week's rule with "Kept it?" at the top, and one rule for next week at the bottom. A `period_reviews` table, one row per week or month. Weeks marked reviewed on the calendar.
+1. **The numbers (built):** the review panel with every category's numbers, for a week or a month.
+2. **Grades and notes (built):** a grade (A+ to F, with pluses and minuses) and a note per category, last week's rule with "Kept it?" at the top, and one rule for next week at the bottom. Weeks marked reviewed on the calendar.
+   - **Table:** `period_reviews` (migration `20261027000000_period_reviews.sql`), one row per (user, unit `week` | `month`, period key: the week's Monday or `YYYY-MM`). Each category has its own `<key>_grade` and `<key>_note` column, so saving one never overwrites another. `rule_next` is the rule for the next period; `rule_kept` (yes, partly, no) is on the period it was kept in, about the period before's rule. `reviewed_at` is stamped while the review is complete and cleared when it isn't.
+   - **Reviewed** (`periodReviewState` in `core/journal-week.js`): every category graded and the rule set. Notes and "Kept it?" don't count.
+   - **Saving:** a grade or "Kept it?" saves on its own upsert, shown at once. A note or the rule is a draft in state while you type and saves when the box loses focus. If Supabase refuses, the fields that save sent go back and a toast says why.
+   - **Calendar:** the Week column says "✓ reviewed", or "review week" in amber once the week is over (after Friday's 4pm close in New York). "Review the month" reads "Month reviewed ✓" once the month is.
+   - **Before the migration is pushed:** the panel says the database needs `npx supabase db push`, the grade and note boxes are disabled, and the numbers still show.
 3. **Help writing it:** one category at a time, like the deck. A suggested grade from the numbers, a draft sentence, the exit notes and mistakes you wrote on the period's trades, a few questions, and quick phrases you can edit.
 4. **The month:** each category's grade across the month's weeks side by side, a month grade, notes and one focus for next month.
 5. **Goals** for win rate, profit factor, expectancy and exit efficiency, measured against.
