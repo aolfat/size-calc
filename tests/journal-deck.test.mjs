@@ -1,6 +1,6 @@
 // Run with: node --test
-// The review deck (journal step 3, slice 2): the pass each trade needs (opening while it's open, the grade and note once
-// it closes), the queue (newest first, from the review-from day, no other filters), Review N trades, the Journal's line and tab count, the deck bar
+// The review deck (journal step 3, slice 2): the pass each trade needs (opening while it's open, the plan, grade and exit
+// note once it closes), the queue (newest first, from the review-from day, no other filters), Review N trades, the Journal's line and tab count, the deck bar
 // (Back, Next, Save for the weekly review, Done), P&L hidden until you grade, the end screen, the keys, and failures.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -41,29 +41,29 @@ async function journal(tweak) {
     at: () => a.run('journalPageTrade()?.key || null'),
   };
 }
-/** a trade reviewed in full on another device: the day's market, the labels, both grades and a note */
+/** a trade reviewed in full on another device: the day's market, the labels, both grades and an exit note */
 const reviewedElsewhere = (s, key, day) => {
   s.tables.journal_days.set(`user-1:${day}`, { user_id: 'user-1', day, market: 'bullish' });
   for (const [kind, value] of [['sector', 'strong'], ['setup', 'sma50'], ['tactic', 'pivot15']]) s.tables.trade_labels.set(`user-1:${key}:${kind}:${value}`, { user_id: 'user-1', trade_key: key, kind, value, set_by: 'you' });
   s.reviews.set(`user-1:${key}`, { user_id: 'user-1', trade_key: key, setup_grade: 'B', plan_followed: 'yes', note: 'fine' });
 };
-/** the opening pass: market, sector, a setup, the tactic, followed the plan */
+/** the opening pass: market, sector, a setup, the tactic (the plan waits for the close) */
 async function openingPass(run, t) {
   await run(`setReviewMarket(${t}, 'bullish')`);
   await run(`toggleReviewLabel(${t}, 'sector', 'strong')`);
   await run(`toggleSetup(${t}, 'ema21_bounce')`);
   await run(`toggleReviewLabel(${t}, 'tactic', 'pivot30')`);
-  await run(`setPlanFollowed(${t}, 'yes')`);
 }
 
-test('the pass a trade needs: opening while open, the grade and note once closed; the queue is newest first, from the review-from day', async () => {
+test('the pass a trade needs: opening while open, the plan, grade and exit note once closed; the queue is newest first, from the review-from day', async () => {
   const { run } = await app();
   const st = missing => JSON.stringify({ missing, reviewed: !missing.length });
-  const all = ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'note'];
+  const all = ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'exit note'];
   assert.equal(run(`reviewPass({ status: 'open' }, ${st(all)})`), 'opening');
-  assert.equal(run(`reviewPass({ status: 'open' }, ${st(['setup grade', 'note'])})`), null, 'open with the labels and plan in: done for now');
-  assert.equal(run(`reviewPass({ status: 'win' }, ${st(['setup grade', 'note'])})`), 'closing', 'closed: back for the grade and note');
-  assert.equal(run(`reviewPass({ status: 'loss' }, ${st(['sector', 'note'])})`), 'full');
+  assert.equal(run(`reviewPass({ status: 'open' }, ${st(['setup grade', 'plan followed', 'exit note'])})`), null, 'open with the labels in: done for now, the plan waits for the close');
+  assert.equal(run(`reviewPass({ status: 'win' }, ${st(['setup grade', 'plan followed', 'exit note'])})`), 'closing', 'closed: back for the plan, grade and exit note');
+  assert.equal(run(`reviewPass({ status: 'win' }, ${st(['exit note'])})`), 'closing', 'graded while it was open: the exit note still brings it back');
+  assert.equal(run(`reviewPass({ status: 'loss' }, ${st(['sector', 'exit note'])})`), 'full');
   assert.equal(run(`reviewPass({ status: 'win' }, ${st([])})`), null);
   assert.equal(run(`reviewPass({ status: 'history' }, ${st(all)})`), null, 'before your history: nothing to review');
   assert.equal(run(`reviewPass({ status: 'win', deleted: true }, ${st(all)})`), null);
@@ -95,7 +95,7 @@ test('a card: the trade page with the deck bar; Next moves on finished or not, B
   assert.equal(elements.get('journalTradeSection').style.display, '');
   assert.match(head(), /<div class="jt-deck" id="jtDeckBar" role="toolbar" aria-label="Review deck">\s*<span class="jt-deck-count">1 of 3<\/span>\s*<span class="jt-deck-pass">Opening pass<\/span>/, 'an open trade: the opening pass');
   assert.match(head(), /data-action="deckBack" disabled/, 'nothing before the first');
-  assert.match(body(), /<span class="jr-status "[^>]*>To review: missing/, 'the same Review section');
+  assert.match(body(), /<span class="jr-status "[^>]*>Opening pass: missing market, sector, setup, tactic<\/span>/, 'the same Review section, asking for the opening pass');
 
   run('deckNext()');
   assert.equal(at(), B, 'Next on an unfinished trade moves on anyway');
@@ -179,21 +179,19 @@ test('Save for the weekly review: weekly_at stamped and cleared, a tag on the li
   assert.equal(two.rows('trade_reviews').length, 0);
 });
 
-test('a closed trade with its labels in comes back for the grade and note; one reviewed elsewhere is passed over', async () => {
+test('a closed trade with its labels in comes back for the plan, grade and exit note; one reviewed elsewhere is passed over', async () => {
   const label = (s, key, kind, value) => s.tables.trade_labels.set(`user-1:${key}:${kind}:${value}`, { user_id: 'user-1', trade_key: key, kind, value, set_by: 'you' });
   const { run, head, at, supabase, list } = await journal(s => {
     s.tables.journal_days.set('user-1:2026-10-05', { user_id: 'user-1', day: '2026-10-05', market: 'bullish' });
     for (const [kind, value] of [['sector', 'strong'], ['setup', 'sma50'], ['tactic', 'pivot15']]) label(s, B, kind, value);
-    s.reviews.set(`user-1:${B}`, { user_id: 'user-1', trade_key: B, plan_followed: 'yes' });
   });
   run('startReviewDeck()');
   run('deckNext()');
   assert.equal(at(), B);
-  assert.match(head(), /<span class="jt-deck-pass">Closing pass: the grade and note<\/span>/);
+  assert.match(head(), /<span class="jt-deck-pass">Closing pass: the plan, grade and exit note<\/span>/);
   // the open trade gets its opening pass and the oldest its full review on another device; this one hears on a reload
   supabase.tables.journal_days.set('user-1:2026-10-08', { user_id: 'user-1', day: '2026-10-08', market: 'bullish' });
   for (const [kind, value] of [['sector', 'strong'], ['setup', 'sma50'], ['tactic', 'pivot15']]) label(supabase, C, kind, value);
-  supabase.reviews.set(`user-1:${C}`, { user_id: 'user-1', trade_key: C, plan_followed: 'yes' });
   reviewedElsewhere(supabase, A, '2026-10-01');
   await run('loadJournal()');
   run('deckNext()');
@@ -201,6 +199,24 @@ test('a closed trade with its labels in comes back for the grade and note; one r
   run('endReviewDeck()');
   run("setJournalReviewFilter('todo')");
   assert.doesNotMatch(list(), /<b>NVDA<\/b>/, 'To review matches the deck: an open trade with its opening pass done waits for its close');
+});
+
+test('an open trade: the entry note, and the plan and exit note wait for the close unless already in', async () => {
+  const { run, t, body, rows, supabase } = await journal();
+  run(`openJournalTrade('${C}')`);
+  assert.match(body(), /id="entryNote"/, 'the entry note is there while it\'s live');
+  assert.doesNotMatch(body(), /id="reviewNote"|data-action="setPlanFollowed"/, 'no plan or exit note yet');
+  assert.match(body(), /After the close<\/div><p class="hint jr-later">Followed the plan and the exit note: the deck brings this trade back when it closes\.<\/p>/);
+  assert.doesNotMatch(body(), /jr-row jr-missing"><div class="jr-label">Setup grade/, 'the grade isn\'t asked for yet');
+  await openingPass(run, t);
+  assert.match(body(), /<span class="jr-status journal-buy"[^>]*>Opening pass done\. The rest after the close<\/span>/);
+  await run(`reviewNoteSave(${t}, 'bought the 21 EMA reclaim', 'entry')`);
+  assert.equal(rows('trade_reviews')[0].entry_note, 'bought the 21 EMA reclaim');
+  // a note written on an open trade before the split stays visible (as the exit note) so it isn't lost
+  supabase.reviews.set(`user-1:${C}`, { ...supabase.reviews.get(`user-1:${C}`), note: 'older note' });
+  await run('loadJournal()');
+  run(`openJournalTrade('${C}')`);
+  assert.match(body(), /id="reviewNote"[^>]*>older note<\/textarea>/);
 });
 
 test('← and → move through the deck, Esc leaves; never while typing', async () => {

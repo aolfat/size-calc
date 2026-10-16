@@ -61,7 +61,7 @@ export function createState() {
     journalLoading: false,
     journalError: '',
     barsBusy: false, // the journal is saving 5-minute bars
-    journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
+    journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
     journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
     journalReviewFilter: 'all', // the trades tab: all | todo (to review)
@@ -76,7 +76,7 @@ export function createState() {
     reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it
-    reviewNoteDraft: null, // { key, text }: the note being typed, so a redraw never loses it
+    reviewNoteDraft: null, // { key, which: 'entry' | 'exit', text }: the note being typed, so a redraw never loses it
     journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
