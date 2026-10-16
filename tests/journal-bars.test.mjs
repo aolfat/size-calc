@@ -19,6 +19,11 @@ test('which bars the trades need: each weekday open, finished days only, both an
     ['AAPL', ['2026-10-09', '2026-10-12', '2026-10-13', '2026-10-14']],
     ['AAPL261218C00245000', ['2026-10-13', '2026-10-14']],
   ], 'the open call runs to yesterday, never today; its underlying joins the stock\'s days');
+  const evening = ms => JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([call])}, ${ms})])`))[0][1].at(-1);
+  assert.equal(evening(Date.parse('2026-10-15T23:59:00Z')), '2026-10-14', '19:59 ET: today is still trading after hours');
+  assert.equal(evening(Date.parse('2026-10-16T00:00:00Z')), '2026-10-15', '20:00 ET: extended hours are over, today is done');
+  assert.equal(run(`lastDoneDay(${Date.parse('2026-12-02T01:00:00Z')})`), '2026-12-01', '20:00 EST too');
+  assert.equal(run(`lastDoneDay(${Date.parse('2026-12-02T00:59:00Z')})`), '2026-11-30');
   const old = { ...stock, openedAt: '2026-08-03T14:30:00.000Z', closedAt: '2026-09-15T15:00:00.000Z' };
   const clipped = JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([old])}, ${NOW})])`));
   assert.equal(clipped[0][1][0], '2026-09-10', 'nothing older than 35 days: Tradier wouldn\'t have it');
