@@ -25,10 +25,10 @@ Before signing in:
    worker URL, and reconnect Schwab. Old unbound brokerage logins require a
    fresh login after this security update.
 
-The GitHub Pages URL supports manual calculations only. It clears saved API
-keys, Google sessions, and brokerage credentials on load and disables new
-credential entry. Browser storage belongs to the entire host, so repository
-paths under one `github.io` account cannot isolate credentials.
+Until then the GitHub Pages URL keeps working, sign-in and Schwab included.
+Browser storage belongs to the entire host, so repository paths under one
+`github.io` account cannot isolate credentials: that's only safe while no
+other Pages site is published under the account.
 
 `.assetsignore` publishes only runtime files. `_headers` supplies the app's
 security headers. No build step or application dependencies are needed.

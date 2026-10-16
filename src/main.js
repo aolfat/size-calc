@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { delegate } from './lib/delegate.js';
 import { actions } from './ui/actions.js';
 import { store } from './lib/store.js';
+import { framedCrossOrigin } from './lib/credential-origin.js';
 import { cloudPull } from './services/cloud.js';
 import { dailyAccountSize } from './ui/account-size.js';
 import { updateSizingControls } from './ui/allocation.js';
@@ -24,8 +25,15 @@ import { initSimEvents } from './ui/sim.js';
 import { updateStickyBar } from './ui/sticky-bar.js';
 import { updateStopVisibility } from './ui/stops.js';
 import { fetchQuote, renderRecentTickers } from './ui/ticker.js';
-import { initSchwab } from './ui/trade.js';
+import { initSchwab, stripSchwabCallback } from './ui/trade.js';
 import { setView, viewFromHash } from './ui/views.js';
+
+// framed by another site: nothing to click (GitHub Pages can't send frame-ancestors, so this is the clickjacking guard)
+if (framedCrossOrigin()) { document.documentElement.replaceChildren(); throw new Error('Size Calc does not run inside another site.'); }
+
+// the Schwab code leaves the address bar now, not after the Google session loads
+const bootHref = location.href;
+stripSchwabCallback(bootHref);
 
 delegate(document, actions); // every data-action / data-input / data-change / data-enter in the page
 
@@ -71,7 +79,7 @@ window.addEventListener('offline', marketScheduleRefresh);
 
 renderRecentTickers();
 // Restore the Google owner before finishing or using a brokerage connection on this page.
-initCloud().then(() => initSchwab());
+initCloud(bootHref).then(() => initSchwab(bootHref));
 
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {

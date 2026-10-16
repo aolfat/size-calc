@@ -68,6 +68,9 @@ function thirdFridayHoliday(y, m, d) {
   return y >= 2022 && m === 6 && (d === 19 || (d === 18 && weekday(y, 6, 19) === 6));
 }
 
+/** an OCC option symbol as Tradier sends it (root, YYMMDD, C/P, strike × 1000), so nothing else reaches the page. @param {unknown} s */
+export function isOccSymbol(s) { return typeof s === 'string' && /^[A-Z][A-Z0-9.]{0,5}\d{6}[CP]\d{8}$/.test(s); }
+
 /** @param {string} expStr YYYY-MM-DD @returns {boolean} */
 export function isMonthlyExp(expStr) {
   // standard monthly = third Friday; when that Friday is an NYSE holiday the

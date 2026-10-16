@@ -374,6 +374,30 @@ test("the Schwab worker URL from another device fills the Settings field, and si
   assert.equal(storage.has('schwab_tokens'), false, 'signing out also disconnects Schwab');
 });
 
+test('a worker URL changed through the account waits for a second Log in press on this device', async () => {
+  const supabase = fakeSupabase({ settings: [{ key: 'schwab_proxy', value: 'https://w.example' }] });
+  const storage = joined([['schwab_proxy', 'https://mine.example']]);
+  const { run, elements } = await app({ supabase, session: SESSION, storage });
+  await run('cloudPull()');
+  assert.equal(storage.get('schwab_proxy_confirm'), 'https://w.example');
+  run('var opened = []; window.open = url => { opened.push(url); }; connectSchwab()');
+  assert.deepEqual([...run('opened')], [], 'the first press only asks');
+  assert.match(elements.get('schwabNote').textContent, /changed to w\.example through your account/);
+  elements.get('schwabRedirect').value = 'https://127.0.0.1/?code=c1';
+  assert.equal(await run('finishSchwab()'), false, 'no code goes to an unconfirmed worker');
+  run('connectSchwab()');
+  assert.equal(run('opened.length'), 1, 'the second press logs in through it');
+  assert.match(run('opened[0]'), /^https:\/\/w\.example\/login\?state=/);
+  assert.equal(storage.has('schwab_proxy_confirm'), false);
+
+  await run('cloudPull()');
+  assert.equal(storage.has('schwab_proxy_confirm'), false, 'the same URL again is no change');
+  storage.set('schwab_proxy_confirm', 'https://w.example');
+  elements.get('schwabProxy').value = 'https://typed.example';
+  run('schwabProxyChanged()');
+  assert.equal(storage.has('schwab_proxy_confirm'), false, 'a URL typed here needs no confirming');
+});
+
 // ---------- signing out ----------
 
 test('sign out removes brokerage credentials before waiting for Supabase to sign out', async () => {

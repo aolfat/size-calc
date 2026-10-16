@@ -23,6 +23,7 @@ const unreachable = 'Could not reach the Schwab worker. Check its URL in Setting
 
 export function schwabProxyChanged() {
   store.set('schwab_proxy', document.getElementById('schwabProxy').value.trim());
+  store.del('schwab_proxy_confirm'); // typed on this device: nothing to confirm
   updateSchwabUi();
   clearTimeout(state.schwabCallbackTimer);
   state.schwabCallbackTimer = setTimeout(refreshSchwabCallback, 600); // ask the worker once typing settles
@@ -65,6 +66,16 @@ export function connectSchwab() {
     document.getElementById('schwabProxy').focus();
     return;
   }
+  // a worker URL that came from your account, not typed here: whoever runs it sees the login, so ask once
+  if (proxyNeedsConfirm()) {
+    if (state.schwabProxyConfirming !== schwabProxy()) {
+      state.schwabProxyConfirming = schwabProxy();
+      setSchwabNote(`Your worker URL changed to ${new URL(schwabProxy()).host} through your account. The login goes through it, so use it only if you set it. Press Log in again to use it, or Change it.`);
+      return;
+    }
+    store.del('schwab_proxy_confirm');
+    state.schwabProxyConfirming = null;
+  }
   window.open(schwabLoginUrl(), '_blank', 'noopener');
   if (schwabReturnsHere()) {
     setSchwabNote('Log in at Schwab in the new tab. It comes back to this app and connects by itself.');
@@ -74,6 +85,12 @@ export function connectSchwab() {
   }
 }
 
+/** a worker URL synced from the account that this device hasn't used yet */
+export function proxyNeedsConfirm() {
+  const pending = store.get('schwab_proxy_confirm');
+  return pending !== null && pending === store.get('schwab_proxy');
+}
+
 /** finish a login from the callback address: pasted by hand, or this page's own address when the app is the callback */
 export async function finishSchwab(text = document.getElementById('schwabRedirect').value, fromCallback = false) {
   const parsed = parseSchwabRedirect(text);
@@ -81,12 +98,14 @@ export async function finishSchwab(text = document.getElementById('schwabRedirec
   const expected = store.get('schwab_oauth_state') || '';
   // a callback page must carry this device's state; a pasted address may come back without one
   const stateBad = fromCallback ? !expected || parsed.state !== expected : !!(parsed.state && expected && parsed.state !== expected);
-  if (stateBad) { showError('That login is from another attempt. Log in to Schwab again.'); return false; }
+  if (stateBad) { store.del('schwab_oauth_state'); showError('That login is from another attempt. Log in to Schwab again.'); return false; }
   if (!proxyOk(schwabProxy())) { showError('Paste your Schwab worker URL in Settings first.'); return false; }
+  if (proxyNeedsConfirm()) { showError('Your worker URL changed through your account. Press Log in in Settings to check it first.'); return false; }
   setSchwabNote('Connecting…');
   try {
     await schwabExchangeCode(parsed.code);
   } catch(e) {
+    store.del('schwab_oauth_state'); // one attempt per login: a failed code means logging in again
     setSchwabNote('');
     showError(e.status ? `Schwab refused the login code. ${e.message} Codes expire in about 30 seconds, so log in again and paste right away.` : unreachable);
     return false;
@@ -382,6 +401,13 @@ export function renderTradeSheet() {
 }
 
 // ---------- boot ----------
+
+/** take a Schwab callback's code out of the address bar (Google's return keeps its own, for initCloud) */
+export function stripSchwabCallback(href) {
+  const url = new URL(href);
+  if (url.searchParams.get('login') === 'google' || !url.searchParams.get('code')) return;
+  globalThis.history?.replaceState(null, '', url.pathname + url.hash);
+}
 
 export async function initSchwab(href = location.href) {
   updateSchwabUi();

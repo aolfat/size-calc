@@ -254,6 +254,11 @@ test('+ New setup narrows My setups as you pick and offers the one you have; Opt
   assert.match(body(), />Bullflow ↗<\/a>/);
   run(`addReviewLink(${t}, 'option_flow', 'javascript:alert(1)')`);
   assert.match(elements.get('errorBox').textContent, /Paste a link that starts with https:\/\//);
+  // a row written around the app: its bad link is never drawn, and the good ones keep their places
+  run(`journalReview.labels[${t}.key].find(l => l.kind === 'tag').links.splice(1, 0, 'javascript:alert(1)'); openJournalTrade(${t}.key)`);
+  assert.doesNotMatch(body(), /javascript:/);
+  assert.match(body(), /data-action="removeReviewLink" data-arg="option_flow" data-arg2="2"/, 'the Bullflow link is still the third');
+  run(`journalReview.labels[${t}.key].find(l => l.kind === 'tag').links.splice(1, 1); openJournalTrade(${t}.key)`);
   await run(`removeReviewLink(${t}, 'option_flow', '0')`);
   assert.deepEqual(rows('trade_labels').find(r => r.kind === 'tag').links, ['https://app.bullflow.io/flow?s=AAPL']);
 });

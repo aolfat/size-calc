@@ -61,7 +61,7 @@ export async function fetchQuote() {
     if (!current()) return;
     const q = qJson?.quotes?.quote;
     if (!q || Array.isArray(q) || q.type === 'option') throw new Error('Symbol not found or invalid.');
-    if (!q.symbol) q.symbol = ticker;
+    if (!isSymbol(q.symbol)) q.symbol = ticker; // the symbol goes into markup unescaped: only a well-formed one
     const sym = q.symbol;
 
     // stops and bars belong to the underlying; clear them on a symbol change

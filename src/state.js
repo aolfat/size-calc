@@ -156,6 +156,7 @@ export function createState() {
     captureBusy: false, // raw capture is reading Schwab and saving to Supabase
     captureError: '', // the last capture's failure, shown on its status line
     schwabProxyEditing: false, // Change pressed: the worker URL box stays open until you leave it
+    schwabProxyConfirming: null, // Log in pressed once on a worker URL synced from the account: the second press uses it
     acctSizeBusy: false, // the daily account size read is in flight
     tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent
     tradeBusy: false,

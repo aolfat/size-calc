@@ -141,6 +141,28 @@ test('a callback page with someone else\'s state is ignored', async () => {
   assert.match(elements.get('errorBox').textContent, /another attempt/);
 });
 
+test('a login attempt is used once: a wrong state or a refused code means logging in again', async () => {
+  const wrong = new Map([['schwab_proxy', PROXY], ['schwab_oauth_state', 'mine']]);
+  const a = await app({ fetch: network(async () => json({}, 500)).fetch, storage: wrong });
+  await a.run("initSchwab('https://size-calc.example.workers.dev/size-calc/?code=attacker&state=theirs')");
+  assert.equal(wrong.has('schwab_oauth_state'), false);
+
+  const refused = new Map([['schwab_proxy', PROXY], ['schwab_oauth_state', 'mine']]);
+  const b = await app({ fetch: network(async () => json({ error: 'invalid_grant' }, 400)).fetch, storage: refused });
+  b.elements.get('schwabRedirect').value = 'https://127.0.0.1/?code=old&state=mine';
+  assert.equal(await b.run('finishSchwab()'), false);
+  assert.equal(refused.has('schwab_oauth_state'), false);
+});
+
+test("the Schwab code leaves the address bar at boot; Google's return is left for the sign-in", async () => {
+  const { run } = await app();
+  run('var replaced = []; history = { replaceState: (s, t, u) => replaced.push(u) }');
+  run("stripSchwabCallback('https://app.example/size-calc/?code=c1&state=s1#positions')");
+  run("stripSchwabCallback('https://app.example/size-calc/?login=google&code=g1')");
+  run("stripSchwabCallback('https://app.example/size-calc/#journal')");
+  assert.deepEqual([...run('replaced')], ['/size-calc/#positions']);
+});
+
 test('a brokerage connection is usable only by the Google user and worker it was created for', async () => {
   const storage = connected();
   const tokens = JSON.parse(storage.get('schwab_tokens'));
