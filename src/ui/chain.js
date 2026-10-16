@@ -3,7 +3,7 @@ import { state } from '../state.js';
 import { RISK_FREE, bsPrice, normCdf } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
-import { isMonthlyExp, lossClass, yearsToExp } from '../core/options.js';
+import { isMonthlyExp, isOccSymbol, lossClass, yearsToExp } from '../core/options.js';
 import { unitsFor } from '../core/sizing.js';
 import { COMPACT_CHAIN_MQ, mq } from '../lib/media.js';
 import { baseUrl, headers } from '../services/tradier.js';
@@ -74,7 +74,8 @@ export async function fetchChain(ticker, exp, scrollAtm) {
       document.getElementById('chainStatus').textContent = '0 contracts';
       return;
     }
-    state.chainData = Array.isArray(opts) ? opts : [opts];
+    // only well-formed contracts: their symbols and strikes go straight into the table's markup
+    state.chainData = (Array.isArray(opts) ? opts : [opts]).filter(o => isOccSymbol(o?.symbol) && Number.isFinite(+o.strike)).map(o => ({ ...o, strike: +o.strike }));
     cancelSpread();
     document.getElementById('chainStatus').textContent = state.chainData.length + ' contracts · ' + exp;
     state.pendingAtmScroll = !!scrollAtm;

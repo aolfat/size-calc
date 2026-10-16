@@ -199,7 +199,8 @@ function setLinks(t, value, links) {
 /** under a lit Option flow tag (or any tag that has links): its links as chips, and a box to paste another */
 function linksHtml(t, lib) {
   return labelsOf(t, 'tag').filter(l => lib.resolve('tag', l.value) === 'option_flow' || (l.links || []).length).map(l => {
-    const chips = (l.links || []).map((url, i) => `<span class="jr-link"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(url)}">${esc(linkLabel(url))} ↗</a><button class="pos-link" data-action="removeReviewLink" data-arg="${esc(l.value)}" data-arg2="${i}" aria-label="Remove the ${esc(linkLabel(url))} link">×</button></span>`).join('');
+    // checked again here: a row written around the app could hold a javascript: link; i stays the row's own index
+    const chips = (l.links || []).map((url, i) => !cleanLink(url) ? '' : `<span class="jr-link"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(url)}">${esc(linkLabel(url))} ↗</a><button class="pos-link" data-action="removeReviewLink" data-arg="${esc(l.value)}" data-arg2="${i}" aria-label="Remove the ${esc(linkLabel(url))} link">×</button></span>`).join('');
     return `<div class="jr-links"><span class="jr-draft-q">${esc(lib.nameOf('tag', l.value))} links</span>${chips}
       <input type="url" id="reviewLinkInput" inputmode="url" autocomplete="off" placeholder="Paste an Unusual Whales or Bullflow link" value="${esc(state.reviewLinkDraft || '')}" data-input="reviewLinkInput" data-enter="addReviewLink" data-arg="${esc(l.value)}" aria-label="Add a link" />
       <button class="btn" data-action="addReviewLink" data-arg="${esc(l.value)}">Add</button></div>`;

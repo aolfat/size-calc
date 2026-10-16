@@ -82,6 +82,13 @@ export function loadPending() {
   readJson('cloud_pending', []).forEach(k => state.cloudPending.add(k));
 }
 
+// the Schwab login goes through the worker URL, so one the account changed waits for a yes on this device
+// (someone in your Google account could otherwise route your next Schwab login through their own worker)
+function applySynced(k, v) {
+  if (k === 'schwab_proxy' && (store.get(k) || '') !== v) store.set('schwab_proxy_confirm', v);
+  store.set(k, v);
+}
+
 function savePending() { store.set('cloud_pending', JSON.stringify([...state.cloudPending])); }
 
 export function markPending(k) {
@@ -185,7 +192,7 @@ export async function cloudPull() {
       try {
         for (const r of fresh) {
           if (!CLOUD_KEYS.includes(r.key) || state.cloudPending.has(r.key)) continue;
-          if (store.get(r.key) !== r.value) { store.set(r.key, r.value); changed = true; }
+          if (store.get(r.key) !== r.value) { applySynced(r.key, r.value); changed = true; }
         }
         // a key typed while Vault answered is newer than Vault's
         const keptHere = state.cloudPending.has('tradier_key') || store.get('tradier_key') !== keyBefore;
@@ -245,7 +252,7 @@ export async function cloudFirstSignIn() {
     const dropped = foreign ? state.cloudPending.size : 0;
     state.cloudSuppress = true;
     try {
-      for (const [k, v] of Object.entries(m.settings)) store.set(k, v);
+      for (const [k, v] of Object.entries(m.settings)) applySynced(k, v);
       m.clear.filter(k => !KEPT_ON_SIGN_OUT.includes(k)).forEach(k => store.del(k));
       if (m.key) store.set('tradier_key', m.key);
       else if (foreign) store.del('tradier_key');

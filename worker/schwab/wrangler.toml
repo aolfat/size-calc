@@ -3,8 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-08-01"
 
 [vars]
-# Legacy address: replace both values with the dedicated host before redeploying.
-# Credential entry is disabled on github.io. See ../app/README.md.
+# Moving the app to its own host (../app/README.md) means changing both values.
 # must match the callback URL in your Schwab app exactly (scheme, host, port, path, trailing slash)
 SCHWAB_CALLBACK_URL = "https://aolfat.github.io/size-calc/"
 # pages allowed to call this worker from a browser, comma separated

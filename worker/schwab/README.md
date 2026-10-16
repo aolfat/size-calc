@@ -86,10 +86,11 @@ again.
   browser can set. A stolen refresh token gets fresh access tokens until Schwab
   ends the login, up to 7 days.
 - Serve the app from its own origin, list only that in `ALLOWED_ORIGINS`, and
-  keep other pages off it. The app clears old credentials when opened on
-  `github.io` and disables sign-in and API-key entry there. Deploying code does
-  not update Schwab or Supabase callback settings; follow the app host's
-  migration steps before inviting users to connect brokerage accounts.
+  keep other pages off it. The app runs on `aolfat.github.io`, which is safe
+  only while no other Pages site is published under that account. Before
+  adding one, or inviting users to connect brokerage accounts, move the app to
+  its own host (`../app/README.md`): deploying code does not update Schwab or
+  Supabase callback settings.
 - Supabase Vault encrypts synced Tradier keys at rest, but the database
   administrator can decrypt them. Settings discloses this separately from the
   Schwab worker's token access. Neither storage path is operator-blind.
