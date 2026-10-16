@@ -2,6 +2,7 @@
 // The publishable key is public by design: row-level security on every table is what keeps users apart.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
+import { assertCredentialOrigin } from '../lib/credential-origin.js';
 
 export const SUPABASE_URL = 'https://dhohfavttsxwutanvcuj.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_EEi7-I4tYXabRcpSWZpNJw_tqwEZXwQ';
@@ -13,6 +14,7 @@ export function hasStoredSession() { return !!store.get(SESSION_KEY); }
 
 /** the one client, created on first use; tests put a fake in state.supabase */
 export async function supabaseClient() {
+  assertCredentialOrigin();
   if (state.supabase) return state.supabase;
   if (!state.supabaseLoading) {
     state.supabaseLoading = import('../../vendor/supabase.js').then(m => m.createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -37,6 +39,7 @@ export function appUrl(href) {
 
 /** start Google sign-in: the browser leaves for Google and comes back to the app */
 export async function signInWithGoogle(href) {
+  assertCredentialOrigin(href);
   const client = await supabaseClient();
   const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: appUrl(href) + '?login=google' } });
   if (error) throw error;
@@ -66,5 +69,10 @@ export async function currentSession() {
 export async function signOutSupabase() {
   const client = await supabaseClient();
   // local scope: signing out here leaves your other devices signed in. Offline, the local session is dropped anyway
-  await client.auth.signOut({ scope: 'local' }).catch(() => {});
+  try { await client.auth.signOut({ scope: 'local' }); } catch(e) {
+    // The network may fail, but this browser must not restore the old login after reload.
+  } finally {
+    store.del(SESSION_KEY);
+    store.del(SESSION_KEY + '-code-verifier');
+  }
 }

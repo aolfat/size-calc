@@ -9,7 +9,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { instructionWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords } from '../core/journal.js';
 import { BARS_KEEP_DAYS, nyDay, weekdaysBetween } from '../core/bars.js';
-import { contextDays, dailyWindow, excursions, holdChartBars, holdView, rollUp, unpackBars } from '../core/trade-page.js';
+import { contextDays, dailyWindow, excursions, exitParts, holdChartBars, holdView, rollUp, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
 import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
@@ -17,7 +17,10 @@ import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
-import { journalTradeList, marketTime, openTradeReview } from './journal.js';
+import { journalTradeList, marketTime, openTradeReview, renderJournal } from './journal.js';
+import { onReviewChange, reviewSectionHtml } from './journal-review.js';
+import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
+import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -29,6 +32,8 @@ const savedInterval = () => { const iv = Number(store.get('journal_chart_iv')); 
 
 /** the trade on the page, as the Journal has it now (your stops, merges and deletes applied) */
 const pageTrade = () => state.journalTrade ? journalTradeList().find(t => t.key === state.journalTrade.key) || null : null;
+/** the trade on the page, for the Review section's actions */
+export const journalPageTrade = () => pageTrade();
 
 /** the trade's fills, oldest first */
 function tradeFills(t) {
@@ -51,6 +56,8 @@ function holdDays(t) {
 }
 
 export function openJournalTrade(key) {
+  // a fresh review: no half-picked setup, new-item box or note draft carried over from another trade
+  Object.assign(state, { shotView: null, shotDeleteArmed: false, setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNoteDraft: null, reviewMarketOwn: false });
   dropCharts(state.journalTrade);
   state.journalTrade = {
     key, five: [], daily: [], viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '',
@@ -62,19 +69,21 @@ export function openJournalTrade(key) {
   loadCharts(state.journalTrade);
 }
 
+/** back to the list, redrawn: what you just reviewed (setups, the reviewed mark) shows there; it ends the review deck too */
 export function closeJournalTrade() {
   dropCharts(state.journalTrade);
   state.journalTrade = null;
-  syncJournalPage();
+  state.journalDeck = null;
+  renderJournal();
 }
 
 export function editJournalTrade() {
   if (state.journalTrade) openTradeReview(state.journalTrade.key);
 }
 
-/** the list or the page: one shows at a time inside the Journal */
+/** the list or the page (a trade, or the review deck's end): one shows at a time inside the Journal */
 export function syncJournalPage() {
-  const page = !!state.journalTrade && state.journalView;
+  const page = (!!state.journalTrade || !!state.journalDeck?.finished) && state.journalView;
   document.getElementById('journalSection').style.display = state.journalView && !page ? '' : 'none';
   document.getElementById('journalTradeSection').style.display = page ? '' : 'none';
 }
@@ -128,6 +137,11 @@ async function loadCharts(p) {
 function statsHtml(t, ex) {
   const cell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
   const open = t.status === 'open';
+  // in the review deck, the result waits for the grade (the chart, fills and exit price stay: they judge the execution)
+  const hide = deckHidesPnl(t), wait = label => cell(label, '<span class="jt-wait">Grade first</span>', '<button class="pos-link" data-action="revealDeckPnl">Show</button>');
+  if (hide) return `<dl class="jt-stats">${[wait('P&amp;L'), wait('R'),
+    cell('MFE', '—', 'after grading'), cell('MAE', '—', 'after grading'), wait('Exit efficiency'),
+    cell('Hold', open ? 'open' : esc(holdWords(t.holdMs)), `opened ${esc(marketTime(t.openedAt))}`)].join('')}</dl>`;
   const cells = [
     cell('P&amp;L', open && !t.exits ? '—' : signed$(t.pnl), open ? 'open' : t.afterFees ? 'after fees' : 'before fees', open && !t.exits ? '' : pnlClass(t.pnl)),
     cell('R', t.r === null ? '—' : signedR(t.r), t.risk ? `risk ${fmt$(t.risk)}` : ''),
@@ -156,22 +170,29 @@ function stopsHtml(t) {
 export function renderJournalTrade() {
   const p = state.journalTrade;
   const head = document.getElementById('jtHead'), body = document.getElementById('jtBody');
-  if (!p || !head) return;
-  const t = pageTrade();
+  if (!p) { if (state.journalDeck?.finished) renderDeckEnd(); return; }
+  if (!head) return;
+  const list = journalTradeList();
+  syncJournalBadge(list);
+  const t = list.find(x => x.key === p.key) || null;
+  document.getElementById('journalTradeSection').classList.toggle('jt-decking', !!state.journalDeck);
   if (!t) {
     dropCharts(p);
-    head.innerHTML = `<div class="jt-head"><button class="pos-link" data-action="closeJournalTrade">← Trades</button></div>`;
+    head.innerHTML = `<div class="jt-head"><button class="pos-link" data-action="closeJournalTrade">← Trades</button></div>${state.journalDeck ? '<div class="jt-deck" id="jtDeckBar"><span class="jt-deck-acts"><button class="btn primary" data-action="deckNext">Next ›</button><button class="btn" data-action="endReviewDeck">Done</button></span></div>' : ''}`;
     body.innerHTML = '<p class="hint">This trade isn\'t in the journal any more.</p>';
     document.getElementById('jtCharts').style.display = 'none';
     return;
   }
   const side = t.bias === 'neutral' ? 'Neutral' : (t.bias || t.direction) === 'long' ? 'Long' : 'Short';
+  const x = exitParts(t);
+  const exit = !x ? '' : t.status === 'open' ? ` · ${x.closed} ${x.verb} at ${px(t.avgExit, t.assetType)}${x.avg ? ' avg' : ''}`
+    : ` → ${px(t.avgExit, t.assetType)}${x.avg ? ' avg' : ''}`;
   head.innerHTML = `<div class="jt-head">
       <button class="pos-link" data-action="closeJournalTrade">← Trades</button>
       <span class="section-title" id="jtTitle">${esc(t.label)}</span>
-      <span class="positions-meta">${side} ${t.entryQty} at ${t.status === 'history' ? '—' : px(t.avgEntry, t.assetType)}${t.avgExit !== null ? ` → ${px(t.avgExit, t.assetType)}` : ''}${t.status === 'open' ? ' · open' : ''}${t.expired ? ' · expired' : ''}</span>
+      <span class="positions-meta">${side} ${t.entryQty} at ${t.status === 'history' ? '—' : px(t.avgEntry, t.assetType)}${exit}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}</span>
       <span class="journal-actions"><button class="btn" data-action="editJournalTrade">Edit</button></span>
-    </div>`;
+    </div>${deckBarHtml(t)}`;
   const fills = tradeFills(t);
   const ex = excursions(t, p.five);
   const sym = chartSymbols(t);
@@ -183,19 +204,22 @@ export function renderJournalTrade() {
   document.getElementById('jtCanvas5').style.display = p.five.length && !p.libError ? '' : 'none';
   document.getElementById('jtCanvasD').style.display = p.daily.length && !p.libError ? '' : 'none';
   body.innerHTML = `${statsHtml(t, ex)}
+    ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
+    ${reviewSectionHtml(t)}
     ${fillsHtml(t, fills)}
     ${stopsHtml(t)}`;
   drawJournalTrade();
 }
 
-/** the lines on the trade's own chart: entry, exit, stop */
+/** the lines on the trade's own chart: entry, exit (the average of several, how much of it while open), stop; the axis tag carries each price */
 function tradeLines(t) {
   const css = getComputedStyle(document.documentElement), color = n => css.getPropertyValue(n).trim();
+  const x = exitParts(t);
   return [
     { price: t.avgEntry, color: color('--blue'), title: 'entry' },
-    { price: t.avgExit, color: color('--amber'), title: 'exit' },
+    { price: t.avgExit, color: color('--amber'), title: x ? `${x.avg ? 'avg exit' : 'exit'}${t.status === 'open' ? ` · ${x.closed} of ${t.entryQty}` : ''}` : 'exit' },
     { price: t.stop, color: color('--red'), title: t.stopSource === 'yours' ? 'your stop' : 'stop' },
   ].filter(l => l.price > 0);
 }
@@ -276,3 +300,12 @@ export function drawJournalTrade() {
     });
   }
 }
+
+/** the page's listeners: pasting and dropping screenshots (the charts' own come with the library) */
+export function initJournalTradeEvents() {
+  initTradeShotEvents(() => pageTrade());
+}
+
+// a review change redraws the page (the section, and the status line with it)
+onReviewChange(() => { if (state.journalTrade) renderJournalTrade(); });
+onShotsChange(() => { if (state.journalTrade) renderJournalTrade(); renderShotViewer(); });

@@ -1,9 +1,10 @@
 // Side effects behind one seam: clipboard text, share images, the returns simulator, reloading the page, waiting, file downloads,
-// and loading the chart library.
+// shrinking a screenshot, and loading the chart library.
 // Callers go through `effects`, so tests can observe or replace one without patching the module that owns it.
 import { copyPlainText } from './copy-text.js';
 import { drawShareCard, shareCanvasToClipboard } from './share-image.js';
 import { openSim } from './sim.js';
+import { prepareImage, readClipboardImages } from './image-prep.js';
 
 /** after signing out, start over from a clean page */
 export function reloadPage() { location.reload(); }
@@ -23,4 +24,4 @@ export function downloadText(name, text) {
 /** Lightweight Charts, loaded the first time a trade page draws a chart (tests swap in a fake) */
 export function loadChartLibrary() { return import('../../vendor/lightweight-charts.js'); }
 
-export const effects = { copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, loadChartLibrary };
+export const effects = { copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary };

@@ -315,3 +315,21 @@ test('markup and templates use data-action attributes, and every action name has
   assert.deepEqual([...named].filter(n => !handlers.has(n)), [], 'names without a handler');
   assert.deepEqual([...handlers].filter(n => !named.has(n)), [], 'handlers nothing uses');
 });
+
+test('every function an action handler calls is imported or defined in actions.js (the test harness puts every export in scope, so a missing import only fails in the browser)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/ui/actions.js', import.meta.url), 'utf8');
+  const known = new Set();
+  for (const m of src.matchAll(/^import\s*\{([^}]*)\}\s*from/gm)) for (const n of m[1].split(',')) { const name = n.trim().split(/\s+as\s+/).pop(); if (name) known.add(name); }
+  for (const m of src.matchAll(/^import\s+(\w+)\s+from/gm)) known.add(m[1]);
+  for (const m of src.matchAll(/^(?:export\s+)?(?:const|let|var|function|async function)\s+(\w+)/gm)) known.add(m[1]);
+  const builtins = new Set(['Number', 'String', 'Boolean', 'Math', 'parseFloat', 'parseInt', 'isNaN', 'setTimeout', 'clearTimeout', 'requestAnimationFrame', 'el', 'e', 'fn', 'arg', 'num']);
+  const body = src.slice(src.indexOf('export const actions'));
+  const missing = new Set();
+  for (const m of body.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+    const name = m[2];
+    if (['if', 'for', 'while', 'switch', 'return', 'typeof', 'new', 'catch', 'function', 'await'].includes(name)) continue;
+    if (!known.has(name) && !builtins.has(name)) missing.add(name);
+  }
+  assert.deepEqual([...missing], [], 'called by a handler but never imported');
+});

@@ -27,12 +27,15 @@ export function createState() {
     simReg: {}, // chain detail rows park their sim params here by option symbol
     session: null, // the signed-in Supabase session, or null
     sessionResuming: false, // a stored session is being read back (boot, or the poll's retry)
+    authSubscription: null, // observes sign-out and user changes from other tabs
+    signingOut: false, // the explicit sign-out owns cleanup and reload while Supabase emits SIGNED_OUT
     supabase: null, // the Supabase client, created on first use (tests put a fake here)
     supabaseLoading: null, // the one in-flight library load
     cloudSuppress: false, // true while applying server data or restoring storage, so those writes aren't edits
     cloudBusy: false, // the running push, pull or merge (a promise), or false
     cloudTimer: null,
     cloudPending: new Set(), // account keys changed here since the last successful push (persisted)
+    cloudKeyAsked: null, // the user whose Vault key this page load already asked for (a device without one asks once)
     signOutArmed: false, // a second Sign out discards edits that couldn't be sent
     quoteRequestId: 0, // bumped per Load: only the latest Load applies its answer and owns the spinner
     openSheetName: null,
@@ -58,13 +61,39 @@ export function createState() {
     journalLoading: false,
     journalError: '',
     barsBusy: false, // the journal is saving 5-minute bars
+    journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
+    journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
+    journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
+    journalReviewFilter: 'all', // the trades tab: all | todo (to review)
+    reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
+    journalShots: null, // your screenshots once read: [{ id, trade_key, path, caption, width, height, bytes, created_at }]
+    journalShotsError: '', // they couldn't be read (the migration not pushed yet, say)
+    journalShotUrls: {}, // path → signed link (an hour)
+    shotsBusy: 0, // screenshots being shrunk and kept
+    shotView: null, // the screenshot open in the viewer (its id)
+    shotDeleteArmed: false, // Delete was tapped once: the next tap deletes
+    setupDraft: null, // + New setup being made: { action, levels, pattern, name }
+    reviewLinkDraft: '', // a link being pasted under Option flow
+    reviewNewKind: '', // + New is open for this kind
+    reviewNewName: '', // what's typed in it
+    reviewNoteDraft: null, // { key, text }: the note being typed, so a redraw never loses it
+    journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
     chartLibLoading: null, // the one in-flight library load
-    journalTab: 'trades', // trades | calendar | stats | fills
+    journalTab: 'trades', // trades | calendar | stats | books | fills
+    modelBooks: {
+      owner: '', loading: false, pending: null, loaded: false, error: '',
+      books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'books',
+      draft: null, bookDraft: null, busy: false, preparing: false, deleteKey: '',
+      viewerId: '', signing: false, imageError: '',
+    },
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
+    journalPeriod: 'all', // the stats cover: all | day | week | month
+    journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday) or 'YYYY-MM'; empty = the newest with closed trades
+    journalPeriodShown: '', // the period the stats last showed (‹ › step from it)
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
     tradeReviews: null, // your word on each trade, by trade key: { stop, deleted }, once read
@@ -136,6 +165,7 @@ export function createState() {
     captureBusy: false, // raw capture is reading Schwab and saving to Supabase
     captureError: '', // the last capture's failure, shown on its status line
     schwabProxyEditing: false, // Change pressed: the worker URL box stays open until you leave it
+    schwabProxyConfirming: null, // Log in pressed once on a worker URL synced from the account: the second press uses it
     acctSizeBusy: false, // the daily account size read is in flight
     tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent
     tradeBusy: false,

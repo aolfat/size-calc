@@ -152,11 +152,26 @@ test('switching tickers can load a new options chain while the previous chain is
   app.element('ticker').value = 'B';
   const newRequest = app.run("fetchChain('B', selectedExp, true)");
   assert.equal(typeof pending.B, 'function');
-  pending.B({json: async () => ({options: {option: {symbol:'B-option'}}})});
+  pending.B({json: async () => ({options: {option: {symbol:'B261016C00010000', strike: 10}}})});
   await newRequest;
-  pending.A({json: async () => ({options: {option: {symbol:'A-option'}}})});
+  pending.A({json: async () => ({options: {option: {symbol:'A261016C00010000', strike: 10}}})});
   await oldRequest;
-  assert.equal(app.run('chainData[0].symbol'), 'B-option');
+  assert.equal(app.run('chainData[0].symbol'), 'B261016C00010000');
+});
+
+test("a chain keeps only well-formed contracts, since their symbols and strikes go into the table's markup", async () => {
+  let answer;
+  const app = await appContext(() => new Promise(resolve => { answer = resolve; }));
+  app.run("selectedExp = '2026-10-16';");
+  const request = app.run("fetchChain('B', selectedExp, true)");
+  answer({ json: async () => ({ options: { option: [
+    { symbol: 'B261016C00010000', strike: '10' },
+    { symbol: '<img src=x>261016C00010000', strike: 10 },
+    { symbol: 'B261016P00010000', strike: '10<b>' },
+    { symbol: 'SPXW261016P05800000', strike: 5800 },
+  ] } }) });
+  await request;
+  assert.deepEqual(JSON.parse(app.run('JSON.stringify(chainData.map(o => [o.symbol, o.strike]))')), [['B261016C00010000', 10], ['SPXW261016P05800000', 5800]]);
 });
 
 test('a failure after a successful batch still rejects the whole refresh', async () => {

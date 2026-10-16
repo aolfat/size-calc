@@ -106,6 +106,18 @@ test('excursions: the best and worst while it was open, in dollars and R, and th
   assert.equal(run(`excursions(${JSON.stringify(long)}, [])`), null, 'no bars, no numbers');
 });
 
+test('the exit in words: one price or the average of several, and how much is closed while it\'s open', async () => {
+  const { run } = await app();
+  const t = { avgExit: 0.71, exits: 3, entryQty: 100, openQty: 40, direction: 'long', status: 'open' };
+  assert.deepEqual(json(run, `exitParts(${JSON.stringify(t)})`), { avg: true, closed: 60, verb: 'sold' });
+  assert.equal(run(`exitLineLabel(${JSON.stringify(t)})`), 'avg exit 0.71 · 60 of 100', 'trimmed, still open');
+  assert.equal(run(`exitLineLabel(${JSON.stringify({ ...t, openQty: 0, status: 'win' })})`), 'avg exit 0.71', 'closed in pieces');
+  assert.equal(run(`exitLineLabel(${JSON.stringify({ ...t, exits: 1, openQty: 0, status: 'win' })})`), 'exit 0.71', 'one exit');
+  assert.equal(json(run, `exitParts(${JSON.stringify({ ...t, direction: 'short' })})`).verb, 'bought back');
+  assert.equal(json(run, `exitParts(${JSON.stringify({ ...t, legs: [] })})`).verb, 'closed', 'a spread');
+  assert.equal(run(`exitParts(${JSON.stringify({ ...t, avgExit: null, exits: 0 })})`), null, 'nothing closed yet');
+});
+
 // ---------- the page ----------
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
@@ -214,6 +226,23 @@ test("the chart library didn't load: the page says so and keeps the rest", async
   await settle();
   assert.match(elements.get('jtStatus5').textContent, /Couldn't load the charts/);
   assert.match(body(), /<dt>MFE<\/dt>/);
+});
+
+test('an open trade trimmed twice: how much was sold at what average, and how much is still open', async () => {
+  const supabase = fakeRecords([{ kind: 'order', record_id: '601', account: '6789', entered_at: '2026-10-01T14:30:00Z', data: {
+    ...ENTRY, orderId: 601, childOrderStrategies: [] } },
+  ...[[602, 30, 101, '2026-10-02T15:00:00+0000'], [603, 30, 103, '2026-10-05T15:00:00+0000']].map(([id, qty, price, time]) => ({
+    kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), data: {
+      orderId: id, enteredTime: time, status: 'FILLED',
+      orderLegCollection: [{ legId: 1, instruction: 'SELL', quantity: qty, instrument: { symbol: 'AAPL', assetType: 'EQUITY' } }],
+      orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: qty, price, time }] }],
+    } }))]);
+  const a = await app({ supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  a.run(`openJournalTrade('${KEY}')`);
+  await settle();
+  assert.match(a.elements.get('jtHead').innerHTML, /Long 100 at \$100\.02 · 60 sold at \$102\.00 avg · 40 open</);
 });
 
 test('with a key: the daily chart from Tradier, framed on the trade', async t => {

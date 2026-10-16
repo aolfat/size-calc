@@ -13,7 +13,7 @@ const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const connected = (extra = []) => new Map([
   ['schwab_proxy', PROXY],
-  ['schwab_tokens', JSON.stringify({ access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
+  ['schwab_tokens', JSON.stringify({ userId: SESSION.user.id, proxy: PROXY, connectionId: 'test-connection', access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
   ['schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }])],
   ['schwab_account', 'HASH1'],
   ...extra,
@@ -107,7 +107,7 @@ test('the automatic save runs only when due, and quietly; Save now runs any time
 
 test('a new import sends only what changed: new trades, new orders, and orders whose copy changed', async () => {
   const w = world();
-  const { run, elements } = await app({ fetch: w.fetch, storage: connected(), supabase: w.supabase, session: SESSION });
+  const { run, elements, advance } = await app({ fetch: w.fetch, storage: connected(), supabase: w.supabase, session: SESSION, clock: true });
   await run(`captureSchwab(${NOW})`);
   const first = w.saved.length;
   // the next day: order 103 got canceled (its copy changed), a new order and a new trade came in, the rest is the same
@@ -120,8 +120,16 @@ test('a new import sends only what changed: new trades, new orders, and orders w
   assert.equal(w.supabase.table.get('user-1:order:103').data.status, 'CANCELED', 'the newer copy replaced the kept one');
   assert.equal(run('importWords(lastCapture())'), '1 new trade, 1 new order, 1 order updated, 2 already kept');
 
-  run("setView('journal')");
-  assert.match(elements.get('journalSection').innerHTML, /Last import .*: 1 new trade, 1 new order, 1 order updated, 2 already kept/);
+  // opening the Journal imports quietly once 6 hours have passed (captureDue): read it at the import's own time,
+  // then put the clock back, since the next test's connected() runs before app() swaps Date again
+  const toImport = NOW + DAY - run('Date.now()');
+  await advance(toImport);
+  try {
+    run("setView('journal')");
+    assert.match(elements.get('journalSection').innerHTML, /Last import .*: 1 new trade, 1 new order, 1 order updated, 2 already kept/);
+  } finally {
+    await advance(-toImport);
+  }
 });
 
 test('a key-order change is not a change, and a row kept before fingerprints is filled in quietly', async () => {
@@ -150,4 +158,32 @@ test('the rows builder keeps ids as text and times as ISO', async () => {
   assert.deepEqual(out.rows.map(r => [r.kind, r.record_id, r.entered_at]), [['order', '5', '2026-09-01T14:00:00.000Z'], ['transaction', '7', null]]);
   assert.equal(run(`transactionStart(${NOW})`), NOW - 365 * DAY);
   assert.equal(run(`transactionStart(${NOW}, ${NOW - DAY})`), NOW - 8 * DAY);
+});
+
+test('an import in flight cannot save one Google user\'s broker data into another account', async () => {
+  const w = world();
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const fetch = async (...args) => { await gate; return w.fetch(...args); };
+  const { run, state } = await app({ fetch, storage: connected(), supabase: w.supabase, session: SESSION });
+  const importing = run(`captureSchwab(${NOW})`);
+  state.session = { user: { id: 'someone-else' } };
+  release();
+  await assert.rejects(importing, /changed/);
+  assert.equal(w.saved.length, 0);
+});
+
+test('a broker account switch while an import is in flight cancels it without mixing accounts', async () => {
+  const w = world();
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const fetch = async (...args) => { await gate; return w.fetch(...args); };
+  const storage = connected();
+  const { run } = await app({ fetch, storage, supabase: w.supabase, session: SESSION });
+  const importing = run(`captureSchwab(${NOW})`);
+  storage.set('schwab_accounts', JSON.stringify([{ hash: 'HASH2', last4: '2222' }]));
+  storage.set('schwab_account', 'HASH2');
+  release();
+  await assert.rejects(importing, /changed/);
+  assert.equal(w.saved.length, 0);
 });

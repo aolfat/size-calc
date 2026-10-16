@@ -7,7 +7,7 @@ import { app } from './helpers/app.mjs';
 
 const USER = { id: 'user-1', email: 'me@example.com' };
 const SESSION = { user: USER, access_token: 'jwt' };
-const GOOGLE_RETURN = 'https://aolfat.github.io/size-calc/?login=google&code=abc';
+const GOOGLE_RETURN = 'https://size-calc.example.workers.dev/?login=google&code=abc';
 const SESSION_KEY = 'sb-dhohfavttsxwutanvcuj-auth-token';
 
 /** a fake Supabase client over in-memory tables; rows get server-side updated_at stamps like the real triggers */
@@ -104,7 +104,7 @@ test('the first device fills an empty account and drops the old sync keys', asyn
   assert.equal(elements.get('signOutBtn').style.display, '');
   assert.equal(elements.get('signInBtn').style.display, 'none');
   assert.match(elements.get('accountEmail').textContent, /me@example\.com/);
-  assert.match(elements.get('accountHint').textContent, /Signing out keeps Schwab logged in here/);
+  assert.match(elements.get('accountHint').textContent, /Signing out disconnects Schwab/);
   assert.equal(state.cloudPending.size, 0, 'the merge itself is not a pending edit');
 });
 
@@ -207,7 +207,7 @@ test('an old return address without a session here says the sign-in failed', asy
 test("Google's refusal is shown, and nothing is swapped", async () => {
   const supabase = fakeSupabase();
   const { run, elements } = await app({ supabase });
-  await run("initCloud('https://aolfat.github.io/size-calc/?login=google&error=access_denied&error_description=You%20said%20no')");
+  await run("initCloud('https://size-calc.example.workers.dev/?login=google&error=access_denied&error_description=You%20said%20no')");
   assert.ok(!supabase.calls.some(c => c[0] === 'exchange'));
   assert.match(elements.get('errorBox').textContent, /You said no/);
 });
@@ -215,11 +215,11 @@ test("Google's refusal is shown, and nothing is swapped", async () => {
 test('Sign in with Google asks to come back to the app with the login marker', async () => {
   const supabase = fakeSupabase();
   const { run } = await app({ supabase });
-  run("location = { href: 'https://aolfat.github.io/size-calc/?x=1#market' }");
+  run("location = { href: 'https://size-calc.example.workers.dev/?x=1#market' }");
   await run('signIn()');
   const [, opts] = supabase.calls.find(c => c[0] === 'oauth');
   assert.equal(opts.provider, 'google');
-  assert.equal(opts.options.redirectTo, 'https://aolfat.github.io/size-calc/?login=google');
+  assert.equal(opts.options.redirectTo, 'https://size-calc.example.workers.dev/?login=google');
 });
 
 // ---------- while signed in ----------
@@ -291,6 +291,24 @@ test("a Tradier key typed while a pull fetches the account's key is kept and sen
   assert.deepEqual([...state.cloudPending], ['tradier_key']);
   await run('cloudPush()');
   assert.equal(supabase.db.key, 'TK-typed');
+});
+
+test("a device whose key was removed gets the account's back, though its stamp was seen long ago", async () => {
+  const supabase = fakeSupabase({ key: 'TK-cloud' });
+  supabase.db.settings.push({ user_id: USER.id, key: 'tradier_key_at', value: 'now', updated_at: '2026-10-09T12:00:01.000Z' });
+  const seen = JSON.stringify({ settings: '2026-10-09T12:00:01.000Z', keys: { tradier_key_at: '2026-10-09T12:00:01.000Z' } });
+  // a device that had the key, then lost it on this device only (the github.io block cleared it on load)
+  const { run, storage } = await app({ supabase, session: SESSION, storage: joined([['cloud_seen', seen]]) });
+  await run('cloudPull()');
+  assert.equal(storage.get('tradier_key'), 'TK-cloud');
+  assert.equal(storage.get('cloud_pending') ?? '[]', '[]', 'restoring it is not an edit');
+
+  const empty = fakeSupabase();
+  const none = await app({ supabase: empty, session: SESSION, storage: joined([['cloud_seen', seen]]) });
+  await none.run('cloudPull()');
+  await none.run('cloudPull()');
+  assert.equal(empty.calls.filter(c => c[1] === 'get_tradier_key').length, 1, 'an account without a key is asked once a page load, not every poll');
+  assert.equal(none.storage.has('tradier_key'), false);
 });
 
 test('edits made after the session ended stay pending and reach the account after signing in again', async () => {
@@ -371,10 +389,134 @@ test("the Schwab worker URL from another device fills the Settings field, and si
   assert.equal(elements.get('schwabProxy').value, 'https://w.example', 'shown without a reload');
   await run('signOut()');
   assert.equal(storage.get('schwab_proxy'), 'https://w.example', "this device's Schwab login still needs its worker");
-  assert.equal(storage.get('schwab_tokens'), '{"refresh":"r"}', 'signing out of Google is not a Schwab logout');
+  assert.equal(storage.has('schwab_tokens'), false, 'signing out also disconnects Schwab');
+});
+
+test('a worker URL changed through the account waits for a second Log in press on this device', async () => {
+  const supabase = fakeSupabase({ settings: [{ key: 'schwab_proxy', value: 'https://w.example' }] });
+  const storage = joined([['schwab_proxy', 'https://mine.example']]);
+  const { run, elements } = await app({ supabase, session: SESSION, storage });
+  await run('cloudPull()');
+  assert.equal(storage.get('schwab_proxy_confirm'), 'https://w.example');
+  run('var opened = []; window.open = url => { opened.push(url); }; connectSchwab()');
+  assert.deepEqual([...run('opened')], [], 'the first press only asks');
+  assert.match(elements.get('schwabNote').textContent, /changed to w\.example through your account/);
+  elements.get('schwabRedirect').value = 'https://127.0.0.1/?code=c1';
+  assert.equal(await run('finishSchwab()'), false, 'no code goes to an unconfirmed worker');
+  run('connectSchwab()');
+  assert.equal(run('opened.length'), 1, 'the second press logs in through it');
+  assert.match(run('opened[0]'), /^https:\/\/w\.example\/login\?state=/);
+  assert.equal(storage.has('schwab_proxy_confirm'), false);
+
+  await run('cloudPull()');
+  assert.equal(storage.has('schwab_proxy_confirm'), false, 'the same URL again is no change');
+  storage.set('schwab_proxy_confirm', 'https://w.example');
+  elements.get('schwabProxy').value = 'https://typed.example';
+  run('schwabProxyChanged()');
+  assert.equal(storage.has('schwab_proxy_confirm'), false, 'a URL typed here needs no confirming');
 });
 
 // ---------- signing out ----------
+
+test('sign out removes brokerage credentials before waiting for Supabase to sign out', async () => {
+  const supabase = fakeSupabase();
+  let finish;
+  supabase.auth.signOut = () => new Promise(r => { finish = r; });
+  const storage = joined([
+    ['schwab_tokens', '{"refresh":"dummy"}'], ['schwab_accounts', '[{"hash":"HASH1","last4":"1111"}]'],
+    ['schwab_account', 'HASH1'], ['schwab_capture', '{"user":"user-1"}'], ['schwab_oauth_state', 'old-attempt'],
+  ]);
+  const { run } = await app({ supabase, session: SESSION, storage });
+  run('reloadPage = () => {}');
+  const out = run('signOut()');
+  await until(() => !!finish);
+  for (const k of ['schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_capture', 'schwab_oauth_state']) {
+    assert.equal(storage.has(k), false, k);
+  }
+  finish({ error: null });
+  await out;
+});
+
+test('a refused remote sign-out still removes the saved Google session on this device', async () => {
+  const supabase = fakeSupabase();
+  supabase.auth.signOut = async () => ({ error: { message: 'offline' } });
+  const storage = joined([[SESSION_KEY, 'dummy-session'], [SESSION_KEY + '-code-verifier', 'dummy-verifier']]);
+  const { run } = await app({ supabase, session: SESSION, storage });
+  run('reloadPage = () => {}');
+  await run('signOut()');
+  assert.equal(storage.has(SESSION_KEY), false);
+  assert.equal(storage.has(SESSION_KEY + '-code-verifier'), false);
+});
+
+test('a different Google user loses the previous brokerage connection even when cloud sync fails', async () => {
+  const supabase = fakeSupabase();
+  supabase.fail({ status: 500, message: 'offline' });
+  const storage = new Map([
+    ['cloud_user', 'someone-else'], ['schwab_proxy', 'https://worker.example'],
+    ['schwab_tokens', JSON.stringify({ userId: 'someone-else', proxy: 'https://worker.example', connectionId: 'old', access: 'dummy', refresh: 'dummy', refreshExp: Date.now() + 86400000 })],
+    ['schwab_accounts', '[{"hash":"HASH1","last4":"1111"}]'], ['schwab_account', 'HASH1'],
+  ]);
+  const { run } = await app({ supabase, storage });
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+  for (const k of ['schwab_tokens', 'schwab_accounts', 'schwab_account']) assert.equal(storage.has(k), false, k);
+});
+
+test('a sign-in from another tab disconnects the old broker login before reloading', async () => {
+  const supabase = fakeSupabase();
+  let changed;
+  supabase.auth.onAuthStateChange = fn => { changed = fn; return { data: { subscription: {} } }; };
+  const storage = joined([['schwab_tokens', JSON.stringify({ userId: USER.id, proxy: '', connectionId: 'old', refresh: 'dummy', refreshExp: Date.now() + 86400000 })]]);
+  const { run, state } = await app({ supabase, session: SESSION, storage });
+  run('reloadPage = () => { globalThis.reloaded = true }; globalThis.reloaded = false');
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+  assert.equal(typeof changed, 'function');
+  changed('SIGNED_IN', { user: { id: 'another-user' } });
+  assert.equal(state.session, null);
+  assert.equal(storage.has('schwab_tokens'), false);
+  assert.equal(run('globalThis.reloaded'), true);
+  assert.equal(storage.get('cloud_user'), USER.id, 'the old owner marker prevents their settings from being uploaded on reload');
+});
+
+test('a pending cloud save cannot send the previous user\'s API key after an account switch', async () => {
+  const supabase = fakeSupabase();
+  const { run, state } = await app({ supabase, session: SESSION, storage: joined() });
+  run("store.set('calc_risk', '2'); store.set('tradier_key', 'dummy-alice-key')");
+  const release = supabase.hold('upsert');
+  const saving = run('cloudPush()');
+  await until(() => supabase.calls.some(c => c[0] === 'upsert'));
+  state.session = { user: { id: 'another-user' } };
+  release();
+  assert.equal(await saving, false);
+  assert.equal(supabase.calls.some(c => c[0] === 'rpc' && c[1] === 'set_tradier_key'), false);
+});
+
+test('a late key read cannot populate the device after the Google account changes', async () => {
+  const supabase = fakeSupabase({ key: 'dummy-alice-key' });
+  supabase.db.settings.push({ user_id: USER.id, key: 'tradier_key_at', value: 'now', updated_at: '2030-01-01T00:00:00Z' });
+  const storage = joined();
+  const { run, state } = await app({ supabase, session: SESSION, storage });
+  const release = supabase.hold('get_tradier_key');
+  const pulling = run('cloudPull()');
+  await until(() => supabase.calls.some(c => c[1] === 'get_tradier_key'));
+  state.session = { user: { id: 'another-user' } };
+  release();
+  await pulling;
+  assert.equal(storage.has('tradier_key'), false);
+});
+
+test('a first sign-in merge stops if its Google account changes while reading the cloud', async () => {
+  const supabase = fakeSupabase({ key: 'dummy-alice-key' });
+  const storage = new Map();
+  const { run, state } = await app({ supabase, session: SESSION, storage });
+  const release = supabase.hold('get_tradier_key');
+  const merging = run('cloudFirstSignIn()');
+  await until(() => supabase.calls.some(c => c[1] === 'get_tradier_key'));
+  state.session = { user: { id: 'another-user' } };
+  release();
+  await assert.rejects(merging, /account changed/);
+  assert.equal(storage.has('tradier_key'), false);
+  assert.equal(storage.has('cloud_user'), false);
+});
 
 test('sign out sends pending edits, clears synced data from the device, and starts over', async () => {
   const supabase = fakeSupabase();

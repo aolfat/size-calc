@@ -12,7 +12,7 @@ const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const connected = () => new Map([
   ['schwab_proxy', PROXY],
-  ['schwab_tokens', JSON.stringify({ access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
+  ['schwab_tokens', JSON.stringify({ userId: SESSION.user.id, proxy: PROXY, connectionId: 'test-connection', access: 'acc-1', accessExp: Date.now() + 20 * 60000, refresh: 'ref-1', refreshExp: Date.now() + 5 * DAY })],
   ['schwab_accounts', JSON.stringify([{ hash: 'HASH1', last4: '6789' }])],
   ['schwab_account', 'HASH1'],
 ]);
@@ -69,7 +69,7 @@ test('Journal is a header tab between Positions and Tools, with an icon for the 
 
 test('the open tab rides in the address, so a reload on the Journal opens it again with your records', async t => {
   const urls = [];
-  globalThis.location = { href: 'https://aolfat.github.io/size-calc/#journal', pathname: '/size-calc/', search: '', hash: '#journal' };
+  globalThis.location = { href: 'https://size-calc.example.workers.dev/size-calc/#journal', pathname: '/size-calc/', search: '', hash: '#journal' };
   globalThis.history = { replaceState: (_, __, url) => { urls.push(url); globalThis.location.hash = url.includes('#') ? url.slice(url.indexOf('#')) : ''; } };
   t.after(() => { delete globalThis.location; delete globalThis.history; });
   const supabase = fakeSupabase();
@@ -101,7 +101,7 @@ test('a stored session that is gone leaves the Journal asking you to sign in', a
   const storage = new Map([['sb-dhohfavttsxwutanvcuj-auth-token', '{"access_token":"old"}']]);
   const { run, elements } = await app({ storage, supabase });
   run("setView('journal')");
-  await run("initCloud('https://aolfat.github.io/size-calc/#journal')");
+  await run("initCloud('https://size-calc.example.workers.dev/size-calc/#journal')");
   assert.match(elements.get('journalSection').innerHTML, /Sign in to keep your journal/);
 });
 
@@ -148,8 +148,8 @@ test('Trades is the default view: fills grouped into trades, with P&L, R, hold t
   const rows = [...out.matchAll(/<tr( class="journal-open")? data-action="openTradeRow" data-arg="[^"]*">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name"[^>]*><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
   assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
   assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L and R lead, so phones see them before scrolling');
-  assert.match(out, /<tr data-action="openTradeRow" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><\/div><\/div><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-buy">Long<\/td>/);
-  assert.match(out, /<th scope="col">R<\/th><th scope="col">Stop<\/th>/);
+  assert.match(out, /<tr data-action="openTradeRow" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><\/div><\/div><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-setups-none">—<\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<th scope="col">R<\/th><th scope="col">Stop<\/th><th scope="col">Setups<\/th><th scope="col">Side<\/th>/);
   assert.match(out, /aria-label="Set a stop for AAPL 12\/18\/26 245C">Set<\/button><span class="pos-sub">premium<\/span>/, 'the call has no stop: Set, and the premium is its risk');
   assert.match(out, /<td>2d 0h<\/td>/);
   assert.match(out, /P&amp;L is before fees/);
