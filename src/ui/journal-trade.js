@@ -1,25 +1,31 @@
 // Journal trade page (#journalTradeSection, state.journalTrade; journal step 2, slice 3): one trade full width, opened from
 // its row. The 5-minute chart from the saved bars (services/bars.js: the stock's, or an option contract's own; a spread
-// shows its underlying) and the daily chart from Tradier, both with the fills marked and entry, exit and stop drawn; the
+// shows its underlying; the two weeks before it straight from Tradier for context) and the daily chart from Tradier, drawn by
+// Lightweight Charts (ui/journal-trade-chart.js), both with the fills marked, entry, exit and stop on the trade's own chart,
+// each with its toolbar (intervals 5m to 65m, kept on this device as journal_chart_iv; daily ranges; log scale); the
 // excursions (core/trade-page.js: MFE, MAE, exit efficiency); the fills; and the stop orders over time. Edit opens the
 // trade sheet (your stop, separate, delete).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { instructionWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords } from '../core/journal.js';
 import { BARS_KEEP_DAYS, nyDay, weekdaysBetween } from '../core/bars.js';
-import { dailyWindow, excursions, fillMarks, holdChartBars, nyStamp, unpackBars } from '../core/trade-page.js';
+import { contextDays, dailyWindow, excursions, holdChartBars, holdView, rollUp, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
-import { loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
+import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
+import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
-import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
+import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
 import { journalTradeList, marketTime, openTradeReview } from './journal.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
+const INTERVALS = [5, 15, 30, 65];
+const RANGES = [['trade', 'Trade'], ['63', '3M'], ['126', '6M'], ['252', '1Y']];
+const savedInterval = () => { const iv = Number(store.get('journal_chart_iv')); return INTERVALS.includes(iv) ? iv : 5; };
 
 /** the trade on the page, as the Journal has it now (your stops, merges and deletes applied) */
 const pageTrade = () => state.journalTrade ? journalTradeList().find(t => t.key === state.journalTrade.key) || null : null;
@@ -45,7 +51,11 @@ function holdDays(t) {
 }
 
 export function openJournalTrade(key) {
-  state.journalTrade = { key, five: [], daily: [], view5: { count: 78, offset: 0 }, viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '', hover5: -1, hoverY5: -1, hoverD: -1, hoverYD: -1 };
+  dropCharts(state.journalTrade);
+  state.journalTrade = {
+    key, five: [], daily: [], viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '',
+    iv: savedInterval(), rangeD: 'trade', log: { 5: false, D: false }, rolled: null, charts: {}, libWait: false, libError: '',
+  };
   syncJournalPage();
   renderJournalTrade();
   window.scrollTo?.({ top: 0 });
@@ -53,6 +63,7 @@ export function openJournalTrade(key) {
 }
 
 export function closeJournalTrade() {
+  dropCharts(state.journalTrade);
   state.journalTrade = null;
   syncJournalPage();
 }
@@ -78,15 +89,18 @@ async function loadCharts(p) {
     p.loading5 = true;
     renderJournalTrade();
     try {
+      // the sessions before the open, for context: straight from Tradier while it keeps them, never saved
+      const before = tradierKeyHere() ? contextDays(t, Date.now()) : [];
+      const context = before.length ? fetchTradeBars(sym.five, before).catch(() => []) : Promise.resolve([]);
       let rows = await loadTradeBars(sym.five, days);
       const recent = days.filter(d => d >= nyDay(Date.now() - BARS_KEEP_DAYS * 864e5) && d < nyDay(Date.now()));
       if (rows.length < recent.length && tradierKeyHere()) {
         await saveTradeBars(t.legs || [t]);
         rows = await loadTradeBars(sym.five, days);
       }
-      p.five = holdChartBars(unpackBars(rows), tradeFills(t));
-      p.view5 = { count: p.five.length || 78, offset: 0 };
-      p.status5 = p.five.length ? '' : !tradierKeyHere() && !rows.length ? "Add a Tradier key in Settings to load this trade's 5-minute bars."
+      const held = (await context).filter(r => !rows.some(x => x.day === r.day));
+      p.five = holdChartBars(unpackBars([...held, ...rows]), tradeFills(t));
+      p.status5 = holdChartBars(unpackBars(rows), tradeFills(t)).length ? '' : !tradierKeyHere() && !rows.length ? "Add a Tradier key in Settings to load this trade's 5-minute bars."
         : days[days.length - 1] < nyDay(Date.now() - BARS_KEEP_DAYS * 864e5) ? 'No 5-minute bars were saved for this trade: Tradier keeps about 40 days, and the journal saves them as you go.'
         : 'No 5-minute bars for this trade yet. Today\'s session is saved once it ends.';
     } catch(e) {
@@ -101,7 +115,7 @@ async function loadCharts(p) {
   p.loadingD = true;
   renderJournalTrade();
   try {
-    p.daily = (await dailyHistory(sym.daily)).map(d => ({ date: d.date, open: +d.open, high: +d.high, low: +d.low, close: +d.close }));
+    p.daily = (await dailyHistory(sym.daily)).map(d => ({ date: d.date, open: +d.open, high: +d.high, low: +d.low, close: +d.close, volume: +d.volume || 0 }));
     p.viewD = dailyWindow(p.daily, t);
     p.statusD = p.daily.length ? '' : `Tradier has no daily history for ${sym.daily}.`;
   } catch(e) {
@@ -145,6 +159,7 @@ export function renderJournalTrade() {
   if (!p || !head) return;
   const t = pageTrade();
   if (!t) {
+    dropCharts(p);
     head.innerHTML = `<div class="jt-head"><button class="pos-link" data-action="closeJournalTrade">← Trades</button></div>`;
     body.innerHTML = '<p class="hint">This trade isn\'t in the journal any more.</p>';
     document.getElementById('jtCharts').style.display = 'none';
@@ -161,12 +176,12 @@ export function renderJournalTrade() {
   const ex = excursions(t, p.five);
   const sym = chartSymbols(t);
   document.getElementById('jtCharts').style.display = '';
-  document.getElementById('jtKind5').textContent = `5 min · ${sym.five}`;
-  document.getElementById('jtKindD').textContent = `Daily · ${sym.daily}`;
-  document.getElementById('jtStatus5').textContent = p.loading5 ? 'Loading the 5-minute bars…' : p.status5;
-  document.getElementById('jtStatusD').textContent = p.loadingD ? 'Loading the daily chart…' : p.statusD;
-  document.getElementById('jtCanvas5').style.display = p.five.length ? '' : 'none';
-  document.getElementById('jtCanvasD').style.display = p.daily.length ? '' : 'none';
+  renderTools(p);
+  const libError = p.libError ? `Couldn't load the charts: ${p.libError}` : '';
+  document.getElementById('jtStatus5').textContent = p.loading5 ? 'Loading the 5-minute bars…' : p.status5 || (p.five.length ? libError : '');
+  document.getElementById('jtStatusD').textContent = p.loadingD ? 'Loading the daily chart…' : p.statusD || (p.daily.length ? libError : '');
+  document.getElementById('jtCanvas5').style.display = p.five.length && !p.libError ? '' : 'none';
+  document.getElementById('jtCanvasD').style.display = p.daily.length && !p.libError ? '' : 'none';
   body.innerHTML = `${statsHtml(t, ex)}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
@@ -178,70 +193,86 @@ export function renderJournalTrade() {
 /** the lines on the trade's own chart: entry, exit, stop */
 function tradeLines(t) {
   const css = getComputedStyle(document.documentElement), color = n => css.getPropertyValue(n).trim();
-  const lines = [];
-  if (t.avgEntry > 0) lines.push({ price: t.avgEntry, color: color('--blue'), label: 'entry ' + t.avgEntry.toFixed(2), left: true });
-  if (t.avgExit > 0) lines.push({ price: t.avgExit, color: color('--amber'), label: 'exit ' + t.avgExit.toFixed(2) });
-  if (t.stop > 0) lines.push({ price: t.stop, color: color('--red'), label: `${t.stopSource === 'yours' ? 'your stop' : 'stop'} ${t.stop.toFixed(2)}` });
-  return lines;
+  return [
+    { price: t.avgEntry, color: color('--blue'), title: 'entry' },
+    { price: t.avgExit, color: color('--amber'), title: 'exit' },
+    { price: t.stop, color: color('--red'), title: t.stopSource === 'yours' ? 'your stop' : 'stop' },
+  ].filter(l => l.price > 0);
 }
 
-function geom(which, w) {
-  const p = state.journalTrade, t = pageTrade();
-  const bars = which === '5' ? p.five : p.daily;
-  const own = which === '5' && t && chartSymbols(t).fiveIsTrade;
-  return candleGeom(bars, which === '5' ? p.view5 : p.viewD, w, own ? tradeLines(t).map(l => l.price) : []);
+/** the charts' toolbars: intervals and log for the intraday one, ranges and log for the daily */
+function renderTools(p) {
+  const on = b => ` class="filter-btn${b ? ' active' : ''}" aria-pressed="${b}"`;
+  document.getElementById('jtTools5').innerHTML = INTERVALS.map(iv => `<button data-action="setJournalInterval" data-arg="${iv}"${on(p.iv === iv)}>${iv}m</button>`).join('')
+    + `<span class="jt-log"><button data-action="toggleJournalLog" data-arg="5"${on(p.log[5])}>log</button></span>`;
+  document.getElementById('jtToolsD').innerHTML = RANGES.map(([arg, label]) => `<button data-action="setJournalRange" data-arg="${arg}"${on(p.rangeD === arg)}>${label}</button>`).join('')
+    + `<span class="jt-log"><button data-action="toggleJournalLog" data-arg="D"${on(p.log.D)}>log</button></span>`;
 }
 
+export function setJournalInterval(iv) {
+  const p = state.journalTrade;
+  if (!p || !INTERVALS.includes(iv)) return;
+  p.iv = iv;
+  store.set('journal_chart_iv', String(iv));
+  renderTools(p);
+  drawJournalTrade();
+}
+
+/** the daily chart's window: 'trade' (40 sessions before through 10 after), or a session count ending at the same place */
+export function setJournalRange(arg) {
+  const p = state.journalTrade;
+  if (!p || !RANGES.some(([a]) => a === arg)) return;
+  p.rangeD = arg;
+  renderTools(p);
+  drawJournalTrade();
+}
+
+export function toggleJournalLog(which) {
+  const p = state.journalTrade;
+  if (!p || !(which in p.log)) return;
+  p.log[which] = !p.log[which];
+  renderTools(p);
+  drawJournalTrade();
+}
+
+/** the intraday bars at the chosen interval, rolled up once per interval and set of bars (a new array resets the view) */
+function shownFive(p) {
+  if (!p.rolled || p.rolled.iv !== p.iv || p.rolled.from !== p.five) p.rolled = { iv: p.iv, from: p.five, bars: rollUp(p.five, p.iv) };
+  return p.rolled.bars;
+}
+
+/** let the page's charts go (closing it, or another trade opening) */
+function dropCharts(p) {
+  if (!p?.charts) return;
+  for (const which of Object.keys(p.charts)) dropTradeChart(p.charts[which]);
+  p.charts = {};
+}
+
+/** draw both charts: the library loads the first time (the page redraws when it's here, or says it couldn't) */
 export function drawJournalTrade() {
   const p = state.journalTrade, t = pageTrade();
-  if (!p || !t || !state.journalView) return;
-  for (const which of ['5', 'D']) {
-    const bars = which === '5' ? p.five : p.daily;
-    const canvas = document.getElementById(which === '5' ? 'jtChart5' : 'jtChartD');
-    const readout = document.getElementById(which === '5' ? 'jtOhlc5' : 'jtOhlcD');
-    if (!bars.length || !canvas) continue;
-    const w = canvas.clientWidth;
-    if (!w) continue; // hidden: painting now would wipe the canvas to zero width
-    const g = geom(which, w), own = which === '5' && chartSymbols(t).fiveIsTrade;
-    const hover = which === '5' ? { index: p.hover5, y: p.hoverY5 } : { index: p.hoverD, y: p.hoverYD };
-    paintCandles(canvas, g, bars, { lines: own ? tradeLines(t) : [], hover, marks: fillMarks(bars, tradeFills(t)) });
-    const b = bars[hover.index];
-    readout.innerHTML = b && hover.index >= g.start && hover.index < g.end ? ohlcText(b) : '';
+  if (!p || !t) return;
+  if (!state.chartLib) {
+    if ((p.five.length || p.daily.length) && !p.libWait) {
+      p.libWait = true;
+      loadTradeChartLibrary().then(() => { if (state.journalTrade === p) drawJournalTrade(); },
+        e => { p.libError = String(e?.message || e); if (state.journalTrade === p) renderJournalTrade(); });
+    }
+    return;
   }
-}
-
-export function initJournalTradeEvents() {
+  const fills = tradeFills(t), sym = chartSymbols(t);
   for (const which of ['5', 'D']) {
-    const canvas = document.getElementById(which === '5' ? 'jtChart5' : 'jtChartD');
-    if (!canvas) continue;
-    const bars = () => state.journalTrade ? (which === '5' ? state.journalTrade.five : state.journalTrade.daily) : [];
-    const g = () => geom(which, canvas.getBoundingClientRect().width);
-    attachCandleGestures(canvas, {
-      count: () => bars().length,
-      view: () => which === '5' ? state.journalTrade.view5 : state.journalTrade.viewD,
-      setView: v => { if (which === '5') state.journalTrade.view5 = v; else state.journalTrade.viewD = v; drawJournalTrade(); },
-      geom: g,
-      hover: (clientX, clientY) => {
-        const rect = canvas.getBoundingClientRect(), i = g().index(clientX - rect.left);
-        if (which === '5') { state.journalTrade.hover5 = i; state.journalTrade.hoverY5 = clientY - rect.top; }
-        else { state.journalTrade.hoverD = i; state.journalTrade.hoverYD = clientY - rect.top; }
-        drawJournalTrade();
-      },
-      leave: () => {
-        if (!state.journalTrade) return;
-        if (which === '5') { state.journalTrade.hover5 = -1; state.journalTrade.hoverY5 = -1; } else { state.journalTrade.hoverD = -1; state.journalTrade.hoverYD = -1; }
-        drawJournalTrade();
-      },
-      pick: () => {}, // nothing to pick here: the chart is for looking
+    const five = which === '5', bars = five ? shownFive(p) : p.daily;
+    if (!bars.length) { dropTradeChart(p.charts[which]); delete p.charts[which]; continue; }
+    p.charts[which] ||= makeTradeChart(state.chartLib, document.getElementById(`jtChart${which}`), document.getElementById(`jtLegend${which}`), { daily: !five });
+    paintTradeChart(p.charts[which], bars, {
+      fills,
+      iv: five ? p.iv : 0,
+      title: five ? `${sym.five} · ${p.iv}m` : `${sym.daily} · 1D`,
+      lines: five && sym.fiveIsTrade ? tradeLines(t) : [],
+      range: five ? holdView(bars, t) : viewRange(p.rangeD === 'trade' ? p.viewD : { count: Number(p.rangeD), offset: p.viewD.offset }, bars.length),
+      rangeKey: five ? `iv${p.iv}` : p.rangeD,
+      log: p.log[which],
     });
   }
-  window.addEventListener('resize', () => { if (state.journalTrade) drawJournalTrade(); });
 }
-
-/** the visible range of a chart, for tests and the readout */
-export const journalTradeRange = which => {
-  const p = state.journalTrade;
-  if (!p) return null;
-  const bars = which === '5' ? p.five : p.daily;
-  return viewRange(which === '5' ? p.view5 : p.viewD, bars.length);
-};

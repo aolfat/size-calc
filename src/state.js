@@ -58,7 +58,9 @@ export function createState() {
     journalLoading: false,
     journalError: '',
     barsBusy: false, // the journal is saving 5-minute bars
-    journalTrade: null, // the trade page open in the Journal: { key, five, daily, view5, viewD, loading/status per chart, hover }
+    journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
+    chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
+    chartLibLoading: null, // the one in-flight library load
     journalTab: 'trades', // trades | calendar | stats | fills
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
