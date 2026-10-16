@@ -292,7 +292,10 @@ span.journal-pick { cursor: default; }
 .jt-charts { display: grid; gap: 14px; margin-bottom: 14px; }
 .jt-chart { min-width: 0; }
 .jt-chart .chart-cap { display: flex; gap: 10px; align-items: center; }
-.jt-tools { display: flex; flex-wrap: wrap; gap: 5px; margin-left: auto; }
+.jt-kind-row { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+.jt-kind-row .seg button { padding: 4px 12px; font-size: 12px; }
+.jt-ohlc { flex: 1 1 0; font-size: 11.5px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; } /* ours: the hover readout, truncated so the chips never move */
+.jt-tools { display: flex; flex: none; gap: 5px; margin-left: auto; }
 .jt-tools .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
 .jt-tools .jt-log { margin-left: 6px; display: flex; }
 /* TradeZella-style legend over the chart's top-left: the hovered bar, else the latest */

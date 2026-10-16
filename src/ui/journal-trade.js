@@ -2,20 +2,23 @@
 // its row. The 5-minute chart from the saved bars (services/bars.js: the stock's, or an option contract's own; a spread
 // shows its underlying; the two weeks before it straight from Tradier for context) and the daily chart from Tradier, drawn by
 // Lightweight Charts (ui/journal-trade-chart.js), both with the fills marked, entry, exit and stop on the trade's own chart,
-// each with its toolbar (intervals 5m to 65m, kept on this device as journal_chart_iv; daily ranges; log scale); the
+// each with its toolbar (intervals 5m to 65m, kept on this device as journal_chart_iv; daily ranges; log scale). While the
+// library is on trial, a TradingView | Ours switch (journal_chart_kind, device-local) puts our canvas charts (ui/candles.js)
+// in the same place, on the same bars and framing; ours never loads the library; the
 // excursions (core/trade-page.js: MFE, MAE, exit efficiency); the fills; and the stop orders over time. Edit opens the
 // trade sheet (your stop, separate, delete).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { instructionWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords } from '../core/journal.js';
 import { BARS_KEEP_DAYS, nyDay, weekdaysBetween } from '../core/bars.js';
-import { contextDays, dailyWindow, excursions, exitParts, holdChartBars, holdView, rollUp, unpackBars } from '../core/trade-page.js';
+import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
 import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
 import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
+import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
 import { journalTradeList, marketTime, openTradeReview, renderJournal } from './journal.js';
 import { onReviewChange, reviewSectionHtml } from './journal-review.js';
@@ -29,6 +32,7 @@ const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 const INTERVALS = [5, 15, 30, 65];
 const RANGES = [['trade', 'Trade'], ['63', '3M'], ['126', '6M'], ['252', '1Y']];
 const savedInterval = () => { const iv = Number(store.get('journal_chart_iv')); return INTERVALS.includes(iv) ? iv : 5; };
+const savedKind = () => store.get('journal_chart_kind') === 'ours' ? 'ours' : 'tv';
 
 /** the trade on the page, as the Journal has it now (your stops, merges and deletes applied) */
 const pageTrade = () => state.journalTrade ? journalTradeList().find(t => t.key === state.journalTrade.key) || null : null;
@@ -62,6 +66,7 @@ export function openJournalTrade(key) {
   state.journalTrade = {
     key, five: [], daily: [], viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '',
     iv: savedInterval(), rangeD: 'trade', log: { 5: false, D: false }, rolled: null, charts: {}, libWait: false, libError: '',
+    kind: savedKind(), classic: { 5: null, D: null }, // ours: per chart { bars, key, view, levels, hover: { index, y } }
   };
   syncJournalPage();
   renderJournalTrade();
@@ -198,11 +203,16 @@ export function renderJournalTrade() {
   const sym = chartSymbols(t);
   document.getElementById('jtCharts').style.display = '';
   renderTools(p);
-  const libError = p.libError ? `Couldn't load the charts: ${p.libError}` : '';
+  const tv = p.kind === 'tv', libError = tv && p.libError ? `Couldn't load the charts: ${p.libError}` : '';
   document.getElementById('jtStatus5').textContent = p.loading5 ? 'Loading the 5-minute bars…' : p.status5 || (p.five.length ? libError : '');
   document.getElementById('jtStatusD').textContent = p.loadingD ? 'Loading the daily chart…' : p.statusD || (p.daily.length ? libError : '');
-  document.getElementById('jtCanvas5').style.display = p.five.length && !p.libError ? '' : 'none';
-  document.getElementById('jtCanvasD').style.display = p.daily.length && !p.libError ? '' : 'none';
+  document.getElementById('jtCanvas5').style.display = p.five.length && !libError ? '' : 'none';
+  document.getElementById('jtCanvasD').style.display = p.daily.length && !libError ? '' : 'none';
+  for (const which of ['5', 'D']) {
+    for (const id of [`jtChart${which}`, `jtLegend${which}`]) document.getElementById(id).style.display = tv ? '' : 'none';
+    document.getElementById(`jtClassic${which}`).style.display = tv ? 'none' : '';
+    document.getElementById(`jtOhlc${which}`).style.display = tv ? 'none' : '';
+  }
   body.innerHTML = `${statsHtml(t, ex)}
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
@@ -213,24 +223,39 @@ export function renderJournalTrade() {
   drawJournalTrade();
 }
 
-/** the lines on the trade's own chart: entry, exit (the average of several, how much of it while open), stop; the axis tag carries each price */
+/**
+ * The lines on the trade's own chart: entry, exit (the average of several, how much of it while open), stop. title is
+ * TradingView's (its axis tag carries the price); label is ours, price included (left: drawn on the left edge).
+ */
 function tradeLines(t) {
   const css = getComputedStyle(document.documentElement), color = n => css.getPropertyValue(n).trim();
-  const x = exitParts(t);
+  const x = exitParts(t), stop = t.stopSource === 'yours' ? 'your stop' : 'stop';
   return [
-    { price: t.avgEntry, color: color('--blue'), title: 'entry' },
-    { price: t.avgExit, color: color('--amber'), title: x ? `${x.avg ? 'avg exit' : 'exit'}${t.status === 'open' ? ` · ${x.closed} of ${t.entryQty}` : ''}` : 'exit' },
-    { price: t.stop, color: color('--red'), title: t.stopSource === 'yours' ? 'your stop' : 'stop' },
+    { price: t.avgEntry, color: color('--blue'), title: 'entry', label: `entry ${t.avgEntry?.toFixed(2)}`, left: true },
+    { price: t.avgExit, color: color('--amber'), title: x ? `${x.avg ? 'avg exit' : 'exit'}${t.status === 'open' ? ` · ${x.closed} of ${t.entryQty}` : ''}` : 'exit', label: exitLineLabel(t) },
+    { price: t.stop, color: color('--red'), title: stop, label: `${stop} ${t.stop?.toFixed(2)}` },
   ].filter(l => l.price > 0);
 }
 
 /** the charts' toolbars: intervals and log for the intraday one, ranges and log for the daily */
 function renderTools(p) {
-  const on = b => ` class="filter-btn${b ? ' active' : ''}" aria-pressed="${b}"`;
+  const on = b => ` class="filter-btn${b ? ' active' : ''}" aria-pressed="${b}"`, tv = p.kind === 'tv';
+  const kind = b => ` class="${b ? 'active' : ''}" aria-pressed="${b}"`;
+  document.getElementById('jtKindSwitch').innerHTML = `<button data-action="setJournalChartKind" data-arg="tv"${kind(tv)}>TradingView</button><button data-action="setJournalChartKind" data-arg="ours"${kind(!tv)}>Ours</button>`;
   document.getElementById('jtTools5').innerHTML = INTERVALS.map(iv => `<button data-action="setJournalInterval" data-arg="${iv}"${on(p.iv === iv)}>${iv}m</button>`).join('')
-    + `<span class="jt-log"><button data-action="toggleJournalLog" data-arg="5"${on(p.log[5])}>log</button></span>`;
+    + (tv ? `<span class="jt-log"><button data-action="toggleJournalLog" data-arg="5"${on(p.log[5])}>log</button></span>` : '');
   document.getElementById('jtToolsD').innerHTML = RANGES.map(([arg, label]) => `<button data-action="setJournalRange" data-arg="${arg}"${on(p.rangeD === arg)}>${label}</button>`).join('')
-    + `<span class="jt-log"><button data-action="toggleJournalLog" data-arg="D"${on(p.log.D)}>log</button></span>`;
+    + (tv ? `<span class="jt-log"><button data-action="toggleJournalLog" data-arg="D"${on(p.log.D)}>log</button></span>` : '');
+}
+
+/** TradingView's charts or ours, in the same place; kept on this device */
+export function setJournalChartKind(kind) {
+  if (kind !== 'tv' && kind !== 'ours') return;
+  store.set('journal_chart_kind', kind);
+  const p = state.journalTrade;
+  if (!p) return;
+  p.kind = kind;
+  renderJournalTrade();
 }
 
 export function setJournalInterval(iv) {
@@ -272,39 +297,96 @@ function dropCharts(p) {
   p.charts = {};
 }
 
-/** draw both charts: the library loads the first time (the page redraws when it's here, or says it couldn't) */
+/** what each chart shows: its bars, the fills' interval, the view to open on, and the trade's lines */
+function chartPlan(p, t, which) {
+  const five = which === '5', bars = five ? shownFive(p) : p.daily, sym = chartSymbols(t);
+  return {
+    bars, five, iv: five ? p.iv : 0,
+    title: five ? `${sym.five} · ${p.iv}m` : `${sym.daily} · 1D`,
+    lines: five && sym.fiveIsTrade ? tradeLines(t) : [],
+    range: five ? holdView(bars, t) : viewRange(p.rangeD === 'trade' ? p.viewD : { count: Number(p.rangeD), offset: p.viewD.offset }, bars.length),
+    rangeKey: five ? `iv${p.iv}` : p.rangeD,
+  };
+}
+
+/** draw both charts, TradingView's or ours */
 export function drawJournalTrade() {
   const p = state.journalTrade, t = pageTrade();
   if (!p || !t) return;
+  if (p.kind === 'ours') { for (const which of ['5', 'D']) drawClassic(p, t, which); return; }
+  drawTradingView(p, t);
+}
+
+/** our canvas chart: the same bars and opening view as TradingView's, our own pan, zoom and crosshair (candles.js) */
+function drawClassic(p, t, which) {
+  const plan = chartPlan(p, t, which), { bars } = plan;
+  const canvas = document.getElementById(`jtClassic${which}`), readout = document.getElementById(`jtOhlc${which}`);
+  if (!bars.length || !canvas) { p.classic[which] = null; return; }
+  let c = p.classic[which];
+  if (!c || c.bars !== bars || c.key !== plan.rangeKey) {
+    c = p.classic[which] = { bars, key: plan.rangeKey, view: { count: plan.range.end - plan.range.start, offset: bars.length - plan.range.end }, hover: { index: -1, y: -1 } };
+  }
+  c.lines = plan.lines;
+  c.iv = plan.iv || 5;
+  const w = canvas.clientWidth;
+  if (!w) return; // hidden: painting now would wipe the canvas to zero width
+  const g = candleGeom(bars, c.view, w, c.lines.map(l => l.price));
+  paintCandles(canvas, g, bars, { lines: c.lines, hover: c.hover, marks: fillMarks(bars, tradeFills(t), c.iv) });
+  const b = bars[c.hover.index];
+  readout.innerHTML = b && c.hover.index >= g.start && c.hover.index < g.end ? ohlcText(b) : '';
+}
+
+/** TradingView's charts: the library loads the first time (the page redraws when it's here, or says it couldn't) */
+function drawTradingView(p, t) {
   if (!state.chartLib) {
     if ((p.five.length || p.daily.length) && !p.libWait) {
       p.libWait = true;
-      loadTradeChartLibrary().then(() => { if (state.journalTrade === p) drawJournalTrade(); },
+      loadTradeChartLibrary().then(() => { if (state.journalTrade === p) renderJournalTrade(); },
         e => { p.libError = String(e?.message || e); if (state.journalTrade === p) renderJournalTrade(); });
     }
+    // until it's here (the next render puts the bars' own status back)
+    if (!p.libError) for (const which of ['5', 'D']) if ((which === '5' ? p.five : p.daily).length) document.getElementById(`jtStatus${which}`).textContent = 'Loading the charts…';
     return;
   }
-  const fills = tradeFills(t), sym = chartSymbols(t);
+  const fills = tradeFills(t);
   for (const which of ['5', 'D']) {
-    const five = which === '5', bars = five ? shownFive(p) : p.daily;
-    if (!bars.length) { dropTradeChart(p.charts[which]); delete p.charts[which]; continue; }
-    p.charts[which] ||= makeTradeChart(state.chartLib, document.getElementById(`jtChart${which}`), document.getElementById(`jtLegend${which}`), { daily: !five });
-    paintTradeChart(p.charts[which], bars, {
-      fills,
-      iv: five ? p.iv : 0,
-      title: five ? `${sym.five} · ${p.iv}m` : `${sym.daily} · 1D`,
-      lines: five && sym.fiveIsTrade ? tradeLines(t) : [],
-      range: five ? holdView(bars, t) : viewRange(p.rangeD === 'trade' ? p.viewD : { count: Number(p.rangeD), offset: p.viewD.offset }, bars.length),
-      rangeKey: five ? `iv${p.iv}` : p.rangeD,
-      log: p.log[which],
-    });
+    const plan = chartPlan(p, t, which);
+    if (!plan.bars.length) { dropTradeChart(p.charts[which]); delete p.charts[which]; continue; }
+    p.charts[which] ||= makeTradeChart(state.chartLib, document.getElementById(`jtChart${which}`), document.getElementById(`jtLegend${which}`), { daily: !plan.five });
+    paintTradeChart(p.charts[which], plan.bars, { ...plan, fills, log: p.log[which] });
   }
 }
 
-/** the page's listeners: pasting and dropping screenshots (the charts' own come with the library) */
+/** the page's listeners: pasting and dropping screenshots, and our canvas charts' zoom, pan and crosshair (the library brings its own) */
 export function initJournalTradeEvents() {
   initTradeShotEvents(() => pageTrade());
+  for (const which of ['5', 'D']) {
+    const canvas = document.getElementById(`jtClassic${which}`);
+    if (!canvas) continue;
+    const c = () => state.journalTrade?.classic[which] || null;
+    const g = () => candleGeom(c().bars, c().view, canvas.getBoundingClientRect().width, c().lines.map(l => l.price));
+    attachCandleGestures(canvas, {
+      count: () => c()?.bars.length || 0,
+      view: () => c().view,
+      setView: v => { c().view = v; drawJournalTrade(); },
+      geom: g,
+      hover: (clientX, clientY) => {
+        const rect = canvas.getBoundingClientRect();
+        c().hover = { index: g().index(clientX - rect.left), y: clientY - rect.top };
+        drawJournalTrade();
+      },
+      leave: () => { if (c()) { c().hover = { index: -1, y: -1 }; drawJournalTrade(); } },
+      pick: () => {}, // nothing to pick here: the chart is for looking
+    });
+  }
+  window.addEventListener('resize', () => { if (state.journalTrade?.kind === 'ours') drawJournalTrade(); });
 }
+
+/** our chart's visible bars, [start, end), for tests */
+export const journalTradeRange = which => {
+  const c = state.journalTrade?.classic[which];
+  return c ? viewRange(c.view, c.bars.length) : null;
+};
 
 // a review change redraws the page (the section, and the status line with it)
 onReviewChange(() => { if (state.journalTrade) renderJournalTrade(); });

@@ -220,6 +220,52 @@ test('the 5-minute chart: candles, 8 EMA and volume, the fills marked, entry, ex
   assert.equal(c.removed, true, 'closing the page lets the chart go');
 });
 
+test('a TradingView | Ours switch: our canvas charts in the same place, the same bars and framing, kept on this device', async t => {
+  const storage = new Map();
+  const { run, chart, elements, charts } = await page({ storage }, t);
+  run(`openJournalTrade('${KEY}')`);
+  await settle();
+  const sw = () => elements.get('jtKindSwitch').innerHTML;
+  assert.match(sw(), /data-action="setJournalChartKind" data-arg="tv" class="active"/, 'TradingView by default');
+  assert.equal(elements.get('jtClassic5').style.display, 'none');
+  run("setJournalChartKind('ours')");
+  assert.equal(storage.get('journal_chart_kind'), 'ours');
+  assert.match(sw(), /data-arg="ours" class="active"/);
+  assert.equal(elements.get('jtClassic5').style.display, '', 'our canvas shows');
+  assert.equal(elements.get('jtChart5').style.display, 'none', "TradingView's steps aside");
+  assert.equal(elements.get('jtLegend5').style.display, 'none');
+  assert.doesNotMatch(elements.get('jtTools5').innerHTML, /toggleJournalLog/, 'no log scale on ours');
+  assert.match(elements.get('jtTools5').innerHTML, /setJournalInterval/, 'the intervals still apply');
+  assert.deepEqual(json(run, "journalTradeRange('5')"), { start: 0, end: 5 }, 'framed on the hold, like the TradingView chart');
+  run('setJournalInterval(65)');
+  assert.deepEqual(json(run, "journalTradeRange('5')"), { start: 0, end: 4 }, 'the 65-minute bars, framed again');
+  run("setJournalChartKind('tv')");
+  assert.equal(elements.get('jtChart5').style.display, '');
+  assert.equal(chart('jtChart5').series[0].data.length, 4, 'the same bars on both');
+
+  const fresh = fakeCharts();
+  const again = await page({ storage, charts: fresh }, t);
+  again.run("setJournalChartKind('ours')");
+  again.run(`openJournalTrade('${KEY}')`);
+  await settle();
+  assert.equal(fresh.charts.length, 0, "ours never loads the library");
+  assert.equal(again.elements.get('jtClassic5').style.display, '');
+  assert.ok(charts.charts.length >= 1);
+});
+
+test('while the library loads, the chart says so', async t => {
+  let arrive;
+  const lib = fakeCharts();
+  const { run, elements, chart } = await page({ charts: () => new Promise(r => { arrive = () => r(lib); }) }, t);
+  run(`openJournalTrade('${KEY}')`);
+  await settle();
+  assert.equal(elements.get('jtStatus5').textContent, 'Loading the charts…');
+  arrive();
+  await settle();
+  assert.equal(elements.get('jtStatus5').textContent, '');
+  assert.ok(lib.charts.some(c => c.container.id === 'jtChart5'));
+});
+
 test("the chart library didn't load: the page says so and keeps the rest", async t => {
   const { run, elements, body } = await page({ charts: async () => { throw new Error('offline'); } }, t);
   run(`openJournalTrade('${KEY}')`);
@@ -279,6 +325,8 @@ test('with a key: the daily chart from Tradier, framed on the trade', async t =>
   assert.match(elements.get('jtToolsD').innerHTML, /data-action="toggleJournalLog" data-arg="D"[^>]*class="filter-btn active"/);
   run("toggleJournalLog('D')");
   assert.equal(c.scales.right.mode, 0);
+  run("setJournalChartKind('ours'); setJournalRange('63')");
+  assert.deepEqual(json(run, "journalTradeRange('D')"), { start: end - 63, end }, 'our daily chart takes the same ranges');
 });
 
 test('with a key: two weeks before the open come from Tradier for context, and the interval chips roll the bars up', async t => {
