@@ -1,7 +1,7 @@
 // Journal Calendar and Stats tabs (journal step 2, slice 4; core/journal-stats.js does the numbers): the calendar is a
 // month of realized P&L by day (each exit on its own day, trims included; each day with its win rate and profit factor)
 // under the month's own numbers, with weekly totals; a day tapped shows the trades with an exit then, a week's total its
-// stats, This month comes back to today's. The stats cover all time (closed trades) or one day, week or month of exits, the
+// review (ui/journal-week.js, Review the month the month's), This month comes back to today's. The stats cover all time (closed trades) or one day, week or month of exits, the
 // same ones the calendar adds up (‹ › step through the ones with exits): the headline numbers, the equity curve with its drawdown, results by month (or by day),
 // streaks and the breakdowns, each group with the same stats, thin under 10. The Journal's side, symbol and fee choices
 // apply here too.
@@ -45,8 +45,9 @@ function dayCell(d) {
 
 function weekCell(w) {
   if (!w.trades) return '<td class="jc-week"></td>';
-  const label = `Week of ${periodName('day', w.start)}: ${signed$(w.pnl)} over ${w.trades} trade${w.trades === 1 ? '' : 's'}, ${w.winRate}% won. Open its stats`;
-  return `<td class="jc-week"><button class="jc-weekbtn" data-action="openJournalStats" data-arg="week" data-arg2="${w.start}" aria-label="${esc(label)}" title="The week's stats"><span class="${pnlClass(w.pnl)}">${compact$(w.pnl)}</span><span class="jc-n">${w.trades} trade${w.trades === 1 ? '' : 's'} · ${pct(w.winRate)}</span></button></td>`;
+  const open = state.journalReviewPeriod?.unit === 'week' && state.journalReviewPeriod.key === w.start;
+  const label = `Week of ${periodName('day', w.start)}: ${signed$(w.pnl)} over ${w.trades} trade${w.trades === 1 ? '' : 's'}, ${w.winRate}% won. Review the week`;
+  return `<td class="jc-week"><button class="jc-weekbtn${open ? ' active' : ''}" data-action="openPeriodReview" data-arg="week" data-arg2="${w.start}" aria-label="${esc(label)}" aria-expanded="${open}" title="Review the week"><span class="${pnlClass(w.pnl)}">${compact$(w.pnl)}</span><span class="jc-n">${w.trades} trade${w.trades === 1 ? '' : 's'} · ${pct(w.winRate)}</span></button></td>`;
 }
 
 /** the month's own numbers over the grid, realized like the days: P&L, win rate, profit factor, green days */
@@ -71,11 +72,11 @@ export function calendarView(trades) {
       <span class="jc-title">${esc(monthName(month))}</span>
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
       <button class="btn jc-today" data-action="journalThisMonth"${month === thisMonth() ? ' disabled' : ''}>This month</button>
-      ${cal.trades ? `<button class="pos-link" data-action="openJournalStats" data-arg="month" data-arg2="${month}">All of the month's stats</button>` : ''}
+      ${cal.trades ? `<button class="btn jc-today" data-action="openPeriodReview" data-arg="month" data-arg2="${month}" aria-expanded="${state.journalReviewPeriod?.unit === 'month' && state.journalReviewPeriod.key === month}">Review the month</button><button class="pos-link" data-action="openJournalStats" data-arg="month" data-arg2="${month}">All of the month's stats</button>` : ''}
     </div>
     ${monthStats(cal)}
     <table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cells}</tbody></table>
-    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its trades, a week's total for its stats.</p>`;
+    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its trades, a week's total to review the week.</p>`;
 }
 
 /** ‹ or ›: the month before or after the one shown */

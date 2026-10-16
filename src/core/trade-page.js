@@ -136,8 +136,26 @@ export function compactVolume(v) {
 }
 
 /**
- * What a trade chart draws, oldest first: the candles, the 8 EMA of the closes (seeded on the first close), volume (up =
- * closed at or over its open, like the candles), and each fill on its bar (fillMarks), in the order they happened.
+ * VWAP on intraday bars, starting over each New York day (the calculator's chart does the same): the running sum of
+ * typical price ((high + low + close) / 3) × volume over the running volume, the typical price itself until the day has
+ * volume. Over the bars shown, so it starts at 4:00 when the chart has the extended hours. Daily bars have none: [].
+ * @param {Candle[]} bars @returns {number[]}
+ */
+export function sessionVwap(bars) {
+  if (!bars.some(b => b.time)) return [];
+  let day = '', pv = 0, v = 0;
+  return bars.map(b => {
+    if (b.date !== day) { day = b.date; pv = 0; v = 0; }
+    const tp = (b.high + b.low + b.close) / 3, vol = b.volume || 0;
+    pv += tp * vol; v += vol;
+    return v > 0 ? pv / v : tp;
+  });
+}
+
+/**
+ * What a trade chart draws, oldest first: the candles, the 8 EMA of the closes (seeded on the first close), the session
+ * VWAP on intraday bars (sessionVwap; `end` on a day's last bar when another day follows, so the line can break there),
+ * volume (up = closed at or over its open, like the candles), and each fill on its bar (fillMarks), in the order they happened.
  * @param {Candle[]} bars @param {{ time: string, side: 'buy' | 'sell', qty: number, price: number }[]} fills @param {number} [iv]
  */
 export function chartSeries(bars, fills, iv = 5) {
@@ -147,6 +165,7 @@ export function chartSeries(bars, fills, iv = 5) {
   return {
     candles: bars.map((b, i) => ({ time: times[i], open: b.open, high: b.high, low: b.low, close: b.close })),
     ema: bars.map((b, i) => ({ time: times[i], value: (e = i ? b.close * k + e * (1 - k) : e) })),
+    vwap: sessionVwap(bars).map((value, i) => ({ time: times[i], value, end: i + 1 < bars.length && bars[i + 1].date !== bars[i].date })),
     volume: bars.map((b, i) => ({ time: times[i], value: b.volume || 0, up: b.close >= b.open })),
     markers: fillMarks(bars, byTime, iv).sort((a, b) => a.index - b.index).map(m => ({ time: times[m.index], side: m.side, qty: m.qty, price: m.price })),
   };

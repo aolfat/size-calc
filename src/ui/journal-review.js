@@ -429,3 +429,19 @@ export function labelWords(t) {
 }
 
 export { parseSetup };
+
+/**
+ * What a week or month review reads from your review (core/journal-week.js's context): each trade's grades and notes, its
+ * labels, its market (its own, else the day's), item names (merges followed), and whether it's reviewed.
+ */
+export function periodReviewContext() {
+  const d = data(), lib = library();
+  return {
+    review: key => d.reviews[key],
+    labels: key => (d.labels[key] || []).map(l => ({ kind: l.kind, value: lib.resolve(l.kind, l.value) })),
+    market: t => tradeReviewState(t).market,
+    nameOf: (kind, value) => lib.nameOf(kind, value),
+    reviewed: t => tradeReviewState(t).reviewed,
+    saved: key => !!d.weekly?.[key],
+  };
+}
