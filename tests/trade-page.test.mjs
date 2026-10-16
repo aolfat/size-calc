@@ -362,6 +362,50 @@ test('with a key: two weeks before the open come from Tradier for context, and t
   assert.equal(c.scales.right.mode, 1);
 });
 
+// 2 XLU calls bought 10/16 at 10:00 ET and sold at 11:00, on the day the page is opened
+const XLU = 'XLU   261120C00080000';
+const XLU_ORDERS = [[701, 'BUY_TO_OPEN', 1.2, '2026-10-16T14:00:00+0000'], [702, 'SELL_TO_CLOSE', 1.5, '2026-10-16T15:00:00+0000']].map(([id, instruction, price, time]) => ({
+  kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), data: {
+    orderId: id, enteredTime: time, status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction, quantity: 2, instrument: { symbol: XLU, assetType: 'OPTION' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: 2, price, time }] }],
+  } }));
+
+async function xluPage(now, t) {
+  globalThis.getComputedStyle = () => ({ getPropertyValue: n => n });
+  t.after(() => { delete globalThis.getComputedStyle; });
+  const calls = [];
+  const fetch = async url => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('/markets/history')) return new Response(JSON.stringify({ history: null }), { status: 200 });
+    if (!u.pathname.endsWith('/markets/timesales')) throw new Error('unexpected ' + url);
+    calls.push([u.searchParams.get('symbol'), u.searchParams.get('start'), u.searchParams.get('end')]);
+    const data = u.searchParams.get('start').startsWith('2026-10-16') ? [10, 11].map(h => ({ time: `2026-10-16T${h}:00:00`, open: 1.2, high: 1.6, low: 1.1, close: 1.5, volume: 9 })) : [];
+    return new Response(JSON.stringify({ series: data.length ? { data } : null }), { status: 200 });
+  };
+  const supabase = fakeRecords(XLU_ORDERS);
+  const a = await app({ supabase, session: SESSION, fetch, clock: true, now });
+  a.elements.get('apiKey').value = 'test-key';
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  a.run(`openJournalTrade('6789|${XLU}|long|2026-10-16T14:00:00.000Z')`);
+  await settle();
+  return { ...a, calls, supabase };
+}
+
+test("today's bars: straight from Tradier while the day is on, saved once extended hours end at 20:00 ET", async t => {
+  const live = await xluPage(Date.parse('2026-10-16T21:00:00Z'), t); // 5pm ET, the trade closed this morning
+  assert.ok(live.calls.some(c => c[0] === 'XLU261120C00080000' && c[1] === '2026-10-16 04:00' && c[2] === '2026-10-16 20:00'), "today asked of Tradier, on the contract's own symbol");
+  assert.equal(live.state.journalTrade.five.length, 2, 'drawn from it');
+  assert.equal(live.elements.get('jtStatus5').textContent, '');
+  assert.equal([...live.supabase.bars.values()].filter(b => b.day === '2026-10-16').length, 0, 'not saved: the day isn\'t over');
+
+  const done = await xluPage(Date.parse('2026-10-17T00:30:00Z'), t); // 8:30pm ET
+  assert.deepEqual([...done.supabase.bars.values()].filter(b => b.day === '2026-10-16').map(b => [b.symbol, b.bars.length]).sort(),
+    [['XLU', 2], ['XLU261120C00080000', 2]], 'saved, the contract and its underlying');
+  assert.equal(done.state.journalTrade.five.length, 2, 'read back from the saved rows');
+});
+
 test('a trade with nothing saved says why', async t => {
   const { run, state, supabase, elements, chart } = await page({}, t);
   supabase.bars.clear();
