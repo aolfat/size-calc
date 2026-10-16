@@ -13,7 +13,7 @@ import { journalTradeList, renderJournal } from './journal.js';
 import { reviewFrom, reviewQueue, savedForWeekly, toggleWeekly, tradePass } from './journal-review.js';
 import { journalPageTrade, openJournalTrade, syncJournalPage } from './journal-trade.js';
 
-const PASS_WORDS = { opening: 'Opening pass', closing: 'Closing pass: the grade and note', full: '' };
+const PASS_WORDS = { opening: 'Opening pass', closing: 'Closing pass: the plan, grade and exit note', full: '' };
 const trades = () => journalTradeList();
 const byKey = (list, key) => list.find(t => t.key === key) || null;
 

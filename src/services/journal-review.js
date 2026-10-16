@@ -21,9 +21,9 @@ async function client() {
 }
 
 /**
- * Everything a review reads, in one go: { reviews: key → { setup_grade, plan_followed, note, market, reviewed_at },
- * labels: key → [{ kind, value, set_by, links }], days: 'YYYY-MM-DD' → { market, note }, library: rows, weekly: key → when,
- * weeklyError }.
+ * Everything a review reads, in one go: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note,
+ * market, reviewed_at }, labels: key → [{ kind, value, set_by, links }], days: 'YYYY-MM-DD' → { market, note },
+ * library: rows, weekly: key → when, weeklyError, entryNoteError }.
  */
 export async function loadReviewData() {
   const c = await client();
@@ -43,7 +43,22 @@ export async function loadReviewData() {
   /** @type {Record<string, any>} */
   const days = {};
   for (const r of dy.data || []) days[String(r.day).slice(0, 10)] = { market: r.market, note: r.note };
-  return { reviews, labels, days, library: li.data || [], ...await loadWeekly(c) };
+  const [weekly, entry] = await Promise.all([loadWeekly(c), loadEntryNotes(c)]);
+  for (const [key, text] of Object.entries(entry.entryNotes)) reviews[key] = { ...(reviews[key] || {}), entry_note: text };
+  return { reviews, labels, days, library: li.data || [], ...weekly, entryNoteError: entry.entryNoteError };
+}
+
+/**
+ * The entry notes (trade_reviews.entry_note, its own migration): { entryNotes: key → text }, read on their own like the
+ * weekly marks, so a database without the column keeps the rest of the review working (entryNoteError says why).
+ */
+async function loadEntryNotes(c) {
+  const res = await c.from('trade_reviews').select('trade_key,entry_note').limit(JOURNAL_READ_LIMIT);
+  if (res?.error) return { entryNotes: {}, entryNoteError: notPushed(res) ? "the database doesn't have the entry note column yet: npx supabase db push" : res.error.message || 'Supabase refused the read.' };
+  /** @type {Record<string, string>} */
+  const entryNotes = {};
+  for (const r of res.data || []) if (r.entry_note) entryNotes[r.trade_key] = r.entry_note;
+  return { entryNotes, entryNoteError: '' };
 }
 
 /**

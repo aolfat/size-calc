@@ -1,7 +1,7 @@
 // Run with: node --test
 // Reviewing a trade (journal step 3, slice 1): the library over the defaults (your items, renames, hides, merges), setup
 // keys, what makes a trade reviewed, and the Review section on the trade page: market for the day or the trade, the
-// labels, both grades, the note, + New, the reviewed mark and the To review filter, the choices sheet, and failures.
+// labels, both grades, the entry and exit notes, + New, the reviewed mark and the To review filter, the choices sheet, and failures.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -50,16 +50,18 @@ test('the library: defaults, your own items, a renamed and a hidden default, mer
   assert.deepEqual(json(run, "parseSetup('ema8+undercut')"), { pattern: '', level: 'ema8', action: 'undercut' });
 });
 
-test('reviewed means market, sector, a setup, a tactic, both grades and a note; the trade\'s own market wins over the day\'s', async () => {
+test('reviewed means market, sector, a setup, a tactic, both grades and an exit note (the entry note is optional); the trade\'s own market wins over the day\'s', async () => {
   const { run } = await app();
   const none = json(run, 'reviewState(null, [], null)');
-  assert.deepEqual(none, { market: null, marketOwn: false, missing: ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'note'], reviewed: false, started: false });
+  assert.deepEqual(none, { market: null, marketOwn: false, missing: ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'exit note'], reviewed: false, started: false });
   assert.equal(run(`missingWords(${JSON.stringify(none.missing)})`), 'market, sector, setup and 4 more');
   const labels = [{ kind: 'sector', value: 'strong' }, { kind: 'setup', value: 'sma50+bounce' }, { kind: 'tactic', value: 'pivot30' }];
   const done = json(run, `reviewState({ setup_grade: 'A', plan_followed: 'partly', note: 'added early' }, ${JSON.stringify(labels)}, 'bullish')`);
   assert.deepEqual([done.reviewed, done.market, done.marketOwn], [true, 'bullish', false]);
   const own = json(run, `reviewState({ market: 'choppy', setup_grade: 'A', plan_followed: 'yes', note: '  ' }, ${JSON.stringify(labels)}, 'bullish')`);
-  assert.deepEqual([own.market, own.marketOwn, own.missing], ['choppy', true, ['note']], 'a blank note isn\'t a note');
+  assert.deepEqual([own.market, own.marketOwn, own.missing], ['choppy', true, ['exit note']], 'a blank note isn\'t a note');
+  const entryOnly = json(run, `reviewState({ setup_grade: 'A', plan_followed: 'yes', entry_note: 'base breakout, stop under the 21' }, ${JSON.stringify(labels)}, 'bullish')`);
+  assert.deepEqual(entryOnly.missing, ['exit note'], 'an entry note isn\'t the exit note');
 });
 
 // ---------- the Review section on the trade page ----------
@@ -90,7 +92,7 @@ async function page(tweak) {
   return { ...a, supabase, t, body: () => a.elements.get('jtBody').innerHTML, list: () => a.elements.get('journalSection').innerHTML, rows: name => [...supabase.tables[name].values()] };
 }
 
-test('the Review section: market for the day or this trade, sector, My setups (one tap, or + New setup), tactic, tags, grades, the note', async () => {
+test('the Review section: market for the day or this trade, sector, My setups (one tap, or + New setup), tactic, tags, grades, the exit note', async () => {
   const { run, state, t, body, rows, supabase } = await page();
   assert.match(body(), /<span class="section-title js-sub">Review<\/span>\s*<span class="jr-status "[^>]*>To review: missing market, sector, setup and 4 more<\/span>/);
   assert.ok(supabase.reads.some(r => r.table === 'trade_labels') && supabase.reads.some(r => r.table === 'journal_days') && supabase.reads.some(r => r.table === 'library_items'), 'everything a review needs is read with the journal');
@@ -132,7 +134,7 @@ test('the Review section: market for the day or this trade, sector, My setups (o
   await run(`toggleReviewLabel(${t}, 'mistake', 'chased')`);
   await run(`setSetupGrade(${t}, 'A')`);
   await run(`setPlanFollowed(${t}, 'partly')`);
-  assert.match(body(), /To review: missing note/);
+  assert.match(body(), /To review: missing exit note/);
   assert.equal(rows('trade_reviews')[0].reviewed_at ?? null, null);
 
   run(`reviewNoteInput(${t}, 'added too early')`);
@@ -147,6 +149,36 @@ test('the Review section: market for the day or this trade, sector, My setups (o
   assert.equal(rows('trade_reviews')[0].setup_grade, null, 'tapping the lit grade clears it');
   assert.equal(rows('trade_reviews')[0].reviewed_at, null, 'and it\'s back to review');
   assert.equal(rows('trade_reviews')[0].note, 'added too early', 'nothing else touched');
+});
+
+test('two notes: the entry note is optional and kept apart from the exit note; drafts stay in their own box', async () => {
+  const { run, state, t, body, rows } = await page();
+  assert.match(body(), /<label class="jr-label" for="entryNote">Entry note <span class="jr-sub">optional<\/span><\/label>\s*<div><textarea id="entryNote"[^>]*data-arg="entry"/);
+  assert.match(body(), /<label class="jr-label" for="reviewNote">Exit note<\/label>[\s\S]*data-arg="exit"/, 'a closed trade asks for the exit note');
+  assert.ok(body().indexOf('id="entryNote"') < body().indexOf('id="reviewNote"'), 'the entry note above, to read while writing the exit note');
+  run(`reviewNoteInput(${t}, 'base breakout, out under the 21', 'entry'); renderJournalTrade()`);
+  assert.match(body(), /id="entryNote"[^>]*>base breakout, out under the 21<\/textarea>/, 'the draft survives a redraw');
+  assert.match(body(), /id="reviewNote"[^>]*><\/textarea>/, 'and stays out of the exit box');
+  await run(`reviewNoteSave(${t}, 'base breakout, out under the 21', 'entry')`);
+  assert.deepEqual([rows('trade_reviews')[0].entry_note, rows('trade_reviews')[0].note ?? null], ['base breakout, out under the 21', null]);
+  assert.equal(state.reviewNoteDraft, null);
+  assert.match(body(), /To review: missing [^<]*\b(?:and \d more|exit note)/, 'an entry note alone doesn\'t review it');
+  await run(`reviewNoteSave(${t}, 'stopped on the open, plan was fine', 'exit')`);
+  assert.deepEqual([rows('trade_reviews')[0].entry_note, rows('trade_reviews')[0].note], ['base breakout, out under the 21', 'stopped on the open, plan was fine'], 'each in its own column');
+  await run(`reviewNoteSave(${t}, '  ', 'entry')`);
+  assert.equal(rows('trade_reviews')[0].entry_note, null, 'emptied: cleared');
+  run(`openJournalTrade('${KEY}')`);
+  assert.match(body(), /id="reviewNote"[^>]*>stopped on the open, plan was fine<\/textarea>/, 'read back with the journal');
+});
+
+test('entry notes before the migration is pushed: the box is off and says why; the rest of the review works', async () => {
+  const { run, t, body, rows, elements } = await page(s => s.failColumn('trade_reviews', 'entry_note'));
+  assert.match(body(), /<textarea id="entryNote"[^>]*disabled>/);
+  assert.match(body(), /Entry notes need a database update: the database doesn(?:'|&#39;)t have the entry note column yet: npx supabase db push/);
+  await run(`reviewNoteSave(${t}, 'thesis', 'entry')`);
+  assert.match(elements.get('errorBox').textContent, /Entry notes need a database update/);
+  await run(`reviewNoteSave(${t}, 'what happened', 'exit')`);
+  assert.equal(rows('trade_reviews')[0].note, 'what happened', 'the exit note still saves');
 });
 
 test('the list: a reviewed mark, the To review filter; your stop and delete stay apart from the review', async () => {

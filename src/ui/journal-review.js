@@ -1,9 +1,10 @@
 // Journal review (step 3, slice 1; docs/journal-step-3.md): the Review section on the trade page (market for the day or
-// this trade, sector, setups, entry tactic, tags, mistakes, the setup grade, followed the plan, a note), saved as you
+// this trade, sector, setups, entry tactic, tags, an entry note, mistakes, the setup grade, followed the plan, an exit
+// note), saved as you
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
 import { store } from '../lib/store.js';
 import { addTradeLabel, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
@@ -12,7 +13,7 @@ import { showError } from './feedback.js';
 import { openSheet } from './sheets.js';
 import { shotsRowHtml } from './journal-shots.js';
 
-const EMPTY = { reviews: {}, labels: {}, days: {}, library: [], weekly: {}, weeklyError: '' };
+const EMPTY = { reviews: {}, labels: {}, days: {}, library: [], weekly: {}, weeklyError: '', entryNoteError: '' };
 const data = () => state.journalReview || EMPTY;
 const library = () => buildLibrary(data().library);
 /** the New York day a trade's market label belongs to: the day it opened */
@@ -27,7 +28,7 @@ export function tradeReviewState(t) {
 /** the list's marks: a quiet "reviewed" tag on a reviewed trade (most are still to review), and "for weekly" on one saved for the weekly review */
 export const reviewedMark = t => !state.journalReview || t.status === 'history' ? ''
   : `${tradeReviewState(t).reviewed ? ' <span class="journal-tag journal-tag-done">reviewed</span>' : ''}${savedForWeekly(t) ? ' <span class="journal-tag journal-tag-quiet">for weekly</span>' : ''}`;
-/** the pass a trade needs (core/journal-labels.js reviewPass): opening while it's open, the grade and note once it closes */
+/** the pass a trade needs (core/journal-labels.js reviewPass): opening while it's open, the plan, grade and exit note once it closes */
 export const tradePass = t => reviewPass(t, tradeReviewState(t));
 /** the day reviewing starts from (journal_review_from, synced with your account): trades opened before it leave the deck; '' = every day */
 export const reviewFrom = () => reviewFromDay(store.get('journal_review_from'));
@@ -220,14 +221,25 @@ export function toggleWeekly(t) {
 export const setSetupGrade = (t, g) => setFields(t, { setup_grade: data().reviews[t.key]?.setup_grade === g ? null : g });
 export const setPlanFollowed = (t, v) => setFields(t, { plan_followed: data().reviews[t.key]?.plan_followed === v ? null : v });
 
-/** the note: kept as a draft while you type (a redraw never loses it), saved when the box loses focus */
-export function reviewNoteInput(t, text) { state.reviewNoteDraft = { key: t.key, text }; }
-export function reviewNoteSave(t, text) {
+/** the two notes: 'entry' (entry_note, optional, written while it's live) and 'exit' (note, what a review needs) */
+const NOTE_FIELD = { entry: 'entry_note', exit: 'note' };
+const noteField = which => NOTE_FIELD[which] || 'note';
+
+/** a note: kept as a draft while you type (a redraw never loses it), saved when the box loses focus */
+export function reviewNoteInput(t, text, which = 'exit') { state.reviewNoteDraft = { key: t.key, which, text }; }
+export function reviewNoteSave(t, text, which = 'exit') {
   state.reviewNoteDraft = null;
-  const now = data().reviews[t.key]?.note || '';
+  const field = noteField(which);
+  const now = data().reviews[t.key]?.[field] || '';
   if (text.trim() === now.trim()) return;
-  return setFields(t, { note: text.trim() || null });
+  if (field === 'entry_note' && data().entryNoteError) { showError(`Entry notes need a database update: ${data().entryNoteError}`); return; }
+  return setFields(t, { [field]: text.trim() || null });
 }
+/** what a note box shows: the draft being typed, else what's saved */
+const noteText = (t, which) => {
+  const d = state.reviewNoteDraft;
+  return d && d.key === t.key && (d.which || 'exit') === which ? d.text : data().reviews[t.key]?.[noteField(which)] || '';
+};
 
 /** + New: a box for your own item of that kind; Enter adds it to your library and to this trade */
 export function startReviewItem(kind) { state.reviewNewKind = kind; state.reviewNewName = ''; rerender(); }
@@ -290,21 +302,32 @@ export function reviewSectionHtml(t) {
     ...offered.map(i => chip(i.name, false, `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.partsWords(lib.parts(i.key)))}"`))].join('');
   const fitNote = picking ? `<span class="jr-fit">${offered.length ? 'My setups that fit:' : 'None of My setups fit yet.'}</span>` : '';
   const builder = state.setupDraft ? setupDraftHtml(lib, t) : '<button class="pos-link jr-new" data-action="startSetupDraft">+ New setup</button>';
-  const draft = state.reviewNoteDraft && state.reviewNoteDraft.key === t.key ? state.reviewNoteDraft.text : rv.note || '';
+  // while it's live: the opening pass is what's asked; the plan and exit note wait for the close (shown if already in)
+  const open = t.status === 'open';
+  const openingMissing = st.missing.filter(m => OPENING_PASS.includes(m));
+  const status = st.reviewed ? 'Reviewed'
+    : open ? (openingMissing.length ? `Opening pass: missing ${esc(missingWords(openingMissing))}` : 'Opening pass done. The rest after the close')
+    : `To review: missing ${esc(missingWords(st.missing))}`;
+  const later = open && !rv.plan_followed && !rv.note?.trim();
+  const entryOff = d.entryNoteError ? ' disabled' : '';
   return `<div class="jr" id="journalReview">
     <div class="jr-head"><span class="section-title js-sub">Review</span>
-      <span class="jr-status ${st.reviewed ? 'journal-buy' : ''}" role="status">${st.reviewed ? 'Reviewed' : `To review: missing ${esc(missingWords(st.missing))}`}</span>
+      <span class="jr-status ${st.reviewed || (open && !openingMissing.length) ? 'journal-buy' : ''}" role="status">${status}</span>
       <button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
     ${row(`Market <span class="jr-sub">${marketNote}</span>`, market + newBox('market'), miss.has('market'))}
     ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
     ${row('My setups', `${fitNote}${mySetups}${builder}`, miss.has('setup'))}
     ${row('Entry tactic', pick('tactic') + newBox('tactic'), miss.has('tactic'))}
     ${row('Tags', pick('tag') + newBox('tag') + linksHtml(t, lib))}
+    <div class="jr-row"><label class="jr-label" for="entryNote">Entry note <span class="jr-sub">optional</span></label>
+      <div><textarea id="entryNote" rows="2" maxlength="5000" placeholder="Why you're in, the plan, what proves it wrong" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="entry"${entryOff}>${esc(noteText(t, 'entry'))}</textarea>
+      ${d.entryNoteError ? `<p class="hint jr-later" style="color:var(--amber)">Entry notes need a database update: ${esc(d.entryNoteError)}</p>` : ''}</div></div>
     ${row('Mistakes', pick('mistake') + newBox('mistake'), false, 'jr-mistakes')}
-    ${row('Setup grade', GRADES.map(g => chip(g, rv.setup_grade === g, `data-action="setSetupGrade" data-arg="${g}"`)).join(''), miss.has('setup grade'))}
-    ${row('Followed the plan', PLAN_FOLLOWED.map(([v, w]) => chip(w, rv.plan_followed === v, `data-action="setPlanFollowed" data-arg="${v}"`)).join(''), miss.has('plan followed'))}
-    <div class="jr-row${miss.has('note') ? ' jr-missing' : ''}"><label class="jr-label" for="reviewNote">Note</label>
-      <textarea id="reviewNote" rows="3" maxlength="5000" placeholder="What you saw, what you did, what you'd do again" data-input="reviewNoteInput" data-change="reviewNoteSave">${esc(draft)}</textarea></div>
+    ${row('Setup grade', GRADES.map(g => chip(g, rv.setup_grade === g, `data-action="setSetupGrade" data-arg="${g}"`)).join(''), !open && miss.has('setup grade'))}
+    ${later ? '<div class="jr-row"><div class="jr-label">After the close</div><p class="hint jr-later">Followed the plan and the exit note: the deck brings this trade back when it closes.</p></div>'
+      : `${row('Followed the plan', PLAN_FOLLOWED.map(([v, w]) => chip(w, rv.plan_followed === v, `data-action="setPlanFollowed" data-arg="${v}"`)).join(''), !open && miss.has('plan followed'))}
+    <div class="jr-row${!open && miss.has('exit note') ? ' jr-missing' : ''}"><label class="jr-label" for="reviewNote">Exit note</label>
+      <textarea id="reviewNote" rows="3" maxlength="5000" placeholder="What happened, how you managed it, what you'd do differently" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="exit">${esc(noteText(t, 'exit'))}</textarea></div>`}
     ${shotsRowHtml(t)}
   </div>`;
 }

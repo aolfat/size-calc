@@ -20,7 +20,13 @@ Every trade gets reviewed: what the market and its sector were doing, which setu
   - **Followed the plan:** yes, partly, no. Discipline, apart from whether the setup was good.
 
   The by-grade report checks the ladder: if A trades don't beat C trades, the grading isn't telling you anything.
-- **A trade is reviewed when it has:** market, sector, at least one daily setup, an entry tactic, both grades, and a note. Tags and mistakes are optional. Until then it counts as "to review".
+- **Two notes per trade:**
+  - **Entry note** (optional): written while the trade is live. Why you're in, the plan, what proves it wrong.
+  - **Exit note** (required): written after the close. What happened, how you managed it, what you'd do differently.
+
+  They're kept apart so the exit note isn't skipped when the entry note was already written, and so the plan you wrote at entry sits above the box where you say what you did.
+- **A trade is reviewed when it has:** market, sector, at least one daily setup, an entry tactic, both grades, and an exit note. Tags, mistakes and the entry note are optional. Until then it counts as "to review".
+- **Two passes:** an open trade needs the opening pass (market, sector, setup, tactic). Followed the plan and the exit note wait for the close, when the deck brings it back for the closing pass (the plan, grade and exit note).
 - **Labeling starts on the trade page.** The deck in slice 2 reuses the same pieces.
 - **The app's guesses come after manual labeling works** (slice 3). A guess shows its reason and who set it ("you" or "the app").
 - **Market is set once per day.** Every trade that day inherits it, and you can override a single trade.

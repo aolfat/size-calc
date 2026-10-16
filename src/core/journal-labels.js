@@ -1,8 +1,8 @@
 // @ts-check
 // Journal review, pure (docs/journal-step-3.md): the label defaults, your library on top of them (your own items,
 // renamed / hidden / merged defaults), My setups (each an action at one or more levels, or a pattern, saved once and
-// picked from then on), whether a trade is reviewed (market, sector, a setup, a tactic, both grades and a note), and the
-// review deck's queue (the pass each trade needs: opening while it's open, the grade and note once it closes; newest
+// picked from then on), whether a trade is reviewed (market, sector, a setup, a tactic, both grades and an exit note), and the
+// review deck's queue (the pass each trade needs: opening while it's open, the plan, grade and exit note once it closes; newest
 // first, from the day you chose to start reviewing).
 import { nyParts } from './journal-stats.js';
 
@@ -37,7 +37,7 @@ export const PLAN_FOLLOWED = /** @type {[string, string][]} */ ([['yes', 'Yes'],
 /** labels a trade has one of; the rest take any number */
 export const SINGLE = new Set(['sector', 'tactic']);
 /** what a trade needs to count as reviewed, in the order the review says what's missing */
-export const REQUIRED = ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'note'];
+export const REQUIRED = ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'exit note'];
 
 /** a default's key as the library stores it ('sma50'), or your own ('mine:<uuid>'). @param {LibraryRow} row */
 const ownKey = row => `mine:${row.id}`;
@@ -149,7 +149,8 @@ export function parseSetup(key) {
 
 /**
  * Where a trade's review stands: its market (this trade's own, else the day's), what's missing, and whether it's
- * reviewed. labels: the trade's label rows; review: its trade_reviews fields; dayMarket: the day's market.
+ * reviewed. labels: the trade's label rows; review: its trade_reviews fields (note is the exit note; the entry note is
+ * optional, so it never counts); dayMarket: the day's market.
  * @param {{ setup_grade?: string | null, plan_followed?: string | null, note?: string | null, market?: string | null } | null | undefined} review
  * @param {Label[]} labels @param {string | null | undefined} dayMarket
  */
@@ -159,18 +160,18 @@ export function reviewState(review, labels, dayMarket) {
   /** @type {[string, boolean][]} */
   const checks = [
     ['market', !!market], ['sector', has('sector')], ['setup', has('setup')], ['tactic', has('tactic')],
-    ['setup grade', !!review?.setup_grade], ['plan followed', !!review?.plan_followed], ['note', !!review?.note?.trim()],
+    ['setup grade', !!review?.setup_grade], ['plan followed', !!review?.plan_followed], ['exit note', !!review?.note?.trim()],
   ];
   const missing = checks.filter(([, ok]) => !ok).map(([name]) => name);
   return { market, marketOwn: !!review?.market, missing, reviewed: !missing.length, started: missing.length < REQUIRED.length };
 }
 
-/** what a trade still open needs before it leaves the review deck: the labels and the plan; the grade and note wait for the close */
-export const OPENING_PASS = ['market', 'sector', 'setup', 'tactic', 'plan followed'];
+/** what a trade still open needs before it leaves the review deck: the labels; the plan, grade and exit note wait for the close */
+export const OPENING_PASS = ['market', 'sector', 'setup', 'tactic'];
 
 /**
  * The pass a trade needs in the review deck, or null for none. Open: 'opening' until the opening fields are in. Closed
- * and not reviewed: 'closing' when only the grade and note are left, else 'full'. Deleted and before-history trades none.
+ * and not reviewed: 'closing' when only the plan, grade and exit note are left, else 'full'. Deleted and before-history trades none.
  * @param {{ status?: string, deleted?: boolean }} t @param {{ missing: string[], reviewed: boolean }} st
  * @returns {'opening' | 'closing' | 'full' | null}
  */
