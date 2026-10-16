@@ -289,6 +289,28 @@ function groupBy(list, keyOf, order) {
 }
 
 /**
+ * Stats per label over the closed trades: a trade counts in each of its groups (two setups = both rows, so the rows can
+ * add up to more than the total), and the ones with none are counted apart. order puts known groups first, in its order.
+ * @param {StatTrade[]} trades @param {(t: StatTrade) => string[]} keysOf @param {string[]} [order]
+ * @returns {{ rows: { group: string, stats: ReturnType<typeof groupStats> }[], none: number }}
+ */
+export function statsByLabel(trades, keysOf, order = []) {
+  const list = countedTrades(trades);
+  /** @type {Map<string, StatTrade[]>} */
+  const by = new Map();
+  let none = 0;
+  for (const t of list) {
+    const keys = [...new Set(keysOf(t))];
+    if (!keys.length) none++;
+    for (const k of keys) { if (!by.has(k)) by.set(k, []); /** @type {StatTrade[]} */ (by.get(k)).push(t); }
+  }
+  const at = (/** @type {string} */ g) => { const i = order.indexOf(g); return i < 0 ? order.length : i; };
+  const rows = [...by].map(([group, ts]) => ({ group, stats: groupStats(ts) }))
+    .sort((a, b) => at(a.group) - at(b.group) || b.stats.trades - a.stats.trades || b.stats.net - a.stats.net);
+  return { rows, none };
+}
+
+/**
  * Every breakdown the stats page shows. By symbol: the top 40 by trades, then net (the rest summed as 'Others'), and a
  * concentration warning when one underlying made more than half the gross gains. Winners' and losers' average hold.
  * R distribution over the trades with an initial stop.

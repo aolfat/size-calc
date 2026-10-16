@@ -3,6 +3,7 @@
 // (journal_days), your library (library_items), and the week and month reviews (period_reviews). Row-level security
 // returns only your rows. Never touches the page.
 import { cleanPeriodRow, PERIOD_COLUMNS } from '../core/journal-week.js';
+import { gradeOf } from '../core/journal-labels.js';
 import { state } from '../state.js';
 import { JOURNAL_READ_LIMIT } from './journal.js';
 import { supabaseClient } from './supabase.js';
@@ -38,7 +39,7 @@ export async function loadReviewData() {
   for (const r of [rv, lb, dy, li]) refused(r, 'Supabase refused the read.');
   /** @type {Record<string, any>} */
   const reviews = {};
-  for (const r of rv.data || []) if (r.setup_grade || r.plan_followed || r.note || r.market) reviews[r.trade_key] = { setup_grade: r.setup_grade, plan_followed: r.plan_followed, note: r.note, market: r.market, reviewed_at: r.reviewed_at };
+  for (const r of rv.data || []) if (r.setup_grade || r.plan_followed || r.note || r.market) reviews[r.trade_key] = { setup_grade: gradeOf(r.setup_grade), plan_followed: r.plan_followed, note: r.note, market: r.market, reviewed_at: r.reviewed_at };
   /** @type {Record<string, any[]>} */
   const labels = {};
   for (const r of lb.data || []) (labels[r.trade_key] ||= []).push({ kind: r.kind, value: r.value, set_by: r.set_by, links: Array.isArray(r.links) ? r.links : [] });
