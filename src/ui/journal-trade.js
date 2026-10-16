@@ -11,7 +11,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords } from '../core/journal.js';
 import { BARS_KEEP_DAYS, nyDay, weekdaysBetween } from '../core/bars.js';
-import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, unpackBars } from '../core/trade-page.js';
+import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
 import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
@@ -325,15 +325,17 @@ function drawClassic(p, t, which) {
   let c = p.classic[which];
   if (!c || c.bars !== bars || c.key !== plan.rangeKey) {
     c = p.classic[which] = { bars, key: plan.rangeKey, view: { count: plan.range.end - plan.range.start, offset: bars.length - plan.range.end }, hover: { index: -1, y: -1 } };
+    c.vwap = plan.five ? sessionVwap(bars) : null;
   }
   c.lines = plan.lines;
   c.iv = plan.iv || 5;
   const w = canvas.clientWidth;
   if (!w) return; // hidden: painting now would wipe the canvas to zero width
   const g = candleGeom(bars, c.view, w, c.lines.map(l => l.price));
-  paintCandles(canvas, g, bars, { lines: c.lines, hover: c.hover, marks: fillMarks(bars, tradeFills(t), c.iv) });
-  const b = bars[c.hover.index];
-  readout.innerHTML = b && c.hover.index >= g.start && c.hover.index < g.end ? ohlcText(b) : '';
+  paintCandles(canvas, g, bars, { lines: c.lines, hover: c.hover, marks: fillMarks(bars, tradeFills(t), c.iv), vwap: c.vwap });
+  const b = bars[c.hover.index], vw = c.vwap?.[c.hover.index];
+  readout.innerHTML = b && c.hover.index >= g.start && c.hover.index < g.end
+    ? ohlcText(b) + (vw !== undefined ? ` &nbsp; VWAP <span style="color:${getComputedStyle(document.documentElement).getPropertyValue('--teal').trim()}">${vw.toFixed(2)}</span>` : '') : '';
 }
 
 /** TradingView's charts: the library loads the first time (the page redraws when it's here, or says it couldn't) */

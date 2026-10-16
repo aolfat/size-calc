@@ -1,5 +1,5 @@
 // Candle canvas shared by the calculator's daily pane and the position chart (daily bars, or an option's 5-minute bars,
-// which carry a time) and the Journal's trade page: the fitted scale, the painting (candles, 8 EMA, level lines, fill marks, crosshair)
+// which carry a time) and the Journal's trade page: the fitted scale, the painting (candles, 8 EMA, VWAP when given, level lines, fill marks, crosshair)
 // and the gestures (zoom, pan, hover, tap to pick a price).
 import { panView, viewRange, zoomView } from '../core/chart-view.js';
 import { SANS_FONT } from '../lib/media.js';
@@ -40,7 +40,8 @@ export function snapToBar(g, bar, yy, px = 6) {
  * labelled over them on the right (left = on the left edge). hover: { index, y } draws the crosshair, the price tag when y is on the plot.
  */
 // marks: [{ index, side }] fills, a buy as an up triangle under its bar's low, a sell as a down triangle over its high
-export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks = [] } = {}) {
+// vwap: a value per bar (core/trade-page.js sessionVwap), drawn teal and broken where the day changes
+export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks = [], vwap = null } = {}) {
   const { w, h, padL, padR, padT, padB, plotW, plotH, start, end, slot, lo, hi, x, y } = g;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr; canvas.height = h * dpr;
@@ -105,6 +106,17 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
     if (i > start) ctx.lineTo(x(i), y(e)); else if (i === start) ctx.moveTo(x(i), y(e));
   }
   ctx.stroke(); ctx.restore();
+
+  if (vwap?.length) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(padL, padT, plotW, plotH); ctx.clip();
+    ctx.strokeStyle = css.getPropertyValue('--teal').trim(); ctx.lineWidth = 1.25; ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    for (let i = start; i < end; i++) {
+      if (i > start && bars[i].date === bars[i - 1].date) ctx.lineTo(x(i), y(vwap[i])); else ctx.moveTo(x(i), y(vwap[i]));
+    }
+    ctx.stroke(); ctx.restore();
+  }
 
   // fills: buys under the bar, sells over it, so the candle stays readable
   const cBlue = css.getPropertyValue('--blue').trim(), cAmber = css.getPropertyValue('--amber').trim();

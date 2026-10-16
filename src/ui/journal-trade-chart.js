@@ -1,9 +1,10 @@
 // The trade page's charts (#jtChart5, #jtChartD), drawn by Lightweight Charts (vendor/lightweight-charts.js, loaded the first
-// time one is drawn, through effects.loadChartLibrary; state.chartLib): candles, 8 EMA, volume, each fill as an arrow (buys
-// blue under the bar, sells amber over it) and price lines. The library pans (drag, sideways swipe) and pinches on touch; a
+// time one is drawn, through effects.loadChartLibrary; state.chartLib): candles, 8 EMA, the session VWAP on the intraday
+// chart (teal: blue is the entry line and the buys), volume, each fill as an arrow (buys blue under the bar, sells amber
+// over it) and price lines. The library pans (drag, sideways swipe) and pinches on touch; a
 // plain vertical scroll or swipe is left to the page, and ctrl/cmd+scroll or a trackpad pinch zooms around the cursor here.
 // The legend over the top-left (like TradeZella's) shows the hovered bar, else the latest: OHLC and the change from the bar
-// before, volume, the 8 EMA.
+// before, volume, the 8 EMA and VWAP.
 import { marketEscape as esc } from '../core/format.js';
 import { chartSeries, compactVolume } from '../core/trade-page.js';
 import { SANS_FONT } from '../lib/media.js';
@@ -42,7 +43,7 @@ function zoomAt(h, clientX, f) {
 function legendHtml(h, i) {
   const b = h.bars?.[i];
   if (!b) return '';
-  const { green, red, purple } = h.colors;
+  const { green, red, purple, teal } = h.colors;
   const dp = h.digits, f = (/** @type {number} */ v) => v.toFixed(dp);
   const prev = i > 0 ? h.bars[i - 1].close : b.open, chg = b.close - prev, pct = prev ? (chg / prev) * 100 : 0;
   const sign = chg > 0 ? '+' : chg < 0 ? '−' : '', bar = b.close >= b.open ? green : red;
@@ -50,7 +51,8 @@ function legendHtml(h, i) {
   // non-breaking inside each pair, so a narrow chart wraps between them, never between a label and its value
   return `<div><span class="jt-legend-title">${esc(h.title)}</span> O&nbsp;${v(b.open)} H&nbsp;${v(b.high)} L&nbsp;${v(b.low)} C&nbsp;${v(b.close)} <span style="color:${chg >= 0 ? green : red}">${sign}${f(Math.abs(chg))}&nbsp;(${sign}${Math.abs(pct).toFixed(2)}%)</span></div>`
     + `<div>Vol <b>${compactVolume(b.volume || 0)}</b></div>`
-    + (h.emaValues[i] !== undefined ? `<div>EMA 8 <b style="color:${purple}">${f(h.emaValues[i])}</b></div>` : '');
+    + (h.emaValues[i] !== undefined ? `<div>EMA 8 <b style="color:${purple}">${f(h.emaValues[i])}</b>`
+      + (h.vwapValues[i] !== undefined ? ` VWAP <b style="color:${teal}">${f(h.vwapValues[i])}</b>` : '') + '</div>' : '');
 }
 
 /**
@@ -58,7 +60,7 @@ function legendHtml(h, i) {
  * @param {any} lib @param {HTMLElement} el @param {HTMLElement} legend @param {{ daily: boolean }} o
  */
 export function makeTradeChart(lib, el, legend, { daily }) {
-  const c = { text: cssColor('--text3'), border: cssColor('--border2'), green: cssColor('--green'), red: cssColor('--red'), purple: cssColor('--purple') };
+  const c = { text: cssColor('--text3'), border: cssColor('--border2'), green: cssColor('--green'), red: cssColor('--red'), purple: cssColor('--purple'), teal: cssColor('--teal') };
   const grid = 'rgba(255,255,255,0.045)';
   const chart = lib.createChart(el, {
     autoSize: true,
@@ -74,9 +76,11 @@ export function makeTradeChart(lib, el, legend, { daily }) {
   const ema = chart.addSeries(lib.LineSeries, { color: c.purple, lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
   const volume = chart.addSeries(lib.HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false });
   volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  // VWAP starts over each day: a line segment takes its first point's color, so a day's last bar goes transparent (paintTradeChart)
+  const vwap = daily ? null : chart.addSeries(lib.LineSeries, { color: c.teal, lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
   const h = {
-    lib, el, chart, candles, ema, volume, colors: c, markers: lib.createSeriesMarkers(candles, []), lines: [], off: new AbortController(),
-    bars: null, emaValues: [], rangeKey: null, title: '', digits: 2, legend, showLegend: (/** @type {number} */ i) => { legend.innerHTML = legendHtml(h, i); },
+    lib, el, chart, candles, ema, vwap, volume, colors: c, markers: lib.createSeriesMarkers(candles, []), lines: [], off: new AbortController(),
+    bars: null, emaValues: [], vwapValues: [], rangeKey: null, title: '', digits: 2, legend, showLegend: (/** @type {number} */ i) => { legend.innerHTML = legendHtml(h, i); },
   };
 
   chart.subscribeCrosshairMove(param => {
@@ -120,6 +124,7 @@ export function paintTradeChart(h, bars, { fills, lines, range = null, rangeKey 
     h.candles.applyOptions({ priceFormat: { type: 'price', precision: h.digits, minMove: h.digits === 4 ? 0.0001 : 0.01 } });
     h.candles.setData(s.candles);
     h.ema.setData(s.ema);
+    h.vwap?.setData(s.vwap.map(v => v.end ? { time: v.time, value: v.value, color: 'transparent' } : { time: v.time, value: v.value }));
     h.volume.setData(s.volume.map(v => ({ time: v.time, value: v.value, color: fade(v.up ? colors.green : colors.red, 0.35) })));
     h.bars = bars;
   }
@@ -129,6 +134,7 @@ export function paintTradeChart(h, bars, { fills, lines, range = null, rangeKey 
     h.rangeKey = rangeKey;
   }
   h.emaValues = s.ema.map(e => e.value);
+  h.vwapValues = h.vwap ? s.vwap.map(v => v.value) : [];
   h.chart.priceScale('right').applyOptions({ mode: log ? 1 : 0 }); // 1 = PriceScaleMode.Logarithmic
   h.title = title;
   h.showLegend(bars.length - 1);
