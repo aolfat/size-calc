@@ -2,6 +2,7 @@
 // and in rendered templates maps to one call here. Adapters turn data-arg strings into arguments.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
+import { cancelModelDraft, closeModelImage, deleteModelBook, deleteModelExample, editModelBook, editModelExample, loadModelBooks, modelBookField, modelExampleField, openModelImage, pasteModelImages, pickModelImage, refreshModelImages, saveModelBook, saveModelExample, selectModelBook, selectModelSetup, setModelBrowse, toggleModelSetup } from './model-books.js';
 import { addTradeShots, closeShotViewer, deleteTradeShot, openShot, pasteTradeShot, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
 import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
@@ -71,6 +72,25 @@ export const actions = {
   openJournalImport: () => openJournalImport(),
   openJournalExport: () => openJournalExport(),
   setJournalTab: el => setJournalTab(arg(el)),
+  loadModelBooks: () => loadModelBooks(),
+  selectModelBook: el => selectModelBook(arg(el)),
+  selectModelSetup: el => selectModelSetup(arg(el)),
+  setModelBrowse: el => setModelBrowse(arg(el)),
+  editModelBook: el => editModelBook(arg(el)),
+  modelBookField: el => modelBookField(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  saveModelBook: () => saveModelBook(),
+  deleteModelBook: el => deleteModelBook(arg(el)),
+  cancelModelDraft: () => cancelModelDraft(),
+  pickModelImage: () => pickModelImage(),
+  modelImagePicked: el => { const input = /** @type {HTMLInputElement} */ (el); const result = pasteModelImages(input.files); input.value = ''; return result; },
+  editModelExample: el => editModelExample(arg(el)),
+  modelExampleField: el => modelExampleField(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  toggleModelSetup: el => toggleModelSetup(arg(el)),
+  saveModelExample: () => saveModelExample(),
+  deleteModelExample: el => deleteModelExample(arg(el)),
+  refreshModelImages: () => refreshModelImages(),
+  openModelImage: el => openModelImage(arg(el)),
+  closeModelImage: () => closeModelImage(),
   pickJournalDay: el => pickJournalDay(arg(el)),
   clearJournalDay: () => clearJournalDay(),
   shiftJournalMonth: el => shiftJournalMonth(arg(el)),

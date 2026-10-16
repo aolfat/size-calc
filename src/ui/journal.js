@@ -23,6 +23,7 @@ import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal
 import { loadJournalReview, reviewedMark, setupsInUse, setupsOf, toReview } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
+import { loadModelBooks, renderModelBooks } from './model-books.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -188,14 +189,16 @@ function setupFilter(all) {
     </select>`;
 }
 
-function controls(all = []) {
+function controls(all = [], navigationOnly = false) {
   const on = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
   const tab = (v, label) => `<button ${on(state.journalTab, v)} data-action="setJournalTab" data-arg="${v}">${label}</button>`;
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
+  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('books', 'Model books')}${tab('fills', 'Fills')}</div>`;
+  if (state.journalTab === 'books' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   return `<div class="journal-controls">
-    <div class="seg" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('fills', 'Fills')}</div>
+    ${tabs}
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
     ${state.journalTab === 'trades' ? `<div class="seg" aria-label="Review"><button ${on(state.journalReviewFilter, 'all')} data-action="setJournalReviewFilter" data-arg="all">Any</button><button ${on(state.journalReviewFilter, 'todo')} data-action="setJournalReviewFilter" data-arg="todo">To review</button></div>` : ''}
     ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
@@ -245,7 +248,12 @@ function fillsView(fills) {
 
 export function setJournalFees(v) { store.set('journal_fees', v === 'after' ? 'after' : 'before'); renderJournal(); }
 export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
-export function setJournalTab(tab) { state.journalTab = ['fills', 'calendar', 'stats'].includes(tab) ? tab : 'trades'; if (state.journalTab !== 'trades') state.journalDay = ''; renderJournal(); }
+export function setJournalTab(tab) {
+  state.journalTab = ['fills', 'calendar', 'stats', 'books'].includes(tab) ? tab : 'trades';
+  if (state.journalTab !== 'trades') state.journalDay = '';
+  renderJournal();
+  if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
+}
 /** a day on the calendar: the trades with an exit then */
 export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; renderJournal(); }
 export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
@@ -303,6 +311,7 @@ export function renderJournal() {
   const kept = recordsSummary(records);
   const fills = fillsFrom(records);
   const canImport = schwabConnected();
+  const books = state.journalTab === 'books';
   const all = fills.length ? currentTrades() : [];
   syncJournalBadge(all);
   const keys = new Set(all.map(t => t.key));
@@ -314,25 +323,27 @@ export function renderJournal() {
   el.innerHTML = `<div class="card positions-card journal-card">
     <div class="positions-head">
       <span class="section-title">Journal</span>
-      <span class="positions-meta" id="journalKept">${keptLine}</span>
-      <span class="journal-actions">
+      <span class="positions-meta" id="journalKept">${books ? 'Your chart study library' : keptLine}</span>
+      ${books ? '' : `<span class="journal-actions">
         ${deckButtonHtml(all)}
         <button class="btn" id="journalImportBtn" data-action="openJournalImport" title="Bring in trades: Schwab now, files later">${state.captureBusy ? 'Importing…' : 'Import'}</button>
         <button class="btn" id="journalExportBtn" data-action="openJournalExport" title="Take your data with you as a file">Export</button>
-      </span>
+      </span>`}
     </div>
-    <p class="hint" id="journalStatus" role="status">${statusLine()}</p>
-    ${deckLineHtml(all)}
-    ${state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
-    ${state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
-    ${state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
-    ${fills.length ? controls(all) + (state.journalTab === 'fills'
+    ${!books ? `<p class="hint" id="journalStatus" role="status">${statusLine()}</p>` : ''}
+    ${!books ? deckLineHtml(all) : ''}
+    ${!books && state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
+    ${!books && state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
+    ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
+    ${controls(all, !fills.length)}
+    ${books ? '<div id="modelBooksBody"></div>' : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias)))
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
       : tradesView(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))))))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
+  if (books) renderModelBooks();
   const wrap = scrolled && el.querySelector?.('.positions-wrap');
   if (wrap) wrap.scrollLeft = scrolled;
   if (state.journalTab === 'stats' && fills.length) drawJournalEquity(onSetupFilter(filtered(all, t => t.bias)));
@@ -388,7 +399,7 @@ export async function loadJournal() {
   state.journalLoading = true;
   renderJournal();
   // your stops and deletes come from their own table: if it can't be read, the trades still show
-  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots()]);
+  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
   try {
     if (records.status === 'rejected') throw records.reason;
     state.journalRecords = records.value;

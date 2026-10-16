@@ -82,6 +82,20 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 - **Screenshots (built):** attach images to a trade with Paste from clipboard, by picking a file, by pressing ⌘V on the page, or by dropping them. They're shrunk, kept in a private bucket under your own folder, and shown through signed links. Each has a caption, and Delete asks once. Ten a trade.
 - **A Library sheet** to rename, hide and merge.
 
+### Model books (built)
+
+Journal → Model books is a personal screenshot study library, available without a broker connection or imported trades.
+Create a book with a name and description, then paste, drop, or choose a chart screenshot. Each example has a title,
+optional notes, and tags referencing existing My setups keys. Browsing My setups shows matching examples across books;
+renames and merges follow the same library as trade reviews. Examples can be edited, moved to another book, viewed at
+full size, or deleted after a second tap. Books can be renamed; a book must be empty before it can be deleted.
+One screenshot per example.
+
+Images use the existing shrinker (up to 2000px, WebP/JPEG, 2 MB) and the private `model-books` bucket. Metadata lives in
+`model_books` and `model_examples`, with owner rules and an owner-scoped book foreign key. Apply
+`20261024000000_model_books.sql` with `npx supabase db push`. This version uses screenshots from a charting platform;
+interactive chart snapshots, preset content, sharing, and chat are later work.
+
 ### 2. The review deck (built)
 
 Going through the trades you haven't reviewed one after another, without going back to the list in between. A card is the trade page you already have, in deck mode. There's no new layout.
