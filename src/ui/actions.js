@@ -27,7 +27,7 @@ import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from
 import { saveKey, signIn, signOut } from './settings.js';
 import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade } from './journal-trade.js';
-import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
+import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
@@ -124,6 +124,8 @@ export const actions = {
   toggleDeckWeekly: () => toggleDeckWeekly(),
   revealDeckPnl: () => revealDeckPnl(),
   setDeckPnl: el => setDeckPnl(arg(el)),
+  setReviewFrom: el => setReviewFrom(/** @type {HTMLInputElement} */ (el).value),
+  clearReviewFrom: () => setReviewFrom(''),
   startSetupDraft: () => startSetupDraft(),
   cancelSetupDraft: () => cancelSetupDraft(),
   setDraftAction: el => setDraftAction(arg(el)),

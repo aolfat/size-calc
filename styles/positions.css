@@ -313,6 +313,8 @@ span.journal-pick { cursor: default; }
 .jt-wait { font-size: 14px; font-weight: 500; color: var(--text3); }
 .jt-deck-pnl { margin: -2px 0 10px; }
 .jr-queue { margin: 4px 0 8px; }
+.jr-from { white-space: nowrap; }
+.jr-from input { width: auto; margin-left: 4px; padding: 3px 6px; font-size: 12.5px; color-scheme: dark; }
 .jt-deck-end { padding: 8px 0 4px; }
 .jt-deck-end .setup-title { margin: 0 0 12px; }
 @media (max-width: 600px) {

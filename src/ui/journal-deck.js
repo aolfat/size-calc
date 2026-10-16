@@ -1,13 +1,16 @@
 // The review deck (journal step 3, slice 2; docs/journal-step-3.md; state.journalDeck): the trades that need a pass, one
 // card after another, each the trade page in deck mode with the deck bar (count, pass, Back, Next, Save for the weekly
 // review, Done) and P&L hidden until you grade; the end screen; the Journal tab's count; Review N trades and the
-// Journal's line. The queue is every trade that needs a pass, oldest first, with no filters (journal-review.js reviewQueue).
+// Journal's line, with the day reviewing starts from. The queue is every trade that needs a pass and opened on or after
+// that day, newest first, with no other filters (journal-review.js reviewQueue).
 import { marketEscape as esc } from '../core/format.js';
+import { fromReviewDay, reviewFromDay } from '../core/journal-labels.js';
+import { nyParts } from '../core/journal-stats.js';
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { showToast } from './feedback.js';
 import { journalTradeList, renderJournal } from './journal.js';
-import { reviewQueue, savedForWeekly, toggleWeekly, tradePass } from './journal-review.js';
+import { reviewFrom, reviewQueue, savedForWeekly, toggleWeekly, tradePass } from './journal-review.js';
 import { journalPageTrade, openJournalTrade, syncJournalPage } from './journal-trade.js';
 
 const PASS_WORDS = { opening: 'Opening pass', closing: 'Closing pass: the grade and note', full: '' };
@@ -28,12 +31,25 @@ export function deckButtonHtml(list) {
   return n ? `<button class="btn primary" id="journalDeckBtn" data-action="startReviewDeck">Review ${n} trade${n === 1 ? '' : 's'}</button>` : '';
 }
 
-/** the Journal's line: "12 trades to review · Start", or "All reviewed"; nothing before the reviews are read */
+/**
+ * the Journal's line: "12 trades to review · Start", or "All reviewed", then Review from (a day: older trades leave the
+ * deck, the count says how many) with All days to take it back; nothing before the reviews are read
+ */
 export function deckLineHtml(list) {
   if (!state.journalReview || state.journalReviewError || !list.some(t => t.status !== 'history' && !t.deleted)) return '';
-  const n = reviewQueue(list).length;
-  return n ? `<p class="hint jr-queue" role="status">${n} trade${n === 1 ? '' : 's'} to review · <button class="pos-link" data-action="startReviewDeck">Start</button></p>`
-    : '<p class="hint jr-queue" role="status">All reviewed</p>';
+  const n = reviewQueue(list).length, from = reviewFrom();
+  if (!n && !from) return '<p class="hint jr-queue" role="status">All reviewed</p>';
+  const older = from ? list.filter(t => !fromReviewDay(t, from) && tradePass(t)).length : 0;
+  const today = nyParts(new Date().toISOString()).day;
+  return `<p class="hint jr-queue" role="status">${n ? `${n} trade${n === 1 ? '' : 's'} to review · <button class="pos-link" data-action="startReviewDeck">Start</button>` : 'All reviewed'}
+    · <label class="jr-from">Review from <input type="date" id="journalReviewFrom" value="${from}" max="${today}" data-change="setReviewFrom" aria-label="Review trades opened from this day" /></label>${from
+      ? ` <button class="pos-link" data-action="clearReviewFrom">All days</button>${older ? ` · ${older} older left out` : ''}` : ''}</p>`;
+}
+
+/** Review from: trades opened before the day leave the deck, the count and To review (journal_review_from, synced); '' = every day */
+export function setReviewFrom(v) {
+  store.set('journal_review_from', reviewFromDay(v));
+  renderJournal();
 }
 
 /** start the deck: the whole queue, or the given keys (the ones skipped last time) */

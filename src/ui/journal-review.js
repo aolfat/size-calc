@@ -3,8 +3,9 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, deckQueue, GRADES, linkLabel, MAX_LINKS, missingWords, parseSetup, PLAN_FOLLOWED, reviewPass, reviewState, sameParts, setupFits, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
+import { store } from '../lib/store.js';
 import { addTradeLabel, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { showError } from './feedback.js';
@@ -28,10 +29,12 @@ export const reviewedMark = t => !state.journalReview || t.status === 'history' 
   : `${tradeReviewState(t).reviewed ? ' <span class="journal-tag journal-tag-done">reviewed</span>' : ''}${savedForWeekly(t) ? ' <span class="journal-tag journal-tag-quiet">for weekly</span>' : ''}`;
 /** the pass a trade needs (core/journal-labels.js reviewPass): opening while it's open, the grade and note once it closes */
 export const tradePass = t => reviewPass(t, tradeReviewState(t));
+/** the day reviewing starts from (journal_review_from, synced with your account): trades opened before it leave the deck; '' = every day */
+export const reviewFrom = () => reviewFromDay(store.get('journal_review_from'));
 /** the To review filter: the trades the review deck would show (an open trade with its opening pass done waits for its close) */
-export const toReview = t => !!tradePass(t);
-/** the review deck's queue, oldest first; empty until the reviews have been read */
-export const reviewQueue = trades => state.journalReview && !state.journalReviewError ? deckQueue(trades, tradeReviewState) : [];
+export const toReview = t => fromReviewDay(t, reviewFrom()) && !!tradePass(t);
+/** the review deck's queue, newest first, from the review-from day; empty until the reviews have been read */
+export const reviewQueue = trades => state.journalReview && !state.journalReviewError ? deckQueue(trades, tradeReviewState, reviewFrom()) : [];
 /** saved for the weekly review (trade_reviews.weekly_at) */
 export const savedForWeekly = t => !!data().weekly?.[t.key];
 
