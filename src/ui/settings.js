@@ -100,7 +100,8 @@ export async function signOut() {
 async function startSession(session) {
   state.session = session;
   // Legacy, anonymous, or another user's broker tokens must never follow a new Google account.
-  if (!schwabSession()) schwabDisconnect();
+  // the callback page runs this before finishing its login: the attempt stays, and its tokens get this user
+  if (!schwabSession()) schwabDisconnect({ keepAttempt: true });
   if (state.journalView) loadJournal(); // a reload on the Journal: its records, now that there's a session to read them
   setCloudUi('Syncing…');
   if (store.get('cloud_user') !== session.user.id) {

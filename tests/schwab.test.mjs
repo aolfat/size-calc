@@ -131,6 +131,36 @@ test('logging in swaps the pasted code through the worker and keeps only the acc
   assert.equal(elements.get('schwabLogin').style.display, 'none');
 });
 
+test('signed in to Google, the callback page finishes the Schwab login it started', async () => {
+  const net = network(async path => {
+    if (path === '/token') return json({ access_token: 'acc-1', refresh_token: 'ref-1', expires_in: 1800 });
+    if (path === '/trader/v1/accounts/accountNumbers') return json([{ accountNumber: '12346789', hashValue: 'HASH1' }]);
+    return json({}, 404);
+  });
+  const user = { id: 'u1', email: 'me@example.com' };
+  const session = { user, access_token: 'jwt' };
+  const answer = data => Promise.resolve({ data, error: null, status: 200 });
+  const supabase = {
+    auth: { getSession: async () => ({ data: { session } }), onAuthStateChange: () => ({ data: { subscription: {} } }) },
+    from: () => ({ select: () => ({ gt() { return this; }, then: (ok, bad) => answer([]).then(ok, bad) }), upsert: () => answer(null) }),
+    rpc: () => answer(''),
+  };
+  // an expired login from last week, the attempt this device just started, and a Google session to resume
+  const storage = new Map([['schwab_proxy', PROXY], ['schwab_oauth_state', 'mine'], ['cloud_user', 'u1'],
+    ['sb-dhohfavttsxwutanvcuj-auth-token', 'stored'],
+    ['schwab_tokens', JSON.stringify({ userId: 'u1', proxy: PROXY, connectionId: 'old', access: 'a', accessExp: 0, refresh: 'r', refreshExp: Date.now() - DAY })]]);
+  const { run, elements } = await app({ fetch: net.fetch, storage, supabase });
+  const href = 'https://size-calc.example.workers.dev/size-calc/?code=C1&session=s1&state=mine';
+  await run(`initCloud('${href}')`); // main.js restores the Google session first, then finishes the Schwab login
+  assert.equal(storage.get('schwab_oauth_state'), 'mine', 'the attempt outlives clearing the expired login');
+  assert.equal(storage.has('schwab_tokens'), false, 'the expired login is gone');
+  assert.equal(await run(`initSchwab('${href}')`), undefined);
+  assert.equal(elements.get('errorBox').textContent, 'Schwab connected. Account ••6789.', 'connected, not "another attempt"');
+  assert.equal(net.schwabCalls()[0]?.url, PROXY + '/token');
+  assert.equal(JSON.parse(storage.get('schwab_tokens')).userId, 'u1', 'the new login belongs to this Google user');
+  assert.equal(storage.has('schwab_oauth_state'), false, 'and the attempt is spent');
+});
+
 test('a callback page with someone else\'s state is ignored', async () => {
   const net = network(async () => json({}, 500));
   const storage = new Map([['schwab_proxy', PROXY], ['schwab_oauth_state', 'mine']]);
