@@ -78,7 +78,9 @@ export function createState() {
     reviewNewName: '', // what's typed in it
     reviewNoteDraft: null, // { key, which: 'entry' | 'exit', text }: the note being typed, so a redraw never loses it
     journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
-    journalTrade: null, // the trade page open in the Journal: { key, five, daily, view5, viewD, loading/status per chart, hover }
+    journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
+    chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
+    chartLibLoading: null, // the one in-flight library load
     journalTab: 'trades', // trades | calendar | stats | books | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',

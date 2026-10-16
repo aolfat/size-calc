@@ -26,7 +26,7 @@ import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
 import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
-import { closeJournalTrade, editJournalTrade, journalPageTrade } from './journal-trade.js';
+import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, toggleJournalLog } from './journal-trade.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
@@ -157,6 +157,10 @@ export const actions = {
   toggleLibraryHidden: el => toggleLibraryHidden(arg(el), el.dataset.arg2 || ''),
   mergeLibraryItem: el => mergeLibraryItem(arg(el), el.dataset.arg2 || '', /** @type {HTMLSelectElement} */ (el).value),
   editJournalTrade: () => editJournalTrade(),
+  setJournalInterval: el => setJournalInterval(num(el)),
+  setJournalRange: el => setJournalRange(el.dataset.arg),
+  setJournalChartKind: el => setJournalChartKind(el.dataset.arg),
+  toggleJournalLog: el => toggleJournalLog(el.dataset.arg),
   deletePicked: () => deletePicked(),
   undoDeleteTrades: () => undoDeleteTrades(),
   deleteTrade: () => deleteTrade(),

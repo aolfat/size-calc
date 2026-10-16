@@ -293,10 +293,24 @@ span.journal-pick { cursor: default; }
 .jt-head .journal-actions { margin-left: auto; }
 .jt-charts { display: grid; gap: 14px; margin-bottom: 14px; }
 .jt-chart { min-width: 0; }
-.jt-chart .chart-cap { display: flex; gap: 10px; align-items: baseline; }
-.jt-ohlc { font-size: 11.5px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jt-chart .chart-cap { display: flex; gap: 10px; align-items: center; }
+.jt-kind-row { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+.jt-kind-row .seg button { padding: 4px 12px; font-size: 12px; }
+.jt-ohlc { flex: 1 1 0; font-size: 11.5px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; } /* ours: the hover readout, truncated so the chips never move */
+.jt-tools { display: flex; flex: none; gap: 5px; margin-left: auto; }
+.jt-tools .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
+.jt-tools .jt-log { margin-left: 6px; display: flex; }
+/* TradeZella-style legend over the chart's top-left: the hovered bar, else the latest */
+.jt-legend { position: absolute; top: 6px; left: 9px; max-width: calc(100% - 80px); z-index: 3; pointer-events: none; font-size: 11.5px; line-height: 1.5; color: var(--text2); } /* clear of the price axis */
+.jt-legend b { font-weight: 500; }
+.jt-legend-title { color: var(--text); font-weight: 600; margin-right: 2px; white-space: nowrap; }
+/* Lightweight Charts lays its chart out as a table of canvases: the panel look goes on the box, and the app's table and
+   chart canvas rules stay out of it */
+.jt-plot { height: 280px; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); overflow: hidden; }
+.jt-plot table { width: auto; table-layout: auto; border-collapse: separate; font-size: inherit; }
+.chart-wrap .jt-plot canvas { border: 0; border-radius: 0; background: none; cursor: inherit; }
 .jt-charts .chart-hint { grid-column: 1 / -1; }
-@media (min-width: 900px) { .jt-charts { grid-template-columns: 3fr 2fr; } }
+@media (min-width: 900px) { .jt-charts { grid-template-columns: 3fr 2fr; } .jt-plot { height: 380px; } }
 .jt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; margin: 0 0 10px; }
 .jt-stats dt { font-size: 12px; color: var(--text2); }
 .jt-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-family: var(--num); }
