@@ -195,7 +195,7 @@ function controls(all = [], navigationOnly = false) {
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('books', 'Model books')}${tab('fills', 'Fills')}</div>`;
+  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('fills', 'Fills')}</div>`;
   if (state.journalTab === 'books' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   return `<div class="journal-controls">
     ${tabs}

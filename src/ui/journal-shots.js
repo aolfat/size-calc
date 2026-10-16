@@ -72,9 +72,9 @@ export async function addTradeShots(t, fileList) {
 }
 
 /** the paste key on this device, for the hint: ⌘V on a Mac or iPad, Ctrl+V elsewhere */
-const pasteKey = () => /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') ? '⌘V' : 'Ctrl+V';
+export const pasteKey = () => /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') ? '⌘V' : 'Ctrl+V';
 /** a touch screen with no keyboard to press it on: the hint points at the button instead */
-const touchOnly = () => !!globalThis.matchMedia?.('(pointer: coarse)')?.matches && !globalThis.matchMedia?.('(pointer: fine)')?.matches;
+export const touchOnly = () => !!globalThis.matchMedia?.('(pointer: coarse)')?.matches && !globalThis.matchMedia?.('(pointer: fine)')?.matches;
 
 /** Paste from clipboard: the image you copied, straight from the clipboard */
 export async function pasteTradeShot(t) {
