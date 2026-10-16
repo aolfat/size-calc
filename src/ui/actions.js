@@ -25,7 +25,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
-import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
+import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, toggleJournalLog } from './journal-trade.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
@@ -98,6 +98,9 @@ export const actions = {
   setJournalPeriod: el => setJournalPeriod(arg(el)),
   stepJournalPeriod: el => stepJournalPeriod(arg(el)),
   openJournalStats: el => openJournalStats(arg(el), el.dataset.arg2 || ''),
+  openJournalSetup: el => openJournalSetup(arg(el)),
+  closeJournalSetup: () => closeJournalSetup(),
+  showSetupIn: el => showSetupIn(arg(el)),
   setJournalSide: el => setJournalSide(arg(el)),
   journalSymbolChanged: () => journalSymbolChanged(),
   toggleDeletedTrades: () => toggleDeletedTrades(),

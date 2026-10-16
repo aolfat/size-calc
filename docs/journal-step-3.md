@@ -16,7 +16,7 @@ Every trade gets reviewed: what the market and its sector were doing, which setu
 ## Decisions
 
 - **Two grades per trade:**
-  - **Setup grade:** A++, A, B, C, D, F. How good the setup and execution were.
+  - **Setup grade:** A, B, C, D, F. How good the setup and execution were. (A++ came over from Trading-Journal-AI and was cut: one step too many at the top. Migration `20261027000000_grades_a_to_f.sql` turns saved A++ grades into A.)
   - **Followed the plan:** yes, partly, no. Discipline, apart from whether the setup was good.
 
   The by-grade report checks the ladder: if A trades don't beat C trades, the grading isn't telling you anything.
@@ -63,7 +63,7 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 
 | Table | One row per | Holds |
 |---|---|---|
-| `trade_reviews` (exists) | Trade | Adds `setup_grade` (A++ to F), `plan_followed` (yes, partly, no), `note`, `market` (a per-trade override of the day's), and `reviewed_at` (set when the required fields are all there) |
+| `trade_reviews` (exists) | Trade | Adds `setup_grade` (A to F), `plan_followed` (yes, partly, no), `note`, `market` (a per-trade override of the day's), and `reviewed_at` (set when the required fields are all there) |
 | `trade_labels` | Label on a trade | Trade key, `kind` (sector, setup, tactic, tag, mistake), `value` (an item key, e.g. `sma50+bounce` or `mine:<id>`), `set_by` (you or the app), and for a guess its reason and confidence |
 | `journal_days` | Trading day | `day` (New York), `market`, a day note |
 | `library_items` | Item of yours, or a change to a default | `kind`, `name`, `default_key` (when it renames or hides a default), `hidden`, `merged_into` (an item key, which is how aliases work), and settings like a pivot's minimum reds |
@@ -158,6 +158,8 @@ Low-confidence guesses come first in the deck.
 - **You dismiss the wrong ones.** The cutoffs are set in this slice.
 
 ### 5. Reports by label
+
+**First cut built:** the Journal's **Setups** tab lists every one of My setups with its numbers, then cuts the closed trades by setup grade, entry tactic, followed the plan, market, sector, mistakes and tags. Each setup has its own page: its numbers, by grade, tactic, market and side, the setups it rides with, and its trades, with links to its trades, stats, calendar and model book examples. Still to come: combinations and the action and level cuts.
 
 - **The Stats tab's tables, cut by** setup, tactic, market, sector, grade, plan followed, tags and mistakes, with the same stats and thin rows.
 - **Grade ladder:** A against C.

@@ -32,7 +32,9 @@ export const DEFAULT_SETUP_PARTS = /** @type {Record<string, SetupParts>} */ ({
   base_breakout: { pattern: 'base_breakout' }, flag_breakout: { pattern: 'flag_breakout' }, earnings_gap: { pattern: 'earnings_gap' },
 });
 
-export const GRADES = ['A++', 'A', 'B', 'C', 'D', 'F'];
+export const GRADES = ['A', 'B', 'C', 'D', 'F'];
+/** a kept grade as the app shows it: A to F; an A++ saved before the grades were cut to five is an A. @param {unknown} g */
+export const gradeOf = g => g === 'A++' ? 'A' : GRADES.includes(/** @type {string} */ (g)) ? /** @type {string} */ (g) : null;
 export const PLAN_FOLLOWED = /** @type {[string, string][]} */ ([['yes', 'Yes'], ['partly', 'Partly'], ['no', 'No']]);
 /** labels a trade has one of; the rest take any number */
 export const SINGLE = new Set(['sector', 'tactic']);
