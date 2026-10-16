@@ -6,6 +6,7 @@ import { checkModelOwner, keepModelBook, keepModelExample, modelImageLinks, MODE
 import { createState, state } from '../state.js';
 import { effects } from './effects.js';
 import { showError, showToast } from './feedback.js';
+import { pasteKey, touchOnly } from './journal-shots.js';
 
 const modelState = () => state.modelBooks;
 const modelLibrary = () => buildLibrary(state.journalReview?.library || []);
@@ -40,12 +41,12 @@ export async function loadModelBooks() {
 
 export function selectModelBook(id = '') {
   const m = modelState();
-  m.mode = 'books'; m.setupKey = ''; m.bookId = id; m.deleteKey = '';
+  m.mode = 'books'; m.setupKey = ''; m.bookId = id; m.deleteKey = ''; m.viewerId = '';
   renderModelBooks();
 }
 export function selectModelSetup(key = '') {
   const m = modelState();
-  m.mode = 'setups'; m.bookId = ''; m.setupKey = key; m.deleteKey = '';
+  m.mode = 'setups'; m.bookId = ''; m.setupKey = key; m.deleteKey = ''; m.viewerId = '';
   renderModelBooks();
 }
 export function setModelBrowse(mode) { return mode === 'setups' ? selectModelSetup() : selectModelBook(); }
@@ -197,13 +198,25 @@ function modelExampleEditor(lib) {
     <fieldset class="mb-setup-picker"${m.busy || state.journalReviewError ? ' disabled' : ''}><legend>My setups <span>optional</span></legend><p>Tag this example with your existing setups.</p><div class="mb-tags">${choices.map(k => `<button class="filter-btn${selected.includes(k) ? ' active' : ''}" aria-pressed="${selected.includes(k)}" data-action="toggleModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k))}</button>`).join('')}</div></fieldset>
     <div class="mb-actions"><button class="btn primary" data-action="saveModelExample"${m.busy || state.journalReviewError ? ' disabled' : ''}>${m.busy ? 'Saving…' : 'Save example'}</button><button class="btn" data-action="cancelModelDraft"${m.busy ? ' disabled' : ''}>Cancel</button></div></div>`;
 }
+const modelTags = (keys, lib) => keys.length ? `<div class="mb-tags">${keys.map(k => `<button class="filter-btn" data-action="selectModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k))}</button>`).join('')}</div>` : '';
+/** A gallery tile: the chart first, then what it is. The book is named only where examples from several books mix. */
 function modelExampleCard(e, lib) {
   const m = modelState(), url = modelUrl(e.path), keys = modelSetupKeys(e.setup_keys, lib);
-  return `<article class="mb-example" id="model-example-${esc(e.id)}"><div class="mb-example-head"><div><h3>${esc(e.title)}</h3><span class="mb-meta">${esc(modelBookOf(e.book_id)?.name || '')}</span></div>
-    <div class="mb-actions"><button class="pos-link" data-action="editModelExample" data-arg="${esc(e.id)}"${m.busy ? ' disabled' : ''}>Edit</button><button class="pos-link journal-danger" data-action="deleteModelExample" data-arg="${esc(e.id)}"${m.busy ? ' disabled' : ''}>${m.deleteKey === e.id ? 'Delete for good?' : 'Delete'}</button>${m.deleteKey === e.id ? '<button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}</div></div>
-    ${keys.length ? `<div class="mb-tags">${keys.map(k => `<button class="filter-btn" data-action="selectModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k))}</button>`).join('')}</div>` : ''}
-    ${e.notes ? `<p class="mb-notes">${esc(e.notes)}</p>` : ''}
-    ${url ? `<button class="mb-image" data-action="openModelImage" data-arg="${esc(e.id)}" aria-label="Open full-size screenshot: ${esc(e.title)}"><img src="${esc(url)}" alt="${esc(e.title)}" width="${e.width}" height="${e.height}" loading="lazy" /></button>` : '<div class="mb-image-wait">Loading screenshot…</div>'}</article>`;
+  const book = m.bookId ? '' : modelBookOf(e.book_id)?.name || '';
+  return `<article class="mb-example" id="model-example-${esc(e.id)}">
+    ${url ? `<button class="mb-image" data-action="openModelImage" data-arg="${esc(e.id)}" aria-label="Open screenshot: ${esc(e.title)}"><img src="${esc(url)}" alt="${esc(e.title)}" width="${e.width}" height="${e.height}" loading="lazy" /></button>` : '<div class="mb-image mb-image-wait">Loading screenshot…</div>'}
+    <div class="mb-example-body"><h3>${esc(e.title)}</h3>${book ? `<span class="mb-meta">${esc(book)}</span>` : ''}
+    ${modelTags(keys, lib)}
+    ${e.notes ? `<p class="mb-notes">${esc(e.notes)}</p>` : ''}</div>
+    <div class="mb-example-foot mb-actions"><button class="pos-link" data-action="editModelExample" data-arg="${esc(e.id)}"${m.busy ? ' disabled' : ''}>Edit</button><button class="pos-link journal-danger" data-action="deleteModelExample" data-arg="${esc(e.id)}"${m.busy ? ' disabled' : ''}>${m.deleteKey === e.id ? 'Delete for good?' : 'Delete'}</button>${m.deleteKey === e.id ? '<button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}</div></article>`;
+}
+/** Full size with everything the tile clamps: book, setups and the whole note. */
+function modelViewer(e, lib) {
+  const url = modelUrl(e.path), keys = modelSetupKeys(e.setup_keys, lib), book = modelBookOf(e.book_id)?.name || '';
+  return `<dialog class="mb-viewer" id="modelImageViewer" aria-label="Chart screenshot: ${esc(e.title)}"><div class="mb-viewer-bar"><div><strong>${esc(e.title)}</strong>${book ? `<span class="mb-meta">${esc(book)}</span>` : ''}</div>
+    <div class="mb-actions">${url ? `<a class="pos-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open full size</a>` : ''}<button class="btn" data-action="closeModelImage" autofocus>Close</button></div></div>
+    ${url ? `<img src="${esc(url)}" alt="${esc(e.title)}" />` : ''}
+    ${keys.length || e.notes ? `<div class="mb-viewer-body">${modelTags(keys, lib)}${e.notes ? `<p class="mb-notes">${esc(e.notes)}</p>` : ''}</div>` : ''}</dialog>`;
 }
 
 export function renderModelBooks() {
@@ -219,19 +232,19 @@ export function renderModelBooks() {
   const err = m.error ? `<p class="mb-error" role="alert">${esc(m.error)}</p>` : '';
   el.innerHTML = `<div class="mb-shell"><aside class="mb-sidebar" aria-label="Model book navigation">
     <div class="mb-sidebar-head"><h2>Model books</h2><button class="pos-link" data-action="editModelBook"${m.busy || m.draft || m.bookDraft || !m.loaded || m.loading ? ' disabled' : ''}>+ New book</button></div>
-    <div class="seg mb-browse" aria-label="Browse examples"><button class="${m.mode === 'books' ? 'active' : ''}" aria-pressed="${m.mode === 'books'}" data-action="setModelBrowse" data-arg="books">Books</button><button class="${m.mode === 'setups' ? 'active' : ''}" aria-pressed="${m.mode === 'setups'}" data-action="setModelBrowse" data-arg="setups">My setups</button></div>
+    <div class="seg mb-browse" aria-label="Browse examples"><button class="${m.mode === 'books' ? 'active' : ''}" aria-pressed="${m.mode === 'books'}" data-action="setModelBrowse" data-arg="books">By book</button><button class="${m.mode === 'setups' ? 'active' : ''}" aria-pressed="${m.mode === 'setups'}" data-action="setModelBrowse" data-arg="setups">By setup</button></div>
     <div class="mb-nav-list">${nav('All examples', m.examples.length, m.mode === 'setups' ? 'selectModelSetup' : 'selectModelBook', '', !m.bookId && !m.setupKey)}${m.mode === 'books'
       ? m.books.map(b => nav(b.name, m.examples.filter(e => e.book_id === b.id).length, 'selectModelBook', b.id, m.bookId === b.id)).join('')
       : setupKeys.map(k => nav(lib.nameOf('setup', k), modelExamplesFor(m.examples, { setupKey: k }, lib).length, 'selectModelSetup', k, m.setupKey === k)).join('')}</div>
     <p class="mb-sidebar-hint">${m.mode === 'setups' ? 'Your setup tags connect examples across books.' : 'Keep chart examples you want to study.'}</p></aside>
     <div class="mb-content">${err}${m.loading ? '<p class="hint" role="status">Loading model books…</p>' : ''}${m.error && !m.loaded ? '<button class="btn" data-action="loadModelBooks">Retry</button>' : ''}
-    ${m.bookDraft ? modelBookEditor() : m.draft ? modelExampleEditor(lib) : `<div class="mb-feed-head"><div><h2>${esc(title)}</h2><p class="mb-meta">${modelCount(list.length)}${m.setupKey ? ' across your books' : ''}</p></div><div class="mb-actions">${book ? `<button class="pos-link" data-action="editModelBook" data-arg="${esc(book.id)}">Edit book</button><button class="pos-link journal-danger" data-action="deleteModelBook" data-arg="${esc(book.id)}">${m.deleteKey === book.id ? 'Delete for good?' : 'Delete book'}</button>${m.deleteKey === book.id ? '<button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}` : ''}<button class="btn primary" data-action="pickModelImage"${!m.books.length || m.preparing || m.loading || !m.loaded ? ' disabled' : ''}>${m.preparing ? 'Preparing…' : '+ Add example'}</button></div></div>
+    ${m.bookDraft ? modelBookEditor() : m.draft ? modelExampleEditor(lib) : `<div class="mb-feed-head"><div><h2>${esc(title)}</h2><p class="mb-meta">${modelCount(list.length)}${m.setupKey ? ' across your books' : ''}${book ? ` · <button class="pos-link" data-action="editModelBook" data-arg="${esc(book.id)}">Edit book</button> · <button class="pos-link journal-danger" data-action="deleteModelBook" data-arg="${esc(book.id)}">${m.deleteKey === book.id ? 'Delete for good?' : 'Delete book'}</button>${m.deleteKey === book.id ? ' <button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}` : ''}</p></div>
+      ${m.books.length ? `<div class="mb-add"><button class="btn primary" data-action="pickModelImage"${m.preparing || m.loading || !m.loaded ? ' disabled' : ''}>${m.preparing ? 'Preparing…' : '+ Add example'}</button>${touchOnly() ? '' : `<span class="mb-paste-hint">or press ${pasteKey()}, or drop an image</span>`}</div>` : ''}</div>
       ${book?.description ? `<p class="mb-description">${esc(book.description)}</p>` : ''}
-      ${m.books.length ? '<p class="mb-paste-hint">Paste a chart screenshot here, drop an image, or choose Add example.</p>' : ''}
       ${m.imageError ? `<p class="mb-error" role="status">${esc(m.imageError)} <button class="pos-link" data-action="refreshModelImages">Retry images</button></p>` : ''}
-      ${list.length ? list.map(e => modelExampleCard(e, lib)).join('') : !m.loading && m.loaded ? `<div class="mb-empty"><span class="mb-empty-icon" aria-hidden="true">▧</span><h3>${m.books.length ? 'Your next model starts with a chart' : 'Build your model books'}</h3><p>${m.books.length ? 'Save an example, add what you noticed, and tag it with My setups.' : 'Create a book, then paste screenshots from your charting platform.'}</p>${!m.books.length ? '<button class="btn primary" data-action="editModelBook">+ New book</button>' : ''}</div>` : ''}`}
+      ${list.length ? `<div class="mb-grid">${list.map(e => modelExampleCard(e, lib)).join('')}</div>` : !m.loading && m.loaded ? `<div class="mb-empty"><span class="mb-empty-icon" aria-hidden="true">▧</span><h3>${m.books.length ? 'Your next model starts with a chart' : 'Build your model books'}</h3><p>${m.books.length ? 'Save an example, add what you noticed, and tag it with My setups.' : 'Create a book, then paste screenshots from your charting platform.'}</p>${!m.books.length ? '<button class="btn primary" data-action="editModelBook">+ New book</button>' : ''}</div>` : ''}`}
     <input type="file" id="modelImageInput" accept="image/png,image/jpeg,image/webp" hidden data-change="modelImagePicked" />
-    </div></div>${m.viewerId && modelExampleOf(m.viewerId) ? `<dialog class="mb-viewer" id="modelImageViewer" aria-label="Full-size chart screenshot"><div class="mb-viewer-bar"><strong>${esc(modelExampleOf(m.viewerId).title)}</strong><button class="btn" data-action="closeModelImage" autofocus>Close</button></div><img src="${esc(modelUrl(modelExampleOf(m.viewerId).path))}" alt="${esc(modelExampleOf(m.viewerId).title)}" /></dialog>` : ''}`;
+    </div></div>${m.viewerId && modelExampleOf(m.viewerId) ? modelViewer(modelExampleOf(m.viewerId), lib) : ''}`;
   if (m.viewerId) document.getElementById('modelImageViewer')?.showModal?.();
   if (focus && (m.draft || m.bookDraft)) {
     const field = document.getElementById(focus.id);
@@ -253,4 +266,5 @@ export function initModelBookEvents() {
   section?.addEventListener('dragover', e => { if (modelOnPage() && [...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault(); });
   section?.addEventListener('drop', e => { if (modelOnPage() && e.dataTransfer?.files?.length) { e.preventDefault(); pasteModelImages(e.dataTransfer.files); } });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && modelOnPage() && modelState().viewerId) { e.preventDefault(); closeModelImage(); } });
+  document.addEventListener('click', e => { if (e.target?.id === 'modelImageViewer') closeModelImage(); });
 }

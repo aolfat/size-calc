@@ -89,7 +89,9 @@ Create a book with a name and description, then paste, drop, or choose a chart s
 optional notes, and tags referencing existing My setups keys. Browsing My setups shows matching examples across books;
 renames and merges follow the same library as trade reviews. Examples can be edited, moved to another book, viewed at
 full size, or deleted after a second tap. Books can be renamed; a book must be empty before it can be deleted.
-One screenshot per example.
+One screenshot per example. Examples show as a gallery grid (one column on phones): the chart cropped to 16:10, the
+title, the book only where books mix, setups, and notes clamped to three lines; the viewer shows the whole chart with
+every setup and the full note. The browse switch reads By book | By setup, and the tab is just 'Books' on phones.
 
 Images use the existing shrinker (up to 2000px, WebP/JPEG, 2 MB) and the private `model-books` bucket. Metadata lives in
 `model_books` and `model_examples`, with owner rules and an owner-scoped book foreign key. Apply
