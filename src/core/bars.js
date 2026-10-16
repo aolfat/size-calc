@@ -64,6 +64,16 @@ export const BARS_KEEP_DAYS = 35;
 /** the New York trading day of a time. @param {string | number} t */
 export const nyDay = t => nyDateStr(new Date(t));
 
+/** when a New York day's bars are all in: extended hours end at 20:00, the end of what timesales is asked for */
+export const DAY_DONE = '20:00';
+const NY_CLOCK = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/** the newest New York day whose bars are all in: today from 20:00 on, else yesterday. @param {number} now */
+export function lastDoneDay(now) {
+  const today = nyDay(now);
+  return NY_CLOCK.format(new Date(now)) >= DAY_DONE ? today : nyDay(Date.parse(today + 'T12:00:00Z') - DAY_MS);
+}
+
 /** the symbols a trade's charts need, in Tradier's form: the stock; an option and its underlying. @param {{ symbol: string, assetType: string }} trade */
 export function tradeBarSymbols(trade) {
   const o = trade.assetType === 'OPTION' ? parseSchwabOption(trade.symbol) : null;
@@ -83,7 +93,7 @@ export function weekdaysBetween(from, to) {
 
 /**
  * The bars the trades need: for each trade, every weekday it was open (opened to closed, or to now), finished days only
- * (today's session isn't over), and only within the last BARS_KEEP_DAYS. Trades from before the history have no open
+ * (today once extended hours end at 20:00: lastDoneDay; a day saved early would stay cut short), and only within the last BARS_KEEP_DAYS. Trades from before the history have no open
  * date, so none. A holiday comes back empty from Tradier and is kept empty.
  * @param {{ symbol: string, assetType: string, status: string, openedAt: string, closedAt: string | null }[]} trades
  * @param {number} now @param {number} [keepDays]
@@ -91,14 +101,14 @@ export function weekdaysBetween(from, to) {
  */
 export function barsNeeded(trades, now, keepDays = BARS_KEEP_DAYS) {
   const earliest = nyDay(now - keepDays * DAY_MS);
-  const yesterday = nyDay(Date.parse(nyDay(now) + 'T12:00:00Z') - DAY_MS);
+  const done = lastDoneDay(now);
   /** @type {Map<string, Set<string>>} */
   const need = new Map();
   for (const t of trades) {
     if (t.status === 'history' || !t.openedAt) continue;
-    let from = nyDay(t.openedAt), to = t.closedAt ? nyDay(t.closedAt) : yesterday;
+    let from = nyDay(t.openedAt), to = t.closedAt ? nyDay(t.closedAt) : done;
     if (from < earliest) from = earliest;
-    if (to > yesterday) to = yesterday;
+    if (to > done) to = done;
     if (from > to) continue;
     const days = weekdaysBetween(from, to);
     for (const sym of tradeBarSymbols(t)) {
