@@ -5,7 +5,7 @@
 // and Merge to make them one (a re-entry, a spread's legs); Separate undoes it. Both are rows in the trades table. The
 // trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { fillsFrom, instructionWords, recordsSummary } from '../core/journal-records.js';
+import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
 import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { activePeriods, exitDays, periodKey, PERIODS, stepPeriod, switchPeriod } from '../core/journal-stats.js';
@@ -50,7 +50,7 @@ function fillRow(f) {
   const mult = f.assetType === 'OPTION' ? 100 : 1;
   return `<tr>
     <td><b>${esc(f.label || f.symbol)}</b></td>
-    <td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(instructionWords(f.instruction))}</td>
+    <td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(fillWords(f))}</td>
     <td>${f.qty}</td>
     <td>${fmtPositionPrice(f.price, f.assetType === 'OPTION' ? 'OPTION' : null)}</td>
     <td>${fmt$(f.qty * f.price * mult)}</td>
@@ -98,7 +98,12 @@ function rTitleOf(t) {
 }
 
 const HISTORY_TITLE = "Opened before the journal's history: Schwab's API gives 60 days of orders, so its entry and P&L aren't known. It doesn't count in the stats.";
-const EXPIRED_TITLE = "Closed at $0 at the 4pm close on expiry, assumed worthless. If it was exercised or assigned, that isn't in the journal yet.";
+const EXPIRED_TITLE = "Closed at $0 at the 4pm close on expiry, assumed worthless. An assignment or exercise shows once Schwab posts it, usually the next morning.";
+const VIA_TITLE = {
+  assigned: 'Assigned: the option closed at $0 that day, so its premium stays its P&L, and the shares came in or went out at the strike.',
+  exercised: 'Exercised: the option closed at $0 that day, and the shares came in or went out at the strike.',
+  delivered: 'Shares an option delivered at the strike. The option was opened before your history, so it isn\'t here.',
+};
 
 /** the side is the bet on the stock: a put bought is short, a call debit spread long, a time spread neutral */
 const sideCell = t => `<td class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${{ long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias] || ''}</td>`;
@@ -138,7 +143,7 @@ function tradeRow(t) {
   const open = t.status === 'open';
   const cls = [open ? 'journal-open' : '', t.deleted ? 'journal-deleted' : ''].filter(Boolean).join(' ');
   return `<tr${cls ? ` class="${cls}"` : ''}${rowOpen(t)}>
-    ${symCell(t, `${nameOf(t)}${reviewedMark(t)}${t.legs ? ` <span class="journal-tag journal-tag-quiet">${esc(t.structure || `${t.spreadKind} spread`)}</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : t.kind === 'merged' ? `<span class="pos-sub journal-legs">${t.parts.length} trades merged</span>` : ''}${restoreLink(t)}`)}
+    ${symCell(t, `${nameOf(t)}${reviewedMark(t)}${t.legs ? ` <span class="journal-tag journal-tag-quiet">${esc(t.structure || `${t.spreadKind} spread`)}</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.via ? ` <span class="journal-tag journal-tag-quiet" title="${esc(VIA_TITLE[t.via])}">${t.via}</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : t.kind === 'merged' ? `<span class="pos-sub journal-legs">${t.parts.length} trades merged</span>` : ''}${restoreLink(t)}`)}
     <td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>
     <td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
     <td>${stopCell(t)}</td>
@@ -234,7 +239,7 @@ function tradesView(all) {
     </table></div>${pickBar(trades)}
     <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades and a note; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
       ? 'P&amp;L is after Schwab\'s fees (commission, SEC, TAF and option fees, from its trade records), split by quantity when one order covers two trades.'
-      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}</p>`;
+      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}${trades.some(t => t.via) ? ' An assigned or exercised option closes at $0 the day it happened, and its shares count at the strike.' : ''}</p>`;
 }
 
 function fillsView(fills) {

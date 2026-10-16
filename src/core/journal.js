@@ -20,12 +20,12 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
 
 /**
  * @typedef {{ id: string, orderId: string, account?: string, time: string, symbol: string, label: string, assetType: string,
- *   instruction: string, side: 'buy' | 'sell', qty: number, price: number }} Fill
+ *   instruction: string, side: 'buy' | 'sell', qty: number, price: number, via?: 'assigned' | 'exercised' | 'delivered' }} Fill
  * @typedef {{ orderId: string, rootId: string, account: string, symbol: string, instruction: string, stopPrice: number, entered: string, status: string }} StopOrder
  * @typedef {{ key: string, account: string, symbol: string, label: string, assetType: string, multiplier: number,
  *   direction: 'long' | 'short', openedAt: string, closedAt: string | null, entryQty: number, openQty: number,
  *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
- *   status: 'open' | 'win' | 'loss' | 'breakeven' | 'history', expired: boolean, stop: number | null, stopOrderId: string, risk: number | null,
+ *   status: 'open' | 'win' | 'loss' | 'breakeven' | 'history', expired: boolean, via?: 'assigned' | 'exercised' | 'delivered' | null, stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | 'debit' | 'width' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
  *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean,
  *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean, realized: Realized[],
@@ -36,6 +36,8 @@ export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
  * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
  * parts = the trade keys it's made of.
  * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
+ * via = an option delivered it: the option's trade closed at $0 by an assignment or exercise, or the shares' trade opened
+ * or closed by one at the strike (delivered: the option is older than the history). From Schwab's transactions.
  * realized = the P&L each exit took, when it took it (a trim's profit is that day's, even while the rest stays open).
  * @typedef {{ at: string, qty: number, pnl: number }} Realized one exit: its time, the quantity it closed, its P&L (net after fees)
  * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
@@ -54,7 +56,7 @@ function startTrade(fill, account, direction) {
     key: `${account}|${fill.symbol}|${direction}|${fill.time}`,
     account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
-    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, lots: /** @type {{ qty: number, price: number }[]} */ ([]),
+    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, via: /** @type {Fill['via'] | null} */ (null), lots: /** @type {{ qty: number, price: number }[]} */ ([]),
     realized: /** @type {Realized[]} */ ([]),
   };
 }
@@ -72,7 +74,7 @@ function finish(t) {
     avgExit: t.exitQty ? t.exitNotional / t.exitQty : null,
     pnl, exits: t.exits, fillIds: t.fillIds, entryOrderIds: t.entryOrderIds, orderQty: t.orderQty,
     holdMs: closed && t.closedAt ? Date.parse(t.closedAt) - Date.parse(t.openedAt) : null,
-    status: t.history ? 'history' : !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: !!t.expired,
+    status: t.history ? 'history' : !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: !!t.expired, via: t.via || null,
     stop: null, stopOrderId: '', risk: null, rBasis: null, r: null,
     stopSource: null, schwabStop: null, stopTrail: [], movedTo: null, ownStopIgnored: false, deleted: false,
     fees: 0, feesMissing: 0, grossPnl: pnl, afterFees: false, realized: t.realized,
@@ -86,7 +88,7 @@ function finish(t) {
  * position was opened before the journal's history (Schwab's API gives 60 days of orders), and those closing fills
  * become a 'history' trade: its exits known, its entry and P&L not, kept out of the stats. With `now`, an option still
  * open after its expiry's 4pm New York close is closed there at $0 (expired, assumed worthless: an exercise or an
- * assignment isn't in the orders).
+ * assignment isn't in the orders; those come from Schwab's transactions as fills with a via, the option's at $0).
  * @param {Fill[]} fills @param {{ now?: number }} [opts]
  * @returns {Trade[]}
  */
@@ -94,7 +96,7 @@ export function buildTrades(fills, opts = {}) {
   /** @type {Map<string, Fill[]>} */
   const groups = new Map();
   for (const f of fills) {
-    if (!f.symbol || !(f.qty > 0) || !(f.price > 0) || !f.time) continue;
+    if (!f.symbol || !(f.qty > 0) || !(f.price > 0 || (f.via && f.price === 0)) || !f.time) continue;
     const k = `${f.account || ''}|${f.symbol}`;
     if (!groups.has(k)) groups.set(k, []);
     /** @type {Fill[]} */ (groups.get(k)).push(f);
@@ -112,6 +114,7 @@ export function buildTrades(fills, opts = {}) {
       if (gap && gap.direction !== direction) endGap();
       if (!gap) { gap = startTrade(f, account, direction); gap.key = `${account}|${f.symbol}|${direction}|before|${f.time}`; gap.history = true; }
       gap.fillIds.push(f.id);
+      if (f.via && !gap.via) gap.via = f.via;
       gap.exits++;
       gap.entryQty += qty;
       gap.exitQty += qty;
@@ -130,6 +133,7 @@ export function buildTrades(fills, opts = {}) {
       if (!t) t = startTrade(f, account, buying ? 'long' : 'short');
       const adds = (t.direction === 'long') === buying;
       t.fillIds.push(f.id);
+      if (f.via && !t.via) t.via = f.via;
       const used = (/** @type {number} */ n) => { t.orderQty[f.orderId] = (t.orderQty[f.orderId] || 0) + n; };
       if (adds) {
         used(qty);
@@ -166,6 +170,7 @@ export function buildTrades(fills, opts = {}) {
         else if (qty > EPS) { // a flip: what's left opens the other way
           t = startTrade(f, account, buying ? 'long' : 'short');
           t.fillIds.push(f.id);
+          if (f.via) t.via = f.via;
           t.lots.push({ qty, price: f.price });
           t.entryQty += qty;
           t.entryNotional += qty * f.price;
@@ -290,7 +295,9 @@ export function withRisk(trade, stops, ownStop = null) {
 /**
  * Fees per order, from Schwab's TRADE transactions: each one names its order (orderId) and lists its fees as transfer
  * items with a feeType (COMMISSION, SEC_FEE, TAF_FEE, OPT_REG_FEE, ...), charged as a negative cost. An order filled in
- * pieces has a transaction per piece, so they add up. Only orders with a transaction are in the map.
+ * pieces has a transaction per piece, so they add up. Only orders with a transaction are in the map. An assignment's
+ * transaction has no orderId: its fees go to its shares' fills (tx:<activityId>, assignmentFills) and its option's
+ * closing fills (tx:<activityId>:option) have none, rather than none yet.
  * @param {{ kind: string, data: any }[]} records
  * @returns {Map<string, number>}
  */
@@ -299,15 +306,18 @@ export function feesByOrder(records) {
   const out = new Map();
   for (const r of records) {
     const tx = r.kind === 'transaction' ? r.data : null;
-    if (!tx || tx.type !== 'TRADE' || tx.orderId === undefined || tx.orderId === null) continue;
+    if (!tx || tx.type !== 'TRADE') continue;
+    const delivered = tx.orderId === undefined || tx.orderId === null;
+    if (delivered && (tx.activityId === undefined || tx.activityId === null)) continue;
     let fee = 0;
     for (const item of Array.isArray(tx.transferItems) ? tx.transferItems : []) {
       if (!item?.feeType) continue;
       const v = Number(item.cost ?? item.amount);
       if (Number.isFinite(v)) fee -= v; // charged as a negative cost; a rebate comes back positive
     }
-    const k = String(tx.orderId);
+    const k = delivered ? `tx:${tx.activityId}` : String(tx.orderId);
     out.set(k, (out.get(k) || 0) + fee);
+    if (delivered) out.set(`${k}:option`, 0);
   }
   return out;
 }
