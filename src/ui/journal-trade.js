@@ -4,7 +4,7 @@
 // excursions (core/trade-page.js: MFE, MAE, exit efficiency); the fills; and the stop orders over time. Edit opens the
 // trade sheet (your stop, separate, delete).
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { instructionWords, fillsFrom } from '../core/journal-records.js';
+import { fillWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords } from '../core/journal.js';
 import { BARS_KEEP_DAYS, nyDay, weekdaysBetween } from '../core/bars.js';
 import { dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, nyStamp, unpackBars } from '../core/trade-page.js';
@@ -141,7 +141,7 @@ function statsHtml(t, ex) {
 
 function fillsHtml(t, fills) {
   if (!fills.length) return '';
-  const rows = fills.map(f => `<tr><td>${esc(marketTime(f.time))}</td><td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(instructionWords(f.instruction))}</td><td>${t.legs ? esc(f.label) : ''}${t.legs ? ' ' : ''}${f.qty}</td><td>${px(f.price, f.assetType === 'OPTION' ? 'OPTION' : null)}</td></tr>`).join('');
+  const rows = fills.map(f => `<tr><td>${esc(marketTime(f.time))}</td><td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(fillWords(f))}</td><td>${t.legs ? esc(f.label) : ''}${t.legs ? ' ' : ''}${f.qty}</td><td>${px(f.price, f.assetType === 'OPTION' ? 'OPTION' : null)}</td></tr>`).join('');
   return `<div class="section-title jt-sub">Fills</div>
     <div class="positions-wrap"><table class="positions-table journal-table jt-table"><thead><tr><th scope="col">Time (ET)</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -175,7 +175,7 @@ export function renderJournalTrade() {
   head.innerHTML = `<div class="jt-head">
       <button class="pos-link" data-action="closeJournalTrade">← Trades</button>
       <span class="section-title" id="jtTitle">${esc(t.label)}</span>
-      <span class="positions-meta">${side} ${t.entryQty} at ${t.status === 'history' ? '—' : px(t.avgEntry, t.assetType)}${exit}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}</span>
+      <span class="positions-meta">${side} ${t.entryQty} at ${t.status === 'history' ? '—' : px(t.avgEntry, t.assetType)}${exit}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}</span>
       <span class="journal-actions"><button class="btn" data-action="editJournalTrade">Edit</button></span>
     </div>${deckBarHtml(t)}`;
   const fills = tradeFills(t);
