@@ -184,9 +184,13 @@ export async function cloudPull() {
       let changed = false;
       let newKey = null;
       const keyBefore = store.get('tradier_key');
-      if (fresh.some(r => r.key === 'tradier_key_at') && !state.cloudPending.has('tradier_key')) {
+      // ask Vault when the key changed, or once a page load when this device has none (a key removed here, never
+      // through the account, leaves no new stamp to notice)
+      const askOnce = !keyBefore && state.cloudKeyAsked !== uid;
+      if ((fresh.some(r => r.key === 'tradier_key_at') || askOnce) && !state.cloudPending.has('tradier_key')) {
         newKey = check(await client.rpc('get_tradier_key')).data || '';
         if (!current()) return;
+        state.cloudKeyAsked = uid;
       }
       state.cloudSuppress = true;
       try {
