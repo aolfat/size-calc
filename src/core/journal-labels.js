@@ -2,7 +2,9 @@
 // Journal review, pure (docs/journal-step-3.md): the label defaults, your library on top of them (your own items,
 // renamed / hidden / merged defaults), My setups (each an action at one or more levels, or a pattern, saved once and
 // picked from then on), whether a trade is reviewed (market, sector, a setup, a tactic, both grades and a note), and the
-// review deck's queue (the pass each trade needs: opening while it's open, the grade and note once it closes).
+// review deck's queue (the pass each trade needs: opening while it's open, the grade and note once it closes; newest
+// first, from the day you chose to start reviewing).
+import { nyParts } from './journal-stats.js';
 
 /** @typedef {'market' | 'sector' | 'setup' | 'level' | 'action' | 'pattern' | 'tactic' | 'tag' | 'mistake'} ItemKind */
 /** @typedef {{ action?: string, levels?: string[], pattern?: string }} SetupParts  an action at its levels, or a pattern */
@@ -180,14 +182,21 @@ export function reviewPass(t, st) {
   return openingDone ? 'closing' : 'full';
 }
 
+/** a "review from" day as kept: 'YYYY-MM-DD', or '' for every day. @param {unknown} v */
+export const reviewFromDay = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v)) ? v : '';
+
+/** whether a trade opened on or after the review-from day (New York), or there's no such day. @param {{ openedAt?: string | null }} t @param {string} from */
+export const fromReviewDay = (t, from) => !from || (!!t.openedAt && nyParts(t.openedAt).day >= from);
+
 /**
- * The review deck's queue: every trade that needs a pass, oldest first (by open time, then key). No filters.
+ * The review deck's queue: every trade that needs a pass and opened on or after `from` (a New York day, '' for all),
+ * newest first (by open time, then key). No other filters.
  * @template {{ key: string, openedAt?: string | null, status?: string, deleted?: boolean }} T
- * @param {T[]} trades @param {(t: T) => { missing: string[], reviewed: boolean }} stateOf
+ * @param {T[]} trades @param {(t: T) => { missing: string[], reviewed: boolean }} stateOf @param {string} [from]
  */
-export function deckQueue(trades, stateOf) {
-  return trades.filter(t => reviewPass(t, stateOf(t)))
-    .sort((a, b) => (a.openedAt || '') < (b.openedAt || '') ? -1 : (a.openedAt || '') > (b.openedAt || '') ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+export function deckQueue(trades, stateOf, from = '') {
+  return trades.filter(t => fromReviewDay(t, from) && reviewPass(t, stateOf(t)))
+    .sort((a, b) => (a.openedAt || '') < (b.openedAt || '') ? 1 : (a.openedAt || '') > (b.openedAt || '') ? -1 : a.key < b.key ? 1 : a.key > b.key ? -1 : 0);
 }
 
 /** 'missing sector, note' in words: the first few, then how many more. @param {string[]} missing */

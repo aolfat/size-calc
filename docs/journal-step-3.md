@@ -107,7 +107,8 @@ Going through the trades you haven't reviewed one after another, without going b
   - **A count on the Journal tab,** like the one on Positions, once the journal has been read.
   - **A line at the top of the Journal:** "12 trades to review · Start". It never blocks anything.
   - There's no banner on the Size tab. The risk strip stays the first thing there, with no nag in the way while you trade.
-- **The queue:** every trade that needs a pass, oldest first. Deleted trades and trades from before your history are left out. **No filters:** the Journal's side, symbol and setup filters don't touch it, so the count is always the full number. Done leaves at any point, and the next time it starts again from the oldest trade still waiting.
+- **The queue:** every trade that needs a pass, newest first. Deleted trades and trades from before your history are left out. **No filters:** the Journal's side, symbol and setup filters don't touch it, so the count is always the full number. Done leaves at any point, and the next time it starts again from the newest trade still waiting.
+- **Review from a day:** to start fresh, a date box on the Journal's line ("Review from") leaves out every trade opened before that day (New York): out of the deck, the count and To review, with "40 older left out" and All days to bring them back. They stay in the list, and their own pages still take a review. The day, `journal_review_from`, is saved to your account (migration `20261025000000_review_from.sql` adds it to the settings keys).
 - **Two passes for a trade held open:**
   - **Opening pass,** while it's open: market, sector, a setup, the tactic, and followed the plan. With those in, it leaves the queue.
   - **Closing pass,** once it's closed: it comes back for the grade and the note. The first pass's fields are already filled in.
