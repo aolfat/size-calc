@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+import { fakeCharts } from './charts.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
@@ -56,9 +57,11 @@ export function makeElement(id = '') {
 /**
  * Fresh app per test: new fake page, storage and globals, and a reset state object.
  * `supabase` is a fake client for the cloud module (it never loads the real library); `session` signs it in.
- * @param {{ width?: number | null, fetch?: Function, lenient?: boolean, timers?: 'noop' | 'fake', clock?: boolean, storage?: Map<string,string>, supabase?: object, session?: object }} [opts]
+ * `clock` swaps in a Date whose now only moves with advance(), starting at `now` (default: the real time).
+ * `charts` is a fake Lightweight Charts (helpers/charts.mjs), or a loader function; the real library never loads either.
+ * @param {{ width?: number | null, fetch?: Function, lenient?: boolean, timers?: 'noop' | 'fake', clock?: boolean, now?: number, storage?: Map<string,string>, supabase?: object, session?: object, charts?: object | Function }} [opts]
  */
-export async function app({ width = null, fetch, lenient = false, timers = 'noop', clock = false, storage = new Map(), supabase = null, session = null } = {}) {
+export async function app({ width = null, fetch, lenient = false, timers = 'noop', clock = false, now: startAt = Date.now(), storage = new Map(), supabase = null, session = null, charts = fakeCharts() } = {}) {
   const elements = new Map();
   const listeners = new Map();
   const element = id => {
@@ -79,7 +82,7 @@ export async function app({ width = null, fetch, lenient = false, timers = 'noop
 
   const matches = q => q.split(',').some(part => [...part.matchAll(/\((min|max)-width:\s*([\d.]+)px\)/g)]
     .every(([, kind, px]) => kind === 'min' ? width >= +px : width <= +px));
-  let now = Date.now();
+  let now = startAt;
   const pending = new Map();
   let nextTimer = 0;
   const fakeTimers = {
@@ -133,6 +136,7 @@ export async function app({ width = null, fetch, lenient = false, timers = 'noop
   const context = vm.createContext(scope);
   // effects keep their production implementations unless a test swaps them
   for (const k of Object.keys(effects)) effects[k] = mods[k];
+  effects.loadChartLibrary = typeof charts === 'function' ? charts : async () => charts;
 
   return {
     run: code => vm.runInContext(code, context),

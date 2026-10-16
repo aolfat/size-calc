@@ -1,7 +1,9 @@
 // @ts-check
-// The Journal's trade page, pure: a trade's saved 5-minute bars unpacked and cut to its hold, where its fills land on a
-// chart, the daily window around it, and its excursions (MFE, MAE, exit efficiency; docs/journal-step-2.md, slice 3).
-// Times are New York's, the way the bars are stamped.
+// The Journal's trade page, pure: a trade's saved 5-minute bars unpacked and cut to its hold, rolled up to longer
+// intervals, the sessions before it fetched for context, where its fills land on a chart, the views framing it, what the
+// charts draw, and its excursions (MFE, MAE, exit efficiency; docs/journal-step-2.md, slice 3). Times are New York's, the
+// way the bars are stamped.
+import { aggregateBars, BARS_KEEP_DAYS, nyDay, weekdaysBetween } from './bars.js';
 
 /** @typedef {{ date: string, time?: string, open: number, high: number, low: number, close: number, volume?: number }} Candle */
 
@@ -50,23 +52,104 @@ export function holdChartBars(bars, fills) {
   return outside ? bars : bars.filter(REGULAR);
 }
 
+/** the `iv`-minute bucket a New York stamp falls in, counted from the 9:30 open (aggregateBars' buckets) @param {string} stamp @param {number} iv */
+const bucketOf = (stamp, iv) => `${stamp.slice(0, 10)}:${Math.floor((Number(stamp.slice(11, 13)) * 60 + Number(stamp.slice(14, 16)) - 570) / iv)}`;
+
 /**
- * Where each fill lands: the index of the bar it falls in (5-minute: the bar it happened in; daily: its day), and its side.
- * Fills outside the bars are left out.
- * @param {Candle[]} bars @param {{ time: string, side: 'buy' | 'sell', qty: number, price: number }[]} fills
+ * Where each fill lands: the index of the bar it falls in (intraday: the `iv`-minute bar it happened in; daily: its day),
+ * and its side. Fills outside the bars are left out.
+ * @param {Candle[]} bars @param {{ time: string, side: 'buy' | 'sell', qty: number, price: number }[]} fills @param {number} [iv]
  */
-export function fillMarks(bars, fills) {
+export function fillMarks(bars, fills, iv = 5) {
   const daily = !bars.some(b => b.time);
   /** @type {Map<string, number>} */
-  const at = new Map(bars.map((b, i) => [daily ? b.date : stampOf(b), i]));
+  const at = new Map(bars.map((b, i) => [daily ? b.date : bucketOf(stampOf(b), iv), i]));
   /** @type {{ index: number, side: 'buy' | 'sell', qty: number, price: number }[]} */
   const out = [];
   for (const f of fills) {
     const s = nyStamp(f.time);
-    const i = at.get(daily ? s.slice(0, 10) : barStart(s));
+    const i = s ? at.get(daily ? s.slice(0, 10) : bucketOf(s, iv)) : undefined;
     if (i !== undefined) out.push({ index: i, side: f.side, qty: f.qty, price: f.price });
   }
   return out;
+}
+
+/**
+ * A bar's time the way Lightweight Charts takes it: a daily bar's day ('YYYY-MM-DD'), an intraday bar's New York wall clock
+ * as if it were UTC seconds (the library has no time zones and labels its axis in UTC, so this reads as New York time).
+ * @param {Candle} b @returns {string | number}
+ */
+export function chartTime(b) {
+  if (!b.time) return b.date;
+  const [y, m, d] = b.date.split('-').map(Number), [hh, mm] = b.time.split(':').map(Number);
+  return Date.UTC(y, m - 1, d, hh, mm) / 1000;
+}
+
+/**
+ * 5-minute bars as `iv`-minute ones, bucketed by clock time from the 9:30 open and never across a session (aggregateBars,
+ * the calculator's own); each takes the time of its first 5-minute bar.
+ * @param {Candle[]} bars @param {number} iv @returns {Candle[]}
+ */
+export function rollUp(bars, iv) {
+  if (iv <= 5) return bars;
+  return aggregateBars(bars.map(b => ({ t: `${b.date}T${b.time}`, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume || 0 })), iv)
+    .map(b => ({ date: b.t.slice(0, 10), time: b.t.slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }));
+}
+
+/**
+ * The New York weekdays in the two weeks before a trade opened that Tradier still keeps (BARS_KEEP_DAYS) and that are over:
+ * the intraday chart's context, fetched when the page opens and never saved.
+ * @param {{ openedAt: string, status: string }} trade @param {number} now @returns {string[]}
+ */
+export function contextDays(trade, now) {
+  if (trade.status === 'history' || !trade.openedAt) return [];
+  const open = Date.parse(trade.openedAt), oldest = nyDay(now - BARS_KEEP_DAYS * 864e5), today = nyDay(now);
+  return weekdaysBetween(nyDay(open - 14 * 864e5), nyDay(open - 864e5)).filter(d => d >= oldest && d < today);
+}
+
+const MIN_VIEW = 60;
+
+/**
+ * The intraday view of a trade: the bar it opened in through the bar it closed in (or the latest), with a quarter of the
+ * hold, at least six bars, either side; then at least 60 bars wide, two thirds of the widening before the open (the
+ * context), what one side can't take going to the other. Bar indexes, end exclusive.
+ * @param {Candle[]} bars @param {{ openedAt: string, closedAt: string | null }} trade
+ */
+export function holdView(bars, trade) {
+  const n = bars.length;
+  const upTo = (/** @type {string} */ s) => { let k = 0; for (let i = 0; i < n && stampOf(bars[i]) <= s; i++) k = i; return k; };
+  const a = upTo(nyStamp(trade.openedAt)), b = trade.closedAt ? upTo(nyStamp(trade.closedAt)) : n - 1;
+  const pad = Math.max(6, Math.round((b - a + 1) * 0.25));
+  let start = a - pad, end = b + 1 + pad;
+  const short = MIN_VIEW - (end - start);
+  if (short > 0) { start -= Math.ceil(short * 2 / 3); end += short - Math.ceil(short * 2 / 3); }
+  if (start < 0) { end -= start; start = 0; }
+  if (end > n) { start = Math.max(0, start - (end - n)); end = n; }
+  return { start, end };
+}
+
+/** a volume the way chart legends say it: 742.58K, 1.23M @param {number} v */
+export function compactVolume(v) {
+  const a = Math.abs(v);
+  for (const [n, unit] of /** @type {[number, string][]} */ ([[1e9, 'B'], [1e6, 'M'], [1e3, 'K']])) if (a >= n) return `${+(v / n).toFixed(2)}${unit}`;
+  return String(Math.round(v));
+}
+
+/**
+ * What a trade chart draws, oldest first: the candles, the 8 EMA of the closes (seeded on the first close), volume (up =
+ * closed at or over its open, like the candles), and each fill on its bar (fillMarks), in the order they happened.
+ * @param {Candle[]} bars @param {{ time: string, side: 'buy' | 'sell', qty: number, price: number }[]} fills @param {number} [iv]
+ */
+export function chartSeries(bars, fills, iv = 5) {
+  const times = bars.map(chartTime), k = 2 / 9;
+  const byTime = [...fills].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+  let e = bars.length ? bars[0].close : 0;
+  return {
+    candles: bars.map((b, i) => ({ time: times[i], open: b.open, high: b.high, low: b.low, close: b.close })),
+    ema: bars.map((b, i) => ({ time: times[i], value: (e = i ? b.close * k + e * (1 - k) : e) })),
+    volume: bars.map((b, i) => ({ time: times[i], value: b.volume || 0, up: b.close >= b.open })),
+    markers: fillMarks(bars, byTime, iv).sort((a, b) => a.index - b.index).map(m => ({ time: times[m.index], side: m.side, qty: m.qty, price: m.price })),
+  };
 }
 
 /**

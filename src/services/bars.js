@@ -65,6 +65,13 @@ export async function saveTradeBars(trades, now = Date.now()) {
   return { saved, symbols, through, failed, needed };
 }
 
+/** one symbol's 5-minute bars on these days straight from Tradier, not saved (the trade page's context): [{ day, bars }] */
+export async function fetchTradeBars(symbol, days) {
+  if (!days.length) return [];
+  const byDay = barsByDay(await timesales(symbol, days[0], days[days.length - 1]));
+  return days.filter(d => byDay.has(d)).map(day => ({ day, bars: byDay.get(day) }));
+}
+
 /** the kept bars_5m rows for one symbol on these days: [{ day, bars }] */
 export async function loadTradeBars(symbol, days) {
   if (!state.session || !days.length) return [];
