@@ -16,7 +16,7 @@ Every trade gets reviewed: what the market and its sector were doing, which setu
 ## Decisions
 
 - **Two grades per trade:**
-  - **Setup grade:** A, B, C, D, F. How good the setup and execution were. (A++ came over from Trading-Journal-AI and was cut: one step too many at the top. Migration `20261027000000_grades_a_to_f.sql` turns saved A++ grades into A.)
+  - **Setup grade:** A, B, C, D, F. How good the setup and execution were. (A++ came over from Trading-Journal-AI and was cut: one step too many at the top. Migration `20261028000000_grades_a_to_f.sql` turns saved A++ grades into A.)
   - **Followed the plan:** yes, partly, no. Discipline, apart from whether the setup was good.
 
   The by-grade report checks the ladder: if A trades don't beat C trades, the grading isn't telling you anything.
