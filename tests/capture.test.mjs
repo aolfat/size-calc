@@ -107,7 +107,7 @@ test('the automatic save runs only when due, and quietly; Save now runs any time
 
 test('a new import sends only what changed: new trades, new orders, and orders whose copy changed', async () => {
   const w = world();
-  const { run, elements } = await app({ fetch: w.fetch, storage: connected(), supabase: w.supabase, session: SESSION });
+  const { run, elements, advance } = await app({ fetch: w.fetch, storage: connected(), supabase: w.supabase, session: SESSION, clock: true });
   await run(`captureSchwab(${NOW})`);
   const first = w.saved.length;
   // the next day: order 103 got canceled (its copy changed), a new order and a new trade came in, the rest is the same
@@ -120,8 +120,16 @@ test('a new import sends only what changed: new trades, new orders, and orders w
   assert.equal(w.supabase.table.get('user-1:order:103').data.status, 'CANCELED', 'the newer copy replaced the kept one');
   assert.equal(run('importWords(lastCapture())'), '1 new trade, 1 new order, 1 order updated, 2 already kept');
 
-  run("setView('journal')");
-  assert.match(elements.get('journalSection').innerHTML, /Last import .*: 1 new trade, 1 new order, 1 order updated, 2 already kept/);
+  // opening the Journal imports quietly once 6 hours have passed (captureDue): read it at the import's own time,
+  // then put the clock back, since the next test's connected() runs before app() swaps Date again
+  const toImport = NOW + DAY - run('Date.now()');
+  await advance(toImport);
+  try {
+    run("setView('journal')");
+    assert.match(elements.get('journalSection').innerHTML, /Last import .*: 1 new trade, 1 new order, 1 order updated, 2 already kept/);
+  } finally {
+    await advance(-toImport);
+  }
 });
 
 test('a key-order change is not a change, and a row kept before fingerprints is filled in quietly', async () => {
