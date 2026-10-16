@@ -60,6 +60,26 @@ test('chart series: New York wall-clock times, the 8 EMA warmed up from the firs
   assert.deepEqual(daily.markers.map(m => [m.time, m.side]), [['2026-10-13', 'buy'], ['2026-10-13', 'sell']]);
 });
 
+test('VWAP: typical price weighted by volume, starting over each day, the typical price until there is volume; none on daily bars', async () => {
+  const { run } = await app();
+  const bars = [
+    { ...bar('2026-10-13', '09:30', 100, 102, 98, 101), volume: 0 },
+    { ...bar('2026-10-13', '09:35', 101, 103, 100, 102), volume: 100 },
+    { ...bar('2026-10-13', '09:40', 102, 106, 101, 105), volume: 300 },
+    { ...bar('2026-10-14', '09:30', 90, 93, 87, 90), volume: 50 },
+  ];
+  const v = json(run, `sessionVwap(${JSON.stringify(bars)})`);
+  assert.ok(Math.abs(v[0] - 301 / 3) < 1e-9, 'no volume yet: the typical price');
+  assert.ok(Math.abs(v[1] - 305 / 3) < 1e-9);
+  assert.ok(Math.abs(v[2] - (305 / 3 * 100 + 104 * 300) / 400) < 1e-9, 'weighted by volume');
+  assert.equal(v[3], 90, 'a new day starts over');
+  assert.deepEqual(json(run, `sessionVwap([{ date: '2026-10-13', open: 1, high: 2, low: 0.5, close: 0.8, volume: 10 }])`), [], 'daily bars have none');
+  const s = json(run, `chartSeries(${JSON.stringify(bars)}, [])`);
+  assert.deepEqual(s.vwap.map(p => p.end), [false, false, true, false], "a day's last bar, when another day follows");
+  assert.equal(s.vwap[3].time, Date.UTC(2026, 9, 14, 9, 30) / 1000);
+  assert.deepEqual(json(run, `chartSeries([{ date: '2026-10-13', open: 1, high: 2, low: 0.5, close: 0.8 }], [])`).vwap, []);
+});
+
 test('intervals: 5-minute bars rolled up from the 9:30 open, fills on the bucket they fell in, the hold framed, volume in words', async () => {
   const { run } = await app();
   const rolled = json(run, `rollUp(${JSON.stringify(BARS.map(b => ({ ...b, volume: 10 })))}, 65)`);
@@ -187,8 +207,11 @@ test('the 5-minute chart: candles, 8 EMA and volume, the fills marked, entry, ex
   assert.ok(c, 'drawn into the 5-minute box');
   assert.equal(c.options.handleScroll.vertTouchDrag, false, 'a vertical swipe on a phone still moves the page');
   assert.equal(c.options.layout.textColor, '--text3');
-  const [candles, ema, volume] = c.series;
-  assert.deepEqual([candles.type, ema.type, volume.type], ['Candlestick', 'Line', 'Histogram']);
+  const [candles, ema, volume, vwap] = c.series;
+  assert.deepEqual([candles.type, ema.type, volume.type, vwap.type], ['Candlestick', 'Line', 'Histogram', 'Line']);
+  assert.equal(vwap.options.color, '--teal', 'VWAP in teal: blue is the entry line and the buys');
+  assert.deepEqual(vwap.data.map(p => p.color), [undefined, undefined, 'transparent', undefined, undefined], "10/1's last bar goes transparent, so the line breaks before 10/2");
+  assert.ok(Math.abs(vwap.data[4].value - 97.5) < 1e-9, "10/2's own VWAP, started over");
   assert.equal(candles.data.length, 5);
   assert.equal(candles.data[0].time, Date.UTC(2026, 9, 1, 10, 25) / 1000);
   assert.equal(ema.options.color, '--purple');
@@ -206,6 +229,7 @@ test('the 5-minute chart: candles, 8 EMA and volume, the fills marked, entry, ex
   assert.match(legend(), /O&nbsp;<b[^>]*>96\.00<\/b>.*C&nbsp;<b[^>]*>95\.00<\/b>.*−3\.00&nbsp;\(−3\.06%\)/, 'the latest bar until you hover, against the bar before');
   assert.match(legend(), /Vol <b>1<\/b>/);
   assert.match(legend(), /EMA 8 <b[^>]*>\d+\.\d\d<\/b>/);
+  assert.match(legend(), /VWAP <b style="color:--teal">97\.50<\/b>/);
   c.hover({ time: candles.data[2].time, logical: 2 });
   assert.match(legend(), /O&nbsp;<b[^>]*>101\.00<\/b>/, 'the hovered bar');
   c.hover({});
@@ -222,7 +246,7 @@ test('the 5-minute chart: candles, 8 EMA and volume, the fills marked, entry, ex
 
 test('a TradingView | Ours switch: our canvas charts in the same place, the same bars and framing, kept on this device', async t => {
   const storage = new Map();
-  const { run, chart, elements, charts } = await page({ storage }, t);
+  const { run, chart, elements, charts, state } = await page({ storage }, t);
   run(`openJournalTrade('${KEY}')`);
   await settle();
   const sw = () => elements.get('jtKindSwitch').innerHTML;
@@ -237,6 +261,8 @@ test('a TradingView | Ours switch: our canvas charts in the same place, the same
   assert.doesNotMatch(elements.get('jtTools5').innerHTML, /toggleJournalLog/, 'no log scale on ours');
   assert.match(elements.get('jtTools5').innerHTML, /setJournalInterval/, 'the intervals still apply');
   assert.deepEqual(json(run, "journalTradeRange('5')"), { start: 0, end: 5 }, 'framed on the hold, like the TradingView chart');
+  assert.equal(state.journalTrade.classic[5].vwap.length, 5, 'ours draws VWAP too');
+  assert.equal(state.journalTrade.classic.D, null);
   run('setJournalInterval(65)');
   assert.deepEqual(json(run, "journalTradeRange('5')"), { start: 0, end: 4 }, 'the 65-minute bars, framed again');
   run("setJournalChartKind('tv')");
@@ -306,6 +332,8 @@ test('with a key: the daily chart from Tradier, framed on the trade', async t =>
   const c = chart('jtChartD');
   assert.equal(c.series[0].data[0].time, '2026-08-01', 'a daily bar is its day');
   assert.equal(c.series[2].data[0].value, 1, 'with its volume');
+  assert.equal(c.series.length, 3, 'no VWAP on the daily chart');
+  assert.doesNotMatch(elements.get('jtLegendD').innerHTML, /VWAP/);
   assert.equal(c.options.timeScale.timeVisible, false);
   assert.deepEqual(c.series[0].lines, [], "an underlying's chart gets no lines: they're the trade's prices");
   const at = days.findIndex(d => d.date === '2026-10-01');
