@@ -293,6 +293,24 @@ test("a Tradier key typed while a pull fetches the account's key is kept and sen
   assert.equal(supabase.db.key, 'TK-typed');
 });
 
+test("a device whose key was removed gets the account's back, though its stamp was seen long ago", async () => {
+  const supabase = fakeSupabase({ key: 'TK-cloud' });
+  supabase.db.settings.push({ user_id: USER.id, key: 'tradier_key_at', value: 'now', updated_at: '2026-10-09T12:00:01.000Z' });
+  const seen = JSON.stringify({ settings: '2026-10-09T12:00:01.000Z', keys: { tradier_key_at: '2026-10-09T12:00:01.000Z' } });
+  // a device that had the key, then lost it on this device only (the github.io block cleared it on load)
+  const { run, storage } = await app({ supabase, session: SESSION, storage: joined([['cloud_seen', seen]]) });
+  await run('cloudPull()');
+  assert.equal(storage.get('tradier_key'), 'TK-cloud');
+  assert.equal(storage.get('cloud_pending') ?? '[]', '[]', 'restoring it is not an edit');
+
+  const empty = fakeSupabase();
+  const none = await app({ supabase: empty, session: SESSION, storage: joined([['cloud_seen', seen]]) });
+  await none.run('cloudPull()');
+  await none.run('cloudPull()');
+  assert.equal(empty.calls.filter(c => c[1] === 'get_tradier_key').length, 1, 'an account without a key is asked once a page load, not every poll');
+  assert.equal(none.storage.has('tradier_key'), false);
+});
+
 test('edits made after the session ended stay pending and reach the account after signing in again', async () => {
   // the library dropped its saved session (refresh failed for good); the device is still bound to the account
   const supabase = fakeSupabase({ settings: [{ key: 'calc_risk', value: '1' }] });
