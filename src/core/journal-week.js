@@ -17,6 +17,7 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
  *   labels: (key: string) => { kind: string, value: string }[],
  *   market: (t: WeekTrade) => string | null,
  *   nameOf: (kind: string, value: string) => string,
+ *   kinds?: (key: string) => string[],
  *   excursion: (t: WeekTrade) => Excursion | null | undefined,
  *   reviewed: (t: WeekTrade) => boolean,
  *   saved: (key: string) => boolean,
@@ -177,19 +178,21 @@ export function periodReview(trades, unit, key, ctx) {
   if (all.length) {
     // --- trade selection: how often it worked, how good the setups were, which ones paid
     if (stats.trades) add('selection', `${stats.wins} of ${plural(stats.trades, 'closed trade')} won (${stats.winRate}%)${prev.trades ? `, ${prev.winRate}% the ${word} before` : ''}`);
+    // the grades given, nothing about the trades without one
     const grades = /** @type {Record<string, number>} */ ({});
-    let ungraded = 0;
-    for (const t of closed) { const g = ctx.review(t.key)?.setup_grade; if (g) grades[g] = (grades[g] || 0) + 1; else ungraded++; }
+    for (const t of closed) { const g = ctx.review(t.key)?.setup_grade; if (g) grades[g] = (grades[g] || 0) + 1; }
     const order = ['A++', 'A', 'B', 'C', 'D', 'F'];
     const graded = order.filter(g => grades[g]).map(g => `${grades[g]} ${g}`);
-    if (graded.length) add('selection', `Setup grades: ${graded.join(', ')}${ungraded ? `, ${ungraded} not graded` : ''}`);
-    else if (closed.length) add('selection', 'No setup grades yet');
+    if (graded.length) add('selection', `Setup grades: ${graded.join(', ')}`);
     const setups = byLabel(closed, t => label(t.key, 'setup'));
     if (setups.length) {
       const best = setups[0], worst = setups[setups.length - 1];
       add('selection', `Best setup: ${groupWords(ctx.nameOf('setup', best.key), best)}`, best.net > 0 ? 'good' : '');
       if (worst !== best && worst.net < 0) add('selection', `Worst setup: ${groupWords(ctx.nameOf('setup', worst.key), worst)}`, 'bad');
     }
+    // every bounce together, whatever it bounced off: said when it adds up more than one setup
+    const kinds = ctx.kinds ? byLabel(closed, t => /** @type {NonNullable<ReviewContext['kinds']>} */ (ctx.kinds)(t.key)) : [];
+    if (kinds.length && kinds.length < setups.length) add('selection', `By kind: ${kinds.map(k => groupWords(k.key, k)).join(' · ')}`);
     const noSetup = closed.filter(t => !has(t, 'setup')).length;
     if (noSetup && setups.length) add('selection', `${plural(noSetup, 'trade')} with no setup labeled`);
 

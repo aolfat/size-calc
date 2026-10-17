@@ -33,6 +33,14 @@ test('group stats: net, average and median, win rate, average win and loss, prof
   assert.equal(json(run, `groupStats(${JSON.stringify(Array.from({ length: 10 }, (_, i) => T('t' + i, '2026-10-05T15:00:00.000Z', 1)))})`).thin, false, 'ten trades is enough');
 });
 
+test('groups a trade can sit in more than one of: counted once in each, none last, open and deleted trades left out', async () => {
+  const { run } = await app();
+  const keys = { a: ['Bounce'], b: ['Bounce', 'Undercut & rally'], c: [], d: ['Bounce', 'Bounce'] };
+  const rows = json(run, `groupByMany([...${JSON.stringify(TRADES)}, { ...${JSON.stringify(TRADES[0])}, key: 'x', status: 'open' }], t => (${JSON.stringify(keys)})[t.key] || [], 'No setup')`);
+  assert.deepEqual(rows.map(r => [r.group, r.stats.trades, r.stats.net]), [['Bounce', 3, 250], ['Undercut & rally', 1, -100], ['No setup', 2, -250]], 'd counts once; c and e have none; the open one is out');
+  assert.deepEqual(json(run, `groupByMany(${JSON.stringify(TRADES)}, () => [])`), [], 'no none group asked for: nothing');
+});
+
 test('daily P&L lands on the New York day each trade closed, and the month grid adds up its weeks', async () => {
   const { run } = await app();
   const daily = json(run, `[...dailyPnl(${JSON.stringify(TRADES)})]`);

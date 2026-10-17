@@ -8,7 +8,7 @@ import { nyParts } from './journal-stats.js';
 
 /** @typedef {'market' | 'sector' | 'setup' | 'level' | 'action' | 'pattern' | 'tactic' | 'tag' | 'mistake'} ItemKind */
 /** @typedef {{ action?: string, levels?: string[], pattern?: string }} SetupParts  an action at its levels, or a pattern */
-/** @typedef {{ key: string, kind: ItemKind, name: string, own: boolean, hidden: boolean }} Item */
+/** @typedef {{ key: string, kind: ItemKind, name: string, own: boolean, hidden: boolean, settings?: any }} Item */
 /** @typedef {{ id: string, kind: ItemKind, name: string, default_key?: string | null, hidden?: boolean, merged_into?: string | null, settings?: any }} LibraryRow */
 /** @typedef {{ kind: string, value: string, set_by?: string }} Label */
 
@@ -60,7 +60,7 @@ export function buildLibrary(rows = []) {
     byKind[kind] = [];
     for (const [key, name] of list) {
       const c = changed.get(`${kind}:${key}`);
-      const item = { key, kind, name: c?.name || name, own: false, hidden: !!c?.hidden };
+      const item = { key, kind, name: c?.name || name, own: false, hidden: !!c?.hidden, settings: c?.settings || {} };
       byKind[kind].push(item);
       all.set(`${kind}:${key}`, item);
       if (c?.merged_into) merged.set(`${kind}:${key}`, c.merged_into);
@@ -101,7 +101,9 @@ export function buildLibrary(rows = []) {
   const parts = key => {
     const k = resolve('setup', key);
     const own = /** @type {any} */ (all.get(`setup:${k}`));
-    const p = own?.own ? own.settings : DEFAULT_SETUP_PARTS[k];
+    // yours keeps its parts; a default keeps its own unless you edited it (its row's settings)
+    const edited = own?.settings?.pattern || own?.settings?.action ? own.settings : null;
+    const p = own?.own ? own.settings : edited || DEFAULT_SETUP_PARTS[k];
     if (p) return p.pattern ? { pattern: p.pattern } : { action: p.action || '', levels: [...(p.levels || [])] };
     const s = parseSetup(k);
     return s.pattern ? { pattern: s.pattern } : { action: s.action, levels: s.level ? [s.level] : [] };
@@ -135,6 +137,26 @@ export function setupsByUse(lib, labels) {
   const used = new Map();
   for (const list of Object.values(labels || {})) for (const l of list) if (l.kind === 'setup') { const k = lib.resolve('setup', l.value); used.set(k, (used.get(k) || 0) + 1); }
   return lib.choices('setup').map((i, n) => ({ i, n, u: used.get(i.key) || 0 })).sort((a, b) => b.u - a.u || a.n - b.n).map(x => x.i);
+}
+
+/**
+ * What a setup adds up under, the action first and the level second: its kind (the action, 'action:bounce' 'Bounce', or
+ * for a pattern the pattern, 'pat:base_breakout') and its levels ('level:ema21' '21 EMA'), merges followed. A setup made
+ * of neither (an old level-only value) has no kind. So every bounce adds up as Bounce, whatever it bounced off.
+ * @param {ReturnType<typeof buildLibrary>} lib @param {string} key
+ * @returns {{ kind: { key: string, name: string, action: boolean } | null, levels: { key: string, name: string }[] }}
+ */
+export function setupGroups(lib, key) {
+  const p = lib.parts(key);
+  if (p.pattern) {
+    const k = lib.resolve('pattern', p.pattern);
+    return { kind: { key: `pat:${k}`, name: lib.nameOf('pattern', k), action: false }, levels: [] };
+  }
+  const a = p.action ? lib.resolve('action', p.action) : '';
+  return {
+    kind: a ? { key: `action:${a}`, name: lib.nameOf('action', a).replace(/^./, c => c.toUpperCase()), action: true } : null,
+    levels: [...new Set((p.levels || []).map(l => lib.resolve('level', l)))].map(l => ({ key: `level:${l}`, name: lib.nameOf('level', l) })),
+  };
 }
 
 /** a setup's key: 'sma50+bounce', 'sma50', or 'pattern:base_breakout'. @param {{ level?: string, action?: string, pattern?: string }} s */

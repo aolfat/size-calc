@@ -29,7 +29,7 @@ import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, s
 import { clearJournalDay, journalThisMonth, openJournalStats, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, toggleJournalLog } from './journal-trade.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
-import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
+import { addReviewLink, cancelSetupEdit, editSetup, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
@@ -141,6 +141,14 @@ export const actions = {
   toggleDraftLevel: el => toggleDraftLevel(arg(el)),
   setupDraftNameInput: el => setupDraftNameInput(/** @type {HTMLInputElement} */ (el).value),
   saveSetupDraft: () => withPageTrade(t => saveSetupDraft(t)),
+  editSetup: el => editSetup(arg(el)),
+  cancelSetupEdit: () => cancelSetupEdit(),
+  setEditAction: el => setEditAction(arg(el)),
+  setEditPattern: el => setEditPattern(arg(el)),
+  toggleEditLevel: el => toggleEditLevel(arg(el)),
+  setupEditNameInput: el => setupEditNameInput(/** @type {HTMLInputElement} */ (el).value),
+  saveSetupEdit: () => saveSetupEdit(),
+  mergeEditedSetup: el => mergeEditedSetup(arg(el)),
   useSetupDraftMatch: el => withPageTrade(t => useSetupDraftMatch(t, arg(el))),
   pasteTradeShot: () => withPageTrade(t => pasteTradeShot(t)),
   pickTradeShots: () => pickTradeShots(),

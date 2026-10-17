@@ -289,6 +289,23 @@ function groupBy(list, keyOf, order) {
 }
 
 /**
+ * Groups where a trade can sit in more than one (a trade with two setups counts in each): keysOf names them, none = the
+ * `none` group when given, else left out. Most trades first, then net; `none` last. Counted trades only.
+ * @param {StatTrade[]} trades @param {(t: StatTrade) => string[]} keysOf @param {string} [none]
+ * @returns {{ group: string, stats: ReturnType<typeof groupStats> }[]}
+ */
+export function groupByMany(trades, keysOf, none) {
+  /** @type {Map<string, StatTrade[]>} */
+  const by = new Map();
+  for (const t of countedTrades(trades)) {
+    const keys = [...new Set(keysOf(t))];
+    for (const k of keys.length ? keys : none ? [none] : []) { if (!by.has(k)) by.set(k, []); /** @type {StatTrade[]} */ (by.get(k)).push(t); }
+  }
+  return [...by].map(([group, ts]) => ({ group, stats: groupStats(ts) }))
+    .sort((a, b) => (a.group === none ? 1 : 0) - (b.group === none ? 1 : 0) || b.stats.trades - a.stats.trades || b.stats.net - a.stats.net);
+}
+
+/**
  * Every breakdown the stats page shows. By symbol: the top 40 by trades, then net (the rest summed as 'Others'), and a
  * concentration warning when one underlying made more than half the gross gains. Winners' and losers' average hold.
  * R distribution over the trades with an initial stop.

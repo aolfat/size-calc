@@ -73,6 +73,7 @@ export function createState() {
     shotView: null, // the screenshot open in the viewer (its id)
     shotDeleteArmed: false, // Delete was tapped once: the next tap deletes
     setupDraft: null, // + New setup being made: { action, levels, pattern, name }
+    setupEdit: null, // one of My setups being edited in Edit choices: { key, action, levels, pattern, name, follow (the name tracks the parts) }
     reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it

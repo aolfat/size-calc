@@ -2,9 +2,9 @@
 // this trade, sector, setups, entry tactic, tags, an entry note, mistakes, the setup grade, followed the plan, an exit
 // note), saved as you
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
-// Library sheet (#journalLibrarySheet) to rename, hide and merge choices. core/journal-labels.js holds the rules.
+// Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
 import { store } from '../lib/store.js';
 import { addTradeLabel, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
@@ -300,8 +300,15 @@ export function reviewSectionHtml(t) {
   const offered = setupsByUse(lib, d.labels).filter(i => !on.includes(i.key) && (!picking || setupFits(lib, i.key, sd)));
   const mySetups = [...on.map(k => chip(lib.nameOf('setup', k), true, `data-action="toggleSetup" data-arg="${esc(k)}" title="${esc(lib.partsWords(lib.parts(k)))}"`)),
     ...offered.map(i => chip(i.name, false, `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.partsWords(lib.parts(i.key)))}"`))].join('');
+  // what each setup on the trade is made of: Action Bounce · Level 8 EMA (a pattern says so)
+  const partsLine = on.length && !sd ? `<div class="jr-parts">${on.map(k => {
+    const g = setupGroups(lib, lib.resolve('setup', k)), lvl = g.levels.map(l => l.name).join(', ');
+    const bits = g.kind && !g.kind.action ? [`Pattern <b>${esc(g.kind.name)}</b>`]
+      : [...(g.kind ? [`Action <b>${esc(g.kind.name)}</b>`] : []), ...(lvl ? [`Level${g.levels.length > 1 ? 's' : ''} <b>${esc(lvl)}</b>`] : [])];
+    return `<span>${on.length > 1 ? `${esc(lib.nameOf('setup', k))}: ` : ''}${bits.join(' · ')}</span>`;
+  }).join('')}</div>` : '';
   const fitNote = picking ? `<span class="jr-fit">${offered.length ? 'My setups that fit:' : 'None of My setups fit yet.'}</span>` : '';
-  const builder = state.setupDraft ? setupDraftHtml(lib, t) : '<button class="pos-link jr-new" data-action="startSetupDraft">+ New setup</button>';
+  const builder = state.setupDraft ? setupDraftHtml(lib, t) : '<button class="pos-link jr-new" data-action="startSetupDraft">+ New setup</button><button class="pos-link jr-new" data-action="openJournalLibrary">Edit setups</button>';
   // while it's live: the opening pass is what's asked; the plan and exit note wait for the close (shown if already in)
   const open = t.status === 'open';
   const openingMissing = st.missing.filter(m => OPENING_PASS.includes(m));
@@ -316,7 +323,7 @@ export function reviewSectionHtml(t) {
       <button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
     ${row(`Market <span class="jr-sub">${marketNote}</span>`, market + newBox('market'), miss.has('market'))}
     ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
-    ${row('My setups', `${fitNote}${mySetups}${builder}`, miss.has('setup'))}
+    ${row('My setups', `${fitNote}${mySetups}${builder}${partsLine}`, miss.has('setup'))}
     ${row('Entry tactic', pick('tactic') + newBox('tactic'), miss.has('tactic'))}
     ${row('Tags', pick('tag') + newBox('tag') + linksHtml(t, lib))}
     <div class="jr-row"><label class="jr-label" for="entryNote">Entry note <span class="jr-sub">optional</span></label>
@@ -352,6 +359,70 @@ function setupDraftHtml(lib, t) {
     </div>`;
 }
 
+// ---------- editing one of My setups (Edit choices): what it's made of, and its name ----------
+
+const editParts = d => d.pattern ? { pattern: d.pattern } : { action: d.action, levels: d.levels };
+/** another of My setups made of the same things, which the edit would duplicate */
+const editTwin = (lib, d) => lib.choices('setup').find(i => i.key !== d.key && sameParts(lib.parts(i.key), editParts(d))) || null;
+
+/** Edit: the builder opens under the setup, with what it's made of now; a name that's its parts' follows the change */
+export function editSetup(key) {
+  const lib = library(), p = lib.parts(key), name = lib.nameOf('setup', key);
+  state.setupEdit = { key, action: p.action || '', levels: [...(p.levels || [])], pattern: p.pattern || '', name, follow: name === setupName(lib, p) };
+  renderJournalLibrary();
+}
+export function cancelSetupEdit() { state.setupEdit = null; renderJournalLibrary(); }
+function setupEdited() {
+  const d = state.setupEdit;
+  if (d.follow) d.name = setupName(library(), editParts(d)) || d.name;
+  renderJournalLibrary();
+}
+export function setEditAction(action) { const d = state.setupEdit; if (!d) return; d.action = d.action === action ? '' : action; d.pattern = ''; setupEdited(); }
+export function setEditPattern(pattern) { const d = state.setupEdit; if (!d) return; d.pattern = d.pattern === pattern ? '' : pattern; if (d.pattern) { d.action = ''; d.levels = []; } setupEdited(); }
+export function toggleEditLevel(level) {
+  const d = state.setupEdit;
+  if (!d) return;
+  d.levels = d.levels.includes(level) ? d.levels.filter(l => l !== level) : [...d.levels, level];
+  d.pattern = '';
+  setupEdited();
+}
+/** a name typed stops following the parts */
+export function setupEditNameInput(name) { if (state.setupEdit) Object.assign(state.setupEdit, { name, follow: false }); }
+
+/** Save: the setup's new parts and name, on its library row; every trade with it groups the new way from then on */
+export function saveSetupEdit() {
+  const d = state.setupEdit, lib = library();
+  if (!d) return;
+  const parts = editParts(d), auto = setupName(lib, parts);
+  if (!auto || editTwin(lib, d)) return;
+  state.setupEdit = null;
+  return changeLibrary('setup', d.key, { name: (d.name.trim() || auto).slice(0, 80), settings: parts });
+}
+
+/** the builder under a setup being edited; one made of the same things offers a merge instead of a twin */
+function setupEditHtml(lib) {
+  const d = state.setupEdit, auto = setupName(lib, editParts(d)), twin = auto ? editTwin(lib, d) : null;
+  const finish = twin
+    ? `<span class="jr-have">Same as <b>${esc(twin.name)}</b>.</span><button class="btn" data-action="mergeEditedSetup" data-arg="${esc(twin.key)}">Merge into it</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`
+    : `<button class="btn primary" data-action="saveSetupEdit"${auto ? '' : ' disabled'}>Save</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`;
+  return `<div class="jr-draft jl-edit">
+      <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(i.name.replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setEditAction" data-arg="${esc(i.key)}"`)).join('')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(i.name, d.levels.includes(i.key), `data-action="toggleEditLevel" data-arg="${esc(i.key)}"`)).join('')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(i.name, d.pattern === i.key, `data-action="setEditPattern" data-arg="${esc(i.key)}"`)).join('')}</div>
+      <div class="jr-draft-row"><label class="jr-draft-q" for="setupEditName">Name</label><input type="text" id="setupEditName" maxlength="80" autocomplete="off" placeholder="${esc(auto || 'Pick what happened and at what')}" value="${esc(d.name)}" data-input="setupEditNameInput" data-enter="saveSetupEdit" />
+        ${finish}</div>
+      <p class="hint">Every trade with this setup counts the new way, in the filter, the stats and the reviews.</p>
+    </div>`;
+}
+
+/** Merge into it: the setup being edited counts as its twin from then on */
+export function mergeEditedSetup(into) {
+  const d = state.setupEdit;
+  if (!d || !into) return;
+  state.setupEdit = null;
+  return mergeLibraryItem('setup', d.key, into);
+}
+
 // ---------- the Library sheet ----------
 
 const KIND_WORDS = [['setup', 'My setups'], ['market', 'Market'], ['sector', 'Sector'], ['level', 'Levels'], ['action', 'What happened'], ['pattern', 'Patterns'], ['tactic', 'Entry tactics'], ['tag', 'Tags'], ['mistake', 'Mistakes']];
@@ -367,14 +438,16 @@ export function renderJournalLibrary() {
       const others = items.filter(o => o.key !== i.key && !lib.merged.has(`${kind}:${o.key}`));
       return `<div class="jl-row${i.hidden || into ? ' jl-off' : ''}"><input type="text" maxlength="80" value="${esc(i.name)}" aria-label="Rename ${esc(i.name)}" data-change="renameLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}" />
         ${kind === 'setup' ? `<span class="jl-parts">${esc(lib.partsWords(lib.parts(i.key)))}</span>` : ''}${i.own ? '<span class="journal-tag journal-tag-quiet">yours</span>' : ''}
+        ${kind === 'setup' && !into ? `<button class="pos-link" data-action="editSetup" data-arg="${esc(i.key)}" aria-expanded="${state.setupEdit?.key === i.key}">Edit</button>` : ''}
         <button class="pos-link" data-action="toggleLibraryHidden" data-arg="${kind}" data-arg2="${esc(i.key)}">${i.hidden ? 'Show' : 'Hide'}</button>
-        <select aria-label="Merge ${esc(i.name)} into" data-change="mergeLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}"><option value="">${into ? '' : 'Merge into…'}</option>${others.map(o => `<option value="${esc(o.key)}"${into === o.key ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}${into ? '<option value="__unmerge">Unmerge</option>' : ''}</select></div>`;
+        <select aria-label="Merge ${esc(i.name)} into" data-change="mergeLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}"><option value="">${into ? '' : 'Merge into…'}</option>${others.map(o => `<option value="${esc(o.key)}"${into === o.key ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}${into ? '<option value="__unmerge">Unmerge</option>' : ''}</select></div>
+        ${kind === 'setup' && state.setupEdit?.key === i.key ? setupEditHtml(lib) : ''}`;
     }).join('');
     return `<div class="sheet-section"><div class="sheet-label">${words}</div><div class="jl-list">${rows}</div></div>`;
   }).join('') + '<p class="hint">Hidden choices stop being offered; trades already labeled keep them. Merging counts one as the other everywhere, and the old name maps to the kept one from then on.</p>';
 }
 
-export function openJournalLibrary() { renderJournalLibrary(); openSheet('journalLibrary'); }
+export function openJournalLibrary() { state.setupEdit = null; renderJournalLibrary(); openSheet('journalLibrary'); }
 
 /** the library row for an item: yours, or the one that changes a default (made when first needed) */
 function libraryRow(kind, key) {
@@ -394,21 +467,51 @@ export const renameLibraryItem = (kind, key, name) => String(name || '').trim() 
 export const toggleLibraryHidden = (kind, key) => changeLibrary(kind, key, { hidden: !library().item(kind, key)?.hidden });
 export const mergeLibraryItem = (kind, key, into) => into === '__unmerge' ? changeLibrary(kind, key, { merged_into: null }) : into ? changeLibrary(kind, key, { merged_into: into }) : null;
 
-/** a trade's setups as the list shows them: [{ key, name }], merges followed, in the order they were added */
+/** a trade's setups as the list shows them: [{ key, name, kind, levels }], merges followed, in the order they were added; kind and levels are what it adds up under (setupGroups) */
 export function setupsOf(t) {
   if (!state.journalReview) return [];
   const lib = library();
   const seen = new Set();
   return (data().labels[t.key] || []).filter(l => l.kind === 'setup').map(l => lib.resolve('setup', l.value))
-    .filter(k => !seen.has(k) && seen.add(k)).map(key => ({ key, name: lib.nameOf('setup', key) }));
+    .filter(k => !seen.has(k) && seen.add(k)).map(key => ({ key, name: lib.nameOf('setup', key), ...setupGroups(lib, key) }));
 }
 
-/** the setups these trades carry, most used first, for the list's filter: [{ key, name, count }] */
-export function setupsInUse(trades) {
-  /** @type {Map<string, { key: string, name: string, count: number }>} */
-  const by = new Map();
-  for (const t of trades) for (const s of setupsOf(t)) { const c = by.get(s.key) || { ...s, count: 0 }; c.count++; by.set(s.key, c); }
-  return [...by.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+/** whether a trade fits the setup filter: a kind ('action:bounce': any bounce), a level ('level:ema21'), or one setup's key */
+export function setupMatches(t, filter) {
+  if (!filter) return true;
+  const list = setupsOf(t);
+  if (filter.startsWith('action:') || filter.startsWith('pat:')) return list.some(s => s.kind?.key === filter);
+  if (filter.startsWith('level:')) return list.some(s => s.levels.some(l => l.key === filter));
+  return list.some(s => s.key === filter);
+}
+
+/**
+ * The setup filter's menu, the action first and the level second: each kind (Bounce, Undercut & rally) with its count and
+ * its setups under it, patterns and setups without a kind on their own, most used first; then every level on its own (any
+ * action at the 21 EMA). A trade counts once in each. [{ value, name, count, depth }] and the levels, or empty.
+ */
+export function setupMenu(trades) {
+  /** @type {Map<string, { value: string, name: string, count: number, kids?: Map<string, any> }>} */
+  const top = new Map(), levels = new Map();
+  const bump = (map, value, name) => { const e = map.get(value) || { value, name, count: 0 }; e.count++; map.set(value, e); return e; };
+  for (const t of trades) {
+    const list = setupsOf(t);
+    if (!list.length) continue;
+    const kinds = new Set(), lvls = new Set();
+    for (const s of list) {
+      if (s.kind?.action) {
+        const k = top.get(s.kind.key) || { value: s.kind.key, name: s.kind.name, count: 0, kids: new Map() };
+        if (!kinds.has(s.kind.key)) { kinds.add(s.kind.key); k.count++; }
+        top.set(s.kind.key, k);
+        bump(k.kids, s.key, s.name);
+      } else bump(top, s.key, s.name);
+      for (const l of s.levels) if (!lvls.has(l.key)) { lvls.add(l.key); bump(levels, l.key, l.name); }
+    }
+  }
+  const byUse = list => [...list].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const setups = byUse(top.values()).flatMap(e => [{ value: e.value, name: e.name, count: e.count, depth: 0 },
+    ...(e.kids ? byUse(e.kids.values()).map(c => ({ ...c, depth: 1 })) : [])]);
+  return { setups, levels: byUse(levels.values()).map(l => ({ ...l, depth: 0 })) };
 }
 
 /** a trade's labels in words, for the list and the deck later: 'Strong · 50 SMA bounce · 30-minute pivot' */
@@ -421,7 +524,7 @@ export { parseSetup };
 
 /**
  * What a week or month review reads from your review (core/journal-week.js's context): each trade's grades and notes, its
- * labels, its market (its own, else the day's), item names (merges followed), and whether it's reviewed.
+ * labels, its market (its own, else the day's), item names (merges followed), each setup's kind (Bounce), and whether it's reviewed.
  */
 export function periodReviewContext() {
   const d = data(), lib = library();
@@ -430,6 +533,7 @@ export function periodReviewContext() {
     labels: key => (d.labels[key] || []).map(l => ({ kind: l.kind, value: lib.resolve(l.kind, l.value) })),
     market: t => tradeReviewState(t).market,
     nameOf: (kind, value) => lib.nameOf(kind, value),
+    kinds: key => (d.labels[key] || []).filter(l => l.kind === 'setup').map(l => { const k = lib.resolve('setup', l.value); return setupGroups(lib, k).kind?.name || lib.nameOf('setup', k); }),
     reviewed: t => tradeReviewState(t).reviewed,
     saved: key => !!d.weekly?.[key],
   };

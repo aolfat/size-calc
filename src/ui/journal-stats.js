@@ -7,9 +7,10 @@
 // apply here too.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupByMany, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN } from '../core/journal-stats.js';
 import { SANS_FONT } from '../lib/media.js';
 import { state } from '../state.js';
+import { setupsOf } from './journal-review.js';
 import { periodMark, periodStatus } from './journal-week.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -172,6 +173,20 @@ function overTime(unit, list) {
   return statTable('By day', periodResults(list, 'day').map(({ key, ...s }) => ({ group: dayLabel(key), stats: s })), 'The day of each exit.', 'Day');
 }
 
+/**
+ * How the setups did, the action first and the level second: by kind (every bounce together, whatever it bounced off; a
+ * pattern is its own kind), by level (any action there), then each setup. A trade with two setups counts in each; trades
+ * without one sit in 'No setup'. Nothing until a trade has a setup.
+ */
+function setupTables(list) {
+  const named = t => setupsOf(t);
+  if (!list.some(t => named(t).length)) return '';
+  const both = 'A trade with more than one counts in each.';
+  return `${statTable('By setup kind', groupByMany(list, t => named(t).map(s => s.kind?.name || s.name), 'No setup'), `Every bounce together, whatever it bounced off; same for undercut &amp; rally and rejection. ${both}`, 'Kind')}
+    ${statTable('By level', groupByMany(list, t => named(t).flatMap(s => s.levels.map(l => l.name))), `Any setup at that level. ${both}`, 'Level')}
+    ${statTable('By setup', groupByMany(list, t => named(t).map(s => s.name), 'No setup'), both, 'Setup')}`;
+}
+
 export function statsView(trades) {
   if (!countedTrades(trades).length && !activePeriods(trades, 'day').length) return '<p class="hint">No closed trades match yet.</p>';
   const scope = statsScope(trades), { unit, list } = scope;
@@ -184,6 +199,7 @@ export function statsView(trades) {
     <div class="js-equity chart-wrap"><canvas id="journalEquity" height="180"></canvas></div>
     <p class="hint">P&amp;L added up trade by trade as they closed; the red is the drawdown from the running peak.</p>
     ${overTime(unit, list)}
+    ${setupTables(list)}
     ${statTable('By symbol', b.bySymbol, b.concentration ? `<span style="color:var(--amber)">${esc(b.concentration.group)} made ${b.concentration.share}% of your gross gains: one name is carrying the results.</span>` : 'Options and spreads count under their underlying.')}
     ${statTable('By side', b.bySide)}
     ${statTable('By instrument', b.byInstrument)}
