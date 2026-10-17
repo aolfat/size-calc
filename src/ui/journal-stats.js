@@ -7,10 +7,9 @@
 // apply here too.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupByMany, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN } from '../core/journal-stats.js';
 import { SANS_FONT } from '../lib/media.js';
 import { state } from '../state.js';
-import { setupsOf } from './journal-review.js';
 import { periodMark, periodStatus } from './journal-week.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -128,7 +127,8 @@ function periodBar({ unit, key, active }) {
   </div>`;
 }
 
-function headline(list) {
+/** the headline numbers over a list of closed trades: net, win rate, profit factor, expectancy, averages, R, drawdown, streaks */
+export function headline(list) {
   const s = groupStats(list), eq = equityCurve(list), st = streaks(list);
   const dash = '—', partial = list.filter(t => t.partial).length;
   const count = partial ? `${s.trades} trade${s.trades === 1 ? '' : 's'} · ${partial} partly closed` : `${s.trades} closed trade${s.trades === 1 ? '' : 's'}`;
@@ -144,18 +144,23 @@ function headline(list) {
   </dl>`;
 }
 
-function statRow(group, s, extra = '') {
+const THIN_TAG = ' <span class="journal-tag journal-tag-quiet" title="Fewer than 10 trades: too few to read much into">thin</span>';
+
+/** a group's row; withR adds the average R after the win rate. group is markup when html is set (the Setups tab's
+ * buttons), and sub (markup) goes on a line under it */
+function statRow(group, s, { withR = false, html = false } = {}, sub = '') {
   const v = (x, f) => x === null || x === undefined ? '—' : f(x);
-  return `<tr${s.thin ? ' class="journal-thin"' : ''}><td><b>${esc(group)}</b>${s.thin ? ' <span class="journal-tag journal-tag-quiet" title="Fewer than 10 trades: too few to read much into">thin</span>' : ''}${extra}</td>
-    <td>${s.trades}</td><td class="${pnlClass(s.net)}">${signed$(s.net)}</td><td>${v(s.avg, signed$)}</td><td>${v(s.median, signed$)}</td>
-    <td>${v(s.winRate, x => `${x}%`)}</td><td>${v(s.avgWin, signed$)}</td><td>${v(s.avgLoss, signed$)}</td><td>${v(s.profitFactor, x => x.toFixed(2))}</td><td>${s.bigLosses || ''}</td></tr>`;
+  return `<tr${s.thin ? ' class="journal-thin"' : ''}><td>${html ? group : `<b>${esc(group)}</b>`}${s.thin && s.trades ? THIN_TAG : ''}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</td>
+    <td>${s.trades}</td><td class="${s.trades ? pnlClass(s.net) : ''}">${s.trades ? signed$(s.net) : '—'}</td><td>${v(s.avg, signed$)}</td><td>${v(s.median, signed$)}</td>
+    <td>${v(s.winRate, x => `${x}%`)}</td>${withR ? `<td>${v(s.avgR, signedR)}</td>` : ''}<td>${v(s.avgWin, signed$)}</td><td>${v(s.avgLoss, signed$)}</td><td>${v(s.profitFactor, x => x.toFixed(2))}</td><td>${s.bigLosses || ''}</td></tr>`;
 }
 
-function statTable(title, rows, note = '', first = 'Group') {
+/** a breakdown's table, the same columns for every group; rows are { group, stats, sub? } */
+export function statTable(title, rows, note = '', first = 'Group', opts = {}) {
   if (!rows.length) return '';
   return `<div class="section-title js-sub">${title}</div>${note ? `<p class="hint">${note}</p>` : ''}
-    <div class="positions-wrap"><table class="positions-table journal-table js-table"><thead><tr><th scope="col">${first}</th><th scope="col">Trades</th><th scope="col">Net</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">Win %</th><th scope="col">Avg win</th><th scope="col">Avg loss</th><th scope="col">PF</th><th scope="col" title="Losses worse than −1.5R">Big losses</th></tr></thead>
-    <tbody>${rows.map(r => statRow(r.group, r.stats)).join('')}</tbody></table></div>`;
+    <div class="positions-wrap"><table class="positions-table journal-table js-table"><thead><tr><th scope="col">${first}</th><th scope="col">Trades</th><th scope="col">Net</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">Win %</th>${opts.withR ? '<th scope="col" title="Over the trades with a stop">Avg R</th>' : ''}<th scope="col">Avg win</th><th scope="col">Avg loss</th><th scope="col">PF</th><th scope="col" title="Losses worse than −1.5R">Big losses</th></tr></thead>
+    <tbody>${rows.map(r => statRow(r.group, r.stats, opts, r.sub)).join('')}</tbody></table></div>`;
 }
 
 function rBars(dist, withR) {
@@ -173,20 +178,6 @@ function overTime(unit, list) {
   return statTable('By day', periodResults(list, 'day').map(({ key, ...s }) => ({ group: dayLabel(key), stats: s })), 'The day of each exit.', 'Day');
 }
 
-/**
- * How the setups did, the action first and the level second: by kind (every bounce together, whatever it bounced off; a
- * pattern is its own kind), by level (any action there), then each setup. A trade with two setups counts in each; trades
- * without one sit in 'No setup'. Nothing until a trade has a setup.
- */
-function setupTables(list) {
-  const named = t => setupsOf(t);
-  if (!list.some(t => named(t).length)) return '';
-  const both = 'A trade with more than one counts in each.';
-  return `${statTable('By setup kind', groupByMany(list, t => named(t).map(s => s.kind?.name || s.name), 'No setup'), `Every bounce together, whatever it bounced off; same for undercut &amp; rally and rejection. ${both}`, 'Kind')}
-    ${statTable('By level', groupByMany(list, t => named(t).flatMap(s => s.levels.map(l => l.name))), `Any setup at that level. ${both}`, 'Level')}
-    ${statTable('By setup', groupByMany(list, t => named(t).map(s => s.name), 'No setup'), both, 'Setup')}`;
-}
-
 export function statsView(trades) {
   if (!countedTrades(trades).length && !activePeriods(trades, 'day').length) return '<p class="hint">No closed trades match yet.</p>';
   const scope = statsScope(trades), { unit, list } = scope;
@@ -199,7 +190,6 @@ export function statsView(trades) {
     <div class="js-equity chart-wrap"><canvas id="journalEquity" height="180"></canvas></div>
     <p class="hint">P&amp;L added up trade by trade as they closed; the red is the drawdown from the running peak.</p>
     ${overTime(unit, list)}
-    ${setupTables(list)}
     ${statTable('By symbol', b.bySymbol, b.concentration ? `<span style="color:var(--amber)">${esc(b.concentration.group)} made ${b.concentration.share}% of your gross gains: one name is carrying the results.</span>` : 'Options and spreads count under their underlying.')}
     ${statTable('By side', b.bySide)}
     ${statTable('By instrument', b.byInstrument)}

@@ -63,6 +63,7 @@ export function createState() {
     barsBusy: false, // the journal is saving 5-minute bars
     journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
+    journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
     journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
     journalReviewFilter: 'all', // the trades tab: all | todo (to review)
     reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
@@ -82,7 +83,7 @@ export function createState() {
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
     chartLibLoading: null, // the one in-flight library load
-    journalTab: 'trades', // trades | calendar | stats | books | fills
+    journalTab: 'trades', // trades | calendar | stats | setups | books | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
       books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'books',

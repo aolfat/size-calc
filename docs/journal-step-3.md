@@ -16,7 +16,7 @@ Every trade gets reviewed: what the market and its sector were doing, which setu
 ## Decisions
 
 - **Two grades per trade:**
-  - **Setup grade:** A++, A, B, C, D, F. How good the setup and execution were.
+  - **Setup grade:** A, B, C, D, F. How good the setup and execution were. (A++ came over from Trading-Journal-AI and was cut: one step too many at the top. Migration `20261028000000_grades_a_to_f.sql` turns saved A++ grades into A.)
   - **Followed the plan:** yes, partly, no. Discipline, apart from whether the setup was good.
 
   The by-grade report checks the ladder: if A trades don't beat C trades, the grading isn't telling you anything.
@@ -63,7 +63,7 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 
 | Table | One row per | Holds |
 |---|---|---|
-| `trade_reviews` (exists) | Trade | Adds `setup_grade` (A++ to F), `plan_followed` (yes, partly, no), `note`, `market` (a per-trade override of the day's), and `reviewed_at` (set when the required fields are all there) |
+| `trade_reviews` (exists) | Trade | Adds `setup_grade` (A to F), `plan_followed` (yes, partly, no), `note`, `market` (a per-trade override of the day's), and `reviewed_at` (set when the required fields are all there) |
 | `trade_labels` | Label on a trade | Trade key, `kind` (sector, setup, tactic, tag, mistake), `value` (an item key, e.g. `sma50+bounce` or `mine:<id>`), `set_by` (you or the app), and for a guess its reason and confidence |
 | `journal_days` | Trading day | `day` (New York), `market`, a day note |
 | `library_items` | Item of yours, or a change to a default | `kind`, `name`, `default_key` (when it renames or hides a default), `hidden`, `merged_into` (an item key, which is how aliases work), and settings like a pivot's minimum reds |
@@ -84,7 +84,7 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 - **Chips for quick picks.** "+ New" adds your own item in place.
 - **Saves as you go.** It shows "Reviewed" once the required fields are in, and "To review: missing sector, note" until then.
 - **The trades list** gets a reviewed or to-review mark and a "To review" filter.
-- **Setups on the list (built):** a Setups column shows each trade's setups by name. An "All setups" menu narrows Trades, Calendar and Stats to one setup, which gives that setup's numbers before slice 5's reports. Setups add up action first, level second: the menu lists each kind (Bounce, Undercut & rally, Rejection, each pattern) with its setups under it, then "Any setup at" each level, and the Stats tab has By setup kind, By level and By setup tables, so every bounce reads together whatever it bounced off. The kind and levels come from the parts each setup already keeps (an action at its levels, or a pattern), so nothing changed in the database. A setup's parts can be edited later (Edit choices → Edit on the setup): every trade with it then counts the new way, and parts that match another setup offer a merge instead.
+- **Setups on the list (built):** a Setups column shows each trade's setups by name. An "All setups" menu narrows Trades, Calendar and Stats to one setup, which gives that setup's numbers before slice 5's reports. Setups add up action first, level second: the menu lists each kind (Bounce, Undercut & rally, Rejection, each pattern) with its setups under it, then "Any setup at" each level, and the Setups tab has By setup kind and By level tables after My setups, so every bounce reads together whatever it bounced off. The kind and levels come from the parts each setup already keeps (an action at its levels, or a pattern), so nothing changed in the database. A setup's parts can be edited later (Edit choices → Edit on the setup): every trade with it then counts the new way, and parts that match another setup offer a merge instead.
 - **Screenshots (built):** attach images to a trade with Paste from clipboard, by picking a file, by pressing ⌘V on the page, or by dropping them. They're shrunk, kept in a private bucket under your own folder, and shown through signed links. Each has a caption, and Delete asks once. Ten a trade.
 - **A Library sheet** to rename, hide and merge.
 
@@ -158,6 +158,8 @@ Low-confidence guesses come first in the deck.
 - **You dismiss the wrong ones.** The cutoffs are set in this slice.
 
 ### 5. Reports by label
+
+**First cut built:** the Journal's **Setups** tab lists every one of My setups with its numbers, then cuts the closed trades by setup grade, entry tactic, followed the plan, market, sector, mistakes and tags. Each setup has its own page: its numbers, by grade, tactic, market and side, the setups it rides with, and its trades, with links to its trades, stats, calendar and model book examples. Still to come: combinations and the action and level cuts.
 
 - **The Stats tab's tables, cut by** setup, tactic, market, sector, grade, plan followed, tags and mistakes, with the same stats and thin rows.
 - **Grade ladder:** A against C.

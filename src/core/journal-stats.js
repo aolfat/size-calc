@@ -289,20 +289,25 @@ function groupBy(list, keyOf, order) {
 }
 
 /**
- * Groups where a trade can sit in more than one (a trade with two setups counts in each): keysOf names them, none = the
- * `none` group when given, else left out. Most trades first, then net; `none` last. Counted trades only.
- * @param {StatTrade[]} trades @param {(t: StatTrade) => string[]} keysOf @param {string} [none]
- * @returns {{ group: string, stats: ReturnType<typeof groupStats> }[]}
+ * Stats per label over the closed trades: a trade counts in each of its groups (two setups = both rows, so the rows can
+ * add up to more than the total), and the ones with none are counted apart. order puts known groups first, in its order.
+ * @param {StatTrade[]} trades @param {(t: StatTrade) => string[]} keysOf @param {string[]} [order]
+ * @returns {{ rows: { group: string, stats: ReturnType<typeof groupStats> }[], none: number }}
  */
-export function groupByMany(trades, keysOf, none) {
+export function statsByLabel(trades, keysOf, order = []) {
+  const list = countedTrades(trades);
   /** @type {Map<string, StatTrade[]>} */
   const by = new Map();
-  for (const t of countedTrades(trades)) {
+  let none = 0;
+  for (const t of list) {
     const keys = [...new Set(keysOf(t))];
-    for (const k of keys.length ? keys : none ? [none] : []) { if (!by.has(k)) by.set(k, []); /** @type {StatTrade[]} */ (by.get(k)).push(t); }
+    if (!keys.length) none++;
+    for (const k of keys) { if (!by.has(k)) by.set(k, []); /** @type {StatTrade[]} */ (by.get(k)).push(t); }
   }
-  return [...by].map(([group, ts]) => ({ group, stats: groupStats(ts) }))
-    .sort((a, b) => (a.group === none ? 1 : 0) - (b.group === none ? 1 : 0) || b.stats.trades - a.stats.trades || b.stats.net - a.stats.net);
+  const at = (/** @type {string} */ g) => { const i = order.indexOf(g); return i < 0 ? order.length : i; };
+  const rows = [...by].map(([group, ts]) => ({ group, stats: groupStats(ts) }))
+    .sort((a, b) => at(a.group) - at(b.group) || b.stats.trades - a.stats.trades || b.stats.net - a.stats.net);
+  return { rows, none };
 }
 
 /**

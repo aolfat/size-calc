@@ -61,7 +61,7 @@ test('each part of the week gets its own numbers, the good and the worrying ones
   const cat = key => r.categories.find(c => c.key === key).facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
   assert.deepEqual(cat('selection'), [
     '2 of 4 closed trades won (50%), 100% the week before',
-    'Setup grades: 1 A++, 1 A, 1 B, 1 C',
+    'Setup grades: 2 A, 1 B, 1 C',
     '[good] Best setup: 21 EMA bounce: 2 trades, +$700.00 (+3.0R)',
     '[bad] Worst setup: Base breakout: 1 trade, −$350.00 (−1.8R)',
     '1 trade with no setup labeled',
@@ -73,7 +73,7 @@ test('each part of the week gets its own numbers, the good and the worrying ones
   assert.ok(!cat('selection').some(f => f.startsWith('By kind')), 'one setup per kind: nothing to add');
   const ungraded = `{ ...${CTX}, review: k => k === 'tsla' ? { plan_followed: 'partly' } : (${CTX}).review(k) }`;
   const sel = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${ungraded})`).categories.find(c => c.key === 'selection').facts.map(f => f.text);
-  assert.ok(sel.includes('Setup grades: 1 A++, 1 A, 1 C'), 'the grades given');
+  assert.ok(sel.includes('Setup grades: 2 A, 1 C'), 'the grades given (an old A++ counts as an A)');
   assert.ok(!sel.some(f => /not graded|no setup grades/i.test(f)), 'nothing about the ones without');
   const none = `{ ...${CTX}, review: () => undefined }`;
   assert.ok(!json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${none})`).categories.find(c => c.key === 'selection').facts.some(f => /grade/i.test(f.text)), 'no grades at all: no line');
@@ -111,7 +111,7 @@ test('each part of the week gets its own numbers, the good and the worrying ones
   assert.deepEqual(cat('prep'), ['Entry notes on 2 of 5 trades opened', 'Setup and entry tactic labeled on 2 of 5'].map((s, i) => i ? s : `[bad] ${s}`));
   assert.deepEqual(cat('consistency'), [
     '[bad] Followed the plan: 2 yes (+$700.00), 1 partly (−$100.00), 1 no (−$350.00)',
-    'A++ and A trades +$700.00 over 2; C and below −$350.00 over 1',
+    'A trades +$700.00 over 2; C and below −$350.00 over 1',
     'Reviewed 1 of 4 trades closed',
     '[bad] Tagged "FOMO" on 1 trade: TSLA',
   ], 'your own mistakes go under consistency');

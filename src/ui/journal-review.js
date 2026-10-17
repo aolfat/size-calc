@@ -514,6 +514,17 @@ export function setupMenu(trades) {
   return { setups, levels: byUse(levels.values()).map(l => ({ ...l, depth: 0 })) };
 }
 
+/** your library as the review sees it (defaults, your items, renames, merges) */
+export const reviewLibrary = () => library();
+/** a trade's labels of one kind as item keys, merges followed, each once */
+export function labelKeys(t, kind) {
+  if (!state.journalReview) return [];
+  const lib = library();
+  return [...new Set((data().labels[t.key] || []).filter(l => l.kind === kind).map(l => lib.resolve(kind, l.value)))];
+}
+/** what a trade's review says, for the Setups tab's cuts: its grade, followed the plan, and market (its own, else the day's) */
+export const reviewOf = t => ({ grade: data().reviews[t.key]?.setup_grade || '', plan: data().reviews[t.key]?.plan_followed || '', market: state.journalReview ? tradeReviewState(t).market || '' : '' });
+
 /** a trade's labels in words, for the list and the deck later: 'Strong · 50 SMA bounce · 30-minute pivot' */
 export function labelWords(t) {
   const lib = library();

@@ -387,12 +387,11 @@ test('setups add up by kind, the action first and the level second: every bounce
   assert.doesNotMatch(list(), /<b>MSFT<\/b>/, 'the undercut is not a bounce');
   run("setJournalSetupFilter('level:ema21')");
   assert.match(list(), /<b>AAPL<\/b>[\s\S]*<b>MSFT<\/b>|<b>MSFT<\/b>[\s\S]*<b>AAPL<\/b>/, 'both were at the 21 EMA');
-  run("setJournalSetupFilter(''); setJournalTab('stats')");
+  run("setJournalSetupFilter(''); setJournalTab('setups')");
   const table = title => list().split(`<div class="section-title js-sub">${title}</div>`)[1]?.split('</table>')[0] || '';
   assert.match(table('By setup kind'), /<th scope="col">Kind<\/th>[\s\S]*<b>Undercut &amp; rally<\/b>[\s\S]*<td>1<\/td><td class="journal-buy">\+\$10\.00<\/td>[\s\S]*<b>Bounce<\/b>[\s\S]*<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'one trade each; ties go to the better net');
   assert.match(table('By level'), /<b>21 EMA<\/b>[\s\S]*<td>2<\/td><td class="journal-sell">−\$494\.00<\/td>[\s\S]*<b>50 SMA<\/b>/);
-  assert.match(table('By setup'), /<b>21 EMA undercut &amp; rally<\/b>[\s\S]*<b>21 EMA bounce<\/b>[\s\S]*<b>50 SMA bounce<\/b>/);
-  assert.doesNotMatch(table('By setup kind'), /No setup/, 'every trade has one');
+  assert.doesNotMatch(list(), /Not graded/, 'a trade without a grade is just not in By setup grade');
 });
 
 test('a setup filter on the Stats periods: Day and ‹ › only see the trades with that setup', async () => {

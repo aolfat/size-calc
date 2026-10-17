@@ -5,6 +5,7 @@
 // habits count the trades opened in it. The caller passes your review (grades, notes, labels, the day's market) and each
 // trade's excursions from its saved 5-minute bars; nothing here reads state.
 import { fmt$ } from './format.js';
+import { GRADES, gradeOf } from './journal-labels.js';
 import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf } from './journal-stats.js';
 
 /** @typedef {import('./journal-stats.js').StatTrade & { avgEntry?: number, entryQty?: number, multiplier?: number,
@@ -180,9 +181,8 @@ export function periodReview(trades, unit, key, ctx) {
     if (stats.trades) add('selection', `${stats.wins} of ${plural(stats.trades, 'closed trade')} won (${stats.winRate}%)${prev.trades ? `, ${prev.winRate}% the ${word} before` : ''}`);
     // the grades given, nothing about the trades without one
     const grades = /** @type {Record<string, number>} */ ({});
-    for (const t of closed) { const g = ctx.review(t.key)?.setup_grade; if (g) grades[g] = (grades[g] || 0) + 1; }
-    const order = ['A++', 'A', 'B', 'C', 'D', 'F'];
-    const graded = order.filter(g => grades[g]).map(g => `${grades[g]} ${g}`);
+    for (const t of closed) { const g = gradeOf(ctx.review(t.key)?.setup_grade); if (g) grades[g] = (grades[g] || 0) + 1; }
+    const graded = GRADES.filter(g => grades[g]).map(g => `${grades[g]} ${g}`);
     if (graded.length) add('selection', `Setup grades: ${graded.join(', ')}`);
     const setups = byLabel(closed, t => label(t.key, 'setup'));
     if (setups.length) {
@@ -298,9 +298,9 @@ export function periodReview(trades, unit, key, ctx) {
       const no = plans.find(g => g.key === 'no');
       add('consistency', `Followed the plan: ${plans.map(g => `${g.trades} ${word[g.key] || g.key} (${signed$(g.net)})`).join(', ')}`, no ? 'bad' : plans.every(g => g.key === 'yes') ? 'good' : '');
     }
-    const ladder = byLabel(closed, t => { const g = ctx.review(t.key)?.setup_grade; return !g ? [] : ['A++', 'A'].includes(g) ? ['top'] : ['C', 'D', 'F'].includes(g) ? ['low'] : []; });
+    const ladder = byLabel(closed, t => { const g = gradeOf(ctx.review(t.key)?.setup_grade); return !g ? [] : g === 'A' ? ['top'] : ['C', 'D', 'F'].includes(g) ? ['low'] : []; });
     const top = ladder.find(g => g.key === 'top'), low = ladder.find(g => g.key === 'low');
-    if (top && low) add('consistency', `A++ and A trades ${signed$(top.net)} over ${top.trades}; C and below ${signed$(low.net)} over ${low.trades}`, top.net <= low.net ? 'bad' : '');
+    if (top && low) add('consistency', `A trades ${signed$(top.net)} over ${top.trades}; C and below ${signed$(low.net)} over ${low.trades}`, top.net <= low.net ? 'bad' : '');
     const reviewed = closedHere.filter(t => ctx.reviewed(t)).length;
     if (closedHere.length) add('consistency', `Reviewed ${reviewed} of ${plural(closedHere.length, 'trade')} closed`, reviewed === closedHere.length ? 'good' : '');
 

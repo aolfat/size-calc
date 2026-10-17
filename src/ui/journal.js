@@ -23,7 +23,8 @@ import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal
 import { loadJournalReview, reviewedMark, setupMatches, setupMenu, setupsOf, toReview } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
-import { loadModelBooks, renderModelBooks } from './model-books.js';
+import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
+import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
@@ -193,7 +194,7 @@ function summaryLine(trades, deleted) {
 
 /** the setup filter's menu: each kind (any bounce) with its setups under it, then each level; shown once there's one */
 function setupFilter(all) {
-  if (state.journalTab === 'fills') return '';
+  if (state.journalTab === 'fills' || state.journalTab === 'setups') return '';
   const { setups, levels } = setupMenu(all);
   if (!setups.length && !state.journalSetupFilter) return '';
   const opt = o => `<option value="${esc(o.value)}"${o.value === state.journalSetupFilter ? ' selected' : ''}>${o.depth ? '&nbsp;&nbsp;&nbsp;' : ''}${esc(o.name)} (${o.count})</option>`;
@@ -208,7 +209,7 @@ function controls(all = [], navigationOnly = false) {
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('fills', 'Fills')}</div>`;
+  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('fills', 'Fills')}</div>`;
   if (state.journalTab === 'books' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   return `<div class="journal-controls">
     ${tabs}
@@ -262,7 +263,7 @@ function fillsView(fills) {
 export function setJournalFees(v) { store.set('journal_fees', v === 'after' ? 'after' : 'before'); renderJournal(); }
 export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
 export function setJournalTab(tab) {
-  state.journalTab = ['fills', 'calendar', 'stats', 'books'].includes(tab) ? tab : 'trades';
+  state.journalTab = ['fills', 'calendar', 'stats', 'setups', 'books'].includes(tab) ? tab : 'trades';
   if (state.journalTab !== 'trades') state.journalDay = '';
   renderJournal();
   if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
@@ -296,6 +297,17 @@ export function openJournalStats(unit, key) {
   state.journalTab = 'stats';
   state.journalDay = '';
   renderJournal();
+}
+/** the Setups tab: one setup's page, and back to them all */
+export function openJournalSetup(key) { state.journalSetupKey = String(key || ''); renderJournal(); }
+export function closeJournalSetup() { state.journalSetupKey = ''; renderJournal(); }
+/** from a setup's page: its trades, stats or calendar (the setup filter set to it), or its model book examples */
+export function showSetupIn(tab) {
+  const key = state.journalSetupKey;
+  if (!key) return;
+  if (tab === 'books') { setJournalTab('books'); return selectModelSetup(key); } // after: a first read there starts from an empty state
+  state.journalSetupFilter = key;
+  setJournalTab(['stats', 'calendar'].includes(tab) ? tab : 'trades');
 }
 export function setJournalSide(side) { state.journalSide = ['long', 'short'].includes(side) ? side : 'all'; renderJournal(); }
 export function journalSymbolChanged() {
@@ -353,6 +365,7 @@ export function renderJournal() {
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
+      : state.journalTab === 'setups' ? setupsView(filtered(all, t => t.bias))
       : tradesView(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))))))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
