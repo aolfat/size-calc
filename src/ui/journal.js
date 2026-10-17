@@ -20,7 +20,7 @@ import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
-import { loadJournalReview, reviewedMark, setupsInUse, setupsOf, toReview } from './journal-review.js';
+import { loadJournalReview, reviewedMark, setupMatches, setupMenu, setupsOf, toReview } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
@@ -124,10 +124,16 @@ const restoreLink = t => t.deleted ? `<span class="pos-sub journal-row-acts"><bu
 /** a row opens its trade wherever it's tapped, except the tick box and the stop link (they have their own jobs) */
 const rowOpen = t => t.deleted ? '' : ` data-action="openTradeRow" data-arg="${esc(t.key)}"`;
 
-/** the trade's setups, by name; a dash before any are picked */
+/** a setup's chip in its parts, the action first and the level second ('Bounce | 8 EMA'), its name in the title; a pattern is its own name */
+const setupChip = s => {
+  const lvl = s.levels.map(l => l.name).join(' + ');
+  const parts = s.kind || lvl ? `${s.kind ? `<span class="journal-setup-act">${esc(s.kind.name)}</span>` : ''}${lvl ? `<span class="journal-setup-lvl">${esc(lvl)}</span>` : ''}` : esc(s.name);
+  return `<span class="journal-setup" title="${esc(s.name)}">${parts}</span>`;
+};
+/** the trade's setups, each in its parts; a dash before any are picked */
 function setupsCell(t) {
   const list = setupsOf(t);
-  return list.length ? `<td class="journal-setups">${list.map(s => `<span class="journal-setup">${esc(s.name)}</span>`).join('')}</td>` : '<td class="journal-setups-none">—</td>';
+  return list.length ? `<td class="journal-setups">${list.map(setupChip).join('')}</td>` : '<td class="journal-setups-none">—</td>';
 }
 
 /** a close whose purchase is older than the history: what's known (the exits), the rest blank */
@@ -167,8 +173,8 @@ function filtered(list, sideOf) {
 /** the trades tab, narrowed to a day picked on the calendar (the trades with an exit that New York day) */
 /** the To review filter: only the trades still to review */
 const onReviewFilter = list => state.journalReviewFilter === 'todo' ? list.filter(toReview) : list;
-/** the setup filter: only the trades that carry that setup (Trades, Calendar and Stats) */
-const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupsOf(t).some(s => s.key === state.journalSetupFilter)) : list;
+/** the setup filter: only the trades that carry that setup, that kind (any bounce) or that level (Trades, Calendar and Stats) */
+const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupMatches(t, state.journalSetupFilter)) : list;
 export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v || ''); renderJournal(); }
 export function setJournalReviewFilter(v) { state.journalReviewFilter = v === 'todo' ? 'todo' : 'all'; renderJournal(); }
 const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
@@ -186,13 +192,14 @@ function summaryLine(trades, deleted) {
   return parts.join(' · ') + deletedNote;
 }
 
-/** the setup filter's menu: every setup the trades carry, most used first; shown once there's one */
+/** the setup filter's menu: each kind (any bounce) with its setups under it, then each level; shown once there's one */
 function setupFilter(all) {
   if (state.journalTab === 'fills' || state.journalTab === 'setups') return '';
-  const used = setupsInUse(all);
-  if (!used.length && !state.journalSetupFilter) return '';
+  const { setups, levels } = setupMenu(all);
+  if (!setups.length && !state.journalSetupFilter) return '';
+  const opt = o => `<option value="${esc(o.value)}"${o.value === state.journalSetupFilter ? ' selected' : ''}>${o.depth ? '&nbsp;&nbsp;&nbsp;' : ''}${esc(o.name)} (${o.count})</option>`;
   return `<select id="journalSetupFilter" class="journal-setup-filter${state.journalSetupFilter ? ' active' : ''}" data-change="setJournalSetupFilter" aria-label="Filter by setup">
-      <option value="">All setups</option>${used.map(s => `<option value="${esc(s.key)}"${s.key === state.journalSetupFilter ? ' selected' : ''}>${esc(s.name)} (${s.count})</option>`).join('')}
+      <option value="">All setups</option>${setups.map(opt).join('')}${levels.length ? `<optgroup label="Any setup at">${levels.map(opt).join('')}</optgroup>` : ''}
     </select>`;
 }
 

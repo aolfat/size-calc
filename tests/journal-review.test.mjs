@@ -224,6 +224,42 @@ test('+ New adds your own choice to the library and the trade; the choices sheet
   assert.match(body(), /30m pivot/, 'the review shows the new name');
 });
 
+test('editing a setup in Edit choices: its parts and name change, every trade with it groups the new way, a twin merges', async () => {
+  const { run, t, body, rows, elements } = await page();
+  const sheet = () => elements.get('journalLibraryBody').innerHTML;
+  await run(`toggleSetup(${t}, 'ema8_bounce')`);
+  assert.match(body(), /data-action="openJournalLibrary">Edit setups</, 'beside + New setup');
+  run('openJournalLibrary()');
+  assert.match(sheet(), /value="8 EMA bounce"[\s\S]*?data-action="editSetup" data-arg="ema8_bounce" aria-expanded="false">Edit</);
+  run("editSetup('ema8_bounce')");
+  assert.match(sheet(), /aria-pressed="true" data-action="setEditAction" data-arg="bounce">Bounce<[\s\S]*aria-pressed="true" data-action="toggleEditLevel" data-arg="ema8">8 EMA</, 'what it is made of now');
+  run("setEditAction('undercut')");
+  assert.match(sheet(), /id="setupEditName"[^>]*value="8 EMA undercut &amp; rally"/, 'a name that was its parts follows them');
+  await run('saveSetupEdit()');
+  const row = rows('library_items').find(r => r.default_key === 'ema8_bounce');
+  assert.deepEqual([row.name, row.settings], ['8 EMA undercut & rally', { action: 'undercut', levels: ['ema8'] }], 'a default is edited by a row of yours');
+  assert.equal(run("journalReview.labels[journalPageTrade().key][0].value"), 'ema8_bounce', 'the trade keeps its label');
+  assert.equal(run('setupsOf(journalPageTrade())[0].kind.key'), 'action:undercut', 'and groups the new way');
+  assert.match(body(), />8 EMA undercut &amp; rally</);
+
+  // a typed name stays put; one made of the same things as another offers a merge, not a twin
+  run("editSetup('ema8_bounce'); setupEditNameInput('Morning 8 reclaim'); toggleEditLevel('support')");
+  assert.match(sheet(), /value="Morning 8 reclaim"/);
+  run("toggleEditLevel('support'); toggleEditLevel('ema8'); toggleEditLevel('ema21')");
+  assert.match(sheet(), /Same as <b>21 EMA undercut &amp; rally<\/b>\.<\/span><button class="btn" data-action="mergeEditedSetup" data-arg="ema21_unr">Merge into it/);
+  assert.doesNotMatch(sheet(), /data-action="saveSetupEdit"/);
+  await run('saveSetupEdit()');
+  assert.equal(rows('library_items').find(r => r.default_key === 'ema8_bounce').settings.levels[0], 'ema8', 'no twin saved');
+  await run("mergeEditedSetup('ema21_unr')");
+  assert.equal(rows('library_items').find(r => r.default_key === 'ema8_bounce').merged_into, 'ema21_unr');
+  assert.equal(run('setupsOf(journalPageTrade())[0].name'), '21 EMA undercut & rally', 'the trade counts as the one kept');
+  assert.doesNotMatch(sheet(), /data-action="editSetup" data-arg="ema8_bounce"/, 'merged away: nothing to edit');
+
+  run("editSetup('sma50_bounce'); setEditAction('bounce'); cancelSetupEdit()");
+  assert.doesNotMatch(sheet(), /jl-edit/, 'Cancel closes it');
+  assert.equal(rows('library_items').some(r => r.default_key === 'sma50_bounce'), false, 'and saves nothing');
+});
+
 test('a review save Supabase refuses goes back; before the migration is pushed, the trade page still works', async () => {
   const one = await page();
   one.supabase.fail({ status: 500, message: 'nope' });
@@ -253,6 +289,20 @@ test('what fits while building a setup, and links: https only, named for the flo
   assert.equal(run("linkLabel('https://www.unusualwhales.com/flow/x')"), 'Unusual Whales');
   assert.equal(run("linkLabel('https://app.bullflow.io/flow?s=NVDA')"), 'Bullflow');
   assert.equal(run("linkLabel('https://x.com/someone/status/1')"), 'x.com');
+});
+
+test('what a setup adds up under: its action as the kind, then each level; a pattern is its own kind; merges followed', async () => {
+  const { run } = await app();
+  const groups = (rows, key) => json(run, `setupGroups(buildLibrary(${JSON.stringify(rows)}), '${key}')`);
+  assert.deepEqual(groups([], 'sma50_unr'), { kind: { key: 'action:undercut', name: 'Undercut & rally', action: true }, levels: [{ key: 'level:sma50', name: '50 SMA' }] });
+  assert.deepEqual(groups([], 'base_breakout'), { kind: { key: 'pat:base_breakout', name: 'Base breakout', action: false }, levels: [] });
+  assert.deepEqual(groups([], 'sma50+bounce'), { kind: { key: 'action:bounce', name: 'Bounce', action: true }, levels: [{ key: 'level:sma50', name: '50 SMA' }] }, 'an older value written as its parts');
+  assert.deepEqual(groups([], 'sma50'), { kind: null, levels: [{ key: 'level:sma50', name: '50 SMA' }] }, 'a level alone has no kind');
+  const own = [{ id: 'b1', kind: 'setup', name: 'AVWAP + 21 EMA bounce', settings: { action: 'bounce', levels: ['avwap_ath', 'ema21'] } }];
+  assert.deepEqual(groups(own, 'mine:b1').kind.key, 'action:bounce', 'one of My setups at two levels: still a bounce');
+  assert.deepEqual(groups(own, 'mine:b1').levels.map(l => l.name), ['AVWAP from ATH', '21 EMA']);
+  const merged = [{ id: 'm1', kind: 'level', default_key: 'support', name: 'Support', merged_into: 'sma50' }];
+  assert.deepEqual(groups([...merged, { id: 'b2', kind: 'setup', name: 'x', settings: { action: 'bounce', levels: ['support', 'sma50'] } }], 'mine:b2').levels, [{ key: 'level:sma50', name: '50 SMA' }], 'a merged level counts as the one kept, once');
 });
 
 test('+ New setup narrows My setups as you pick and offers the one you have; Option flow takes links', async () => {
@@ -296,12 +346,15 @@ test('+ New setup narrows My setups as you pick and offers the one you have; Opt
 });
 
 test('the Journal shows each trade\'s setups, and a setup filter narrows the list, calendar and stats', async () => {
-  const { run, t, list, rows } = await page();
+  const { run, t, list, rows, body } = await page();
   await run(`toggleSetup(${t}, 'ema21_bounce')`);
   await run(`toggleSetup(${t}, 'base_breakout')`);
   run('closeJournalTrade()');
-  assert.match(list(), /<td class="journal-setups"><span class="journal-setup">21 EMA bounce<\/span><span class="journal-setup">Base breakout<\/span><\/td>/, 'both, by name');
-  assert.match(list(), /<select id="journalSetupFilter" class="journal-setup-filter" data-change="setJournalSetupFilter" aria-label="Filter by setup">\s*<option value="">All setups<\/option><option value="ema21_bounce">21 EMA bounce \(1\)<\/option><option value="base_breakout">Base breakout \(1\)<\/option>/, 'most used first, then by name');
+  assert.match(list(), /<td class="journal-setups"><span class="journal-setup" title="21 EMA bounce"><span class="journal-setup-act">Bounce<\/span><span class="journal-setup-lvl">21 EMA<\/span><\/span><span class="journal-setup" title="Base breakout"><span class="journal-setup-act">Base breakout<\/span><\/span><\/td>/, 'both in their parts, the action first, named in the title');
+  run(`openJournalTrade('${KEY}')`);
+  assert.match(body(), /<div class="jr-parts"><span>21 EMA bounce: Action <b>Bounce<\/b> · Level <b>21 EMA<\/b><\/span><span>Base breakout: Pattern <b>Base breakout<\/b><\/span><\/div>/, 'the trade page spells out the parts');
+  run('closeJournalTrade()');
+  assert.match(list(), /<select id="journalSetupFilter" class="journal-setup-filter" data-change="setJournalSetupFilter" aria-label="Filter by setup">\s*<option value="">All setups<\/option><option value="base_breakout">Base breakout \(1\)<\/option><option value="action:bounce">Bounce \(1\)<\/option><option value="ema21_bounce">&nbsp;&nbsp;&nbsp;21 EMA bounce \(1\)<\/option><optgroup label="Any setup at"><option value="level:ema21">21 EMA \(1\)<\/option><\/optgroup>/, 'by kind, its setups under it, then by level; most used first, then by name');
   run("setJournalSetupFilter('ema21_flag')");
   assert.match(list(), /No trades match/, 'a setup no trade has: nothing');
   run("setJournalSetupFilter('ema21_bounce')");
@@ -311,6 +364,34 @@ test('the Journal shows each trade\'s setups, and a setup filter narrows the lis
   assert.match(list(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$504\.00/, 'the stats for that setup');
   run("setJournalSetupFilter(''); setJournalTab('trades')");
   assert.equal(rows('trade_labels').filter(r => r.kind === 'setup').length, 2);
+});
+
+test('setups add up by kind, the action first and the level second: every bounce together, any setup at the 21 EMA', async () => {
+  const leg = (id, instruction, time, price) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), user_id: 'user-1', data: {
+    orderId: id, enteredTime: time, status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction, quantity: 10, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: 10, price, time }] }],
+  } });
+  const { run, t, list } = await page(sb => {
+    for (const r of [leg(601, 'BUY', '2026-10-05T14:00:00+0000', 400), leg(602, 'SELL', '2026-10-05T15:00:00+0000', 401)]) sb.table.set(`user-1:order:${r.record_id}`, r);
+  });
+  await run(`toggleSetup(${t}, 'ema21_bounce')`);
+  await run(`toggleSetup(${t}, 'sma50_bounce')`);
+  run(`openJournalTrade('6789|MSFT|long|2026-10-05T14:00:00.000Z')`);
+  await run(`toggleSetup(${t}, 'ema21_unr')`);
+  run('closeJournalTrade()');
+  assert.match(list(), /<option value="action:bounce">Bounce \(1\)<\/option><option value="ema21_bounce">&nbsp;&nbsp;&nbsp;21 EMA bounce \(1\)<\/option><option value="sma50_bounce">&nbsp;&nbsp;&nbsp;50 SMA bounce \(1\)<\/option><option value="action:undercut">Undercut &amp; rally \(1\)<\/option><option value="ema21_unr">&nbsp;&nbsp;&nbsp;21 EMA undercut &amp; rally \(1\)<\/option>/, 'two bounces on one trade: Bounce counts it once');
+  assert.match(list(), /<optgroup label="Any setup at"><option value="level:ema21">21 EMA \(2\)<\/option><option value="level:sma50">50 SMA \(1\)<\/option><\/optgroup>/);
+  run("setJournalSetupFilter('action:bounce')");
+  assert.match(list(), /<b>AAPL<\/b>/);
+  assert.doesNotMatch(list(), /<b>MSFT<\/b>/, 'the undercut is not a bounce');
+  run("setJournalSetupFilter('level:ema21')");
+  assert.match(list(), /<b>AAPL<\/b>[\s\S]*<b>MSFT<\/b>|<b>MSFT<\/b>[\s\S]*<b>AAPL<\/b>/, 'both were at the 21 EMA');
+  run("setJournalSetupFilter(''); setJournalTab('setups')");
+  const table = title => list().split(`<div class="section-title js-sub">${title}</div>`)[1]?.split('</table>')[0] || '';
+  assert.match(table('By setup kind'), /<th scope="col">Kind<\/th>[\s\S]*<b>Undercut &amp; rally<\/b>[\s\S]*<td>1<\/td><td class="journal-buy">\+\$10\.00<\/td>[\s\S]*<b>Bounce<\/b>[\s\S]*<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'one trade each; ties go to the better net');
+  assert.match(table('By level'), /<b>21 EMA<\/b>[\s\S]*<td>2<\/td><td class="journal-sell">−\$494\.00<\/td>[\s\S]*<b>50 SMA<\/b>/);
+  assert.doesNotMatch(list(), /Not graded/, 'a trade without a grade is just not in By setup grade');
 });
 
 test('a setup filter on the Stats periods: Day and ‹ › only see the trades with that setup', async () => {
