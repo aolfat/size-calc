@@ -16,8 +16,10 @@ self.addEventListener('fetch', e => {
   // only handle same-origin GETs; Tradier and Schwab worker calls pass straight through
   if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) return;
   if (new URL(e.request.url).searchParams.has('code')) return; // a Schwab login callback: never cache the code
+  // no-cache: ask the server every time (an unchanged file is a quick 304). A plain fetch would take the browser's
+  // HTTP cache, and GitHub Pages lets that keep a file 10 minutes, so a reopen right after a deploy got the old app
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); } // never an error page
         return res;
