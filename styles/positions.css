@@ -432,7 +432,7 @@ span.journal-pick { cursor: default; }
 .jtc-stats dd .pos-sub { font-size: 11px; font-weight: 400; white-space: normal; }
 .jtc-foot { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; min-height: 32px; }
 .jtc-stop { font-size: 13.5px; color: var(--text2); }
-.jtc-stop .pos-link { font-size: 15px; font-weight: 600; color: var(--blue); margin-left: 4px; }
+.jtc-stop b { font-size: 15px; font-weight: 600; color: var(--text); margin-left: 4px; }
 .jtc-stop .pos-sub { display: inline; margin-left: 6px; }
 .jtc-foot .journal-row-acts { margin: 0; }
 .btn.primary.jtc-go { margin-left: auto; padding: 9px 22px; font-size: 14.5px; font-weight: 600; color: #fff; background: var(--blue); border-color: var(--blue); border-radius: 12px; }
