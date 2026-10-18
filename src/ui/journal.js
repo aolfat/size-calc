@@ -15,12 +15,13 @@ import { schwabAccount } from '../services/schwab.js';
 import { deleteSavedTrades, insertSavedTrades, loadSavedRecords, loadSavedTrades, loadTradeReviews, saveTradeReviews, updateSavedTrade } from '../services/journal.js';
 import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
+import { mq, PHONE_MQ } from '../lib/media.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
-import { loadJournalReview, reviewedMark, setupsInUse, setupsOf, toReview } from './journal-review.js';
+import { loadJournalReview, reviewedMark, savedForWeekly, setupsInUse, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
@@ -165,12 +166,16 @@ function filtered(list, sideOf) {
   return list.filter(x => (state.journalSide === 'all' || sideOf(x) === state.journalSide) && (!q || (x.label || x.symbol).toUpperCase().includes(q)));
 }
 /** the trades tab, narrowed to a day picked on the calendar (the trades with an exit that New York day) */
-/** the To review filter: only the trades still to review */
-const onReviewFilter = list => state.journalReviewFilter === 'todo' ? list.filter(toReview) : list;
+/** the review chips: To review (the deck's queue), Reviewed, and No setup (nothing labelled yet); All lets every trade through */
+const reviewsRead = () => !!state.journalReview && !state.journalReviewError;
+const isReviewed = t => reviewsRead() && t.status !== 'history' && tradeReviewState(t).reviewed;
+const untagged = t => reviewsRead() && t.status !== 'history' && !setupsOf(t).length;
+const REVIEW_TESTS = { todo: toReview, done: isReviewed, untagged };
+const onReviewFilter = list => REVIEW_TESTS[state.journalReviewFilter] ? list.filter(REVIEW_TESTS[state.journalReviewFilter]) : list;
 /** the setup filter: only the trades that carry that setup (Trades, Calendar and Stats) */
 const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupsOf(t).some(s => s.key === state.journalSetupFilter)) : list;
 export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v || ''); renderJournal(); }
-export function setJournalReviewFilter(v) { state.journalReviewFilter = v === 'todo' ? 'todo' : 'all'; renderJournal(); }
+export function setJournalReviewFilter(v) { state.journalReviewFilter = v in REVIEW_TESTS ? v : 'all'; renderJournal(); }
 const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
 
 function summaryLine(trades, deleted) {
@@ -207,12 +212,20 @@ function controls(all = [], navigationOnly = false) {
   return `<div class="journal-controls">
     ${tabs}
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
-    ${state.journalTab === 'trades' ? `<div class="seg" aria-label="Review"><button ${on(state.journalReviewFilter, 'all')} data-action="setJournalReviewFilter" data-arg="all">Any</button><button ${on(state.journalReviewFilter, 'todo')} data-action="setJournalReviewFilter" data-arg="todo">To review</button></div>` : ''}
     ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
     ${setupFilter(all)}
     <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
     ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : ''}
+    ${state.journalTab === 'trades' ? reviewChips(all) : ''}
   </div>`;
+}
+
+/** All · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
+function reviewChips(all) {
+  const base = onSetupFilter(onPickedDay(filtered(all, t => t.bias))).filter(t => !t.deleted);
+  const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
+  const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
+  return `<div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>`;
 }
 
 /** what's ticked, Delete beside the count (away from Merge), why it can't be one trade (or Merge), and Clear;
@@ -228,20 +241,104 @@ function pickBar(all) {
     <span class="journal-pickbar-acts"><button class="btn primary" data-action="mergePicked"${off}>${state.journalMerging ? 'Merging…' : 'Merge into one trade'}</button><button class="btn" data-action="clearJournalPicks">Clear</button></span></div>`;
 }
 
+// ---------- phones: a card per trade, open ones first, like the trade journals on a phone ----------
+
+const nyDay = iso => new Date(iso).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+const unitWord = t => t.legs ? (t.entryQty === 1 ? 'spread' : 'spreads') : t.assetType === 'OPTION' ? (t.entryQty === 1 ? 'ct' : 'cts') : 'shr';
+const pill = (cls, text, title = '') => `<span class="jtc-pill${cls ? ` ${cls}` : ''}"${title ? ` title="${esc(title)}"` : ''}>${text}</span>`;
+
+/** '20 shr · Oct 9 → Oct 13 · 4d 1h', or '100 shr · Opened Oct 15 · 2d 3h' while it's open */
+function cardSub(t) {
+  const qty = `${t.entryQty} ${unitWord(t)}`;
+  if (t.status === 'history') return `${qty} · closed ${nyDay(t.closedAt || t.openedAt)} · bought earlier`;
+  const parts = t.status === 'open'
+    ? [`${qty}${t.openQty !== t.entryQty ? `, ${t.openQty} open` : ''}`, `Opened ${nyDay(t.openedAt)}`, holdWords(Date.now() - Date.parse(t.openedAt))]
+    : [qty, nyDay(t.openedAt) === nyDay(t.closedAt) ? nyDay(t.openedAt) : `${nyDay(t.openedAt)} → ${nyDay(t.closedAt)}`, holdWords(t.holdMs)];
+  return parts.filter(Boolean).map(p => `<span class="jtc-nowrap">${p}</span>`).join(' · '); // breaks between the parts, never inside one
+}
+
+/** what the trade is and where its review stands, as pills */
+function cardPills(t) {
+  const open = t.status === 'open';
+  const out = [t.status === 'history' ? pill('jtc-warn', 'Before your history', HISTORY_TITLE) : open ? pill('jtc-open', 'Open') : pill('', 'Closed')];
+  const side = { long: pill('jtc-long', 'Long'), short: pill('jtc-short', 'Short'), neutral: pill('', 'Neutral') }[t.bias];
+  if (side) out.push(side);
+  if (t.legs) out.push(pill('', esc(t.structure || `${t.spreadKind} spread`)));
+  if (t.expired) out.push(pill('', 'expired', EXPIRED_TITLE));
+  if (t.via) out.push(pill('', t.via, VIA_TITLE[t.via]));
+  if (t.deleted) out.push(pill('jtc-warn', 'deleted'));
+  return out.join('');
+}
+
+/** top right: To review, or Reviewed once it is (nothing while the reviews haven't been read) */
+function cardReview(t) {
+  if (t.deleted || t.status === 'history' || !reviewsRead()) return '';
+  if (toReview(t)) return '<span class="jtc-review">To review</span>';
+  return isReviewed(t) ? '<span class="jtc-review jtc-done">Reviewed</span>' : '';
+}
+
+function tradeCard(t) {
+  const open = t.status === 'open', history = t.status === 'history', noPnl = history || (open && !t.exits);
+  const setups = setupsOf(t);
+  const tags = setups.length ? setups.map(s => `<span class="journal-setup">${esc(s.name)}</span>`).join('') : untagged(t) ? pill('jtc-warn', 'No setup') : '';
+  const weekly = reviewsRead() && savedForWeekly(t) ? pill('', 'for weekly') : '';
+  const sub = t.legs ? esc(legWords(t.legs)) : t.kind === 'merged' ? `${t.parts.length} trades merged` : '';
+  const stop = t.legs || history ? '' : `<span class="jtc-stop">Stop ${stopCell(t)}</span>`;
+  const go = reviewsRead() && toReview(t) && !t.deleted ? `<button class="btn primary jtc-go" data-action="openTradeRow" data-arg="${esc(t.key)}">Review</button>` : '';
+  return `<article class="jtc${open ? ' jtc-is-open' : ''}${t.deleted ? ' journal-deleted' : ''}"${rowOpen(t)}${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
+    <div class="jtc-head">${pickBox(t)}<div class="jtc-id">
+      <div class="jtc-name">${nameOf(t)}${cardPills(t)}</div>
+      <div class="jtc-sub">${cardSub(t)}</div>${sub ? `<div class="jtc-sub">${sub}</div>` : ''}
+    </div>${cardReview(t)}</div>
+    ${tags || weekly ? `<div class="jtc-tags">${tags}${weekly}</div>` : ''}
+    <dl class="jtc-stats">
+      <div><dt>Entry</dt><dd>${history ? '—' : px(t.avgEntry, t.assetType)}</dd></div>
+      <div><dt>${t.exits > 1 ? 'Avg exit' : 'Exit'}</dt><dd>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</dd></div>
+      <div title="${esc(rTitleOf(t))}"><dt>R</dt><dd class="${t.r === null ? '' : pnlClass(t.r)}">${t.r === null ? '—' : signedR(t.r)}</dd></div>
+      <div${noPnl ? '' : pnlTitle(t)}><dt>P&amp;L</dt><dd class="${noPnl ? '' : pnlClass(t.pnl)}">${noPnl ? '—' : signed$(t.pnl)}${noPnl ? '' : pnlSub(t)}</dd></div>
+    </dl>
+    ${stop || go || t.deleted ? `<div class="jtc-foot">${stop}${restoreLink(t)}${go}</div>` : ''}
+  </article>`;
+}
+
+/** Open trades, then Closed trades, each with a count and what it took */
+function tradeCards(trades) {
+  const taken = list => list.filter(t => !t.deleted && t.status !== 'history' && (t.status !== 'open' || t.exits)).reduce((sum, t) => sum + t.pnl, 0);
+  const group = (title, list, word) => {
+    if (!list.length) return '';
+    const counted = list.filter(t => !t.deleted && t.status !== 'history' && (t.status !== 'open' || t.exits));
+    const total = counted.length ? `<span class="jtc-total">${word} <b class="${pnlClass(taken(list))}">${signed$(taken(list))}</b></span>` : '';
+    return `<section class="jtc-group"><div class="jtc-group-head"><h3>${title} <span>${list.length}</span></h3>${total}</div>${list.map(tradeCard).join('')}</section>`;
+  };
+  return `<div class="jtc-list">${group('Open trades', trades.filter(t => t.status === 'open'), 'Taken so far')}${group('Closed trades', trades.filter(t => t.status !== 'open'), 'Realized')}</div>`;
+}
+
+/** a phone turned sideways (or a window resized) swaps cards and table */
+let phoneWatched = false;
+function watchPhone() {
+  if (phoneWatched || !window.matchMedia) return;
+  phoneWatched = true;
+  window.matchMedia(PHONE_MQ).addEventListener?.('change', () => { if (state.journalView) renderJournal(); });
+}
+
 function tradesView(all) {
   // deleted trades never count in the stats; shown (dimmed) only to restore one
   const counted = all.filter(t => !t.deleted);
   const deleted = all.length - counted.length;
   const trades = state.journalShowDeleted ? all : counted;
   if (!trades.length) return `<p class="hint">No trades match.${deleted ? ` ${deleted} deleted. <button class="pos-link" data-action="toggleDeletedTrades">Show</button>` : ''}</p>`;
-  return `<p class="hint journal-summary">${summaryLine(counted, deleted)}</p>
-    <div class="positions-wrap"><table class="positions-table journal-table">
+  watchPhone();
+  const shown = trades.slice(0, JOURNAL_SHOWN);
+  const list = mq(PHONE_MQ) ? tradeCards(shown) : `<div class="positions-wrap"><table class="positions-table journal-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Setups</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
-      <tbody>${trades.slice(0, JOURNAL_SHOWN).map(tradeRow).join('')}</tbody>
-    </table></div>${pickBar(trades)}
-    <p class="hint">${trades.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades. ` : ''}Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades, an entry note while it's live and an exit note after; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
+      <tbody>${shown.map(tradeRow).join('')}</tbody>
+    </table></div>`;
+  return `<p class="hint journal-summary">${summaryLine(counted, deleted)}</p>
+    ${list}${pickBar(trades)}
+    ${trades.length > JOURNAL_SHOWN ? `<p class="hint">Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades.</p>` : ''}
+    <details class="hint-details"><summary>How trades are built</summary><p class="hint">Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades, an entry note while it's live and an exit note after; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
       ? 'P&amp;L is after Schwab\'s fees (commission, SEC, TAF and option fees, from its trade records), split by quantity when one order covers two trades.'
-      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}${trades.some(t => t.via) ? ' An assigned or exercised option closes at $0 the day it happened, and its shares count at the strike.' : ''}</p>`;
+      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}${trades.some(t => t.via) ? ' An assigned or exercised option closes at $0 the day it happened, and its shares count at the strike.' : ''}</p></details>`;
 }
 
 function fillsView(fills) {

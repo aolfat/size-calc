@@ -189,8 +189,13 @@ test('the list: a reviewed mark, the To review filter; your stop and delete stay
   });
   run('closeJournalTrade()');
   assert.match(list(), /<b>AAPL<\/b>[^]*?<span class="journal-tag journal-tag-done">reviewed<\/span>/);
+  assert.match(list(), /data-arg="all">All <b>1<\/b><\/button>[^]*?To review <b>0<\/b>[^]*?Reviewed <b>1<\/b>[^]*?No setup <b>0<\/b>/, 'the chips count what each lets through');
   run("setJournalReviewFilter('todo')");
   assert.match(list(), /No trades match/, 'nothing left to review');
+  run("setJournalReviewFilter('done')");
+  assert.match(list(), /<b>AAPL<\/b>/, 'Reviewed lists it');
+  run("setJournalReviewFilter('untagged')");
+  assert.match(list(), /No trades match/, 'it has a setup');
   run("setJournalReviewFilter('all')");
   run(`openJournalTrade('${KEY}')`);
   await run(`setSetupGrade(${t}, 'A')`);

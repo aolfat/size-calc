@@ -201,6 +201,20 @@ async function journal(records = RECORDS) {
   return { ...a, out: () => a.elements.get('journalSection').innerHTML };
 }
 
+test('phones: a card per trade, Open trades then Closed trades with what they took; wider screens keep the table', async () => {
+  const records = [...RECORDS, order(5, 'BUY', '2026-10-07T13:40:00+0000', 10, 50, 'PLTR')];
+  const a = await app({ width: 390, supabase: fakeRecords(records), session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  const out = a.elements.get('journalSection').innerHTML;
+  assert.doesNotMatch(out, /journal-table/, 'no table on a phone');
+  assert.match(out, /<h3>Open trades <span>1<\/span><\/h3><\/div><article class="jtc jtc-is-open" data-action="openTradeRow"[^]*?<b>PLTR<\/b>[^]*?>Open<\/span>/);
+  assert.match(out, /<h3>Closed trades <span>2<\/span><\/h3><span class="jtc-total">Realized <b class="journal-buy">\+\$200\.00<\/b>/);
+  assert.match(out, /<b>MSFT<\/b>[^]*?<span class="jtc-pill jtc-long">Long<\/span>[^]*?50 shr<\/span> · <span class="jtc-nowrap">Oct 6<\/span>[^]*?<dt>P&amp;L<\/dt><dd class="journal-sell">−\$100\.00/, 'same day: one date');
+  const wide = await journal(records);
+  assert.match(wide.out(), /journal-table/, 'the table stays on wider screens');
+});
+
 test('the Calendar tab: the month of the latest close, a day tapped shows its trades, ‹ › step months', async () => {
   const { run, state, out } = await journal();
   assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats</);
