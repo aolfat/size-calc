@@ -34,16 +34,17 @@ button, input, select, textarea { font-family: inherit; } /* controls default to
   --radius-lg: 14px;
   --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   --num: var(--sans); /* figures: tabular digits (the * rule above) line columns up without a monospace; point at --mono for the terminal look */
+  --page-bg: radial-gradient(1200px 500px at 50% -200px, #131a28 0%, transparent 60%), var(--bg);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; /* code only: the order payload */
 }
 body {
-  background:
-    radial-gradient(1200px 500px at 50% -200px, #131a28 0%, transparent 60%),
-    var(--bg);
+  background: var(--page-bg);
   color: var(--text);
   font-family: var(--sans);
   font-size: 14px; min-height: 100vh;
 }
+/* the page runs under the iPhone status bar (black-translucent, viewport-fit=cover): a solid strip there keeps what scrolls under the clock from showing through blurred and greyed out. Same background, so it's seamless at the top */
+body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--page-bg); z-index: 89; pointer-events: none; }
 
 .card {
   background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg2);
