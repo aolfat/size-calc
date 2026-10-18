@@ -283,8 +283,9 @@ function tradeCard(t) {
   const tags = setups.length ? setups.map(s => `<span class="journal-setup">${esc(s.name)}</span>`).join('') : untagged(t) ? pill('jtc-warn', 'No setup') : '';
   const weekly = reviewsRead() && savedForWeekly(t) ? pill('', 'for weekly') : '';
   const sub = t.legs ? esc(legWords(t.legs)) : t.kind === 'merged' ? `${t.parts.length} trades merged` : '';
-  const stop = t.legs || history ? '' : `<span class="jtc-stop">Stop ${stopCell(t)}</span>`;
-  const go = reviewsRead() && toReview(t) && !t.deleted ? `<button class="btn primary jtc-go" data-action="openTradeRow" data-arg="${esc(t.key)}">Review</button>` : '';
+  // the stop as a fact, not a control: changing it is on the trade page (Edit)
+  const stop = t.legs || history || t.stop === null ? '' : `<span class="jtc-stop">Stop <b>${px(t.stop, t.assetType)}</b>${t.stopSource === 'yours' ? ' <span class="pos-sub">yours</span>' : t.movedTo !== null ? ` <span class="pos-sub">moved to ${px(t.movedTo, t.assetType)}</span>` : ''}</span>`;
+  const go = t.deleted ? '' : `<button class="btn primary jtc-go" data-action="openTradeRow" data-arg="${esc(t.key)}" aria-label="Review ${esc(t.label)}">Review</button>`;
   return `<article class="jtc${open ? ' jtc-is-open' : ''}${t.deleted ? ' journal-deleted' : ''}"${rowOpen(t)}${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
     <div class="jtc-head">${pickBox(t)}<div class="jtc-id">
       <div class="jtc-name">${nameOf(t)}${cardPills(t)}</div>
@@ -297,7 +298,7 @@ function tradeCard(t) {
       <div title="${esc(rTitleOf(t))}"><dt>R</dt><dd class="${t.r === null ? '' : pnlClass(t.r)}">${t.r === null ? '—' : signedR(t.r)}</dd></div>
       <div${noPnl ? '' : pnlTitle(t)}><dt>P&amp;L</dt><dd class="${noPnl ? '' : pnlClass(t.pnl)}">${noPnl ? '—' : signed$(t.pnl)}${noPnl ? '' : pnlSub(t)}</dd></div>
     </dl>
-    ${stop || go || t.deleted ? `<div class="jtc-foot">${stop}${restoreLink(t)}${go}</div>` : ''}
+    <div class="jtc-foot">${stop}${restoreLink(t)}${go}</div>
   </article>`;
 }
 
