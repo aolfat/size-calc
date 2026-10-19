@@ -66,6 +66,17 @@ test('each part of the week gets its own numbers, the good and the worrying ones
     '[bad] Worst setup: Base breakout: 1 trade, −$350.00 (−1.8R)',
     '1 trade with no setup labeled',
   ]);
+  const kinds = `{ ...${CTX}, labels: k => k === 'nvda' ? [{ kind: 'setup', value: 'sma50_bounce' }] : (${CTX}).labels(k),
+    kinds: k => ({ aapl: ['Bounce'], nvda: ['Bounce'], amd: ['Base breakout'] })[k] || [] }`;
+  const byKind = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${kinds})`).categories.find(c => c.key === 'selection').facts.map(f => f.text);
+  assert.ok(byKind.includes('By kind: Bounce: 2 trades, +$700.00 (+3.0R) · Base breakout: 1 trade, −$350.00 (−1.8R)'), 'the 21 and 50 bounces together');
+  assert.ok(!cat('selection').some(f => f.startsWith('By kind')), 'one setup per kind: nothing to add');
+  const ungraded = `{ ...${CTX}, review: k => k === 'tsla' ? { plan_followed: 'partly' } : (${CTX}).review(k) }`;
+  const sel = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${ungraded})`).categories.find(c => c.key === 'selection').facts.map(f => f.text);
+  assert.ok(sel.includes('Setup grades: 2 A, 1 C'), 'the grades given (an old A++ counts as an A)');
+  assert.ok(!sel.some(f => /not graded|no setup grades/i.test(f)), 'nothing about the ones without');
+  const none = `{ ...${CTX}, review: () => undefined }`;
+  assert.ok(!json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${none})`).categories.find(c => c.key === 'selection').facts.some(f => /grade/i.test(f.text)), 'no grades at all: no line');
   assert.deepEqual(cat('entry'), [
     'Average heat: −0.9R against you before the exit, worst −2.0R on AMD',
     '1 trade opened before 9:45: 1 won, +$400.00',
