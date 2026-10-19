@@ -490,7 +490,7 @@ export function renderImportSheet() {
       <div class="row" style="align-items:center;gap:8px;"><button class="btn" data-action="openSheet" data-arg="settings">Connect Schwab</button></div>`;
   el.innerHTML = `<div class="sheet-section">${schwab}</div>
     <div class="sheet-section">
-      <div class="sheet-label">5-minute bars <span class="sheet-status">your trades and the market</span></div>
+      <div class="sheet-label">5-minute bars <span class="sheet-status">for your trades and the market</span></div>
       <p class="hint" id="journalBarsStatus" role="status">${barsLine()}</p>
     </div>
     <div class="sheet-section journal-soon">
