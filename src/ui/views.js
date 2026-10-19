@@ -1,5 +1,6 @@
 // Top-level views (Market, Size, Positions, Journal, Tools) and the Shares / Options / Futures switch.
 import { state } from '../state.js';
+import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { fetchChain, markActiveExp, renderExpTabs } from './chain.js';
 import { drawChart } from './chart.js';
@@ -21,8 +22,14 @@ import { renderGain } from './tools.js';
 // the open tab rides in the address, so a reload opens it again (Size has none)
 const VIEW_HASH = { market: '#market', positions: '#positions', journal: '#journal', utils: '#tools' };
 export const viewFromHash = hash => Object.keys(VIEW_HASH).find(v => VIEW_HASH[v] === hash) || 'calc';
+// boot: the address's tab, else the one open last on this device (the home-screen app always starts at the bare address)
+export function startView(hash) {
+  const last = store.get('last_view');
+  return hash && VIEW_HASH[viewFromHash(hash)] === hash ? viewFromHash(hash) : VIEW_HASH[last] ? last : 'calc';
+}
 
 function rememberView(v) {
+  store.set('last_view', VIEW_HASH[v] ? v : 'calc');
   const loc = globalThis.location;
   const want = VIEW_HASH[v] || '';
   if (!loc || !globalThis.history?.replaceState || loc.hash === want) return;

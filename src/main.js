@@ -27,7 +27,7 @@ import { updateStickyBar } from './ui/sticky-bar.js';
 import { updateStopVisibility } from './ui/stops.js';
 import { fetchQuote, renderRecentTickers } from './ui/ticker.js';
 import { initSchwab, stripSchwabCallback } from './ui/trade.js';
-import { setView, viewFromHash } from './ui/views.js';
+import { setView, startView } from './ui/views.js';
 
 // framed by another site: nothing to click (GitHub Pages can't send frame-ancestors, so this is the clickjacking guard)
 if (framedCrossOrigin()) { document.documentElement.replaceChildren(); throw new Error('Size Calc does not run inside another site.'); }
@@ -65,7 +65,7 @@ updateChainControls();
 updateRiskStatus();
 applyQuickOpen();
 updateStopVisibility();
-setView(viewFromHash(location.hash)); // a reload stays on its tab (#journal, #market, ...); sizing remains the default
+setView(startView(location.hash)); // a reload stays on its tab (#journal, #market, ...); a fresh open goes back to the last one; sizing is the default
 updateIntervalChips();
 
 // page listeners

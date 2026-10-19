@@ -600,3 +600,17 @@ test('merging a merged trade with another keeps its row, so its key (and your st
   assert.ok(supabase.trades.get(kept.id).fill_ids.includes('7:70:1:0'));
   assert.match(out(), /3 trades merged/);
 });
+
+test('a fresh open with no tab in the address goes back to the tab open last on this device', async () => {
+  const storage = new Map();
+  const { run } = await app({ storage });
+  run("setView('journal')");
+  assert.equal(storage.get('last_view'), 'journal');
+  assert.equal(run("startView('')"), 'journal', 'the home-screen app starts at the bare address');
+  assert.equal(run("startView('#market')"), 'market', 'the address wins');
+  assert.equal(run("startView('#nope')"), 'journal');
+  run("setView('calc')");
+  assert.equal(run("startView('')"), 'calc');
+  storage.set('last_view', 'bogus');
+  assert.equal(run("startView('')"), 'calc');
+});

@@ -88,7 +88,7 @@
 }
 @media (max-width: 600px) {
   .journal-tabs { width: 100%; }
-  .journal-tabs button { flex: 1 1 auto; padding-inline: 6px; }
+  .journal-tabs button { flex: none; }
   .mb-tab-long { display: none; }
   .mb-tab-short { display: inline; }
 }

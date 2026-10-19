@@ -189,8 +189,13 @@ test('the list: a reviewed mark, the To review filter; your stop and delete stay
   });
   run('closeJournalTrade()');
   assert.match(list(), /<b>AAPL<\/b>[^]*?<span class="journal-tag journal-tag-done">reviewed<\/span>/);
+  assert.match(list(), /data-arg="all">All <b>1<\/b><\/button>[^]*?To review <b>0<\/b>[^]*?Reviewed <b>1<\/b>[^]*?No setup <b>0<\/b>/, 'the chips count what each lets through');
   run("setJournalReviewFilter('todo')");
   assert.match(list(), /No trades match/, 'nothing left to review');
+  run("setJournalReviewFilter('done')");
+  assert.match(list(), /<b>AAPL<\/b>/, 'Reviewed lists it');
+  run("setJournalReviewFilter('untagged')");
+  assert.match(list(), /No trades match/, 'it has a setup');
   run("setJournalReviewFilter('all')");
   run(`openJournalTrade('${KEY}')`);
   await run(`setSetupGrade(${t}, 'A')`);
@@ -392,6 +397,18 @@ test('setups add up by kind, the action first and the level second: every bounce
   assert.match(table('By setup kind'), /<th scope="col">Kind<\/th>[\s\S]*<b>Undercut &amp; rally<\/b>[\s\S]*<td>1<\/td><td class="journal-buy">\+\$10\.00<\/td>[\s\S]*<b>Bounce<\/b>[\s\S]*<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'one trade each; ties go to the better net');
   assert.match(table('By level'), /<b>21 EMA<\/b>[\s\S]*<td>2<\/td><td class="journal-sell">−\$494\.00<\/td>[\s\S]*<b>50 SMA<\/b>/);
   assert.doesNotMatch(list(), /Not graded/, 'a trade without a grade is just not in By setup grade');
+});
+
+test('phone cards show each setup in its parts too', async () => {
+  const supabase = fakeRecords([{ kind: 'order', record_id: '501', account: '6789', entered_at: '2026-10-01T14:30:00Z', data: ENTRY }]);
+  const a = await app({ width: 390, supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  a.run(`openJournalTrade('${KEY}')`);
+  await settle();
+  await a.run("toggleSetup(journalPageTrade(), 'sma50_unr')");
+  a.run('closeJournalTrade()');
+  assert.match(a.elements.get('journalSection').innerHTML, /<div class="jtc-tags"><span class="journal-setup" title="50 SMA undercut &amp; rally"><span class="journal-setup-act">Undercut &amp; rally<\/span><span class="journal-setup-lvl">50 SMA<\/span><\/span><\/div>/);
 });
 
 test('a setup filter on the Stats periods: Day and ‹ › only see the trades with that setup', async () => {
