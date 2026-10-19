@@ -104,7 +104,7 @@ export async function maybeStampFeatures({ force = false } = {}) {
 /** the quiet line under the Journal's status while a run goes, and after one that failed */
 export function featuresLine() {
   const p = state.featuresProgress;
-  if (state.featuresBusy && p) return `Stamping ${p.features} feature${p.features === 1 ? '' : 's'} on ${p.total} trade${p.total === 1 ? '' : 's'}… ${p.done} of ${p.total}`;
+  if (state.featuresBusy && p) return `Stamping ${p.features} feature${p.features === 1 ? '' : 's'} on ${p.total} trade${p.total === 1 ? '' : 's'}…${p.done ? ` ${p.done} of ${p.total}` : ''}`;
   const last = state.featuresLast;
   if (last?.error && last.user === state.session?.user?.id) return `Features: the last stamping failed (${last.error}). It tries again on the next load.`;
   return '';
@@ -126,11 +126,11 @@ export function syncFeatures() {
 
 function coverageCell(f, trades) {
   const c = featureCoverage(f, trades, state.featureStamps || {});
-  const done = c.value + c.unknown;
   const subs = [];
-  if (c.unknown) subs.push(`${c.unknown} unknown${c.reasons[0] ? `: ${esc(c.reasons[0][0])}` : ''}`);
+  // every reason it's unknown, the commonest first: one alone is said in full
+  if (c.unknown) subs.push(c.reasons.length === 1 ? `${c.unknown} unknown: ${esc(c.reasons[0][0])}` : `${c.unknown} unknown`, ...(c.reasons.length > 1 ? c.reasons.map(([why, n]) => `${n}: ${esc(why)}`) : []));
   if (c.pending) subs.push(`${c.pending} to come`);
-  return `<td><b>${done} of ${c.total}</b>${subs.map(s => `<span class="pos-sub">${s}</span>`).join('')}</td>`;
+  return `<td><b>${c.value + c.unknown} of ${c.total}</b>${subs.map(s => `<span class="pos-sub">${s}</span>`).join('')}</td>`;
 }
 
 const when = ms => new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -143,22 +143,23 @@ export function featuresView(trades) {
     : state.featuresBusy ? `<p class="hint" role="status">${esc(featuresLine())}</p>`
     : last && !last.error ? `<p class="hint" role="status">Last stamped ${esc(when(last.at))}: ${last.value} value${last.value === 1 ? '' : 's'}, ${last.unknown} unknown, ${last.waiting} waiting for data.</p>` : '';
   const counted = trades.filter(stampableTrade);
+  // one table, a row heading each family, so the columns line up across them
   const groups = FEATURE_FAMILIES.map(fam => {
     const list = FEATURES.filter(f => f.family.key === fam.key);
     if (!list.length) return '';
-    const rows = list.map(f => `<tr>
+    return `<tr class="jf-family"><th colspan="4" scope="colgroup">${esc(fam.name)}</th></tr>` + list.map(f => `<tr>
         <td><b>${esc(f.name)}</b><span class="pos-sub">${esc(f.desc)}</span><span class="pos-sub jf-key">${esc(f.key)} · at ${f.at}</span></td>
         <td class="jf-needs">${esc(featureNeedsWords(f))}</td>
         <td>${esc(featureVersion(f))}</td>
         ${coverageCell(f, counted)}
       </tr>`).join('');
-    return `<div class="section-title jt-sub">${esc(fam.name)}</div>
-      <div class="positions-wrap"><table class="positions-table journal-table jf-table">
-        <thead><tr><th scope="col">Feature</th><th scope="col">Reads</th><th scope="col">Version</th><th scope="col">Stamped</th></tr></thead>
-        <tbody>${rows}</tbody></table></div>`;
   }).join('');
+  const table = `<div class="positions-wrap jf-wrap"><table class="positions-table journal-table jf-table">
+      <colgroup><col class="jf-c-name"><col class="jf-c-needs"><col class="jf-c-v"><col class="jf-c-done"></colgroup>
+      <thead><tr><th scope="col">Feature</th><th scope="col">Reads</th><th scope="col">Version</th><th scope="col">Stamped</th></tr></thead>
+      <tbody>${groups}</tbody></table></div>`;
   return `<p class="hint">What the data says about each trade at its entry, worked out by the app from the saved bars and the daily history, never typed. A new or changed feature stamps itself onto every trade. ${counted.length} trade${counted.length === 1 ? '' : 's'} get features (not deleted ones, nor closes from before your history).</p>
-    ${status}${groups}
+    ${status}${table}
     <details class="hint-details"><summary>How features are stamped</summary><p class="hint">Each feature sees the data up to its moment and nothing after: a 5-minute bar counts once it has ended, the bar your entry falls in only by its open. Unknown means the data is gone (Tradier keeps about 40 days of 5-minute bars, so older trades miss the intraday ones) and it isn't tried again; waiting means the data can still come (today's bars save after 8pm ET, daily bars need the Tradier key) and it's tried on the next load. Numbers are kept as numbers, not ranges, so how they're grouped can change later without restamping.</p></details>`;
 }
 
