@@ -43,6 +43,7 @@ button.market-stat:hover { border-color:var(--border2); background:var(--bg3); }
 .market-table th { background:var(--bg2); padding:0; font-weight:500; text-transform:none; letter-spacing:0; color:var(--text2); text-align:right; border-bottom:1px solid var(--border2); }
 .market-table th button { color:inherit; background:none; border:0; font:0.7rem var(--num); width:100%; padding:0.9rem 1rem; cursor:pointer; text-align:right; }
 .market-table th[aria-sort] button { color:var(--teal); }
+.market-asof { display:block; font-size:0.6rem; color:var(--text3); margin-top:2px; } /* a column still on the imported snapshot */
 .market-table th:first-child { text-align:left; padding:0.9rem 1rem; width:25%; }
 .market-table th:first-child button { text-align:left; padding:0; }
 .market-table.market-etf-table { min-width:860px; }

@@ -10,7 +10,9 @@ Market Theme Tracker's signed-in **Download universe (CSV)** control.
 - Validation: no duplicate tickers or missing ticker, name, or group values.
 
 The six performance columns are source snapshot values, not a live price feed.
-The export does not include a per-row price timestamp. Use the mapping columns
+The export writes `0` where it has no return (a new listing's 3M, 6M and YTD,
+for example; real values carry decimals), so the app reads an exact `0` in this
+file as missing. The export does not include a per-row price timestamp. Use the mapping columns
 to seed the Market page and obtain fresh prices separately. Group membership
 will also need periodic review as symbols and listings change.
 
@@ -68,6 +70,20 @@ Returning reuses fresh cached data and refreshes only when stale. Turning Auto
 off or pressing Cancel pauses automatic requests. **Use snapshot** also pauses
 Auto and displays the imported CSV values. Turning Auto on restores cached
 quotes and resumes the schedule.
+
+**Longer periods from daily closes.** In an opened group and on the ETF tabs,
+1W, 1M, 3M, 6M, YTD and 1Y come from Tradier's daily history instead of the
+snapshot: the latest quote over the last daily close on or before the same day
+a week, a month, three, six or twelve months back (YTD: the last close of the
+previous year). A close more than 10 days before that day counts as no close (a
+new listing). History is read one symbol at a time (0.6 seconds apart, 1.1 in the
+sandbox, under Tradier's per-minute limit), once a New York day per symbol, and
+kept in `market_history_v1_<environment>` in local storage for a week,
+so yesterday's references show while today's load. A symbol still loading or
+without history shows a dash, never the snapshot's figure. The full Theme Tracker
+overview (all groups, all stocks) keeps the snapshot for these periods: 2,860
+history calls would take about 25 minutes at the limit. Its column headers say
+Sep 16.
 
 Network errors, timeouts, HTTP 429 and server errors retry only the failed batch
 up to twice. Rate limits honor Retry-After or X-Ratelimit-Expiry when available,

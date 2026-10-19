@@ -1,6 +1,6 @@
-// Market view: category tabs, tables and heatmap, drilldown, and cached quote refresh. Data logic is core/market-data.js.
+// Market view: category tabs, tables and heatmap, drilldown, cached quote refresh, and daily history for 1W–1Y. Data logic is core/market-data.js.
 import { state } from '../state.js';
-import { marketEscape } from '../core/format.js';
+import { marketEscape, nyDateStr } from '../core/format.js';
 import { MarketData } from '../core/market-data.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
@@ -52,19 +52,105 @@ export function marketCachedSnapshot(scope = marketRefreshScope()) {
 
 export function marketColumns() { return state.marketState.category === 'themes' ? [0,1,2,3,4,5] : [6,0,1,2,3,4,7]; }
 
+// An opened group or an ETF tab reads 1W–1Y from daily closes; the full overview (2,860 stocks, ~25 minutes of
+// history calls at Tradier's limit) keeps the snapshot.
+export function marketHistoryScope(scope = marketRefreshScope()) { return scope.id !== 'themes'; }
+
+/** whether this column shows fetched data (quotes, or daily closes) rather than the Sep 16 snapshot */
+export function marketPeriodLive(period, scope = marketRefreshScope()) {
+  const live = state.marketState.quoteMode && !!marketCachedSnapshot(scope);
+  return live && (period === 0 || period === 6 || marketHistoryScope(scope));
+}
+
 export function marketPeriodHelp(period) {
   const meanings = ['Change from the previous session close', 'One-week return', 'One-month return', 'Three-month return',
     'Six-month return', 'Year-to-date return', 'Change from the session open', 'One-year return, separate from year to date'];
   const quotePeriod = period === 0 || period === 6;
-  const source = quotePeriod && state.marketState.quoteMode && marketCachedSnapshot()
-    ? 'Uses the latest fetched Tradier quotes; prices may be delayed.'
-    : 'Uses the imported Sep 16, 2026 snapshot.';
-  return meanings[period] + '. ' + source + (quotePeriod ? '' : ' Quote refreshes do not update this period.');
+  const source = !marketPeriodLive(period) ? 'Uses the imported Sep 16, 2026 snapshot.'
+    + (quotePeriod ? '' : marketHistoryScope() ? ' Refreshing quotes loads it from daily closes.' : ' Open a group for this period from daily closes.')
+    : quotePeriod ? 'Uses the latest fetched Tradier quotes; prices may be delayed.'
+    : 'The latest price over the last daily close on or before ' + (period === 5 ? 'the end of last year' : 'that day') + ', from Tradier, read once a day.';
+  return meanings[period] + '. ' + source;
 }
 
 export function marketRows() {
   const scope = marketRefreshScope(), cached = marketCachedSnapshot(scope);
-  return state.marketState.quoteMode && cached ? MarketData.withQuotes(scope.rows, cached.quotes) : scope.rows;
+  if (!state.marketState.quoteMode || !cached) return scope.rows;
+  const rows = MarketData.withQuotes(scope.rows, cached.quotes);
+  return marketHistoryScope(scope) ? MarketData.withHistory(rows, state.marketState.history) : rows;
+}
+
+export function marketToday() { return nyDateStr(new Date()); }
+
+export function marketHistoryKey() { return 'market_history_v1_' + document.getElementById('apiEnv').value; }
+
+// Kept as ticker → [day, ...refs, last]; a week's worth, so yesterday's references show while today's load.
+export function marketReadHistory() {
+  const ms = state.marketState, today = marketToday(), oldest = MarketData.dayBefore(today, { days:7 });
+  ms.history = Object.create(null);
+  try {
+    const saved = JSON.parse(store.get(marketHistoryKey()) || 'null');
+    Object.entries(saved?.entries || {}).forEach(([ticker, entry]) => {
+      if (!Array.isArray(entry) || entry.length !== MarketData.HISTORY_PERIODS.length + 2 || typeof entry[0] !== 'string'
+        || entry[0] < oldest || entry[0] > today) return;
+      const value = v => Number.isFinite(v) && v > 0 ? v : null;
+      ms.history[ticker] = { day:entry[0], refs:entry.slice(1, -1).map(value), last:value(entry[entry.length - 1]) };
+    });
+  } catch(e) {}
+}
+
+export function marketSaveHistory() {
+  const entries = Object.create(null);
+  Object.entries(state.marketState.history).forEach(([ticker, h]) => { entries[ticker] = [h.day, ...h.refs, h.last]; });
+  store.set(marketHistoryKey(), JSON.stringify({ entries }));
+}
+
+export function marketHistoryMissing(scope = marketRefreshScope()) {
+  const today = marketToday();
+  return [...new Set(scope.rows.map(row => row.ticker))].filter(ticker => state.marketState.history[ticker]?.day !== today);
+}
+
+// Loads the scope's missing daily histories one symbol at a time, committing each as it lands. Once a New York day.
+export async function marketLoadHistory(manual = false) {
+  const ms = state.marketState, scope = marketRefreshScope();
+  if (ms.historyJob) {
+    if (ms.historyJob.scope.id === scope.id) return;
+    ms.historyJob.controller.abort();
+  }
+  const key = document.getElementById('apiKey').value.trim();
+  if (!state.marketView || document.hidden || navigator.onLine === false || !key || !ms.quoteMode || ms.authBlocked
+    || !(ms.auto || manual) || !marketHistoryScope(scope) || ms.historyRetryAt > Date.now()) return;
+  const missing = marketHistoryMissing(scope);
+  if (!missing.length) return;
+  const today = marketToday(), environment = document.getElementById('apiEnv').value;
+  const context = { controller:new AbortController(), scope, done:0, total:missing.length };
+  ms.historyJob = context; ms.historyError = '';
+  marketRenderRefreshStatus();
+  const current = () => !context.controller.signal.aborted && environment === document.getElementById('apiEnv').value
+    && key === document.getElementById('apiKey').value.trim();
+  try {
+    await MarketData.fetchHistories(missing, {
+      base:baseUrl(), auth:headers(), start:MarketData.dayBefore(today, { days:380 }), end:today, signal:context.controller.signal,
+      spacing:environment === 'sandbox' ? 1100 : 600, // Tradier allows ~120 market-data calls a minute (60 in the sandbox)
+      onSymbol(symbol, days) {
+        if (!current()) return;
+        ms.history[symbol] = MarketData.historyRefs(days, today);
+        context.done++;
+        if (context.done % 5 && context.done < context.total) marketRenderRefreshStatus();
+        else { marketSaveHistory(); renderMarket(true); }
+      },
+    });
+  } catch(error) {
+    if (current()) {
+      ms.historyError = error.message || 'Could not load daily history.';
+      if (error.status === 401 || error.status === 403) ms.authBlocked = true;
+      ms.historyRetryAt = Date.now() + Math.max(error.retryAfter || 0, 60000);
+    }
+  } finally {
+    if (ms.historyJob === context) ms.historyJob = null;
+    if (current()) { marketSaveHistory(); renderMarket(true); }
+    marketScheduleRefresh();
+  }
 }
 
 export function marketCacheKey() { return 'market_quotes_v3_' + document.getElementById('apiEnv').value; }
@@ -83,6 +169,8 @@ export function marketReadCache() {
   state.marketState.key = document.getElementById('apiKey').value.trim();
   state.marketState.snapshots = Object.create(null);
   state.marketState.retryAt = 0; state.marketState.failures = 0; state.marketState.authBlocked = false;
+  state.marketState.historyRetryAt = 0; state.marketState.historyError = '';
+  marketReadHistory();
   try {
     const cached = JSON.parse(store.get(marketCacheKey()) || store.get('market_quotes_v2_' + state.marketState.environment) || 'null');
     if (!cached || (!cached.scopes && !cached.quotes)) return;
@@ -167,7 +255,7 @@ export function marketToggleAuto() { marketSetAuto(!state.marketState.auto); }
 
 export function marketUseSnapshot() { state.marketState.quoteMode = false; marketSetAuto(false); }
 
-export function marketAbortRefresh() { state.marketState.refresh?.controller.abort(); }
+export function marketAbortRefresh() { state.marketState.refresh?.controller.abort(); state.marketState.historyJob?.controller.abort(); }
 
 export function marketCancelRefresh() { marketSetAuto(false); }
 
@@ -207,6 +295,7 @@ export function marketScheduleRefresh() {
   }
   const scope = marketRefreshScope();
   if (state.marketState.refresh && state.marketState.refresh.scope.id !== scope.id) marketAbortRefresh();
+  if (!state.marketState.loading && scope.rows.length) marketLoadHistory();
   marketRenderRefreshStatus();
   if (state.marketState.refresh || state.marketState.loading || !scope.rows.length) return;
   const canRefresh = state.marketState.auto && key && !state.marketState.authBlocked;
@@ -225,7 +314,8 @@ export function marketRenderRefreshStatus() {
   refresh.disabled = !!ms.refresh || ms.loading || !scope.rows.length || ms.retryAt > Date.now() || navigator.onLine === false;
   refresh.textContent = ms.refresh ? ms.refresh.status : '↻ Refresh quotes';
   refresh.title = 'Fetch quotes for ' + scope.label + ' (' + scope.rows.length.toLocaleString() + ' symbols). Updates Today'
-    + (ms.category === 'themes' ? '' : ' and From open') + '; longer periods stay at the Sep 16, 2026 snapshot.';
+    + (ms.category === 'themes' ? '' : ' and From open')
+    + (marketHistoryScope(scope) ? '; longer periods come from daily closes, read once a day.' : '; longer periods stay at the Sep 16, 2026 snapshot. Open a group for them from daily closes.');
   document.getElementById('marketCancelBtn').hidden = !ms.refresh;
   document.getElementById('marketSnapshotBtn').hidden = !usingQuotes;
   const auto = document.getElementById('marketAutoBtn');
@@ -250,10 +340,15 @@ export function marketRenderRefreshStatus() {
     const age = Math.max(0, Math.floor((Date.now() - cached.fetchedAt) / 1000));
     const ageText = age < 60 ? age + ' sec ago' : age < 3600 ? Math.floor(age / 60) + ' min ago' : new Date(cached.fetchedAt).toLocaleString();
     const count = scope.rows.filter(row => cached.quotes[row.ticker]).length;
+    const job = ms.historyJob?.scope.id === scope.id ? ms.historyJob : null;
+    const loaded = scope.rows.filter(row => ms.history[row.ticker]).length;
     source.innerHTML = '<b>Today' + (ms.category === 'themes' ? '' : ' / from open') + ': Tradier ' + marketEscape(ms.environment)
       + '</b> · fetched ' + marketEscape(ageText) + (Date.now() - cached.fetchedAt >= scope.interval ? ' · <b>stale cache</b>' : '')
       + ' · ' + count.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' quotes available. Prices may be delayed. '
-      + '<b>' + history + ': snapshot Sep 16, 2026.</b>';
+      + (!marketHistoryScope(scope) ? '<b>' + history + ': snapshot Sep 16, 2026.</b> Open a group for them from daily closes.'
+        : '<b>' + history + ': Tradier daily closes</b> · ' + (job ? 'loading ' + job.done + '/' + job.total
+          : loaded.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' symbols')
+          + (ms.historyError && !job ? ' · ' + marketEscape(ms.historyError) : '') + '.');
   } else {
     source.innerHTML = '<b>Imported snapshot · Sep 16, 2026</b> · All periods are from the reference '
       + (ms.category === 'themes' ? 'export' : 'ETF tables') + '; quote timestamps were not provided. Longer periods stay imported when quotes refresh.';
@@ -279,6 +374,7 @@ export async function marketRefreshToday(automatic = false) {
   state.marketState.refresh = context;
   notice.hidden = true;
   marketRenderRefreshStatus();
+  if (!automatic) marketLoadHistory(true);
   try {
     const quotes = await MarketData.fetchQuotes(symbols, {
       base:baseUrl(), auth:headers(), signal:context.controller.signal,
@@ -337,7 +433,7 @@ export function renderMarket(preservePosition = false) {
   document.getElementById('marketSearch').placeholder = isTheme ? 'Search ticker, company or industry' : 'Search ticker or fund name';
   document.getElementById('marketFootnote').innerHTML = isTheme
     ? 'Groups are equally weighted. Missing returns are excluded.<br>Open a group to explore its stocks. Select a ticker to size a trade.'
-    : 'From open measures the change from the session open. 1Y is the reference’s Perf Year, separate from YTD.<br>Select a ticker to size a trade.';
+    : 'From open measures the change from the session open. 1Y is one year back, separate from YTD.<br>Select a ticker to size a trade.';
   const download = document.getElementById('marketDownload');
   download.href = isTheme ? MARKET_FILE : MARKET_ETF_FILE;
   download.textContent = isTheme ? 'Download stock universe CSV ↗' : 'Download all ETF universes CSV ↗';
@@ -393,7 +489,7 @@ export function renderMarket(preservePosition = false) {
     }).join('') + '</div>';
   } else {
     content.innerHTML = '<div class="market-table-wrap"><table class="market-table' + (isTheme ? '' : ' market-etf-table') + '" aria-label="' + (isGroups ? 'Industry group' : isTheme ? 'Stock' : category.name) + ' performance"><thead><tr><th scope="col"' + (ms.sort === 'ticker' ? ' aria-sort="' + (ms.direction === 'asc' ? 'ascending' : 'descending') + '"' : '') + '><button data-market-ticker-sort>' + (isGroups ? 'Industry group' : isTheme ? 'Ticker / company' : 'Ticker / fund') + (ms.sort === 'ticker' ? ms.direction === 'asc' ? ' ↑' : ' ↓' : '') + '</button></th>'
-      + columns.map(i => '<th scope="col"' + (ms.sort === 'performance' && period === i ? ' aria-sort="' + (ms.direction === 'desc' ? 'descending' : 'ascending') + '"' : '') + '><button title="' + marketEscape(marketPeriodHelp(i) + ' Click to sort; click again to reverse.') + '" data-market-sort="' + i + '">' + MARKET_PERIODS[i] + (ms.sort === 'performance' && period === i ? ms.direction === 'desc' ? ' ↓' : ' ↑' : '') + '</button></th>').join('')
+      + columns.map(i => '<th scope="col"' + (ms.sort === 'performance' && period === i ? ' aria-sort="' + (ms.direction === 'desc' ? 'descending' : 'ascending') + '"' : '') + '><button title="' + marketEscape(marketPeriodHelp(i) + ' Click to sort; click again to reverse.') + '" data-market-sort="' + i + '">' + MARKET_PERIODS[i] + (ms.sort === 'performance' && period === i ? ms.direction === 'desc' ? ' ↓' : ' ↑' : '') + (marketPeriodLive(i) ? '' : '<small class="market-asof">Sep 16</small>') + '</button></th>').join('')
       + '</tr></thead><tbody>' + visible.map(row => '<tr><td class="market-name"><button ' + action(row) + ' title="' + (isGroups ? 'Open group' : 'Size this trade') + '"><span class="' + (!isGroups ? 'market-stock-symbol' : '') + '">' + marketEscape(isGroups ? row.name : row.ticker) + '</span><small>' + marketEscape(isGroups ? row.count + ' stocks' : row.name) + '</small></button></td>'
         + columns.map(i => '<td class="' + marketTone(row.returns[i]) + (period === i ? ' market-selected-period' : '') + '" title="' + coverageText(row, i) + '">' + marketPct(row.returns[i]) + (isGroups && row.coverage[i] < row.count ? '<sup aria-label="Partial coverage">*</sup>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
   }
