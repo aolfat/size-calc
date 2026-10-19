@@ -1,9 +1,9 @@
-// Saving 5-minute bars: for the journal's trades, reads which (symbol, day) bars are already kept in Supabase's bars_5m,
-// fetches the missing ones from Tradier's timesales (one request per symbol, the whole span), and keeps them one row per
-// day. Never touches the page.
+// Saving 5-minute bars: for the journal's trades (and the market basket), reads which (symbol, day) bars are already kept
+// in Supabase's bars_5m, fetches the missing ones from the bar provider (services/bar-source.js: one request per symbol,
+// the whole span), and keeps them one row per day, named with the provider. Never touches the page.
 import { state } from '../state.js';
-import { barsByDay, barsNeeded, BARS_KEEP_DAYS, nyDay } from '../core/bars.js';
-import { baseUrl, headers } from './tradier.js';
+import { barsNeeded, BARS_KEEP_DAYS, nyDay } from '../core/bars.js';
+import { barSource } from './bar-source.js';
 import { supabaseClient } from './supabase.js';
 
 const DAY_MS = 86400000;
@@ -23,24 +23,19 @@ async function keptDays(client, since) {
   return new Set((res.data || []).map(r => `${r.symbol}|${String(r.day).slice(0, 10)}`));
 }
 
-/** one symbol's 5-minute bars from one New York day through another, extended hours included */
-async function timesales(symbol, from, to) {
-  const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(symbol)}&interval=5min&start=${encodeURIComponent(from + ' 04:00')}&end=${encodeURIComponent(to + ' 20:00')}&session_filter=all`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) { const err = new Error(`Tradier answered ${res.status}`); err.status = res.status; throw err; }
-  const data = (await res.json())?.series?.data;
-  return data ? (Array.isArray(data) ? data : [data]) : [];
-}
+/** a write naming bars_5m.source before its migration (20261029000000_bars_source.sql) is pushed */
+const noSourceColumn = res => /source/.test(res?.error?.message || '') && /column|schema cache/i.test(res?.error?.message || '');
 
 /**
- * Save the bars these trades need and don't have yet. A symbol Tradier refuses is skipped (and named) and the rest go
- * on; nothing is saved for it, so the next run asks again.
- * @param {any[]} trades @param {number} [now]
+ * Save the bars these trades need and don't have yet, and with `market` (MARKET_BASKET) those symbols every weekday too.
+ * A symbol the provider refuses is skipped (and named) and the rest go on; nothing is saved for it, so the next run asks
+ * again. Before the source column is pushed, rows go without it (it defaults to 'tradier', the only provider so far).
+ * @param {any[]} trades @param {number} [now] @param {{ market?: string[], lookback?: number }} [opts] barsNeeded's
  * @returns {Promise<{ saved: number, symbols: number, through: string, failed: string[], needed: number }>}
  */
-export async function saveTradeBars(trades, now = Date.now()) {
+export async function saveTradeBars(trades, now = Date.now(), opts = {}) {
   if (!state.session) throw new Error('Sign in with Google to save bars.');
-  const need = barsNeeded(trades, now);
+  const need = barsNeeded(trades, now, opts);
   const client = await supabaseClient();
   const kept = await keptDays(client, nyDay(now - BARS_KEEP_DAYS * DAY_MS));
   let saved = 0, symbols = 0, needed = 0, through = '';
@@ -51,11 +46,13 @@ export async function saveTradeBars(trades, now = Date.now()) {
     for (const d of days) if (kept.has(`${symbol}|${d}`) && d > through) through = d;
     if (!missing.length) continue;
     let byDay;
-    try { byDay = barsByDay(await timesales(symbol, missing[0], missing[missing.length - 1])); }
+    try { byDay = await barSource.intraday(symbol, missing[0], missing[missing.length - 1]); }
     catch(e) { failed.push(symbol); continue; }
-    const rows = missing.map(day => ({ symbol, day, bars: byDay.get(day) || [] }));
+    const rows = missing.map(day => ({ symbol, day, bars: byDay.get(day) || [], source: barSource.name }));
     for (let i = 0; i < rows.length; i += BATCH) {
-      const res = await client.from('bars_5m').upsert(rows.slice(i, i + BATCH), { onConflict: 'user_id,symbol,day', ignoreDuplicates: true });
+      const upsert = batch => client.from('bars_5m').upsert(batch, { onConflict: 'user_id,symbol,day', ignoreDuplicates: true });
+      let res = await upsert(rows.slice(i, i + BATCH));
+      if (noSourceColumn(res)) res = await upsert(rows.slice(i, i + BATCH).map(({ source, ...r }) => r));
       if (res?.error) { const err = new Error(res.error.message || 'Supabase refused the save.'); err.status = res.status || 0; throw err; }
     }
     saved += rows.length;
@@ -65,10 +62,10 @@ export async function saveTradeBars(trades, now = Date.now()) {
   return { saved, symbols, through, failed, needed };
 }
 
-/** one symbol's 5-minute bars on these days straight from Tradier, not saved (the trade page's context): [{ day, bars }] */
+/** one symbol's 5-minute bars on these days straight from the provider, not saved (the trade page's context): [{ day, bars }] */
 export async function fetchTradeBars(symbol, days) {
   if (!days.length) return [];
-  const byDay = barsByDay(await timesales(symbol, days[0], days[days.length - 1]));
+  const byDay = await barSource.intraday(symbol, days[0], days[days.length - 1]);
   return days.filter(d => byDay.has(d)).map(day => ({ day, bars: byDay.get(day) }));
 }
 
