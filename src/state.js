@@ -61,6 +61,13 @@ export function createState() {
     journalLoading: false,
     journalError: '',
     barsBusy: false, // the journal is saving 5-minute bars
+    featureStamps: null, // trade key → { feature key → { v, value, note } }: the trade features stamped (trade_features), once read
+    featuresOwner: '', // whose stamps those are
+    featuresError: '', // they couldn't be read (the table not pushed yet): nothing is stamped, the Journal works
+    featuresBusy: false, // a stamping run is going
+    featuresProgress: null, // { done, total, features } while it goes
+    featuresLast: null, // the last run here: { user, at, value, unknown, waiting, error, sig (what was still due) }
+    featureWaits: {}, // trade key → { feature key → what it waits for }, from the last run
     journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
@@ -83,7 +90,7 @@ export function createState() {
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
     chartLibLoading: null, // the one in-flight library load
-    journalTab: 'trades', // trades | calendar | stats | setups | books | fills
+    journalTab: 'trades', // trades | calendar | stats | setups | books | features | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
       books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'books',

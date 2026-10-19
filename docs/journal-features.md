@@ -1,6 +1,6 @@
 # Trade features
 
-Status: part 1 (saving the raw data) built. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
+Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Features tab, At entry on the trade page) built. Part 3 (the Conditions filter, the Stats explorer, features as list columns) next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
 
 ## Goal
 
@@ -19,7 +19,7 @@ Labels (step 3) are what you say about a trade. Features are what the data says,
 
 ## Part 1: saving the raw data (built)
 
-- **Provider seam:** `src/services/bar-source.js` holds the provider in use (`barSource`, Tradier for now). `services/bars.js` fetches through it and never calls Tradier itself. Moving off Tradier is a new provider in that file. Daily bars join the seam with the first daily feature.
+- **Provider seam:** `src/services/bar-source.js` holds the provider in use (`barSource`, Tradier for now). `services/bars.js` fetches through it and never calls Tradier itself. Moving off Tradier is a new provider in that file. Daily bars joined the seam in part 2 (`barSource.daily`).
 - **The app's form:** symbols are the OCC symbol without its padding (`AAPL261218C00245000`, a stock as itself), days are New York days, a bar is stamped with its start in New York time ('09:30' = 9:30 to 9:35), rows are `[time, open, high, low, close, volume]`, extended hours included (04:00 to 20:00). A provider whose symbols or stamps differ translates them in its own entry.
 - **Source:** `bars_5m.source` (migration `20261029000000_bars_source.sql`, default `tradier`). Providers differ a little (volume from every exchange or one, extended-hours prints), so a feature can tell what it compares, and one provider's days can be fetched again. Before the push, rows save without it.
 - **Market basket** (`MARKET_BASKET` in `core/bars.js`): SPY, QQQ, IWM, DIA and the 11 sector SPDRs, saved every weekday whether you traded or not, so market features work for every trade. VIX is left out until it's checked that Tradier serves it intraday.
@@ -27,7 +27,7 @@ Labels (step 3) are what you say about a trade. Features are what the data says,
 - **Window:** all of it within the last 35 days (`BARS_KEEP_DAYS`), finished days only. The first run fills in everything Tradier still has. It runs when the Journal opens and after an import, at most hourly, with a Tradier key in Settings; open the Journal at least every few weeks or days fall out of Tradier's window for good.
 - **Size:** about 9 KB a saved day. The basket is about 15 × 252 days a year, plus your symbols. Watch it against Supabase's free 500 MB; packing bars tighter is the fix if it grows.
 
-## Part 2: features and stamping
+## Part 2: features and stamping (built)
 
 ### A feature
 
@@ -66,6 +66,17 @@ feature({
 - **No look-ahead:** each feature computed with data cut off at its moment and again with the whole day must agree.
 - **Contract:** a unique key, a version, and only declared values, numbers or null.
 
+### As built
+
+- **Files:** `src/core/features/` (pure, `// @ts-check`): `define.js` (`family`, `feature`), `context.js` (the cut and the shared helpers), one file per family (`market.js`, `volume.js`, `levels.js`), `index.js` (FEATURES, due, data needs, compute, stamp, coverage, words). `services/features.js` reads and writes `trade_features` and reads the kept bars; `ui/journal-features.js` runs the stamper and draws the Features tab and the trade page's At entry section.
+- **A feature** also has `desc` (what it measures, for the Features tab). `needs` is `{ intraday, lookback, daily, dailySessions, session }`; the contract test fails a feature that reads anything it doesn't declare, so `needs` stays true and the saver and the stamper can trust it.
+- **The cut:** a 5-minute bar counts once it has ended; the bar the moment falls in shows only its open. Daily bars are the days before the moment's day, plus that day's open from 9:30. The trade itself shows only its symbol, type and open time (and the close, for an exit feature): no exit, P&L or R at the entry.
+- **Stamps:** `trade_features` (migration `20261030000000_trade_features.sql`), `stamps` = `{ key: { v: '<family version>.<feature version>', value, note } }`. Unknown is `value: null` with the why in `note`. Waiting isn't stored: the last run's reasons are kept on the device for the trade page.
+- **Which trades:** every one but deleted trades and closes from before your history (no entry). A restored trade is stamped on the next load. Rows under an old key (a merge, a separate) are left, not deleted: a key can vanish for a moment while records load.
+- **Runs:** after the Journal loads (once the bar saver is done, so today's saves count) and after an import. Chunks of 40 trades: each reads its bars, computes, saves. Only waiting features left: tried again at most every 15 minutes. Daily bars are read once a run per symbol, back to 1960 when a feature wants the listing; without a Tradier key, daily features wait.
+- **Splits:** Tradier's docs don't say whether `/markets/history` is split-adjusted (they say it "usually" covers the company's lifetime). So the features that compare daily history with the day's own prices line them up first (`dailyBasis`): the exact ratio of that day's 9:30 open in the 5-minute bars and the daily bar's open, or, without that day's bars, the fill against the daily open (or the close before) at the nearest of no split and the usual split ratios, allowing a day's 30% move. Nothing lines up: unknown, never a made-up number.
+- **The all-time high** keeps no `{ high, date, through }` summary yet: the daily history is read whole on each run that needs it (one call per symbol). Worth adding if runs get slow.
+
 ### Worked examples
 
 - **Volume run rate at entry:** volume from 9:30 to the entry bar over the average volume to that same time across the prior 20 sessions (volume is U-shaped, so a straight 'so far ÷ fraction of the day' makes every early entry look hot). Fills in for trades whose lookback days were saved.
@@ -75,14 +86,14 @@ feature({
 
 ## Part 3: the features page, filters and stats
 
-- **Features page** (a Journal tab or sheet): every feature with its name, what it measures, what it needs, its version, and how far it's stamped ('412 of 430 trades, 18 unknown: bars too old'). Grouped by family, searchable. It's read from the feature list, so a new feature shows up there by itself.
-- **On the trade:** the trade page lists its stamped features; any can be a column in the trades list.
+- **Features page** (built in part 2, the Journal's Features tab): every feature with its name, what it measures, what it reads, its version, and how far it's stamped ('412 of 430, 18 unknown: bars too old, 3 to come'). Grouped by family. It's read from the feature list, so a new feature shows up there by itself. Search comes with the Conditions picker.
+- **On the trade:** the trade page lists its stamped features (built in part 2: At entry); any can be a column in the trades list (part 3).
 - **Conditions filter:** beside All setups, over Trades, Calendar and Stats. A searchable picker by family with pinned favorites; numbers take any threshold ('run rate ≥ 1.8'), words pick values. Conditions combine, and a combination can be saved as a named view.
 - **Stats:** a feature explorer (pick any feature, see its breakdown with groupStats' numbers). Numbers group into five equal-size groups by default (quintiles), or the feature's own bins where given.
 - **What matters (later):** features ranked by how much results differ between their groups. Test hundreds and some look meaningful by chance, so thin groups are dimmed, a pattern has to hold in both halves of the history, and it's a list of leads, not rules.
 
 ## Open questions
 
-- Is Tradier's daily history split-adjusted, and how far back does it go for an old stock?
+- Is Tradier's daily history split-adjusted, and how far back does it go for an old stock? The docs don't say either; the features line the history up with the day's own prices (see Splits above), so they're right either way. Worth one check against a real key (a stock that split, like NVDA in June 2024).
 - Does Tradier serve VIX timesales?
 - A provider with deep intraday history (Polygon / Massive, Alpaca) would fill intraday features further back than the 40 days saved now. Worth deciding once the features are in use.

@@ -5,7 +5,8 @@
 // each with its toolbar (intervals 5m to 65m, kept on this device as journal_chart_iv; daily ranges; log scale). While the
 // library is on trial, a TradingView | Ours switch (journal_chart_kind, device-local) puts our canvas charts (ui/candles.js)
 // in the same place, on the same bars and framing; ours never loads the library; the
-// excursions (core/trade-page.js: MFE, MAE, exit efficiency); the fills; and the stop orders over time. Edit opens the
+// excursions (core/trade-page.js: MFE, MAE, exit efficiency); its stamped features (At entry, ui/journal-features.js);
+// the fills; and the stop orders over time. Edit opens the
 // trade sheet (your stop, separate, delete).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
@@ -24,6 +25,7 @@ import { journalTradeList, marketTime, openTradeReview, renderJournal } from './
 import { onReviewChange, reviewSectionHtml } from './journal-review.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
+import { tradeFeaturesHtml } from './journal-features.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -220,6 +222,8 @@ export function renderJournalTrade() {
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
+    <div class="section-title jt-sub">At entry</div>
+    <div id="jtFeatures">${tradeFeaturesHtml(t)}</div>
     ${reviewSectionHtml(t)}
     ${fillsHtml(t, fills)}
     ${stopsHtml(t)}`;

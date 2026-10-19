@@ -1,7 +1,10 @@
 // Journal bars: saves the 5-minute bars your trades need, and the market basket's, before Tradier's ~40 days run out
 // (services/bars.js), after an import lands and when the Journal opens, at most hourly per user; and the line in the Import sheet that says how it's going.
+// What's saved follows the trade features' needs (core/features: featureBarNeeds): a feature naming a symbol, or more
+// lookback days, makes it saved from then on, on top of the market basket.
 import { store } from '../lib/store.js';
-import { MARKET_BASKET } from '../core/bars.js';
+import { LOOKBACK_DAYS, MARKET_BASKET } from '../core/bars.js';
+import { featureBarNeeds } from '../core/features/index.js';
 import { buildTrades } from '../core/journal.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { saveTradeBars, tradierKeyHere } from '../services/bars.js';
@@ -14,6 +17,12 @@ export const BARS_EVERY = 3600000;
 /** the last run on this device: { user, at, saved, symbols, through, failed, error } */
 export function lastBars() {
   try { return JSON.parse(store.get('journal_bars') || 'null'); } catch(e) { return null; }
+}
+
+/** the market basket and every symbol a feature names, and the most lookback days any of them compares */
+export function barsToKeep() {
+  const needs = featureBarNeeds();
+  return { market: [...new Set([...MARKET_BASKET, ...needs.market])], lookback: Math.max(LOOKBACK_DAYS, needs.lookback) };
 }
 
 const listeners = [];
@@ -34,7 +43,7 @@ export async function maybeSaveBars({ records, force = false } = {}) {
   let result = null;
   try {
     const kept = records || state.journalRecords || await loadSavedRecords();
-    const r = await saveTradeBars(buildTrades(fillsFrom(kept), { now: Date.now() }), Date.now(), { market: MARKET_BASKET });
+    const r = await saveTradeBars(buildTrades(fillsFrom(kept), { now: Date.now() }), Date.now(), barsToKeep());
     result = { user, at: Date.now(), ...r, error: '' };
   } catch(e) {
     result = { ...(last && last.user === user ? last : { saved: 0, symbols: 0, through: '', failed: [] }), user, at: Date.now(), error: String(e?.message || e) };
