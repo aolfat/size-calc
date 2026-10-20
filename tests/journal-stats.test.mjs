@@ -215,7 +215,7 @@ test('phones: a card per trade, Open trades then Closed trades with what they to
   assert.match(wide.out(), /journal-table/, 'the table stays on wider screens');
 });
 
-test('the Calendar tab: the month of the latest close, a day tapped shows its trades, ‹ › step months', async () => {
+test('the Calendar tab: the month of the latest close, a day tapped opens its page, ‹ › step months', async () => {
   const { run, state, out } = await journal();
   assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats</);
   run("setJournalTab('calendar')");
@@ -224,7 +224,7 @@ test('the Calendar tab: the month of the latest close, a day tapped shows its tr
   assert.match(out(), /<dt>Win rate<\/dt><dd class="">50%<span class="pos-sub">1 won, 1 lost</);
   assert.match(out(), /<dt>Profit factor<\/dt><dd class="">3\.00</);
   assert.match(out(), /<dt>Green days<\/dt><dd class="">1 of 2<span class="pos-sub">1 red</);
-  assert.match(out(), /<button class="jc-day journal-buy" data-action="pickJournalDay" data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$300<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">100%<span class="jc-wide"> won<\/span>/, 'no losses: no profit factor');
+  assert.match(out(), /<button class="jc-day journal-buy" data-action="openJournalDay" data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$300<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">100%<span class="jc-wide"> won<\/span>/, 'no losses: no profit factor');
   assert.match(out(), /data-arg="2026-10-06"[^>]*><span class="jc-num">6<\/span><span class="jc-pnl">−\$100<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">0%<span class="jc-wide"> won · PF 0\.00</);
   assert.match(out(), /data-action="openPeriodReview" data-arg="week" data-arg2="2026-10-05"[^>]*><span class="journal-buy">\+\$200<\/span><span class="jc-n">2 trades · 50%</);
   run("pickJournalDay('2026-10-06')");

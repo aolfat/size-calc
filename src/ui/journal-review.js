@@ -13,7 +13,7 @@ import { showError } from './feedback.js';
 import { openSheet } from './sheets.js';
 import { shotsRowHtml } from './journal-shots.js';
 
-const EMPTY = { reviews: {}, labels: {}, days: {}, library: [], weekly: {}, weeklyError: '', entryNoteError: '' };
+const EMPTY = { reviews: {}, labels: {}, days: {}, library: [], weekly: {}, weeklyError: '', entryNoteError: '', notebookError: '' };
 const data = () => state.journalReview || EMPTY;
 const library = () => buildLibrary(data().library);
 /** the New York day a trade's market label belongs to: the day it opened */

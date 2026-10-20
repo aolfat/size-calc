@@ -101,6 +101,10 @@ export function createState() {
       viewerId: '', signing: false, imageError: '',
     },
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
+    journalNotebookDay: '', // the day's notebook page open in the Calendar tab ('YYYY-MM-DD', New York; docs/journal-notebook.md)
+    notebookDraft: null, // { day, field, text }: a notebook box being typed, saved on blur
+    notebookEdit: '', // goal | rule: that list open in place to edit
+    notebookItemDraft: '', // the new goal or rule being typed
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }
