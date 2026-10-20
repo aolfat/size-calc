@@ -376,6 +376,33 @@ span.journal-pick { cursor: default; }
 .jt-stats dd .pos-sub { font-size: 11.5px; font-weight: 400; }
 .jt-sub { margin-top: 14px; }
 .jt-table { min-width: 0; width: 100%; }
+/* trade features: the Features tab (what each reads, how far it's stamped) and the trade page's At entry table */
+.jf-table { min-width: 680px; table-layout: fixed; }
+.jf-c-name { width: 46%; } .jf-c-needs { width: 26%; } .jf-c-v { width: 9%; } .jf-c-done { width: 19%; }
+.jf-table td { white-space: normal; }
+.jf-table th:nth-child(2), .jf-table td.jf-needs { text-align: left; font-family: inherit; color: var(--text2); font-size: 12.5px; }
+.positions-table.jf-table tr.jf-family th { position: static; text-align: left; padding: 16px 10px 4px; font-size: 13px; font-weight: 600; color: var(--text); background: none; }
+.jf-wrap { margin-top: 10px; }
+.jf-key { font-family: var(--num); }
+/* phones: each feature a block (name, what it reads, version, how far), no sideways scroll */
+@media (max-width: 600px) {
+  .jf-table { min-width: 0; table-layout: auto; }
+  .jf-table colgroup, .jf-table thead { display: none; }
+  .jf-table, .jf-table tbody, .jf-table tr, .jf-table td, .jf-table th { display: block; width: auto; }
+  .positions-table.jf-table td:first-child { position: static; background: none; max-width: none; min-width: 0; }
+  .jf-table tbody td { border-bottom: 0; padding: 2px 12px; text-align: left; }
+  .jf-table tbody tr:not(.jf-family) { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .positions-table.jf-table tr.jf-family th { padding: 14px 12px 4px; }
+  .jf-table td:nth-child(3), .jf-table td:nth-child(4) { display: inline-block; vertical-align: top; }
+  .jf-table td:nth-child(3)::before { content: 'Version '; color: var(--text3); }
+  .jf-table td:nth-child(4) b::before { content: 'Stamped '; color: var(--text3); font-weight: 400; }
+}
+.jf-trade { table-layout: fixed; }
+.jf-trade th:first-child { width: 38%; } .jf-trade th:nth-child(2) { width: 16%; }
+.jf-trade td:first-child { white-space: normal; }
+.jf-trade th:nth-child(3), .jf-trade td.jf-note { text-align: left; white-space: normal; color: var(--text3); font-size: 12px; font-family: inherit; }
+@media (max-width: 600px) { .jf-trade th:first-child { width: 44%; } .jf-trade th:nth-child(2) { width: 24%; } .positions-table.jf-trade td:first-child { max-width: none; min-width: 0; } }
+.jf-trade tr.jf-quiet td { color: var(--text3); }
 /* the review deck: a bar on each card (in the header on desktop, fixed above the tab bar on phones), the hidden P&L, the end */
 .jt-deck { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; margin: 0 0 12px; border: 1px solid var(--blue-bd); border-radius: var(--radius); background: color-mix(in srgb, var(--blue-bg) 45%, var(--bg2)); font-size: 13px; }
 .jt-deck-count { font-weight: 600; font-family: var(--num); }

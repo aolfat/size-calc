@@ -20,6 +20,7 @@ import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
+import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { loadJournalReview, reviewedMark, savedForWeekly, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
@@ -214,8 +215,8 @@ function controls(all = [], navigationOnly = false) {
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('fills', 'Fills')}</div>`;
-  if (state.journalTab === 'books' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
+  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
+  if (state.journalTab === 'books' || state.journalTab === 'features' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   return `<div class="journal-controls">
     ${tabs}
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
@@ -361,7 +362,7 @@ function fillsView(fills) {
 export function setJournalFees(v) { store.set('journal_fees', v === 'after' ? 'after' : 'before'); renderJournal(); }
 export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
 export function setJournalTab(tab) {
-  state.journalTab = ['fills', 'calendar', 'stats', 'setups', 'books'].includes(tab) ? tab : 'trades';
+  state.journalTab = ['fills', 'calendar', 'stats', 'setups', 'books', 'features'].includes(tab) ? tab : 'trades';
   if (state.journalTab !== 'trades') state.journalDay = '';
   renderJournal();
   if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
@@ -454,6 +455,7 @@ export function renderJournal() {
       </span>`}
     </div>
     ${!books ? `<p class="hint" id="journalStatus" role="status">${statusLine()}</p>` : ''}
+    ${!books ? `<p class="hint" id="journalFeaturesLine" role="status"${featuresLine() ? '' : ' hidden'}>${esc(featuresLine())}</p>` : ''}
     ${!books ? deckLineHtml(all) : ''}
     ${!books && state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${!books && state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
@@ -464,6 +466,7 @@ export function renderJournal() {
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
       : state.journalTab === 'setups' ? setupsView(filtered(all, t => t.bias))
+      : state.journalTab === 'features' ? featuresView(all)
       : tradesView(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))))))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
@@ -523,12 +526,13 @@ export async function loadJournal() {
   state.journalLoading = true;
   renderJournal();
   // your stops and deletes come from their own table: if it can't be read, the trades still show
-  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), loadPeriodReviewRows(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
+  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), loadPeriodReviewRows(), loadFeatureRows(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
+  let bars = null;
   try {
     if (records.status === 'rejected') throw records.reason;
     state.journalRecords = records.value;
     state.journalError = '';
-    maybeSaveBars({ records: records.value }); // quietly, in the background: the charts' bars before Tradier drops them
+    bars = maybeSaveBars({ records: records.value }); // quietly, in the background: the charts' bars before Tradier drops them
   } catch(e) {
     state.journalError = String(e?.message || e);
   } finally {
@@ -539,6 +543,8 @@ export async function loadJournal() {
     state.journalLoading = false;
     if (state.journalView) renderJournal();
   }
+  // then the features, once the bars they read are saved (and with the trades' keys as the Journal has them)
+  if (bars) bars.finally(() => maybeStampFeatures());
 }
 
 /** the tab opened: show what's kept, and import quietly when it's due */
@@ -556,7 +562,7 @@ export async function journalImport() {
 // a capture started or finished: redraw (the Import sheet too when it's open), and after a save read the records again
 onCaptureChange(saved => {
   if (state.openSheetName === 'journalImport') renderImportSheet();
-  if (saved && !state.journalView) maybeSaveBars({ force: true }); // an import landed: its trades' bars, journal open or not
+  if (saved && !state.journalView) maybeSaveBars({ force: true }).finally(() => stampAfterImport(loadSavedRecords)); // an import landed: its trades' bars and features, journal open or not
   if (!state.journalView) return;
   if (saved) loadJournal(); else renderJournal();
 });

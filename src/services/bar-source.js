@@ -2,7 +2,9 @@
 // here and nothing else. Every provider answers in the app's own form (core/bars.js barsByDay): symbols as the OCC symbol
 // without its padding ('AAPL261218C00245000', a stock as itself), New York days, each bar stamped with its START in New
 // York time ('09:30' = 9:30 to 9:35), [time, open, high, low, close, volume] rows. A provider whose symbols or stamps
-// differ translates them here. Its name goes on every saved row (bars_5m.source).
+// differ translates them here. Its name goes on every saved row (bars_5m.source). Daily bars come through here too (the
+// trade features' EMAs, gaps and all-time highs): { date, open, high, low, close, volume }, oldest first, not saved,
+// since every provider serves them back years any time.
 import { barsByDay } from '../core/bars.js';
 import { baseUrl, headers } from './tradier.js';
 
@@ -19,6 +21,23 @@ const tradier = {
     if (!res.ok) { const err = new Error(`Tradier answered ${res.status}`); err.status = res.status; throw err; }
     const data = (await res.json())?.series?.data;
     return barsByDay(data ? (Array.isArray(data) ? data : [data]) : []);
+  },
+  /**
+   * one symbol's daily bars from one New York day through another, oldest first ([] = none). Tradier's docs say the
+   * history usually reaches back to the listing, and don't say whether it's adjusted for splits: the features that
+   * compare it with the day's own prices line the two up first (core/features/context.js dailyBasis).
+   * @param {string} symbol @param {string} from @param {string} to
+   * @returns {Promise<{ date: string, open: number, high: number, low: number, close: number, volume: number }[]>}
+   */
+  async daily(symbol, from, to) {
+    const url = `${baseUrl()}/markets/history?symbol=${encodeURIComponent(symbol)}&interval=daily&start=${encodeURIComponent(from)}&end=${encodeURIComponent(to)}`;
+    const res = await fetch(url, { headers: headers() });
+    if (!res.ok) { const err = new Error(`Tradier answered ${res.status}`); err.status = res.status; throw err; }
+    const days = (await res.json())?.history?.day;
+    return (days ? (Array.isArray(days) ? days : [days]) : [])
+      .map(d => ({ date: String(d?.date || ''), open: +d?.open, high: +d?.high, low: +d?.low, close: +d?.close, volume: +d?.volume || 0 }))
+      .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d.date) && [d.open, d.high, d.low, d.close].every(v => Number.isFinite(v) && v > 0))
+      .sort((a, b) => a.date.localeCompare(b.date));
   },
 };
 
