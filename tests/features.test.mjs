@@ -8,7 +8,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FEATURE_FAMILIES, FEATURES, computeFeature, featureBarNeeds, featureCoverage, featureDataNeeds, featureDue, featureNeedsWords, featuresDue, featureValueWords, featureVersion, stampTrade } from '../src/core/features/index.js';
 import { featureContext, featureSymbol } from '../src/core/features/context.js';
-import { weekdaysBefore } from '../src/core/bars.js';
+import { earlyCloseDay, weekdaysBefore, weekdaysBetween } from '../src/core/bars.js';
+import { breadthCounts, breadthDaysToRead, groupedToDay } from '../src/core/breadth.js';
+import { bsPrice, normCdf, RISK_FREE } from '../src/core/black-scholes.js';
+import { expiryCloseMs } from '../src/core/options.js';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
 
@@ -30,7 +33,7 @@ function day(date, base, vol) {
 const AFTER = ['2026-10-15', '2026-10-16'];
 function intraday(base, todayVol = 2000) {
   const m = new Map();
-  for (const d of weekdaysBefore(D, 20)) m.set(d, day(d, base, 1000));
+  for (const d of weekdaysBefore(D, 50)) m.set(d, day(d, base, 1000));
   m.set(D, day(D, base, todayVol));
   for (const d of AFTER) m.set(d, day(d, base + 5, 9000));
   return m;
@@ -48,11 +51,21 @@ function daily(base, intra) {
   dd.high = Math.max(...intra.get(D).filter(b => b.time >= '09:30' && b.time < '16:00').map(b => b.high));
   return out;
 }
+const SECTORS = ['XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLU', 'XLB', 'XLRE'];
+/** the market breadth at the close of each weekday before D: 60% over the 5-day, falling to 40% over the 200-day */
+function breadthRows() {
+  const m = new Map();
+  for (const d of weekdaysBefore(D, 30)) m.set(d, { 5: [600, 1000], 20: [550, 1000], 50: [500, 1000], 100: [450, 1000], 200: [400, 1000] });
+  for (const d of [D, ...AFTER]) m.set(d, { 5: [990, 1000], 20: [990, 1000], 50: [990, 1000], 100: [990, 1000], 200: [990, 1000] });
+  return m;
+}
 function world() {
-  const aapl = intraday(100), spy = intraday(500, 3000), qqq = intraday(400);
+  const aapl = intraday(100), spy = intraday(500, 3000), qqq = intraday(400), iwm = intraday(200);
+  const sectors = SECTORS.map((s, i) => [s, intraday(50 + i * 5)]);
   return {
-    intraday: new Map([['AAPL', aapl], ['SPY', spy], ['QQQ', qqq]]),
-    daily: new Map([['AAPL', daily(100, aapl)], ['SPY', daily(500, spy)], ['QQQ', daily(400, qqq)]]),
+    intraday: new Map([['AAPL', aapl], ['SPY', spy], ['QQQ', qqq], ['IWM', iwm], ...sectors]),
+    daily: new Map([['AAPL', daily(100, aapl)], ['SPY', daily(500, spy)], ['QQQ', daily(400, qqq)], ['IWM', daily(200, iwm)], ...sectors.map(([s, m], i) => [s, daily(50 + i * 5, m)])]),
+    breadth: breadthRows(),
   };
 }
 const stock = (hhmm = '10:02') => ({ key: `6789|AAPL|long|${hhmm}`, symbol: 'AAPL', assetType: 'EQUITY', status: 'win', openedAt: new Date(at(hhmm)).toISOString(), closedAt: new Date(at('15:00')).toISOString() });
@@ -81,7 +94,9 @@ function future(data, ms, cut = false) {
     if (clock < '09:30') return cut ? [] : [wild(b)];
     return [cut ? { ...b, high: b.open, low: b.open, close: b.open, volume: 0 } : partial(b)];
   })]));
-  return { intraday: intra, daily: dly };
+  // the breadth at the moment's day's close and later isn't known at the moment
+  const breadth = data.breadth && new Map([...data.breadth].flatMap(([dd, c]) => dd < d ? [[dd, c]] : cut ? [] : [[dd, { 5: [1, 1000], 20: [2, 1000], 50: [3, 1000], 100: [4, 1000], 200: [5, 1000] }]]));
+  return { intraday: intra, daily: dly, breadth };
 }
 
 const result = (f, trade, data, entryPrice = 101.37) => {
@@ -118,8 +133,8 @@ test('every feature keeps its contract: a unique key, a version, its family, onl
     assert.ok(f.name && f.desc, `${f.key} has a name and says what it measures`);
     assert.ok(['entry', 'exit'].includes(f.at));
     assert.ok(FEATURE_FAMILIES.includes(f.family), `${f.key} is in a listed family`);
-    assert.ok(['%', 'x', ''].includes(f.unit));
-    assert.deepEqual(Object.keys(f.needs).filter(k => !['intraday', 'lookback', 'daily', 'dailySessions', 'session'].includes(k)), [], `${f.key}: only known needs`);
+    assert.ok(['%', 'x', '$', ''].includes(f.unit));
+    assert.deepEqual(Object.keys(f.needs).filter(k => !['intraday', 'lookback', 'daily', 'dailySessions', 'session', 'breadth'].includes(k)), [], `${f.key}: only known needs`);
     assert.match(featureVersion(f), /^\d+\.\d+$/);
     assert.ok(featureNeedsWords(f), `${f.key} says what it reads`);
     for (const hhmm of MOMENTS) for (const trade of [stock(hhmm), call(hhmm), spread(hhmm)]) {
@@ -131,7 +146,8 @@ test('every feature keeps its contract: a unique key, a version, its family, onl
       const intra = new Set((f.needs.intraday || []).map(s => featureSymbol(s, trade)));
       const dly = new Set((f.needs.daily || []).map(s => featureSymbol(s, trade)));
       for (const read of r.reads) {
-        if (read.kind === 'intraday') {
+        if (read.kind === 'breadth') assert.equal(f.needs.breadth, true, `${f.key} reads the market's breadth: declare breadth`);
+        else if (read.kind === 'intraday') {
           assert.ok(intra.has(read.symbol), `${f.key} reads ${read.symbol}'s 5-minute bars: declare it`);
           if (read.session === 'all') assert.equal(f.needs.session, 'all', `${f.key} reads extended hours: declare session 'all'`);
           if (read.lookback) assert.ok(read.lookback <= (f.needs.lookback || 0), `${f.key} compares ${read.lookback} sessions back: declare lookback`);
@@ -301,12 +317,15 @@ test('stamping: missing or outdated features are due, three states, unknown stam
 
 test('what a run reads: the moment\'s day and its lookback per symbol; daily bars from far enough back', () => {
   const needs = featureDataNeeds([{ trade: call('10:02'), features: FEATURES }]);
-  assert.deepEqual([...needs.intraday.keys()].sort(), ['AAPL', 'QQQ', 'SPY'], "the option's underlying, never the contract, for these");
-  assert.equal(needs.intraday.get('AAPL').length, 21, 'the day and the 20 weekdays before');
+  assert.deepEqual([...needs.intraday.keys()].sort(), ['AAPL', 'IWM', 'QQQ', 'SPY', ...SECTORS].sort(), "the option's underlying, never the contract, for these");
+  assert.equal(needs.intraday.get('AAPL').length, 51, 'the day and the 50 weekdays before (the run rate\'s curve)');
   assert.deepEqual(needs.intraday.get('SPY'), [D]);
   assert.equal(needs.daily.get('AAPL'), '1960-01-01', 'the all-time high wants every day');
-  assert.ok(needs.daily.get('SPY') < '2026-07-20' && needs.daily.get('SPY') > '2026-06-01', 'the EMA, 60 sessions and room for holidays');
-  assert.deepEqual(featureBarNeeds(), { market: ['SPY', 'QQQ'], lookback: 20 }, 'the bar saver keeps what features name');
+  assert.ok(needs.daily.get('SPY') < '2026-01-10' && needs.daily.get('SPY') > '2025-12-01', 'the 200 SMA: 200 sessions and room for holidays');
+  assert.ok(needs.daily.get('XLK') < '2026-07-20' && needs.daily.get('XLK') > '2026-06-01', 'the sectors\' EMAs: 60 sessions');
+  assert.equal(needs.breadth, true, 'and the market breadth');
+  assert.equal(featureDataNeeds([{ trade: call('10:02'), features: [byKey('rvol_at_entry')] }]).breadth, false);
+  assert.deepEqual(featureBarNeeds(), { market: ['SPY', 'QQQ', 'IWM', ...SECTORS], lookback: 50 }, 'the bar saver keeps what features name');
 });
 
 // ---------- the Journal ----------
@@ -333,6 +352,7 @@ function journalApp(opts = {}) {
     { kind: 'order', record_id: '802', account: '6789', entered_at: '2026-10-14T19:00:00Z', data: SELL },
   ]);
   for (const [sym, days] of w.intraday) for (const [d, bars] of days) if (d <= D) supabase.bars.set(`user-1:${sym}:${d}`, { user_id: 'user-1', symbol: sym, day: d, bars: pack(bars) });
+  for (const [d, counts] of w.breadth) if (d < D) supabase.tables.market_breadth.set(`user-1:us_common:${d}`, { user_id: 'user-1', universe: 'us_common', day: d, counts });
   const calls = [];
   const fetch = async url => {
     const u = new URL(url);
@@ -361,9 +381,14 @@ test('the Journal stamps every trade after it loads, shows the Features tab, and
   assert.deepEqual(Object.keys(row.stamps).sort(), FEATURES.map(f => f.key).sort(), 'every feature');
   assert.ok(row.stamps.rvol_at_entry.value > 1.9, 'from the saved bars');
   assert.ok(row.stamps.dist_from_ath.value < 0);
-  assert.equal(j.calls.filter(c => c.startsWith('/v1/markets/history')).length, 3, 'one daily read per symbol: AAPL, SPY, QQQ');
+  near(row.stamps.breadth_sma20.value, 55, "the market breadth from the account's counts");
+  assert.equal(typeof row.stamps.run_rate_20.value, 'number', 'the run rate, from 50 saved sessions');
+  assert.equal(row.stamps.iv_at_entry.note, 'not an option', 'a stock has no option features');
+  assert.equal(j.calls.filter(c => c.startsWith('/v1/markets/history')).length, 15, 'one daily read per symbol: AAPL, SPY, QQQ, IWM and the 11 sectors');
   assert.equal(a.state.featuresBusy, false);
-  assert.equal(a.state.featuresLast.value, FEATURES.length);
+  assert.equal(a.state.featuresLast.waiting, 0);
+  assert.equal(a.state.featuresLast.value + a.state.featuresLast.unknown, FEATURES.length);
+  const values = a.state.featuresLast.value;
   // nothing due: the next load reads, stamps nothing
   const writes = j.supabase.writes.filter(w => w.table === 'trade_features').length;
   await a.run('loadJournal()');
@@ -372,7 +397,9 @@ test('the Journal stamps every trade after it loads, shows the Features tab, and
   // the Features tab
   a.run("setJournalTab('features')");
   const html = a.elements.get('journalSection').innerHTML;
-  assert.match(html, /Volume run rate at entry/);
+  assert.match(html, /Relative volume by time of day/);
+  assert.match(html, /Volume run rate \(20-day\)/);
+  assert.match(html, /<th colspan="4" scope="colgroup">Market breadth<\/th>/);
   assert.match(html, /<b>1 of 1<\/b>/);
   assert.match(html, /5-minute bars: the stock, and the 20 sessions before/);
   assert.match(html, /Last stamped/);
@@ -380,13 +407,13 @@ test('the Journal stamps every trade after it loads, shows the Features tab, and
   a.run(`openJournalTrade('${KEY}')`);
   await settle();
   const body = () => a.elements.get('jtBody').innerHTML;
-  assert.match(body(), /data-action="setJournalTradeTab" data-arg="features">Features <span class="jt-tab-n">6<\/span>/, 'a Features tab with how many have a value');
+  assert.match(body(), new RegExp(`data-action="setJournalTradeTab" data-arg="features">Features <span class="jt-tab-n">${values}<\\/span>`), 'a Features tab with how many have a value');
   assert.doesNotMatch(body(), /id="jtFeatures"/, 'the review shows first');
   assert.match(body(), /class="journal-review|Review/);
   a.run("setJournalTradeTab('features')");
-  assert.match(body(), /6 features at the entry: 6 with a value\. Tap one for what it measures/);
+  assert.match(body(), new RegExp(`${FEATURES.length} features: ${values} with a value, ${FEATURES.length - values} unknown\\. Tap one for what it measures`));
   assert.match(body(), /<div class="jf-fam">Market<\/div>/, 'by family');
-  assert.match(body(), /<span class="jf-name">Volume run rate at entry<\/span><span class="jf-val">\d\.\d\d×<\/span>/);
+  assert.match(body(), /<span class="jf-name">Relative volume by time of day<\/span><span class="jf-val">\d\.\d\d×<\/span>/);
   assert.match(body(), /<span class="jf-name">Distance from the all-time high<\/span><span class="jf-val">−[\d.]+%<\/span><span class="jf-how">high [\d.]+ on/);
   assert.match(body(), /<details class="jf-item">[\s\S]*?<p>The stock[^ ]* volume from 9:30[\s\S]*?Reads 5-minute bars: the stock, and the 20 sessions before · version 1\.1 · <span class="jf-key">rvol_at_entry/, 'tap one: what it measures and reads');
   assert.doesNotMatch(body(), /<details class="jf-item[^"]*" open>/, 'closed until tapped');
@@ -414,7 +441,7 @@ test('a feature waiting for its data is tried again later, not stamped; a new ve
   await settle();
   a.run("setJournalTradeTab('features')");
   assert.match(a.elements.get('jtBody').innerHTML, /<details class="jf-item jf-quiet">\s*<summary><span class="jf-name">SPY vs daily 8 EMA<\/span><span class="jf-val">—<\/span><span class="jf-how">waiting for SPY 5-minute bars on 10\/14/);
-  assert.match(a.elements.get('jtBody').innerHTML, /5 with a value, 1 still to come/);
+  assert.match(a.elements.get('jtBody').innerHTML, /\d+ with a value, \d+ unknown, \d+ still to come/);
   a.run('closeJournalTrade()');
   // SPY's day saved: the next run waits out the retry gap, then stamps it
   j.supabase.bars.set(`user-1:SPY:${D}`, { user_id: 'user-1', symbol: 'SPY', day: D, bars: pack(j.w.intraday.get('SPY').get(D)) });
@@ -456,5 +483,215 @@ test('the bar saver keeps what the features name, on top of the market basket', 
   const keep = JSON.parse(run('JSON.stringify(barsToKeep())'));
   assert.ok(keep.market.includes('SPY') && keep.market.includes('XLK'));
   assert.equal(new Set(keep.market).size, keep.market.length);
-  assert.equal(keep.lookback, 20);
+  assert.equal(keep.lookback, 50, "the run rate's curve: 50 sessions");
+});
+
+// ---------- the run rate ----------
+
+const sumVol = rows => rows.reduce((n, b) => n + (b.volume || 0), 0);
+const regularTo = (rows, cut) => sumVol(rows.filter(b => b.time >= '09:30' && b.time < cut));
+const premarket = rows => sumVol(rows.filter(b => b.time < '09:30'));
+
+test('run rate: the premarket plus the prints so far over the curve, against the median day', () => {
+  const data = world();
+  const bars = data.intraday.get('AAPL'), totals = new Map(data.daily.get('AAPL').map(b => [b.date, b.volume]));
+  // the bars ended by 10:02 run to the 9:55 bar: the curve is read at the same 10:00 mark on every day
+  const shares = weekdaysBefore(D, 50).map(d => regularTo(bars.get(d), '10:00') / (totals.get(d) - premarket(bars.get(d))));
+  const u = shares.reduce((a, b) => a + b, 0) / shares.length;
+  const projected = premarket(bars.get(D)) + regularTo(bars.get(D), '10:00') / u;
+  const r = result(byKey('run_rate_20'), stock('10:02'), data);
+  near(r.value, (projected / 1e6 - 1) * 100, 'projected over the median daily total');
+  assert.match(r.note, /^projected [\d.]+[kM] vs median 1\.00M · curve from 50 sessions$/);
+  assert.equal(result(byKey('run_rate_50'), stock('10:02'), data).value, r.value, 'every day here is 1M, so the 50-day median is the same');
+  assert.equal(result(byKey('run_rate_20'), call('10:02'), data).value, r.value, 'an option reads its underlying');
+  // the denominator is the whole day, not the bars: a day's 5-minute bars sum to well under its total
+  assert.ok(u < 0.1, 'the fixture\'s bars are a small share of its daily totals');
+  assert.match(result(byKey('run_rate_20'), stock('09:41'), data).note, /~ first 15 minutes, noisy$/);
+  assert.doesNotMatch(result(byKey('run_rate_20'), stock('09:47'), data).note, /first 15/);
+  assert.deepEqual(result(byKey('run_rate_20'), stock('09:31'), data), { state: 'unknown', value: null, note: 'entered in the first 5 minutes' });
+  assert.equal(result(byKey('run_rate_20'), stock('08:10'), data).note, 'entered before the open');
+  assert.equal(result(byKey('run_rate_20'), stock('17:05'), data).state, 'value', 'after hours: the whole regular session over the curve at the close');
+  // too few sessions kept for the curve: unknown, once nothing more can come
+  const thin = { ...data, intraday: new Map([...data.intraday].map(([s, m]) => [s, s === 'AAPL' ? new Map([...m].filter(([d]) => d >= '2026-09-30')) : m])) };
+  const old = computeFeature(byKey('run_rate_20'), featureContext(stock('10:02'), at('10:02'), thin, { now: NOW + 60 * 864e5 }));
+  assert.deepEqual([old.state, old.note], ['unknown', 'the curve needs 15 of the 50 sessions before; 10 kept']);
+  assert.equal(result(byKey('run_rate_20'), stock('10:02'), thin).state, 'waiting', 'inside the window the saver still fetches them');
+  // at the exit: the same, cut at 15:00
+  assert.equal(result(byKey('run_rate_20_at_exit'), stock('10:02'), data).state, 'value');
+});
+
+test('half days: 1pm closes are July 3 and Christmas Eve Monday to Thursday, and the day after Thanksgiving', () => {
+  for (const d of ['2025-07-03', '2026-12-24', '2026-11-27', '2025-11-28', '2024-12-24']) assert.equal(earlyCloseDay(d), true, d);
+  for (const d of ['2026-07-03', '2027-12-24', '2026-11-20', '2026-11-26', '2026-10-14']) assert.equal(earlyCloseDay(d), false, d);
+  const data = world();
+  const t = { ...stock('10:02'), openedAt: '2026-11-27T15:02:20.000Z' };
+  assert.equal(computeFeature(byKey('run_rate_20'), featureContext(t, Date.parse(t.openedAt), { ...data, intraday: new Map([['AAPL', new Map([['2026-11-27', day('2026-11-27', 100, 1000)]])]]) }, { now: Date.parse('2026-12-20T12:00:00Z') })).note, 'a half day: no curve for it');
+});
+
+test('premarket and last-bar volume against their usual', () => {
+  const data = world();
+  const bars = data.intraday.get('AAPL');
+  const pm = result(byKey('premarket_rvol'), stock('08:10'), data);
+  near(pm.value, sumVol(bars.get(D).filter(b => b.time < '08:10')) / sumVol(bars.get(weekdaysBefore(D, 1)[0]).filter(b => b.time < '08:10')), 'to the same time on each day');
+  assert.match(pm.note, /vs a usual/);
+  const prev = result(byKey('prev_bar_rvol'), stock('10:02'), data);
+  assert.equal(prev.note, 'the 09:55 bar', 'the bar before the one you entered in');
+  near(prev.value, bars.get(D).find(b => b.time === '09:55').volume / bars.get(weekdaysBefore(D, 1)[0]).find(b => b.time === '09:55').volume, 'against that bar on the days before');
+  assert.equal(result(byKey('dollar_volume_20'), stock('10:02'), data).state, 'value');
+  assert.equal(featureValueWords(byKey('dollar_volume_20'), 108950000), '$109.0M');
+  assert.equal(result(byKey('up_down_volume_50'), stock('10:02'), data).note, 'no down days in the 50 sessions', 'the fixture only rises');
+});
+
+// ---------- market breadth ----------
+
+test('breadth features: the close before the entry; a shut day stepped over; a day not counted yet waits, an old one is gone', () => {
+  const data = world();
+  const f = byKey('breadth_sma20');
+  const r = result(f, stock('10:02'), data);
+  assert.deepEqual(r, { state: 'value', value: 55, note: 'close of 10/13, 1,000 stocks' });
+  assert.equal(result(f, stock('08:10'), data).value, 55, 'a premarket entry: the same close');
+  assert.equal(result(byKey('breadth_sma200'), stock('10:02'), data).value, 40);
+  data.breadth.set('2026-10-13', { closed: true });
+  assert.equal(result(f, stock('10:02'), data).note, 'close of 10/12, 1,000 stocks', 'a weekday the market was shut is stepped over');
+  data.breadth.delete('2026-10-13');
+  assert.deepEqual(result(f, stock('10:02'), data), { state: 'waiting', value: null, note: 'waiting for market breadth on 10/13' });
+  const later = computeFeature(f, featureContext(stock('10:02'), at('10:02'), data, { now: NOW + 800 * 864e5 }));
+  assert.equal(later.state, 'unknown', 'past what the provider reaches: gone');
+  assert.match(later.note, /^market breadth from before /);
+  data.breadth.set('2026-10-13', { 5: [1, 2] });
+  assert.equal(result(f, stock('10:02'), data).note, 'waiting for 20-day breadth on 10/13', 'counted without enough history for the 20-day yet');
+  assert.equal(result(f, stock('10:02'), { ...data, breadth: null }).state, 'waiting', 'not read (no table yet, a failed read): wait');
+});
+
+test('breadth counts: each stock\'s close over its n-day average; nothing across a gap; shut days stepped over', () => {
+  const days = weekdaysBetween('2025-11-03', '2026-10-13');
+  const rows = days.map((d, i) => ({ day: d, tickers: ['UP', 'DOWN', 'FLAT'], closes: [100 + i, 400 - i, 50] }));
+  rows[100] = { day: days[100], closed: true };
+  rows[150].tickers = ['UP', 'FLAT']; rows[150].closes = [250, 50]; // DOWN didn't trade
+  const counts = breadthCounts(rows);
+  assert.deepEqual(counts.get(days.at(-1)), { 5: [1, 3], 20: [1, 3], 50: [1, 3], 100: [1, 3], 200: [1, 3] }, 'only the riser is over its averages; flat is not over');
+  assert.deepEqual(counts.get(days[100]), { closed: true });
+  assert.deepEqual(counts.get(days[150])['5'], [1, 2], 'a stock that didn\'t trade isn\'t counted that day');
+  assert.deepEqual(Object.keys(counts.get(days[3])), [], 'four sessions in: no 5-day yet');
+  assert.deepEqual(Object.keys(counts.get(days[4])), ['5']);
+  // a weekday missing from the closes starts every average over
+  const gap = breadthCounts(rows.filter((_, i) => i !== 230));
+  assert.equal(gap.has(days[230]), false);
+  assert.deepEqual(Object.keys(gap.get(days[233])), [], 'three sessions after the gap');
+  assert.deepEqual(Object.keys(gap.get(days[235])), ['5']);
+});
+
+test('which days to read: what the trades need, the sessions before for the longest average, newest first, inside the reach', () => {
+  const days = breadthDaysToRead({ moments: [D], rows: new Map(), read: new Set(), now: NOW, through: '2026-10-14' });
+  assert.equal(days[0], '2026-10-14', 'newest first');
+  assert.ok(days.includes('2026-10-13') && days.length > 200 && days.length < 230, 'the session before, and the 200 before it with room for holidays');
+  assert.deepEqual([...days].sort().reverse(), days);
+  const done = new Map([['2026-10-13', { 5: [1, 2], 20: [1, 2], 50: [1, 2], 100: [1, 2], 200: [1, 2] }], ['2026-10-14', { 5: [1, 2], 20: [1, 2], 50: [1, 2], 100: [1, 2], 200: [1, 2] }]]);
+  assert.deepEqual(breadthDaysToRead({ moments: [D], rows: done, read: new Set(), now: NOW, through: '2026-10-14' }), [], 'counted already: nothing');
+  assert.deepEqual(breadthDaysToRead({ moments: [D], rows: new Map(), read: new Set(days), now: NOW, through: '2026-10-14' }), [], 'read already: nothing more to ask for');
+  const old = breadthDaysToRead({ moments: ['2024-12-02'], rows: new Map(), read: new Set(), now: NOW, through: '2024-12-03' });
+  assert.ok(old.every(d => d >= '2024-10-15'), 'never before the two years the provider reaches');
+  const universe = new Set(['AAPL', 'MSFT']);
+  assert.deepEqual(groupedToDay('2026-10-09', { results: [{ T: 'AAPL', c: 245 }, { T: 'SPY', c: 600 }, { T: 'MSFT', c: 0 }] }, universe, NOW), { day: '2026-10-09', tickers: ['AAPL'], closes: [245] }, 'common stocks only, real closes only');
+  assert.deepEqual(groupedToDay('2026-10-12', { resultsCount: 0 }, universe, NOW), { day: '2026-10-12', closed: true }, 'an old empty day: shut');
+  assert.equal(groupedToDay('2026-10-14', { resultsCount: 0 }, universe, NOW), null, 'yesterday empty: not posted yet, ask again');
+});
+
+test('the breadth fill reads Massive\'s closes newest first, saves the counts, and the breadth features stamp from them', async () => {
+  const j = journalApp();
+  j.supabase.tables.market_breadth.clear();
+  const tickers = Array.from({ length: 1200 }, (_, i) => `T${i}`);
+  const order = weekdaysBetween('2024-01-01', '2026-10-16');
+  const massive = [];
+  const fetch = async (url, opts) => {
+    const u = new URL(url);
+    if (u.hostname !== 'api.massive.com') return j.fetch(url, opts);
+    massive.push(u.pathname + u.search);
+    assert.equal(opts.headers.Authorization, 'Bearer mk-test', 'the key goes in a header, never the address');
+    if (u.pathname === '/v3/reference/tickers') {
+      const second = u.searchParams.get('cursor') === '2';
+      return new Response(JSON.stringify({ results: (second ? tickers.slice(1000) : tickers.slice(0, 1000)).map(ticker => ({ ticker })), ...(second ? {} : { next_url: 'https://api.massive.com/v3/reference/tickers?cursor=2' }) }), { status: 200 });
+    }
+    const d = u.pathname.split('/').pop(), i = order.indexOf(d);
+    return new Response(JSON.stringify({ resultsCount: 1201, results: [...tickers.map((T, k) => ({ T, c: k < 700 ? 100 + i : 900 - i })), { T: 'SPY', c: 600 }] }), { status: 200 });
+  };
+  const a = await app({ supabase: j.supabase, session: SESSION, fetch, clock: true, now: NOW, storage: new Map([['journal_bars', JSON.stringify({ user: 'user-1', at: NOW })], ['massive_key', 'mk-test']]) });
+  a.run('wait = async () => {}');
+  a.elements.get('apiKey').value = 'test-key';
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  for (let i = 0; i < 400 && (a.state.breadthBusy || a.state.featuresBusy || a.state.featuresRerun); i++) await settle();
+  await settle();
+  const grouped = massive.filter(p => p.startsWith('/v2/aggs/grouped/')).map(p => p.split('/').pop().slice(0, 10));
+  assert.equal(massive.filter(p => p.startsWith('/v3/reference/tickers')).length, 2, 'the common-stock list, both pages');
+  assert.equal(grouped[0], '2026-10-14', 'newest first');
+  assert.deepEqual([...grouped].sort().reverse(), grouped);
+  const row = j.supabase.tables.market_breadth.get('user-1:us_common:2026-10-13');
+  assert.deepEqual(row.counts['200'], [700, 1200], 'the risers are over their 200-day; SPY is no common stock');
+  assert.equal(row.source, 'massive');
+  const stamps = j.supabase.tables.trade_features.get(`user-1:${KEY}`).stamps;
+  near(stamps.breadth_sma200.value, 58.3, 'stamped from the counts');
+  assert.equal(JSON.parse(a.storage.get('journal_breadth')).error, '');
+  // within the hour: nothing more is asked of Massive
+  const n = massive.length;
+  await a.run('loadJournal()');
+  await settle();
+  assert.equal(massive.length, n);
+});
+
+test('without a Massive key nothing is fetched and the Features tab says what breadth needs', async () => {
+  const j = journalApp();
+  j.supabase.tables.market_breadth.clear();
+  const a = await app({ supabase: j.supabase, session: SESSION, fetch: j.fetch, clock: true, now: NOW, storage: new Map([['journal_bars', JSON.stringify({ user: 'user-1', at: NOW })]]) });
+  a.elements.get('apiKey').value = 'test-key';
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  assert.ok(!('breadth_sma20' in j.supabase.tables.trade_features.get(`user-1:${KEY}`).stamps), 'waiting, not stamped');
+  a.run("setJournalTab('features')");
+  assert.match(a.elements.get('journalSection').innerHTML, /Market breadth needs a Massive API key \(free\) in Settings/);
+});
+
+// ---------- the other families ----------
+
+test('option features: days to expiry, the strike against the stock, and the IV and delta your fill implies', () => {
+  const data = world();
+  const S = data.intraday.get('AAPL').get(D).find(b => b.time === '09:55').close;
+  const T = (expiryCloseMs('2026-12-18') - at('10:02')) / (365 * 864e5);
+  const fill = bsPrice(true, S, 245, T, 0.45, RISK_FREE);
+  near(result(byKey('iv_at_entry'), call('10:02'), data, fill).value, 45, 'the IV that prices your fill');
+  const d1 = (Math.log(S / 245) + (RISK_FREE + 0.45 ** 2 / 2) * T) / (0.45 * Math.sqrt(T));
+  near(result(byKey('delta_at_entry'), call('10:02'), data, fill).value, normCdf(d1), 'its delta');
+  near(result(byKey('dte_at_entry'), call('10:02'), data, fill).value, T * 365, 'calendar days to the 4pm close on expiry');
+  near(result(byKey('strike_vs_stock'), call('10:02'), data, fill).value, (245 / S - 1) * 100, 'a call above the stock: out of the money');
+  near(result(byKey('premium_pct_of_stock'), call('10:02'), data, fill).value, fill / S * 100, 'premium over the stock');
+  assert.match(result(byKey('iv_at_entry'), call('10:02'), data, S + 1).note, /can't be priced by Black-Scholes/);
+  for (const k of ['iv_at_entry', 'dte_at_entry', 'strike_vs_stock']) assert.equal(result(byKey(k), stock('10:02'), data).note, 'not an option');
+});
+
+test('trend, levels, strength and timing on the fixture', () => {
+  const data = world();
+  const prior = data.daily.get('AAPL').filter(b => b.date < D);
+  const sma200 = (prior.slice(-199).reduce((a, b) => a + b.close, 0) + 101.37) / 200;
+  near(result(byKey('stock_vs_daily_sma200'), stock('10:02'), data, 101.37).value, (101.37 / sma200 - 1) * 100, 'your fill against the 200 SMA moved on by it');
+  const bars = data.intraday.get('AAPL').get(D);
+  const or5 = bars.find(b => b.time === '09:30');
+  assert.equal(result(byKey('orb_5'), stock('10:02'), data, or5.high + 1).value, 'above');
+  assert.equal(result(byKey('orb_5'), stock('10:02'), data, or5.low - 1).value, 'below');
+  assert.equal(result(byKey('orb_30'), stock('09:47'), data).note, 'entered before the first 30 minutes were over');
+  const pos = result(byKey('day_range_position'), call('10:02'), data).value;
+  assert.ok(pos >= 0 && pos <= 100);
+  const sectors = result(byKey('sectors_above_ema8'), stock('10:02'), data);
+  assert.ok(Number.isInteger(sectors.value) && sectors.value >= 0 && sectors.value <= 11, 'a count of the 11');
+  assert.deepEqual(result(byKey('minutes_from_open'), stock('10:02'), data), { state: 'value', value: 32, note: '' });
+  assert.equal(result(byKey('minutes_from_open'), stock('08:10'), data).value, -80);
+  assert.equal(result(byKey('session_at_entry'), stock('17:05'), data).value, 'afterhours');
+  assert.equal(result(byKey('rs_20d_vs_spy'), stock('10:02'), data).value, 0, 'both rise at the same pace in the fixture');
+  // an inside day the day before
+  const inside = world();
+  const dd = inside.daily.get('AAPL'), i = dd.findIndex(b => b.date === D);
+  Object.assign(dd[i - 1], { high: dd[i - 2].high - 0.01, low: dd[i - 2].low + 0.01 });
+  assert.equal(result(byKey('prior_day_pattern'), stock('10:02'), inside).value, 'inside', 'inside the day before, not the narrowest of 7');
+  Object.assign(dd[i - 1], { high: dd[i - 2].high - 0.5, low: dd[i - 2].high - 0.6 });
+  assert.equal(result(byKey('prior_day_pattern'), stock('10:02'), inside).value, 'inside_nr7', 'and the narrowest of 7 too');
 });

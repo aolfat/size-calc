@@ -78,6 +78,21 @@ export const MARKET_BASKET = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLK', 'XLF', 'XLV', '
 /** weekdays saved before a trade's open for its stock (an option's underlying): what a volume run rate compares against */
 export const LOOKBACK_DAYS = 20;
 
+/**
+ * NYSE's 1pm closes: July 3 and December 24 when they fall Monday to Thursday, and the day after Thanksgiving (the
+ * fourth Thursday of November). On a Friday July 3 or December 24 the market is shut instead.
+ * @param {string} day 'YYYY-MM-DD'
+ */
+export function earlyCloseDay(day) {
+  const d = new Date(day + 'T12:00:00Z'), wd = d.getUTCDay(), md = day.slice(5);
+  if ((md === '07-03' || md === '12-24') && wd >= 1 && wd <= 4) return true;
+  if (day.slice(5, 7) === '11' && wd === 5) {
+    const date = d.getUTCDate(); // the Friday after the fourth Thursday: the 23rd to the 29th
+    return date >= 23 && date <= 29;
+  }
+  return false;
+}
+
 /** the newest New York day whose bars are all in: today from 20:00 on, else yesterday. @param {number} now */
 export function lastDoneDay(now) {
   const today = nyDay(now);

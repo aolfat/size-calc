@@ -579,6 +579,13 @@
         </div>
         <p class="api-notice" id="apiNotice">Stored in this browser. Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.</p>
       </div>
+      <div class="sheet-section">
+        <div class="field">
+          <label for="massiveKey">Massive API key</label>
+          <input type="password" id="massiveKey" placeholder="Paste your Massive (Polygon) key" autocomplete="off" data-input="saveMassiveKey" data-change="massiveKeyDone" />
+        </div>
+        <p class="api-notice">For the Journal's market breadth (% of stocks over their averages, like $MMTW). Stored in this browser only, never synced; requests go straight to Massive. The free plan works. Get a key at <a href="https://massive.com" target="_blank" rel="noopener">massive.com</a>.</p>
+      </div>
       <div class="sheet-section" id="schwabSection">
         <div class="sheet-label">Schwab trading <span class="sheet-status" id="schwabStatus"></span></div>
         <p class="hint" id="schwabProxyLine" style="display:none;">Worker: <span id="schwabProxyHost"></span> · <button class="link-btn" data-action="editSchwabProxy">Change</button></p>

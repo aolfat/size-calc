@@ -8,7 +8,8 @@ import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, S
 import { schwabDisconnect, schwabSession } from '../services/schwab.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
-import { loadJournal, renderJournal } from './journal.js';
+import { kickBreadth, loadJournal, renderJournal } from './journal.js';
+import { clearBreadthDevice } from './journal-breadth.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -22,9 +23,23 @@ export function saveKey() {
   updateApiStatus();
 }
 
+/** the Massive key (market breadth): this device only, never synced */
+export function saveMassiveKey() {
+  if (!credentialOriginAllowed()) { clearUnsafeCredentials(); showError(CREDENTIAL_ORIGIN_MESSAGE); return; }
+  const key = document.getElementById('massiveKey').value.trim();
+  if (key) store.set('massive_key', key); else store.del('massive_key');
+}
+
+/** the Massive key box lost focus: with a key, start counting the breadth */
+export function massiveKeyDone() {
+  saveMassiveKey();
+  if (store.get('massive_key')) kickBreadth();
+}
+
 export function loadKey() {
   if (!credentialOriginAllowed()) clearUnsafeCredentials();
   document.getElementById('apiKey').value = store.get('tradier_key') || '';
+  document.getElementById('massiveKey').value = store.get('massive_key') || '';
   document.getElementById('apiEnv').value = store.get('tradier_env') || 'production';
   // a setting that isn't stored shows the page's default (a sign-in that cleared another account's values)
   const field = (id, v) => { const el = document.getElementById(id); if (v !== null && v !== '') el.value = v; else if (el.defaultValue != null) el.value = el.defaultValue; };
@@ -46,8 +61,9 @@ export function loadKey() {
 
 function clearUnsafeCredentials() {
   schwabDisconnect();
-  for (const key of ['tradier_key', SESSION_KEY, SESSION_KEY + '-code-verifier']) store.del(key);
+  for (const key of ['tradier_key', 'massive_key', SESSION_KEY, SESSION_KEY + '-code-verifier']) store.del(key);
   document.getElementById('apiKey').value = '';
+  document.getElementById('massiveKey').value = '';
   state.session = null;
 }
 
@@ -92,7 +108,7 @@ export async function signOut() {
   state.signOutArmed = false;
   state.signingOut = true;
   schwabDisconnect(); // stop trading and invalidate in-flight broker responses before waiting for the network
-  try { await signOutSupabase(); } finally { cloudClearDevice(); state.signingOut = false; }
+  try { await signOutSupabase(); } finally { cloudClearDevice(); await clearBreadthDevice().catch(() => {}); state.signingOut = false; }
   effects.reloadPage();
 }
 

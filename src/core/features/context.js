@@ -8,17 +8,21 @@
 // bar saver hasn't got to, today's bars, daily bars not read yet) makes the feature wait; data gone for good makes it
 // unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare.
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBefore } from '../bars.js';
+import { BREADTH_HISTORY_DAYS } from '../breadth.js';
 import { parseSchwabOption, tradierSymbol } from '../positions.js';
 import { nyStamp } from '../trade-page.js';
 
 /**
  * @typedef {{ date: string, time?: string, open: number, high: number, low: number, close: number, volume?: number }} Candle
- * @typedef {{ intraday: Map<string, Map<string, Candle[]>>, daily: Map<string, Candle[] | null> }} FeatureData
+ * @typedef {Record<string, [number, number] | boolean>} BreadthCounts one day's breadth: { '20': [above, counted], ... },
+ *   or { closed: true } for a weekday the market was shut
+ * @typedef {{ intraday: Map<string, Map<string, Candle[]>>, daily: Map<string, Candle[] | null>, breadth?: Map<string, BreadthCounts> | null }} FeatureData
  *   intraday: symbol → New York day → that day's 5-minute bars, oldest first ([] = kept empty, a holiday; a day not in
  *   the map wasn't kept). daily: symbol → daily bars, oldest first ([] = the provider has none; null or absent = not
- *   read, try again).
+ *   read, try again). breadth: New York day → that day's market breadth at the close (market_breadth; a day not in the
+ *   map isn't worked out yet; null or absent = not read, try again).
  * @typedef {{ symbol: string, assetType: string, openedAt: string, closedAt: string | null }} FeatureTrade
- * @typedef {{ kind: 'intraday' | 'daily', symbol: string, session?: string, sessions?: number, lookback?: number }} FeatureRead
+ * @typedef {{ kind: 'intraday' | 'daily' | 'breadth', symbol: string, session?: string, sessions?: number, lookback?: number }} FeatureRead
  */
 
 const DAY_MS = 86400000;
@@ -82,6 +86,31 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
       open: first && clock >= OPEN ? first.open : null,
       /** the high so far: ended bars, and the open of the one in progress */
       high: bars.length || stub !== null ? Math.max(...bars.map(b => b.high), ...(stub === null ? [] : [stub])) : null,
+      /** the low so far, the same way */
+      low: bars.length || stub !== null ? Math.min(...bars.map(b => b.low), ...(stub === null ? [] : [stub])) : null,
+      /** the premarket's volume so far (4:00 to 9:30, ended bars); null on a regular-hours series, which has none */
+      premarketVolume: () => regular ? null : bars.filter(b => (b.time || '') < OPEN).reduce((n, b) => n + (b.volume || 0), 0),
+      /**
+       * the `n` weekdays before, whole (they're over by the moment), in the series' hours: [{ day, bars }] oldest first,
+       * holidays and days not kept left out. A day the saver will still fetch makes the feature wait; how many were
+       * kept is the caller's to judge.
+       * @param {number} n @returns {{ day: string, bars: Candle[] }[]}
+       */
+      priorSessions: n => {
+        cur.reads.push({ kind: 'intraday', symbol: s, session, lookback: n });
+        const r = once(`prior|${s}|${session}|${n}`, () => {
+          const g = { waits: /** @type {string[]} */ ([]), gones: /** @type {string[]} */ ([]) };
+          const out = [];
+          for (const d of weekdaysBefore(day, n)) {
+            const rows = dayBars(s, d);
+            if (rows === undefined) { if (couldCome(d)) g.waits.push(`${s} 5-minute bars on ${md(d)}`); continue; }
+            if (rows.length) out.push({ day: d, bars: rows.filter(inSession) });
+          }
+          return { gaps: g, value: out };
+        });
+        note(r.gaps);
+        return r.value;
+      },
       /** the session VWAP over the ended bars (typical price × volume); null before any volume */
       vwap: () => {
         let pv = 0, v = 0;
@@ -134,6 +163,8 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
       return e;
     });
     const top = once(`high|${s}|${sessions}`, () => bars.reduce((m, b) => (b.high > m.high ? { high: b.high, date: b.date } : m), { high: -Infinity, date: '' }));
+    const lastN = (/** @type {number} */ n) => bars.length >= n ? bars.slice(-n) : null;
+    const mean = (/** @type {number[]} */ xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
     const series = {
       symbol: s, missing: !rows, bars,
       /** the first day the history has (the listing, or where the provider's history starts) */
@@ -146,6 +177,33 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
       emaWith: (n, price) => { const e = ema(n); return e === null ? null : price * k(n) + e * (1 - k(n)); },
       /** the highest prior high and its day */
       maxHigh: () => top.high === -Infinity ? null : top,
+      /** the simple average of the last `n` closes; null with fewer @param {number} n */
+      sma: n => { const b = lastN(n); return b ? mean(b.map(x => x.close)) : null; },
+      /** the SMA moved on by today's price: the last n − 1 closes and it @param {number} n @param {number} price */
+      smaWith: (n, price) => {
+        if (n === 1) return price;
+        const b = lastN(n - 1);
+        return b ? (b.reduce((a, x) => a + x.close, 0) + price) / n : null;
+      },
+      /** the average daily range in dollars over the last `n` sessions (high − low) @param {number} n */
+      adr: n => { const b = lastN(n); return b ? mean(b.map(x => x.high - x.low)) : null; },
+      /** the same as a % of the low, averaged (high ÷ low − 1) @param {number} n */
+      adrPct: n => { const b = lastN(n); return b && b.every(x => x.low > 0) ? mean(b.map(x => (x.high / x.low - 1) * 100)) : null; },
+      /** Wilder's average true range over the window, seeded with the first `n` true ranges' average @param {number} n */
+      atr: n => once(`atr|${s}|${sessions}|${n}`, () => {
+        const tr = bars.slice(1).map((b, i) => Math.max(b.high - b.low, Math.abs(b.high - bars[i].close), Math.abs(b.low - bars[i].close)));
+        if (tr.length < n) return null;
+        let a = mean(tr.slice(0, n));
+        for (const x of tr.slice(n)) a = (a * (n - 1) + x) / n;
+        return a;
+      }),
+      /** annualized volatility of the last `n` daily log returns, as a % (HV20 = hv(20)) @param {number} n */
+      hv: n => {
+        const b = lastN(n + 1);
+        if (!b || !b.every(x => x.close > 0)) return null;
+        const r = b.slice(1).map((x, i) => Math.log(x.close / b[i].close)), m = mean(r);
+        return Math.sqrt(r.reduce((a, x) => a + (x - m) ** 2, 0) / (r.length - 1) * 252) * 100;
+      },
     };
     return { series, gaps };
   }
@@ -157,6 +215,8 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
     at, day, clock,
     /** a stock's first fill price; null for options and spreads */
     entryPrice: trade.assetType === 'OPTION' || trade.assetType === 'SPREAD' ? null : entryPrice,
+    /** an option's first fill, the premium per share; null for anything else */
+    optionFill: trade.assetType === 'OPTION' ? entryPrice : null,
     symbol: sym,
     /**
      * a symbol's 5-minute bars on the moment's day, cut off at the moment; null when the trade has no such symbol (a
@@ -206,6 +266,31 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
       const best = [1, ...SPLITS].reduce((a, b) => (off(b) < off(a) ? b : a));
       return off(best) <= Math.log(1.3) ? best : null;
     },
+    /**
+     * The market's breadth at the last close before the moment's day: the % of US common stocks above their `n`-day
+     * simple average, and how many were counted. Weekdays the market was shut are stepped over. A day not worked out
+     * yet waits while it's within the provider's reach (BREADTH_HISTORY_DAYS, less the `n` sessions it needs before
+     * it); older, it's unknown.
+     * @param {number} n @returns {{ pct: number, counted: number, day: string } | null}
+     */
+    breadth(n) {
+      cur.reads.push({ kind: 'breadth', symbol: 'US stocks', sessions: n });
+      const rows = data.breadth;
+      if (!rows) { cur.waits.add('market breadth'); return null; }
+      const reach = nyDay(now - (BREADTH_HISTORY_DAYS - Math.ceil(n * 7 / 5) - 10) * DAY_MS);
+      for (const d of weekdaysBefore(day, 10).reverse()) {
+        const row = rows.get(d);
+        if (!row) { (d >= reach ? cur.waits : cur.gones).add(d >= reach ? `market breadth on ${md(d)}` : `market breadth from before ${md(reach)}`); return null; }
+        if (row.closed) continue;
+        const c = row[String(n)];
+        if (!Array.isArray(c) || !(c[1] > 0)) { (d >= reach ? cur.waits : cur.gones).add(`${n}-day breadth on ${md(d)}`); return null; }
+        return { pct: c[0] / c[1] * 100, counted: c[1], day: d };
+      }
+      cur.gones.add('no session in the 10 weekdays before');
+      return null;
+    },
+    /** say why the feature can't be known, for good (the stamped note when it answers null) @param {string} why @returns {void} */
+    unknown(why) { cur.gones.add(why); },
     /** start a feature: its own waits, gones and reads @returns {void} */
     begin() { cur = { waits: new Set(), gones: new Set(), reads: [] }; },
     /** what the feature just computed read and missed */

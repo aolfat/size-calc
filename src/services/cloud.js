@@ -275,7 +275,7 @@ export async function cloudFirstSignIn() {
 /** remove everything synced from this device, so a shared computer doesn't keep the key */
 export function cloudClearDevice() {
   schwabDisconnect();
-  [...CLOUD_KEYS.filter(k => !KEPT_ON_SIGN_OUT.includes(k)), 'tradier_key', ...CLOUD_LOCAL_KEYS].forEach(k => store.del(k));
+  [...CLOUD_KEYS.filter(k => !KEPT_ON_SIGN_OUT.includes(k)), 'tradier_key', 'massive_key', 'journal_breadth', ...CLOUD_LOCAL_KEYS].forEach(k => store.del(k));
   clearTimeout(state.cloudTimer);
   state.cloudPending.clear();
   state.session = null;

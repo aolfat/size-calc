@@ -71,6 +71,12 @@ export function createState() {
     featuresProgress: null, // { done, total, features } while it goes
     featuresLast: null, // the last run here: { user, at, value, unknown, waiting, error, sig (what was still due) }
     featureWaits: {}, // trade key → { feature key → what it waits for }, from the last run
+    featuresRerun: false, // data a run could use landed while it went (market breadth): run again when it's done
+    breadthRows: null, // New York day → market breadth counts (market_breadth), once read; the breadth features read them
+    breadthOwner: '', // whose counts those are
+    breadthError: '', // they couldn't be read (the table not pushed yet): the breadth features wait
+    breadthBusy: false, // a breadth fill is reading Massive
+    breadthProgress: null, // { done, total } days while it reads
     journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
