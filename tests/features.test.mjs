@@ -379,10 +379,23 @@ test('the Journal stamps every trade after it loads, shows the Features tab, and
   // the trade page
   a.run(`openJournalTrade('${KEY}')`);
   await settle();
-  const body = a.elements.get('jtBody').innerHTML;
-  assert.match(body, /At entry/);
-  assert.match(body, /<td title="[^"]*">Volume run rate at entry<\/td><td>\d\.\d\d×<\/td>/);
-  assert.match(body, /Distance from the all-time high<\/td><td>−[\d.]+%<\/td><td class="jf-note">high [\d.]+ on/);
+  const body = () => a.elements.get('jtBody').innerHTML;
+  assert.match(body(), /data-action="setJournalTradeTab" data-arg="features">Features <span class="jt-tab-n">6<\/span>/, 'a Features tab with how many have a value');
+  assert.doesNotMatch(body(), /id="jtFeatures"/, 'the review shows first');
+  assert.match(body(), /class="journal-review|Review/);
+  a.run("setJournalTradeTab('features')");
+  assert.match(body(), /6 features at the entry: 6 with a value\. Tap one for what it measures/);
+  assert.match(body(), /<div class="jf-fam">Market<\/div>/, 'by family');
+  assert.match(body(), /<span class="jf-name">Volume run rate at entry<\/span><span class="jf-val">\d\.\d\d×<\/span>/);
+  assert.match(body(), /<span class="jf-name">Distance from the all-time high<\/span><span class="jf-val">−[\d.]+%<\/span><span class="jf-how">high [\d.]+ on/);
+  assert.match(body(), /<details class="jf-item">[\s\S]*?<p>The stock[^ ]* volume from 9:30[\s\S]*?Reads 5-minute bars: the stock, and the 20 sessions before · version 1\.1 · <span class="jf-key">rvol_at_entry/, 'tap one: what it measures and reads');
+  assert.doesNotMatch(body(), /<details class="jf-item[^"]*" open>/, 'closed until tapped');
+  a.run('toggleTradeFeatures()');
+  assert.match(a.elements.get('jtFeatures').innerHTML, /<details class="jf-item" open>/, 'Expand all opens every one, in place');
+  assert.match(a.elements.get('jtFeatures').innerHTML, />Collapse all</);
+  a.run("setJournalTradeTab('review')");
+  assert.doesNotMatch(body(), /id="jtFeatures"/);
+  assert.match(body(), /Fills/, 'the fills stay under Review');
 });
 
 test('a feature waiting for its data is tried again later, not stamped; a new version restamps', async () => {
@@ -399,7 +412,9 @@ test('a feature waiting for its data is tried again later, not stamped; a new ve
   assert.match(a.state.featureWaits[KEY].spy_vs_daily_ema8, /SPY 5-minute bars on 10\/14/);
   a.run(`openJournalTrade('${KEY}')`);
   await settle();
-  assert.match(a.elements.get('jtBody').innerHTML, /SPY vs daily 8 EMA<\/td><td>—<\/td><td class="jf-note">waiting for SPY 5-minute bars on 10\/14/);
+  a.run("setJournalTradeTab('features')");
+  assert.match(a.elements.get('jtBody').innerHTML, /<details class="jf-item jf-quiet">\s*<summary><span class="jf-name">SPY vs daily 8 EMA<\/span><span class="jf-val">—<\/span><span class="jf-how">waiting for SPY 5-minute bars on 10\/14/);
+  assert.match(a.elements.get('jtBody').innerHTML, /5 with a value, 1 still to come/);
   a.run('closeJournalTrade()');
   // SPY's day saved: the next run waits out the retry gap, then stamps it
   j.supabase.bars.set(`user-1:SPY:${D}`, { user_id: 'user-1', symbol: 'SPY', day: D, bars: pack(j.w.intraday.get('SPY').get(D)) });
@@ -432,6 +447,7 @@ test('before the trade_features table is pushed, the Journal works and says what
   assert.match(a.elements.get('journalSection').innerHTML, /Features can't be saved yet/);
   a.run(`openJournalTrade('${KEY}')`);
   await settle();
+  a.run("setJournalTradeTab('features')");
   assert.match(a.elements.get('jtBody').innerHTML, /Features need the database update: npx supabase db push/);
 });
 
