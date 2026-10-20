@@ -53,6 +53,9 @@ export function createState() {
       period: 2, sort: 'performance', direction: 'desc', limit: 100, snapshots: Object.create(null), quoteMode: true,
       environment: '', key: '', refresh: null, timer: null, auto: store.get('market_auto_refresh') !== '0',
       failures: 0, retryAt: 0, authBlocked: false,
+      history: Object.create(null), // ticker → { day, refs, last }: daily-close references for 1W–1Y, read once a New York day
+      historyJob: null, // { controller, scope, done, total } while a scope's daily history loads
+      historyRetryAt: 0, historyError: '',
     },
     positionsView: false,
     utilsView: false,
