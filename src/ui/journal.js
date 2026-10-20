@@ -29,6 +29,7 @@ import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from '.
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
+import { dayPageHtml, todayLineHtml } from './journal-notebook.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -362,14 +363,17 @@ function fillsView(fills) {
 
 export function setJournalFees(v) { store.set('journal_fees', v === 'after' ? 'after' : 'before'); renderJournal(); }
 export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
+/** a day's notebook page is open, in place of the calendar (it works before any import: a plan needs no trades) */
+const notebookOpen = () => state.journalTab === 'calendar' && !!state.journalNotebookDay;
 export function setJournalTab(tab) {
   state.journalTab = ['fills', 'calendar', 'stats', 'setups', 'books', 'features'].includes(tab) ? tab : 'trades';
+  state.journalNotebookDay = ''; // the Calendar tab goes back to the calendar
   if (state.journalTab !== 'trades') state.journalDay = '';
   renderJournal();
   if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
 }
 /** a day on the calendar: the trades with an exit then */
-export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; renderJournal(); }
+export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; state.journalNotebookDay = ''; renderJournal(); }
 export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
 export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); state.journalReviewPeriod = null; renderJournal(); }
 export function journalThisMonth() { state.journalMonth = thisMonth(); state.journalReviewPeriod = null; renderJournal(); }
@@ -396,6 +400,7 @@ export function openJournalStats(unit, key) {
   state.journalPeriodKey = ok ? periodKey(key, unit) : '';
   state.journalTab = 'stats';
   state.journalDay = '';
+  state.journalNotebookDay = '';
   renderJournal();
 }
 /** the Setups tab: one setup's page, and back to them all */
@@ -457,12 +462,12 @@ export function renderJournal() {
     </div>
     ${!books ? `<p class="hint" id="journalStatus" role="status">${statusLine()}</p>` : ''}
     ${!books ? `<p class="hint" id="journalFeaturesLine" role="status"${featuresLine() ? '' : ' hidden'}>${esc(featuresLine())}</p>` : ''}
-    ${!books ? deckLineHtml(all) : ''}
+    ${!books ? deckLineHtml(all) + todayLineHtml() : ''}
     ${!books && state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${!books && state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
-    ${controls(all, !fills.length)}
-    ${books ? '<div id="modelBooksBody"></div>' : fills.length ? (state.journalTab === 'fills'
+    ${controls(all, !fills.length || notebookOpen())}
+    ${books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))

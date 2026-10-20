@@ -1,9 +1,11 @@
 // Journal review reads and writes (docs/journal-step-3.md): each trade's grades and note (its trade_reviews row, saved
 // apart from your stop and delete so neither overwrites the other), its labels (trade_labels), the market per day
-// (journal_days), your library (library_items), and the week and month reviews (period_reviews). Row-level security
+// (journal_days, which also holds each day's notebook page), your library (library_items, your goals and rules too), and
+// the week and month reviews (period_reviews). Row-level security
 // returns only your rows. Never touches the page.
 import { cleanPeriodRow, PERIOD_COLUMNS } from '../core/journal-week.js';
 import { gradeOf } from '../core/journal-labels.js';
+import { cleanDayRow, DAY_COLUMNS } from '../core/journal-notebook.js';
 import { state } from '../state.js';
 import { JOURNAL_READ_LIMIT } from './journal.js';
 import { supabaseClient } from './supabase.js';
@@ -25,8 +27,8 @@ async function client() {
 
 /**
  * Everything a review reads, in one go: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note,
- * market, reviewed_at }, labels: key → [{ kind, value, set_by, links }], days: 'YYYY-MM-DD' → { market, note },
- * library: rows, weekly: key → when, weeklyError, entryNoteError }.
+ * market, reviewed_at }, labels: key → [{ kind, value, set_by, links }], days: 'YYYY-MM-DD' → its notebook row (cleanDayRow:
+ * market, note, the plan and the review), library: rows, weekly: key → when, weeklyError, entryNoteError, notebookError }.
  */
 export async function loadReviewData() {
   const c = await client();
@@ -45,10 +47,21 @@ export async function loadReviewData() {
   for (const r of lb.data || []) (labels[r.trade_key] ||= []).push({ kind: r.kind, value: r.value, set_by: r.set_by, links: Array.isArray(r.links) ? r.links : [] });
   /** @type {Record<string, any>} */
   const days = {};
-  for (const r of dy.data || []) days[String(r.day).slice(0, 10)] = { market: r.market, note: r.note };
-  const [weekly, entry] = await Promise.all([loadWeekly(c), loadEntryNotes(c)]);
+  for (const r of dy.data || []) days[String(r.day).slice(0, 10)] = cleanDayRow(r);
+  const [weekly, entry, notebook] = await Promise.all([loadWeekly(c), loadEntryNotes(c), loadNotebook(c)]);
   for (const [key, text] of Object.entries(entry.entryNotes)) reviews[key] = { ...(reviews[key] || {}), entry_note: text };
-  return { reviews, labels, days, library: li.data || [], ...weekly, entryNoteError: entry.entryNoteError };
+  for (const r of notebook.rows) { const day = String(r.day).slice(0, 10); days[day] = cleanDayRow({ ...days[day], ...r }); }
+  return { reviews, labels, days, library: li.data || [], ...weekly, entryNoteError: entry.entryNoteError, notebookError: notebook.notebookError };
+}
+
+/**
+ * Each day's notebook page (journal_days' plan and review columns, the notebook's migration): read on their own like the
+ * entry notes, so a database without them keeps the rest of the review working (notebookError says why).
+ */
+async function loadNotebook(c) {
+  const res = await c.from('journal_days').select(['day', ...DAY_COLUMNS].join(',')).limit(5000);
+  if (res?.error) return { rows: [], notebookError: notPushed(res) ? "the database doesn't have the notebook columns yet: npx supabase db push" : res.error.message || 'Supabase refused the read.' };
+  return { rows: res.data || [], notebookError: '' };
 }
 
 /**

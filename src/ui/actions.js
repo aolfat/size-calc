@@ -29,6 +29,7 @@ import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, s
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
+import { addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, moveNotebookItem, notebookItemInput, openJournalDay, openTodayNotebook, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, stepJournalDay, toggleDayFeeling } from './journal-notebook.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, cancelSetupEdit, editSetup, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
@@ -96,6 +97,27 @@ export const actions = {
   openModelImage: el => openModelImage(arg(el)),
   closeModelImage: () => closeModelImage(),
   pickJournalDay: el => pickJournalDay(arg(el)),
+  // ---------- the notebook: a page per trading day ----------
+  openJournalDay: el => openJournalDay(arg(el)),
+  closeJournalDay: () => closeJournalDay(),
+  stepJournalDay: el => stepJournalDay(arg(el)),
+  openTodayNotebook: () => openTodayNotebook(),
+  toggleDayFeeling: el => toggleDayFeeling(arg(el)),
+  setDayEnergy: el => setDayEnergy(arg(el)),
+  setDayPlace: el => setDayPlace(arg(el)),
+  setDayMarket: el => setDayMarket(arg(el)),
+  setDayGrade: el => setDayGrade(arg(el)),
+  setDayRule: el => setDayRule(arg(el), el.dataset.arg2 || ''),
+  setDayFocusKept: el => setDayFocusKept(arg(el)),
+  daySleepSave: el => daySleepSave(/** @type {HTMLInputElement} */ (el).value),
+  dayTextInput: el => dayTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
+  dayTextSave: el => dayTextSave(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
+  editNotebookList: el => editNotebookList(arg(el)),
+  notebookItemInput: el => notebookItemInput(/** @type {HTMLInputElement} */ (el).value),
+  addNotebookItem: el => addNotebookItem(arg(el)),
+  renameNotebookItem: el => renameNotebookItem(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  moveNotebookItem: el => moveNotebookItem(arg(el), Number(el.dataset.arg2)),
+  retireNotebookItem: el => retireNotebookItem(arg(el)),
   clearJournalDay: () => clearJournalDay(),
   shiftJournalMonth: el => shiftJournalMonth(arg(el)),
   journalThisMonth: () => journalThisMonth(),
