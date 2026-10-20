@@ -269,7 +269,7 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const R_BINS = [[-Infinity, -2, 'Under −2R'], [-2, -1.5, '−2 to −1.5R'], [-1.5, -1, '−1.5 to −1R'], [-1, -0.5, '−1 to −0.5R'], [-0.5, 0, '−0.5 to 0R'], [0, 0.5, '0 to 0.5R'], [0.5, 1, '0.5 to 1R'], [1, 2, '1 to 2R'], [2, 3, '2 to 3R'], [3, Infinity, '3R and up']];
 
 /** @param {StatTrade} t */
-const instrumentOf = t => t.legs ? 'Spreads' : t.assetType === 'OPTION' ? 'Options' : 'Stocks';
+const instrumentOf = t => t.legs ? 'Spreads' : t.assetType === 'OPTION' ? 'Options' : t.assetType === 'FUTURE' ? 'Futures' : 'Stocks';
 /** @param {StatTrade} t */
 const sideOf = t => (t.bias || t.direction) === 'neutral' ? 'Neutral' : (t.bias || t.direction) === 'short' ? 'Short' : 'Long';
 /** an option's or a spread's underlying, a stock's own symbol. @param {StatTrade} t */

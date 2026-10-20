@@ -170,6 +170,7 @@ export function createState() {
     schwabCallbackTimer: null, // asks the worker for its callback once the URL stops changing
     historyBusy: false, // the journal spike's Schwab history export is reading
     captureBusy: false, // raw capture is reading Schwab and saving to Supabase
+    tosImport: null, // a thinkorswim statement read for the Import sheet: { name, parsed, zone, matched, checked, busy, error }, until saved or cancelled
     captureError: '', // the last capture's failure, shown on its status line
     schwabProxyEditing: false, // Change pressed: the worker URL box stays open until you leave it
     schwabProxyConfirming: null, // Log in pressed once on a worker URL synced from the account: the second press uses it

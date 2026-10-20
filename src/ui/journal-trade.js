@@ -98,6 +98,11 @@ async function loadCharts(p) {
   if (!t) return;
   const sym = chartSymbols(t), days = holdDays(t);
   p.five = []; p.daily = [];
+  if (t.assetType === 'FUTURE') {
+    p.status5 = p.statusD = "No chart for futures: Tradier, where the charts' bars come from, has no futures.";
+    renderJournalTrade();
+    return;
+  }
   // 5-minute: the saved bars; any the journal hasn't saved yet (and Tradier still has) are saved first
   if (days.length) {
     p.loading5 = true;

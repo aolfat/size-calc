@@ -7,6 +7,7 @@
 // shape are rows in Supabase's trades table, each claiming fills by id: two or more trades on one symbol become one
 // merged trade, option contracts one spread, and a row with one trade keeps it on its own (shapeTrades). Option legs
 // opened in one multi-leg order that no row claims become a spread on their own. The side is the bet on the stock (bias).
+import { futuresSpec } from './futures.js';
 import { expiryCloseMs } from './options.js';
 import { parseSchwabOption, schwabTime } from './positions.js';
 
@@ -15,8 +16,8 @@ const DAY = 86400000;
 /** a stop entered this long before the first fill still counts as the trade's: a trigger's stop is entered with its entry */
 export const STOP_LEAD_MS = 5 * 60000;
 
-/** @param {string} assetType */
-export const multiplierOf = assetType => assetType === 'OPTION' ? 100 : 1;
+/** dollars per point of price: 100 for an option, a future's point value (MNQ $2, ES $50), else 1. @param {string} assetType @param {string} [symbol] */
+export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ? 100 : assetType === 'FUTURE' ? futuresSpec(symbol)?.pointValue ?? 1 : 1;
 
 /**
  * @typedef {{ id: string, orderId: string, account?: string, time: string, symbol: string, label: string, assetType: string,
@@ -54,7 +55,7 @@ const CLOSING_ONLY = { SELL: 'long', SELL_TO_CLOSE: 'long', BUY_TO_COVER: 'short
 function startTrade(fill, account, direction) {
   return {
     key: `${account}|${fill.symbol}|${direction}|${fill.time}`,
-    account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType),
+    account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType, fill.symbol),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
     pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, via: /** @type {Fill['via'] | null} */ (null), lots: /** @type {{ qty: number, price: number }[]} */ ([]),
     realized: /** @type {Realized[]} */ ([]),
@@ -297,7 +298,8 @@ export function withRisk(trade, stops, ownStop = null) {
  * items with a feeType (COMMISSION, SEC_FEE, TAF_FEE, OPT_REG_FEE, ...), charged as a negative cost. An order filled in
  * pieces has a transaction per piece, so they add up. Only orders with a transaction are in the map. An assignment's
  * transaction has no orderId: its fees go to its shares' fills (tx:<activityId>, assignmentFills) and its option's
- * closing fills (tx:<activityId>:option) have none, rather than none yet.
+ * closing fills (tx:<activityId>:option) have none, rather than none yet. A thinkorswim statement fill carries its own fee
+ * (commission plus exchange and NFA fees), added to its order.
  * @param {{ kind: string, data: any }[]} records
  * @returns {Map<string, number>}
  */
@@ -305,6 +307,11 @@ export function feesByOrder(records) {
   /** @type {Map<string, number>} */
   const out = new Map();
   for (const r of records) {
+    if (r.kind === 'statement_fill') {
+      const fee = Number(r.data?.fee), k = String(r.data?.orderId || '');
+      if (k && Number.isFinite(fee)) out.set(k, (out.get(k) || 0) + fee);
+      continue;
+    }
     const tx = r.kind === 'transaction' ? r.data : null;
     if (!tx || tx.type !== 'TRADE') continue;
     const delivered = tx.orderId === undefined || tx.orderId === null;

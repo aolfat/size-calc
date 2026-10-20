@@ -53,3 +53,23 @@ export function calcFutures({ risk, entry, stop, direction, tickSize, tickValue,
   }
   return { ticks, points: ticks * tickSize, riskPerContract, contracts, totalRisk: contracts * riskPerContract };
 }
+
+const MONTHS = { F: 'Jan', G: 'Feb', H: 'Mar', J: 'Apr', K: 'May', M: 'Jun', N: 'Jul', Q: 'Aug', U: 'Sep', V: 'Oct', X: 'Nov', Z: 'Dec' };
+
+/**
+ * A futures contract from Schwab's symbol ('/MNQZ26', '/ESH6', an exchange suffix like ':XCME' allowed): its root, month,
+ * year and dollars per point (tick value ÷ tick size), or null for a root FUTURES_CONTRACTS doesn't know.
+ * @param {string} symbol
+ * @returns {{ root: string, name: string, month: string, year: number, pointValue: number } | null}
+ */
+export function futuresSpec(symbol) {
+  const m = /^\/([A-Z0-9]{1,4})([FGHJKMNQUVXZ])(\d{1,2})(?::[A-Z]+)?$/.exec(String(symbol || '').trim().toUpperCase());
+  const spec = m && FUTURES_CONTRACTS[m[1]];
+  if (!m || !spec) return null;
+  const yy = Number(m[3]);
+  return {
+    root: m[1], name: spec.name, month: MONTHS[/** @type {keyof typeof MONTHS} */ (m[2])],
+    year: m[3].length === 2 ? 2000 + yy : 2020 + yy,
+    pointValue: Math.round(spec.tickValue / spec.tickSize * 1e6) / 1e6,
+  };
+}

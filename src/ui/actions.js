@@ -27,6 +27,7 @@ import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from
 import { saveKey, signIn, signOut } from './settings.js';
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
+import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, toggleJournalLog } from './journal-trade.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
@@ -70,6 +71,11 @@ export const actions = {
   schwabProxyChanged: () => schwabProxyChanged(),
   downloadSchwabHistory: () => downloadSchwabHistory(),
   journalImport: () => journalImport(),
+  pickTosStatement: () => pickTosStatement(),
+  tosStatementChosen: el => tosStatementChosen(/** @type {HTMLInputElement} */ (el)),
+  setTosZone: el => setTosZone(/** @type {HTMLSelectElement} */ (el)),
+  saveTosStatement: () => saveTosStatement(),
+  clearTosStatement: () => clearTosStatement(),
   openJournalImport: () => openJournalImport(),
   openJournalExport: () => openJournalExport(),
   setJournalTab: el => setJournalTab(arg(el)),

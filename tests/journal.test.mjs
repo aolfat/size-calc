@@ -170,7 +170,7 @@ test('filters: side and symbol narrow the trades, and Fills shows the raw fills'
   assert.match(elements.get('journalSection').innerHTML, /4 fills\. Fills are read from your saved Schwab orders/);
 });
 
-test('Import lists the sources: Schwab with its last import and Import now, file upload coming', async () => {
+test('Import lists the sources: Schwab with its last import and Import now, thinkorswim statements, more files coming', async () => {
   const supabase = fakeSupabase();
   const storage = connected();
   storage.set('schwab_capture', JSON.stringify({ at: Date.now(), user: 'user-1', account: '6789', orders: 46, transactions: 31 }));
@@ -182,7 +182,9 @@ test('Import lists the sources: Schwab with its last import and Import now, file
   assert.match(body, /Schwab <span class="sheet-status">.*Connected · ••6789/);
   assert.match(body, /Last import .*: 46 orders, 31 trades/);
   assert.match(body, /data-action="journalImport"[^>]*>Import now</);
-  assert.match(body, /File upload <span class="sheet-status">Coming soon/);
+  assert.match(body, /thinkorswim statement <span class="sheet-status">futures/);
+  assert.match(body, /data-action="pickTosStatement"/);
+  assert.match(body, /More files <span class="sheet-status">Coming soon/);
 
   const off = await app({ supabase: fakeSupabase([]), session: SESSION });
   off.run("setView('journal'); openJournalImport()");

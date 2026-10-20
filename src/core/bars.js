@@ -74,8 +74,9 @@ export function lastDoneDay(now) {
   return NY_CLOCK.format(new Date(now)) >= DAY_DONE ? today : nyDay(Date.parse(today + 'T12:00:00Z') - DAY_MS);
 }
 
-/** the symbols a trade's charts need, in Tradier's form: the stock; an option and its underlying. @param {{ symbol: string, assetType: string }} trade */
+/** the symbols a trade's charts need, in Tradier's form: the stock; an option and its underlying; none for a future (Tradier has none). @param {{ symbol: string, assetType: string }} trade */
 export function tradeBarSymbols(trade) {
+  if (trade.assetType === 'FUTURE') return [];
   const o = trade.assetType === 'OPTION' ? parseSchwabOption(trade.symbol) : null;
   return o ? [trade.symbol.replace(/\s+/g, ''), o.root] : [trade.symbol];
 }

@@ -427,6 +427,8 @@ span.journal-pick { cursor: default; }
 .jtc-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .jtc-tags .journal-setup { margin: 0; padding: 2px 9px; font-size: 12px; }
 .jtc-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .65fr) minmax(0, 1.35fr); gap: 8px; margin: 0; }
+/* prices too long for four across (futures at 29,000, stocks over $1,000): two by two */
+.jtc-stats-wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: 10px; }
 .jtc-stats dt { font-size: 12.5px; font-weight: 500; color: var(--text2); }
 .jtc-stats dd { margin: 3px 0 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jtc-stats dd .pos-sub { font-size: 11px; font-weight: 400; white-space: normal; }
@@ -441,3 +443,7 @@ span.journal-pick { cursor: default; }
   .journal-card { background: none; border: 0; box-shadow: none; padding: 4px 2px 0; }
   .journal-card > .positions-head .section-title { display: none; } /* the screen title already says Journal */
 }
+
+/* the Import sheet's zone picker for a thinkorswim statement */
+.tos-zone { padding: 6px 8px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); }
+.tos-zone option { background: var(--bg3); }
