@@ -539,6 +539,9 @@ test('premarket and last-bar volume against their usual', () => {
   near(prev.value, bars.get(D).find(b => b.time === '09:55').volume / bars.get(weekdaysBefore(D, 1)[0]).find(b => b.time === '09:55').volume, 'against that bar on the days before');
   assert.equal(result(byKey('dollar_volume_20'), stock('10:02'), data).state, 'value');
   assert.equal(featureValueWords(byKey('dollar_volume_20'), 108950000), '$109.0M');
+  assert.equal(featureValueWords(byKey('ext_ema21_adr'), 1.3801), '1.38', 'plain numbers: at most two decimals');
+  assert.equal(featureValueWords(byKey('breadth_sma20'), 62.7), '62.7');
+  assert.equal(featureValueWords(byKey('minutes_from_open'), -80), '−80');
   assert.equal(result(byKey('up_down_volume_50'), stock('10:02'), data).note, 'no down days in the 50 sessions', 'the fixture only rises');
 });
 

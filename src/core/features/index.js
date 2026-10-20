@@ -185,7 +185,7 @@ export function featureValueWords(f, value) {
     const a = Math.abs(value), sign = value < 0 ? '−' : '';
     return a >= 1e9 ? `${sign}$${(a / 1e9).toFixed(1)}B` : a >= 1e6 ? `${sign}$${(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${sign}$${(a / 1e3).toFixed(0)}k` : `${sign}$${a.toFixed(0)}`;
   }
-  return String(value);
+  return String(Number(value.toFixed(2))).replace('-', '−'); // at most two decimals: 1.38, 62.7, 32
 }
 
 /** what a feature reads, in words: '5-minute bars: SPY · daily bars: SPY, 60 sessions' @param {Feature} f */
