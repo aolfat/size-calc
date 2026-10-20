@@ -19,7 +19,7 @@ import { mq, PHONE_MQ } from '../lib/media.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
-import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
+import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { loadJournalReview, reviewedMark, savedForWeekly, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
@@ -492,10 +492,6 @@ export function renderImportSheet() {
       <p class="hint">Log in to Schwab to import your orders and trades.</p>
       <div class="row" style="align-items:center;gap:8px;"><button class="btn" data-action="openSheet" data-arg="settings">Connect Schwab</button></div>`;
   el.innerHTML = `<div class="sheet-section">${schwab}</div>
-    <div class="sheet-section">
-      <div class="sheet-label">5-minute bars <span class="sheet-status">for your trades and the market</span></div>
-      <p class="hint" id="journalBarsStatus" role="status">${barsLine()}</p>
-    </div>
     <div class="sheet-section journal-soon">
       <div class="sheet-label">File upload <span class="sheet-status">Coming soon</span></div>
       <p class="hint">For history older than Schwab's API reaches (Schwab's website export) and for Robinhood's account activity CSV. You'll see what will be added before anything is saved.</p>
@@ -960,6 +956,3 @@ export async function separateTrade(key) {
   }
   return ok;
 }
-
-// a bars run ended: the Import sheet's line changes
-onBarsChange(() => { if (state.openSheetName === 'journalImport') renderImportSheet(); });

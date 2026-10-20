@@ -1,5 +1,5 @@
 // Journal bars: saves the 5-minute bars your trades need, and the market basket's, before Tradier's ~40 days run out
-// (services/bars.js), after an import lands and when the Journal opens, at most hourly per user; and the line in the Import sheet that says how it's going.
+// (services/bars.js), after an import lands and when the Journal opens, at most hourly per user, quietly (nothing in the Import sheet: by request).
 // What's saved follows the trade features' needs (core/features: featureBarNeeds): a feature naming a symbol, or more
 // lookback days, makes it saved from then on, on top of the market basket.
 import { store } from '../lib/store.js';
@@ -25,10 +25,6 @@ export function barsToKeep() {
   return { market: [...new Set([...MARKET_BASKET, ...needs.market])], lookback: Math.max(LOOKBACK_DAYS, needs.lookback) };
 }
 
-const listeners = [];
-/** tell me when a run ends (the Import sheet redraws) */
-export function onBarsChange(fn) { listeners.push(fn); }
-
 /**
  * Save the bars when it's due: signed in, a Tradier key in place, not run for this user within BARS_EVERY. The kept
  * records come from the Journal when it has them, else they're read.
@@ -51,20 +47,5 @@ export async function maybeSaveBars({ records, force = false } = {}) {
     state.barsBusy = false;
   }
   store.set('journal_bars', JSON.stringify(result));
-  listeners.forEach(fn => fn(result));
   return result;
-}
-
-/** the Import sheet's line about bars */
-export function barsLine() {
-  if (!tradierKeyHere()) return "Add a Tradier key in Settings and the journal saves 5-minute bars for your trades and the market (SPY, QQQ, the sector ETFs). Tradier only keeps about 40 days of them.";
-  if (state.barsBusy) return 'Saving 5-minute bars…';
-  const last = lastBars();
-  if (!last || last.user !== state.session?.user?.id) return '5-minute bars for your trades and the market save after the next import. Tradier only keeps about 40 days of them.';
-  const [y, m, d] = (last.through || '').split('-');
-  const parts = [last.through ? `5-minute bars saved through ${+m}/${+d}/${y.slice(2)}` : 'No 5-minute bars needed yet'];
-  if (last.saved) parts.push(`${last.saved} new day${last.saved === 1 ? '' : 's'} last time`);
-  if (last.failed?.length) parts.push(`Tradier had none for ${last.failed.join(', ')}`);
-  if (last.error) parts.push(`last try failed: ${last.error}`);
-  return parts.join(' · ') + '.';
 }

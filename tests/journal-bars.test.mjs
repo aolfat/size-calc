@@ -122,7 +122,7 @@ test('a symbol Tradier refuses is skipped and named, the rest still save', async
   assert.ok(![...supabase.bars.keys()].some(k => k.includes('C00245000')), 'nothing kept for it, so the next run asks again');
 });
 
-test('when it runs: after the journal loads, with a key, at most hourly; and the Import sheet says how it went', async () => {
+test('when it runs: after the journal loads, with a key, at most hourly; quietly, nothing in the Import sheet', async () => {
   const day = 864e5, iso = t => new Date(t).toISOString();
   const opened = Date.now() - 6 * day, closed = Date.now() - 2 * day;
   const order = (id, instruction, time, price) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: iso(time), data: {
@@ -134,20 +134,17 @@ test('when it runs: after the journal loads, with a key, at most hourly; and the
   const net = tradier();
   const { run, elements, storage } = await app({ fetch: net.fetch, supabase, session: SESSION });
   assert.equal(await run('maybeSaveBars()'), null, 'no Tradier key: nothing to fetch with');
-  assert.match(run('barsLine()'), /Add a Tradier key in Settings/);
   elements.get('apiKey').value = 'test-key';
   run("setView('journal')");
   await run('loadJournal()');
   for (let i = 0; i < 30; i++) await new Promise(r => setImmediate(r));
   assert.ok(net.calls.some(c => c.symbol === 'MSFT'), 'opening the journal saved its trades\' bars');
   assert.ok(['SPY', 'QQQ', 'XLRE'].every(sym => net.calls.some(c => c.symbol === sym)), "and the market basket's");
-  assert.ok(['SPY', 'QQQ', 'XLRE'].every(sym => net.calls.some(c => c.symbol === sym)), 'and the market basket\'s');
   assert.ok([...supabase.bars.keys()].some(k => k.startsWith('user-1:MSFT:')));
-  assert.match(run('barsLine()'), /^5-minute bars saved through \d+\/\d+\/\d{2} · \d+ new days? last time\.$/);
   assert.ok(JSON.parse(storage.get('journal_bars')).user === 'user-1');
   const calls = net.calls.length;
   assert.equal(await run('maybeSaveBars()'), null, 'within the hour: skipped');
   assert.equal(net.calls.length, calls);
   run('openJournalImport()');
-  assert.match(elements.get('journalImportBody').innerHTML, /id="journalBarsStatus"[^>]*>5-minute bars saved through/);
+  assert.doesNotMatch(elements.get('journalImportBody').innerHTML, /5-minute bars/);
 });
