@@ -27,7 +27,8 @@ import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from
 import { saveKey, signIn, signOut } from './settings.js';
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
-import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, toggleJournalLog } from './journal-trade.js';
+import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
+import { toggleTradeFeatures } from './journal-features.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, cancelSetupEdit, editSetup, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
@@ -179,6 +180,8 @@ export const actions = {
   setJournalInterval: el => setJournalInterval(num(el)),
   setJournalRange: el => setJournalRange(el.dataset.arg),
   setJournalChartKind: el => setJournalChartKind(el.dataset.arg),
+  setJournalTradeTab: el => setJournalTradeTab(el.dataset.arg),
+  toggleTradeFeatures: () => toggleTradeFeatures(),
   toggleJournalLog: el => toggleJournalLog(el.dataset.arg),
   deletePicked: () => deletePicked(),
   undoDeleteTrades: () => undoDeleteTrades(),
