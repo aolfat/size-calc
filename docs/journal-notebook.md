@@ -1,0 +1,89 @@
+# Journal notebook: a page per trading day
+
+Status: slice 1 built. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s trade and week reviews.
+
+## Goal
+
+A notebook for each trading day: write a plan before the open, then a short review after the close. The trade review asks about one trade and the week review about the week. The notebook asks about the day: how you came in, what you planned, and whether you stuck to it.
+
+## Principles
+
+1. **Quick, or it won't happen.** Each day asks only for a few things. Everything else is optional and stays out of the way until you use it.
+2. **Write once what doesn't change.** Goals and rules are standing lists. You set them up once and they show every morning.
+3. **The plan sits above the review.** You review the day with what you planned in front of you, like the entry note above the exit note on a trade.
+4. **The app adds up the numbers, you write the words.** The day's trades and P&L come from Schwab. Nothing asks you to type a number the app already has.
+
+## Where it lives
+
+- **The calendar is the index.** Every weekday cell opens that day's page: a day with trades, a quiet day, today before the open, tomorrow (to write Monday's plan on Sunday). It used to narrow the Trades list to the day; that's the page's "The day's trades" link now.
+- **The day page** replaces the calendar inside the Calendar tab: ← Calendar goes back, ‹ › step one weekday. Tapping the Calendar tab goes back too.
+- **Today's line** under the Journal's status opens today's page (Monday's on a weekend): "Today: write your plan" until it's written, then "Review the day" after 4pm New York, then "Day reviewed".
+- **Calendar marks:** ✎ plan written, ✓ day reviewed, and an amber dot once a day with trades is over and isn't reviewed.
+
+## The page
+
+Three sections, always in this order.
+
+### Premarket
+
+| Part | What | Required |
+|---|---|---|
+| Last focus | The focus you wrote in your last review (up to a week back), at the top | Shown only when there is one |
+| Mental check-in | How you feel (Calm, Focused, Confident, Anxious, Frustrated, Impatient, FOMO; any number), sleep and energy (Rested, OK, Tired), hours slept, where you're trading (At my desk, On my phone) | Feeling, energy and where; hours are optional |
+| Goals | Your standing goals | Nothing to fill in |
+| Rules | Your standing rules | Nothing to fill in; they're checked after the close |
+| Market | The day's market chips, the same `journal_days.market` the trade review sets, so every trade that day inherits it | Yes |
+| Focus list | Tickers with a line each (slice 2) | |
+| Plan | Free text: catalysts, levels, limits for the day | Yes |
+
+**Plan written** = a feeling, energy, where, the market, and the plan. `planned_at` is stamped while it's true.
+
+### The day
+
+Worked out from the trades, nothing to type: the day's realized P&L, trades with an exit, win rate, trades opened, and each trade that opened or had an exit that day (its P&L that day, R, reviewed or not), each opening its trade page. Links: The day's trades (the Trades list narrowed to the day) and The day's stats. No filters apply: it's the whole day.
+
+### Post-market
+
+| Part | What | Required |
+|---|---|---|
+| Day grade | A, B, C, D, F (the trade's setup grade scale) | Yes |
+| Your rules | Kept or Broke for each rule that applies to the day | Every one |
+| Kept your last focus? | Yes, partly, no | Shown only when there's a last focus; never required |
+| What went well | Note | This or What to work on |
+| What to work on | Note | This or What went well |
+| More notes | Anything else about the day (`journal_days.note`, the day note the first review migration made and nothing wrote) | No |
+| From today's trades | The exit notes on the day's trades, to read; a trade without one links to its review | Nothing to fill in |
+| Tomorrow's focus | One line, shown at the top of the next plan | No |
+
+**Day reviewed** = the grade, every rule answered, and one of the two guided notes. `reviewed_at` is stamped while it's true.
+
+**Which rules apply to a day:** the rules you had then (made on or before it, `settings.since`) that aren't retired, plus any rule answered that day even if it's retired since. A rule you add today doesn't ask about last week.
+
+## Goals and rules
+
+- Rows in `library_items`, kinds `goal` and `rule`, so each has a stable id (`mine:<uuid>`) and rewording one keeps its history. `settings` holds `{ order, since }`: the list order and the New York day it was made.
+- Edit on each list opens it in place: reword, move up or down, Retire (hidden: it leaves the list and the daily check, its answers stay), and + Add. Up to 20 of each, 200 characters each.
+- They start empty: they're yours to write.
+- **Rules can carry a number** (slice 2), for the app to check after the close and pre-fill with its reason, which you confirm or change: a daily max loss as a % of the account (`{ check: 'max_loss_pct', value: 5 }`), oversizing against your max loss per trade, and a loss past −1R (didn't follow the stop).
+
+## Data
+
+Migration `20261031000000_day_notebook.sql`:
+
+- `journal_days` gains `feelings` (jsonb array of keys), `energy` (rested | ok | tired), `sleep_hours` (0 to 24), `place` (desk | phone), `plan`, `focus_list` (jsonb array, for slice 2), `grade` (A to F), `rules` (jsonb object: rule key → kept | broke), `went_well`, `work_on`, `focus_next`, `focus_kept` (yes | partly | no), `planned_at`, `reviewed_at`. `note` stays the day's free note.
+- `library_items` accepts kinds `goal` and `rule`, and names up to 200 characters (goals run longer than a chip's name; the app keeps other items at 80).
+
+The new columns are read on their own query, so before the push the rest of the review works and the notebook says it needs `npx supabase db push`.
+
+**Saving:** like the trade and week reviews. Each choice upserts only its own columns on (user, day), shown at once, put back with a toast if Supabase refuses. Text is a draft while you type and saves when the box loses focus. `planned_at` and `reviewed_at` go with the save that flips them.
+
+## Slices
+
+1. **The day page (built):** the calendar opens it, today's line, the marks; premarket (last focus, check-in, goals, rules, market, plan); the day's numbers and trades; post-market (grade, rules, kept the focus, the three notes, the day's exit notes, tomorrow's focus); goals and rules with their editor; the migration.
+2. **Focus list and the app's checks:** tickers with a line each, trades tagged on plan or off plan (their underlying was on the list), P&L on plan against off it; the three rule checks pre-filled with their reason; numbers beside goals the app can measure (days you kept every rule, your streak of plans written).
+3. **Stats and the week review:** results by feeling, energy and where you traded; each rule's kept rate and P&L on days kept against broken; the week review's Preparedness (plans written), Emotional control (the check-ins), Execution consistency (rules kept), and the week's What to work on notes together. Day screenshots (trade_shots keyed `day:YYYY-MM-DD`), and "Review the day" after the review deck's last card.
+
+## Open questions
+
+- Whether a focus you keep writing should become a rule (an "Add to my rules" button on it).
+- NYSE holidays: the page steps through every weekday, holidays included, like the calendar.
