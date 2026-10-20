@@ -8,6 +8,8 @@ import { fillsFrom } from '../core/journal-records.js';
 import { FEATURE_FAMILIES, FEATURES, featureCoverage, featureDataNeeds, featureDue, featureNeedsWords, featuresDue, featureValueWords, featureVersion, stampableTrade, stampTrade } from '../core/features/index.js';
 import { fetchDailyBars, loadFeatureStamps, loadKeptBars, saveFeatureStamps } from '../services/features.js';
 import { tradierKeyHere } from '../services/bars.js';
+import { massiveKeyHere } from '../services/massive.js';
+import { breadthLine, loadBreadthState } from './journal-breadth.js';
 import { state } from '../state.js';
 import { journalTradeList, renderJournal } from './journal.js';
 
@@ -46,6 +48,7 @@ const dueSig = due => due.map(d => `${d.trade.key}:${d.features.map(f => f.key).
  */
 export async function maybeStampFeatures({ force = false } = {}) {
   const user = state.session?.user?.id;
+  if (state.featuresBusy && force) state.featuresRerun = true; // new data landed mid-run: go again once it's done
   if (!user || state.featuresBusy || !state.journalRecords) return null;
   if (state.featureStamps === null || state.featuresOwner !== user) await loadFeatureRows();
   if (state.featuresError || !state.featureStamps) { syncFeatures(); return null; }
@@ -74,7 +77,8 @@ export async function maybeStampFeatures({ force = false } = {}) {
         try { daily.set(symbol, { from, bars: await fetchDailyBars(symbol, from, nyDay(now)) }); }
         catch(e) { daily.set(symbol, { from: '', bars: null }); } // not again this run; they wait
       }
-      const data = { intraday, daily: new Map([...daily].map(([s, x]) => [s, x.bars])) };
+      const breadth = needs.breadth ? await loadBreadthState() : null; // unread: the breadth features wait
+      const data = { intraday, daily: new Map([...daily].map(([s, x]) => [s, x.bars])), breadth };
       const rows = [];
       for (const { trade, features } of chunk) {
         const r = stampTrade(trade, state.featureStamps[trade.key], features, data, { now, entryPrice: firstFillPrice(trade, fillsById) });
@@ -98,6 +102,7 @@ export async function maybeStampFeatures({ force = false } = {}) {
     state.featuresProgress = null;
     syncFeatures();
   }
+  if (state.featuresRerun) { state.featuresRerun = false; return maybeStampFeatures({ force: true }); }
   return state.featuresLast;
 }
 
@@ -107,7 +112,7 @@ export function featuresLine() {
   if (state.featuresBusy && p) return `Stamping ${p.features} feature${p.features === 1 ? '' : 's'} on ${p.total} trade${p.total === 1 ? '' : 's'}…${p.done ? ` ${p.done} of ${p.total}` : ''}`;
   const last = state.featuresLast;
   if (last?.error && last.user === state.session?.user?.id) return `Features: the last stamping failed (${last.error}). It tries again on the next load.`;
-  return '';
+  return breadthLine();
 }
 
 /** a run moved on: the line, the Features tab, and the trade page's section, each redrawn in place */
@@ -142,6 +147,9 @@ export function featuresView(trades) {
     ? `<p class="hint" role="status" style="color:var(--amber)">Features can't be saved yet: ${esc(state.featuresError)}. The rest of the Journal works.</p>`
     : state.featuresBusy ? `<p class="hint" role="status">${esc(featuresLine())}</p>`
     : last && !last.error ? `<p class="hint" role="status">Last stamped ${esc(when(last.at))}: ${last.value} value${last.value === 1 ? '' : 's'}, ${last.unknown} unknown, ${last.waiting} waiting for data.</p>` : '';
+  const breadth = state.breadthBusy ? `<p class="hint" role="status">${esc(breadthLine())}</p>`
+    : state.breadthError ? `<p class="hint" role="status" style="color:var(--amber)">Market breadth can't be read: ${esc(state.breadthError)}. The other features work.</p>`
+    : !massiveKeyHere() ? '<p class="hint">Market breadth needs a Massive API key (free) in Settings: the app counts it from every US stock\'s daily close. Without one those features wait.</p>' : '';
   const counted = trades.filter(stampableTrade);
   // one table, a row heading each family, so the columns line up across them
   const groups = FEATURE_FAMILIES.map(fam => {
@@ -158,8 +166,8 @@ export function featuresView(trades) {
       <colgroup><col class="jf-c-name"><col class="jf-c-needs"><col class="jf-c-v"><col class="jf-c-done"></colgroup>
       <thead><tr><th scope="col">Feature</th><th scope="col">Reads</th><th scope="col">Version</th><th scope="col">Stamped</th></tr></thead>
       <tbody>${groups}</tbody></table></div>`;
-  return `<p class="hint">What the data says about each trade at its entry, worked out by the app from the saved bars and the daily history, never typed. A new or changed feature stamps itself onto every trade. ${counted.length} trade${counted.length === 1 ? '' : 's'} get features (not deleted ones, nor closes from before your history).</p>
-    ${status}${table}
+  return `<p class="hint">What the data says about each trade at its entry (and a few at its exit), worked out by the app from the saved bars and the daily history, never typed. A new or changed feature stamps itself onto every trade. ${counted.length} trade${counted.length === 1 ? '' : 's'} get features (not deleted ones, nor closes from before your history).</p>
+    ${status}${breadth}${table}
     <details class="hint-details"><summary>How features are stamped</summary><p class="hint">Each feature sees the data up to its moment and nothing after: a 5-minute bar counts once it has ended, the bar your entry falls in only by its open. Unknown means the data is gone (Tradier keeps about 40 days of 5-minute bars, so older trades miss the intraday ones) and it isn't tried again; waiting means the data can still come (today's bars save after 8pm ET, daily bars need the Tradier key) and it's tried on the next load. Numbers are kept as numbers, not ranges, so how they're grouped can change later without restamping.</p></details>`;
 }
 
@@ -195,7 +203,7 @@ export function tradeFeaturesHtml(t) {
     return list.length ? `<div class="jf-fam">${esc(fam.name)}</div>${list.map(item).join('')}` : '';
   }).join('');
   const parts = [`${value} with a value`, unknown ? `${unknown} unknown` : '', pending ? `${pending} still to come` : ''].filter(Boolean);
-  return `<div class="jf-head"><p class="hint">${FEATURES.length} features at the entry: ${parts.join(', ')}. Tap one for what it measures.</p>
+  return `<div class="jf-head"><p class="hint">${FEATURES.length} features: ${parts.join(', ')}. Tap one for what it measures.</p>
       <button class="pos-link" data-action="toggleTradeFeatures">${open ? 'Collapse all' : 'Expand all'}</button></div>
     <div class="jf-list">${groups}</div>`;
 }

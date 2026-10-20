@@ -4,14 +4,15 @@
 
 /**
  * @typedef {{ key: string, name: string, version: number }} FeatureFamily
- * @typedef {{ intraday?: string[], lookback?: number, daily?: string[], dailySessions?: number, session?: 'regular' | 'all' }} FeatureNeeds
+ * @typedef {{ intraday?: string[], lookback?: number, daily?: string[], dailySessions?: number, session?: 'regular' | 'all', breadth?: boolean }} FeatureNeeds
  *   intraday: symbols whose 5-minute bars on the moment's day it reads ('$self', '$underlying' or a name); lookback: the
  *   weekdays before that day it compares against (the underlying's); daily: symbols whose daily bars it reads, the last
- *   dailySessions before the day (absent = back to the listing); session: the intraday hours it reads.
+ *   dailySessions before the day (absent = back to the listing); session: the intraday hours it reads; breadth: it
+ *   reads the market's breadth (market_breadth). None at all = it reads only the trade itself (its time, its contract).
  * @typedef {number | string | null | { value: number | string | null, note?: string }} FeatureOutput
  *   a number, a word from `values`, or null (unknown); with a note to say how it was found or why it isn't known
  * @typedef {{ key: string, name: string, desc: string, version: number, at: 'entry' | 'exit', needs: FeatureNeeds,
- *   unit?: '%' | 'x' | '', values?: [string, string][], bins?: number[], family: FeatureFamily,
+ *   unit?: '%' | 'x' | '$' | '', values?: [string, string][], bins?: number[], family: FeatureFamily,
  *   compute: (ctx: import('./context.js').FeatureContext) => FeatureOutput }} Feature
  *   key: permanent, never reused. name and desc: free to change (nothing restamps). version: bump when what it measures
  *   changes. bins: where Stats will cut it later (part 3); changing them never restamps.

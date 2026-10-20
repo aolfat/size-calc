@@ -1,6 +1,6 @@
 # Trade features
 
-Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3 (the Conditions filter, the Stats explorer, features as list columns) next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
+Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built, with the full first catalog (72 features in 8 families) and market breadth from Massive. Part 3 (the Conditions filter, the Stats explorer, features as list columns) next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
 
 ## Goal
 
@@ -23,7 +23,7 @@ Labels (step 3) are what you say about a trade. Features are what the data says,
 - **The app's form:** symbols are the OCC symbol without its padding (`AAPL261218C00245000`, a stock as itself), days are New York days, a bar is stamped with its start in New York time ('09:30' = 9:30 to 9:35), rows are `[time, open, high, low, close, volume]`, extended hours included (04:00 to 20:00). A provider whose symbols or stamps differ translates them in its own entry.
 - **Source:** `bars_5m.source` (migration `20261029000000_bars_source.sql`, default `tradier`). Providers differ a little (volume from every exchange or one, extended-hours prints), so a feature can tell what it compares, and one provider's days can be fetched again. Before the push, rows save without it.
 - **Market basket** (`MARKET_BASKET` in `core/bars.js`): SPY, QQQ, IWM, DIA and the 11 sector SPDRs, saved every weekday whether you traded or not, so market features work for every trade. VIX is left out until it's checked that Tradier serves it intraday.
-- **Lookback** (`LOOKBACK_DAYS`, 20): the weekdays before each trade's open are saved for its stock (an option's underlying, not the contract), for comparisons like the volume run rate.
+- **Lookback** (`LOOKBACK_DAYS`, 20, raised by any feature that compares more: the run rate's curve takes 50): the weekdays before each trade's open are saved for its stock (an option's underlying, not the contract), for comparisons like the volume run rate.
 - **Window:** all of it within the last 35 days (`BARS_KEEP_DAYS`), finished days only. The first run fills in everything Tradier still has. It runs when the Journal opens and after an import, at most hourly, with a Tradier key in Settings; open the Journal at least every few weeks or days fall out of Tradier's window for good.
 - **Size:** about 9 KB a saved day. The basket is about 15 × 252 days a year, plus your symbols. Watch it against Supabase's free 500 MB; packing bars tighter is the fix if it grows.
 
@@ -68,8 +68,8 @@ feature({
 
 ### As built
 
-- **Files:** `src/core/features/` (pure, `// @ts-check`): `define.js` (`family`, `feature`), `context.js` (the cut and the shared helpers), one file per family (`market.js`, `volume.js`, `levels.js`), `index.js` (FEATURES, due, data needs, compute, stamp, coverage, words). `services/features.js` reads and writes `trade_features` and reads the kept bars; `ui/journal-features.js` runs the stamper and draws the Journal's Features tab and the trade page's Features tab.
-- **A feature** also has `desc` (what it measures, for the Features tab). `needs` is `{ intraday, lookback, daily, dailySessions, session }`; the contract test fails a feature that reads anything it doesn't declare, so `needs` stays true and the saver and the stamper can trust it.
+- **Files:** `src/core/features/` (pure, `// @ts-check`): `define.js` (`family`, `feature`), `context.js` (the cut and the shared helpers), `prices.js` (the moment's price in the daily history's terms, a median, words), one file per family (`market.js`, `breadth.js`, `volume.js`, `trend.js`, `levels.js`, `strength.js`, `contract.js`, `timing.js`), `index.js` (FEATURES, due, data needs, compute, stamp, coverage, words). `services/features.js` reads and writes `trade_features` and reads the kept bars; `ui/journal-features.js` runs the stamper and draws the Journal's Features tab and the trade page's Features tab.
+- **A feature** also has `desc` (what it measures, for the Features tab). `needs` is `{ intraday, lookback, daily, dailySessions, session, breadth }` (none at all = it reads only the trade itself: its time, its contract); the contract test fails a feature that reads anything it doesn't declare, so `needs` stays true and the saver and the stamper can trust it.
 - **The cut:** a 5-minute bar counts once it has ended; the bar the moment falls in shows only its open. Daily bars are the days before the moment's day, plus that day's open from 9:30. The trade itself shows only its symbol, type and open time (and the close, for an exit feature): no exit, P&L or R at the entry.
 - **Stamps:** `trade_features` (migration `20261030000000_trade_features.sql`), `stamps` = `{ key: { v: '<family version>.<feature version>', value, note } }`. Unknown is `value: null` with the why in `note`. Waiting isn't stored: the last run's reasons are kept on the device for the trade page.
 - **Which trades:** every one but deleted trades and closes from before your history (no entry). A restored trade is stamped on the next load. Rows under an old key (a merge, a separate) are left, not deleted: a key can vanish for a moment while records load.
@@ -79,10 +79,40 @@ feature({
 
 ### Worked examples
 
-- **Volume run rate at entry:** volume from 9:30 to the entry bar over the average volume to that same time across the prior 20 sessions (volume is U-shaped, so a straight 'so far ÷ fraction of the day' makes every early entry look hot). Fills in for trades whose lookback days were saved.
+- **Relative volume by time of day** (`rvol_at_entry`, first named "Volume run rate at entry"): volume from 9:30 to the entry bar over the average volume to that same time across the prior 20 sessions (volume is U-shaped, so a straight 'so far ÷ fraction of the day' makes every early entry look hot). Fills in for trades whose lookback days were saved.
+- **Volume run rate** (`run_rate_20`, `run_rate_50`, `run_rate_20_at_exit`), the owner's TradingView indicator: projected full-day volume ÷ the median daily volume of the N sessions before, stamped as the % over it (+34 = 1.34×).
+  - `projected = PM + prints_so_far ÷ U(now)`. PM is the day's premarket (4:00 to 9:30), over by the open, so added as it is. prints_so_far is the regular-hours volume in the 5-minute bars ended by the moment.
+  - U(now) is the stock's own curve: over the 50 sessions before, the share of each day's whole volume less its premarket that had printed in regular-hours bars by the same 5-minute mark, averaged. The denominator is the daily total (daily bars), not the sum of the 5-minute bars: those miss the closing auction, after-hours and late prints, so U at the close is about 0.65 to 0.80, and dividing by it projects the whole day, which is what the median measures. No interpolation: the cut is a 5-minute mark, and U is read at the same mark.
+  - Guardrails: none before 9:35 (no ended bar) or before the open; '~ first 15 minutes, noisy' in the note before 9:45; half days (`earlyCloseDay`: July 3 and December 24 Monday to Thursday, the day after Thanksgiving) are left out of the curve and get none themselves; at least 15 curve sessions, noted 'curve from 23 sessions'.
+  - The curve wants 50 sessions of 5-minute bars, and Tradier serves about 40 days: a stock's bars are kept around your trades from now on (lookback 50), so older trades' curves are shorter, and below 15 sessions it's unknown.
 - **Distance from the all-time high:** entry over the highest prior high (every prior day, plus today's before the entry), as a %. Needs daily bars back to the listing, which providers serve any time, so it stamps for the whole history at once. Only per symbol `{ high, date, through }` has to be kept. Needs split-adjusted prices (to be checked at Tradier; after a split the symbol's history is fetched again), and says 'high since 1998' when the provider's history starts after the listing.
 - **SPY / QQQ over the daily 8 EMA at entry:** SPY's price at the entry bar against the daily 8 EMA updated with that price, so it never sees the day's close. Without SPY's 5-minute bars that day, the prior close against the prior EMA, flagged as such.
 - **Entry over VWAP:** the underlying at the fill time against its session VWAP (for an option, the underlying's, not the option's).
+
+## The catalog (built)
+
+72 features in 8 families. "Moved on by" = the daily average updated with the moment's price as one more close, so it never sees the day's close. An option reads its underlying, a stock entry uses your fill.
+
+- **Market** (19): SPY / QQQ / IWM vs daily 8 and 21 EMA, 50 and 200 SMA; SPY / QQQ / IWM on the day; SPY / QQQ vs VWAP; how many of the 11 sector SPDRs are over their daily 8 / 21 EMA.
+- **Market breadth** (5): % of US common stocks over their 5 / 20 / 50 / 100 / 200-day SMA at the close before (see below).
+- **Volume** (9): relative volume by time of day; run rate 20 / 50, and 20 at the exit; premarket vs usual (median, to the same time); the last ended bar vs that bar's average; the prior day vs its 50-day median; up / down volume over 50 days; median dollar volume over 20 days.
+- **Trend** (13): the stock vs daily 8 / 21 EMA, 50 / 200 SMA, and the exit vs the 8 EMA; extension from the 21 EMA in ADRs; ADR % (20); ATR % (14, Wilder's); distance from the 52-week high and sessions since it; the 10-day range in ADRs (tightness); the prior day as inside / NR7; the prior day's change.
+- **Levels** (14): entry vs VWAP; the gap at the open; distance from the all-time high; entry vs the prior day's range; vs the 5 / 15 / 30-minute opening range; where in the day's range; % of ADR used; vs the 5-minute 8 / 21 EMA (carried over from the two sessions before); gap filled; vs the day's open; the exit vs VWAP.
+- **Relative strength** (4): 20 / 63-day return less SPY's; the RS line (stock ÷ SPY) at a 50-day high; the day so far less SPY's.
+- **Options** (6, option trades only): days to expiry; strike out of the money; the IV and delta your fill implies (Black-Scholes, 4%, no dividends); IV over HV20; premium as % of the stock.
+- **Timing** (2): minutes after the open; premarket / regular / after hours.
+
+Not built yet, for want of data: VIX (Tradier's VIX history unchecked), earnings (no calendar source; Tradier's is beta), a stock's sector ETF (no stock → sector map), an option's own volume or spread at entry.
+
+## Market breadth (built)
+
+Barchart publishes $MMFD, $MMTW, $MMFI, $MMOH and $MMTH (the % of stocks over their 5 / 20 / 50 / 100 / 200-day average) but sells no API an individual can buy (its OnDemand pricing is a sales quote), TradingView has no API, and Tradier doesn't serve them. So the app counts them itself from Massive (formerly Polygon), whose free plan's grouped daily bars return every US stock's daily bar for a date in one call.
+
+- **Universe:** active US-listed common stocks (Massive's reference tickers, type CS: no ETFs, funds, warrants or preferreds), read once a month. Close to Barchart's shape, not its exact numbers: its universe isn't published, delisted stocks aren't in today's list (old readings run a little high), and a split after a day was kept leaves that stock off its averages for a while (grouped bars are adjusted as of the day they're read).
+- **The count** (`core/breadth.js`, pure): days in order; per stock a running sum per average; a stock above its N-day SMA (that day's close in it) counts above; a stock with fewer than N closes isn't counted; a missing weekday starts every average over; a shut day is `{ closed: true }`.
+- **Reading** (`ui/journal-breadth.js`): with a Massive key in Settings (device-local, never synced), after the Journal loads, at most hourly. It works out the days still needed (from the session before your first trade, each day's longest average's sessions before it, inside the free plan's two years), newest first so recent trades fill in first, one call every 12.5 seconds (5 a minute). A first fill over a year of trades is a few hundred calls, about an hour and a half while the app is open; it carries on where it stopped. Each day's closes stay on the device (IndexedDB, `lib/idb.js`); every 10 days the counts are worked out and the changed days saved.
+- **Saved:** `market_breadth` (migration `20261031000000_market_breadth.sql`), one row per (user, universe, day), so every device's features read the same counts and only one device needs the key.
+- **The features** read the close before the moment's day (`ctx.breadth(n)`; shut days stepped over). A day not counted yet waits while it's inside the two years; older, it's unknown. Without a key or before the push, they wait, and the Features tab says why.
 
 ## Part 3: the features page, filters and stats
 
@@ -96,4 +126,5 @@ feature({
 
 - Is Tradier's daily history split-adjusted, and how far back does it go for an old stock? The docs don't say either; the features line the history up with the day's own prices (see Splits above), so they're right either way. Worth one check against a real key (a stock that split, like NVDA in June 2024).
 - Does Tradier serve VIX timesales?
-- A provider with deep intraday history (Polygon / Massive, Alpaca) would fill intraday features further back than the 40 days saved now. Worth deciding once the features are in use.
+- A provider with deep intraday history would fill intraday features (and the run rate's 50-session curve) further back than the 40 days saved now. Massive's free plan has two years of minute bars at 5 calls a minute, with the key already in place for breadth: a second `barSource` provider for days older than Tradier's window. Watch the storage: every trade's 50 lookback days would be a lot of rows.
+- How close the app's breadth runs to Barchart's: worth one side-by-side against $MMTW on TradingView once a few months are counted.

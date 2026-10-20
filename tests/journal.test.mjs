@@ -225,12 +225,13 @@ test('Import saves the latest from Schwab, then reads the kept records again', a
   const { run, elements } = await app({ fetch, storage: connected(), supabase, session: SESSION });
   run("setView('journal')");
   await settle();
-  assert.deepEqual(supabase.writes.map(r => r.record_id), ['501'], 'opening the tab imports on its own when due: 501 was kept without a fingerprint, so it gets one');
+  const recordWrites = () => supabase.writes.filter(r => r.table === 'schwab_records').map(r => r.record_id);
+  assert.deepEqual(recordWrites(), ['501'], 'opening the tab imports on its own when due: 501 was kept without a fingerprint, so it gets one');
   assert.equal(elements.get('errorBox').textContent, '', 'quietly');
   const before = supabase.reads.length;
   await run('journalImport()');
   await settle();
-  assert.deepEqual(supabase.writes.map(r => r.record_id), ['501'], 'Import again sends nothing already kept');
+  assert.deepEqual(recordWrites(), ['501'], 'Import again sends nothing already kept');
   assert.ok(supabase.reads.length > before, 'the list is read again after the save');
   assert.match(elements.get('errorBox').textContent, /^Nothing new, 1 already kept\.$/);
   assert.match(elements.get('journalSection').innerHTML, /Last import .*: Nothing new, 1 already kept/);

@@ -20,7 +20,8 @@ import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { maybeSaveBars } from './journal-bars.js';
-import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
+import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport, syncFeatures } from './journal-features.js';
+import { maybeFillBreadth, onBreadthChange } from './journal-breadth.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { loadJournalReview, reviewedMark, savedForWeekly, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
@@ -546,6 +547,18 @@ export async function loadJournal() {
   }
   // then the features, once the bars they read are saved (and with the trades' keys as the Journal has them)
   if (bars) bars.finally(() => maybeStampFeatures());
+  if (state.journalRecords) maybeFillBreadth({ trades: journalTradeList() }); // quietly: the market breadth they read
+}
+
+// the breadth fill moved on: the progress line; new counts saved: stamp the features waiting on them
+onBreadthChange(saved => {
+  syncFeatures();
+  if (saved) maybeStampFeatures({ force: true });
+});
+
+/** a Massive key was entered: fill the breadth now, once the Journal's trades are here */
+export function kickBreadth() {
+  if (state.journalRecords) maybeFillBreadth({ trades: journalTradeList(), force: true });
 }
 
 /** the tab opened: show what's kept, and import quietly when it's due */

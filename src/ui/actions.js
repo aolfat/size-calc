@@ -24,7 +24,7 @@ import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideV
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
-import { saveKey, signIn, signOut } from './settings.js';
+import { massiveKeyDone, saveKey, saveMassiveKey, signIn, signOut } from './settings.js';
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
@@ -65,6 +65,8 @@ export const actions = {
 
   // ---------- settings: account and key ----------
   saveKey: () => saveKey(),
+  saveMassiveKey: () => saveMassiveKey(),
+  massiveKeyDone: () => massiveKeyDone(),
   signIn: () => signIn(),
   signOut: () => signOut(),
 

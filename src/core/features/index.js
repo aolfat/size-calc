@@ -6,8 +6,13 @@
 // Removing a feature leaves its old stamps ignored, and they're dropped the next time the row is written.
 import { nyDay, weekdaysBefore } from '../bars.js';
 import { featureContext, featureSymbol } from './context.js';
+import { BREADTH_FAMILY, BREADTH_FEATURES } from './breadth.js';
+import { CONTRACT_FAMILY, CONTRACT_FEATURES } from './contract.js';
 import { LEVEL_FEATURES, LEVELS_FAMILY } from './levels.js';
 import { MARKET_FAMILY, MARKET_FEATURES } from './market.js';
+import { STRENGTH_FAMILY, STRENGTH_FEATURES } from './strength.js';
+import { TIMING_FAMILY, TIMING_FEATURES } from './timing.js';
+import { TREND_FAMILY, TREND_FEATURES } from './trend.js';
 import { VOLUME_FAMILY, VOLUME_FEATURES } from './volume.js';
 
 /**
@@ -21,9 +26,9 @@ import { VOLUME_FAMILY, VOLUME_FEATURES } from './volume.js';
  *   reads: import('./context.js').FeatureRead[] }} FeatureResult
  */
 
-export const FEATURE_FAMILIES = [MARKET_FAMILY, VOLUME_FAMILY, LEVELS_FAMILY];
+export const FEATURE_FAMILIES = [MARKET_FAMILY, BREADTH_FAMILY, VOLUME_FAMILY, TREND_FAMILY, LEVELS_FAMILY, STRENGTH_FAMILY, CONTRACT_FAMILY, TIMING_FAMILY];
 /** @type {Feature[]} every feature, by family */
-export const FEATURES = [...MARKET_FEATURES, ...VOLUME_FEATURES, ...LEVEL_FEATURES];
+export const FEATURES = [...MARKET_FEATURES, ...BREADTH_FEATURES, ...VOLUME_FEATURES, ...TREND_FEATURES, ...LEVEL_FEATURES, ...STRENGTH_FEATURES, ...CONTRACT_FEATURES, ...TIMING_FEATURES];
 
 /** what a stamp has to carry to be current: the family's version and the feature's @param {Feature} f */
 export const featureVersion = f => `${f.family.version}.${f.version}`;
@@ -62,19 +67,22 @@ export const DAILY_FROM_LISTING = '1960-01-01';
 
 /**
  * What to read for these trades' due features: the 5-minute days per symbol (the moment's day, and the lookback days
- * before it), and per symbol the first day of daily bars needed (back to the listing when a feature wants all of them).
+ * before it), per symbol the first day of daily bars needed (back to the listing when a feature wants all of them), and
+ * whether any reads the market's breadth.
  * @param {{ trade: StampTrade, features: Feature[] }[]} due
- * @returns {{ intraday: Map<string, string[]>, daily: Map<string, string> }}
+ * @returns {{ intraday: Map<string, string[]>, daily: Map<string, string>, breadth: boolean }}
  */
 export function featureDataNeeds(due) {
   /** @type {Map<string, Set<string>>} */
   const intraday = new Map();
   /** @type {Map<string, string>} */
   const daily = new Map();
+  let breadth = false;
   for (const { trade, features } of due) {
     for (const f of features) {
       const at = momentOf(f, trade);
       if (at === null) continue;
+      if (f.needs.breadth) breadth = true;
       const day = nyDay(at);
       for (const token of f.needs.intraday || []) {
         const s = featureSymbol(token, trade);
@@ -94,7 +102,7 @@ export function featureDataNeeds(due) {
       }
     }
   }
-  return { intraday: new Map([...intraday].map(([s, days]) => [s, [...days].sort()])), daily };
+  return { intraday: new Map([...intraday].map(([s, days]) => [s, [...days].sort()])), daily, breadth };
 }
 
 const round = (/** @type {number} */ v) => Math.round(v * 1e4) / 1e4;
@@ -173,7 +181,11 @@ export function featureValueWords(f, value) {
   if (typeof value === 'string') return (f.values || []).find(([k]) => k === value)?.[1] || value;
   if (f.unit === '%') return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(2)}%`;
   if (f.unit === 'x') return `${value.toFixed(2)}×`;
-  return String(value);
+  if (f.unit === '$') {
+    const a = Math.abs(value), sign = value < 0 ? '−' : '';
+    return a >= 1e9 ? `${sign}$${(a / 1e9).toFixed(1)}B` : a >= 1e6 ? `${sign}$${(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${sign}$${(a / 1e3).toFixed(0)}k` : `${sign}$${a.toFixed(0)}`;
+  }
+  return String(Number(value.toFixed(2))).replace('-', '−'); // at most two decimals: 1.38, 62.7, 32
 }
 
 /** what a feature reads, in words: '5-minute bars: SPY · daily bars: SPY, 60 sessions' @param {Feature} f */
@@ -182,5 +194,6 @@ export function featureNeedsWords(f) {
   const parts = [];
   if (f.needs.intraday?.length) parts.push(`5-minute bars: ${f.needs.intraday.map(name).join(', ')}${f.needs.session === 'all' ? ', extended hours too' : ''}${f.needs.lookback ? `, and the ${f.needs.lookback} sessions before` : ''}`);
   if (f.needs.daily?.length) parts.push(`daily bars: ${f.needs.daily.map(name).join(', ')}, ${f.needs.dailySessions ? `${f.needs.dailySessions} sessions` : 'back to the listing'}`);
-  return parts.join(' · ');
+  if (f.needs.breadth) parts.push("market breadth: every US common stock's close (Massive)");
+  return parts.join(' · ') || 'the trade itself';
 }
