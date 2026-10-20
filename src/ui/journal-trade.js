@@ -5,8 +5,8 @@
 // each with its toolbar (intervals 5m to 65m, kept on this device as journal_chart_iv; daily ranges; log scale). While the
 // library is on trial, a TradingView | Ours switch (journal_chart_kind, device-local) puts our canvas charts (ui/candles.js)
 // in the same place, on the same bars and framing; ours never loads the library; the
-// excursions (core/trade-page.js: MFE, MAE, exit efficiency); its stamped features (At entry, ui/journal-features.js);
-// the fills; and the stop orders over time. Edit opens the
+// excursions (core/trade-page.js: MFE, MAE, exit efficiency); then two tabs: Review (your review, the fills, and the stop
+// orders over time) and Features (every stamped feature, ui/journal-features.js). Edit opens the
 // trade sheet (your stop, separate, delete).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
@@ -25,7 +25,7 @@ import { journalTradeList, marketTime, openTradeReview, renderJournal } from './
 import { onReviewChange, reviewSectionHtml } from './journal-review.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
-import { tradeFeaturesHtml } from './journal-features.js';
+import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -67,6 +67,7 @@ export function openJournalTrade(key) {
   dropCharts(state.journalTrade);
   state.journalTrade = {
     key, five: [], daily: [], viewD: { count: 63, offset: 0 }, loading5: false, loadingD: false, status5: '', statusD: '',
+    tab: 'review', featuresOpen: false, // the tab under the stats (review | features), and every feature expanded
     iv: savedInterval(), rangeD: 'trade', log: { 5: false, D: false }, rolled: null, charts: {}, libWait: false, libError: '',
     kind: savedKind(), classic: { 5: null, D: null }, // ours: per chart { bars, key, view, levels, hover: { index, y } }
   };
@@ -222,12 +223,25 @@ export function renderJournalTrade() {
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
-    <div class="section-title jt-sub">At entry</div>
-    <div id="jtFeatures">${tradeFeaturesHtml(t)}</div>
-    ${reviewSectionHtml(t)}
+    ${tradeTabsHtml(p, t)}
+    ${p.tab === 'features' ? `<div id="jtFeatures">${tradeFeaturesHtml(t)}</div>` : `${reviewSectionHtml(t)}
     ${fillsHtml(t, fills)}
-    ${stopsHtml(t)}`;
+    ${stopsHtml(t)}`}`;
   drawJournalTrade();
+}
+
+/** Review (your labels, grades and notes, then the fills and stops) or Features (what the data says at the entry) */
+function tradeTabsHtml(p, t) {
+  const tab = (v, label) => `<button class="${p.tab === v ? 'active' : ''}" aria-pressed="${p.tab === v}" data-action="setJournalTradeTab" data-arg="${v}">${label}</button>`;
+  const n = tradeFeatureCount(t);
+  return `<div class="seg journal-tabs jt-tabs" aria-label="Show">${tab('review', 'Review')}${tab('features', `Features${n ? ` <span class="jt-tab-n">${n}</span>` : ''}`)}</div>`;
+}
+
+export function setJournalTradeTab(tab) {
+  const p = state.journalTrade;
+  if (!p || !['review', 'features'].includes(tab) || p.tab === tab) return;
+  p.tab = tab;
+  renderJournalTrade();
 }
 
 /**

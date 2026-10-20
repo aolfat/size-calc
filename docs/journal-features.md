@@ -1,6 +1,6 @@
 # Trade features
 
-Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Features tab, At entry on the trade page) built. Part 3 (the Conditions filter, the Stats explorer, features as list columns) next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
+Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3 (the Conditions filter, the Stats explorer, features as list columns) next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
 
 ## Goal
 
@@ -68,7 +68,7 @@ feature({
 
 ### As built
 
-- **Files:** `src/core/features/` (pure, `// @ts-check`): `define.js` (`family`, `feature`), `context.js` (the cut and the shared helpers), one file per family (`market.js`, `volume.js`, `levels.js`), `index.js` (FEATURES, due, data needs, compute, stamp, coverage, words). `services/features.js` reads and writes `trade_features` and reads the kept bars; `ui/journal-features.js` runs the stamper and draws the Features tab and the trade page's At entry section.
+- **Files:** `src/core/features/` (pure, `// @ts-check`): `define.js` (`family`, `feature`), `context.js` (the cut and the shared helpers), one file per family (`market.js`, `volume.js`, `levels.js`), `index.js` (FEATURES, due, data needs, compute, stamp, coverage, words). `services/features.js` reads and writes `trade_features` and reads the kept bars; `ui/journal-features.js` runs the stamper and draws the Journal's Features tab and the trade page's Features tab.
 - **A feature** also has `desc` (what it measures, for the Features tab). `needs` is `{ intraday, lookback, daily, dailySessions, session }`; the contract test fails a feature that reads anything it doesn't declare, so `needs` stays true and the saver and the stamper can trust it.
 - **The cut:** a 5-minute bar counts once it has ended; the bar the moment falls in shows only its open. Daily bars are the days before the moment's day, plus that day's open from 9:30. The trade itself shows only its symbol, type and open time (and the close, for an exit feature): no exit, P&L or R at the entry.
 - **Stamps:** `trade_features` (migration `20261030000000_trade_features.sql`), `stamps` = `{ key: { v: '<family version>.<feature version>', value, note } }`. Unknown is `value: null` with the why in `note`. Waiting isn't stored: the last run's reasons are kept on the device for the trade page.
@@ -87,7 +87,7 @@ feature({
 ## Part 3: the features page, filters and stats
 
 - **Features page** (built in part 2, the Journal's Features tab): every feature with its name, what it measures, what it reads, its version, and how far it's stamped ('412 of 430, 18 unknown: bars too old, 3 to come'). Grouped by family. It's read from the feature list, so a new feature shows up there by itself. Search comes with the Conditions picker.
-- **On the trade:** the trade page lists its stamped features (built in part 2: At entry); any can be a column in the trades list (part 3).
+- **On the trade:** the trade page's Features tab (built in part 2, beside Review) lists every feature by family with its value, each tapping open to what it measures and reads; any can be a column in the trades list (part 3).
 - **Conditions filter:** beside All setups, over Trades, Calendar and Stats. A searchable picker by family with pinned favorites; numbers take any threshold ('run rate ≥ 1.8'), words pick values. Conditions combine, and a combination can be saved as a named view.
 - **Stats:** a feature explorer (pick any feature, see its breakdown with groupStats' numbers). Numbers group into five equal-size groups by default (quintiles), or the feature's own bins where given.
 - **What matters (later):** features ranked by how much results differ between their groups. Test hundreds and some look meaningful by chance, so thin groups are dimmed, a pattern has to hold in both halves of the history, and it's a list of leads, not rules.

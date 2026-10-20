@@ -1,7 +1,7 @@
 // Trade features in the Journal (docs/journal-features.md, part 2): the stamper, which after the Journal loads and after
 // an import works out every feature missing or outdated on each trade (core/features) from the saved bars and the
 // provider's daily bars, and saves them (trade_features); the quiet line while it runs (#journalFeaturesLine); the
-// Features tab (every feature, what it reads, its version, how far it's stamped); and the trade page's At entry section.
+// Features tab (every feature, what it reads, its version, how far it's stamped); and the trade page's Features tab.
 import { marketEscape as esc } from '../core/format.js';
 import { nyDay } from '../core/bars.js';
 import { fillsFrom } from '../core/journal-records.js';
@@ -116,7 +116,7 @@ export function syncFeatures() {
   if (line) { const text = featuresLine(); line.textContent = text; line.hidden = !text; }
   if (state.journalView && !state.journalTrade && state.journalTab === 'features') renderJournal();
   const page = document.getElementById('jtFeatures');
-  if (page && state.journalTrade) {
+  if (page && state.journalTrade?.tab === 'features') {
     const t = journalTradeList().find(x => x.key === state.journalTrade.key);
     if (t) page.innerHTML = tradeFeaturesHtml(t);
   }
@@ -165,21 +165,47 @@ export function featuresView(trades) {
 
 // ---------- the trade page ----------
 
-/** the trade's features: each stamped value, why one is unknown, or that it's still coming */
+/** how many features have a value on the trade (the Features tab's count) */
+export function tradeFeatureCount(t) {
+  const stamps = state.featureStamps?.[t.key];
+  return stamps ? FEATURES.filter(f => !featureDue(f, stamps) && stamps[f.key].value !== null).length : 0;
+}
+
+/** the trade's Features tab: every feature by family, its value, and how it was found or why not; tap one for what it measures */
 export function tradeFeaturesHtml(t) {
   if (state.featuresError) return `<p class="hint">Features need the database update: npx supabase db push.</p>`;
   if (t.status === 'history') return '<p class="hint">Bought before your history, so there\'s no entry to measure.</p>';
   if (t.deleted) return '<p class="hint">Deleted trades get no features.</p>';
   if (state.featureStamps === null) return `<p class="hint">${state.session ? 'Loading…' : 'Sign in to see features.'}</p>`;
   const stamps = state.featureStamps[t.key];
-  const rows = FEATURES.map(f => {
+  const open = !!state.journalTrade?.featuresOpen;
+  let value = 0, unknown = 0, pending = 0;
+  const item = f => {
     const s = stamps?.[f.key];
-    const current = s && !featureDue(f, stamps);
-    const value = current ? featureValueWords(f, s.value) : '—';
-    const sub = current ? (s.note || '') : state.featuresBusy ? 'stamping…' : state.featureWaits?.[t.key]?.[f.key] || (s ? 'restamping: a newer version' : 'not stamped yet');
-    return `<tr${current && s.value !== null ? '' : ' class="jf-quiet"'}><td title="${esc(f.desc)}">${esc(f.name)}</td><td>${esc(value)}</td><td class="jf-note">${esc(sub)}</td></tr>`;
+    const current = !!s && !featureDue(f, stamps);
+    if (current && s.value !== null) value++; else if (current) unknown++; else pending++;
+    const how = current ? (s.note || '') : state.featuresBusy ? 'stamping…' : state.featureWaits?.[t.key]?.[f.key] || (s ? 'restamping: a newer version' : 'not stamped yet');
+    return `<details class="jf-item${current && s.value !== null ? '' : ' jf-quiet'}"${open ? ' open' : ''}>
+        <summary><span class="jf-name">${esc(f.name)}</span><span class="jf-val">${esc(current ? featureValueWords(f, s.value) : '—')}</span><span class="jf-how">${esc(how)}</span></summary>
+        <div class="jf-detail"><p>${esc(f.desc)}</p><p class="jf-meta">Reads ${esc(featureNeedsWords(f))} · version ${esc(featureVersion(f))} · <span class="jf-key">${esc(f.key)}</span></p></div>
+      </details>`;
+  };
+  const groups = FEATURE_FAMILIES.map(fam => {
+    const list = FEATURES.filter(f => f.family.key === fam.key);
+    return list.length ? `<div class="jf-fam">${esc(fam.name)}</div>${list.map(item).join('')}` : '';
   }).join('');
-  return `<div class="positions-wrap"><table class="positions-table journal-table jt-table jf-trade"><thead><tr><th scope="col">Feature</th><th scope="col">Value</th><th scope="col">How</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const parts = [`${value} with a value`, unknown ? `${unknown} unknown` : '', pending ? `${pending} still to come` : ''].filter(Boolean);
+  return `<div class="jf-head"><p class="hint">${FEATURES.length} features at the entry: ${parts.join(', ')}. Tap one for what it measures.</p>
+      <button class="pos-link" data-action="toggleTradeFeatures">${open ? 'Collapse all' : 'Expand all'}</button></div>
+    <div class="jf-list">${groups}</div>`;
+}
+
+/** Expand all / Collapse all on the trade's Features tab */
+export function toggleTradeFeatures() {
+  const p = state.journalTrade;
+  if (!p) return;
+  p.featuresOpen = !p.featuresOpen;
+  syncFeatures();
 }
 
 /** for an import landing while the Journal is closed: read the records again (they changed) and stamp, once the Journal has been read here */
