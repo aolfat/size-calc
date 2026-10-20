@@ -53,6 +53,9 @@ export function createState() {
       period: 2, sort: 'performance', direction: 'desc', limit: 100, snapshots: Object.create(null), quoteMode: true,
       environment: '', key: '', refresh: null, timer: null, auto: store.get('market_auto_refresh') !== '0',
       failures: 0, retryAt: 0, authBlocked: false,
+      history: Object.create(null), // ticker → { day, refs, last }: daily-close references for 1W–1Y, read once a New York day
+      historyJob: null, // { controller, scope, done, total } while a scope's daily history loads
+      historyRetryAt: 0, historyError: '',
     },
     positionsView: false,
     utilsView: false,
@@ -61,6 +64,13 @@ export function createState() {
     journalLoading: false,
     journalError: '',
     barsBusy: false, // the journal is saving 5-minute bars
+    featureStamps: null, // trade key → { feature key → { v, value, note } }: the trade features stamped (trade_features), once read
+    featuresOwner: '', // whose stamps those are
+    featuresError: '', // they couldn't be read (the table not pushed yet): nothing is stamped, the Journal works
+    featuresBusy: false, // a stamping run is going
+    featuresProgress: null, // { done, total, features } while it goes
+    featuresLast: null, // the last run here: { user, at, value, unknown, waiting, error, sig (what was still due) }
+    featureWaits: {}, // trade key → { feature key → what it waits for }, from the last run
     journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
@@ -74,6 +84,7 @@ export function createState() {
     shotView: null, // the screenshot open in the viewer (its id)
     shotDeleteArmed: false, // Delete was tapped once: the next tap deletes
     setupDraft: null, // + New setup being made: { action, levels, pattern, name }
+    setupEdit: null, // one of My setups being edited in Edit choices: { key, action, levels, pattern, name, follow (the name tracks the parts) }
     reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it
@@ -82,7 +93,7 @@ export function createState() {
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
     chartLibLoading: null, // the one in-flight library load
-    journalTab: 'trades', // trades | calendar | stats | setups | books | fills
+    journalTab: 'trades', // trades | calendar | stats | setups | books | features | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
       books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'books',
@@ -90,6 +101,10 @@ export function createState() {
       viewerId: '', signing: false, imageError: '',
     },
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
+    journalNotebookDay: '', // the day's notebook page open in the Calendar tab ('YYYY-MM-DD', New York; docs/journal-notebook.md)
+    notebookDraft: null, // { day, field, text }: a notebook box being typed, saved on blur
+    notebookEdit: '', // goal | rule: that list open in place to edit
+    notebookItemDraft: '', // the new goal or rule being typed
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }

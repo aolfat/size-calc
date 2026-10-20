@@ -19,15 +19,17 @@ import { mq, PHONE_MQ } from '../lib/media.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
-import { barsLine, maybeSaveBars, onBarsChange } from './journal-bars.js';
+import { maybeSaveBars } from './journal-bars.js';
+import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
-import { loadJournalReview, reviewedMark, savedForWeekly, setupsInUse, setupsOf, toReview, tradeReviewState } from './journal-review.js';
+import { loadJournalReview, reviewedMark, savedForWeekly, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { tosSectionHtml } from './journal-tos.js';
+import { dayPageHtml, todayLineHtml } from './journal-notebook.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -126,10 +128,16 @@ const restoreLink = t => t.deleted ? `<span class="pos-sub journal-row-acts"><bu
 /** a row opens its trade wherever it's tapped, except the tick box and the stop link (they have their own jobs) */
 const rowOpen = t => t.deleted ? '' : ` data-action="openTradeRow" data-arg="${esc(t.key)}"`;
 
-/** the trade's setups, by name; a dash before any are picked */
+/** a setup's chip in its parts, the action first and the level second ('Bounce | 8 EMA'), its name in the title; a pattern is its own name */
+const setupChip = s => {
+  const lvl = s.levels.map(l => l.name).join(' + ');
+  const parts = s.kind || lvl ? `${s.kind ? `<span class="journal-setup-act">${esc(s.kind.name)}</span>` : ''}${lvl ? `<span class="journal-setup-lvl">${esc(lvl)}</span>` : ''}` : esc(s.name);
+  return `<span class="journal-setup" title="${esc(s.name)}">${parts}</span>`;
+};
+/** the trade's setups, each in its parts; a dash before any are picked */
 function setupsCell(t) {
   const list = setupsOf(t);
-  return list.length ? `<td class="journal-setups">${list.map(s => `<span class="journal-setup">${esc(s.name)}</span>`).join('')}</td>` : '<td class="journal-setups-none">—</td>';
+  return list.length ? `<td class="journal-setups">${list.map(setupChip).join('')}</td>` : '<td class="journal-setups-none">—</td>';
 }
 
 /** a close whose purchase is older than the history: what's known (the exits), the rest blank */
@@ -173,8 +181,8 @@ const isReviewed = t => reviewsRead() && t.status !== 'history' && tradeReviewSt
 const untagged = t => reviewsRead() && t.status !== 'history' && !setupsOf(t).length;
 const REVIEW_TESTS = { todo: toReview, done: isReviewed, untagged };
 const onReviewFilter = list => REVIEW_TESTS[state.journalReviewFilter] ? list.filter(REVIEW_TESTS[state.journalReviewFilter]) : list;
-/** the setup filter: only the trades that carry that setup (Trades, Calendar and Stats) */
-const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupsOf(t).some(s => s.key === state.journalSetupFilter)) : list;
+/** the setup filter: only the trades that carry that setup, that kind (any bounce) or that level (Trades, Calendar and Stats) */
+const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupMatches(t, state.journalSetupFilter)) : list;
 export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v || ''); renderJournal(); }
 export function setJournalReviewFilter(v) { state.journalReviewFilter = v in REVIEW_TESTS ? v : 'all'; renderJournal(); }
 const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
@@ -192,13 +200,14 @@ function summaryLine(trades, deleted) {
   return parts.join(' · ') + deletedNote;
 }
 
-/** the setup filter's menu: every setup the trades carry, most used first; shown once there's one */
+/** the setup filter's menu: each kind (any bounce) with its setups under it, then each level; shown once there's one */
 function setupFilter(all) {
   if (state.journalTab === 'fills' || state.journalTab === 'setups') return '';
-  const used = setupsInUse(all);
-  if (!used.length && !state.journalSetupFilter) return '';
+  const { setups, levels } = setupMenu(all);
+  if (!setups.length && !state.journalSetupFilter) return '';
+  const opt = o => `<option value="${esc(o.value)}"${o.value === state.journalSetupFilter ? ' selected' : ''}>${o.depth ? '&nbsp;&nbsp;&nbsp;' : ''}${esc(o.name)} (${o.count})</option>`;
   return `<select id="journalSetupFilter" class="journal-setup-filter${state.journalSetupFilter ? ' active' : ''}" data-change="setJournalSetupFilter" aria-label="Filter by setup">
-      <option value="">All setups</option>${used.map(s => `<option value="${esc(s.key)}"${s.key === state.journalSetupFilter ? ' selected' : ''}>${esc(s.name)} (${s.count})</option>`).join('')}
+      <option value="">All setups</option>${setups.map(opt).join('')}${levels.length ? `<optgroup label="Any setup at">${levels.map(opt).join('')}</optgroup>` : ''}
     </select>`;
 }
 
@@ -208,8 +217,8 @@ function controls(all = [], navigationOnly = false) {
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('fills', 'Fills')}</div>`;
-  if (state.journalTab === 'books' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
+  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
+  if (state.journalTab === 'books' || state.journalTab === 'features' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   return `<div class="journal-controls">
     ${tabs}
     <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
@@ -281,7 +290,7 @@ function cardReview(t) {
 function tradeCard(t) {
   const open = t.status === 'open', history = t.status === 'history', noPnl = history || (open && !t.exits);
   const setups = setupsOf(t);
-  const tags = setups.length ? setups.map(s => `<span class="journal-setup">${esc(s.name)}</span>`).join('') : untagged(t) ? pill('jtc-warn', 'No setup') : '';
+  const tags = setups.length ? setups.map(setupChip).join('') : untagged(t) ? pill('jtc-warn', 'No setup') : '';
   const weekly = reviewsRead() && savedForWeekly(t) ? pill('', 'for weekly') : '';
   const sub = t.legs ? esc(legWords(t.legs)) : t.kind === 'merged' ? `${t.parts.length} trades merged` : '';
   // the stop as a fact, not a control: changing it is on the trade page (Edit)
@@ -354,14 +363,17 @@ function fillsView(fills) {
 
 export function setJournalFees(v) { store.set('journal_fees', v === 'after' ? 'after' : 'before'); renderJournal(); }
 export function toggleDeletedTrades() { state.journalShowDeleted = !state.journalShowDeleted; renderJournal(); }
+/** a day's notebook page is open, in place of the calendar (it works before any import: a plan needs no trades) */
+const notebookOpen = () => state.journalTab === 'calendar' && !!state.journalNotebookDay;
 export function setJournalTab(tab) {
-  state.journalTab = ['fills', 'calendar', 'stats', 'setups', 'books'].includes(tab) ? tab : 'trades';
+  state.journalTab = ['fills', 'calendar', 'stats', 'setups', 'books', 'features'].includes(tab) ? tab : 'trades';
+  state.journalNotebookDay = ''; // the Calendar tab goes back to the calendar
   if (state.journalTab !== 'trades') state.journalDay = '';
   renderJournal();
   if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
 }
 /** a day on the calendar: the trades with an exit then */
-export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; renderJournal(); }
+export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; state.journalNotebookDay = ''; renderJournal(); }
 export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
 export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); state.journalReviewPeriod = null; renderJournal(); }
 export function journalThisMonth() { state.journalMonth = thisMonth(); state.journalReviewPeriod = null; renderJournal(); }
@@ -388,6 +400,7 @@ export function openJournalStats(unit, key) {
   state.journalPeriodKey = ok ? periodKey(key, unit) : '';
   state.journalTab = 'stats';
   state.journalDay = '';
+  state.journalNotebookDay = '';
   renderJournal();
 }
 /** the Setups tab: one setup's page, and back to them all */
@@ -448,16 +461,18 @@ export function renderJournal() {
       </span>`}
     </div>
     ${!books ? `<p class="hint" id="journalStatus" role="status">${statusLine()}</p>` : ''}
-    ${!books ? deckLineHtml(all) : ''}
+    ${!books ? `<p class="hint" id="journalFeaturesLine" role="status"${featuresLine() ? '' : ' hidden'}>${esc(featuresLine())}</p>` : ''}
+    ${!books ? deckLineHtml(all) + todayLineHtml() : ''}
     ${!books && state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${!books && state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
-    ${controls(all, !fills.length)}
-    ${books ? '<div id="modelBooksBody"></div>' : fills.length ? (state.journalTab === 'fills'
+    ${controls(all, !fills.length || notebookOpen())}
+    ${books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
       : state.journalTab === 'setups' ? setupsView(filtered(all, t => t.bias))
+      : state.journalTab === 'features' ? featuresView(all)
       : tradesView(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))))))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
@@ -483,10 +498,6 @@ export function renderImportSheet() {
       <p class="hint">Log in to Schwab to import your orders and trades.</p>
       <div class="row" style="align-items:center;gap:8px;"><button class="btn" data-action="openSheet" data-arg="settings">Connect Schwab</button></div>`;
   el.innerHTML = `<div class="sheet-section">${schwab}</div>
-    <div class="sheet-section">
-      <div class="sheet-label">5-minute bars <span class="sheet-status">for your trades' charts</span></div>
-      <p class="hint" id="journalBarsStatus" role="status">${barsLine()}</p>
-    </div>
     <div class="sheet-section" id="journalTosSection">${tosSectionHtml()}</div>
     <div class="sheet-section journal-soon">
       <div class="sheet-label">More files <span class="sheet-status">Coming soon</span></div>
@@ -518,12 +529,13 @@ export async function loadJournal() {
   state.journalLoading = true;
   renderJournal();
   // your stops and deletes come from their own table: if it can't be read, the trades still show
-  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), loadPeriodReviewRows(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
+  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), loadPeriodReviewRows(), loadFeatureRows(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
+  let bars = null;
   try {
     if (records.status === 'rejected') throw records.reason;
     state.journalRecords = records.value;
     state.journalError = '';
-    maybeSaveBars({ records: records.value }); // quietly, in the background: the charts' bars before Tradier drops them
+    bars = maybeSaveBars({ records: records.value }); // quietly, in the background: the charts' bars before Tradier drops them
   } catch(e) {
     state.journalError = String(e?.message || e);
   } finally {
@@ -534,6 +546,8 @@ export async function loadJournal() {
     state.journalLoading = false;
     if (state.journalView) renderJournal();
   }
+  // then the features, once the bars they read are saved (and with the trades' keys as the Journal has them)
+  if (bars) bars.finally(() => maybeStampFeatures());
 }
 
 /** the tab opened: show what's kept, and import quietly when it's due */
@@ -551,7 +565,7 @@ export async function journalImport() {
 // a capture started or finished: redraw (the Import sheet too when it's open), and after a save read the records again
 onCaptureChange(saved => {
   if (state.openSheetName === 'journalImport') renderImportSheet();
-  if (saved && !state.journalView) maybeSaveBars({ force: true }); // an import landed: its trades' bars, journal open or not
+  if (saved && !state.journalView) maybeSaveBars({ force: true }).finally(() => stampAfterImport(loadSavedRecords)); // an import landed: its trades' bars and features, journal open or not
   if (!state.journalView) return;
   if (saved) loadJournal(); else renderJournal();
 });
@@ -949,6 +963,3 @@ export async function separateTrade(key) {
   }
   return ok;
 }
-
-// a bars run ended: the Import sheet's line changes
-onBarsChange(() => { if (state.openSheetName === 'journalImport') renderImportSheet(); });

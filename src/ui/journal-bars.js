@@ -1,6 +1,10 @@
-// Journal bars: saves the 5-minute bars your trades need before Tradier's ~40 days run out (services/bars.js), after an
-// import lands and when the Journal opens, at most hourly per user; and the line in the Import sheet that says how it's going.
+// Journal bars: saves the 5-minute bars your trades need, and the market basket's, before Tradier's ~40 days run out
+// (services/bars.js), after an import lands and when the Journal opens, at most hourly per user, quietly (nothing in the Import sheet: by request).
+// What's saved follows the trade features' needs (core/features: featureBarNeeds): a feature naming a symbol, or more
+// lookback days, makes it saved from then on, on top of the market basket.
 import { store } from '../lib/store.js';
+import { LOOKBACK_DAYS, MARKET_BASKET } from '../core/bars.js';
+import { featureBarNeeds } from '../core/features/index.js';
 import { buildTrades } from '../core/journal.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { saveTradeBars, tradierKeyHere } from '../services/bars.js';
@@ -15,9 +19,11 @@ export function lastBars() {
   try { return JSON.parse(store.get('journal_bars') || 'null'); } catch(e) { return null; }
 }
 
-const listeners = [];
-/** tell me when a run ends (the Import sheet redraws) */
-export function onBarsChange(fn) { listeners.push(fn); }
+/** the market basket and every symbol a feature names, and the most lookback days any of them compares */
+export function barsToKeep() {
+  const needs = featureBarNeeds();
+  return { market: [...new Set([...MARKET_BASKET, ...needs.market])], lookback: Math.max(LOOKBACK_DAYS, needs.lookback) };
+}
 
 /**
  * Save the bars when it's due: signed in, a Tradier key in place, not run for this user within BARS_EVERY. The kept
@@ -33,7 +39,7 @@ export async function maybeSaveBars({ records, force = false } = {}) {
   let result = null;
   try {
     const kept = records || state.journalRecords || await loadSavedRecords();
-    const r = await saveTradeBars(buildTrades(fillsFrom(kept), { now: Date.now() }));
+    const r = await saveTradeBars(buildTrades(fillsFrom(kept), { now: Date.now() }), Date.now(), barsToKeep());
     result = { user, at: Date.now(), ...r, error: '' };
   } catch(e) {
     result = { ...(last && last.user === user ? last : { saved: 0, symbols: 0, through: '', failed: [] }), user, at: Date.now(), error: String(e?.message || e) };
@@ -41,20 +47,5 @@ export async function maybeSaveBars({ records, force = false } = {}) {
     state.barsBusy = false;
   }
   store.set('journal_bars', JSON.stringify(result));
-  listeners.forEach(fn => fn(result));
   return result;
-}
-
-/** the Import sheet's line about bars */
-export function barsLine() {
-  if (!tradierKeyHere()) return "Add a Tradier key in Settings and the journal saves your trades' 5-minute bars for their charts. Tradier only keeps about 40 days of them.";
-  if (state.barsBusy) return 'Saving 5-minute bars…';
-  const last = lastBars();
-  if (!last || last.user !== state.session?.user?.id) return '5-minute bars for your trades save after the next import. Tradier only keeps about 40 days of them.';
-  const [y, m, d] = (last.through || '').split('-');
-  const parts = [last.through ? `5-minute bars saved through ${+m}/${+d}/${y.slice(2)}` : 'No 5-minute bars needed yet'];
-  if (last.saved) parts.push(`${last.saved} new day${last.saved === 1 ? '' : 's'} last time`);
-  if (last.failed?.length) parts.push(`Tradier had none for ${last.failed.join(', ')}`);
-  if (last.error) parts.push(`last try failed: ${last.error}`);
-  return parts.join(' · ') + '.';
 }

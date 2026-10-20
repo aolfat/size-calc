@@ -368,7 +368,8 @@ test('with a key: two weeks before the open come from Tradier for context, and t
     }
     throw new Error('unexpected ' + url);
   };
-  const storage = new Map();
+  // the journal's background save ran within the hour, so the only Tradier call is the trade page's own
+  const storage = new Map([['journal_bars', JSON.stringify({ user: 'user-1', at: Date.now(), saved: 0, symbols: 0, through: '', failed: [], error: '' })]]);
   const { run, state, chart, elements, body } = await page({ key: true, fetch, storage }, t);
   run(`openJournalTrade('${KEY}')`);
   await settle();
@@ -408,7 +409,8 @@ async function xluPage(now, t) {
     if (u.pathname.endsWith('/markets/history')) return new Response(JSON.stringify({ history: null }), { status: 200 });
     if (!u.pathname.endsWith('/markets/timesales')) throw new Error('unexpected ' + url);
     calls.push([u.searchParams.get('symbol'), u.searchParams.get('start'), u.searchParams.get('end')]);
-    const data = u.searchParams.get('start').startsWith('2026-10-16') ? [10, 11].map(h => ({ time: `2026-10-16T${h}:00:00`, open: 1.2, high: 1.6, low: 1.1, close: 1.5, volume: 9 })) : [];
+    const spans = u.searchParams.get('start') <= '2026-10-16 04:00' && u.searchParams.get('end') >= '2026-10-16 20:00'; // any span with the day in it
+    const data = spans ? [10, 11].map(h => ({ time: `2026-10-16T${h}:00:00`, open: 1.2, high: 1.6, low: 1.1, close: 1.5, volume: 9 })) : [];
     return new Response(JSON.stringify({ series: data.length ? { data } : null }), { status: 200 });
   };
   const supabase = fakeRecords(XLU_ORDERS);
@@ -429,8 +431,10 @@ test("today's bars: straight from Tradier while the day is on, saved once extend
   assert.equal([...live.supabase.bars.values()].filter(b => b.day === '2026-10-16').length, 0, 'not saved: the day isn\'t over');
 
   const done = await xluPage(Date.parse('2026-10-17T00:30:00Z'), t); // 8:30pm ET
-  assert.deepEqual([...done.supabase.bars.values()].filter(b => b.day === '2026-10-16').map(b => [b.symbol, b.bars.length]).sort(),
+  const saved = [...done.supabase.bars.values()].filter(b => b.day === '2026-10-16');
+  assert.deepEqual(saved.filter(b => b.symbol.startsWith('XLU')).map(b => [b.symbol, b.bars.length]).sort(),
     [['XLU', 2], ['XLU261120C00080000', 2]], 'saved, the contract and its underlying');
+  assert.ok(saved.some(b => b.symbol === 'SPY'), "and the market basket's day, from the journal's background save");
   assert.equal(done.state.journalTrade.five.length, 2, 'read back from the saved rows');
 });
 

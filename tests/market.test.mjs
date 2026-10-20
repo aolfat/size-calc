@@ -7,7 +7,7 @@ import { app as harness } from './helpers/app.mjs';
 const csv = fs.readFileSync(new URL('../data/market-universe-2026-09-16.csv', import.meta.url), 'utf8');
 const realEtfCsv = fs.readFileSync(new URL('../data/market-etfs-2026-09-16.csv', import.meta.url), 'utf8');
 const header = 'ticker,name,group,performance_today,performance_1w,performance_1m,performance_3m,performance_6m,performance_ytd';
-const fixture = () => data.parseCsv(header + '\nA,"Alpha, Inc.",Tech,0,2,4,6,8,10\nB,Beta,Tech,-2,,8,10,12,14\nC,Gamma,Energy,3,4,5,6,7,8');
+const fixture = () => data.parseCsv(header + '\nA,"Alpha, Inc.",Tech,1,2,4,6,8,10\nB,Beta,Tech,-2,,8,10,12,14\nC,Gamma,Energy,3,4,5,6,7,8');
 
 test('imports all 2,860 tickers and 146 groups without duplicates', async () => {
   assert.equal(typeof data.parseCsv, 'function');
@@ -17,11 +17,16 @@ test('imports all 2,860 tickers and 146 groups without duplicates', async () => 
   assert.equal(data.groups(rows).length, 146);
 });
 
-test('CSV preserves quoted names, blank vs zero, and rejects invalid schemas/duplicates', async () => {
+test("CSV preserves quoted names, reads blanks and the stock export's zeros as missing, and rejects invalid schemas/duplicates", async () => {
   const rows = fixture();
   assert.equal(rows[0].name, 'Alpha, Inc.');
-  assert.equal(rows[0].returns[0], 0);
+  assert.equal(rows[0].returns[0], 1);
   assert.equal(rows[1].returns[1], null);
+  // The stock export writes 0 for a return it doesn't have (REF, listed this year, shows 0 for 3M, 6M and YTD).
+  assert.deepEqual(data.parseCsv(header + '\nREF,Reformation Inc,Apparel Retail,9.5796,16.483517,-0.625,0,0,0')[0].returns,
+    [9.5796, 16.483517, -0.625, null, null, null]);
+  const ref = data.parseCsv(csv).find(row => row.ticker === 'REF');
+  assert.deepEqual(ref.returns.slice(3), [null, null, null]);
   assert.throws(() => data.parseCsv('ticker,name\nA,Alpha'), /columns/i);
   assert.throws(() => data.parseCsv(header + '\nA,Alpha,Tech,1,2,3,4,5,6\nA,Again,Tech,1,2,3,4,5,6'), /duplicate/i);
 });
@@ -29,7 +34,7 @@ test('CSV preserves quoted names, blank vs zero, and rejects invalid schemas/dup
 test('groups use equal-weight averages, exclude missing returns and retain coverage', async () => {
   const group = data.groups(fixture()).find(r => r.name === 'Tech');
   assert.equal(group.count, 2);
-  assert.equal(group.returns[0], -1);
+  assert.equal(group.returns[0], -0.5);
   assert.equal(group.returns[1], 2);
   assert.equal(group.coverage[1], 1);
   assert.equal(group.returns[2], 6);
@@ -98,14 +103,14 @@ test('failed or cancelled refreshes reject instead of returning partial results'
 // answers here, so each test's fake only sees the Market and quote traffic it is about.
 const sideBars = [0, 1].map(i => ({ time: `2026-09-18T09:${30 + i * 5}:00`, timestamp: 1789738200 + i * 300, open: 10, high: 10.5, low: 9.5, close: 10, volume: 1 }));
 const sideDays = [{ date: '2026-09-17', open: 10, high: 11, low: 9, close: 10 }, { date: '2026-09-18', open: 10, high: 11, low: 9, close: 10 }];
-async function appContext(fetchImpl = async () => { throw new Error('Unexpected request'); }, skipMarketLoad = true) {
+async function appContext(fetchImpl = async () => { throw new Error('Unexpected request'); }, skipMarketLoad = true, { history, now } = {}) {
   const side = url => {
     if (url.includes('/markets/timesales')) return { ok: true, json: async () => ({ series: { data: sideBars } }) };
-    if (url.includes('/markets/history')) return { ok: true, json: async () => ({ history: { day: sideDays } }) };
+    if (url.includes('/markets/history')) return history ? history(url) : { ok: true, json: async () => ({ history: { day: sideDays } }) };
     if (skipMarketLoad && /data\/market-.*\.csv$/.test(url)) return { ok: true, text: async () => url.includes('market-etfs') ? realEtfCsv : csv };
     return null;
   };
-  const app = await harness({ lenient: true, timers: 'fake', clock: true, fetch: (url, options) => side(String(url)) || fetchImpl(url, options) });
+  const app = await harness({ lenient: true, timers: 'fake', clock: true, ...(now ? { now } : {}), fetch: (url, options) => side(String(url)) || fetchImpl(url, options) });
   app.element('apiEnv').value = 'production';
   app.element('ticker').value = 'A';
   return app;
@@ -363,7 +368,8 @@ test('a scoped refresh preserves selected period, sort, unrelated caches and his
   assert.equal(app.run('marketState.period'), 7);
   assert.equal(app.run('marketState.sort'), 'ticker');
   assert.equal(app.run('marketState.direction'), 'asc');
-  assert.equal(app.run('marketRows()[0].returns[7]'), 30);
+  // 1Y now comes from daily closes, and the side history (two September days) has no year-old close.
+  assert.equal(app.run('marketRows()[0].returns[7]'), null);
   app.run("marketSetCategory('equal-weight');");
   assert.equal(app.run('marketCachedSnapshot()'), null);
   await app.run('marketRefreshToday()');
@@ -574,4 +580,105 @@ test('cancelling during rate-limit backoff rejects promptly without another requ
     fetchImpl: async () => { calls++; return {ok:false,status:429}; }});
   await assert.rejects(request, /cancel/i);
   assert.equal(calls, 1);
+});
+
+// Daily history for 1W–1Y: weekdays from Oct 1, 2025 to Oct 16, 2026, closing at 100 + the session's index.
+const historyDays = (() => {
+  const days = [];
+  for (let t = Date.UTC(2025, 9, 1); t <= Date.UTC(2026, 9, 16); t += 864e5) {
+    const d = new Date(t);
+    if (d.getUTCDay() % 6) days.push({ date: d.toISOString().slice(0, 10), open: 1, high: 1, low: 1, close: 100 + days.length });
+  }
+  return days;
+})();
+const closeOn = date => historyDays.find(d => d.date === date).close;
+
+test('longer periods measure from the last close on or before each calendar day back', () => {
+  assert.deepEqual(data.referenceDays('2026-10-19'), ['2026-10-12', '2026-09-19', '2026-07-19', '2026-04-19', '2025-12-31', '2025-10-19']);
+  assert.deepEqual(data.referenceDays('2026-03-31').slice(1, 4), ['2026-02-28', '2025-12-31', '2025-09-30']);
+  const h = data.historyRefs(historyDays, '2026-10-19');
+  // 1W: Mon Oct 12; 1M: Sat Sep 19 → Fri Sep 18; 3M: Sun Jul 19 → Fri Jul 17; YTD: Wed Dec 31.
+  assert.deepEqual(h.refs, [closeOn('2026-10-12'), closeOn('2026-09-18'), closeOn('2026-07-17'), closeOn('2026-04-17'),
+    closeOn('2025-12-31'), closeOn('2025-10-17')]);
+  assert.equal(h.last, closeOn('2026-10-16'));
+  assert.equal(h.day, '2026-10-19');
+  // A listing from August has 1W and 1M, nothing further back; a close weeks before the day doesn't stand in for it.
+  assert.deepEqual(data.historyRefs(historyDays.filter(d => d.date >= '2026-08-03'), '2026-10-19').refs.slice(2), [null, null, null, null]);
+  assert.deepEqual(data.historyRefs([{ date: '2026-08-03', close: 5 }, { date: '2026-10-16', close: 6 }], '2026-10-19').refs, [null, null, null, null, null, null]);
+  assert.deepEqual(data.historyRefs(null, '2026-10-19'), { day: '2026-10-19', refs: [null, null, null, null, null, null], last: null });
+});
+
+test('history returns use the quote price, else the last close, and a symbol without history shows none', () => {
+  const history = { A: { day: '2026-10-19', refs: [100, 50, null, 200, 80, 25], last: 90 } };
+  const [a, b] = data.withHistory(data.withQuotes(fixture().slice(0, 2), data.quoteRows({ quotes: { quote: { symbol: 'A', last: 110, change_percentage: 1 } } })), history);
+  assert.deepEqual(a.returns.map(v => v === null ? null : Math.round(v * 100) / 100), [1, 10, 120, null, -45, 37.5]);
+  assert.deepEqual(b.returns.slice(1), [null, null, null, null, null]);
+  const [noQuote] = data.withHistory(fixture().slice(0, 1), history);
+  assert.ok(Math.abs(noQuote.returns[1] - -10) < 1e-9);
+  const [etf] = data.withHistory(etfFixture(), { XLK: { day: '2026-10-19', refs: [100, 100, 100, 100, 100, 50], last: 100 } });
+  assert.equal(etf.returns[5], 0);
+  assert.equal(etf.returns[6], 0.5);
+  assert.equal(etf.returns[7], 100);
+});
+
+test('history loads one symbol at a time, spaced, skipping refused symbols and retrying rate limits', async () => {
+  const calls = [], pauses = [];
+  const got = {};
+  let limited = false;
+  await data.fetchHistories(['A', 'BAD', 'C'], {
+    base: 'B', auth: { Authorization: 'x' }, start: '2025-10-04', end: '2026-10-19', spacing: 600,
+    pause: async ms => { pauses.push(ms); },
+    fetchImpl: async url => {
+      calls.push(url);
+      if (url.includes('BAD')) return { ok: false, status: 400 };
+      if (url.includes('=C&') && !limited) { limited = true; return { ok: false, status: 429, headers: { get: k => k === 'Retry-After' ? '3' : null } }; }
+      return { ok: true, json: async () => ({ history: url.includes('=C&') ? { day: { date: '2026-10-16', close: 5 } } : { day: historyDays } }) };
+    },
+    onSymbol: (symbol, days) => { got[symbol] = days.length; },
+  });
+  assert.equal(calls[0], 'B/markets/history?symbol=A&interval=daily&start=2025-10-04&end=2026-10-19');
+  assert.deepEqual(got, { A: historyDays.length, BAD: 0, C: 1 });
+  assert.equal(calls.length, 4);
+  assert.deepEqual(pauses, [600, 600, 3000]);
+  await assert.rejects(data.fetchHistories(['A', 'C'], { base: '', auth: {}, start: '', end: '', pause: async () => {},
+    fetchImpl: async () => ({ ok: false, status: 401 }), onSymbol: () => assert.fail('no symbol after a 401') }), /api key/i);
+});
+
+test('an ETF tab and an opened group load daily history once a day; the overview stays on the snapshot', async () => {
+  const historyCalls = [];
+  const now = Date.UTC(2026, 9, 19, 15); // Mon Oct 19, 2026, 11am New York
+  const app = await appContext(async (url, options) => ({ ok: true, json: async () => ({ quotes: { quote:
+    new URLSearchParams(options.body).get('symbols').split(',').map(symbol => ({ symbol, last: 102, open: 100, change_percentage: 2 })) } }) }), true, {
+    now, history: url => { historyCalls.push(new URL(url).searchParams.get('symbol')); return { ok: true, json: async () => ({ history: { day: historyDays } }) }; },
+  });
+  seedMarket(app);
+  await app.run('marketRefreshToday()');
+  await app.advance(0);
+  assert.deepEqual(historyCalls, ['XLK']);
+  // 102 now over the Sep 18 close.
+  assert.ok(Math.abs(app.run('marketRows()[0].returns[2]') - (102 / closeOn('2026-09-18') - 1) * 100) < 1e-9);
+  assert.ok(app.run('marketPeriodLive(2)'));
+  assert.ok(!app.element('marketContent').innerHTML.includes('market-asof'));
+  assert.match(app.element('marketSource').innerHTML, /daily closes/);
+  // Kept for the day: leaving and coming back, or a reload, asks again for nothing.
+  app.run("marketSetCategory('equal-weight'); marketSetCategory('sectors');");
+  await app.advance(5000);
+  app.run('marketState.history = {}; marketReadCache();');
+  assert.equal(app.run('marketState.history.XLK.day'), '2026-10-19');
+  await app.advance(5000);
+  assert.deepEqual(historyCalls, ['XLK', 'RSP']);
+  // The overview keeps Sep 16 for its longer periods and says so in the headers; an opened group reads its stocks' closes.
+  app.run("marketSetCategory('themes');");
+  await app.run('marketRefreshToday()');
+  await app.advance(5000);
+  assert.deepEqual(historyCalls, ['XLK', 'RSP']);
+  assert.equal(app.run('marketRows()[0].returns[2]'), 4);
+  assert.ok(!app.run('marketPeriodLive(2)'));
+  assert.match(app.element('marketContent').innerHTML, /market-asof">Sep 16/);
+  app.run("marketOpenGroup('Tech');");
+  await app.advance(5000);
+  await app.advance(1000);
+  assert.deepEqual(historyCalls, ['XLK', 'RSP', 'A', 'B']);
+  assert.ok(app.run('marketPeriodLive(2)'));
+  assert.ok(Math.abs(app.run('marketRows()[0].returns[2]') - (102 / closeOn('2026-09-18') - 1) * 100) < 1e-9);
 });

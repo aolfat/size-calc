@@ -144,7 +144,7 @@ Every Schwab order and `TRADE` transaction is kept exactly as Schwab sent it, wi
   - **What's saved:** every weekday each trade was open, for the stock, or for an option both the contract and its underlying, within the last 35 days. Finished days only.
   - **When:** after each import and when the Journal opens, at most hourly, one Tradier call per symbol for what's missing.
   - **Holidays:** kept empty, so they're never asked for again.
-  - **Where it shows:** the Import sheet says how far it's saved.
+  - **Where it shows:** nowhere; it runs quietly (the Import sheet's line was removed by request).
 
 - **The page (built):** tapping a trade opens it full width. Edit opens the trade sheet (your stop, separate, delete), and ← Trades goes back.
 - **Charts (built):** daily and 5-minute, with your fills marked on the bars they happened in, and entry, exit and stop drawn. This reuses `ui/candles.js` and the position chart's drawing.

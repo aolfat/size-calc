@@ -168,16 +168,27 @@
 .journal-table td.journal-setups { white-space: normal; min-width: 150px; max-width: 240px; }
 .journal-setup { display: inline-block; margin: 0 4px 3px 0; padding: 1px 7px; font-size: 11.5px; line-height: 1.5; color: var(--text); border-radius: 999px; background: color-mix(in srgb, var(--blue) 14%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--border)); white-space: nowrap; }
 .journal-table td.journal-setups-none { color: var(--text3); }
+.journal-setup-lvl { color: var(--text2); }
+.journal-setup-act + .journal-setup-lvl { margin-left: 6px; padding-left: 6px; border-left: 1px solid color-mix(in srgb, var(--blue) 35%, var(--border)); }
+.jr-parts { width: 100%; display: grid; gap: 2px; font-size: 12px; color: var(--text3); }
+.jr-parts b { font-weight: 600; color: var(--text2); }
 .journal-setup-filter { padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); max-width: 220px; }
 .journal-setup-filter.active { border-color: var(--blue); }
 .journal-tag.journal-tag-done { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, transparent); background: color-mix(in srgb, var(--green) 10%, transparent); }
-.jl-list { display: grid; gap: 6px; }
+.jl-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .jl-row { display: flex; align-items: center; gap: 10px; }
 .jl-row input { flex: 1 1 auto; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
 .jl-row select { flex: 0 0 132px; padding: 6px 6px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
 .jl-row .pos-link { flex: none; font-size: 12.5px; }
 .jl-row .journal-tag { flex: none; margin: 0; }
 .jl-off input { color: var(--text3); }
+/* phones: the name on its own line, what it's made of and the actions under it */
+@media (max-width: 600px) {
+  .jl-row { flex-wrap: wrap; gap: 6px 10px; }
+  .jl-row input { flex-basis: 100%; }
+  .jl-row .jl-parts { flex: 1 1 auto; max-width: none; }
+  .jl-row select { flex-basis: 120px; }
+}
 @media (max-width: 600px) {
   .jr-row { grid-template-columns: 1fr; gap: 4px; }
   .jr-label { padding-top: 0; }
@@ -365,6 +376,54 @@ span.journal-pick { cursor: default; }
 .jt-stats dd .pos-sub { font-size: 11.5px; font-weight: 400; }
 .jt-sub { margin-top: 14px; }
 .jt-table { min-width: 0; width: 100%; }
+/* trade features: the Features tab (what each reads, how far it's stamped) and the trade page's At entry table */
+.jf-table { min-width: 680px; table-layout: fixed; }
+.jf-c-name { width: 46%; } .jf-c-needs { width: 26%; } .jf-c-v { width: 9%; } .jf-c-done { width: 19%; }
+.jf-table td { white-space: normal; }
+.jf-table th:nth-child(2), .jf-table td.jf-needs { text-align: left; font-family: inherit; color: var(--text2); font-size: 12.5px; }
+.positions-table.jf-table tr.jf-family th { position: static; text-align: left; padding: 16px 10px 4px; font-size: 13px; font-weight: 600; color: var(--text); background: none; }
+.jf-wrap { margin-top: 10px; }
+.jf-key { font-family: var(--num); }
+/* phones: each feature a block (name, what it reads, version, how far), no sideways scroll */
+@media (max-width: 600px) {
+  .jf-table { min-width: 0; table-layout: auto; }
+  .jf-table colgroup, .jf-table thead { display: none; }
+  .jf-table, .jf-table tbody, .jf-table tr, .jf-table td, .jf-table th { display: block; width: auto; }
+  .positions-table.jf-table td:first-child { position: static; background: none; max-width: none; min-width: 0; }
+  .jf-table tbody td { border-bottom: 0; padding: 2px 12px; text-align: left; }
+  .jf-table tbody tr:not(.jf-family) { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .positions-table.jf-table tr.jf-family th { padding: 14px 12px 4px; }
+  .jf-table td:nth-child(3), .jf-table td:nth-child(4) { display: inline-block; vertical-align: top; }
+  .jf-table td:nth-child(3)::before { content: 'Version '; color: var(--text3); }
+  .jf-table td:nth-child(4) b::before { content: 'Stamped '; color: var(--text3); font-weight: 400; }
+}
+/* the trade page's tabs (Review | Features) and its features list: a row per feature, tap to expand what it measures */
+.jt-tabs { margin: 16px 0 10px; }
+.jt-tab-n { margin-left: 4px; font-size: 12px; font-weight: 500; color: var(--text3); }
+.jt-tabs button.active .jt-tab-n { color: var(--blue); }
+.jf-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.jf-head .hint { margin: 0; }
+.jf-list { margin-top: 6px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.jf-fam { padding: 10px 12px 4px; font-size: 12px; font-weight: 600; color: var(--text2); background: var(--bg3); border-bottom: 1px solid var(--border); }
+.jf-item { border-bottom: 1px solid var(--border); }
+.jf-item:last-child { border-bottom: 0; }
+.jf-item summary { display: grid; grid-template-columns: minmax(180px, 2fr) minmax(90px, 1fr) 3fr; gap: 4px 14px; align-items: baseline; padding: 9px 12px 9px 28px; cursor: pointer; list-style: none; position: relative; }
+.jf-item summary::-webkit-details-marker { display: none; }
+.jf-item summary::before { content: '›'; position: absolute; left: 12px; top: 8px; color: var(--text3); transition: transform .15s; }
+.jf-item[open] summary::before { transform: rotate(90deg); }
+.jf-item summary:hover { background: var(--bg3); }
+.jf-name { font-weight: 500; }
+.jf-val { font-family: var(--num); font-weight: 600; text-align: right; }
+.jf-how { color: var(--text3); font-size: 12px; }
+.jf-quiet .jf-name, .jf-quiet .jf-val { color: var(--text3); font-weight: 400; }
+.jf-detail { padding: 0 12px 10px 28px; font-size: 12.5px; color: var(--text2); }
+.jf-detail p { margin: 0 0 4px; }
+.jf-meta { color: var(--text3); }
+@media (max-width: 600px) {
+  .jf-item summary { grid-template-columns: 1fr auto; }
+  .jf-how { grid-column: 1 / -1; }
+  .jf-how:empty { display: none; }
+}
 /* the review deck: a bar on each card (in the header on desktop, fixed above the tab bar on phones), the hidden P&L, the end */
 .jt-deck { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; margin: 0 0 12px; border: 1px solid var(--blue-bd); border-radius: var(--radius); background: color-mix(in srgb, var(--blue-bg) 45%, var(--bg2)); font-size: 13px; }
 .jt-deck-count { font-weight: 600; font-family: var(--num); }

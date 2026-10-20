@@ -1,6 +1,7 @@
 // Run with: node --test
-// Saving 5-minute bars for the journal's trades: which symbols and days they need (barsNeeded), Tradier's timesales
-// packed per day, the save (only what's missing, holidays kept empty, a refused symbol skipped), and when it runs.
+// Saving 5-minute bars for the journal's trades: which symbols and days they need (barsNeeded: the hold, the weekdays
+// before it, the market basket), Tradier's timesales packed per day, the save (only what's missing, holidays kept empty,
+// a refused symbol skipped, the provider named, older databases without the source column), and when it runs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -14,22 +15,40 @@ const call = { symbol: 'AAPL  261218C00245000', assetType: 'OPTION', status: 'op
 test('which bars the trades need: each weekday open, finished days only, both an option and its underlying', async () => {
   const { run } = await app();
   assert.deepEqual(JSON.parse(run("JSON.stringify(weekdaysBetween('2026-10-09', '2026-10-13'))")), ['2026-10-09', '2026-10-12', '2026-10-13'], 'no weekend');
-  const need = JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([stock, call])}, ${NOW})])`));
+  const need = JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([stock, call])}, ${NOW}, { lookback: 0 })])`));
   assert.deepEqual(need, [
     ['AAPL', ['2026-10-09', '2026-10-12', '2026-10-13', '2026-10-14']],
     ['AAPL261218C00245000', ['2026-10-13', '2026-10-14']],
   ], 'the open call runs to yesterday, never today; its underlying joins the stock\'s days');
-  const evening = ms => JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([call])}, ${ms})])`))[0][1].at(-1);
+  const evening = ms => JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([call])}, ${ms}, { lookback: 0 })])`))[0][1].at(-1);
   assert.equal(evening(Date.parse('2026-10-15T23:59:00Z')), '2026-10-14', '19:59 ET: today is still trading after hours');
   assert.equal(evening(Date.parse('2026-10-16T00:00:00Z')), '2026-10-15', '20:00 ET: extended hours are over, today is done');
   assert.equal(run(`lastDoneDay(${Date.parse('2026-12-02T01:00:00Z')})`), '2026-12-01', '20:00 EST too');
   assert.equal(run(`lastDoneDay(${Date.parse('2026-12-02T00:59:00Z')})`), '2026-11-30');
   const old = { ...stock, openedAt: '2026-08-03T14:30:00.000Z', closedAt: '2026-09-15T15:00:00.000Z' };
-  const clipped = JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([old])}, ${NOW})])`));
+  const clipped = JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([old])}, ${NOW}, { lookback: 0 })])`));
   assert.equal(clipped[0][1][0], '2026-09-10', 'nothing older than 35 days: Tradier wouldn\'t have it');
   assert.deepEqual(JSON.parse(run(`JSON.stringify([...barsNeeded(${JSON.stringify([{ ...stock, status: 'history', openedAt: '' }])}, ${NOW})])`)), [], 'a trade from before the history has no dates');
   const packed = JSON.parse(run(`JSON.stringify([...barsByDay([{ time: '2026-10-13T09:35:00', open: 2, high: 3, low: 1, close: 2.5, volume: 10 }, { time: '2026-10-13T09:30:00', open: 1, high: 2, low: 1, close: 2 }, { time: 'junk' }])])`));
   assert.deepEqual(packed, [['2026-10-13', [['09:30', 1, 2, 1, 2, 0], ['09:35', 2, 3, 1, 2.5, 10]]]]);
+});
+
+test('the weekdays before a trade for its stock, and the market basket every weekday, inside the window', async () => {
+  const { run } = await app();
+  const need = sets => JSON.parse(run(`JSON.stringify([...barsNeeded(${sets})])`));
+  assert.deepEqual(JSON.parse(run("JSON.stringify(weekdaysBefore('2026-10-12', 3))")), ['2026-10-07', '2026-10-08', '2026-10-09'], 'the weekend skipped, the day itself left out');
+  const both = need(`${JSON.stringify([stock, call])}, ${NOW}`);
+  assert.equal(both[0][0], 'AAPL');
+  assert.equal(both[0][1][0], '2026-09-11', "20 weekdays before the stock's open on 10/9");
+  assert.equal(both[0][1].length, 24, 'then every weekday through yesterday, once');
+  assert.deepEqual(both[1], ['AAPL261218C00245000', ['2026-10-13', '2026-10-14']], "the contract only while held: the run rate compares the underlying's volume");
+  const early = need(`${JSON.stringify([{ ...stock, openedAt: '2026-09-14T14:30:00.000Z' }])}, ${NOW}`);
+  assert.equal(early[0][1][0], '2026-09-10', 'clipped at 35 days back: Tradier wouldn\'t have the rest');
+  const market = need(`[], ${NOW}, { market: ['SPY', 'QQQ'] }`);
+  assert.deepEqual(market.map(([sym, days]) => [sym, days[0], days.at(-1), days.length]), [['SPY', '2026-09-10', '2026-10-14', 25], ['QQQ', '2026-09-10', '2026-10-14', 25]], 'every weekday in the window, traded or not');
+  const basket = JSON.parse(run('JSON.stringify(MARKET_BASKET)'));
+  assert.ok(basket.includes('SPY') && basket.includes('QQQ') && basket.includes('XLK'));
+  assert.equal(new Set(basket).size, basket.length);
 });
 
 /** a fake Tradier: two bars a day for every weekday asked, none on 10/12 (as if a holiday); `refuse` symbols get a 401 */
@@ -56,7 +75,7 @@ test('saving: one Tradier call per symbol for what\'s missing, a holiday kept em
   const supabase = fakeRecords();
   const { run, elements } = await app({ fetch: net.fetch, supabase, session: SESSION });
   elements.get('apiKey').value = 'test-key';
-  const r = JSON.parse(await run(`saveTradeBars(${JSON.stringify([stock, call])}, ${NOW}).then(r => JSON.stringify(r))`));
+  const r = JSON.parse(await run(`saveTradeBars(${JSON.stringify([stock, call])}, ${NOW}, { lookback: 0 }).then(r => JSON.stringify(r))`));
   assert.deepEqual(net.calls.map(c => [c.symbol, c.start, c.end, c.session]), [
     ['AAPL', '2026-10-09 04:00', '2026-10-14 20:00', 'all'],
     ['AAPL261218C00245000', '2026-10-13 04:00', '2026-10-14 20:00', 'all'],
@@ -68,9 +87,28 @@ test('saving: one Tradier call per symbol for what\'s missing, a holiday kept em
   assert.ok(supabase.writes.filter(w => w.table === 'bars_5m').every(w => w.ignoreDuplicates && w.onConflict === 'user_id,symbol,day'));
   assert.deepEqual([r.saved, r.symbols, r.through, r.failed], [6, 2, '2026-10-14', []]);
 
-  const again = JSON.parse(await run(`saveTradeBars(${JSON.stringify([stock, call])}, ${NOW}).then(r => JSON.stringify(r))`));
+  const again = JSON.parse(await run(`saveTradeBars(${JSON.stringify([stock, call])}, ${NOW}, { lookback: 0 }).then(r => JSON.stringify(r))`));
   assert.equal(net.calls.length, 2, 'everything kept: no more Tradier calls');
   assert.deepEqual([again.saved, again.through], [0, '2026-10-14']);
+});
+
+test('every saved day names its provider; a database without the source column still saves', async () => {
+  const net = tradier();
+  const supabase = fakeRecords();
+  const { run, elements } = await app({ fetch: net.fetch, supabase, session: SESSION });
+  elements.get('apiKey').value = 'test-key';
+  const r = JSON.parse(await run(`saveTradeBars([], ${NOW}, { market: ['SPY'] }).then(r => JSON.stringify(r))`));
+  assert.deepEqual(net.calls.map(c => [c.symbol, c.start, c.end]), [['SPY', '2026-09-10 04:00', '2026-10-14 20:00']], 'the basket with no trades at all');
+  assert.equal(r.saved, 25);
+  assert.ok([...supabase.bars.values()].every(b => b.source === 'tradier'));
+
+  const old = fakeRecords();
+  old.failColumn('bars_5m', 'source');
+  const before = await app({ fetch: tradier().fetch, supabase: old, session: SESSION });
+  before.elements.get('apiKey').value = 'test-key';
+  const r2 = JSON.parse(await before.run(`saveTradeBars([], ${NOW}, { market: ['SPY'] }).then(r => JSON.stringify(r))`));
+  assert.equal(r2.saved, 25, 'before the migration is pushed: saved without it (the column defaults to tradier)');
+  assert.ok([...old.bars.values()].every(b => !('source' in b)));
 });
 
 test('a symbol Tradier refuses is skipped and named, the rest still save', async () => {
@@ -78,13 +116,13 @@ test('a symbol Tradier refuses is skipped and named, the rest still save', async
   const supabase = fakeRecords();
   const { run, elements } = await app({ fetch: net.fetch, supabase, session: SESSION });
   elements.get('apiKey').value = 'test-key';
-  const r = JSON.parse(await run(`saveTradeBars(${JSON.stringify([stock, call])}, ${NOW}).then(r => JSON.stringify(r))`));
+  const r = JSON.parse(await run(`saveTradeBars(${JSON.stringify([stock, call])}, ${NOW}, { lookback: 0 }).then(r => JSON.stringify(r))`));
   assert.deepEqual(r.failed, ['AAPL261218C00245000']);
   assert.equal(r.saved, 4);
   assert.ok(![...supabase.bars.keys()].some(k => k.includes('C00245000')), 'nothing kept for it, so the next run asks again');
 });
 
-test('when it runs: after the journal loads, with a key, at most hourly; and the Import sheet says how it went', async () => {
+test('when it runs: after the journal loads, with a key, at most hourly; quietly, nothing in the Import sheet', async () => {
   const day = 864e5, iso = t => new Date(t).toISOString();
   const opened = Date.now() - 6 * day, closed = Date.now() - 2 * day;
   const order = (id, instruction, time, price) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: iso(time), data: {
@@ -96,18 +134,17 @@ test('when it runs: after the journal loads, with a key, at most hourly; and the
   const net = tradier();
   const { run, elements, storage } = await app({ fetch: net.fetch, supabase, session: SESSION });
   assert.equal(await run('maybeSaveBars()'), null, 'no Tradier key: nothing to fetch with');
-  assert.match(run('barsLine()'), /Add a Tradier key in Settings/);
   elements.get('apiKey').value = 'test-key';
   run("setView('journal')");
   await run('loadJournal()');
   for (let i = 0; i < 30; i++) await new Promise(r => setImmediate(r));
   assert.ok(net.calls.some(c => c.symbol === 'MSFT'), 'opening the journal saved its trades\' bars');
+  assert.ok(['SPY', 'QQQ', 'XLRE'].every(sym => net.calls.some(c => c.symbol === sym)), "and the market basket's");
   assert.ok([...supabase.bars.keys()].some(k => k.startsWith('user-1:MSFT:')));
-  assert.match(run('barsLine()'), /^5-minute bars saved through \d+\/\d+\/\d{2} · \d+ new days? last time\.$/);
   assert.ok(JSON.parse(storage.get('journal_bars')).user === 'user-1');
   const calls = net.calls.length;
   assert.equal(await run('maybeSaveBars()'), null, 'within the hour: skipped');
   assert.equal(net.calls.length, calls);
   run('openJournalImport()');
-  assert.match(elements.get('journalImportBody').innerHTML, /id="journalBarsStatus"[^>]*>5-minute bars saved through/);
+  assert.doesNotMatch(elements.get('journalImportBody').innerHTML, /5-minute bars/);
 });

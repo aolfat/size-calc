@@ -84,7 +84,7 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 - **Chips for quick picks.** "+ New" adds your own item in place.
 - **Saves as you go.** It shows "Reviewed" once the required fields are in, and "To review: missing sector, note" until then.
 - **The trades list** gets a reviewed or to-review mark and a "To review" filter.
-- **Setups on the list (built):** a Setups column shows each trade's setups by name. An "All setups" menu narrows Trades, Calendar and Stats to one setup, which gives that setup's numbers before slice 5's reports.
+- **Setups on the list (built):** a Setups column shows each trade's setups by name. An "All setups" menu narrows Trades, Calendar and Stats to one setup, which gives that setup's numbers before slice 5's reports. Setups add up action first, level second: the menu lists each kind (Bounce, Undercut & rally, Rejection, each pattern) with its setups under it, then "Any setup at" each level, and the Setups tab has By setup kind and By level tables after My setups, so every bounce reads together whatever it bounced off. The kind and levels come from the parts each setup already keeps (an action at its levels, or a pattern), so nothing changed in the database. A setup's parts can be edited later (Edit choices → Edit on the setup): every trade with it then counts the new way, and parts that match another setup offer a merge instead.
 - **Screenshots (built):** attach images to a trade with Paste from clipboard, by picking a file, by pressing ⌘V on the page, or by dropping them. They're shrunk, kept in a private bucket under your own folder, and shown through signed links. Each has a caption, and Delete asks once. Ten a trade.
 - **A Library sheet** to rename, hide and merge.
 

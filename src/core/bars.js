@@ -1,6 +1,7 @@
 // @ts-check
 // Bar math: client-side interval aggregation, HV20 from daily closes, percentile ranks; and which 5-minute bars the
-// journal's trades need saved (barsNeeded) and Tradier's timesales split into one packed array per day (barsByDay).
+// journal's trades need saved (barsNeeded: the days they were open, the sessions before for comparisons, the market basket)
+// and a provider's 5-minute bars split into one packed array per day (barsByDay).
 
 import { nyDateStr } from './format.js';
 import { parseSchwabOption } from './positions.js';
@@ -68,6 +69,15 @@ export const nyDay = t => nyDateStr(new Date(t));
 export const DAY_DONE = '20:00';
 const NY_CLOCK = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
+/**
+ * Saved every weekday whether you traded or not, so features about the market at a trade's entry (SPY over its 8 EMA,
+ * how the sector did) work for every trade: the broad indexes and the 11 sector SPDRs (docs/journal-features.md).
+ */
+export const MARKET_BASKET = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLU', 'XLB', 'XLRE'];
+
+/** weekdays saved before a trade's open for its stock (an option's underlying): what a volume run rate compares against */
+export const LOOKBACK_DAYS = 20;
+
 /** the newest New York day whose bars are all in: today from 20:00 on, else yesterday. @param {number} now */
 export function lastDoneDay(now) {
   const today = nyDay(now);
@@ -92,32 +102,49 @@ export function weekdaysBetween(from, to) {
   return out;
 }
 
+/** the `n` weekdays before a New York day, oldest first, the day itself left out. @param {string} day @param {number} n */
+export function weekdaysBefore(day, n) {
+  /** @type {string[]} */
+  const out = [];
+  for (let t = Date.parse(day + 'T12:00:00Z') - DAY_MS; out.length < n; t -= DAY_MS) {
+    const d = new Date(t);
+    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) out.unshift(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 /**
- * The bars the trades need: for each trade, every weekday it was open (opened to closed, or to now), finished days only
- * (today once extended hours end at 20:00: lastDoneDay; a day saved early would stay cut short), and only within the last BARS_KEEP_DAYS. Trades from before the history have no open
- * date, so none. A holiday comes back empty from Tradier and is kept empty.
+ * The bars the trades need: for each trade, every weekday it was open (opened to closed, or to now), and the `lookback`
+ * weekdays before its open for its stock (an option's underlying, not the contract); and every weekday for each `market`
+ * symbol. Finished days only (today once extended hours end at 20:00: lastDoneDay; a day saved early would stay cut
+ * short), and only within the last `keepDays`. Trades from before the history have no open date, so none. A holiday
+ * comes back empty and is kept empty.
  * @param {{ symbol: string, assetType: string, status: string, openedAt: string, closedAt: string | null }[]} trades
- * @param {number} now @param {number} [keepDays]
- * @returns {Map<string, string[]>} Tradier symbol → days, oldest first
+ * @param {number} now @param {{ keepDays?: number, lookback?: number, market?: string[] }} [opts]
+ * @returns {Map<string, string[]>} symbol → days, oldest first
  */
-export function barsNeeded(trades, now, keepDays = BARS_KEEP_DAYS) {
+export function barsNeeded(trades, now, { keepDays = BARS_KEEP_DAYS, lookback = LOOKBACK_DAYS, market = [] } = {}) {
   const earliest = nyDay(now - keepDays * DAY_MS);
   const done = lastDoneDay(now);
   /** @type {Map<string, Set<string>>} */
   const need = new Map();
+  /** @param {string} sym @param {string[]} days */
+  const add = (sym, days) => {
+    if (!need.has(sym)) need.set(sym, new Set());
+    for (const d of days) if (d >= earliest && d <= done) /** @type {Set<string>} */ (need.get(sym)).add(d);
+  };
   for (const t of trades) {
     if (t.status === 'history' || !t.openedAt) continue;
-    let from = nyDay(t.openedAt), to = t.closedAt ? nyDay(t.closedAt) : done;
+    const open = nyDay(t.openedAt);
+    let from = open, to = t.closedAt ? nyDay(t.closedAt) : done;
     if (from < earliest) from = earliest;
     if (to > done) to = done;
-    if (from > to) continue;
-    const days = weekdaysBetween(from, to);
-    for (const sym of tradeBarSymbols(t)) {
-      if (!need.has(sym)) need.set(sym, new Set());
-      for (const d of days) /** @type {Set<string>} */ (need.get(sym)).add(d);
-    }
+    const syms = tradeBarSymbols(t);
+    if (from <= to) for (const sym of syms) add(sym, weekdaysBetween(from, to));
+    if (lookback > 0 && open > earliest) add(syms[syms.length - 1], weekdaysBefore(open, lookback));
   }
-  return new Map([...need].map(([sym, days]) => [sym, [...days].sort()]));
+  if (market.length && earliest <= done) for (const sym of market) add(sym, weekdaysBetween(earliest, done));
+  return new Map([...need].filter(([, days]) => days.size).map(([sym, days]) => [sym, [...days].sort()]));
 }
 
 /**

@@ -1,5 +1,6 @@
 // Journal Setups tab (docs/journal-step-3.md, slice 5): every one of My setups with its numbers (closed trades, net, win
-// rate, average R, profit factor; the ones not used yet too), then your closed trades cut by the review's other labels
+// rate, average R, profit factor; the ones not used yet too), the same by kind (every bounce together) and by level, then
+// your closed trades cut by the review's other labels
 // (setup grade, entry tactic, followed the plan, market, sector, mistakes, tags). A setup tapped opens its own page: what
 // it's made of, its headline numbers, its grades and tactics, and its trades; from there its trades, stats or model book
 // examples. The Journal's side, symbol and fee choices apply. A trade counts in each of its setups.
@@ -9,7 +10,7 @@ import { countedTrades, groupStats, statsByLabel } from '../core/journal-stats.j
 import { fmtPositionPrice } from '../core/positions.js';
 import { state } from '../state.js';
 import { headline, statTable } from './journal-stats.js';
-import { labelKeys, reviewLibrary, reviewOf } from './journal-review.js';
+import { labelKeys, reviewLibrary, reviewOf, setupsOf } from './journal-review.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -58,7 +59,10 @@ function overview(trades, lib) {
   const counted = countedTrades(live).length;
   const withSetup = counted - none;
   const named = kind => key => lib.nameOf(kind, key);
-  const grades = cut(live, t => [reviewOf(t).grade || 'Not graded'], g => g, [...GRADES, 'Not graded']);
+  const grades = cut(live, t => reviewOf(t).grade ? [reviewOf(t).grade] : [], g => g, GRADES);
+  // the action first and the level second: every bounce together, whatever it bounced off; any setup at the 21 EMA
+  const kinds = cut(live, t => setupsOf(t).map(s => s.kind?.name || s.name), k => k);
+  const levels = cut(live, t => setupsOf(t).flatMap(s => s.levels.map(l => l.name)), l => l);
   const tactics = cut(live, t => labelKeys(t, 'tactic'), named('tactic'));
   const plans = cut(live, t => reviewOf(t).plan ? [reviewOf(t).plan] : [], p => (PLAN_FOLLOWED.find(([v]) => v === p) || [p, p])[1], PLAN_FOLLOWED.map(([v]) => v));
   const markets = cut(live, t => reviewOf(t).market ? [reviewOf(t).market] : [], named('market'), lib.choices('market').map(i => i.key));
@@ -67,6 +71,8 @@ function overview(trades, lib) {
   const tags = cut(live, t => labelKeys(t, 'tag'), named('tag'));
   return `<p class="hint journal-summary">${plural(list.length, 'setup')} · ${counted ? `${withSetup} of ${plural(counted, 'closed trade')} ${withSetup === 1 ? 'has' : 'have'} a setup` : 'no closed trades yet'}${none ? ` · <span class="journal-fees-missing">${none} without a setup</span>` : ''} · <button class="pos-link" data-action="openJournalLibrary">Edit choices</button></p>
     ${statTable('My setups', setupRows, 'Tap a setup for its page. A trade counts in each of its setups, so the rows can add up to more than your total.', 'Setup', { withR: true, html: true })}
+    ${statTable('By setup kind', kinds.rows, 'Every bounce together, whatever it bounced off; the same for undercut &amp; rally and rejection. A pattern is its own kind. A trade with two kinds counts in both.', 'Kind', { withR: true })}
+    ${statTable('By level', levels.rows, 'Any setup at that level, whatever happened there. A trade at two levels counts in both.', 'Level', { withR: true })}
     ${statTable('By setup grade', grades.rows, "If A trades don't beat C trades, the grade isn't telling you anything yet.", 'Grade', { withR: true })}
     ${statTable('By entry tactic', tactics.rows, noneNote(tactics.none, 'a tactic'), 'Tactic', { withR: true })}
     ${statTable('Followed the plan', plans.rows, noneNote(plans.none, 'an answer'), 'Plan', { withR: true })}
@@ -99,7 +105,7 @@ function setupPage(trades, lib, key) {
   const closed = countedTrades(mine);
   const open = mine.length - closed.length;
   const named = kind => k => lib.nameOf(kind, k);
-  const grades = cut(mine, t => [reviewOf(t).grade || 'Not graded'], g => g, [...GRADES, 'Not graded']);
+  const grades = cut(mine, t => reviewOf(t).grade ? [reviewOf(t).grade] : [], g => g, GRADES);
   const tactics = cut(mine, t => labelKeys(t, 'tactic'), named('tactic'));
   const markets = cut(mine, t => reviewOf(t).market ? [reviewOf(t).market] : [], named('market'), lib.choices('market').map(i => i.key));
   const sides = cut(mine, t => [SIDE_WORDS[t.bias] || 'Long'], s => s, ['Long', 'Short', 'Neutral']);
