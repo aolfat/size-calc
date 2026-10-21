@@ -92,6 +92,24 @@ async function page(tweak) {
   return { ...a, supabase, t, body: () => a.elements.get('jtBody').innerHTML, list: () => a.elements.get('journalSection').innerHTML, rows: name => [...supabase.tables[name].values()] };
 }
 
+test('a setup named for its parts follows them renamed; a name you typed stays', async () => {
+  const { run } = await app();
+  const rows = [
+    { id: 'u1', kind: 'level', name: '9 EMA', default_key: 'ema8' },
+    { id: 'u2', kind: 'setup', name: '8 EMA rejection', settings: { action: 'rejection', levels: ['ema8'] } },
+    { id: 'u3', kind: 'setup', name: 'My 8 EMA', settings: { action: 'bounce', levels: ['ema8', 'ema21'] } },
+    { id: 'u4', kind: 'pattern', name: 'Gap and go', default_key: 'earnings_gap' },
+  ];
+  const lib = `buildLibrary(${JSON.stringify(rows)})`;
+  assert.equal(run(`${lib}.nameOf('setup', 'ema8_bounce')`), '9 EMA bounce', 'a starting setup follows its level');
+  assert.equal(run(`${lib}.nameOf('setup', 'mine:u2')`), '9 EMA rejection', 'yours too, when its name was its parts');
+  assert.equal(run(`${lib}.nameOf('setup', 'mine:u3')`), 'My 8 EMA', 'a typed name stays');
+  assert.equal(run(`${lib}.nameOf('setup', 'earnings_gap')`), 'Gap and go', 'a pattern setup follows its pattern');
+  assert.equal(run(`${lib}.nameOf('setup', 'flag_breakout')`), 'Flag breakout', "a starting name that isn't its parts' stays");
+  const edited = `buildLibrary(${JSON.stringify([...rows, { id: 'u5', kind: 'setup', name: '8 EMA bounce', default_key: 'ema21_bounce', settings: { action: 'bounce', levels: ['ema8'] } }])})`;
+  assert.equal(run(`${edited}.nameOf('setup', 'ema21_bounce')`), '9 EMA bounce', 'an edited one follows its new parts');
+});
+
 test('the Review section: market for the day or this trade, sector, My setups (one tap, or + New setup), tactic, tags, grades, the exit note', async () => {
   const { run, state, t, body, rows, supabase } = await page();
   assert.match(body(), /<span class="section-title js-sub">Review<\/span>\s*<span class="jr-status "[^>]*>To review: missing market, sector, setup and 4 more<\/span>/);
