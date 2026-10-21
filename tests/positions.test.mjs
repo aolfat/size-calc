@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
+import { fakeRecords } from './helpers/supabase.mjs';
 
 const PROXY = 'https://size-calc-schwab.test.workers.dev';
 const DAY = 24 * 60 * 60 * 1000;
@@ -411,4 +412,131 @@ test('a refresh overtaken by a newer one resolves once the newer read is in', as
   await older;
   assert.equal(state.positions.rows.length, 4);
   assert.equal(state.positions.hash, 'HASH1');
+});
+
+// ---------- R: open P/L over the trade's risk at entry ----------
+
+// a journal trade as core/journal.js builds it, open on TEST in account 6789
+const openTrade = (extra = {}) => ({ key: '6789|TEST|long|t', account: '6789', symbol: 'TEST', direction: 'long', status: 'open', deleted: false, kind: 'single',
+  openQty: 100, entryQty: 100, avgEntry: 50, multiplier: 1, risk: 300, rBasis: 'stop', stop: 47, stopSource: 'schwab', exits: 0, pnl: 0, grossPnl: 0, ...extra });
+
+test('R counts from the Journal trade\'s first stop, not the stop working now; trims add on', async () => {
+  const { run } = await app();
+  const rows = run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(ORDERS)}).rows`);
+  const stock = [...rows].find(r => r.label === 'TEST');
+  const r = (trades, row = stock) => run(`positionR(${JSON.stringify(row)}, ${JSON.stringify(trades)}, '6789')`);
+
+  const first = r([openTrade()]);
+  assert.equal(first.source, 'journal');
+  assert.equal(first.stop, 47, 'the first stop, though $48 is working now');
+  assert.equal(Math.round(first.r * 100) / 100, 1.67, '$500 open P/L over $300 risk');
+  assert.equal(first.withTrims, null);
+
+  const trimmed = r([openTrade({ entryQty: 200, risk: 600, exits: 1, grossPnl: 400, pnl: 390 })]);
+  assert.equal(Math.round(trimmed.r * 100) / 100, 0.83, 'the open shares over the whole trade\'s risk');
+  assert.equal(Math.round(trimmed.withTrims * 100) / 100, 1.5, 'with the $400 the trim took, before fees like Schwab\'s P/L');
+
+  const premium = r([openTrade({ rBasis: 'premium', stop: null, risk: 1000 })]);
+  assert.equal(premium.basis, 'premium');
+  assert.equal(premium.r, 0.5);
+
+  // no match: the nearest stop working now, $2 under the $50 cost on 100 shares
+  for (const trades of [null, [], [openTrade({ account: '4321' })], [openTrade({ deleted: true })], [openTrade({ direction: 'short' })], [openTrade({ status: 'win' })], [openTrade({ kind: 'spread' })]]) {
+    const fell = r(trades);
+    assert.equal(fell.source, 'stop', JSON.stringify(trades));
+    assert.equal(fell.r, 2.5);
+    assert.equal(fell.stop, 48);
+  }
+  const behind = r([openTrade({ openQty: 50 })]);
+  assert.equal(behind.source, 'stop', 'the Journal holding another quantity is behind Schwab');
+  assert.equal(behind.journalQty, 50);
+});
+
+test('R without a Journal trade: the nearest stop, a long option\'s premium, nothing past breakeven', async () => {
+  const { run } = await app();
+  const rows = orders => [...run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(orders)}).rows`)];
+  const r = row => run(`positionR(${JSON.stringify(row)}, null, '6789')`);
+  const [acat, shrt, , opt] = rows(ORDERS);
+  const short = r(shrt);
+  assert.equal(short.r, 1, 'a short: $100 open P/L over $2 × 50 shares to the $22 stop');
+  const past = r(opt);
+  assert.equal(past.r, null, 'a stop over the cost has no risk left');
+  assert.match(past.why, /breakeven/);
+  assert.equal(r(acat).r, null, 'no cost basis');
+  const bare = rows([])[3];
+  const prem = r(bare);
+  assert.equal(prem.source, 'premium');
+  assert.equal(prem.r, 0.2, 'a long call with no stop: $100 over the $500 paid');
+  const noStop = r(rows([])[2]);
+  assert.equal(noStop.r, null);
+  assert.match(noStop.why, /No stop/);
+});
+
+// the TEST trade in the Journal: 100 bought at $50 with a $47 stop, replaced later by the $48 working now
+const TEST_BUY = { kind: 'order', record_id: '801', account: '6789', entered_at: '2026-10-05T14:00:00Z', data: {
+  orderId: 801, enteredTime: '2026-10-05T14:00:00+0000', status: 'FILLED', orderType: 'MARKET', orderStrategyType: 'TRIGGER',
+  orderLegCollection: [{ legId: 1, instruction: 'BUY', quantity: 100, instrument: { symbol: 'TEST', assetType: 'EQUITY' } }],
+  orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 8001, executionLegs: [{ legId: 1, quantity: 100, price: 50, time: '2026-10-05T14:00:01+0000' }] }],
+  childOrderStrategies: [{ orderId: 802, status: 'REPLACED', orderType: 'STOP', stopPrice: 47, quantity: 100, orderLegCollection: [{ legId: 1, instruction: 'SELL', quantity: 100, instrument: { symbol: 'TEST', assetType: 'EQUITY' } }] }],
+} };
+
+const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
+// connected, with the Schwab login bound to the signed-in Google user (a login bound to no one is cleared on sign-in)
+function signedIn(extra = []) {
+  const storage = connected(extra);
+  storage.set('schwab_tokens', JSON.stringify({ ...JSON.parse(storage.get('schwab_tokens')), userId: SESSION.user.id }));
+  return storage;
+}
+
+test('the R column reads the Journal when signed in, and counts from the stop now when signed out', async () => {
+  const supabase = fakeRecords([TEST_BUY]);
+  const { run, elements } = await app({ fetch: network(schwabOk).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase, session: SESSION });
+  run("setView('positions')");
+  await settle();
+  const html = () => elements.get('positionsSection').innerHTML;
+  const row = label => html().split('<tr>').find(r => r.includes(`<b>${label}</b>`));
+  assert.match(html(), /<th scope="col">R<\/th>/);
+  assert.match(row('TEST'), /\+1\.67R/);
+  assert.match(row('TEST'), /first stop \$47\.00/);
+  assert.match(row('SHRT'), /\+1\.00R[\s\S]*stop now \$22\.00/, 'no Journal trade: the stop working now');
+  assert.match(row('TEST 12/18/26 55C'), /title="The stop is at or past breakeven/);
+  assert.match(html(), /R is open P\/L over the risk at entry/);
+
+  const out = await app({ fetch: network(schwabOk).fetch, storage: connected([['positions_cols', JSON.stringify(['r'])]]) });
+  out.run("setView('positions')");
+  await settle();
+  const stock = out.elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
+  assert.match(stock, /\+2\.50R[\s\S]*stop now \$48\.00/);
+  assert.match(stock, /Sign in to count from the Journal trade/);
+});
+
+test('the R column is in the Columns picker, and the Journal is read only once it is on', async () => {
+  const supabase = fakeRecords([TEST_BUY]);
+  const { run, elements, state } = await app({ fetch: network(schwabOk).fetch, storage: signedIn(), supabase, session: SESSION });
+  run("setView('positions')");
+  await settle();
+  assert.equal(state.journalRecords, null, 'no R column, no Journal read');
+  run('togglePosColumnsMenu()');
+  assert.match(elements.get('positionsSection').innerHTML, /data-action="togglePosColumn" data-arg="r"/);
+  run("togglePosColumn('r')");
+  assert.match(elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>')), /…/, 'waiting on the Journal');
+  await settle();
+  assert.equal(state.journalRecords.length, 1);
+  assert.match(elements.get('positionsSection').innerHTML, /\+1\.67R/);
+  assert.equal(elements.get('positionsSection').innerHTML.split('<tfoot>')[1].includes('R</'), false, 'no total for R');
+});
+
+test('a reload on Positions while signed in reads the account once the stored session comes back, R column and all', async () => {
+  const supabase = fakeRecords([TEST_BUY]);
+  supabase.auth = { getSession: async () => ({ data: { session: SESSION } }) };
+  const storage = signedIn([['positions_cols', JSON.stringify(['r'])], ['cloud_user', SESSION.user.id], ['sb-dhohfavttsxwutanvcuj-auth-token', '{"access_token":"jwt"}']]);
+  const net = network(schwabOk);
+  const { run, elements } = await app({ fetch: net.fetch, storage, supabase });
+  run("setView('positions')"); // what main.js does on load, before the session is back
+  assert.equal(net.calls.length, 0, 'the Schwab login is this user\'s: nothing to read without the session');
+  run("initCloud('https://size-calc.example/#positions')");
+  await settle();
+  const html = elements.get('positionsSection').innerHTML;
+  assert.match(html, /••6789/);
+  assert.match(html.split('<tr>').find(r => r.includes('<b>TEST</b>')), /\+1\.67R[\s\S]*first stop \$47\.00/);
 });

@@ -58,11 +58,12 @@ export async function finishGoogleReturn(href) {
   return data.session;
 }
 
-/** the signed-in session on this device, or null */
+/** the signed-in session on this device, or null; throws when it's still stored but couldn't refresh (offline), so that isn't read as signed out */
 export async function currentSession() {
   if (!state.supabase && !hasStoredSession()) return null;
   const client = await supabaseClient();
-  const { data } = await client.auth.getSession();
+  const { data, error } = await client.auth.getSession();
+  if (!data.session && error && hasStoredSession()) throw error;
   return data.session || null;
 }
 

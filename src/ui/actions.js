@@ -45,7 +45,7 @@ import { jumpTo } from './sticky-bar.js';
 import { setAtrMultiplier, setDirection, setStopPercent, setStopStrategy, stopsChanged } from './stops.js';
 import { loadTicker, refreshQuote, submitTicker, tickerInputChanged } from './ticker.js';
 import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.js';
-import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeStopDuration } from './trade.js';
+import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeStopDuration } from './trade.js';
 import { setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
@@ -224,6 +224,8 @@ export const actions = {
   schwabProxyDone: () => schwabProxyDone(),
   editSchwabProxy: () => editSchwabProxy(),
   connectSchwab: () => connectSchwab(),
+  schwabBannerLogin: () => schwabBannerLogin(),
+  hideSchwabBanner: () => hideSchwabBanner(),
   finishSchwab: el => { if (el.tagName === 'INPUT') el.blur(); finishSchwab(); },
   reloadSchwabAccounts: () => reloadSchwabAccounts(),
   schwabAccountChanged: () => schwabAccountChanged(),
