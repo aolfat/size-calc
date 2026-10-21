@@ -6,7 +6,7 @@
 // trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
-import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, riskAt, tradesSummary } from '../core/journal.js';
+import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { activePeriods, exitDays, periodKey, PERIODS, stepPeriod, switchPeriod } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
@@ -140,13 +140,62 @@ function setupsCell(t) {
   return list.length ? `<td class="journal-setups">${list.map(setupChip).join('')}</td>` : '<td class="journal-setups-none">—</td>';
 }
 
+// ---------- the trades table's columns: Symbol always, the rest yours to hide (journal_hidden_cols, this device only) ----------
+
+/** the columns after Symbol, in table order: [key, header] */
+export const TRADE_COLS = [
+  ['pnlPct', 'P&amp;L %'], ['pnl', 'P&amp;L'], ['r', 'R'], ['stop', 'Stop'], ['setups', 'Setups'], ['side', 'Side'],
+  ['qty', 'Qty'], ['entry', 'Entry'], ['exit', 'Exit'], ['hold', 'Hold'], ['opened', 'Opened (ET)'],
+];
+const shownTradeCols = () => TRADE_COLS.filter(([key]) => !state.journalHiddenCols.includes(key));
+
+/** the Columns button: shows or hides the column picker */
+export function toggleJournalColumnsMenu() { state.journalColsOpen = !state.journalColsOpen; renderJournal(); }
+
+/** a column chip: hides or shows that column (one stays: a table of names alone says nothing) */
+export function toggleJournalColumn(key) {
+  if (!TRADE_COLS.some(([k]) => k === key)) return;
+  const hidden = state.journalHiddenCols.includes(key);
+  if (!hidden && shownTradeCols().length === 1) return;
+  state.journalHiddenCols = TRADE_COLS.map(([k]) => k).filter(k => k === key ? !hidden : state.journalHiddenCols.includes(k));
+  store.set('journal_hidden_cols', JSON.stringify(state.journalHiddenCols));
+  renderJournal();
+}
+
+function columnPicker() {
+  if (!state.journalColsOpen) return '';
+  const last = shownTradeCols().length === 1;
+  return `<div class="chip-row pos-cols journal-cols" role="group" aria-label="Columns">${TRADE_COLS.map(([key, label]) => {
+    const on = !state.journalHiddenCols.includes(key);
+    return `<button class="filter-btn${on ? ' active' : ''}" data-action="toggleJournalColumn" data-arg="${key}" aria-pressed="${on}"${on && last ? ' disabled title="Keep one column"' : ''}>${label}</button>`;
+  }).join('')}</div>`;
+}
+
+/** the row's cells in the columns shown */
+const colCells = cells => shownTradeCols().map(([key]) => cells[key]).join('\n    ');
+
+const signedPct = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
+/** what the percent is of: what it cost, what a short took in, a spread's risk */
+function pctTitleOf(t, basis) {
+  const open = t.status === 'open';
+  if (t.legs) return `Of the ${fmt$(basis)} ${t.rBasis === 'width' ? 'at risk (the width less the credit)' : t.rBasis === 'debit' ? 'debit paid' : 'credit taken in'}`;
+  return t.direction === 'short' ? `Of the ${fmt$(basis)} taken in${open ? ' for the part covered' : ''}` : `Of the ${fmt$(basis)} paid${open ? ' for the part sold' : ''}`;
+}
+/** P&L % of what the closed part cost; a dash before anything closed */
+function pctCell(t) {
+  const basis = pnlBasis(t), pct = pnlPct(t);
+  if (pct === null || basis === null) return `<td>—</td>`;
+  return `<td class="${pnlClass(t.pnl)}" title="${esc(pctTitleOf(t, basis))}">${signedPct(pct)}${t.status === 'open' ? '<span class="pos-sub">so far</span>' : ''}</td>`;
+}
+
 /** a close whose purchase is older than the history: what's known (the exits), the rest blank */
 function historyRow(t) {
   return `<tr class="journal-history${t.deleted ? ' journal-deleted' : ''}" title="${esc(HISTORY_TITLE)}"${rowOpen(t)}>
     ${symCell(t, `${nameOf(t)} <span class="journal-tag journal-tag-history">before your history</span>${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${restoreLink(t)}`)}
-    <td>—</td><td>—</td><td>—</td><td>—</td>
-    ${sideCell(t)}
-    <td>${t.entryQty}</td><td>—</td><td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td><td>—</td><td>earlier</td>
+    ${colCells({
+      pnlPct: '<td>—</td>', pnl: '<td>—</td>', r: '<td>—</td>', stop: '<td>—</td>', setups: '<td>—</td>', side: sideCell(t),
+      qty: `<td>${t.entryQty}</td>`, entry: '<td>—</td>', exit: `<td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td>`, hold: '<td>—</td>', opened: '<td>earlier</td>',
+    })}
   </tr>`;
 }
 
@@ -156,16 +205,19 @@ function tradeRow(t) {
   const cls = [open ? 'journal-open' : '', t.deleted ? 'journal-deleted' : ''].filter(Boolean).join(' ');
   return `<tr${cls ? ` class="${cls}"` : ''}${rowOpen(t)}>
     ${symCell(t, `${nameOf(t)}${reviewedMark(t)}${t.legs ? ` <span class="journal-tag journal-tag-quiet">${esc(t.structure || `${t.spreadKind} spread`)}</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.via ? ` <span class="journal-tag journal-tag-quiet" title="${esc(VIA_TITLE[t.via])}">${t.via}</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : t.kind === 'merged' ? `<span class="pos-sub journal-legs">${t.parts.length} trades merged</span>` : ''}${restoreLink(t)}`)}
-    <td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>
-    <td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>
-    <td>${stopCell(t)}</td>
-    ${setupsCell(t)}
-    ${sideCell(t)}
-    <td>${t.entryQty}${open && t.openQty !== t.entryQty ? `<span class="pos-sub">${t.openQty} open</span>` : ''}</td>
-    <td>${px(t.avgEntry, t.assetType)}</td>
-    <td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td>
-    <td>${open ? 'open' : esc(holdWords(t.holdMs))}</td>
-    <td>${esc(marketTime(t.openedAt))}</td>
+    ${colCells({
+      pnlPct: pctCell(t),
+      pnl: `<td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>`,
+      r: `<td title="${esc(rTitleOf(t))}">${t.r === null ? '—' : signedR(t.r)}</td>`,
+      stop: `<td>${stopCell(t)}</td>`,
+      setups: setupsCell(t),
+      side: sideCell(t),
+      qty: `<td>${t.entryQty}${open && t.openQty !== t.entryQty ? `<span class="pos-sub">${t.openQty} open</span>` : ''}</td>`,
+      entry: `<td>${px(t.avgEntry, t.assetType)}</td>`,
+      exit: `<td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td>`,
+      hold: `<td>${open ? 'open' : esc(holdWords(t.holdMs))}</td>`,
+      opened: `<td>${esc(marketTime(t.openedAt))}</td>`,
+    })}
   </tr>`;
 }
 
@@ -194,7 +246,8 @@ function summaryLine(trades, deleted) {
   const parts = [`${s.closed} closed`];
   if (s.closed) parts.push(`${s.wins} won (${s.winRate}%)`, `<span class="${pnlClass(s.pnl)}">${signed$(s.pnl)}</span> ${feeWords()}${journalAfterFees() && s.fees ? ` (fees ${fmt$(s.fees)})` : ''}`);
   if (s.closed && journalAfterFees() && s.feesMissing) parts.push(`<span class="journal-fees-missing">fees not in yet on ${s.feesMissing}</span>`);
-  if (s.avgR !== null) parts.push(`average ${signedR(s.avgR)} over ${s.withR}`);
+  const avg = [s.avgPct !== null ? `<span class="${pnlClass(s.avgPct)}">${signedPct(s.avgPct)}</span>` : '', s.avgR !== null ? `${signedR(s.avgR)} over ${s.withR}` : ''].filter(Boolean);
+  if (avg.length) parts.push(`average ${avg.join(', ')}`);
   if (s.open) parts.push(`${s.open} open`);
   if (s.history) parts.push(`<span class="journal-fees-missing" title="${esc(HISTORY_TITLE)}">${s.history} from before your history</span>`);
   return parts.join(' · ') + deletedNote;
@@ -287,6 +340,12 @@ function cardReview(t) {
   return isReviewed(t) ? '<span class="jtc-review jtc-done">Reviewed</span>' : '';
 }
 
+/** the card's P&L %, under the dollars */
+function cardPct(t) {
+  const basis = pnlBasis(t), pct = pnlPct(t);
+  return pct === null || basis === null ? '' : `<span class="jtc-pct" title="${esc(pctTitleOf(t, basis))}">${signedPct(pct)}</span>`;
+}
+
 function tradeCard(t) {
   const open = t.status === 'open', history = t.status === 'history', noPnl = history || (open && !t.exits);
   const setups = setupsOf(t);
@@ -306,7 +365,7 @@ function tradeCard(t) {
       <div><dt>Entry</dt><dd>${history ? '—' : px(t.avgEntry, t.assetType)}</dd></div>
       <div><dt>${t.exits > 1 ? 'Avg exit' : 'Exit'}</dt><dd>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</dd></div>
       <div title="${esc(rTitleOf(t))}"><dt>R</dt><dd class="${t.r === null ? '' : pnlClass(t.r)}">${t.r === null ? '—' : signedR(t.r)}</dd></div>
-      <div${noPnl ? '' : pnlTitle(t)}><dt>P&amp;L</dt><dd class="${noPnl ? '' : pnlClass(t.pnl)}">${noPnl ? '—' : signed$(t.pnl)}${noPnl ? '' : pnlSub(t)}</dd></div>
+      <div${noPnl ? '' : pnlTitle(t)}><dt>P&amp;L</dt><dd class="${noPnl ? '' : pnlClass(t.pnl)}">${noPnl ? '—' : signed$(t.pnl)}${noPnl ? '' : cardPct(t) + pnlSub(t)}</dd></div>
     </dl>
     <div class="jtc-foot">${stop}${restoreLink(t)}${go}</div>
   </article>`;
@@ -340,11 +399,13 @@ function tradesView(all) {
   if (!trades.length) return `<p class="hint">No trades match.${deleted ? ` ${deleted} deleted. <button class="pos-link" data-action="toggleDeletedTrades">Show</button>` : ''}</p>`;
   watchPhone();
   const shown = trades.slice(0, JOURNAL_SHOWN);
-  const list = mq(PHONE_MQ) ? tradeCards(shown) : `<div class="positions-wrap"><table class="positions-table journal-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">P&amp;L</th><th scope="col">R</th><th scope="col">Stop</th><th scope="col">Setups</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Hold</th><th scope="col">Opened (ET)</th></tr></thead>
+  const phone = mq(PHONE_MQ);
+  const list = phone ? tradeCards(shown) : `${columnPicker()}<div class="positions-wrap"><table class="positions-table journal-table">
+      <thead><tr><th scope="col">Symbol</th>${shownTradeCols().map(([, label]) => `<th scope="col">${label}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(tradeRow).join('')}</tbody>
     </table></div>`;
-  return `<p class="hint journal-summary">${summaryLine(counted, deleted)}</p>
+  const colsBtn = phone ? '' : `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
+  return `<div class="journal-summary-row"><p class="hint journal-summary">${summaryLine(counted, deleted)}</p>${colsBtn}</div>
     ${list}${pickBar(trades)}
     ${trades.length > JOURNAL_SHOWN ? `<p class="hint">Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades.</p>` : ''}
     <details class="hint-details"><summary>How trades are built</summary><p class="hint">Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades, an entry note while it's live and an exit note after; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()

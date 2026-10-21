@@ -10,7 +10,7 @@
 // trade sheet (your stop, separate, delete).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
-import { holdWords } from '../core/journal.js';
+import { holdWords, pnlPct } from '../core/journal.js';
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBetween } from '../core/bars.js';
 import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
@@ -29,6 +29,7 @@ import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
+const signedPct = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 const INTERVALS = [5, 15, 30, 65];
@@ -158,8 +159,9 @@ function statsHtml(t, ex) {
   if (hide) return `<dl class="jt-stats">${[wait('P&amp;L'), wait('R'),
     cell('MFE', '—', 'after grading'), cell('MAE', '—', 'after grading'), wait('Exit efficiency'),
     cell('Hold', open ? 'open' : esc(holdWords(t.holdMs)), `opened ${esc(marketTime(t.openedAt))}`)].join('')}</dl>`;
+  const pct = pnlPct(t);
   const cells = [
-    cell('P&amp;L', open && !t.exits ? '—' : signed$(t.pnl), open ? 'open' : t.afterFees ? 'after fees' : 'before fees', open && !t.exits ? '' : pnlClass(t.pnl)),
+    cell('P&amp;L', open && !t.exits ? '—' : signed$(t.pnl), [pct === null ? '' : signedPct(pct), open ? 'open' : t.afterFees ? 'after fees' : 'before fees'].filter(Boolean).join(' · '), open && !t.exits ? '' : pnlClass(t.pnl)),
     cell('R', t.r === null ? '—' : signedR(t.r), t.risk ? `risk ${fmt$(t.risk)}` : ''),
     cell('MFE', ex ? signed$(ex.mfe) : '—', ex ? [ex.mfeR !== null ? signedR(ex.mfeR) : '', `best ${px(ex.mfePrice, t.assetType)}`].filter(Boolean).join(' · ') : '', ex && ex.mfe > 0 ? 'journal-buy' : ''),
     cell('MAE', ex ? signed$(ex.mae) : '—', ex ? [ex.maeR !== null ? signedR(ex.maeR) : '', `worst ${px(ex.maePrice, t.assetType)}`].filter(Boolean).join(' · ') : '', ex && ex.mae < 0 ? 'journal-sell' : ''),

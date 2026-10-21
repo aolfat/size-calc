@@ -379,13 +379,37 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
 }
 
-/** closed trades in numbers: count, wins, losses, win rate, P&L, average R (over trades that have one), fees. @param {Trade[]} trades */
+/**
+ * What a trade's P&L % is a percent of: what the closed part cost (the average entry × the quantity closed × the
+ * multiplier; a short's proceeds, a sold option's premium). A spread counts its risk (the debit, or a credit vertical's
+ * width less the credit), else the credit taken in, once it's closed. Null with nothing closed, before your history, or
+ * no entry price.
+ * @param {Trade} t @returns {number | null}
+ */
+export function pnlBasis(t) {
+  if (t.status === 'history') return null;
+  if (t.legs) return t.status === 'open' ? null : (t.risk ?? t.avgEntry * t.entryQty * t.multiplier) || null;
+  const closed = t.status === 'open' ? (t.realized || []).reduce((n, x) => n + x.qty, 0) : t.entryQty;
+  const basis = t.avgEntry * closed * t.multiplier;
+  return basis > 0 ? basis : null;
+}
+
+/** P&L as a percent of pnlBasis (before or after fees, like the P&L), or null. @param {Trade} t */
+export function pnlPct(t) {
+  const basis = pnlBasis(t);
+  return basis === null ? null : (t.pnl / basis) * 100;
+}
+
+/** closed trades in numbers: count, wins, losses, win rate, P&L, average R and P&L % (over trades that have one), fees. @param {Trade[]} trades */
 export function tradesSummary(trades) {
   const closed = trades.filter(t => t.status !== 'open' && t.status !== 'history');
   const wins = closed.filter(t => t.status === 'win').length;
   const losses = closed.filter(t => t.status === 'loss').length;
   const rs = closed.map(t => t.r).filter(r => r !== null);
+  const pcts = /** @type {number[]} */ (closed.map(pnlPct).filter(p => p !== null));
   return {
+    avgPct: pcts.length ? Math.round((pcts.reduce((n, p) => n + p, 0) / pcts.length) * 100) / 100 : null,
+    withPct: pcts.length,
     closed: closed.length, open: trades.filter(t => t.status === 'open').length, history: trades.filter(t => t.status === 'history').length, wins, losses,
     winRate: closed.length ? Math.round((wins / closed.length) * 1000) / 10 : null,
     pnl: Math.round(closed.reduce((n, t) => n + t.pnl, 0) * 100) / 100,
