@@ -9,6 +9,7 @@ import { schwabDisconnect, schwabSession } from '../services/schwab.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
 import { loadJournal, renderJournal } from './journal.js';
+import { refreshPositions } from './positions.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -103,6 +104,7 @@ async function startSession(session) {
   // the callback page runs this before finishing its login: the attempt stays, and its tokens get this user
   if (!schwabSession()) schwabDisconnect({ keepAttempt: true });
   if (state.journalView) loadJournal(); // a reload on the Journal: its records, now that there's a session to read them
+  if (state.positionsView) refreshPositions(); // a reload on Positions: the Schwab login is this user's, so it only counts now
   setCloudUi('Syncing…');
   if (store.get('cloud_user') !== session.user.id) {
     let m;
@@ -188,6 +190,8 @@ export async function initCloud(href = location.href) {
     state.authSubscription = state.supabase.auth.onAuthStateChange((event, next) => {
       if (event === 'INITIAL_SESSION' || state.signingOut) return;
       if ((next?.user?.id || null) !== (state.session?.user?.id || null)) {
+        // the session this tab couldn't load (offline at boot) coming back: same account, so the Schwab login stays
+        if (!state.session && next && next.user.id === store.get('cloud_user')) { setTimeout(() => resumeSession().catch(() => {})); return; }
         schwabDisconnect();
         state.session = null;
         effects.reloadPage(); // first sign-in on reload handles the old account's local settings

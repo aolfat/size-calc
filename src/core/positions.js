@@ -8,10 +8,12 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
  * @typedef {import('./orders.js').StopDuration} StopDuration
  * @typedef {{ assetType?: string, type?: string, symbol?: string, underlyingSymbol?: string, optionMultiplier?: number }} Instrument
  * @typedef {{ longQuantity?: number, shortQuantity?: number, averagePrice?: number, averageLongPrice?: number, averageShortPrice?: number, marketValue?: number, currentDayProfitLoss?: number, instrument?: Instrument }} Position
- * @typedef {{ instruction?: string, quantity?: number, instrument?: { symbol?: string, assetType?: string } }} OrderLeg
+ * @typedef {{ legId?: number, instruction?: string, quantity?: number, instrument?: { symbol?: string, assetType?: string } }} OrderLeg
+ * @typedef {{ activityType?: string, executionLegs?: { legId?: number, quantity?: number, time?: string }[] }} OrderActivity
  * @typedef {{ orderId?: number | string, orderType?: string, orderStrategyType?: string, status?: string, stopPrice?: number, price?: number, quantity?: number, remainingQuantity?: number,
  *   filledQuantity?: number, stopPriceOffset?: number, stopPriceLinkType?: string,
- *   duration?: string, session?: string, enteredTime?: string, orderLegCollection?: OrderLeg[], childOrderStrategies?: Order[] }} Order
+ *   duration?: string, session?: string, enteredTime?: string, closeTime?: string, orderLegCollection?: OrderLeg[], orderActivityCollection?: OrderActivity[],
+ *   childOrderStrategies?: Order[] }} Order
  * @typedef {{ orderId: number | string | null, symbol: string, closes: 'long' | 'short', orderType: string, stop: number | null, price: number | null, qty: number,
  *   oco: number | string | null, duration: string, session: string }} Resting
  * @typedef {{ symbol: string, label: string, under: string, option: { root: string, exp: string, type: string, strike: number } | null,
@@ -323,6 +325,46 @@ export function positionRows(account, orders) {
     pnl: priced.length ? pnl : null, pnlPct: cost > 0 ? pnl / cost * 100 : null, day: dated.length ? day : null, dayPct: before > 0 ? day / before * 100 : null };
 }
 
+/**
+ * @typedef {{ r: number | null, withTrims: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
+ *   basis: string | null, stop: number | null, why: string, journalQty: number | null }} PositionR
+ */
+
+/**
+ * How many R a position is up or down: open P/L ÷ the initial risk. The risk is the Journal's open trade on it (same account,
+ * contract and direction, holding the same quantity): its first stop, your own stop, or a long option's premium, so a stop
+ * trailed up later doesn't shrink it. Without one (signed out, not imported yet, the Journal holding another quantity, or the
+ * contract inside a spread), it's the nearest working stop's distance from your average cost, or a long option's premium
+ * with no stop. withTrims adds what the trade's exits already took (before fees, like Schwab's P/L), when it had some.
+ * journalQty = the Journal's open quantity when it didn't match the position's.
+ * @param {Row} row @param {import('./journal.js').Trade[] | null} trades the Journal's trades, null when they aren't read
+ * @param {string} last4 @returns {PositionR}
+ */
+export function positionR(row, trades, last4) {
+  const out = /** @type {PositionR} */ ({ r: null, withTrims: null, risk: null, source: null, basis: null, stop: null, why: '', journalQty: null });
+  if (row.pnl === null) return { ...out, why: 'No average cost from Schwab.' };
+  const long = row.qty > 0, held = Math.abs(row.qty);
+  const t = (trades || []).find(x => x.status === 'open' && !x.deleted && x.kind !== 'spread' && x.account === last4
+    && x.symbol === row.symbol && x.direction === (long ? 'long' : 'short'));
+  if (t && t.risk && t.risk > 0.005 && Math.abs(t.openQty - held) < 1e-6) {
+    const r = row.pnl / t.risk;
+    return { ...out, r, withTrims: t.exits ? r + t.grossPnl / t.risk : null, risk: t.risk, source: 'journal', basis: t.rBasis, stop: t.stop };
+  }
+  const journalQty = t ? t.openQty : null;
+  const near = row.stopOrders[0];
+  if (near) {
+    const dist = long ? row.avg - Number(near.stop) : Number(near.stop) - row.avg;
+    if (dist <= 0) return { ...out, stop: near.stop, journalQty, why: 'The stop is at or past breakeven: no risk left to count R from.' };
+    const risk = dist * held * row.mult;
+    return { ...out, r: row.pnl / risk, risk, source: 'stop', basis: 'stop', stop: near.stop, journalQty };
+  }
+  if (row.option && long && row.avg > 0) {
+    const risk = row.avg * held * row.mult;
+    return { ...out, r: row.pnl / risk, risk, source: 'premium', basis: 'premium', journalQty };
+  }
+  return { ...out, journalQty, why: 'No stop to count R from.' };
+}
+
 /** A price as Schwab takes it for this instrument: cents for options, four decimals for stock under $1. @param {number} p @param {TradeAs | null} as */
 export function fmtPositionPrice(p, as) { return as === 'OPTION' ? '$' + Number(p).toFixed(2) : fmtTick(p); }
 
@@ -502,6 +544,42 @@ function cutStops(row, left, duration) {
     cuts.push(keep ? { kind: 'replace', orderId: s.orderId, was: s, order: cutStop(row, s, keep, duration) } : { kind: 'cancel', orderId: s.orderId, was: s });
   }
   return { steps: cuts.reverse(), moved, error }; // farthest first, so the nearest is the last one touched
+}
+
+/**
+ * The most the position held since it was last flat, read back from today's quantity through the fills in Schwab's orders
+ * (children walked): undo each fill, newest first, until the position would be flat or the other way. History older than
+ * the orders read (Schwab's 60 days) or shares an option delivered (no order) can't be seen, so it's never less than held.
+ * @param {Row} row @param {Order[]} orders @returns {number}
+ */
+export function originalQty(row, orders) {
+  const held = Math.abs(row.qty), sign = Math.sign(row.qty);
+  /** @type {{ at: number, qty: number }[]} */
+  const fills = [], seen = new Set();
+  const walk = (/** @type {Order} */ o) => {
+    if (!o || typeof o !== 'object' || (o.orderId !== undefined && seen.has(o.orderId))) return;
+    seen.add(o.orderId);
+    const legs = o.orderLegCollection || [];
+    for (const a of o.orderActivityCollection || []) {
+      if (a?.activityType && a.activityType !== 'EXECUTION') continue;
+      for (const x of a?.executionLegs || []) {
+        const leg = legs.find(l => l.legId !== undefined && l.legId === x.legId) || legs[0];
+        const qty = Number(x.quantity);
+        if (!leg || leg.instrument?.symbol !== row.symbol || !(qty > 0)) continue;
+        fills.push({ at: schwabTime(x.time || o.closeTime || o.enteredTime || '') || 0, qty: /^BUY/.test(leg.instruction || '') ? qty : -qty });
+      }
+    }
+    (o.childOrderStrategies || []).forEach(walk);
+  };
+  (orders || []).forEach(walk);
+  fills.sort((a, b) => b.at - a.at);
+  let pos = row.qty, most = held;
+  for (const f of fills) {
+    pos -= f.qty;
+    if (Math.sign(pos) !== sign) break;
+    most = Math.max(most, Math.abs(pos));
+  }
+  return most;
 }
 
 /** How many shares a new target can take: what limits already hold is spoken for. @param {Row} row */

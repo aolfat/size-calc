@@ -175,6 +175,9 @@ export function createState() {
     editTicket: null, // the working-order change the review sheet shows, re-planned as the form changes
     posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)
     posColsOpen: false, // the Columns picker showing
+    posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
+    posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again
+    posRTrades: null, // the Journal's trades as the R column last built them: { records, reviews, saved, fees, trades }
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
     posChart: null, // the open position chart: { symbol, option, label, bars, view, range, loading, error, hover, hoverY, price, qty } (range: sessions; price and qty = the target form)
@@ -188,6 +191,8 @@ export function createState() {
     tosImport: null, // a thinkorswim statement read for the Import sheet: { name, parsed, zone, matched, checked, busy, error }, until saved or cancelled
     captureError: '', // the last capture's failure, shown on its status line
     schwabProxyEditing: false, // Change pressed: the worker URL box stays open until you leave it
+    schwabBannerReady: false, // boot has restored the Google session and finished any Schwab callback: the banner may speak
+    schwabBannerHidden: false, // × on the banner: hidden until the app is opened again
     schwabProxyConfirming: null, // Log in pressed once on a worker URL synced from the account: the second press uses it
     acctSizeBusy: false, // the daily account size read is in flight
     tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent
