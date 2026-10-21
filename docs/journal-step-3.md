@@ -4,7 +4,7 @@ Status: slices 1 (review on the trade page) and 2 (the review deck) built. This 
 
 ## Goal
 
-Every trade gets reviewed: what the market and its sector were doing, which setups and entry tactic it was, how good the setup was, whether you followed your plan, and what you think now. Reviewing has to be quick enough that it actually happens, so it lives on the trade page first and in a deck you go through one card at a time next. The app's guesses come after that, and the stats can then be cut by any label.
+Every trade gets reviewed: what the market and its sector were doing, which setups and entry tactics it was, how good the setup was, whether you followed your plan, and what you think now. Reviewing has to be quick enough that it actually happens, so it lives on the trade page first and in a deck you go through one card at a time next. The app's guesses come after that, and the stats can then be cut by any label.
 
 ## Principles
 
@@ -42,7 +42,7 @@ Defaults, in the app's code (`src/core/journal-labels.js`). Your additions live 
 | **Market** | 1, set per day | Bullish, Neutral, Bearish, Choppy |
 | **Sector** | 1 | Strong, Weak, Neutral, N/A |
 | **Daily setup** | Any number, all equal | A level plus an action, or a pattern (below) |
-| **Entry tactic** | 1 | 6/20 (Gil Morales), 15-minute pivot, 30-minute pivot |
+| **Entry tactic** | Any | 6/20 (Gil Morales), 15-minute pivot, 30-minute pivot |
 | **Tags** | Any number | Option flow, which takes links to the trade's flow (Unusual Whales, Bullflow) |
 | **Mistakes** | Any number | Chased the entry, Oversized, Moved the stop, Revenge trade, Exited early, Didn't take the stop |
 

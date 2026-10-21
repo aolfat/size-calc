@@ -123,7 +123,7 @@ export function toggleReviewMarketOwn(t) {
   rerender();
 }
 
-/** sector or tactic: one per trade, tapping the lit one clears it; tags and mistakes toggle */
+/** sector: one per trade, tapping the lit one clears it; setups, tactics, tags and mistakes toggle */
 export function toggleReviewLabel(t, kind, value) {
   const has = labelsOf(t, kind).some(l => l.value === value);
   if (SINGLE.has(kind)) return labelChange(t, has ? [] : [[kind, value]], labelsOf(t, kind).map(l => [kind, l.value]));
@@ -262,7 +262,10 @@ export async function saveReviewItem(t, name) {
   if (kind === 'level') return toggleDraftLevel(key);
   if (kind === 'action') return setDraftAction(key);
   if (kind === 'pattern') return setDraftPattern(key);
-  return toggleReviewLabel(t, kind === 'tactic' || kind === 'sector' || kind === 'tag' || kind === 'mistake' ? kind : 'tag', key);
+  const k = kind === 'tactic' || kind === 'sector' || kind === 'tag' || kind === 'mistake' ? kind : 'tag';
+  // a name already on the trade stays on it (tapping its chip would take it off)
+  if (labelsOf(t, k).some(l => l.value === key)) return rerender();
+  return toggleReviewLabel(t, k, key);
 }
 
 // ---------- the section ----------
