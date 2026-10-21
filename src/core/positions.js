@@ -323,6 +323,46 @@ export function positionRows(account, orders) {
     pnl: priced.length ? pnl : null, pnlPct: cost > 0 ? pnl / cost * 100 : null, day: dated.length ? day : null, dayPct: before > 0 ? day / before * 100 : null };
 }
 
+/**
+ * @typedef {{ r: number | null, withTrims: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
+ *   basis: string | null, stop: number | null, why: string, journalQty: number | null }} PositionR
+ */
+
+/**
+ * How many R a position is up or down: open P/L ÷ the initial risk. The risk is the Journal's open trade on it (same account,
+ * contract and direction, holding the same quantity): its first stop, your own stop, or a long option's premium, so a stop
+ * trailed up later doesn't shrink it. Without one (signed out, not imported yet, the Journal holding another quantity, or the
+ * contract inside a spread), it's the nearest working stop's distance from your average cost, or a long option's premium
+ * with no stop. withTrims adds what the trade's exits already took (before fees, like Schwab's P/L), when it had some.
+ * journalQty = the Journal's open quantity when it didn't match the position's.
+ * @param {Row} row @param {import('./journal.js').Trade[] | null} trades the Journal's trades, null when they aren't read
+ * @param {string} last4 @returns {PositionR}
+ */
+export function positionR(row, trades, last4) {
+  const out = /** @type {PositionR} */ ({ r: null, withTrims: null, risk: null, source: null, basis: null, stop: null, why: '', journalQty: null });
+  if (row.pnl === null) return { ...out, why: 'No average cost from Schwab.' };
+  const long = row.qty > 0, held = Math.abs(row.qty);
+  const t = (trades || []).find(x => x.status === 'open' && !x.deleted && x.kind !== 'spread' && x.account === last4
+    && x.symbol === row.symbol && x.direction === (long ? 'long' : 'short'));
+  if (t && t.risk && t.risk > 0.005 && Math.abs(t.openQty - held) < 1e-6) {
+    const r = row.pnl / t.risk;
+    return { ...out, r, withTrims: t.exits ? r + t.grossPnl / t.risk : null, risk: t.risk, source: 'journal', basis: t.rBasis, stop: t.stop };
+  }
+  const journalQty = t ? t.openQty : null;
+  const near = row.stopOrders[0];
+  if (near) {
+    const dist = long ? row.avg - Number(near.stop) : Number(near.stop) - row.avg;
+    if (dist <= 0) return { ...out, stop: near.stop, journalQty, why: 'The stop is at or past breakeven: no risk left to count R from.' };
+    const risk = dist * held * row.mult;
+    return { ...out, r: row.pnl / risk, risk, source: 'stop', basis: 'stop', stop: near.stop, journalQty };
+  }
+  if (row.option && long && row.avg > 0) {
+    const risk = row.avg * held * row.mult;
+    return { ...out, r: row.pnl / risk, risk, source: 'premium', basis: 'premium', journalQty };
+  }
+  return { ...out, journalQty, why: 'No stop to count R from.' };
+}
+
 /** A price as Schwab takes it for this instrument: cents for options, four decimals for stock under $1. @param {number} p @param {TradeAs | null} as */
 export function fmtPositionPrice(p, as) { return as === 'OPTION' ? '$' + Number(p).toFixed(2) : fmtTick(p); }
 

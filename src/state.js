@@ -175,6 +175,9 @@ export function createState() {
     editTicket: null, // the working-order change the review sheet shows, re-planned as the form changes
     posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)
     posColsOpen: false, // the Columns picker showing
+    posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
+    posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again
+    posRTrades: null, // the Journal's trades as the R column last built them: { records, reviews, saved, fees, trades }
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
     posChart: null, // the open position chart: { symbol, option, label, bars, view, range, loading, error, hover, hoverY, price, qty } (range: sessions; price and qty = the target form)
