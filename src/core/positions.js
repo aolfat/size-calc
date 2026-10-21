@@ -798,3 +798,72 @@ export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DA
   steps.push({ kind: 'place', order: stop === null ? close : ocoOrder(close, closeStopOrder({ ...p, stop, stopDuration: duration })) });
   return { error: unnamed(steps), stop: stop ?? 0, steps, paired: [], rest: held - n, bare: 0, price: limit, moved };
 }
+
+// ---------- closing a spread as one order ----------
+
+/**
+ * @typedef {{ orderId: number | string | null, orderType: string, price: number | null, qty: number, legs: { symbol: string, qty: number }[], duration: string }} SpreadCloser
+ * @typedef {{ error: string, steps: Step[], price: number, qty: number, ratios: number[], closers: SpreadCloser[] }} SpreadPlan
+ */
+
+/** working multi-leg orders that close any of a spread's legs (a spread close already in), with what each holds of every leg. @param {SpreadRow} s @param {Order[]} orders @returns {SpreadCloser[]} */
+export function spreadClosers(s, orders) {
+  const mine = new Set(s.legs.map(l => l.symbol));
+  /** @type {SpreadCloser[]} */
+  const out = [];
+  const walk = (/** @type {Order} */ o) => {
+    const legs = o.orderLegCollection || [];
+    if (legs.length > 1 && o.status && !ENDED.has(o.status) && legs.some(l => mine.has(l.instrument?.symbol || '') && CLOSES[l.instruction || ''])) {
+      const total = Number(o.quantity) || 0, left = Number(o.remainingQuantity) > 0 ? Number(o.remainingQuantity) : total;
+      const share = total > 0 ? left / total : 1;
+      out.push({ orderId: o.orderId ?? null, orderType: o.orderType || '', price: num(o.price), qty: left, duration: o.duration || '',
+        legs: legs.map(l => ({ symbol: l.instrument?.symbol || '', qty: (Number(l.quantity) || 0) * share })) });
+    }
+    (o.childOrderStrategies || []).forEach(walk);
+  };
+  (orders || []).forEach(walk);
+  return out;
+}
+
+/**
+ * Close a spread, all or part, as ONE multi-leg order: each bought leg sold to close and each sold leg bought to close in the
+ * legs' own ratio, at market or for a net limit (a debit spread closes for a credit, NET_CREDIT; a credit spread for a debit,
+ * NET_DEBIT), on the option grid. All of it cancels every order in play that closes a leg first (spread closes, then the legs'
+ * targets, then their stops), so nothing closes twice; part of it leaves them and fits in what they leave free on every leg.
+ * @param {SpreadRow} s @param {Order[]} orders
+ * @param {{ type?: 'MARKET' | 'LIMIT', qty?: number, price?: number, duration?: StopDuration }} [opts]
+ * @returns {SpreadPlan}
+ */
+export function spreadClosePlan(s, orders, { type = 'LIMIT', qty, price = 0, duration = 'DAY' } = {}) {
+  const closers = spreadClosers(s, orders);
+  const fail = (/** @type {string} */ error) => ({ error, steps: [], price: 0, qty: 0, ratios: [], closers });
+  const ratios = s.legs.map(l => Math.abs(l.qty) / s.units);
+  if (ratios.some(r => !Number.isInteger(r))) return fail(`The legs (${s.legWords}) aren't in a whole ratio, so they can't go out as one order. Close them one by one under Legs.`);
+  const n = qty ?? s.units, spreads = (/** @type {number} */ k) => `${k.toLocaleString('en-US')} ${k === 1 ? 'spread' : 'spreads'}`;
+  if (!Number.isInteger(n) || n < 1) return fail('Pick how many spreads to close.');
+  if (n > s.units) return fail(`You hold ${spreads(s.units)}.`);
+  const limit = type === 'LIMIT' ? optionPriceTick(price) : 0;
+  if (type === 'LIMIT' && !(limit > 0)) return fail('Set a net limit price above $0.');
+  /** @type {Step[]} */
+  let steps = [];
+  if (n === s.units) {
+    const multi = closers.map(c => /** @type {Resting} */ ({ orderId: c.orderId, symbol: s.key, closes: 'long', orderType: c.orderType, stop: null, price: c.price, qty: c.qty, oco: null, duration: c.duration, session: '' }));
+    const legOthers = s.legs.flatMap(l => l.closers.filter(o => !l.stopOrders.includes(o)));
+    const legStops = s.legs.flatMap(l => [...l.stopOrders].reverse());
+    const seen = new Set();
+    steps = cancels([...multi, ...legOthers, ...legStops].filter(o => { const k = String(o.orderId); if (o.orderId !== null && seen.has(k)) return false; seen.add(k); return true; }));
+  } else {
+    for (const [i, l] of s.legs.entries()) {
+      const held = Math.abs(l.qty);
+      const taken = Math.min(held, l.closers.reduce((t, o) => t + o.qty, 0) + closers.reduce((t, c) => t + c.legs.filter(x => x.symbol === l.symbol).reduce((q, x) => q + x.qty, 0), 0));
+      const room = Math.floor((held - taken) / ratios[i] + 1e-9);
+      if (n > room) return fail(`Other orders already close ${taken.toLocaleString('en-US')} of the ${l.label}, so a partial close can take up to ${spreads(room)}. Close all ${s.units} to cancel them too.`);
+    }
+  }
+  steps.push({ kind: 'place', order: {
+    orderType: type === 'MARKET' ? 'MARKET' : s.kind === 'debit' ? 'NET_CREDIT' : 'NET_DEBIT',
+    session: 'NORMAL', duration: type === 'MARKET' ? 'DAY' : duration, orderStrategyType: 'SINGLE', ...(limit ? { price: limit } : {}),
+    orderLegCollection: s.legs.map((l, i) => ({ instruction: l.qty > 0 ? 'SELL_TO_CLOSE' : 'BUY_TO_CLOSE', quantity: n * ratios[i], instrument: { symbol: l.symbol, assetType: 'OPTION' } })),
+  } });
+  return { error: unnamed(steps), steps, price: limit, qty: n, ratios, closers };
+}

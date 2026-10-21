@@ -171,6 +171,7 @@ export function createState() {
     posTicket: null, // the position order the review sheet shows, frozen when it opens
     posTradeBusy: false,
     posLast: null, // { hash, symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat on that account and symbol for a while
+    spreadTicket: null, // the spread close the review sheet shows, frozen when it opens
     cancelTicket: null, // the working-order cancel the review sheet shows, frozen when it opens
     editTicket: null, // the working-order change the review sheet shows, re-planned as the form changes
     posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)

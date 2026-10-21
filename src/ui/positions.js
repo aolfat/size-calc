@@ -1,5 +1,5 @@
 // Positions: the selected Schwab account's holdings, read live every 30s while the tab is open, with stops from its working stop orders,
-// option legs folded into the spreads they make (each spread's legs a tap away),
+// option legs folded into the spreads they make (each spread's legs a tap away, the spread closed or trimmed as one order in spread-close.js),
 // buttons into a position's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the breakeven-stop and close reviews (position-trade.js),
 // optional P/L and R columns picked from Columns (kept on this device; R reads the Journal's trades for each position's first stop), the account value hidden on request,
 // and every order still working in the account.
@@ -224,7 +224,8 @@ function positionRow(r, leg = false) {
 function spreadRow(s) {
   const open = state.posLegsOpen.includes(s.key);
   const how = s.by === 'order' ? 'Opened together in one order.' : 'The only bought and sold contracts on this underlying, so they read as one spread.';
-  const legs = `<button class="pos-act${open ? ' active' : ''}" data-action="togglePosLegs" data-arg="${esc(s.key)}" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the legs, each with its own chart, simulator and orders">Legs</button>`;
+  const legs = `<button class="pos-act${open ? ' active' : ''}" data-action="togglePosLegs" data-arg="${esc(s.key)}" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the legs, each with its own chart, simulator and orders">Legs</button>`
+    + `<button class="pos-act" data-action="openSpreadClose" data-arg="${esc(s.key)}" title="Close all or part of the spread as one order, at a net limit or market">Close</button>`;
   const risk = s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span><span class="pos-sub">max loss · ${s.maxLossPct.toFixed(2)}% of acct</span>`;
   return `<tr class="pos-spread">
     <td><b>${esc(s.label)}</b><span class="journal-tag journal-tag-quiet" title="${esc(how)}">${esc(s.structure)}</span><span class="pos-sub">${esc(s.legWords)}</span><span class="pos-acts">${legs}</span></td>

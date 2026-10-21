@@ -19,6 +19,7 @@ import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearc
 import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
+import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
 import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
@@ -318,6 +319,13 @@ export const actions = {
   setClosePortion: el => setClosePortion(num(el)),
   setCloseQty: el => setCloseQty(el.value),
   setClosePrice: el => setClosePrice(el.value),
+  openSpreadClose: el => openSpreadClose(arg(el)),
+  setSpreadCloseType: el => setSpreadCloseType(arg(el)),
+  setSpreadClosePortion: el => setSpreadClosePortion(num(el)),
+  setSpreadCloseQty: el => setSpreadCloseQty(el.value),
+  setSpreadClosePrice: el => setSpreadClosePrice(el.value),
+  setSpreadCloseDuration: el => setSpreadCloseDuration(arg(el)),
+  placeSpreadClose: () => placeSpreadClose(),
   openOrderCancel: el => openOrderCancel(arg(el)),
   setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
   sendOrderCancel: () => sendOrderCancel(),

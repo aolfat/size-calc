@@ -140,3 +140,137 @@ test('the Positions tab shows a spread as one row, its legs a tap away', async (
   run("togglePosColumn('pnl')");
   assert.match(body().split('<tr').find(r => r.includes('85/90P')), /\+\$60\.00/);
 });
+
+// ---------- closing a spread as one order ----------
+
+const plain = v => JSON.parse(JSON.stringify(v));
+const spreadOf = (positions, orders = ORDERS) => `positionRows(${JSON.stringify({ ...ACCOUNT, positions })}, ${JSON.stringify(orders)}).spreads[0]`;
+const planFor = (positions, opts, orders = ORDERS) => plain(globalThis.__run(`spreadClosePlan(${spreadOf(positions, orders)}, ${JSON.stringify(orders)}, ${JSON.stringify(opts)})`));
+
+test('a spread closes as one order: every leg to close in its ratio, for a net credit or debit on the option grid', async () => {
+  const { run } = await app();
+  globalThis.__run = run;
+  const debit = [opt(LONG, 3, 6, 7), opt(SHORT, -3, 2.5, 3)];
+  const all = planFor(debit, { type: 'LIMIT', price: 4.02, duration: 'GOOD_TILL_CANCEL' });
+  assert.equal(all.error, '');
+  assert.deepEqual(all.steps, [{ kind: 'place', order: { orderType: 'NET_CREDIT', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', orderStrategyType: 'SINGLE', price: 4,
+    orderLegCollection: [
+      { instruction: 'SELL_TO_CLOSE', quantity: 3, instrument: { symbol: LONG, assetType: 'OPTION' } },
+      { instruction: 'BUY_TO_CLOSE', quantity: 3, instrument: { symbol: SHORT, assetType: 'OPTION' } },
+    ] } }]);
+  const trim = planFor(debit, { type: 'MARKET', qty: 1 });
+  assert.equal(trim.steps[0].order.orderType, 'MARKET');
+  assert.equal(trim.steps[0].order.duration, 'DAY');
+  assert.equal(trim.steps[0].order.price, undefined);
+  assert.deepEqual(trim.steps[0].order.orderLegCollection.map(l => l.quantity), [1, 1]);
+
+  const credit = planFor([opt(SOLD, -2, 3, 2.5), opt(BOUGHT, 2, 1.2, 1)], { type: 'LIMIT', price: 1.5 }, []);
+  assert.equal(credit.steps[0].order.orderType, 'NET_DEBIT', 'a credit spread costs a debit to close');
+  assert.deepEqual(credit.steps[0].order.orderLegCollection.map(l => [l.instruction, l.instrument.symbol]), [['SELL_TO_CLOSE', BOUGHT], ['BUY_TO_CLOSE', SOLD]]);
+
+  const ratioOrder = [{ ...ORDERS[0], orderLegCollection: [leg('BUY_TO_OPEN', 2, LONG), leg('SELL_TO_OPEN', 4, SHORT)] }];
+  assert.deepEqual(planFor([opt(LONG, 2, 6, 7), opt(SHORT, -4, 2.5, 3)], { type: 'MARKET', qty: 1 }, ratioOrder).steps[0].order.orderLegCollection.map(l => l.quantity), [1, 2], 'a 1×2 stays 1×2');
+  const odd = [{ ...ORDERS[0], orderLegCollection: [leg('BUY_TO_OPEN', 3, LONG), leg('SELL_TO_OPEN', 5, SHORT)] }];
+  assert.match(planFor([opt(LONG, 3, 6, 7), opt(SHORT, -5, 2.5, 3)], { type: 'MARKET' }, odd).error, /aren't in a whole ratio/);
+  assert.match(planFor(debit, { type: 'MARKET', qty: 4 }).error, /You hold 3 spreads/);
+  assert.match(planFor(debit, { type: 'MARKET', qty: 0 }).error, /how many spreads/);
+  assert.match(planFor(debit, { type: 'LIMIT', price: 0 }).error, /net limit price/);
+});
+
+test('closing all of a spread cancels whatever else closes a leg first; a trim fits in what they leave', async () => {
+  const { run } = await app();
+  globalThis.__run = run;
+  const debit = [opt(LONG, 3, 6, 7), opt(SHORT, -3, 2.5, 3)];
+  const working = [...ORDERS,
+    { orderId: 30, orderType: 'NET_CREDIT', status: 'WORKING', orderStrategyType: 'SINGLE', price: 6, quantity: 2, remainingQuantity: 2, enteredTime: '2026-10-15T14:00:00+0000',
+      orderLegCollection: [leg('SELL_TO_CLOSE', 2, LONG), leg('BUY_TO_CLOSE', 2, SHORT)] },
+    { orderId: 31, orderType: 'STOP', status: 'WORKING', orderStrategyType: 'SINGLE', stopPrice: 3, quantity: 1, remainingQuantity: 1, orderLegCollection: [leg('SELL_TO_CLOSE', 1, LONG)] },
+  ];
+  const all = planFor(debit, { type: 'MARKET' }, working);
+  assert.deepEqual(all.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 30], ['cancel', 31], ['place', null]], 'the working spread close, then the leg\'s stop, then the close');
+  assert.match(planFor(debit, { type: 'MARKET', qty: 1 }, working).error, /already close 3 of the RBRK 8\/28\/26 105C, so a partial close can take up to 0 spreads/);
+  const trimRoom = planFor(debit, { type: 'MARKET', qty: 1 }, working.filter(o => o.orderId !== 31));
+  assert.equal(trimRoom.error, '');
+  assert.equal(trimRoom.steps.length, 1, 'a trim leaves the other orders where they are');
+});
+
+// a fake Schwab worker holding the call debit spread: a market multi-leg order fills every leg at once, a limit goes on the list
+function broker() {
+  const live = { positions: [opt(LONG, 3, 6, 7), opt(SHORT, -3, 2.5, 3)], orders: plain(ORDERS), nextId: 900 };
+  const sent = [];
+  const fetch = async (url, init = {}) => {
+    const path = url.slice(PROXY.length), method = init.method || 'GET';
+    if (method === 'GET') {
+      if (path.includes('/orders?')) return json(live.orders);
+      if (path.endsWith('?fields=positions')) return json({ securitiesAccount: { ...ACCOUNT, positions: live.positions } });
+      return json({}, 404);
+    }
+    const body = JSON.parse(init.body);
+    sent.push({ method, body });
+    const orderId = live.nextId++;
+    if (body.orderType === 'MARKET') {
+      live.positions = live.positions.map(p => {
+        const l = body.orderLegCollection.find(x => x.instrument.symbol === p.instrument.symbol);
+        if (!l) return p;
+        const q = (p.longQuantity || -p.shortQuantity) + (l.instruction === 'SELL_TO_CLOSE' ? -l.quantity : l.quantity);
+        return { ...p, longQuantity: Math.max(q, 0), shortQuantity: Math.max(-q, 0), marketValue: p.marketValue / (p.longQuantity || -p.shortQuantity) * q };
+      }).filter(p => p.longQuantity || p.shortQuantity);
+    } else live.orders.push({ ...body, orderId, quantity: body.orderLegCollection[0].quantity, status: 'WORKING', enteredTime: new Date().toISOString() });
+    return new Response(null, { status: 201, headers: { Location: `${PROXY}/trader/v1/accounts/HASH1/orders/${orderId}` } });
+  };
+  return { fetch, sent, live };
+}
+const KEY = `${LONG},${SHORT}`;
+
+test('Close on a spread trims it as one order at market, and the re-read confirms every leg went', async () => {
+  const b = broker();
+  const { run, elements, state } = await app({ fetch: b.fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  assert.match(elements.get('positionsSection').innerHTML, new RegExp(`data-action="openSpreadClose" data-arg="${KEY}"`));
+  await run(`openSpreadClose('${KEY}')`);
+  assert.equal(state.openSheetName, 'spreadClose');
+  const t = () => state.spreadTicket;
+  assert.equal(t().close.type, 'LIMIT', 'a net limit at the mark to start');
+  assert.equal(t().close.price, 4);
+  assert.equal(t().close.qty, 3);
+  const html = () => elements.get('spreadCloseBody').innerHTML;
+  assert.match(html(), /Long 3 spreads RBRK 8\/28\/26 105\/115C/);
+  assert.match(html(), /Close 3 spreads RBRK 8\/28\/26 105\/115C for a net credit of \$4\.00 or better, as one order: sell 3 RBRK 8\/28\/26 105C, buy 3 RBRK 8\/28\/26 115C/);
+  assert.match(html(), /likely fills right away/, 'a limit at the mark');
+  run('setSpreadClosePortion(0.5)');
+  assert.equal(t().close.qty, 1, 'half of 3, at least one');
+  run("setSpreadCloseType('MARKET')");
+  assert.match(html(), /fills each leg at its own market/);
+  await run('placeSpreadClose()');
+  assert.equal(b.sent.length, 1, 'one order for both legs');
+  assert.equal(b.sent[0].body.orderType, 'MARKET');
+  assert.deepEqual(b.sent[0].body.orderLegCollection.map(l => [l.instruction, l.quantity]), [['SELL_TO_CLOSE', 1], ['BUY_TO_CLOSE', 1]]);
+  assert.equal(t().confirmed, true);
+  assert.equal(t().done, 'Schwab now shows 2 spreads RBRK 8/28/26 105/115C.');
+  assert.equal(state.positions.spreads[0].units, 2);
+  await run('placeSpreadClose()');
+  assert.equal(b.sent.length, 1, 'sent once');
+});
+
+test('a net limit close goes on Schwab\'s list and is confirmed there; Schwab changing first sends nothing', async () => {
+  const b = broker();
+  const { run, state } = await app({ fetch: b.fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  await run(`openSpreadClose('${KEY}')`);
+  run('setSpreadClosePrice("5.12")');
+  assert.equal(state.spreadTicket.price, 5.1, 'snapped to the $0.10 step from $3');
+  // a leg changes before the send: the plan differs, so nothing goes
+  b.live.positions = [opt(LONG, 2, 6, 7), opt(SHORT, -2, 2.5, 3)];
+  await run('placeSpreadClose()');
+  assert.equal(b.sent.length, 0);
+  assert.match(state.spreadTicket.notice, /Schwab changed since you opened this/);
+  assert.equal(state.spreadTicket.close.price, 5.12, 'the form carries over');
+  await run('placeSpreadClose()');
+  assert.equal(b.sent.length, 1);
+  assert.equal(b.sent[0].body.orderType, 'NET_CREDIT');
+  assert.equal(b.sent[0].body.price, 5.1);
+  assert.equal(state.spreadTicket.confirmed, true);
+  assert.equal(state.spreadTicket.done, 'Schwab now shows a net limit $5.10 to close 2 spreads RBRK 8/28/26 105/115C.');
+});
