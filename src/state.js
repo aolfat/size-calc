@@ -8,6 +8,8 @@ export function createState() {
   const dailyRange = DAILY_RANGES.includes(+store.get('daily_range')) ? +store.get('daily_range') : 63;
   let posCols = [];
   try { posCols = JSON.parse(store.get('positions_cols') || '[]'); } catch(e) {}
+  let journalHidden = [];
+  try { journalHidden = JSON.parse(store.get('journal_hidden_cols') || '[]'); } catch(e) {}
   return {
     quoteData: null,
     chainData: [],
@@ -93,6 +95,8 @@ export function createState() {
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
     chartLibLoading: null, // the one in-flight library load
+    journalHiddenCols: Array.isArray(journalHidden) ? journalHidden : [], // the trades table's columns you hid (journal_hidden_cols, this device only)
+    journalColsOpen: false, // the trades table's Columns picker showing
     journalTab: 'trades', // trades | calendar | stats | setups | books | features | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
@@ -171,10 +175,12 @@ export function createState() {
     posTicket: null, // the position order the review sheet shows, frozen when it opens
     posTradeBusy: false,
     posLast: null, // { hash, symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat on that account and symbol for a while
+    spreadTicket: null, // the spread close the review sheet shows, frozen when it opens
     cancelTicket: null, // the working-order cancel the review sheet shows, frozen when it opens
     editTicket: null, // the working-order change the review sheet shows, re-planned as the form changes
     posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)
     posColsOpen: false, // the Columns picker showing
+    posLegsOpen: [], // the Positions spreads (SpreadRow keys) showing their legs
     posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
     posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again
     posRTrades: null, // the Journal's trades as the R column last built them: { records, reviews, saved, fees, trades }

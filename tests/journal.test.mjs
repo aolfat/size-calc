@@ -144,15 +144,59 @@ test('Trades is the default view: fills grouped into trades, with P&L, R, hold t
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /data-action="setJournalTab" data-arg="trades">Trades/);
   assert.match(out, /class="active" aria-pressed="true" data-action="setJournalTab" data-arg="trades"/, 'Trades is on by default');
-  assert.match(out, /1 closed · 0 won \(0%\) · <span class="journal-sell">−\$504\.00<\/span> before fees · average −1\.00R over 1 · 1 open/);
+  assert.match(out, /1 closed · 0 won \(0%\) · <span class="journal-sell">−\$504\.00<\/span> before fees · average <span class="journal-sell">−5\.04%<\/span>, −1\.00R over 1 · 1 open/);
   const rows = [...out.matchAll(/<tr( class="journal-open")? data-action="openTradeRow" data-arg="[^"]*">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name"[^>]*><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
   assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
-  assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L and R lead, so phones see them before scrolling');
-  assert.match(out, /<tr data-action="openTradeRow" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><\/div><\/div><\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-setups-none">—<\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L %<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L %, P&L and R lead, so phones see them before scrolling');
+  assert.match(out, /<tr data-action="openTradeRow" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><\/div><\/div><\/td>\s*<td class="journal-sell" title="Of the \$10,002\.00 paid">−5\.04%<\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-setups-none">—<\/td>\s*<td class="journal-buy">Long<\/td>/);
   assert.match(out, /<th scope="col">R<\/th><th scope="col">Stop<\/th><th scope="col">Setups<\/th><th scope="col">Side<\/th>/);
   assert.match(out, /aria-label="Set a stop for AAPL 12\/18\/26 245C">Set<\/button><span class="pos-sub">premium<\/span>/, 'the call has no stop: Set, and the premium is its risk');
   assert.match(out, /<td>2d 0h<\/td>/);
   assert.match(out, /P&amp;L is before fees/);
+});
+
+test('Columns: hide the ones you don\'t want, kept on this device; one always stays', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const storage = connected();
+  const { run, elements } = await app({ storage, supabase: fakeSupabase(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  const heads = () => [...out().matchAll(/<th scope="col">([^<]*)<\/th>/g)].map(m => m[1]);
+  assert.deepEqual(heads(), ['Symbol', 'P&amp;L %', 'P&amp;L', 'R', 'Stop', 'Setups', 'Side', 'Qty', 'Entry', 'Exit', 'Hold', 'Opened (ET)'], 'every column by default');
+  assert.doesNotMatch(out(), /data-action="toggleJournalColumn"/, 'the picker starts closed');
+  run('toggleJournalColumnsMenu()');
+  assert.match(out(), /data-action="toggleJournalColumnsMenu" aria-expanded="true"/);
+  run("toggleJournalColumn('pnl')");
+  run("toggleJournalColumn('setups')");
+  assert.match(out(), /data-action="toggleJournalColumn" data-arg="pnl" aria-pressed="false"/);
+  assert.deepEqual(heads(), ['Symbol', 'P&amp;L %', 'R', 'Stop', 'Side', 'Qty', 'Entry', 'Exit', 'Hold', 'Opened (ET)']);
+  assert.match(out(), /aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><\/div><\/div><\/td>\s*<td class="journal-sell" title="Of the \$10,002\.00 paid">−5\.04%<\/td>\s*<td title="Initial stop/, 'the cells follow the headers');
+  assert.match(out(), /class="journal-buy">Long<\/td>\s*<td>100<\/td>/, 'no setups cell either');
+  assert.equal(storage.get('journal_hidden_cols'), JSON.stringify(['pnl', 'setups']));
+
+  for (const [key] of JSON.parse(run('JSON.stringify(TRADE_COLS)'))) if (key !== 'opened' && !['pnl', 'setups'].includes(key)) run(`toggleJournalColumn('${key}')`);
+  assert.deepEqual(heads(), ['Symbol', 'Opened (ET)']);
+  run("toggleJournalColumn('opened')");
+  assert.deepEqual(heads(), ['Symbol', 'Opened (ET)'], 'the last one stays');
+  assert.match(out(), /data-arg="opened" aria-pressed="true" disabled/);
+  run("toggleJournalColumn('pnlPct')");
+  assert.deepEqual(heads(), ['Symbol', 'P&amp;L %', 'Opened (ET)'], 'back in its place');
+
+  const again = await app({ storage, supabase: fakeSupabase(records), session: SESSION });
+  again.run("setView('journal')");
+  await again.run('loadJournal()');
+  assert.deepEqual([...again.elements.get('journalSection').innerHTML.matchAll(/<th scope="col">([^<]*)<\/th>/g)].map(m => m[1]), ['Symbol', 'P&amp;L %', 'Opened (ET)'], 'the same after a reload');
+});
+
+test('phones: each card shows the P&L % under the dollars', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const { run, elements } = await app({ width: 390, storage: connected(), supabase: fakeSupabase(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = elements.get('journalSection').innerHTML;
+  assert.match(out, /<dt>P&amp;L<\/dt><dd class="journal-sell">−\$504\.00<span class="jtc-pct" title="Of the \$10,002\.00 paid">−5\.04%<\/span>/);
+  assert.doesNotMatch(out, /toggleJournalColumnsMenu/, 'no Columns button: phones show cards');
 });
 
 test('filters: side and symbol narrow the trades, and Fills shows the raw fills', async () => {

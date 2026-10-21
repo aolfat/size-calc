@@ -520,11 +520,13 @@ test('the close ticket\'s chips are tens of percent of the original size, capped
   const body = () => elements.get('posTradeBody').innerHTML;
   const chip = f => body().match(new RegExp(`<button[^>]*data-arg="${f}"[^>]*>[^<]*</button>`))[0];
   assert.match(body(), /% of your original 400 shares\. 300 left\./);
-  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', 'All']);
+  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['10%', '20%', '25%', '30%', '40%', '50%', '60%', '70%', '75%', '80%', '90%', 'All']);
   assert.match(chip(1), /aria-pressed="true"/, 'all of it to start');
   assert.match(chip(0.1), /title="40 shares"/);
   assert.match(chip(0.6), /More than your other orders leave free"[^>]* disabled/, 'the target holds 100 of the 300');
   assert.match(chip(0.8), /More than you hold now"[^>]* disabled/);
+  assert.match(chip(0.25), /title="100 shares"/, 'a quarter of the original 400');
+  assert.match(chip(0.75), /More than your other orders leave free"[^>]* disabled/, '300 is all held, but the target holds 100');
   run('setClosePortion(0.3)');
   assert.match(body(), /id="posCloseQty"[^>]*value="120"/);
   assert.match(chip(0.3), /aria-pressed="true"/);

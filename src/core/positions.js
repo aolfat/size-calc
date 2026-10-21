@@ -269,8 +269,9 @@ function tradeAs(i) {
 const isStop = o => /STOP/.test(o.orderType) && o.stop !== null;
 
 /**
- * The account's positions as rows sorted by underlying (stock before its options), with totals.
- * Risk is what a stop fill loses from the average cost; negative when the stop locks a gain. Totals count losses only.
+ * The account's positions as rows sorted by underlying (stock before its options), the spreads their option legs make
+ * (positionSpreads), and totals. Risk is what a stop fill loses from the average cost; negative when the stop locks a gain.
+ * Totals count losses only, a spread its max loss.
  * P/L is from the average cost (null without one), as % of that cost; today's is Schwab's day P/L, as % of the value before it.
  * @param {{ positions?: Position[], currentBalances?: { liquidationValue?: number, cashBalance?: number } }} account
  * @param {Order[]} orders
@@ -316,13 +317,121 @@ export function positionRows(account, orders) {
   }
   const key = (/** @type {Row} */ r) => [r.under, r.option ? 1 : 0, r.option?.exp || '', (r.option?.strike ?? 0).toFixed(3).padStart(12, '0'), r.option?.type || ''].join('|');
   rows.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
+  const spreads = positionSpreads(rows, orders, value);
+  const inSpread = new Set(spreads.flatMap(s => s.legs.map(l => l.symbol)));
   const total = rows.reduce((s, r) => s + r.value, 0);
-  const risk = rows.reduce((s, r) => s + Math.max(0, r.risk || 0), 0);
+  // a spread counts its defined max loss, not its legs' stops
+  const risk = rows.reduce((s, r) => s + (inSpread.has(r.symbol) ? 0 : Math.max(0, r.risk || 0)), 0) + spreads.reduce((s, x) => s + (x.maxLoss || 0), 0);
   const priced = rows.filter(r => r.pnl !== null), dated = rows.filter(r => r.day !== null);
   const pnl = priced.reduce((s, r) => s + Number(r.pnl), 0), cost = priced.reduce((s, r) => s + r.avg * Math.abs(r.qty) * r.mult, 0);
   const day = dated.reduce((s, r) => s + Number(r.day), 0), before = dated.reduce((s, r) => s + Math.abs(r.value - Number(r.day)), 0);
-  return { value, cash, rows, total, totalPct: pct(total), risk, riskPct: pct(risk),
+  return { value, cash, rows, spreads, total, totalPct: pct(total), risk, riskPct: pct(risk),
     pnl: priced.length ? pnl : null, pnlPct: cost > 0 ? pnl / cost * 100 : null, day: dated.length ? day : null, dayPct: before > 0 ? day / before * 100 : null };
+}
+
+/**
+ * @typedef {{ key: string, label: string, under: string, legs: Row[], legWords: string, structure: string, kind: 'debit' | 'credit', by: 'order' | 'pair',
+ *   qty: number, units: number, mult: number, avg: number, price: number, value: number, pctAcct: number, maxLoss: number | null, maxLossPct: number | null,
+ *   riskBasis: 'debit' | 'width' | null, pnl: number | null, pnlPct: number | null, day: number | null, dayPct: number | null }} SpreadRow
+ */
+
+/** @type {Record<string, 'long' | 'short'>} */
+const OPENS = { BUY_TO_OPEN: 'long', SELL_TO_OPEN: 'short' };
+const dateWords = (/** @type {string} */ exp) => { const [y, mo, d] = exp.split('-'); return `${+mo}/${+d}/${y.slice(2)}`; };
+
+/**
+ * Option legs Schwab lists one by one, grouped back into the spreads they are. First the orders: a filled (or partly filled)
+ * order that opened two or more contracts together (a vertical, a calendar, an iron condor...) holds the legs still open on
+ * the same sides, newest order first. Then, for a spread opened before the 59 days of orders or legged in, an underlying
+ * whose only ungrouped options are one bought and one sold of the same type and size (a vertical, a calendar, a diagonal).
+ * Anything else stays as single legs.
+ * @param {Row[]} rows sorted as the table shows them @param {Order[]} orders @param {number} acct liquidation value
+ * @returns {SpreadRow[]}
+ */
+export function positionSpreads(rows, orders, acct) {
+  const options = rows.filter(r => r.option);
+  const taken = new Set();
+  /** @type {{ legs: Row[], by: 'order' | 'pair' }[]} */
+  const groups = [];
+  /** @type {{ at: string, legs: { symbol: string, side: 'long' | 'short' }[] }[]} */
+  const opened = [];
+  const walk = (/** @type {Order} */ o) => {
+    const filled = o.status === 'FILLED' || Number(o.filledQuantity) > 0;
+    const legs = (o.orderLegCollection || []).filter(l => l.instrument?.assetType === 'OPTION' && OPENS[l.instruction || ''])
+      .map(l => ({ symbol: l.instrument?.symbol || '', side: OPENS[l.instruction || ''] }));
+    if (filled && new Set(legs.map(l => l.symbol)).size > 1) opened.push({ at: o.enteredTime || '', legs });
+    (o.childOrderStrategies || []).forEach(walk);
+  };
+  (orders || []).forEach(walk);
+  opened.sort((a, b) => b.at.localeCompare(a.at));
+  for (const o of opened) {
+    const legs = options.filter(r => !taken.has(r.symbol) && o.legs.some(l => l.symbol === r.symbol && l.side === (r.qty > 0 ? 'long' : 'short')));
+    if (legs.length < 2) continue;
+    legs.forEach(r => taken.add(r.symbol));
+    groups.push({ legs, by: 'order' });
+  }
+  for (const under of new Set(options.map(r => r.under))) {
+    const left = options.filter(r => r.under === under && !taken.has(r.symbol));
+    if (left.length !== 2) continue;
+    const [a, b] = left;
+    if (a.option?.type !== b.option?.type || Math.sign(a.qty) === Math.sign(b.qty) || Math.abs(a.qty) !== Math.abs(b.qty)) continue;
+    left.forEach(r => taken.add(r.symbol));
+    groups.push({ legs: left, by: 'pair' });
+  }
+  const pct = (/** @type {number} */ v) => acct > 0 ? v * 100 / acct : 0;
+  const order = new Map(rows.map((r, i) => [r.symbol, i]));
+  return groups.map(({ legs, by }) => spreadRow(legs, by, pct))
+    .sort((a, b) => Number(order.get(a.legs[0].symbol)) - Number(order.get(b.legs[0].symbol)));
+}
+
+/** one spread from its legs, as the table shows it. @param {Row[]} legs @param {'order' | 'pair'} by @param {(v: number) => number} pct @returns {SpreadRow} */
+function spreadRow(legs, by, pct) {
+  legs = [...legs].sort((a, b) => Number(a.option?.strike) - Number(b.option?.strike) || String(a.option?.exp).localeCompare(String(b.option?.exp)));
+  const opts = legs.map(l => /** @type {NonNullable<Row['option']>} */ (l.option));
+  const mult = legs[0].mult;
+  const units = Math.min(...legs.map(l => Math.abs(l.qty))) || 1;
+  // net per spread: what the bought legs cost less what the sold ones took in
+  const net = legs.reduce((n, l) => n + Math.sign(l.qty) * l.avg * Math.abs(l.qty), 0) / units;
+  const kind = net >= 0 ? 'debit' : 'credit', sign = kind === 'debit' ? 1 : -1;
+  const value = legs.reduce((n, l) => n + l.value, 0);
+  const types = new Set(opts.map(o => o.type)), exps = new Set(opts.map(o => o.exp)), strikes = new Set(opts.map(o => o.strike));
+  const type = opts[0].type === 'C' ? 'call' : 'put';
+  const structure = types.size > 1 ? `${kind} spread` : exps.size === 1 ? `${type} ${kind}` : strikes.size === 1 ? 'time spread' : `${type} diagonal`;
+  const root = legs[0].under;
+  const label = exps.size === 1
+    ? `${root} ${dateWords(opts[0].exp)} ${types.size === 1 ? `${opts.map(o => o.strike).join('/')}${opts[0].type}` : opts.map(o => `${o.strike}${o.type}`).join('/')}`
+    : `${root} ${structure}`;
+  const legWords = legs.map((l, i) => `${l.qty > 0 ? '+' : '−'}${Math.abs(l.qty).toLocaleString('en-US')} ${exps.size > 1 ? dateWords(opts[i].exp) + ' ' : ''}${opts[i].strike}${opts[i].type}`).join(' ');
+  const priced = legs.every(l => l.avg > 0);
+  // defined risk, on one bought and one sold contract of a type and size: a debit with the bought leg covering the sold one
+  // (calls bought at or below, puts at or above; a vertical, calendar or diagonal) risks what it paid, a credit vertical its
+  // width less the credit. Ratios, mixed types and more legs have none here
+  const pair = legs.length === 2 && types.size === 1 && legs[0].qty === -legs[1].qty;
+  const [bought, sold] = legs[0].qty > 0 ? opts : [opts[1], opts[0]];
+  const covered = pair && (type === 'call' ? bought.strike <= sold.strike : bought.strike >= sold.strike);
+  let maxLoss = null, riskBasis = /** @type {SpreadRow['riskBasis']} */ (null);
+  if (priced && kind === 'debit' && net > 0 && covered) { maxLoss = net * units * mult; riskBasis = 'debit'; }
+  else if (priced && kind === 'credit' && pair && exps.size === 1) {
+    const width = Math.abs(opts[0].strike - opts[1].strike);
+    if (width + net > 0) { maxLoss = (width + net) * units * mult; riskBasis = 'width'; }
+  }
+  const pnl = legs.every(l => l.pnl !== null) ? legs.reduce((n, l) => n + Number(l.pnl), 0) : null;
+  const cost = Math.abs(net) * units * mult;
+  const day = legs.every(l => l.day !== null) ? legs.reduce((n, l) => n + Number(l.day), 0) : null;
+  const before = day === null ? 0 : Math.abs(value - day);
+  return {
+    key: legs.map(l => l.symbol).join(','), label, under: root, legs, legWords, structure, kind, by,
+    qty: sign * units, units, mult, avg: priced ? Math.abs(net) : 0, price: sign * value / (units * mult), value, pctAcct: pct(Math.abs(value)),
+    maxLoss, maxLossPct: maxLoss === null ? null : pct(maxLoss), riskBasis,
+    pnl, pnlPct: pnl === null || !(cost > 0) ? null : pnl / cost * 100, day, dayPct: day === null || !before ? null : day / before * 100,
+  };
+}
+
+/** a spread's R: open P/L over its defined max loss. @param {SpreadRow} s */
+export function spreadR(s) {
+  if (s.pnl === null) return { r: null, why: 'No average cost from Schwab on every leg.' };
+  if (!s.maxLoss) return { r: null, why: 'No defined max loss to count R from.' };
+  return { r: s.pnl / s.maxLoss, why: '' };
 }
 
 /**
@@ -688,4 +797,73 @@ export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DA
   if (stop !== null && n === held) moved = held; // cancelled above, back once the pair is in
   steps.push({ kind: 'place', order: stop === null ? close : ocoOrder(close, closeStopOrder({ ...p, stop, stopDuration: duration })) });
   return { error: unnamed(steps), stop: stop ?? 0, steps, paired: [], rest: held - n, bare: 0, price: limit, moved };
+}
+
+// ---------- closing a spread as one order ----------
+
+/**
+ * @typedef {{ orderId: number | string | null, orderType: string, price: number | null, qty: number, legs: { symbol: string, qty: number }[], duration: string }} SpreadCloser
+ * @typedef {{ error: string, steps: Step[], price: number, qty: number, ratios: number[], closers: SpreadCloser[] }} SpreadPlan
+ */
+
+/** working multi-leg orders that close any of a spread's legs (a spread close already in), with what each holds of every leg. @param {SpreadRow} s @param {Order[]} orders @returns {SpreadCloser[]} */
+export function spreadClosers(s, orders) {
+  const mine = new Set(s.legs.map(l => l.symbol));
+  /** @type {SpreadCloser[]} */
+  const out = [];
+  const walk = (/** @type {Order} */ o) => {
+    const legs = o.orderLegCollection || [];
+    if (legs.length > 1 && o.status && !ENDED.has(o.status) && legs.some(l => mine.has(l.instrument?.symbol || '') && CLOSES[l.instruction || ''])) {
+      const total = Number(o.quantity) || 0, left = Number(o.remainingQuantity) > 0 ? Number(o.remainingQuantity) : total;
+      const share = total > 0 ? left / total : 1;
+      out.push({ orderId: o.orderId ?? null, orderType: o.orderType || '', price: num(o.price), qty: left, duration: o.duration || '',
+        legs: legs.map(l => ({ symbol: l.instrument?.symbol || '', qty: (Number(l.quantity) || 0) * share })) });
+    }
+    (o.childOrderStrategies || []).forEach(walk);
+  };
+  (orders || []).forEach(walk);
+  return out;
+}
+
+/**
+ * Close a spread, all or part, as ONE multi-leg order: each bought leg sold to close and each sold leg bought to close in the
+ * legs' own ratio, at market or for a net limit (a debit spread closes for a credit, NET_CREDIT; a credit spread for a debit,
+ * NET_DEBIT), on the option grid. All of it cancels every order in play that closes a leg first (spread closes, then the legs'
+ * targets, then their stops), so nothing closes twice; part of it leaves them and fits in what they leave free on every leg.
+ * @param {SpreadRow} s @param {Order[]} orders
+ * @param {{ type?: 'MARKET' | 'LIMIT', qty?: number, price?: number, duration?: StopDuration }} [opts]
+ * @returns {SpreadPlan}
+ */
+export function spreadClosePlan(s, orders, { type = 'LIMIT', qty, price = 0, duration = 'DAY' } = {}) {
+  const closers = spreadClosers(s, orders);
+  const fail = (/** @type {string} */ error) => ({ error, steps: [], price: 0, qty: 0, ratios: [], closers });
+  const ratios = s.legs.map(l => Math.abs(l.qty) / s.units);
+  if (ratios.some(r => !Number.isInteger(r))) return fail(`The legs (${s.legWords}) aren't in a whole ratio, so they can't go out as one order. Close them one by one under Legs.`);
+  const n = qty ?? s.units, spreads = (/** @type {number} */ k) => `${k.toLocaleString('en-US')} ${k === 1 ? 'spread' : 'spreads'}`;
+  if (!Number.isInteger(n) || n < 1) return fail('Pick how many spreads to close.');
+  if (n > s.units) return fail(`You hold ${spreads(s.units)}.`);
+  const limit = type === 'LIMIT' ? optionPriceTick(price) : 0;
+  if (type === 'LIMIT' && !(limit > 0)) return fail('Set a net limit price above $0.');
+  /** @type {Step[]} */
+  let steps = [];
+  if (n === s.units) {
+    const multi = closers.map(c => /** @type {Resting} */ ({ orderId: c.orderId, symbol: s.key, closes: 'long', orderType: c.orderType, stop: null, price: c.price, qty: c.qty, oco: null, duration: c.duration, session: '' }));
+    const legOthers = s.legs.flatMap(l => l.closers.filter(o => !l.stopOrders.includes(o)));
+    const legStops = s.legs.flatMap(l => [...l.stopOrders].reverse());
+    const seen = new Set();
+    steps = cancels([...multi, ...legOthers, ...legStops].filter(o => { const k = String(o.orderId); if (o.orderId !== null && seen.has(k)) return false; seen.add(k); return true; }));
+  } else {
+    for (const [i, l] of s.legs.entries()) {
+      const held = Math.abs(l.qty);
+      const taken = Math.min(held, l.closers.reduce((t, o) => t + o.qty, 0) + closers.reduce((t, c) => t + c.legs.filter(x => x.symbol === l.symbol).reduce((q, x) => q + x.qty, 0), 0));
+      const room = Math.floor((held - taken) / ratios[i] + 1e-9);
+      if (n > room) return fail(`Other orders already close ${taken.toLocaleString('en-US')} of the ${l.label}, so a partial close can take up to ${spreads(room)}. Close all ${s.units} to cancel them too.`);
+    }
+  }
+  steps.push({ kind: 'place', order: {
+    orderType: type === 'MARKET' ? 'MARKET' : s.kind === 'debit' ? 'NET_CREDIT' : 'NET_DEBIT',
+    session: 'NORMAL', duration: type === 'MARKET' ? 'DAY' : duration, orderStrategyType: 'SINGLE', ...(limit ? { price: limit } : {}),
+    orderLegCollection: s.legs.map((l, i) => ({ instruction: l.qty > 0 ? 'SELL_TO_CLOSE' : 'BUY_TO_CLOSE', quantity: n * ratios[i], instrument: { symbol: l.symbol, assetType: 'OPTION' } })),
+  } });
+  return { error: unnamed(steps), steps, price: limit, qty: n, ratios, closers };
 }

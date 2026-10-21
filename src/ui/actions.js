@@ -19,8 +19,9 @@ import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearc
 import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, setPosTargetPortion, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
+import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
-import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue } from './positions.js';
+import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
@@ -33,7 +34,7 @@ import { toggleTradeFeatures } from './journal-features.js';
 import { addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, moveNotebookItem, notebookItemInput, openJournalDay, openTodayNotebook, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, stepJournalDay, toggleDayFeeling } from './journal-notebook.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, cancelSetupEdit, editSetup, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
-import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
+import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -141,6 +142,8 @@ export const actions = {
   setJournalSide: el => setJournalSide(arg(el)),
   journalSymbolChanged: () => journalSymbolChanged(),
   toggleDeletedTrades: () => toggleDeletedTrades(),
+  toggleJournalColumnsMenu: () => toggleJournalColumnsMenu(),
+  toggleJournalColumn: el => toggleJournalColumn(arg(el)),
   setJournalFees: el => setJournalFees(arg(el)),
   openTradeReview: el => openTradeReview(arg(el)),
   tradeStopPreview: () => tradeStopPreview(),
@@ -318,6 +321,13 @@ export const actions = {
   setClosePortion: el => setClosePortion(num(el)),
   setCloseQty: el => setCloseQty(el.value),
   setClosePrice: el => setClosePrice(el.value),
+  openSpreadClose: el => openSpreadClose(arg(el)),
+  setSpreadCloseType: el => setSpreadCloseType(arg(el)),
+  setSpreadClosePortion: el => setSpreadClosePortion(num(el)),
+  setSpreadCloseQty: el => setSpreadCloseQty(el.value),
+  setSpreadClosePrice: el => setSpreadClosePrice(el.value),
+  setSpreadCloseDuration: el => setSpreadCloseDuration(arg(el)),
+  placeSpreadClose: () => placeSpreadClose(),
   openOrderCancel: el => openOrderCancel(arg(el)),
   setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
   sendOrderCancel: () => sendOrderCancel(),
@@ -338,6 +348,7 @@ export const actions = {
   togglePosColumnsMenu: () => togglePosColumnsMenu(),
   togglePosColumn: el => togglePosColumn(arg(el)),
   togglePosHideValue: () => togglePosHideValue(),
+  togglePosLegs: el => togglePosLegs(arg(el)),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),
