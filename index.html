@@ -645,6 +645,15 @@
     <div id="posTradeBody" aria-live="polite"></div>
   </div>
 
+  <div class="sheet trade-sheet" id="spreadCloseSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="spreadCloseTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="spreadCloseTitle">Close spread</h2>
+      <span class="sheet-status" id="spreadCloseAccount"></span>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close spread review">×</button>
+    </div>
+    <div id="spreadCloseBody" aria-live="polite"></div>
+  </div>
+
   <div class="sheet trade-sheet" id="cancelSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cancelTitle" tabindex="-1">
     <div class="sheet-head">
       <h2 id="cancelTitle">Cancel order</h2>
