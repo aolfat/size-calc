@@ -76,11 +76,11 @@
 .pos-target-sum .shares-detail { display: block; font-family: var(--sans); }
 .pos-target-sum.warn { color: var(--amber); font-family: var(--sans); }
 .pos-target .trade-actions { margin-top: 10px; }
-/* the close ticket: the count, then 10% to All of the original size in two rows of five, the inputs as wide as a thumb needs */
+/* the close ticket: the count, then 10% to All of the original size (25% and 75% among them) in two rows of six, the inputs as wide as a thumb needs */
 .trade-legs dt label { font: inherit; color: inherit; }
 .pos-close-qty { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
 .pos-close-qty input { flex: 0 1 110px; min-width: 80px; }
-.pos-close-qty .pos-close-portions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; flex: 1 1 100%; }
+.pos-close-qty .pos-close-portions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; flex: 1 1 100%; }
 .pos-close-portions .filter-btn { padding: 8px 2px; }
 .pos-close-price { width: 140px; }
 

@@ -398,7 +398,7 @@ function targetHint(t) {
   return pairing + ' A limit fills at the target or better, and only if the price gets there.';
 }
 
-const CLOSE_PORTIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+const CLOSE_PORTIONS = [0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1];
 
 /** what a portion chip closes: that share of the original size, at least one; 0 when it's more than is left to close (targets hold the rest) */
 function portionQty(t, f) {
