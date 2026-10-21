@@ -55,6 +55,14 @@ test('functions that run with elevated rights fix their search path and are call
   }
 });
 
+// Supabase keys its history on the version (the timestamp before the first _): two files sharing one means the second
+// is refused at db push ('schema_migrations_pkey'), as 20261029000000 bars_source and statement_fills once were
+test('every migration has a version of its own', () => {
+  const versions = files.map(f => f.split('_')[0]);
+  const dupes = versions.filter((v, i) => versions.indexOf(v) !== i);
+  assert.deepEqual(dupes, [], `shared versions: ${dupes.join(', ')}`);
+});
+
 test('one baseline migration first, and every migration safe to run on a database that already has some of it', () => {
   assert.match(files[0], /_baseline\.sql$/, 'the schema starts from one baseline (docs/journal-step-2.md, slice 6)');
   assert.equal(files.filter(f => /_baseline\.sql$/.test(f)).length, 1, 'and only one: changes since are their own files after it, never edits to it');
