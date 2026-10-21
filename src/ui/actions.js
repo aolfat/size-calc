@@ -20,7 +20,7 @@ import { closePositionChart, posChartToday, posTargetChanged, setPosChartRange, 
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
-import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue } from './positions.js';
+import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
@@ -338,6 +338,7 @@ export const actions = {
   togglePosColumnsMenu: () => togglePosColumnsMenu(),
   togglePosColumn: el => togglePosColumn(arg(el)),
   togglePosHideValue: () => togglePosHideValue(),
+  togglePosLegs: el => togglePosLegs(arg(el)),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),

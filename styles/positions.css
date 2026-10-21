@@ -25,6 +25,10 @@
 .pos-loss { color: var(--red); font-weight: 600; }
 .pos-locked { color: var(--green); font-weight: 600; }
 .pos-partial { color: var(--amber); }
+.positions-table tr.pos-spread .journal-tag { margin-left: 6px; }
+.positions-table tr.pos-leg td { background: var(--bg); }
+.positions-table tr.pos-leg td:first-child { background: var(--bg); padding-left: 22px; box-shadow: inset 2px 0 0 var(--border2); }
+.positions-table tr.pos-leg b { font-weight: 500; color: var(--text2); }
 .pos-acts { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; }
 .pos-acts.many { flex-wrap: wrap; } /* an option's four buttons go two by two on a phone instead of widening the pinned column */
 .pos-act { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 11px; font-weight: 600; padding: 3px 8px; cursor: pointer; }

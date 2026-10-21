@@ -1,11 +1,12 @@
 // Positions: the selected Schwab account's holdings, read live every 30s while the tab is open, with stops from its working stop orders,
+// option legs folded into the spreads they make (each spread's legs a tap away),
 // buttons into a position's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the breakeven-stop and close reviews (position-trade.js),
 // optional P/L and R columns picked from Columns (kept on this device; R reads the Journal's trades for each position's first stop), the account value hidden on request,
 // and every order still working in the account.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
@@ -28,7 +29,7 @@ const rWords = v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}R`;
 const EXTRA_COLS = [
   ['pnl', 'P/L', r => pnlCell(r.pnl)],
   ['pnlPct', 'P/L %', r => pctCell(r.pnlPct)],
-  ['r', 'R', r => 'symbol' in r ? rCell(r) : ''],
+  ['r', 'R', r => 'legs' in r ? spreadRCell(r) : 'symbol' in r ? rCell(r) : ''],
   ['day', 'Today', r => pnlCell(r.day)],
   ['dayPct', 'Today %', r => pctCell(r.dayPct)],
 ];
@@ -97,6 +98,20 @@ function rCell(row) {
     : `Open P/L over the risk to ${p.source === 'premium' ? 'zero (the premium)' : `the nearest stop now, ${px(p.stop)}`}, ${fmt$(p.risk)}. ${state.session ? 'Not matched to an open Journal trade.' : 'Sign in to count from the Journal trade\'s first stop.'}${behind}`;
   const trims = p.withTrims !== null ? `<span class="pos-sub">${rWords(p.withTrims)} with trims</span>` : '';
   return `<span title="${esc(title)}">${signed(p.r, Math.abs(p.r).toFixed(2) + 'R')}<span class="pos-sub">${esc(from)}</span>${trims}</span>`;
+}
+
+function spreadRCell(s) {
+  const { r, why } = spreadR(s);
+  if (r === null) return `<span title="${esc(why)}">—</span>`;
+  const basis = s.riskBasis === 'width' ? 'width less credit' : 'debit paid';
+  return `<span title="${esc(`Open P/L over the spread's max loss, ${fmt$(s.maxLoss)} (the ${basis}).`)}">${signed(r, Math.abs(r).toFixed(2) + 'R')}<span class="pos-sub">${basis}</span></span>`;
+}
+
+/** a spread's Legs button: shows or hides its legs under it */
+export function togglePosLegs(key) {
+  const open = state.posLegsOpen.includes(key);
+  state.posLegsOpen = open ? state.posLegsOpen.filter(k => k !== key) : [...state.posLegsOpen, key];
+  renderPositionsTable();
 }
 
 /** Hide / Show beside the account value */
@@ -191,8 +206,8 @@ function tradeButtons(r) {
   return `<span class="pos-acts${r.option ? ' many' : ''}">${chart}${atBe ? `<span class="pos-locked">${atBe}</span>` :`<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button></span>`;
 }
 
-function positionRow(r) {
-  return `<tr>
+function positionRow(r, leg = false) {
+  return `<tr${leg ? ' class="pos-leg"' : ''}>
     <td><b>${esc(r.label)}</b>${tradeButtons(r)}</td>
     <td>${count(r.qty)}</td>
     <td>${r.avg > 0 ? fmt$(r.avg) : '—'}</td>
@@ -205,6 +220,36 @@ function positionRow(r) {
   </tr>`;
 }
 
+/** a spread as one position: net cost and mark per spread, P/L added up, its max loss where the stop risk goes */
+function spreadRow(s) {
+  const open = state.posLegsOpen.includes(s.key);
+  const how = s.by === 'order' ? 'Opened together in one order.' : 'The only bought and sold contracts on this underlying, so they read as one spread.';
+  const legs = `<button class="pos-act${open ? ' active' : ''}" data-action="togglePosLegs" data-arg="${esc(s.key)}" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the legs, each with its own chart, simulator and orders">Legs</button>`;
+  const risk = s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span><span class="pos-sub">max loss · ${s.maxLossPct.toFixed(2)}% of acct</span>`;
+  return `<tr class="pos-spread">
+    <td><b>${esc(s.label)}</b><span class="journal-tag journal-tag-quiet" title="${esc(how)}">${esc(s.structure)}</span><span class="pos-sub">${esc(s.legWords)}</span><span class="pos-acts">${legs}</span></td>
+    <td>${count(s.qty)}</td>
+    <td>${s.avg > 0 ? fmt$(s.avg) : '—'}<span class="pos-sub">${s.kind}</span></td>
+    <td>${fmt$(s.price)}</td>
+    <td>${money(s.value)}</td>
+    ${shownCols().map(([, , cell]) => `<td>${cell(s)}</td>`).join('')}
+    <td>${s.pctAcct.toFixed(2)}%</td>
+    <td>—</td>
+    <td>${risk}</td>
+  </tr>${open ? s.legs.map(l => positionRow(l, true)).join('') : ''}`;
+}
+
+/** the table's rows: each spread once, where its first leg sits, and every other position on its own */
+function tableRows(p) {
+  const spreads = p.spreads || [];
+  const bySymbol = new Map(spreads.flatMap(s => s.legs.map(l => [l.symbol, s])));
+  return p.rows.flatMap(r => {
+    const s = bySymbol.get(r.symbol);
+    if (!s) return [{ row: r }];
+    return s.legs[0].symbol === r.symbol ? [{ spread: s }] : [];
+  });
+}
+
 export function renderPositions() {
   readPositionJournal();
   renderPositionsTable();
@@ -214,7 +259,8 @@ export function renderPositions() {
 function renderPositionsTable() {
   const el = document.getElementById('positionsSection');
   const p = state.positions;
-  document.getElementById('posCount').textContent = p && p.rows.length ? String(p.rows.length) : '';
+  const items = p ? tableRows(p) : [];
+  document.getElementById('posCount').textContent = items.length ? String(items.length) : '';
   const refresh = `<button class="btn" data-action="refreshPositions"${state.positionsBusy ? ' disabled' : ''} title="Read positions from Schwab now (r)">${state.positionsBusy ? '<span class="spinner" style="width:12px;height:12px;"></span> Refreshing…' : '↻ Refresh'}</button>`;
   if (!p) {
     el.innerHTML = !schwabConnected()
@@ -244,10 +290,10 @@ function renderPositionsTable() {
     ${p.stopsMissing ? '<p class="hint">Stops unavailable: Schwab did not return this account\'s orders.</p>' : ''}
     ${p.rows.length ? `<div class="positions-wrap"><table class="positions-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th>${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
-      <tbody>${p.rows.map(positionRow).join('')}</tbody>
+      <tbody>${items.map(i => i.spread ? spreadRow(i.spread) : positionRow(i.row)).join('')}</tbody>
       <tfoot><tr><th scope="row">Total</th><td></td><td></td><td></td><td>${money(p.total)}</td>${cols.map(([, , cell]) => `<td>${cell(p)}</td>`).join('')}<td>${p.totalPct.toFixed(2)}%</td><td></td><td>${p.risk > 0 ? `<span class="pos-loss">−${fmt$(p.risk)}</span><span class="pos-sub">${p.riskPct.toFixed(2)}% of acct</span>` : '—'}</td></tr></tfoot>
     </table></div>
-    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost.${rShown() ? ' R is open P/L over the risk at entry: the Journal trade\'s first stop (or a long option\'s premium), else the nearest stop now.' : ''}</p>` : '<p class="hint">No open positions in this account.</p>'}
+    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost; a spread's is its max loss.${rShown() ? ' R is open P/L over the risk at entry: the Journal trade\'s first stop (or a long option\'s premium), else the nearest stop now.' : ''}</p>` : '<p class="hint">No open positions in this account.</p>'}
   </div>
   ${ordersCard(p)}`;
   el.querySelectorAll('.positions-wrap').forEach((w, i) => { w.scrollLeft = scrolled[i] || 0; });
