@@ -1,13 +1,17 @@
 // Positions: the selected Schwab account's holdings, read live every 30s while the tab is open, with stops from its working stop orders,
 // buttons into a position's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the breakeven-stop and close reviews (position-trade.js),
-// optional P/L columns picked from Columns (kept on this device), the account value hidden on request, and every order still working in the account.
+// optional P/L and R columns picked from Columns (kept on this device; R reads the Journal's trades for each position's first stop), the account value hidden on request,
+// and every order still working in the account.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, schwabTime, workingOrders, workingPrice } from '../core/positions.js';
+import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
 import { showToast } from './feedback.js';
+import { journalTradeList } from './journal.js';
+import { onCaptureChange } from './schwab-capture.js';
 import { renderPositionChart } from './position-chart.js';
 
 const POLL_MS = 30000;
@@ -19,10 +23,12 @@ const STATUS_WORDS = { AWAITING_PARENT_ORDER: 'waiting on entry', PENDING_ACTIVA
 const signed = (v, text) => `<span class="${v >= 0 ? 'pos-locked' : 'pos-loss'}">${v >= 0 ? '+' : '−'}${text}</span>`;
 const pnlCell = v => v === null ? '—' : signed(v, fmt$(Math.abs(v)));
 const pctCell = v => v === null ? '—' : signed(v, Math.abs(v).toFixed(2) + '%');
+const rWords = v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}R`;
 // the optional columns, in table order after Market value: [key, header, row or totals → cell]
 const EXTRA_COLS = [
   ['pnl', 'P/L', r => pnlCell(r.pnl)],
   ['pnlPct', 'P/L %', r => pctCell(r.pnlPct)],
+  ['r', 'R', r => 'symbol' in r ? rCell(r) : ''],
   ['day', 'Today', r => pnlCell(r.day)],
   ['dayPct', 'Today %', r => pctCell(r.dayPct)],
 ];
@@ -40,7 +46,57 @@ export function togglePosColumn(key) {
   const on = state.posCols.includes(key);
   state.posCols = EXTRA_COLS.map(([k]) => k).filter(k => k === key ? !on : state.posCols.includes(k));
   store.set('positions_cols', JSON.stringify(state.posCols));
+  readPositionJournal();
   renderPositionsTable();
+}
+
+// ---------- the R column: open P/L over the Journal trade's first risk ----------
+
+/** the Journal's trades for the R column: read once when the column is on and you're signed in (the Journal tab reads them too) */
+function positionTrades() {
+  if (!state.journalRecords) return null;
+  // built again only when the records, your stops, your merges or the fee choice change, not on every 30s read
+  const memo = state.posRTrades, fees = store.get('journal_fees');
+  if (memo && memo.records === state.journalRecords && memo.reviews === state.tradeReviews && memo.saved === state.journalSaved && memo.fees === fees) return memo.trades;
+  const trades = journalTradeList();
+  state.posRTrades = { records: state.journalRecords, reviews: state.tradeReviews, saved: state.journalSaved, fees, trades };
+  return trades;
+}
+
+const rShown = () => state.posCols.includes('r');
+
+/** the records, your stops and merges, when the R column needs them and nothing has read them yet */
+function readPositionJournal(force = false) {
+  if (!rShown() || !state.session || state.posJournalBusy || state.journalLoading) return;
+  if (!force && (state.journalRecords || state.posJournalError)) return;
+  state.posJournalBusy = Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades()]).then(([records, reviews, saved]) => {
+    if (records.status === 'fulfilled') { state.journalRecords = records.value; state.posJournalError = ''; }
+    else state.posJournalError = String(records.reason?.message || records.reason);
+    if (reviews.status === 'fulfilled') { state.tradeReviews = reviews.value; state.tradeReviewsError = ''; }
+    if (saved.status === 'fulfilled') { state.journalSaved = saved.value; state.journalSavedError = ''; }
+  }).finally(() => {
+    state.posJournalBusy = false;
+    if (state.positionsView) renderPositionsTable();
+  });
+}
+
+// an import landed while Positions is open: its trades (a trim, a scale-in) change what R counts from
+onCaptureChange(saved => { if (saved && state.positionsView && !state.journalView) readPositionJournal(true); });
+
+function rCell(row) {
+  if (state.session && !state.journalRecords && (state.posJournalBusy || state.journalLoading)) return '<span class="pos-sub">…</span>';
+  const p = positionR(row, positionTrades(), state.positions?.last4 || '');
+  if (p.r === null) return `<span title="${esc(p.why)}">—</span>`;
+  const px = v => fmtPositionPrice(v, row.tradeAs);
+  const from = p.source === 'journal'
+    ? (p.basis === 'premium' ? 'premium' : p.basis === 'stop' ? `first stop ${px(p.stop)}` : 'journal risk')
+    : p.source === 'premium' ? 'premium' : `stop now ${px(p.stop)}`;
+  const behind = p.journalQty !== null ? ` The Journal shows ${p.journalQty.toLocaleString('en-US')} open, Schwab ${Math.abs(row.qty).toLocaleString('en-US')}: import to catch up.` : '';
+  const title = p.source === 'journal'
+    ? `Open P/L over the trade's risk at entry, ${fmt$(p.risk)} (${p.basis === 'premium' ? 'the premium paid' : `stop ${px(p.stop)}`}), from your Journal.`
+    : `Open P/L over the risk to ${p.source === 'premium' ? 'zero (the premium)' : `the nearest stop now, ${px(p.stop)}`}, ${fmt$(p.risk)}. ${state.session ? 'Not matched to an open Journal trade.' : 'Sign in to count from the Journal trade\'s first stop.'}${behind}`;
+  const trims = p.withTrims !== null ? `<span class="pos-sub">${rWords(p.withTrims)} with trims</span>` : '';
+  return `<span title="${esc(title)}">${signed(p.r, Math.abs(p.r).toFixed(2) + 'R')}<span class="pos-sub">${esc(from)}</span>${trims}</span>`;
 }
 
 /** Hide / Show beside the account value */
@@ -57,6 +113,7 @@ export function togglePosHideValue() {
  */
 export function refreshPositions(asked = false) {
   stopPositions();
+  if (asked) state.posJournalError = ''; // a tap on Refresh tries the Journal's read again too
   const id = ++state.positionsRequest;
   const acct = schwabConnected() ? schwabAccount() : null;
   if (!acct) { state.positions = null; state.positionsBusy = false; renderPositions(); return Promise.resolve(); }
@@ -149,6 +206,7 @@ function positionRow(r) {
 }
 
 export function renderPositions() {
+  readPositionJournal();
   renderPositionsTable();
   renderPositionChart(); // its lines, sizes and target checks follow each read
 }
@@ -178,7 +236,7 @@ function renderPositionsTable() {
     <div class="positions-head">
       <span class="section-title">Schwab ••${esc(p.last4)}</span>
       <span class="positions-meta">${value} ${hide} · as of ${asOf}</span>
-      <button class="btn pos-cols-btn" data-action="togglePosColumnsMenu" aria-expanded="${state.posColsOpen}" title="Add or remove columns: P/L and today's P/L">Columns</button>
+      <button class="btn pos-cols-btn" data-action="togglePosColumnsMenu" aria-expanded="${state.posColsOpen}" title="Add or remove columns: P/L, R and today's P/L">Columns</button>
       ${refresh}
     </div>
     ${picker}
@@ -189,7 +247,7 @@ function renderPositionsTable() {
       <tbody>${p.rows.map(positionRow).join('')}</tbody>
       <tfoot><tr><th scope="row">Total</th><td></td><td></td><td></td><td>${money(p.total)}</td>${cols.map(([, , cell]) => `<td>${cell(p)}</td>`).join('')}<td>${p.totalPct.toFixed(2)}%</td><td></td><td>${p.risk > 0 ? `<span class="pos-loss">−${fmt$(p.risk)}</span><span class="pos-sub">${p.riskPct.toFixed(2)}% of acct</span>` : '—'}</td></tr></tfoot>
     </table></div>
-    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost.</p>` : '<p class="hint">No open positions in this account.</p>'}
+    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost.${rShown() ? ' R is open P/L over the risk at entry: the Journal trade\'s first stop (or a long option\'s premium), else the nearest stop now.' : ''}</p>` : '<p class="hint">No open positions in this account.</p>'}
   </div>
   ${ordersCard(p)}`;
   el.querySelectorAll('.positions-wrap').forEach((w, i) => { w.scrollLeft = scrolled[i] || 0; });

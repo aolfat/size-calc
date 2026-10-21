@@ -9,6 +9,7 @@ import { schwabDisconnect, schwabSession } from '../services/schwab.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
 import { loadJournal, renderJournal } from './journal.js';
+import { refreshPositions } from './positions.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -103,6 +104,7 @@ async function startSession(session) {
   // the callback page runs this before finishing its login: the attempt stays, and its tokens get this user
   if (!schwabSession()) schwabDisconnect({ keepAttempt: true });
   if (state.journalView) loadJournal(); // a reload on the Journal: its records, now that there's a session to read them
+  if (state.positionsView) refreshPositions(); // a reload on Positions: the Schwab login is this user's, so it only counts now
   setCloudUi('Syncing…');
   if (store.get('cloud_user') !== session.user.id) {
     let m;
