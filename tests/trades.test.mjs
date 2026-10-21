@@ -139,10 +139,27 @@ test('an open trade shows what it has realized so far, but no R until it closes'
   assert.equal(t.holdMs, null);
 });
 
+test('P&L %: of what the closed part cost, a short of what it took in, an option ×100; none before anything closed', async () => {
+  const { run } = await app();
+  const pct = list => list.map(t => run(`pnlPct(${JSON.stringify(t)})`));
+  const [long] = await trades([fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 50), fill('b', '2026-10-02T15:00:00.000Z', 'sell', 100, 52)]);
+  const [short] = await trades([fill('s', '2026-10-02T13:35:01.000Z', 'sell', 50, 200, { instruction: 'SELL_SHORT' }), fill('c', '2026-10-02T15:12:30.000Z', 'buy', 50, 210, { instruction: 'BUY_TO_COVER' })]);
+  const o = { symbol: 'AAPL  261218C00245000', label: 'AAPL 12/18/26 245C', assetType: 'OPTION' };
+  const [option] = await trades([fill('o1', '2026-10-09T14:05:03.000Z', 'buy', 3, 4, { ...o, instruction: 'BUY_TO_OPEN' }), fill('o2', '2026-10-10T15:00:00.000Z', 'sell', 3, 5, { ...o, instruction: 'SELL_TO_CLOSE' })]);
+  const [trimmed] = await trades([fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 100), fill('b', '2026-10-01T15:00:00.000Z', 'sell', 40, 102)]);
+  const [fresh] = await trades([fill('a', '2026-10-01T14:30:00.000Z', 'buy', 100, 100)]);
+  const [earlier] = await trades([fill('x', '2026-10-01T15:00:00.000Z', 'sell', 10, 100)]);
+  assert.deepEqual(pct([long, short, option, trimmed, fresh, earlier]), [4, -5, 25, 2, null, null]);
+  assert.equal(earlier.status, 'history');
+  const s = JSON.parse(run(`JSON.stringify(tradesSummary(${JSON.stringify([long, short, option, trimmed])}))`));
+  assert.equal(s.avgPct, 8, 'the closed ones averaged, the open one left out');
+  assert.equal(s.withPct, 3);
+});
+
 test('summary and hold time in words', async () => {
   const { run } = await app();
   const s = JSON.parse(run(`JSON.stringify(tradesSummary([{ status: 'win', pnl: 300, r: 1.5 }, { status: 'loss', pnl: -100, r: -1 }, { status: 'win', pnl: 50, r: null }, { status: 'open', pnl: 0, r: null }]))`));
-  assert.deepEqual(s, { closed: 3, open: 1, history: 0, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2, fees: 0, feesMissing: 0 });
+  assert.deepEqual(s, { avgPct: null, withPct: 0, closed: 3, open: 1, history: 0, wins: 2, losses: 1, winRate: 66.7, pnl: 250, avgR: 0.25, withR: 2, fees: 0, feesMissing: 0 });
   assert.equal(run('holdWords(45 * 60000)'), '45m');
   assert.equal(run('holdWords((3 * 60 + 10) * 60000)'), '3h 10m');
   assert.equal(run('holdWords((52) * 3600000)'), '2d 4h');
@@ -441,6 +458,8 @@ test('a call debit spread merged: net debit in, net credit out, risk = the debit
   assert.equal(t.rBasis, 'debit');
   assert.equal(t.risk, 500, 'the debit is all it can lose');
   assert.equal(t.r, 0.4);
+  const { run } = await app();
+  assert.equal(run(`pnlPct(${JSON.stringify(t)})`), 40, 'P&L % of the debit paid');
 });
 
 test('a put credit spread merged: net credit in, risk = width − credit', async () => {
@@ -461,6 +480,8 @@ test('a put credit spread merged: net credit in, risk = width − credit', async
   assert.equal(t.rBasis, 'width');
   assert.equal(t.risk, 320, '$5 wide × 100 − $180 credit');
   assert.equal(t.r, 0.34);
+  const { run } = await app();
+  assert.equal(run(`pnlPct(${JSON.stringify(t)})`), 34.375, 'P&L % of what it risked, not of the credit');
 });
 
 test('what can be merged: same account and underlying; one symbol on one side, or option contracts', async () => {
