@@ -1,7 +1,7 @@
 // Journal tab (#journalSection, setView('journal'), key j): what's kept from Schwab in your account, your trades (fills grouped
 // flat to flat, with P&L, R, stop and hold time) or the raw fills, filtered by side and symbol; the trade sheet (your
 // stop, delete a trade that doesn't belong, combine or split a spread); and the Import and Export sheets: Import lists the
-// sources (Schwab now, file upload later), Export the files you can take (Schwab history now, trades later). Tick trades
+// sources (Schwab, thinkorswim statements for futures, more files later), Export the files you can take (Schwab history now, trades later). Tick trades
 // and Merge to make them one (a re-entry, a spread's legs); Separate undoes it. Both are rows in the trades table. The
 // trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
@@ -28,6 +28,7 @@ import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from '.
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
+import { tosSectionHtml } from './journal-tos.js';
 import { dayPageHtml, todayLineHtml } from './journal-notebook.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
@@ -253,7 +254,7 @@ function pickBar(all) {
 // ---------- phones: a card per trade, open ones first, like the trade journals on a phone ----------
 
 const nyDay = iso => new Date(iso).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
-const unitWord = t => t.legs ? (t.entryQty === 1 ? 'spread' : 'spreads') : t.assetType === 'OPTION' ? (t.entryQty === 1 ? 'ct' : 'cts') : 'shr';
+const unitWord = t => t.legs ? (t.entryQty === 1 ? 'spread' : 'spreads') : t.assetType === 'OPTION' || t.assetType === 'FUTURE' ? (t.entryQty === 1 ? 'ct' : 'cts') : 'shr';
 const pill = (cls, text, title = '') => `<span class="jtc-pill${cls ? ` ${cls}` : ''}"${title ? ` title="${esc(title)}"` : ''}>${text}</span>`;
 
 /** '20 shr · Oct 9 → Oct 13 · 4d 1h', or '100 shr · Opened Oct 15 · 2d 3h' while it's open */
@@ -301,7 +302,7 @@ function tradeCard(t) {
       <div class="jtc-sub">${cardSub(t)}</div>${sub ? `<div class="jtc-sub">${sub}</div>` : ''}
     </div>${cardReview(t)}</div>
     ${tags || weekly ? `<div class="jtc-tags">${tags}${weekly}</div>` : ''}
-    <dl class="jtc-stats">
+    <dl class="jtc-stats${[t.avgEntry, t.avgExit].some(v => v !== null && px(v, t.assetType).length > 8) ? ' jtc-stats-wide' : ''}">
       <div><dt>Entry</dt><dd>${history ? '—' : px(t.avgEntry, t.assetType)}</dd></div>
       <div><dt>${t.exits > 1 ? 'Avg exit' : 'Exit'}</dt><dd>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</dd></div>
       <div title="${esc(rTitleOf(t))}"><dt>R</dt><dd class="${t.r === null ? '' : pnlClass(t.r)}">${t.r === null ? '—' : signedR(t.r)}</dd></div>
@@ -348,7 +349,7 @@ function tradesView(all) {
     ${trades.length > JOURNAL_SHOWN ? `<p class="hint">Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades.</p>` : ''}
     <details class="hint-details"><summary>How trades are built</summary><p class="hint">Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades, an entry note while it's live and an exit note after; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
       ? 'P&amp;L is after Schwab\'s fees (commission, SEC, TAF and option fees, from its trade records), split by quantity when one order covers two trades.'
-      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}${trades.some(t => t.via) ? ' An assigned or exercised option closes at $0 the day it happened, and its shares count at the strike.' : ''}</p></details>`;
+      : 'P&amp;L is before fees.'} R uses your stop when you've set one, else the first Schwab stop order on the loss side of your entry (moving it later doesn't change R); a long option with no stop risks its premium.${trades.some(t => t.status === 'history') ? ' <b>Before your history</b> marks sells and covers whose purchase is older than Schwab\'s 60 days of orders: they don\'t count. Delete them, or File upload will fill them in once it lands.' : ''}${trades.some(t => t.status === 'history' && t.assetType === 'FUTURE') ? ' For futures it means older than the thinkorswim statement: import one that starts earlier.' : ''}${trades.some(t => t.expired) ? ' Options still open after expiry close at $0, assumed worthless.' : ''}${trades.some(t => t.via) ? ' An assigned or exercised option closes at $0 the day it happened, and its shares count at the strike.' : ''}</p></details>`;
 }
 
 function fillsView(fills) {
@@ -446,8 +447,8 @@ export function renderJournal() {
   const keys = new Set(all.map(t => t.key));
   state.journalPicked = state.journalPicked.filter(k => keys.has(k)); // a merge or a re-read can retire a key
   const scrolled = el.querySelector?.('.positions-wrap')?.scrollLeft || 0; // a tick redraws the table: keep it where it was sideways
-  const keptLine = kept.orders || kept.transactions
-    ? `${kept.orders} orders and ${kept.transactions} trades kept · ${day(kept.first)} to ${day(kept.last)}`
+  const keptLine = kept.orders || kept.transactions || kept.statementFills
+    ? `${kept.orders} orders and ${kept.transactions} trades kept${kept.statementFills ? `, ${kept.statementFills} futures fills` : ''} · ${day(kept.first)} to ${day(kept.last)}`
     : state.journalLoading ? 'Loading…' : 'Nothing kept yet';
   el.innerHTML = `<div class="card positions-card journal-card">
     <div class="positions-head">
@@ -497,8 +498,9 @@ export function renderImportSheet() {
       <p class="hint">Log in to Schwab to import your orders and trades.</p>
       <div class="row" style="align-items:center;gap:8px;"><button class="btn" data-action="openSheet" data-arg="settings">Connect Schwab</button></div>`;
   el.innerHTML = `<div class="sheet-section">${schwab}</div>
+    <div class="sheet-section" id="journalTosSection">${tosSectionHtml()}</div>
     <div class="sheet-section journal-soon">
-      <div class="sheet-label">File upload <span class="sheet-status">Coming soon</span></div>
+      <div class="sheet-label">More files <span class="sheet-status">Coming soon</span></div>
       <p class="hint">For history older than Schwab's API reaches (Schwab's website export) and for Robinhood's account activity CSV. You'll see what will be added before anything is saved.</p>
     </div>`;
 }

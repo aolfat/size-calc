@@ -2,6 +2,8 @@
 // Journal records, pure: the fills inside saved Schwab orders (each order's execution legs, child orders included) and a
 // summary of what's been kept. The grouping into trades comes later (docs/journal-step-2.md); this only reads. Shares an
 // option delivered (an assignment or exercise) have no order: they come from Schwab's transactions (assignmentFills).
+// Futures aren't in Schwab's API: their fills come from a thinkorswim statement, kept as kind 'statement_fill' rows whose
+// data is the fill itself (core/tos-statement.js).
 import { expiryCloseMs, nyDate } from './options.js';
 import { parseSchwabOption, positionLabel, schwabTime } from './positions.js';
 
@@ -62,7 +64,13 @@ export function orderFills(order) {
 /** 'Buy to close', or 'Buy to close (assigned)' for a fill an option delivered. @param {Fill} f */
 export const fillWords = f => `${instructionWords(f.instruction)}${f.via ? ` (${f.via})` : ''}`;
 
-/** all fills in the saved orders and the assignments in its transactions, newest first, each once. @param {SavedRecord[]} records */
+/** a statement fill as kept: the fill, if it has what one needs. @param {any} d @returns {Fill | null} */
+const statementFill = d => d && typeof d.id === 'string' && d.symbol && d.time && d.qty > 0 && d.price > 0 && (d.side === 'buy' || d.side === 'sell')
+  ? { id: d.id, orderId: String(d.orderId || d.id), time: d.time, symbol: d.symbol, label: d.label || d.symbol, assetType: d.assetType || 'FUTURE',
+    instruction: d.instruction || '', side: d.side, qty: Number(d.qty), price: Number(d.price) }
+  : null;
+
+/** all fills in the saved orders, the assignments in its transactions and the statement fills, newest first, each once. @param {SavedRecord[]} records */
 export function fillsFrom(records) {
   const seen = new Set();
   /** @type {Fill[]} */
@@ -72,6 +80,10 @@ export function fillsFrom(records) {
     for (const f of orderFills(r.data)) if (!seen.has(f.id)) { seen.add(f.id); fills.push({ ...f, account: r.account || '' }); }
   }
   fills.push(...assignmentFills(records, fills));
+  for (const r of records) {
+    const f = r.kind === 'statement_fill' ? statementFill(r.data) : null;
+    if (f && !seen.has(f.id)) { seen.add(f.id); fills.push({ ...f, account: r.account || '' }); }
+  }
   return fills.sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0));
 }
 
@@ -144,15 +156,15 @@ export function assignmentFills(records, fills) {
   return out;
 }
 
-/** what's kept: order and transaction counts and the span of their times. @param {SavedRecord[]} records */
+/** what's kept: order, transaction and statement fill counts and the span of their times. @param {SavedRecord[]} records */
 export function recordsSummary(records) {
-  let orders = 0, transactions = 0, first = '', last = '';
+  let orders = 0, transactions = 0, statementFills = 0, first = '', last = '';
   for (const r of records) {
-    if (r.kind === 'order') orders++; else if (r.kind === 'transaction') transactions++;
+    if (r.kind === 'order') orders++; else if (r.kind === 'transaction') transactions++; else if (r.kind === 'statement_fill') statementFills++;
     const t = r.entered_at || '';
     if (!t) continue;
     if (!first || t < first) first = t;
     if (!last || t > last) last = t;
   }
-  return { orders, transactions, first, last };
+  return { orders, transactions, statementFills, first, last };
 }
