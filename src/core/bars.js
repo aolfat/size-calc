@@ -1,9 +1,11 @@
 // @ts-check
 // Bar math: client-side interval aggregation, HV20 from daily closes, percentile ranks; and which 5-minute bars the
-// journal's trades need saved (barsNeeded: the days they were open, the sessions before for comparisons, the market basket)
-// and a provider's 5-minute bars split into one packed array per day (barsByDay).
+// journal's trades need saved (barsNeeded: the days they were open, the sessions before for comparisons, the market basket),
+// a provider's 5-minute bars split into one packed array per day (barsByDay, massiveByDay), and how far back each
+// provider reaches (barsReach: Tradier's ~40 days, Massive's paid plans' years) and which one serves a day (barRoute).
 
 import { nyDateStr } from './format.js';
+import { isOccSymbol } from './options.js';
 import { parseSchwabOption } from './positions.js';
 
 /** @typedef {{ t: string, o: number, h: number, l: number, c: number, v?: number }} Bar */
@@ -59,7 +61,7 @@ export function percentileOf(value, arr) {
 // ---------- saving 5-minute bars for the journal ----------
 
 const DAY_MS = 86400000;
-/** how far back bars are asked for: Tradier serves about 40 days of 5-minute bars, so stay well inside it */
+/** how far back bars are asked of Tradier: it serves about 40 days of 5-minute bars, so stay well inside it */
 export const BARS_KEEP_DAYS = 35;
 
 /** the New York trading day of a time. @param {string | number} t */
@@ -178,4 +180,119 @@ export function barsByDay(data) {
   }
   for (const rows of out.values()) rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   return out;
+}
+
+// ---------- providers' reach: which days can still come, and from where ----------
+
+/**
+ * Massive's plans (Settings → Massive plan, `massive_plan`, device-local): how far back their 5-minute bars go, in years
+ * (0 = not served), and whether calls are unlimited. The free plan's 5 calls a minute go to the market breadth, so its
+ * minute bars aren't used: a year of trades' lookback days would be thousands of calls.
+ * @type {Record<string, { name: string, paid: boolean, stocks: number, options: number }>}
+ */
+export const MASSIVE_PLANS = {
+  free: { name: 'Free', paid: false, stocks: 0, options: 0 },
+  stocks: { name: 'Stocks Starter', paid: true, stocks: 5, options: 0 },
+  stocks_options: { name: 'Stocks + Options Starter', paid: true, stocks: 5, options: 2 },
+};
+/** a plan's years run to the day; stay a week inside them */
+const REACH_MARGIN_DAYS = 7;
+
+/**
+ * Reaches from narrowest to widest. A stamp left unknown for want of bars carries the reach it was worked out under
+ * (`r`, absent = 'tradier', every stamp from before Massive); a wider reach now makes it due again, once.
+ */
+export const REACHES = ['tradier', 'massive', 'massive_options'];
+
+/**
+ * @typedef {{ id: string, tradier: string, stocks: string, options: string, massive: { stocks: boolean, options: boolean } }} BarsReach
+ *   the first New York day each kind of symbol can be served from: tradier (Tradier's window), stocks and options (the
+ *   widest provider for each); massive says which Massive serves
+ */
+
+/**
+ * How far back 5-minute bars can still come: Tradier's window, widened by a paid Massive plan (with a key) for stocks,
+ * and for options with the options plan.
+ * @param {number} now @param {string | null} [plan] a MASSIVE_PLANS key, or null without a Massive key
+ * @returns {BarsReach}
+ */
+export function barsReach(now, plan = null) {
+  const tradier = nyDay(now - BARS_KEEP_DAYS * DAY_MS);
+  const p = plan ? MASSIVE_PLANS[plan] : null;
+  const back = (/** @type {number} */ years) => nyDay(now - (years * 365 - REACH_MARGIN_DAYS) * DAY_MS);
+  const stocks = !!(p?.paid && p.stocks), options = !!(p?.paid && p.options);
+  return {
+    id: options ? 'massive_options' : stocks ? 'massive' : 'tradier',
+    tradier,
+    stocks: stocks && p ? back(p.stocks) : tradier,
+    options: options && p ? back(p.options) : tradier,
+    massive: { stocks, options },
+  };
+}
+
+/** an option contract in the app's form (the OCC symbol without its padding) @param {string} symbol */
+export const isOptionBarSymbol = symbol => isOccSymbol(symbol);
+
+/** the first day a symbol's 5-minute bars can come from @param {BarsReach} reach @param {string} symbol */
+export const reachFor = (reach, symbol) => isOptionBarSymbol(symbol) ? reach.options : reach.stocks;
+
+/** Massive serves this symbol under the reach @param {BarsReach} reach @param {string} symbol */
+export const massiveServes = (reach, symbol) => isOptionBarSymbol(symbol) ? reach.massive.options : reach.massive.stocks;
+
+/**
+ * Who serves a finished day's 5-minute bars: Tradier inside its window, Massive older (within its plan), else nobody.
+ * @param {string} symbol @param {string} day @param {BarsReach} reach @returns {'tradier' | 'massive' | null}
+ */
+export function barRoute(symbol, day, reach) {
+  if (day >= reach.tradier) return 'tradier';
+  return massiveServes(reach, symbol) && day >= reachFor(reach, symbol) ? 'massive' : null;
+}
+
+/** a reach is wider than another (REACHES' order; absent = 'tradier') @param {string} a @param {string | undefined} b */
+export const reachWider = (a, b) => REACHES.indexOf(a) > REACHES.indexOf(b || 'tradier');
+
+/**
+ * Sorted days split into spans one request each can cover: a new span after a gap of more than `gap` calendar days, or
+ * past `max` days long (Massive answers up to 50,000 bars a page, about 260 days of 5-minute bars, extended hours too).
+ * @param {string[]} days sorted @param {{ gap?: number, max?: number }} [opts] @returns {[string, string][]}
+ */
+export function daySpans(days, { gap = 14, max = 180 } = {}) {
+  /** @type {[string, string][]} */
+  const out = [];
+  const ms = (/** @type {string} */ d) => Date.parse(d + 'T12:00:00Z');
+  for (const d of days) {
+    const cur = out[out.length - 1];
+    if (cur && ms(d) - ms(cur[1]) <= gap * DAY_MS && ms(d) - ms(cur[0]) < max * DAY_MS) cur[1] = d;
+    else out.push([d, d]);
+  }
+  return out;
+}
+
+const NY_PARTS = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/** a time in ms as New York 'YYYY-MM-DD HH:MM' @param {number} ms */
+export function nyMinute(ms) {
+  /** @type {Record<string, string>} */
+  const p = {};
+  for (const x of NY_PARTS.formatToParts(new Date(ms))) p[x.type] = x.value;
+  return `${p.year}-${p.month}-${p.day} ${p.hour === '24' ? '00' : p.hour}:${p.minute}`;
+}
+
+/** Massive's ticker for a symbol in the app's form: an option is 'O:' + the OCC symbol without spaces @param {string} symbol */
+export const massiveTicker = symbol => isOptionBarSymbol(symbol) ? `O:${symbol}` : symbol;
+
+/**
+ * Massive's aggregates ({ t: the bar's start in epoch ms, o, h, l, c, v }) in the app's form: split into New York days,
+ * each bar stamped with its start in New York time ('09:30'), extended hours only (04:00 to 20:00, what Tradier's
+ * timesales are asked for), [time, open, high, low, close, volume] rows, oldest first: what barsByDay makes of Tradier's.
+ * @param {{ t: number, o: number, h: number, l: number, c: number, v?: number }[]} results
+ * @returns {Map<string, (string | number)[][]>}
+ */
+export function massiveByDay(results) {
+  return barsByDay((results || []).flatMap(r => {
+    if (!Number.isFinite(r?.t)) return [];
+    const stamp = nyMinute(r.t), time = stamp.slice(11);
+    if (time < '04:00' || time >= DAY_DONE) return [];
+    return [{ time: stamp.replace(' ', 'T'), open: r.o, high: r.h, low: r.l, close: r.c, volume: Number(r.v) || 0 }];
+  }));
 }

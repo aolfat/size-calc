@@ -4,8 +4,10 @@
 // York time ('09:30' = 9:30 to 9:35), [time, open, high, low, close, volume] rows. A provider whose symbols or stamps
 // differ translates them here. Its name goes on every saved row (bars_5m.source). Daily bars come through here too (the
 // trade features' EMAs, gaps and all-time highs): { date, open, high, low, close, volume }, oldest first, not saved,
-// since every provider serves them back years any time.
-import { barsByDay } from '../core/bars.js';
+// since every provider serves them back years any time. Two intraday providers: Tradier (barSource, about 40 days) and
+// Massive (massiveSource, a paid plan's years); which serves a day is core/bars.js barRoute.
+import { barsByDay, massiveByDay, massiveTicker } from '../core/bars.js';
+import { massiveFiveMinute } from './massive.js';
 import { baseUrl, headers } from './tradier.js';
 
 /** Tradier: timesales already speaks the app's form (unpadded OCC symbols, bars stamped with their start, New York time) */
@@ -41,5 +43,18 @@ const tradier = {
   },
 };
 
-/** the provider in use */
+/** the provider in use for daily bars, and for 5-minute bars inside Tradier's window */
 export const barSource = tradier;
+
+/**
+ * Massive: 5-minute aggregates for days older than Tradier keeps, with a paid plan (stocks five years, options two).
+ * Its ticker is the app's symbol (an option 'O:' + the OCC symbol); its bars carry their start in epoch ms, turned into
+ * New York days and 'HH:MM' starts, 04:00 to 20:00, so it answers exactly as Tradier's timesales do.
+ */
+export const massiveSource = {
+  name: 'massive',
+  /** @param {string} symbol @param {string} from @param {string} to @returns {Promise<Map<string, (string | number)[][]>>} */
+  async intraday(symbol, from, to) {
+    return massiveByDay(await massiveFiveMinute(massiveTicker(symbol), from, to));
+  },
+};

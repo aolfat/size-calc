@@ -1,13 +1,22 @@
-// Massive (formerly Polygon) market data, for the market breadth (docs/journal-features.md): the key (device-local in
-// localStorage, never synced; Settings → Massive API key), every US-listed common stock's ticker, and every US stock's
-// daily bar on a date in one call (the grouped daily bars). The free plan allows 5 calls a minute and two years back and
-// posts a day after it ends; pacing is the caller's (`pace` runs before each request). Never touches the page.
+// Massive (formerly Polygon) market data (docs/journal-features.md): the key and the plan (device-local in localStorage,
+// never synced; Settings → Massive API key and plan), every US-listed common stock's ticker and every US stock's daily
+// bar on a date in one call (the grouped daily bars, for the market breadth), and one symbol's 5-minute aggregates (the
+// paid plans' years of intraday history, through services/bar-source.js). The free plan allows 5 calls a minute and two
+// years back and posts a day after it ends; the paid plans have no limit. Pacing is the caller's (`pace` runs before
+// each request). Never touches the page.
+import { barsReach, MASSIVE_PLANS } from '../core/bars.js';
 import { store } from '../lib/store.js';
 
 const BASE = 'https://api.massive.com';
 
 export const massiveKey = () => (store.get('massive_key') || '').trim();
 export const massiveKeyHere = () => !!massiveKey();
+/** the plan chosen in Settings (MASSIVE_PLANS' key): 'free' until one is picked */
+export const massivePlan = () => { const p = store.get('massive_plan') || ''; return Object.hasOwn(MASSIVE_PLANS, p) ? p : 'free'; };
+/** a key and a paid plan: calls aren't paced, and the plan's years of 5-minute bars are used */
+export const massivePaid = () => massiveKeyHere() && MASSIVE_PLANS[massivePlan()].paid;
+/** how far back 5-minute bars reach on this device: Tradier's window, widened by a paid Massive plan with a key @param {number} now */
+export const deviceBarsReach = now => barsReach(now, massiveKeyHere() ? massivePlan() : null);
 
 /** @param {string} url @returns {Promise<any>} */
 async function get(url) {
@@ -33,6 +42,23 @@ export async function massiveCommonStocks(pace) {
     await pace();
     const body = await get(url);
     for (const r of body?.results || []) if (typeof r?.ticker === 'string') out.push(r.ticker);
+    url = typeof body?.next_url === 'string' && body.next_url.startsWith(BASE + '/') ? body.next_url : '';
+  }
+  return out;
+}
+
+/**
+ * One ticker's 5-minute aggregates from one New York day through another, unadjusted (Tradier's timesales aren't), page
+ * by page: [{ t, o, h, l, c, v }], t the bar's start in epoch ms. Options as 'O:' + the OCC symbol (core/bars.js
+ * massiveTicker). Massive answers up to 50,000 bars a page and links the next.
+ * @param {string} ticker @param {string} from @param {string} to
+ */
+export async function massiveFiveMinute(ticker, from, to) {
+  const out = [];
+  let url = `${BASE}/v2/aggs/ticker/${ticker.split(':').map(encodeURIComponent).join(':')}/range/5/minute/${from}/${to}?adjusted=false&sort=asc&limit=50000`;
+  for (let page = 0; url && page < 20; page++) {
+    const body = await get(url);
+    for (const r of body?.results || []) out.push(r);
     url = typeof body?.next_url === 'string' && body.next_url.startsWith(BASE + '/') ? body.next_url : '';
   }
   return out;

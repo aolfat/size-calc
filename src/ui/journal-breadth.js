@@ -3,7 +3,8 @@
 // 5 / 20 / 50 / 100 / 200-day averages (core/breadth.js), and saves the counts to the account (market_breadth), where the
 // breadth features read them on every device. Runs quietly after the Journal loads, at most hourly, with a Massive key in
 // Settings; the newest days first, so recent trades fill in first. A first fill over a year of trades is a few hundred
-// calls, about an hour and a half at the free plan's pace, and carries on wherever it stopped. Listeners hear when a run
+// calls, about an hour and a half at the free plan's pace (minutes on a paid plan, which isn't paced: Settings → Massive
+// plan), and carries on wherever it stopped. Listeners hear when a run
 // moves on (onBreadthChange), with saved = true when counts were written.
 import { breadthCounts, breadthDaysToRead, groupedToDay } from '../core/breadth.js';
 import { lastDoneDay, nyDay } from '../core/bars.js';
@@ -11,7 +12,7 @@ import { stampableTrade } from '../core/features/index.js';
 import { idbClear, idbEntries, idbGet, idbSet } from '../lib/idb.js';
 import { store } from '../lib/store.js';
 import { loadBreadthRows, saveBreadthRows } from '../services/breadth.js';
-import { massiveCommonStocks, massiveGrouped, massiveKeyHere } from '../services/massive.js';
+import { massiveCommonStocks, massiveGrouped, massiveKeyHere, massivePaid } from '../services/massive.js';
 import { state } from '../state.js';
 import { effects } from './effects.js';
 
@@ -51,15 +52,19 @@ export async function loadBreadthState() {
 }
 
 let lastCall = 0;
-/** wait out Massive's pace since the last call */
+/** wait out Massive's pace since the last call: the free plan's 5 a minute; a paid plan (Settings) isn't paced */
 async function pace() {
   const gap = lastCall + MASSIVE_PACE_MS - Date.now();
-  if (gap > 0) await effects.wait(gap);
+  if (gap > 0 && !massivePaid()) await effects.wait(gap);
   lastCall = Date.now();
 }
 
-/** one call, with up to three waits of a minute when Massive says too many */
-async function paced(fn) {
+/**
+ * One Massive call at the plan's pace, with up to three waits of a minute when Massive says too many (a free key set as
+ * paid gets there). Every Massive caller goes through it, the breadth and the trade features' 5-minute bars alike.
+ * @template T @param {() => Promise<T>} fn @returns {Promise<T>}
+ */
+export async function massivePaced(fn) {
   for (let i = 0; ; i++) {
     await pace();
     try { return await fn(); }
@@ -84,7 +89,7 @@ async function universe() {
 export function breadthLine() {
   const p = state.breadthProgress;
   if (!state.breadthBusy || !p || !p.total) return '';
-  const left = Math.ceil((p.total - p.done) * MASSIVE_PACE_MS / 60000);
+  const left = massivePaid() ? 0 : Math.ceil((p.total - p.done) * MASSIVE_PACE_MS / 60000);
   return `Market breadth: reading Massive's daily closes, ${p.done} of ${p.total} days${left > 1 ? ` (about ${left} min left while the app is open)` : ''}.`;
 }
 
@@ -131,7 +136,7 @@ export async function maybeFillBreadth({ trades, force = false }) {
       for (const day of toRead) {
         if (state.session?.user?.id !== user || !massiveKeyHere()) break; // signed out or key removed: stop
         let body = null;
-        try { body = await paced(() => massiveGrouped(day)); }
+        try { body = await massivePaced(() => massiveGrouped(day)); }
         catch(e) { if (e?.status !== 403) throw e; } // past what the plan reaches: leave it
         const d = body ? groupedToDay(day, body, stocks, now) : null;
         if (d) { cache.set(day, d); await idbSet(DAY_KEY + day, d); result.read++; }

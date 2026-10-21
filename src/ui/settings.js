@@ -10,6 +10,9 @@ import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
 import { kickBreadth, loadJournal, renderJournal } from './journal.js';
 import { clearBreadthDevice } from './journal-breadth.js';
+import { maybeStampFeatures } from './journal-features.js';
+import { clearMassiveBars } from '../services/bars.js';
+import { massivePlan } from '../services/massive.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -30,16 +33,26 @@ export function saveMassiveKey() {
   if (key) store.set('massive_key', key); else store.del('massive_key');
 }
 
+/**
+ * The Massive plan (this device only, like the key): a paid one isn't paced and reaches years back for 5-minute bars,
+ * so the features waiting on them, and the unknown ones stamped under Tradier's 40 days, are worked out again now.
+ */
+export function saveMassivePlan() {
+  store.set('massive_plan', document.getElementById('massivePlan').value);
+  if (store.get('massive_key')) { kickBreadth(); maybeStampFeatures({ force: true }); }
+}
+
 /** the Massive key box lost focus: with a key, start counting the breadth */
 export function massiveKeyDone() {
   saveMassiveKey();
-  if (store.get('massive_key')) kickBreadth();
+  if (store.get('massive_key')) { kickBreadth(); maybeStampFeatures({ force: true }); }
 }
 
 export function loadKey() {
   if (!credentialOriginAllowed()) clearUnsafeCredentials();
   document.getElementById('apiKey').value = store.get('tradier_key') || '';
   document.getElementById('massiveKey').value = store.get('massive_key') || '';
+  document.getElementById('massivePlan').value = massivePlan();
   document.getElementById('apiEnv').value = store.get('tradier_env') || 'production';
   // a setting that isn't stored shows the page's default (a sign-in that cleared another account's values)
   const field = (id, v) => { const el = document.getElementById(id); if (v !== null && v !== '') el.value = v; else if (el.defaultValue != null) el.value = el.defaultValue; };
@@ -108,7 +121,7 @@ export async function signOut() {
   state.signOutArmed = false;
   state.signingOut = true;
   schwabDisconnect(); // stop trading and invalidate in-flight broker responses before waiting for the network
-  try { await signOutSupabase(); } finally { cloudClearDevice(); await clearBreadthDevice().catch(() => {}); state.signingOut = false; }
+  try { await signOutSupabase(); } finally { cloudClearDevice(); await clearBreadthDevice().catch(() => {}); await clearMassiveBars().catch(() => {}); state.signingOut = false; }
   effects.reloadPage();
 }
 

@@ -1,6 +1,7 @@
 // Journal trade page (#journalTradeSection, state.journalTrade; journal step 2, slice 3): one trade full width, opened from
 // its row. The 5-minute chart from the saved bars (services/bars.js: the stock's, or an option contract's own; a spread
-// shows its underlying; the two weeks before it, and today until it's saved, straight from Tradier) and the daily chart from Tradier, drawn by
+// shows its underlying; the two weeks before it, and today until it's saved, straight from Tradier; days older than
+// Tradier keeps from a paid Massive plan, the held ones then saved for next time) and the daily chart from Tradier, drawn by
 // Lightweight Charts (ui/journal-trade-chart.js), both with the fills marked, entry, exit and stop on the trade's own chart,
 // each with its toolbar (intervals 5m to 65m, kept on this device as journal_chart_iv; daily ranges; log scale). While the
 // library is on trial, a TradingView | Ours switch (journal_chart_kind, device-local) puts our canvas charts (ui/candles.js)
@@ -11,11 +12,12 @@
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords } from '../core/journal.js';
-import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBetween } from '../core/bars.js';
+import { BARS_KEEP_DAYS, lastDoneDay, massiveServes, nyDay, reachFor, weekdaysBetween } from '../core/bars.js';
 import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
-import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
+import { fetchTradeBars, loadTradeBars, massiveBars, saveMassiveDays, saveTradeBars, tradierKeyHere } from '../services/bars.js';
+import { deviceBarsReach } from '../services/massive.js';
 import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
@@ -26,6 +28,7 @@ import { onReviewChange, reviewSectionHtml } from './journal-review.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
+import { massivePaced } from './journal-breadth.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -106,14 +109,27 @@ async function loadCharts(p) {
     p.loading5 = true;
     renderJournalTrade();
     try {
-      // the sessions before the open, for context: straight from Tradier while it keeps them, never saved
-      const now = Date.now(), before = tradierKeyHere() ? contextDays(t, now) : [];
-      const context = before.length ? fetchTradeBars(sym.five, before).catch(() => []) : Promise.resolve([]);
+      // the sessions before the open, for context: straight from Tradier while it keeps them (older from a paid Massive plan), never saved
+      const now = Date.now(), reach = deviceBarsReach(now), massive = massiveServes(reach, sym.five);
+      const before = contextDays(t, now, massive ? reachFor(reach, sym.five) : reach.tradier);
+      const viaTradier = tradierKeyHere() ? before.filter(d => d >= reach.tradier) : [], viaMassive = massive ? before.filter(d => d < reach.tradier) : [];
+      const fromMassive = async list => [...await massiveBars(sym.five, list, { call: massivePaced })].map(([day, bars]) => ({ day, bars }));
+      const context = Promise.all([
+        viaTradier.length ? fetchTradeBars(sym.five, viaTradier).catch(() => []) : [],
+        viaMassive.length ? fromMassive(viaMassive).catch(() => []) : [],
+      ]).then(([a, b]) => [...b, ...a]);
       let rows = await loadTradeBars(sym.five, days);
       const recent = days.filter(d => d >= nyDay(now - BARS_KEEP_DAYS * 864e5) && d <= lastDoneDay(now));
       if (rows.length < recent.length && tradierKeyHere()) {
         await saveTradeBars(t.legs || [t], now);
         rows = await loadTradeBars(sym.five, days);
+      }
+      // held days older than Tradier keeps: from a paid Massive plan, saved (source 'massive') so the next open reads them
+      const old = massive ? days.filter(d => d < reach.tradier && d >= reachFor(reach, sym.five) && !rows.some(x => x.day === d)) : [];
+      if (old.length) {
+        const got = await massiveBars(sym.five, old, { call: massivePaced }).catch(() => new Map());
+        await saveMassiveDays(sym.five, got).catch(() => 0);
+        rows = [...rows, ...[...got].map(([day, bars]) => ({ day, bars }))];
       }
       // today until it's saved (after 20:00 ET): straight from Tradier, never saved, so a half day can't be kept
       const today = days.filter(d => d === nyDay(now) && !rows.some(x => x.day === d));
@@ -121,7 +137,8 @@ async function loadCharts(p) {
       const held = (await context).filter(r => !rows.some(x => x.day === r.day));
       p.five = holdChartBars(unpackBars([...held, ...rows]), tradeFills(t));
       p.status5 = holdChartBars(unpackBars(rows), tradeFills(t)).length ? '' : !tradierKeyHere() && !rows.length ? "Add a Tradier key in Settings to load this trade's 5-minute bars."
-        : days[days.length - 1] < nyDay(now - BARS_KEEP_DAYS * 864e5) ? 'No 5-minute bars were saved for this trade: Tradier keeps about 40 days, and the journal saves them as you go.'
+        : days[days.length - 1] < reach.tradier && !massive ? 'No 5-minute bars were saved for this trade: Tradier keeps about 40 days, and the journal saves them as you go. A paid Massive plan in Settings reaches further back.'
+        : days[days.length - 1] < reach.tradier ? "No 5-minute bars for this trade: Massive didn't have them."
         : 'No 5-minute bars for this trade yet: Tradier has none for it so far.';
     } catch(e) {
       p.status5 = `Couldn't load the 5-minute bars: ${String(e?.message || e)}`;

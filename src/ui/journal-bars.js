@@ -1,7 +1,9 @@
 // Journal bars: saves the 5-minute bars your trades need, and the market basket's, before Tradier's ~40 days run out
 // (services/bars.js), after an import lands and when the Journal opens, at most hourly per user, quietly (nothing in the Import sheet: by request).
 // What's saved follows the trade features' needs (core/features: featureBarNeeds): a feature naming a symbol, or more
-// lookback days, makes it saved from then on, on top of the market basket.
+// lookback days, makes it saved from then on, on top of the market basket. With a paid Massive plan the features read
+// the lookback days and the basket from Massive (which serves them again any time), so only the days your trades were
+// open are saved, for their charts: bars_5m stays small (docs/journal-features.md, Storage).
 import { store } from '../lib/store.js';
 import { LOOKBACK_DAYS, MARKET_BASKET } from '../core/bars.js';
 import { featureBarNeeds } from '../core/features/index.js';
@@ -9,6 +11,7 @@ import { buildTrades } from '../core/journal.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { saveTradeBars, tradierKeyHere } from '../services/bars.js';
 import { loadSavedRecords } from '../services/journal.js';
+import { massivePaid } from '../services/massive.js';
 import { state } from '../state.js';
 
 /** automatic runs at most this often: each one costs a read even when nothing's missing */
@@ -19,8 +22,9 @@ export function lastBars() {
   try { return JSON.parse(store.get('journal_bars') || 'null'); } catch(e) { return null; }
 }
 
-/** the market basket and every symbol a feature names, and the most lookback days any of them compares */
+/** the market basket and every symbol a feature names, and the most lookback days any of them compares; with a paid Massive plan, neither */
 export function barsToKeep() {
+  if (massivePaid()) return { market: [], lookback: 0 };
   const needs = featureBarNeeds();
   return { market: [...new Set([...MARKET_BASKET, ...needs.market])], lookback: Math.max(LOOKBACK_DAYS, needs.lookback) };
 }

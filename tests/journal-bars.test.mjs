@@ -148,3 +148,70 @@ test('when it runs: after the journal loads, with a key, at most hourly; quietly
   run('openJournalImport()');
   assert.doesNotMatch(elements.get('journalImportBody').innerHTML, /5-minute bars/);
 });
+
+test("each provider's reach: Tradier's 35 days, a paid Massive plan's years, and which one serves a day", async () => {
+  const { run } = await app();
+  const reach = plan => JSON.parse(run(`JSON.stringify(barsReach(${NOW}, ${JSON.stringify(plan)}))`));
+  assert.deepEqual(reach(null), { id: 'tradier', tradier: '2026-09-10', stocks: '2026-09-10', options: '2026-09-10', massive: { stocks: false, options: false } });
+  assert.equal(reach('free').id, 'tradier', 'the free plan: its 5 calls a minute go to the breadth');
+  const paid = reach('stocks');
+  assert.equal(paid.id, 'massive');
+  assert.ok(paid.stocks > '2021-10-01' && paid.stocks < '2021-11-01', 'five years back, a week inside them');
+  assert.equal(paid.options, '2026-09-10', 'no options on Stocks Starter');
+  assert.ok(reach('stocks_options').options > '2024-10-01' && reach('stocks_options').options < '2024-11-01', 'two years of options');
+  const route = (sym, day, plan) => run(`barRoute(${JSON.stringify(sym)}, ${JSON.stringify(day)}, barsReach(${NOW}, ${JSON.stringify(plan)}))`);
+  assert.equal(route('AAPL', '2026-10-01', 'stocks'), 'tradier', 'Tradier inside its window, paid plan or not');
+  assert.equal(route('AAPL', '2026-06-01', 'stocks'), 'massive', 'older: Massive');
+  assert.equal(route('AAPL', '2026-06-01', null), null, 'older without Massive: nobody');
+  assert.equal(route('AAPL261218C00245000', '2026-06-01', 'stocks'), null, 'an option on Stocks Starter');
+  assert.equal(route('AAPL261218C00245000', '2026-06-01', 'stocks_options'), 'massive');
+  assert.equal(route('AAPL', '2019-06-03', 'stocks'), null, 'past the plan');
+  assert.deepEqual(JSON.parse(run("JSON.stringify(daySpans(['2026-01-02', '2026-01-05', '2026-01-30', '2026-06-01']))")),
+    [['2026-01-02', '2026-01-05'], ['2026-01-30', '2026-01-30'], ['2026-06-01', '2026-06-01']], 'a request per run of days, a new one after two weeks apart');
+  assert.equal(JSON.parse(run("JSON.stringify(daySpans(weekdaysBetween('2025-01-01', '2025-12-31')))")).length, 3, 'about half a year a request at most');
+});
+
+test('with a paid Massive plan the saver keeps only the held days, for the charts; the plan is device-local and paces nothing', async () => {
+  const net = tradier();
+  const supabase = fakeRecords();
+  const a = await app({ fetch: net.fetch, supabase, session: SESSION, storage: new Map([['massive_key', 'mk'], ['massive_plan', 'stocks']]) });
+  a.elements.get('apiKey').value = 'test-key';
+  assert.deepEqual(JSON.parse(a.run('JSON.stringify(barsToKeep())')), { market: [], lookback: 0 }, 'the basket and lookback come from Massive');
+  assert.equal(a.run('massivePaid()'), true);
+  a.storage.set('massive_plan', 'free');
+  assert.equal(a.run('massivePaid()'), false);
+  assert.ok(JSON.parse(a.run('JSON.stringify(barsToKeep())')).market.includes('SPY'), 'the free plan: saved as before');
+  a.storage.set('massive_plan', 'nonsense');
+  assert.equal(a.run('massivePlan()'), 'free');
+  a.storage.delete('massive_key');
+  a.storage.set('massive_plan', 'stocks');
+  assert.equal(a.run('massivePaid()'), false, 'a plan without a key is nothing');
+  // paced: a paid plan never waits; the free plan waits out 12.5 seconds between calls
+  a.storage.set('massive_key', 'mk');
+  a.run('globalThis.__waits = []; effects.wait = async ms => { globalThis.__waits.push(ms); }');
+  const waits = () => JSON.parse(a.run('JSON.stringify(globalThis.__waits)'));
+  for (let i = 0; i < 3; i++) await a.run('massivePaced(async () => 1)');
+  assert.deepEqual(waits(), [], 'paid: no pacing');
+  a.storage.set('massive_plan', 'free');
+  for (let i = 0; i < 2; i++) await a.run('massivePaced(async () => 1)');
+  assert.equal(waits().length, 2);
+  assert.ok(waits().every(ms => ms > 12000 && ms <= 12500), 'free: five calls a minute');
+});
+
+test("a trade page's held days from Massive are kept for its chart, and never read by the stamper", async () => {
+  const supabase = fakeRecords();
+  const a = await app({ supabase, session: SESSION });
+  supabase.bars.set('user-1:AAPL:2026-06-02', { user_id: 'user-1', symbol: 'AAPL', day: '2026-06-02', bars: [['09:30', 1, 2, 1, 2, 10]], source: 'tradier' });
+  const saved = await a.run("saveMassiveDays('AAPL', new Map([['2026-06-01', [['09:30', 3, 4, 3, 4, 20]]]]))");
+  assert.equal(saved, 1);
+  assert.equal(supabase.bars.get('user-1:AAPL:2026-06-01').source, 'massive', 'named with its provider');
+  const chart = JSON.parse(await a.run("loadTradeBars('AAPL', ['2026-06-01', '2026-06-02']).then(r => JSON.stringify(r.map(x => x.day).sort()))"));
+  assert.deepEqual(chart, ['2026-06-01', '2026-06-02'], 'the chart reads both');
+  const kept = JSON.parse(await a.run("loadKeptBars('AAPL', ['2026-06-01', '2026-06-02']).then(m => JSON.stringify([...m.keys()]))"));
+  assert.deepEqual(kept, ['2026-06-02'], "the stamper reads Tradier's only, so a comparison never mixes the two");
+  const old = fakeRecords();
+  old.failColumn('bars_5m', 'source');
+  old.bars.set('user-1:AAPL:2026-06-02', { user_id: 'user-1', symbol: 'AAPL', day: '2026-06-02', bars: [['09:30', 1, 2, 1, 2, 10]] });
+  const b = await app({ supabase: old, session: SESSION });
+  assert.deepEqual(JSON.parse(await b.run("loadKeptBars('AAPL', ['2026-06-02']).then(m => JSON.stringify([...m.keys()]))")), ['2026-06-02'], 'before the source column: every row is Tradier\'s');
+});

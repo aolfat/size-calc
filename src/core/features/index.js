@@ -3,8 +3,10 @@
 // A stamp is { v, value, note } per feature key, in the trade's trade_features row: v is the family's version and the
 // feature's ('1.2'), so bumping either restamps it. Three states: a value; unknown for good (value null, stamped, never
 // tried again until the version changes); waiting (the data could still come: nothing stamped, tried on the next run).
-// Removing a feature leaves its old stamps ignored, and they're dropped the next time the row is written.
-import { nyDay, weekdaysBefore } from '../bars.js';
+// Removing a feature leaves its old stamps ignored, and they're dropped the next time the row is written. An unknown
+// stamp of a feature that reads 5-minute bars also carries the reach it was worked out under (`r`, core/bars.js
+// REACHES; absent = Tradier's), so a provider reaching further back (a paid Massive plan) tries it once more.
+import { barsReach, lastDoneDay, massiveServes, nyDay, reachFor, reachWider, weekdaysBefore } from '../bars.js';
 import { featureContext, featureSymbol } from './context.js';
 import { BREADTH_FAMILY, BREADTH_FEATURES } from './breadth.js';
 import { CONTRACT_FAMILY, CONTRACT_FEATURES } from './contract.js';
@@ -18,7 +20,8 @@ import { VOLUME_FAMILY, VOLUME_FEATURES } from './volume.js';
 /**
  * @typedef {import('./define.js').Feature} Feature
  * @typedef {import('./context.js').FeatureData} FeatureData
- * @typedef {{ v: string, value: number | string | null, note?: string }} Stamp
+ * @typedef {{ v: string, value: number | string | null, note?: string, r?: string }} Stamp r: the reach an unknown
+ *   intraday stamp was worked out under (absent = 'tradier')
  * @typedef {Record<string, Stamp>} Stamps one trade's stamps, by feature key
  * @typedef {{ key: string, symbol: string, assetType: string, status: string, openedAt: string, closedAt: string | null,
  *   deleted?: boolean, fillIds?: string[] }} StampTrade
@@ -34,8 +37,18 @@ export const FEATURES = [...MARKET_FEATURES, ...BREADTH_FEATURES, ...VOLUME_FEAT
 export const featureVersion = f => `${f.family.version}.${f.version}`;
 /** the trades that get features: everything but deleted ones and closes from before your history (no entry) @param {StampTrade} t */
 export const stampableTrade = t => !t.deleted && t.status !== 'history' && !!t.openedAt;
-/** missing, or stamped by an older version @param {Feature} f @param {Stamps | undefined} stamps */
-export const featureDue = (f, stamps) => !stamps || !stamps[f.key] || stamps[f.key].v !== featureVersion(f);
+/** a feature reads 5-minute bars, so how far back they reach can change its answer @param {Feature} f */
+const readsIntraday = f => !!f.needs.intraday?.length;
+/**
+ * Missing, stamped by an older version, or unknown under a narrower reach than `reach` (a REACHES id) for a feature
+ * that reads 5-minute bars: the bars it missed may be there now.
+ * @param {Feature} f @param {Stamps | undefined} stamps @param {string} [reach]
+ */
+export function featureDue(f, stamps, reach = 'tradier') {
+  const s = stamps?.[f.key];
+  if (!s || s.v !== featureVersion(f)) return true;
+  return s.value === null && readsIntraday(f) && reachWider(reach, s.r);
+}
 /** the feature's moment on a trade (ms), or null while it can't be known yet (an exit feature on an open trade) @param {Feature} f @param {StampTrade} t */
 export const momentOf = (f, t) => f.at === 'entry' ? Date.parse(t.openedAt) : t.closedAt ? Date.parse(t.closedAt) : null;
 
@@ -51,13 +64,13 @@ export function featureBarNeeds(features = FEATURES) {
 }
 
 /**
- * The trades with features due (missing or outdated), and the features due on each.
- * @param {StampTrade[]} trades @param {Record<string, Stamps>} stampsByKey @param {Feature[]} [features]
+ * The trades with features due (missing, outdated, or unknown under a narrower reach), and the features due on each.
+ * @param {StampTrade[]} trades @param {Record<string, Stamps>} stampsByKey @param {Feature[]} [features] @param {string} [reach]
  * @returns {{ trade: StampTrade, features: Feature[] }[]}
  */
-export function featuresDue(trades, stampsByKey, features = FEATURES) {
+export function featuresDue(trades, stampsByKey, features = FEATURES, reach = 'tradier') {
   return trades.filter(stampableTrade)
-    .map(trade => ({ trade, features: features.filter(f => featureDue(f, stampsByKey[trade.key])) }))
+    .map(trade => ({ trade, features: features.filter(f => featureDue(f, stampsByKey[trade.key], reach)) }))
     .filter(d => d.features.length);
 }
 
@@ -105,6 +118,28 @@ export function featureDataNeeds(due) {
   return { intraday: new Map([...intraday].map(([s, days]) => [s, [...days].sort()])), daily, breadth };
 }
 
+/**
+ * Where one trade's 5-minute bars come from, per symbol, so a comparison never mixes providers' volumes (a run rate's
+ * curve over 50 sessions, a relative volume over 20): the kept bars (bars_5m, Tradier's) when every finished day the
+ * trade's due features read is kept; else, when Massive serves the symbol and reaches the oldest of them, all of them
+ * from Massive; else the kept bars, the missing days waiting or gone by the reach.
+ * @param {Map<string, string[]>} needs symbol → the days the trade's due features read (featureDataNeeds)
+ * @param {Map<string, Map<string, any[]>>} kept symbol → day → candles, from bars_5m
+ * @param {import('../bars.js').BarsReach} reach @param {number} now
+ * @returns {Map<string, 'kept' | 'massive'>}
+ */
+export function intradayRoutes(needs, kept, reach, now) {
+  const done = lastDoneDay(now);
+  /** @type {Map<string, 'kept' | 'massive'>} */
+  const out = new Map();
+  for (const [symbol, days] of needs) {
+    const finished = days.filter(d => d <= done), have = kept.get(symbol);
+    const whole = finished.every(d => have?.has(d));
+    out.set(symbol, !whole && finished.length && massiveServes(reach, symbol) && finished[0] >= reachFor(reach, symbol) ? 'massive' : 'kept');
+  }
+  return out;
+}
+
 const round = (/** @type {number} */ v) => Math.round(v * 1e4) / 1e4;
 
 /**
@@ -129,13 +164,14 @@ export function computeFeature(f, ctx) {
 }
 
 /**
- * Stamp one trade's due features. `entryPrice` is the first fill's price. The trade's other stamps are kept as they
- * are (a removed feature's dropped); waiting features stay unstamped.
+ * Stamp one trade's due features. `entryPrice` is the first fill's price; `reach` how far back 5-minute bars can come
+ * (Tradier's window by default), which an unknown stamp reading them keeps as `r` when it's wider. The trade's other
+ * stamps are kept as they are (a removed feature's dropped); waiting features stay unstamped.
  * @param {StampTrade} trade @param {Stamps | undefined} stamps @param {Feature[]} features the due ones
- * @param {FeatureData} data @param {{ now: number, entryPrice?: number | null, all?: Feature[] }} opts
+ * @param {FeatureData} data @param {{ now: number, entryPrice?: number | null, all?: Feature[], reach?: import('../bars.js').BarsReach }} opts
  * @returns {{ stamps: Stamps, changed: boolean, results: Record<string, FeatureResult> }}
  */
-export function stampTrade(trade, stamps, features, data, { now, entryPrice = null, all = FEATURES }) {
+export function stampTrade(trade, stamps, features, data, { now, entryPrice = null, all = FEATURES, reach = barsReach(now) }) {
   const known = new Set(all.map(f => f.key));
   /** @type {Stamps} */
   const next = Object.fromEntries(Object.entries(stamps || {}).filter(([k]) => known.has(k)));
@@ -147,10 +183,14 @@ export function stampTrade(trade, stamps, features, data, { now, entryPrice = nu
   for (const f of features) {
     const at = momentOf(f, trade);
     if (at === null || !Number.isFinite(at)) { results[f.key] = { state: 'waiting', value: null, note: 'waiting for the trade to close', waits: ['the close'], reads: [] }; continue; }
-    if (!contexts.has(at)) contexts.set(at, featureContext(trade, at, data, { now, entryPrice }));
+    if (!contexts.has(at)) contexts.set(at, featureContext(trade, at, data, { now, entryPrice, reach }));
     const r = results[f.key] = computeFeature(f, /** @type {ReturnType<typeof featureContext>} */ (contexts.get(at)));
     if (r.state === 'waiting') continue;
-    next[f.key] = r.note ? { v: featureVersion(f), value: r.value, note: r.note } : { v: featureVersion(f), value: r.value };
+    /** @type {Stamp} */
+    const st = { v: featureVersion(f), value: r.value };
+    if (r.note) st.note = r.note;
+    if (r.value === null && readsIntraday(f) && reach.id !== 'tradier') st.r = reach.id;
+    next[f.key] = st;
     changed = true;
   }
   return { stamps: next, changed, results };
@@ -158,17 +198,17 @@ export function stampTrade(trade, stamps, features, data, { now, entryPrice = nu
 
 /**
  * How far a feature is stamped over these trades: current values, unknown (with the reasons, most common first), and
- * the rest still to come (missing, outdated or waiting).
- * @param {Feature} f @param {StampTrade[]} trades @param {Record<string, Stamps>} stampsByKey
+ * the rest still to come (missing, outdated, waiting, or unknown under a narrower reach than `reach`).
+ * @param {Feature} f @param {StampTrade[]} trades @param {Record<string, Stamps>} stampsByKey @param {string} [reach]
  */
-export function featureCoverage(f, trades, stampsByKey) {
+export function featureCoverage(f, trades, stampsByKey, reach = 'tradier') {
   const list = trades.filter(stampableTrade);
   let value = 0, unknown = 0;
   /** @type {Map<string, number>} */
   const reasons = new Map();
   for (const t of list) {
     const s = stampsByKey[t.key]?.[f.key];
-    if (!s || s.v !== featureVersion(f)) continue;
+    if (!s || featureDue(f, stampsByKey[t.key], reach)) continue;
     if (s.value === null) { unknown++; const why = s.note || 'not known'; reasons.set(why, (reasons.get(why) || 0) + 1); }
     else value++;
   }

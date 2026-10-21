@@ -1,9 +1,12 @@
 // Saving 5-minute bars: for the journal's trades (and the market basket), reads which (symbol, day) bars are already kept
 // in Supabase's bars_5m, fetches the missing ones from the bar provider (services/bar-source.js: one request per symbol,
-// the whole span), and keeps them one row per day, named with the provider. Never touches the page.
+// the whole span), and keeps them one row per day, named with the provider. And Massive's older days (massiveBars),
+// cached on this device (lib/idb.js), not in bars_5m: a paid plan serves them again any time, so the account keeps only
+// what would otherwise be lost, and a trade's held days for its chart (saveMassiveDays). Never touches the page.
 import { state } from '../state.js';
-import { barsNeeded, BARS_KEEP_DAYS, nyDay } from '../core/bars.js';
-import { barSource } from './bar-source.js';
+import { barsNeeded, BARS_KEEP_DAYS, daySpans, nyDay } from '../core/bars.js';
+import { idbClear, idbDelete, idbGet, idbSet } from '../lib/idb.js';
+import { barSource, massiveSource } from './bar-source.js';
 import { supabaseClient } from './supabase.js';
 
 const DAY_MS = 86400000;
@@ -80,4 +83,68 @@ export async function loadTradeBars(symbol, days) {
     throw err;
   }
   return res.data || [];
+}
+
+// ---------- Massive's older days, cached on this device ----------
+
+const CACHE = 'bars5m_massive:', CACHE_INDEX = 'bars5m_massive_index';
+/** cached days kept on the device, the least recently read dropped past it: about 10 KB a day, so some 60 MB */
+export const MASSIVE_CACHE_DAYS = 6000;
+
+/**
+ * One symbol's 5-minute bars on these finished days from Massive: day → packed rows ([] = none that day, a holiday or
+ * no trades), the device's cache first, then one request per span of what's missing (each kept in the cache). `call`
+ * wraps every request (the pacer: none on a paid plan, a minute's wait on a 429).
+ * @param {string} symbol @param {string[]} days sorted
+ * @param {{ call?: <T>(fn: () => Promise<T>) => Promise<T> }} [opts]
+ * @returns {Promise<Map<string, (string | number)[][]>>}
+ */
+export async function massiveBars(symbol, days, { call = fn => fn() } = {}) {
+  const out = new Map(), missing = [];
+  for (const d of days) {
+    const hit = await idbGet(CACHE + symbol + '|' + d);
+    if (hit && Array.isArray(hit.bars)) out.set(d, hit.bars); else missing.push(d);
+  }
+  const at = Date.now();
+  for (const [from, to] of daySpans(missing)) {
+    const byDay = await call(() => massiveSource.intraday(symbol, from, to));
+    for (const d of missing) {
+      if (d < from || d > to) continue;
+      const bars = byDay.get(d) || [];
+      out.set(d, bars);
+      await idbSet(CACHE + symbol + '|' + d, { bars });
+    }
+  }
+  await touchCache(days.map(d => symbol + '|' + d), at);
+  return out;
+}
+
+/** the days just read count as recently used; past MASSIVE_CACHE_DAYS the oldest go @param {string[]} keys @param {number} at */
+async function touchCache(keys, at) {
+  if (!keys.length) return;
+  const index = (await idbGet(CACHE_INDEX)) || {};
+  for (const k of keys) index[k] = at;
+  const all = Object.keys(index);
+  if (all.length > MASSIVE_CACHE_DAYS) {
+    const drop = all.sort((a, b) => index[a] - index[b]).slice(0, all.length - MASSIVE_CACHE_DAYS);
+    for (const k of drop) { delete index[k]; await idbDelete(CACHE + k); }
+  }
+  await idbSet(CACHE_INDEX, index);
+}
+
+/** sign out: the cached bars name the symbols you traded, so they go with the account */
+export const clearMassiveBars = () => idbClear('bars5m_massive');
+
+/**
+ * Keep a trade's held days from Massive in bars_5m for its chart (source 'massive'), the days not kept already;
+ * the stamper reads only Tradier's rows (services/features.js loadKeptBars), so these never mix into its comparisons.
+ * @param {string} symbol @param {Map<string, (string | number)[][]>} byDay
+ */
+export async function saveMassiveDays(symbol, byDay) {
+  if (!state.session || !byDay.size) return 0;
+  const client = await supabaseClient();
+  const rows = [...byDay].map(([day, bars]) => ({ symbol, day, bars, source: massiveSource.name }));
+  const res = await client.from('bars_5m').upsert(rows, { onConflict: 'user_id,symbol,day', ignoreDuplicates: true });
+  if (res?.error) { const err = new Error(res.error.message || 'Supabase refused the save.'); err.status = res.status || 0; throw err; }
+  return rows.length;
 }

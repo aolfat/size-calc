@@ -44,17 +44,25 @@ export async function saveFeatureStamps(rows) {
   }
 }
 
+/** a read naming bars_5m.source before its migration (20261029000000_bars_source.sql) is pushed */
+const noSourceColumn = res => /source/.test(res?.error?.message || '') && /column|schema cache/i.test(res?.error?.message || '');
+
 /**
  * The kept 5-minute bars for a symbol on these days: day → candles ([] for a day kept empty); a day not kept isn't in it.
+ * Tradier's rows only: Massive's held days kept for the trade pages' charts are left out, so a trade's comparison never
+ * mixes two providers' volumes (core/features intradayRoutes reads Massive whole instead).
  * @param {string} symbol @param {string[]} days @returns {Promise<Map<string, any[]>>}
  */
 export async function loadKeptBars(symbol, days) {
   const c = await client();
   const out = new Map();
   for (let i = 0; i < days.length; i += 60) {
-    const res = await c.from('bars_5m').select('day,bars').eq('symbol', symbol).in('day', days.slice(i, i + 60)).limit(400);
+    const read = cols => c.from('bars_5m').select(cols).eq('symbol', symbol).in('day', days.slice(i, i + 60)).limit(400);
+    let res = await read('day,bars,source');
+    if (noSourceColumn(res)) res = await read('day,bars');
     refused(res, 'Supabase refused the read.', 'bars_5m');
     for (const r of res.data || []) {
+      if (r.source === 'massive') continue;
       const day = String(r.day).slice(0, 10);
       out.set(day, unpackBars([{ day, bars: r.bars }]));
     }

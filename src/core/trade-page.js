@@ -97,13 +97,14 @@ export function rollUp(bars, iv) {
 }
 
 /**
- * The New York weekdays in the two weeks before a trade opened that Tradier still keeps (BARS_KEEP_DAYS) and that are over:
- * the intraday chart's context, fetched when the page opens and never saved.
- * @param {{ openedAt: string, status: string }} trade @param {number} now @returns {string[]}
+ * The New York weekdays in the two weeks before a trade opened that a provider still serves (from `oldest`: Tradier's
+ * BARS_KEEP_DAYS by default, a paid Massive plan's years) and that are over: the intraday chart's context, fetched when
+ * the page opens and never saved.
+ * @param {{ openedAt: string, status: string }} trade @param {number} now @param {string} [oldest] @returns {string[]}
  */
-export function contextDays(trade, now) {
+export function contextDays(trade, now, oldest = nyDay(now - BARS_KEEP_DAYS * 864e5)) {
   if (trade.status === 'history' || !trade.openedAt) return [];
-  const open = Date.parse(trade.openedAt), oldest = nyDay(now - BARS_KEEP_DAYS * 864e5), today = nyDay(now);
+  const open = Date.parse(trade.openedAt), today = nyDay(now);
   return weekdaysBetween(nyDay(open - 14 * 864e5), nyDay(open - 864e5)).filter(d => d >= oldest && d < today);
 }
 

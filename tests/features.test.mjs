@@ -6,9 +6,9 @@
 // after it loads, the Features tab, the trade page, and a database without the table.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FEATURE_FAMILIES, FEATURES, computeFeature, featureBarNeeds, featureCoverage, featureDataNeeds, featureDue, featureNeedsWords, featuresDue, featureValueWords, featureVersion, stampTrade } from '../src/core/features/index.js';
+import { FEATURE_FAMILIES, FEATURES, computeFeature, featureBarNeeds, featureCoverage, featureDataNeeds, featureDue, featureNeedsWords, featuresDue, featureValueWords, featureVersion, intradayRoutes, stampTrade } from '../src/core/features/index.js';
 import { featureContext, featureSymbol } from '../src/core/features/context.js';
-import { earlyCloseDay, weekdaysBefore, weekdaysBetween } from '../src/core/bars.js';
+import { barsReach, earlyCloseDay, massiveTicker, weekdaysBefore, weekdaysBetween } from '../src/core/bars.js';
 import { breadthCounts, breadthDaysToRead, groupedToDay } from '../src/core/breadth.js';
 import { bsPrice, normCdf, RISK_FREE } from '../src/core/black-scholes.js';
 import { expiryCloseMs } from '../src/core/options.js';
@@ -697,4 +697,148 @@ test('trend, levels, strength and timing on the fixture', () => {
   assert.equal(result(byKey('prior_day_pattern'), stock('10:02'), inside).value, 'inside', 'inside the day before, not the narrowest of 7');
   Object.assign(dd[i - 1], { high: dd[i - 2].high - 0.5, low: dd[i - 2].high - 0.6 });
   assert.equal(result(byKey('prior_day_pattern'), stock('10:02'), inside).value, 'inside_nr7', 'and the narrowest of 7 too');
+});
+
+// ---------- older history from Massive ----------
+
+const LATER = Date.parse('2027-01-20T18:00:00Z'); // three months on: 10/14 is past Tradier's 40 days, inside Massive's years
+const epochNY = (d, time) => Date.parse(`${d}T${time}:00-04:00`); // the fixture's days are all in EDT
+
+/** a fake Massive answering 5-minute aggregates from the world's bars, in its own form (epoch ms starts) */
+function fakeMassive(w, base) {
+  const calls = [];
+  const fetch = async (url, opts) => {
+    const u = new URL(url);
+    if (u.hostname !== 'api.massive.com') return base(url, opts);
+    calls.push({ path: u.pathname, search: u.searchParams, auth: opts?.headers?.Authorization });
+    const m = u.pathname.match(/^\/v2\/aggs\/ticker\/([^/]+)\/range\/5\/minute\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/);
+    if (!m) return new Response('{}', { status: 404 });
+    const [, ticker, from, to] = m;
+    const results = [...(w.intraday.get(decodeURIComponent(ticker)) || [])].filter(([d]) => d >= from && d <= to)
+      .flatMap(([d, bars]) => bars.map(b => ({ t: epochNY(d, b.time), o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume, vw: b.close, n: 3 })));
+    return new Response(JSON.stringify({ ticker, resultsCount: results.length, results }), { status: 200 });
+  };
+  return { fetch, calls };
+}
+
+test('waiting vs gone: a day past Tradier\'s window is gone without Massive, waiting with a paid plan that reaches it', () => {
+  const data = world();
+  const thin = { ...data, intraday: new Map([...data.intraday].map(([s, m]) => [s, s === 'AAPL' ? new Map() : m])) };
+  const rvol = byKey('rvol_at_entry');
+  const r = reach => computeFeature(rvol, featureContext(stock('10:02'), at('10:02'), thin, { now: LATER, entryPrice: 101, reach }));
+  assert.equal(r(barsReach(LATER)).state, 'unknown', 'Tradier only: the day is gone');
+  assert.match(r(barsReach(LATER)).note, /AAPL 5-minute bars on 10\/14/);
+  assert.equal(r(barsReach(LATER, 'free')).state, 'unknown', "the free plan's calls go to the breadth: no older bars");
+  assert.equal(r(barsReach(LATER, 'stocks')).state, 'waiting', 'Stocks Starter reaches five years: it can still come');
+  assert.match(r(barsReach(LATER, 'stocks')).note, /^waiting for AAPL 5-minute bars on 10\/14/);
+  const decade = computeFeature(rvol, featureContext({ ...stock('10:02'), openedAt: '2019-10-14T14:02:20.000Z' }, Date.parse('2019-10-14T14:02:20Z'), thin, { now: LATER, entryPrice: 101, reach: barsReach(LATER, 'stocks') }));
+  assert.equal(decade.state, 'unknown', 'older than the plan reaches: gone');
+});
+
+test('an unknown stamp missing bars is tried again once a wider reach comes, and marked with it', () => {
+  const data = world();
+  const thin = { ...data, intraday: new Map([...data.intraday].map(([s, m]) => [s, s === 'AAPL' ? new Map() : m])) };
+  const t = stock('10:02');
+  const before = stampTrade(t, {}, FEATURES, thin, { now: LATER, entryPrice: 101, reach: barsReach(LATER) });
+  const rvol = byKey('rvol_at_entry'), gap = byKey('gap_at_open'), ivf = byKey('dte_at_entry');
+  assert.equal(before.stamps.rvol_at_entry.value, null);
+  assert.ok(!('r' in before.stamps.rvol_at_entry), 'Tradier\'s reach: no marker, like every stamp from before Massive');
+  assert.equal(featureDue(rvol, before.stamps), false, 'unknown for good under the same reach');
+  assert.equal(featureDue(rvol, before.stamps, 'massive'), true, 'a wider reach: due again');
+  assert.equal(featureDue(ivf, before.stamps, 'massive'), false, "a feature that reads no 5-minute bars isn't");
+  assert.equal(featureDue(gap, before.stamps, 'massive'), false, 'nor one with a value');
+  assert.deepEqual(featuresDue([t], { [t.key]: before.stamps }, FEATURES, 'massive')[0].features.map(f => f.key).includes('rvol_at_entry'), true);
+  assert.equal(featureCoverage(rvol, [t], { [t.key]: before.stamps }, 'massive').pending, 1, 'counted as to come');
+  // tried under Massive's reach with the bars still missing for good (a symbol it has nothing for): marked, not due again
+  const again = stampTrade({ ...t, openedAt: '2019-10-14T14:02:20.000Z' }, before.stamps, [rvol], thin, { now: LATER, entryPrice: 101, reach: barsReach(LATER, 'stocks') });
+  assert.equal(again.stamps.rvol_at_entry.r, 'massive');
+  assert.equal(featureDue(rvol, again.stamps, 'massive'), false);
+  assert.equal(featureDue(rvol, again.stamps, 'massive_options'), true, 'the options plan reaches further still');
+  assert.equal(featureDue(rvol, again.stamps, 'tradier'), false, 'a narrower reach never restamps');
+});
+
+test('one provider per trade and symbol: the kept bars when they hold every day, else all of them from Massive', () => {
+  const reach = barsReach(LATER, 'stocks');
+  const days = ['2026-10-12', '2026-10-13', '2026-10-14'];
+  const kept = new Map([['AAPL', new Map(days.map(d => [d, []]))], ['SPY', new Map([['2026-10-14', []]])]]);
+  const routes = intradayRoutes(new Map([['AAPL', days], ['SPY', days], ['AAPL261218C00245000', days]]), kept, reach, LATER);
+  assert.equal(routes.get('AAPL'), 'kept', "every day kept (Tradier's, saved back then): those, so old stamps don't change");
+  assert.equal(routes.get('SPY'), 'massive', 'one day missing: every day from Massive, so a comparison never mixes volumes');
+  assert.equal(routes.get('AAPL261218C00245000'), 'kept', "Stocks Starter serves no options: the kept bars, the rest gone");
+  assert.equal(intradayRoutes(new Map([['SPY', days]]), kept, barsReach(LATER), LATER).get('SPY'), 'kept', 'no Massive: kept');
+  assert.equal(intradayRoutes(new Map([['SPY', ['2019-01-02', ...days]]]), kept, reach, LATER).get('SPY'), 'kept', 'older than the plan: Massive can\'t cover it all');
+  assert.equal(intradayRoutes(new Map([['AAPL261218C00245000', days]]), kept, barsReach(LATER, 'stocks_options'), LATER).get('AAPL261218C00245000'), 'massive');
+});
+
+test('the Journal stamps an old trade from Massive with a paid plan: unknowns from before are tried again, nothing saved to bars_5m', async () => {
+  const j = journalApp();
+  j.supabase.bars.clear(); // nothing kept: the trade is from before the journal saved bars
+  const m = fakeMassive(j.w, j.fetch);
+  const quiet = [['journal_bars', JSON.stringify({ user: 'user-1', at: LATER })], ['journal_breadth', JSON.stringify({ user: 'user-1', at: LATER, read: 0, saved: 0, error: '' })]];
+  const storage = new Map(quiet);
+  const a = await app({ supabase: j.supabase, session: SESSION, fetch: m.fetch, clock: true, now: LATER, storage });
+  a.elements.get('apiKey').value = 'test-key';
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  const stamps = () => j.supabase.tables.trade_features.get(`user-1:${KEY}`).stamps;
+  assert.equal(stamps().rvol_at_entry.value, null, 'Tradier only: the bars are gone');
+  assert.match(stamps().rvol_at_entry.note, /AAPL 5-minute bars on 10\/14/);
+  assert.equal(m.calls.length, 0, 'no Massive key: never asked');
+  a.run("setJournalTab('features')");
+  assert.match(a.elements.get('journalSection').innerHTML, /A paid Massive plan in Settings reaches years back/);
+  // a key and Stocks Starter: the reach widens, the unknowns are due, and Massive serves every day those trades read
+  storage.set('massive_key', 'mk-test');
+  a.elements.get('massivePlan').value = 'stocks';
+  a.run('saveMassivePlan()');
+  for (let i = 0; i < 100 && (a.state.featuresBusy || a.state.featuresRerun); i++) await settle();
+  await settle();
+  assert.equal(storage.get('massive_plan'), 'stocks');
+  assert.equal(typeof stamps().rvol_at_entry.value, 'number', 'stamped from Massive');
+  assert.ok(stamps().rvol_at_entry.value > 1.9, 'the same answer the saved bars gave');
+  assert.equal(typeof stamps().run_rate_50.value, 'number', "the run rate's 50-session curve, all from Massive");
+  assert.ok(!('r' in stamps().rvol_at_entry), 'a value carries no reach');
+  const aapl = m.calls.filter(c => c.path.startsWith('/v2/aggs/ticker/AAPL/'));
+  assert.equal(aapl.length, 1, 'one request for the span');
+  assert.equal(aapl[0].auth, 'Bearer mk-test', 'the key in a header');
+  assert.equal(aapl[0].search.get('adjusted'), 'false');
+  assert.equal(aapl[0].search.get('limit'), '50000');
+  assert.match(aapl[0].path, /\/range\/5\/minute\/2026-08-\d\d\/2026-10-14$/, 'the 50 sessions before through the day');
+  assert.ok(!j.supabase.writes.some(w => w.table === 'bars_5m'), "Massive's days stay on the device, never in bars_5m");
+  assert.match(a.elements.get('journalSection').innerHTML, /Massive's before that \(Stocks Starter: 5 years of stocks, options only from Tradier\)/);
+  // a restamp reads the device's cache, not Massive
+  const aggs = () => m.calls.filter(c => c.path.startsWith('/v2/aggs/ticker/'));
+  const n = aggs().length;
+  j.supabase.tables.trade_features.get(`user-1:${KEY}`).stamps.rvol_at_entry.v = '1.0';
+  await a.run('loadJournal()');
+  await settle();
+  assert.equal(stamps().rvol_at_entry.v, '1.1');
+  assert.equal(aggs().length, n, 'cached on the device');
+});
+
+test("Massive's answer in the app's form: New York starts from epoch ms, 04:00 to 20:00, options as O: plus the OCC symbol", async () => {
+  const seen = [];
+  const fetch = async (url, opts) => {
+    seen.push({ url: new URL(url), auth: opts.headers.Authorization });
+    const results = [
+      { t: Date.parse('2026-07-01T13:30:00Z'), o: 5, h: 5, l: 5, c: 5, v: 7.5 }, // 9:30 EDT
+      { t: Date.parse('2026-12-01T08:55:00Z'), o: 1, h: 1, l: 1, c: 1, v: 5 }, // 3:55 EST: before the extended session
+      { t: Date.parse('2026-12-01T09:00:00Z'), o: 1, h: 2, l: 0.5, c: 1.5, v: 10 }, // 4:00 EST
+      { t: Date.parse('2026-12-01T14:30:00Z'), o: 2, h: 3, l: 1.5, c: 2.5, v: 20 }, // 9:30 EST
+      { t: Date.parse('2026-12-02T00:55:00Z'), o: 3, h: 3, l: 3, c: 3, v: 1 }, // 19:55 EST
+      { t: Date.parse('2026-12-02T01:00:00Z'), o: 4, h: 4, l: 4, c: 4, v: 1 }, // 20:00 EST: over
+    ];
+    return new Response(JSON.stringify(seen.length === 1 ? { results: results.slice(0, 3), next_url: 'https://api.massive.com/v2/aggs/page2' } : { results: results.slice(3) }), { status: 200 });
+  };
+  const a = await app({ fetch, storage: new Map([['massive_key', 'mk-test']]) });
+  const days = JSON.parse(await a.run("massiveSource.intraday('AAPL261218C00245000', '2026-07-01', '2026-12-01').then(m => JSON.stringify([...m]))"));
+  assert.equal(seen[0].url.pathname, '/v2/aggs/ticker/O:AAPL261218C00245000/range/5/minute/2026-07-01/2026-12-01');
+  assert.equal(seen[0].url.searchParams.get('adjusted'), 'false');
+  assert.equal(seen[1].url.pathname, '/v2/aggs/page2', 'the next page followed');
+  assert.equal(seen[1].auth, 'Bearer mk-test');
+  assert.deepEqual(days, [
+    ['2026-07-01', [['09:30', 5, 5, 5, 5, 7.5]]],
+    ['2026-12-01', [['04:00', 1, 2, 0.5, 1.5, 10], ['09:30', 2, 3, 1.5, 2.5, 20], ['19:55', 3, 3, 3, 3, 1]]],
+  ], "exactly what Tradier's timesales make: days, starts, rows");
+  assert.equal(massiveTicker('SPY'), 'SPY');
 });

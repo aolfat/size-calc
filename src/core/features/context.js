@@ -4,10 +4,10 @@
 // (it starts 09:40 and the moment is 09:45 or later); the bar the moment falls in shows only its open, which was known
 // when it started. Daily bars are the days before the moment's day, plus that day's open once it's 9:30. The shared
 // helpers (VWAP, volume so far, the volume by the same time on earlier days, EMAs, highs) are worked out once per trade
-// and moment, whichever feature asks first. Every read notes what was missing: data that could still come (a day the
-// bar saver hasn't got to, today's bars, daily bars not read yet) makes the feature wait; data gone for good makes it
-// unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare.
-import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBefore } from '../bars.js';
+// and moment, whichever feature asks first. Every read notes what was missing: data that could still come (a day a
+// provider still serves: inside Tradier's window, or a paid Massive plan's years; today's bars; daily bars not read yet)
+// makes the feature wait; data gone for good makes it unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare.
+import { barsReach, lastDoneDay, nyDay, reachFor, weekdaysBefore } from '../bars.js';
 import { BREADTH_HISTORY_DAYS } from '../breadth.js';
 import { parseSchwabOption, tradierSymbol } from '../positions.js';
 import { nyStamp } from '../trade-page.js';
@@ -43,16 +43,16 @@ const SPLITS = [2, 3, 4, 5, 8, 10, 15, 20, 1 / 2, 1 / 3, 1 / 4, 1 / 5, 1 / 8, 1 
 
 /**
  * The context one trade's features read at one moment. `entryPrice` is the first fill's price for a stock (an option's
- * or spread's is no price on the stock). `now` decides what could still come: days the bar saver will still fetch
- * (inside BARS_KEEP_DAYS, or not finished yet).
+ * or spread's is no price on the stock). `now` and `reach` decide what could still come: days not finished yet, and days
+ * a provider still serves for that kind of symbol (core/bars.js barsReach; Tradier's window by default).
  * @param {FeatureTrade} trade @param {number} at the moment, ms @param {FeatureData} data
- * @param {{ now: number, entryPrice?: number | null }} opts
+ * @param {{ now: number, entryPrice?: number | null, reach?: import('../bars.js').BarsReach }} opts
  */
-export function featureContext(trade, at, data, { now, entryPrice = null }) {
+export function featureContext(trade, at, data, { now, entryPrice = null, reach = barsReach(now) }) {
   const stamp = nyStamp(new Date(at).toISOString());
   const day = stamp.slice(0, 10), clock = stamp.slice(11, 16), clockMin = minutes(clock);
-  const earliest = nyDay(now - BARS_KEEP_DAYS * DAY_MS), done = lastDoneDay(now);
-  const couldCome = (/** @type {string} */ d) => d > done || d >= earliest;
+  const done = lastDoneDay(now);
+  const couldCome = (/** @type {string} */ s, /** @type {string} */ d) => d > done || d >= reachFor(reach, s);
   /** the feature being computed: what it waits on, what's gone, what it read */
   let cur = { waits: new Set(), gones: new Set(), reads: /** @type {FeatureRead[]} */ ([]) };
   /** @type {Map<string, any>} */
@@ -72,7 +72,7 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
     const inSession = (/** @type {Candle} */ b) => !regular || ((b.time || '') >= OPEN && (b.time || '') < CLOSE);
     const kept = dayBars(s, day);
     const gaps = { waits: /** @type {string[]} */ ([]), gones: /** @type {string[]} */ ([]) };
-    if (kept === undefined) (couldCome(day) ? gaps.waits : gaps.gones).push(`${s} 5-minute bars on ${md(day)}`);
+    if (kept === undefined) (couldCome(s, day) ? gaps.waits : gaps.gones).push(`${s} 5-minute bars on ${md(day)}`);
     const all = (kept || []).filter(inSession);
     const bars = all.filter(b => minutes(b.time || '00:00') + 5 <= clockMin); // ended by the moment
     const now = all.find(b => { const m = minutes(b.time || '00:00'); return m <= clockMin && clockMin < m + 5; });
@@ -103,7 +103,7 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
           const out = [];
           for (const d of weekdaysBefore(day, n)) {
             const rows = dayBars(s, d);
-            if (rows === undefined) { if (couldCome(d)) g.waits.push(`${s} 5-minute bars on ${md(d)}`); continue; }
+            if (rows === undefined) { if (couldCome(s, d)) g.waits.push(`${s} 5-minute bars on ${md(d)}`); continue; }
             if (rows.length) out.push({ day: d, bars: rows.filter(inSession) });
           }
           return { gaps: g, value: out };
@@ -131,7 +131,7 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
           const totals = [];
           for (const d of weekdaysBefore(day, n)) {
             const rows = dayBars(s, d);
-            if (rows === undefined) { if (couldCome(d)) g.waits.push(`${s} 5-minute bars on ${md(d)}`); continue; }
+            if (rows === undefined) { if (couldCome(s, d)) g.waits.push(`${s} 5-minute bars on ${md(d)}`); continue; }
             if (!rows.length) continue; // a holiday
             totals.push(rows.filter(b => inSession(b) && minutes(b.time || '00:00') + 5 <= clockMin).reduce((t, b) => t + (b.volume || 0), 0));
           }

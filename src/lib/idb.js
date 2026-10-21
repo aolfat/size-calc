@@ -1,7 +1,8 @@
 // @ts-check
 // A small key-value store in IndexedDB, for what's too big for localStorage (the market breadth's daily closes: every
-// US stock's close for a day, tens of MB over two years). Where IndexedDB isn't there or refuses (the tests, some private
-// windows), the values live in memory for the page's life, so callers never have to care.
+// US stock's close for a day, tens of MB over two years; Massive's 5-minute bars the trade features read). Where
+// IndexedDB isn't there or refuses (the tests, some private windows), the values live in memory for the page's life, so
+// callers never have to care.
 const DB = 'size-calc', STORE = 'kv';
 /** @type {Map<string, any>} */
 const memory = new Map();
@@ -59,6 +60,12 @@ export async function idbEntries(prefix) {
   const range = IDBKeyRange.bound(prefix, prefix + '￿');
   const [keys, values] = await Promise.all([run('readonly', s => s.getAllKeys(range)), run('readonly', s => s.getAll(range))]);
   return (keys || []).map((k, i) => [String(k), (values || [])[i]]);
+}
+
+/** delete one key @param {string} key */
+export async function idbDelete(key) {
+  if (!(await open())) { memory.delete(key); return; }
+  await run('readwrite', s => s.delete(key));
 }
 
 /** delete every key starting with `prefix` (sign out) @param {string} prefix */
