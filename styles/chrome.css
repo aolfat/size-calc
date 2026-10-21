@@ -13,6 +13,19 @@
 .brand-nav:focus-visible, #marketSection button:focus-visible, #marketSection a:focus-visible, .icon-btn:focus-visible, .link-btn:focus-visible { outline:2px solid var(--blue); outline-offset:4px; }
 .icon-btn { position:relative; flex:0 0 auto; width:36px; height:34px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:var(--radius); color:var(--text2); cursor:pointer; }
 .icon-btn:hover { color:var(--text); border-color:var(--blue); }
+/* Schwab not connected (or its last day): a strip under the header in every view */
+.schwab-banner { display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:9px 10px 9px 14px; border:1px solid var(--red-bd); border-radius:var(--radius); background:var(--red-bg); font-size:13px; color:var(--text); }
+.schwab-banner.ending { border-color:color-mix(in srgb, var(--amber) 40%, var(--border2)); background:var(--amber-bg); }
+.schwab-banner-dot { flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:var(--red); }
+.schwab-banner.ending .schwab-banner-dot { background:var(--amber); }
+.schwab-banner-text { flex:1 1 auto; min-width:0; line-height:1.4; }
+.schwab-banner .btn { flex:0 0 auto; padding:7px 12px; }
+.schwab-banner-close { width:30px; height:30px; font-size:18px; line-height:1; }
+@media (max-width: 600px) {
+  .schwab-banner { flex-wrap:wrap; }
+  .schwab-banner-text { flex-basis:calc(100% - 60px); }
+  .schwab-banner .btn { margin-left:18px; }
+}
 .icon-btn .key-dot { display:none; position:absolute; top:-4px; right:-4px; width:10px; height:10px; border-radius:50%; background:var(--amber); border:2px solid var(--bg); }
 .icon-btn.needs-key .key-dot { display:block; }
 

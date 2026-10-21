@@ -477,6 +477,28 @@ test('a sign-in from another tab disconnects the old broker login before reloadi
   assert.equal(storage.get('cloud_user'), USER.id, 'the old owner marker prevents their settings from being uploaded on reload');
 });
 
+test('a Google session that could not load at boot (offline) coming back keeps the Schwab login and reloads nothing', async () => {
+  const supabase = fakeSupabase();
+  let changed;
+  supabase.auth.onAuthStateChange = fn => { changed = fn; return { data: { subscription: {} } }; };
+  let offline = true;
+  supabase.auth.getSession = async () => offline ? { data: { session: null }, error: new Error('Failed to fetch') } : { data: { session: SESSION } };
+  const tokens = JSON.stringify({ userId: USER.id, proxy: '', connectionId: 'mine', refresh: 'dummy', refreshExp: Date.now() + 86400000 });
+  const storage = joined([[SESSION_KEY, 'stored'], ['schwab_tokens', tokens]]);
+  const { run, state, elements, advance } = await app({ supabase, storage, timers: 'fake' });
+  run('reloadPage = () => { globalThis.reloaded = true }; globalThis.reloaded = false');
+  await run("initCloud('https://size-calc.example.workers.dev/')");
+  assert.equal(state.session, null);
+  assert.equal(elements.get('cloudStatus').textContent, 'Offline, will retry', 'a refresh that failed is not a sign-out');
+  offline = false;
+  changed('TOKEN_REFRESHED', SESSION); // the library's own refresh lands once the network is back
+  await advance(0);
+  await until(() => state.session);
+  assert.equal(state.session.user.id, USER.id);
+  assert.equal(storage.get('schwab_tokens'), tokens, 'the Schwab login stays');
+  assert.equal(run('globalThis.reloaded'), false);
+});
+
 test('a pending cloud save cannot send the previous user\'s API key after an account switch', async () => {
   const supabase = fakeSupabase();
   const { run, state } = await app({ supabase, session: SESSION, storage: joined() });

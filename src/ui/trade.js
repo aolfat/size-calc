@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fmtTick, inRegularHours, sharesStopOrder, sharesTicketError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
-import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStopDuration } from '../services/schwab.js';
+import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
@@ -179,6 +179,34 @@ export function updateSchwabUi() {
     : store.get('schwab_tokens') ? '<span style="color:var(--amber)">●</span> Login expired' : '○ Not connected';
   updateTradeButton();
   updateAccountSourceUi();
+  updateSchwabBanner();
+}
+
+// ---------- the banner under the header: not connected, or the login's last day ----------
+
+export function updateSchwabBanner() {
+  const s = state.schwabBannerReady && !state.schwabBannerHidden ? schwabStanding() : null;
+  const banner = document.getElementById('schwabBanner');
+  banner.style.display = s ? '' : 'none';
+  if (!s) return;
+  banner.classList.toggle('ending', s.kind === 'ending');
+  document.getElementById('schwabBannerText').textContent = s.kind === 'ending'
+    ? `Your Schwab login ends in ${Math.max(1, Math.ceil(s.left / 3600000))}h. Log in again to keep positions and trading working.`
+    : s.kind === 'noAccount' ? 'Schwab is logged in, but no account is loaded.'
+    : s.ended ? 'Your Schwab login ended. Positions, trading and imports are off until you log in again.'
+    : "Schwab isn't connected on this device. Positions, trading and imports are off.";
+  document.getElementById('schwabBannerLogin').textContent = s.kind === 'noAccount' ? 'Open settings' : 'Log in to Schwab';
+}
+
+/** the banner's button: straight to Schwab's login, with Settings open for the note and the paste box */
+export function schwabBannerLogin() {
+  openSheet('settings');
+  if (schwabStanding()?.kind !== 'noAccount') connectSchwab();
+}
+
+export function hideSchwabBanner() {
+  state.schwabBannerHidden = true;
+  updateSchwabBanner();
 }
 
 // ---------- the shares card's trade button ----------
@@ -414,10 +442,14 @@ export async function initSchwab(href = location.href) {
   refreshSchwabCallback(); // a worker whose callback is this app hides the paste box
   // a login finished in another tab shows up here, and a new day's account size comes in
   window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); maybeCapture(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) updateSchwabBanner(); }); // the home-screen app comes back without a focus event
   const url = new URL(href);
-  if (url.searchParams.get('login') === 'google') { dailyAccountSize(); return; } // Google's return through Supabase carries a code too: not ours
-  if (!url.searchParams.get('code')) { dailyAccountSize(); return; }
-  // the app as its own callback page: drop the code from the address, then finish the login
-  globalThis.history?.replaceState(null, '', url.pathname + url.hash);
-  if (await finishSchwab(url.search, true)) openSheet('settings');
+  // Google's return through Supabase carries a code too: not ours
+  if (url.searchParams.get('login') !== 'google' && url.searchParams.get('code')) {
+    // the app as its own callback page: drop the code from the address, then finish the login
+    globalThis.history?.replaceState(null, '', url.pathname + url.hash);
+    if (await finishSchwab(url.search, true)) openSheet('settings');
+  } else dailyAccountSize();
+  state.schwabBannerReady = true;
+  updateSchwabBanner();
 }

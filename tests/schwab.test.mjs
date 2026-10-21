@@ -360,6 +360,61 @@ test('the callback answer is kept per worker URL and survives a logout', async (
   assert.equal(run("callbackIsHere('not a url', 'https://size-calc.example.workers.dev/')"), false);
 });
 
+// ---------- the banner under the header ----------
+
+const banner = async (storage, opts = {}) => {
+  const h = await app({ fetch: network(async () => json({}, 404)).fetch, storage, ...opts });
+  await h.run("initSchwab('https://app.example/size-calc/')");
+  return { ...h, shown: () => h.elements.get('schwabBanner').style.display !== 'none', text: () => h.elements.get('schwabBannerText').textContent };
+};
+
+test('the banner says Schwab is not connected once a worker URL is set, and stays away without one', async () => {
+  const off = await banner(new Map([['schwab_proxy', PROXY]]));
+  assert.equal(off.shown(), true);
+  assert.match(off.text(), /isn't connected on this device/);
+  assert.equal(off.elements.get('schwabBannerLogin').textContent, 'Log in to Schwab');
+
+  const never = await banner(new Map());
+  assert.equal(never.shown(), false, 'no worker URL: Schwab was never set up here');
+
+  const fine = await banner(connected());
+  assert.equal(fine.shown(), false, 'connected with days left');
+});
+
+test('the banner says a login ended, and warns in its last day', async () => {
+  const ended = connected();
+  const t = JSON.parse(ended.get('schwab_tokens'));
+  ended.set('schwab_tokens', JSON.stringify({ ...t, refreshExp: Date.now() - 1000 }));
+  const a = await banner(ended);
+  assert.equal(a.shown(), true);
+  assert.match(a.text(), /login ended/);
+
+  const ending = connected();
+  ending.set('schwab_tokens', JSON.stringify({ ...t, refreshExp: Date.now() + 4.5 * 3600000 }));
+  const b = await banner(ending);
+  assert.equal(b.shown(), true);
+  assert.match(b.text(), /ends in 5h/);
+  assert.equal(b.elements.get('schwabBanner').classList.contains('ending'), true);
+});
+
+test("the banner waits for boot, keeps quiet while a login waits for its Google session, and × hides it", async () => {
+  const h = await app({ storage: new Map([['schwab_proxy', PROXY]]) });
+  h.run('updateSchwabUi()');
+  assert.equal(h.elements.get('schwabBanner').style.display, 'none', 'not before initSchwab: the Google session may still be loading');
+
+  const waiting = connected();
+  const t = JSON.parse(waiting.get('schwab_tokens'));
+  waiting.set('schwab_tokens', JSON.stringify({ ...t, userId: 'u1' })); // bound to a Google user this page hasn't restored yet
+  const w = await banner(waiting);
+  assert.equal(w.shown(), false);
+
+  const off = await banner(new Map([['schwab_proxy', PROXY]]));
+  off.run('hideSchwabBanner()');
+  assert.equal(off.shown(), false);
+  off.run('updateSchwabUi()');
+  assert.equal(off.shown(), false, 'hidden until the app is opened again');
+});
+
 // ---------- the trade button and review sheet ----------
 
 test('the trade button shows only for a connected risk-sized shares trade', async () => {

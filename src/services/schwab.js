@@ -32,6 +32,25 @@ export function schwabAccount() {
 
 export function schwabConnected() { return !!(schwabSession() && schwabAccount()); }
 
+const ENDING_SOON = 24 * 60 * 60 * 1000; // the banner warns in the login's last day
+
+/**
+ * Where this device's Schwab login stands, for the banner: null when Schwab isn't set up here (no worker URL) or the
+ * login is fine; 'ending' in its last day (left = ms), 'noAccount', 'off' (ended: a login was kept and is over; else never made)
+ */
+export function schwabStanding(now = Date.now()) {
+  if (!credentialOriginAllowed() || !proxyOk(schwabProxy())) return null;
+  const t = schwabSession();
+  if (t) {
+    if (!schwabAccount()) return { kind: 'noAccount' };
+    return t.refreshExp - now < ENDING_SOON ? { kind: 'ending', left: t.refreshExp - now } : null;
+  }
+  const kept = readTokens();
+  // a live login waiting for its Google session (still loading, or offline) isn't over: schwabSession binds it to that user
+  if (kept && kept.refreshExp > now && kept.proxy === schwabProxy() && kept.userId && kept.userId !== googleUser()) return null;
+  return { kind: 'off', ended: !!kept };
+}
+
 /** the worker's callback as last read: { proxy, callback }, kept per worker URL so a new worker is asked again */
 export function schwabCallbackCached() {
   try {
