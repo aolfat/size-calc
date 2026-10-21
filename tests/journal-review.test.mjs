@@ -148,6 +148,10 @@ test('the Review section: market for the day or this trade, sector, My setups (o
   await run(`saveSetupDraft(${t})`);
   assert.equal(rows('library_items').filter(r => r.kind === 'setup').length, 1, 'made of the same things: the same setup, not a second one');
   await run(`toggleReviewLabel(${t}, 'tactic', 'pivot30')`);
+  await run(`toggleReviewLabel(${t}, 'tactic', 'six20')`);
+  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'tactic').map(r => r.value), ['pivot30', 'six20'], 'a trade can have several entry tactics');
+  await run(`toggleReviewLabel(${t}, 'tactic', 'six20')`);
+  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'tactic').map(r => r.value), ['pivot30'], 'tapping a lit one takes only it off');
   await run(`toggleReviewLabel(${t}, 'tag', 'option_flow')`);
   await run(`toggleReviewLabel(${t}, 'mistake', 'chased')`);
   await run(`setSetupGrade(${t}, 'A')`);

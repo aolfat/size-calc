@@ -37,7 +37,7 @@ export const GRADES = ['A', 'B', 'C', 'D', 'F'];
 export const gradeOf = g => g === 'A++' ? 'A' : GRADES.includes(/** @type {string} */ (g)) ? /** @type {string} */ (g) : null;
 export const PLAN_FOLLOWED = /** @type {[string, string][]} */ ([['yes', 'Yes'], ['partly', 'Partly'], ['no', 'No']]);
 /** labels a trade has one of; the rest take any number */
-export const SINGLE = new Set(['sector', 'tactic']);
+export const SINGLE = new Set(['sector']);
 /** what a trade needs to count as reviewed, in the order the review says what's missing */
 export const REQUIRED = ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'exit note'];
 
