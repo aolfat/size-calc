@@ -184,8 +184,13 @@
 .jl-row .pos-link { flex: none; font-size: 12.5px; }
 .jl-row .journal-tag { flex: none; margin: 0; }
 .jl-off input { color: var(--text3); }
-/* phones: the name on its own line, what it's made of and the actions under it */
+/* My setups everywhere, and every row on phones: the name on its own line, what it's made of and the actions under it */
+.jl-row.jl-setup { flex-wrap: wrap; gap: 6px 10px; }
+.jl-row.jl-setup input { flex-basis: 100%; }
+.jl-row.jl-setup .jl-parts { flex: 1 1 0; min-width: 0; max-width: none; }
+.jl-row.jl-setup select { flex-basis: 120px; }
 @media (max-width: 600px) {
+  .jl-row.jl-setup .jl-parts { flex: 1 1 auto; }
   .jl-row { flex-wrap: wrap; gap: 6px 10px; }
   .jl-row input { flex-basis: 100%; }
   .jl-row .jl-parts { flex: 1 1 auto; max-width: none; }

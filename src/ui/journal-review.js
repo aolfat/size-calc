@@ -436,7 +436,7 @@ export function renderJournalLibrary() {
     const rows = items.map(i => {
       const into = lib.merged.get(`${kind}:${i.key}`);
       const others = items.filter(o => o.key !== i.key && !lib.merged.has(`${kind}:${o.key}`));
-      return `<div class="jl-row${i.hidden || into ? ' jl-off' : ''}"><input type="text" maxlength="80" value="${esc(i.name)}" aria-label="Rename ${esc(i.name)}" data-change="renameLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}" />
+      return `<div class="jl-row${kind === 'setup' ? ' jl-setup' : ''}${i.hidden || into ? ' jl-off' : ''}"><input type="text" maxlength="80" value="${esc(i.name)}" aria-label="Rename ${esc(i.name)}" data-change="renameLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}" />
         ${kind === 'setup' ? `<span class="jl-parts">${esc(lib.partsWords(lib.parts(i.key)))}</span>` : ''}${i.own ? '<span class="journal-tag journal-tag-quiet">yours</span>' : ''}
         ${kind === 'setup' && !into ? `<button class="pos-link" data-action="editSetup" data-arg="${esc(i.key)}" aria-expanded="${state.setupEdit?.key === i.key}">Edit</button>` : ''}
         <button class="pos-link" data-action="toggleLibraryHidden" data-arg="${kind}" data-arg2="${esc(i.key)}">${i.hidden ? 'Show' : 'Hide'}</button>
