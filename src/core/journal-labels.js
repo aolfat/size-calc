@@ -41,6 +41,16 @@ export const SINGLE = new Set(['sector', 'tactic']);
 /** what a trade needs to count as reviewed, in the order the review says what's missing */
 export const REQUIRED = ['market', 'sector', 'setup', 'tactic', 'setup grade', 'plan followed', 'exit note'];
 
+/** every default's own words, 'level:ema8' → '8 EMA' */
+const DEFAULT_NAMES = new Map(Object.entries(DEFAULTS).flatMap(([kind, list]) => list.map(([key, name]) => [`${kind}:${key}`, name])));
+
+/**
+ * A setup's parts in a setup's name: the pattern's, or 'levels action'; '' when it isn't whole.
+ * @param {SetupParts} p @param {(kind: string, key: string) => string} name
+ */
+const partsName = (p, name) => p.pattern ? name('pattern', p.pattern)
+  : p.action && p.levels?.length ? `${p.levels.map(l => name('level', l)).join(' + ')} ${name('action', p.action)}` : '';
+
 /** a default's key as the library stores it ('sma50'), or your own ('mine:<uuid>'). @param {LibraryRow} row */
 const ownKey = row => `mine:${row.id}`;
 
@@ -113,6 +123,11 @@ export function buildLibrary(rows = []) {
   /** a setup's parts in words: 'Bounce at 21 EMA + Support', or the pattern's name. @param {SetupParts} p */
   const partsWords = p => p.pattern ? nameOf('pattern', p.pattern)
     : `${(nameOf('action', p.action || '') || '').replace(/^./, c => c.toUpperCase())} at ${(p.levels || []).map(l => nameOf('level', l)).join(' + ')}`;
+  // a setup named for its parts in the defaults' words ('8 EMA bounce') was never typed: it follows them renamed ('9 EMA bounce')
+  for (const i of byKind.setup) {
+    const p = parts(i.key);
+    if (i.name === partsName(p, (kind, key) => DEFAULT_NAMES.get(`${kind}:${key}`) ?? '\0')) i.name = partsName(p, nameOf) || i.name;
+  }
   return { byKind, resolve, item, nameOf, choices, merged, parts, partsWords };
 }
 
@@ -120,11 +135,7 @@ export function buildLibrary(rows = []) {
  * The name a new setup gets until you type one: the pattern's, or 'levels action' ('50 SMA + Support undercut & rally').
  * @param {ReturnType<typeof buildLibrary>} lib @param {SetupParts} p
  */
-export function setupName(lib, p) {
-  if (p.pattern) return lib.nameOf('pattern', p.pattern);
-  if (!p.action || !p.levels?.length) return '';
-  return `${p.levels.map(l => lib.nameOf('level', l)).join(' + ')} ${lib.nameOf('action', p.action)}`;
-}
+export const setupName = (lib, p) => partsName(p, lib.nameOf);
 
 /** two setups made of the same things (levels in any order). @param {SetupParts} a @param {SetupParts} b */
 export const sameParts = (a, b) => a.pattern || b.pattern ? a.pattern === b.pattern
