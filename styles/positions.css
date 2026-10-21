@@ -113,6 +113,11 @@
 .journal-controls input[type="search"]:focus { border-color: var(--blue); }
 .journal-controls input[type="search"]::placeholder { color: var(--text2); }
 .journal-summary { color: var(--text2); margin-bottom: 8px; }
+.journal-summary-row { display: flex; align-items: flex-start; gap: 12px; }
+.journal-summary-row .journal-summary { flex: 1; min-width: 0; }
+.journal-cols-btn { flex: none; font-size: 12px; padding: 5px 12px; }
+.journal-cols { margin: 0 0 10px; }
+.jtc-pct { display: block; font-size: 13px; font-weight: 600; }
 /* the Journal's review: labels, grades and the entry and exit notes on the trade page; the review choices sheet */
 .jr { margin-top: 18px; padding-top: 4px; }
 .jr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; }

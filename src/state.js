@@ -8,6 +8,8 @@ export function createState() {
   const dailyRange = DAILY_RANGES.includes(+store.get('daily_range')) ? +store.get('daily_range') : 63;
   let posCols = [];
   try { posCols = JSON.parse(store.get('positions_cols') || '[]'); } catch(e) {}
+  let journalHidden = [];
+  try { journalHidden = JSON.parse(store.get('journal_hidden_cols') || '[]'); } catch(e) {}
   return {
     quoteData: null,
     chainData: [],
@@ -93,6 +95,8 @@ export function createState() {
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
     chartLibLoading: null, // the one in-flight library load
+    journalHiddenCols: Array.isArray(journalHidden) ? journalHidden : [], // the trades table's columns you hid (journal_hidden_cols, this device only)
+    journalColsOpen: false, // the trades table's Columns picker showing
     journalTab: 'trades', // trades | calendar | stats | setups | books | features | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
