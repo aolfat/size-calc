@@ -61,9 +61,9 @@ test('the Setups tab: every setup with its numbers, unused ones too, then the re
   assert.match(html, /data-action="setJournalTab" data-arg="setups">Setups<\/button>/);
   assert.match(html, /\d+ setups · 1 of 1 closed trade has a setup/);
   assert.match(html, /<div class="section-title js-sub">My setups<\/div>/);
-  assert.match(html, /data-action="openJournalSetup" data-arg="ema21_bounce"[^>]*><b>21 EMA bounce<\/b><\/button> <span class="journal-tag journal-tag-quiet"[^>]*>thin<\/span><span class="pos-sub">Bounce at 21 EMA<\/span>[\s\S]*?<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'a used setup: its parts, one trade, its net');
-  assert.match(html, /<b>8 EMA bounce<\/b><\/button><span class="pos-sub">Bounce at 8 EMA · not used yet<\/span>/, 'the ones not used yet are listed too');
-  assert.ok(html.indexOf('<b>21 EMA bounce</b>') < html.indexOf('<b>8 EMA bounce</b>'), 'used ones first');
+  assert.match(html, /data-action="openJournalSetup" data-arg="ema21_bounce"[^>]*><b>21 EMA bounce<\/b><\/button> <span class="journal-tag journal-tag-quiet"[^>]*>thin<\/span><span class="pos-sub">Bounce at 21 EMA · long only<\/span>[\s\S]*?<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'a used setup: its parts, one trade, its net');
+  assert.match(html, /<b>8 EMA bounce \/ rejection<\/b><\/button><span class="pos-sub">Bounce \/ rejection at 8 EMA · not used yet<\/span>/, 'the ones not used yet are listed too');
+  assert.ok(html.indexOf('<b>21 EMA bounce</b>') < html.indexOf('<b>8 EMA bounce / rejection</b>'), 'used ones first');
   assert.match(html, /By setup grade[\s\S]*<b>B<\/b>[\s\S]*<td>−1\.00R<\/td>/, 'the grade ladder, with average R');
   assert.match(html, /By entry tactic[\s\S]*<b>30-minute pivot<\/b>/);
   assert.match(html, /By mistake[\s\S]*<b>Chased the entry<\/b>/);
@@ -88,4 +88,31 @@ test('the Setups tab: every setup with its numbers, unused ones too, then the re
 test('a grade saved as A++ before the cut reads as A', async () => {
   const { state } = await journal(s => s.reviews.set(`user-1:${KEY}`, { user_id: 'user-1', trade_key: KEY, setup_grade: 'A++', plan_followed: 'yes', note: 'fine' }));
   assert.equal(state.journalReview.reviews[KEY].setup_grade, 'A');
+});
+
+test('a setup traded both ways: one row, its long and short rows under it, the side filter picks one', async () => {
+  const leg = (id, instruction, time, price) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), user_id: 'user-1', data: {
+    orderId: id, enteredTime: time, status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction, quantity: 10, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: 10, price, time }] }],
+  } });
+  const { run, list } = await journal(sb => {
+    for (const r of [leg(601, 'SELL_SHORT', '2026-10-05T14:00:00+0000', 400), leg(602, 'BUY_TO_COVER', '2026-10-05T15:00:00+0000', 399)]) sb.table.set(`user-1:order:${r.record_id}`, r);
+  });
+  for (const key of [KEY, '6789|MSFT|short|2026-10-05T14:00:00.000Z']) {
+    run(`openJournalTrade('${key}')`);
+    await settle();
+    await run("toggleSetup(journalPageTrade(), 'base_breakout')");
+    run('closeJournalTrade()');
+  }
+  run("setJournalTab('setups')");
+  const html = list();
+  assert.match(html, /<b>Base breakout \/ breakdown<\/b><\/button>[\s\S]*?<td>2<\/td>/, 'one setup, both trades');
+  assert.match(html, /<tr class="journal-thin js-side-row"><td>Long · Base breakout[\s\S]*?<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'its long row');
+  assert.match(html, /<tr class="journal-thin js-side-row"><td>Short · Base breakdown[\s\S]*?<td>1<\/td><td class="journal-buy">\+\$10\.00<\/td>/, 'its short row');
+  run("setJournalSide('short')");
+  assert.match(list(), /<b>Base breakdown<\/b><\/button>[\s\S]*?<td>1<\/td>/, 'shorts only: the short name, the short trade');
+  assert.doesNotMatch(list(), /js-side-row/, 'one side shown: no side rows');
+  run("openJournalSetup('base_breakout')");
+  assert.match(list(), /<span class="jc-title">Base breakdown<\/span>/);
 });

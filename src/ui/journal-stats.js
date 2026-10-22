@@ -151,19 +151,20 @@ const THIN_TAG = ' <span class="journal-tag journal-tag-quiet" title="Fewer than
 
 /** a group's row; withR adds the average R after the win rate. group is markup when html is set (the Setups tab's
  * buttons), and sub (markup) goes on a line under it */
-function statRow(group, s, { withR = false, html = false } = {}, sub = '') {
+function statRow(group, s, { withR = false, html = false } = {}, sub = '', cls = '') {
   const v = (x, f) => x === null || x === undefined ? '—' : f(x);
-  return `<tr${s.thin ? ' class="journal-thin"' : ''}><td>${html ? group : `<b>${esc(group)}</b>`}${s.thin && s.trades ? THIN_TAG : ''}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</td>
+  const classes = [s.thin ? 'journal-thin' : '', cls].filter(Boolean).join(' ');
+  return `<tr${classes ? ` class="${classes}"` : ''}><td>${html ? group : `<b>${esc(group)}</b>`}${s.thin && s.trades ? THIN_TAG : ''}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</td>
     <td>${s.trades}</td><td class="${s.trades ? pnlClass(s.net) : ''}">${s.trades ? signed$(s.net) : '—'}</td><td>${v(s.avg, signed$)}</td><td>${v(s.median, signed$)}</td>
     <td>${v(s.winRate, x => `${x}%`)}</td>${withR ? `<td>${v(s.avgR, signedR)}</td>` : ''}<td>${v(s.avgWin, signed$)}</td><td>${v(s.avgLoss, signed$)}</td><td>${v(s.profitFactor, x => x.toFixed(2))}</td><td>${s.bigLosses || ''}</td></tr>`;
 }
 
-/** a breakdown's table, the same columns for every group; rows are { group, stats, sub? } */
+/** a breakdown's table, the same columns for every group; rows are { group, stats, sub?, cls? } (cls on the row) */
 export function statTable(title, rows, note = '', first = 'Group', opts = {}) {
   if (!rows.length) return '';
   return `<div class="section-title js-sub">${title}</div>${note ? `<p class="hint">${note}</p>` : ''}
     <div class="positions-wrap"><table class="positions-table journal-table js-table"><thead><tr><th scope="col">${first}</th><th scope="col">Trades</th><th scope="col">Net</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">Win %</th>${opts.withR ? '<th scope="col" title="Over the trades with a stop">Avg R</th>' : ''}<th scope="col">Avg win</th><th scope="col">Avg loss</th><th scope="col">PF</th><th scope="col" title="Losses worse than −1.5R">Big losses</th></tr></thead>
-    <tbody>${rows.map(r => statRow(r.group, r.stats, opts, r.sub)).join('')}</tbody></table></div>`;
+    <tbody>${rows.map(r => statRow(r.group, r.stats, opts, r.sub, r.cls)).join('')}</tbody></table></div>`;
 }
 
 function rBars(dist, withR) {

@@ -106,7 +106,7 @@ test('Chart opens the position\'s daily next to the table, and tapping it again 
   assert.equal(elements.get('posChartTitle').textContent, 'HOOD');
   assert.equal(elements.get('posChartMeta').textContent, 'Long 300 shares · avg $38.20 · now $41.10');
   assert.equal(elements.get('posTargetQtyLabel').textContent, 'Shares to sell');
-  assert.match(elements.get('posTargetSummary').innerHTML, /Tap the chart above the price for a target, then pick how much to sell/);
+  assert.match(elements.get('posTargetSummary').innerHTML, /Tap the chart for a target price, then pick how much to sell/);
   assert.equal(elements.get('posTargetReview').disabled, true);
 
   run("togglePositionChart('HOOD')");
@@ -378,10 +378,17 @@ test('Avg hides the average cost line and lets the scale fit without it; the cho
   assert.equal(again.run('posChartAvg'), false);
 });
 
-test('tapping below the price on a long sets the stop instead, and the stop form says what it covers and risks', async () => {
+test('the Stop tool: a tap sets the stop, and the stop form says what it covers and risks', async () => {
   const { run, elements, canvas } = await chartApp();
   run("togglePositionChart('HOOD')");
   await settle();
+  assert.equal(elements.get('posStopForm').style.display, 'none', 'the target form shows first');
+  run("actions.setPosChartTool({ dataset: { arg: 'stop' } })");
+  assert.equal(elements.get('posStopForm').style.display, '');
+  assert.equal(elements.get('posTargetForm').style.display, 'none');
+  assert.equal(elements.get('posAddForm').style.display, 'none');
+  assert.equal(elements.get('posToolStop').getAttribute('aria-pressed'), 'true');
+  assert.equal(elements.get('posChartTapHint').textContent, 'Tap the chart to set the stop');
   assert.equal(elements.get('posStopSummary').innerHTML, 'Tap the chart below the price, or type a stop.');
   assert.equal(elements.get('posStopReview').disabled, true);
   const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
@@ -435,4 +442,103 @@ test('a short\'s stop is above the price', async () => {
   elements.get('posChartStopPrice').value = '266';
   run('posChartStopChanged()');
   assert.match(elements.get('posStopSummary').innerHTML, /Stop at \$266\.00 for 40 shares<\/strong> · <span class="pos-loss">−\$160\.00<\/span>/);
+});
+
+// ---------- Move breakeven: how many to add so the average cost lands on a stop ----------
+
+test('breakevenAdd: shares to add at the price so the average lands on the stop, rounded down so the stop locks a little', async () => {
+  const { run } = await chartApp();
+  const hood = 'positions.rows.find(r => r.symbol === "HOOD")';
+  // 300 at $38.20, now $41.10: a stop at $40 needs 300 × 1.80 / 1.10 = 490.9 → 490
+  const a = run(`breakevenAdd(${hood}, { stop: 40 })`);
+  assert.equal(a.error, '');
+  assert.equal(a.qty, 490);
+  assert.equal(a.newQty, 790);
+  assert.equal(a.price, 41.1, 'the mark when no price is typed');
+  assert.ok(a.avg <= 40 && a.avg > 39.99, `avg ${a.avg} just under the stop`);
+  assert.ok(Math.abs(a.cost - 490 * 41.1) < 1e-6);
+  assert.ok(Math.abs(a.value - 790 * 41.1) < 1e-6);
+  assert.ok(a.locked > 0 && a.locked < 2, 'the stop locks the rounding');
+  assert.equal(run(`breakevenAdd(${hood}, { stop: 40, price: 40.5 })`).qty, 1080, 'a typed add price: 300 × 1.80 / 0.50');
+
+  // a short: 40 at $262, now $255.30; a stop at $258 needs 40 × 4 / 2.70 = 59.3 → 59, the average just over it
+  const s = run('breakevenAdd(positions.rows.find(r => r.symbol === "TSLA"), { stop: 258 })');
+  assert.equal(s.qty, 59);
+  assert.ok(s.avg >= 258 && s.avg < 258.01);
+  assert.ok(s.locked > 0);
+
+  // an option: 2 at $2.50, now $3.00; a stop at $2.80 needs 2 × 0.30 / 0.20 = 3 contracts
+  const o = run(`breakevenAdd(positions.rows.find(r => r.symbol === ${JSON.stringify(OPT)}), { stop: 2.8 })`);
+  assert.equal(o.qty, 3);
+  assert.ok(Math.abs(o.cost - 900) < 1e-6, '3 contracts × $3.00 × 100');
+});
+
+test('breakevenAdd: a stop has to sit between your cost and the add price', async () => {
+  const { run } = await chartApp();
+  const hood = 'positions.rows.find(r => r.symbol === "HOOD")';
+  assert.match(run(`breakevenAdd(${hood}, { stop: 42 })`).error, /The stop \$42\.00 is at or above the price \$41\.10/);
+  assert.match(run(`breakevenAdd(${hood}, { stop: 40, price: 39.5 })`).error, /at or above the add price \$39\.50/);
+  assert.match(run(`breakevenAdd(${hood}, { stop: 37 })`).error, /Your breakeven is \$38\.20, and adding at \$41\.10 moves it up toward \$41\.10\. Pick a stop between the two\./);
+  assert.match(run(`breakevenAdd(${hood}, { stop: 38.2 })`).error, /Your breakeven is \$38\.20/);
+  assert.match(run('breakevenAdd(positions.rows.find(r => r.symbol === "TSLA"), { stop: 254 })').error, /at or below the price \$255\.30/);
+  assert.match(run(`breakevenAdd({ ...${hood}, qty: 10 }, { stop: 38.3 })`).error, /Less than 1 share gets your breakeven to \$38\.30/);
+  assert.match(run(`breakevenAdd({ ...${hood}, avg: 0 }, { stop: 40 })`).error, /no cost basis/);
+  assert.match(run(`breakevenAdd(${hood}, { stop: null })`).error, /Tap the chart where you want the stop/);
+});
+
+test('Move breakeven: a tap sets the stop, and the form says how many to add', async () => {
+  const { run, elements, canvas } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  assert.equal(elements.get('posAddForm').style.display, 'none', 'the target form shows first');
+  run("actions.setPosChartTool({ dataset: { arg: 'add' } })");
+  assert.equal(elements.get('posTargetForm').style.display, 'none');
+  assert.equal(elements.get('posAddForm').style.display, '');
+  assert.equal(elements.get('posToolAdd').getAttribute('aria-pressed'), 'true');
+  assert.equal(elements.get('posChartTapHint').textContent, 'Tap the chart where you want your stop');
+  assert.equal(elements.get('posAddPrice').placeholder, 'now 41.10');
+  assert.match(elements.get('posAddSummary').innerHTML, /Tap the chart where you want your stop, between your cost \$38\.20 and the price/);
+
+  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  canvas('mousedown', { clientX: g.x(200) });
+  canvas('click', { clientX: g.x(200), clientY: g.y(40) });
+  assert.ok(Math.abs(run('posChart.addStop') - 40) <= 0.01, 'the tap is the stop, not the target');
+  assert.equal(run('posChart.price'), null);
+  assert.equal(elements.get('posAddStop').value, run('posChart.addStop.toFixed(2)'));
+
+  elements.get('posAddStop').value = '40';
+  run('posAddChanged()');
+  const sum = elements.get('posAddSummary').innerHTML;
+  assert.match(sum, /<strong>Buy 490 shares at \$41\.10 \(now\)<\/strong> · \$20,139\.00 → 790 shares, avg \$40\.00\. A stop at \$40\.00 for all 790 then risks nothing \(locks <span class="pos-locked">\+\$1\.00<\/span>\)\./);
+  assert.match(sum, /Position \$32,469\.00 \(32\.5% of account\) at that price\. Your stops risk −\$540\.00 now\. Once it fills, move your stop to \$40\.00 for every share\./);
+
+  elements.get('posAddPrice').value = '40.5';
+  run('posAddChanged()');
+  assert.match(elements.get('posAddSummary').innerHTML, /<strong>Buy 1,080 shares at \$40\.50<\/strong>/);
+  elements.get('posAddStop').value = '37';
+  run('posAddChanged()');
+  assert.equal(elements.get('posAddSummary').className, 'pos-target-sum warn');
+  assert.match(elements.get('posAddSummary').innerHTML, /Your breakeven is \$38\.20/);
+
+  run("setPosChartTool('target')");
+  assert.equal(elements.get('posTargetForm').style.display, '');
+  canvas('click', { clientX: g.x(200), clientY: g.y(43) });
+  assert.ok(Math.abs(run('posChart.price') - 43) <= 0.01, 'back on targets, a tap is the target again');
+  assert.equal(run('posChart.addStop'), 37);
+});
+
+test('Move breakeven: hovering says how many to add for a stop right there', async () => {
+  const { run, elements, canvas } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  run("setPosChartTool('add')");
+  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  elements.get('posChart').clientWidth = 458;
+  elements.get('posChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
+  canvas('mousemove', { clientX: g.x(200), clientY: g.y(40) });
+  assert.match(elements.get('posChartOhlc').innerHTML, /from now\) · add \d{3}/);
+  canvas('mousemove', { clientX: g.x(200), clientY: g.y(43) });
+  assert.doesNotMatch(elements.get('posChartOhlc').innerHTML, /· add/, 'over the price: no add');
+  delete globalThis.getComputedStyle;
 });
