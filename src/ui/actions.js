@@ -16,7 +16,7 @@ import { effects } from './effects.js';
 import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsChanged, renderFutures, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, togglePosChartAvg, togglePositionChart } from './position-chart.js';
+import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, setPosChartInterval, setPosChartRange, setPosChartTool, setPosTargetPortion, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
@@ -350,6 +350,7 @@ export const actions = {
   posChartStopChanged: () => posChartStopChanged(),
   setPosTargetPortion: el => setPosTargetPortion(num(el)),
   setPosChartTool: el => setPosChartTool(arg(el)),
+  setPosChartInterval: el => setPosChartInterval(arg(el)),
   posAddChanged: () => posAddChanged(),
   simPosition: el => simPosition(arg(el)),
   togglePosColumnsMenu: () => togglePosColumnsMenu(),

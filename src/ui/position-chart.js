@@ -1,5 +1,5 @@
 // Position chart: one Schwab position's chart with its average cost, stops and targets drawn on it: a stock or ETF's daily
-// (Tradier history), an option's own 5-minute bars (Tradier timesales). And the profit-target form: tap the chart (or type)
+// (Tradier history) or its 5-minute bars (Daily | 5 min), an option's own 5-minute bars (Tradier timesales). And the profit-target form: tap the chart (or type)
 // for the price, pick a portion, review it in the position sheet. Or Stop: tap (or type) the stop, see what it covers and risks,
 // review it in the position sheet. Or Move breakeven: tap where you want the stop, and it says how many to add so your average
 // cost lands there (a calculator; nothing goes to Schwab).
@@ -17,9 +17,9 @@ import { renderPositions } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 
 export const PORTIONS = [[0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [1, 'All']];
-// range chips: sessions of daily bars for a stock, sessions of 5-minute bars for an option
+// range chips: sessions of daily bars, sessions of 5-minute bars
 const DAILY_CHIPS = [[21, '1M'], [63, '3M'], [126, '6M'], [252, '1Y']];
-const OPTION_CHIPS = [[1, '1D'], [2, '2D'], [5, '5D'], [10, '10D']];
+const FIVE_CHIPS = [[1, '1D'], [2, '2D'], [5, '5D'], [10, '10D']];
 const units = (option, n) => `${n.toLocaleString('en-US')} ${option ? (n === 1 ? 'contract' : 'contracts') : (n === 1 ? 'share' : 'shares')}`;
 
 /** the bars in the last n sessions: a thin contract trades fewer than 78 a day */
@@ -29,7 +29,9 @@ function sessionBars(bars, n) {
 }
 
 // what a range chip shows: n sessions back from now
-const rangeView = c => ({ count: c.option ? Math.max(1, sessionBars(c.bars, c.range)) : c.range, offset: 0 });
+const rangeView = c => ({ count: c.five ? Math.max(1, sessionBars(c.bars, c.range)) : c.range, offset: 0 });
+// a range chip's default: two sessions of 5-minute bars, the daily_range preference on a daily
+const firstRange = five => five ? 2 : state.dailyRange;
 
 /** the open chart's position in the last Schwab read, or null */
 function chartRow() {
@@ -41,9 +43,10 @@ function chartRow() {
 export function togglePositionChart(symbol) {
   if (state.posChart && state.posChart.symbol === symbol) { closePositionChart(); return; }
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
-  const option = !!(row && row.tradeAs === 'OPTION');
-  const range = option ? 2 : state.dailyRange;
-  const c = { symbol, option, label: row ? row.label : symbol, bars: [], view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1, price: null, qty: null, stop: null, addStop: null, addPrice: null };
+  const option = !!(row && row.tradeAs === 'OPTION'), five = option || state.posChartFive;
+  const range = firstRange(five);
+  // loaded: the bars fetched so far, by kind, so switching Daily | 5 min back and forth reads Tradier once each
+  const c = { symbol, option, five, label: row ? row.label : symbol, bars: [], loaded: {}, view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1, price: null, qty: null, stop: null, addStop: null, addPrice: null };
   state.posChart = c;
   setTargetInputs();
   renderPositions(); // the button lights, and the chart renders with the table
@@ -58,19 +61,37 @@ export function closePositionChart() {
 
 async function loadBars(c) {
   if (!document.getElementById('apiKey').value.trim()) { c.error = 'The chart needs a Tradier key: add one in Settings. You can still type a target below.'; renderPositionChart(); return; }
+  const five = c.five, kind = five ? 'five' : 'daily';
+  if (c.loaded[kind]) { Object.assign(c, c.loaded[kind]); c.view = rangeView(c); renderPositionChart(); return; }
   c.loading = true;
+  c.bars = [];
   renderPositionChart();
+  const got = { bars: [], error: '' };
   try {
-    c.bars = c.option
+    got.bars = five
       ? (await fetchFiveMinuteBars(tradierSymbol(c.symbol))).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c }))
       : await dailyHistory(c.symbol);
-    c.error = c.bars.length ? '' : c.option ? `Tradier shows no trades in ${c.label} in the last two weeks.` : `Tradier has no daily history for ${c.symbol}.`;
+    got.error = got.bars.length ? '' : c.option ? `Tradier shows no trades in ${c.label} in the last two weeks.`
+      : five ? `Tradier shows no 5-minute bars for ${c.symbol} in the last two weeks.` : `Tradier has no daily history for ${c.symbol}.`;
   } catch(e) {
-    c.error = c.option ? 'Tradier would not send this contract\'s 5-minute bars. They need a brokerage-linked key.' : 'Could not load the daily chart from Tradier.';
+    got.error = five ? `Tradier would not send ${c.option ? 'this contract' : c.symbol}'s 5-minute bars. They need a brokerage-linked key.` : 'Could not load the daily chart from Tradier.';
   }
+  c.loaded[kind] = got;
+  if (state.posChart !== c || c.five !== five) return; // closed, or switched while it loaded
+  Object.assign(c, got);
   c.view = rangeView(c);
   c.loading = false;
-  if (state.posChart === c) renderPositionChart();
+  renderPositionChart();
+}
+
+/** Daily | 5 min on a stock's chart (options are always 5-minute); the pick stays on this device */
+export function setPosChartInterval(kind) {
+  const c = state.posChart, five = kind === '5m';
+  if (!c || c.option || c.five === five) return;
+  state.posChartFive = five;
+  store.set('pos_chart_five', five ? '1' : '0');
+  Object.assign(c, { five, range: firstRange(five), hover: -1, hoverY: -1, loading: false, error: '' });
+  loadBars(c);
 }
 
 const priceText = (c, p) => c && p > 0 ? p.toFixed(p >= 1 || c.option ? 2 : 4) : '';
@@ -249,7 +270,7 @@ export function renderPositionChart() {
   document.getElementById('posChartMeta').textContent = row
     ? `${row.qty > 0 ? 'Long' : 'Short'} ${units(c.option, Math.abs(row.qty))} · avg ${row.avg > 0 ? fmt$(row.avg) : '—'} · now ${fmt$(row.price)}`
     : '';
-  document.getElementById('posChartStatus').textContent = c.loading ? `Loading the ${c.label} ${c.option ? '5-minute' : 'daily'} chart…` : c.error;
+  document.getElementById('posChartStatus').textContent = c.loading ? `Loading the ${c.label} ${c.five ? '5-minute' : 'daily'} chart…` : c.error;
   document.getElementById('posChartPlot').style.display = c.bars.length ? '' : 'none';
   document.getElementById('posTargetQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
 
@@ -324,11 +345,15 @@ export function drawPositionChart() {
   const n = c.bars.length;
   // a chip lights while the view shows exactly its range
   const active = n && Math.round(clampView(c.view, n).count) === Math.round(clampView(rangeView(c), n).count) ? c.range : 0;
-  document.getElementById('posChartKind').textContent = c.option ? '5 min' : 'Daily';
+  // a stock picks Daily or 5 min; an option's chart is always 5-minute
+  const kind = (five, label) => `<button class="filter-btn${c.five === five ? ' active' : ''}" aria-pressed="${c.five === five}" data-action="setPosChartInterval" data-arg="${five ? '5m' : 'daily'}">${label}</button>`;
+  const kinds = c.option ? '5 min' : kind(false, 'Daily') + kind(true, '5 min');
+  const kindEl = document.getElementById('posChartKind');
+  if (kindEl.innerHTML !== kinds) kindEl.innerHTML = kinds;
   const avg = document.getElementById('posChartAvgBtn');
   avg.classList.toggle('active', state.posChartAvg);
   avg.setAttribute('aria-pressed', String(state.posChartAvg));
-  const chips = (c.option ? OPTION_CHIPS : DAILY_CHIPS).map(([count, label]) =>
+  const chips = (c.five ? FIVE_CHIPS : DAILY_CHIPS).map(([count, label]) =>
     `<button class="filter-btn${count === active ? ' active' : ''}" data-action="setPosChartRange" data-arg="${count}">${label}</button>`).join('');
   const ranges = document.getElementById('posChartRanges');
   if (ranges.innerHTML !== chips) ranges.innerHTML = chips; // hover redraws often; the chips rarely change
