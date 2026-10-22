@@ -463,6 +463,11 @@ test('setups read by side: one setup is a bounce on a long and a rejection on a 
   assert.equal(name('base_breakout', 'short'), 'Base breakdown');
   assert.equal(name('flag_breakout', 'short'), 'Flag breakdown', "the starting flag setup's own short name");
   assert.equal(name('earnings_gap', 'both'), 'Earnings gap', 'the same both ways');
+  assert.equal(name('support+bounce', 'short'), 'Resistance rejection', 'a long off support is a short at resistance');
+  assert.equal(name('resistance+bounce', 'short'), 'Support rejection');
+  assert.equal(name('support+bounce', 'both'), 'Support bounce / Resistance rejection');
+  assert.equal(run(`${lib}.partsWords({ action: 'bounce', levels: ['support', 'ema21'] }, 'short')`), 'Rejection at Resistance + 21 EMA', 'moving averages read the same');
+  assert.equal(run(`setupTwin(${lib}, 'sma50_bounce')`), null);
   assert.equal(run(`${lib}.resolve('setup', 'ema21_rejection')`), 'ema21_bounce', 'the starting 21 EMA rejection is the 21 EMA bounce on a short');
   assert.equal(run(`${lib}.resolve('action', 'rejection')`), 'bounce');
   assert.equal(name('ema21+rejection', 'long'), '21 EMA bounce', 'an old value written as its parts too');
@@ -508,6 +513,7 @@ test('the trade page, the list and the filter read setups by side; the library t
   run('startSetupDraft()');
   assert.match(body(), /data-action="setDraftAction" data-arg="bounce">Rejection<\/button>/, 'the builder speaks the short side too');
   assert.match(body(), /data-action="setDraftPattern" data-arg="base_breakout">Base breakdown<\/button>/);
+  assert.match(body(), /data-action="toggleDraftLevel" data-arg="support">Resistance<\/button>/, 'levels read the short side too');
   assert.doesNotMatch(body(), /data-arg="rejection"/, 'no separate rejection to pick');
   run('cancelSetupDraft(); closeJournalTrade()');
   assert.match(list(), /<span class="journal-setup" title="21 EMA rejection"><span class="journal-setup-act">Rejection<\/span>/, "the list in the trade's words");
@@ -520,6 +526,9 @@ test('the trade page, the list and the filter read setups by side; the library t
   const sheet = () => run("document.getElementById('journalLibraryBody').innerHTML");
   assert.match(sheet(), /value="rejection" placeholder="On a short: same" aria-label="bounce on a short" data-change="setLibraryShort" data-arg="action" data-arg2="bounce"/, 'an action takes its short word');
   assert.match(sheet(), /value="Pennant or flag breakdown" placeholder="On a short: same" aria-label="Pennant or flag breakout on a short" data-change="setLibraryShort" data-arg="pattern" data-arg2="flag_breakout"/);
+  assert.match(sheet(), /value="Resistance" placeholder="On a short: same" aria-label="Support on a short" data-change="setLibraryShort" data-arg="level" data-arg2="support"/, 'a level takes its short word');
+  assert.match(sheet(), /value="" placeholder="On a short: same" aria-label="50 SMA on a short"/);
+  assert.doesNotMatch(sheet(), /data-arg="level" data-arg2="resistance" data-into/, 'support and resistance are mirrors, not a twin to merge');
   assert.doesNotMatch(sheet(), /data-arg2="rejection"|data-arg2="ema21_rejection"/, 'the built-in rejection merge is not listed');
   await run("setLibraryShort('pattern', 'base_breakout', 'Base failure')");
   assert.equal(rows('library_items').find(r => r.default_key === 'base_breakout').settings.short, 'Base failure');

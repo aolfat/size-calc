@@ -32,6 +32,8 @@ export const DEFAULTS = /** @type {Record<ItemKind, [string, string][]>} */ ({
  */
 export const DEFAULT_SHORT = /** @type {Record<string, string>} */ ({
   'action:bounce': 'rejection', 'action:undercut': 'reclaim & fail',
+  // a long off support is a short at resistance, a breakout through resistance a breakdown through support
+  'level:support': 'Resistance', 'level:resistance': 'Support',
   'pattern:base_breakout': 'Base breakdown', 'pattern:flag_breakout': 'Pennant or flag breakdown',
   'setup:flag_breakout': 'Flag breakdown',
 });
@@ -140,6 +142,7 @@ export function buildLibrary(rows = []) {
     const it = item(kind, value);
     if (it) return sided(it.name, it.short, side);
     if (kind === 'setup') { // a setup written as its parts ('sma50+bounce', 'pattern:base_breakout')
+      if (side === 'both') return bothWords(nameOf(kind, value, 'long'), nameOf(kind, value, 'short'));
       const s = parseSetup(value);
       if (s.pattern) return nameOf('pattern', s.pattern, side);
       const level = nameOf('level', s.level, side);
@@ -226,7 +229,9 @@ export function setupGroups(lib, key, side) {
  * @param {ReturnType<typeof buildLibrary>} lib @param {ItemKind} kind @param {string} key
  */
 export function shortTwin(lib, kind, key) {
-  const it = lib.item(kind, key), name = it?.name.trim().toLowerCase();
+  const it = lib.item(kind, key);
+  if (!it) return null;
+  const name = it.name.trim().toLowerCase();
   return name ? lib.choices(kind).find(i => i.key !== it.key && i.short.trim().toLowerCase() === name) || null : null;
 }
 
