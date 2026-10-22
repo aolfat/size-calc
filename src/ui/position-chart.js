@@ -1,12 +1,13 @@
 // Position chart: one Schwab position's chart with its average cost, stops and targets drawn on it: a stock or ETF's daily
 // (Tradier history), an option's own 5-minute bars (Tradier timesales). And the profit-target form: tap the chart (or type)
-// for the price, pick a portion, review it in the position sheet.
+// for the price, pick a portion, review it in the position sheet. Or Move breakeven: tap where you want the stop, and it says
+// how many to add so your average cost lands there (a calculator; nothing goes to Schwab).
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { clampView, viewRange } from '../core/chart-view.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { optionPriceTick, priceTick } from '../core/orders.js';
-import { fmtPositionPrice, positionLevels, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
+import { breakevenAdd, fmtPositionPrice, positionLevels, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
 import { schwabStopDuration } from '../services/schwab.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles, snapToBar } from './candles.js';
@@ -40,7 +41,7 @@ export function togglePositionChart(symbol) {
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
   const option = !!(row && row.tradeAs === 'OPTION');
   const range = option ? 2 : state.dailyRange;
-  const c = { symbol, option, label: row ? row.label : symbol, bars: [], view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1, price: null, qty: null };
+  const c = { symbol, option, label: row ? row.label : symbol, bars: [], view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1, price: null, qty: null, addStop: null, addPrice: null };
   state.posChart = c;
   setTargetInputs();
   renderPositions(); // the button lights, and the chart renders with the table
@@ -70,10 +71,14 @@ async function loadBars(c) {
   if (state.posChart === c) renderPositionChart();
 }
 
+const priceText = (c, p) => c && p > 0 ? p.toFixed(p >= 1 || c.option ? 2 : 4) : '';
+
 function setTargetInputs() {
   const c = state.posChart;
-  document.getElementById('posTargetPrice').value = c && c.price > 0 ? c.price.toFixed(c.price >= 1 || c.option ? 2 : 4) : '';
+  document.getElementById('posTargetPrice').value = priceText(c, c && c.price);
   document.getElementById('posTargetQty').value = c && c.qty >= 1 ? String(c.qty) : '';
+  document.getElementById('posAddStop').value = priceText(c, c && c.addStop);
+  document.getElementById('posAddPrice').value = priceText(c, c && c.addPrice);
 }
 
 /** typing in the price or share count; the inputs keep what was typed */
@@ -84,6 +89,22 @@ export function posTargetChanged() {
   const qty = Number(document.getElementById('posTargetQty').value);
   c.price = price > 0 ? price : null;
   c.qty = qty > 0 ? qty : null;
+  renderPositionChart();
+}
+
+/** Profit target | Move breakeven: which form shows, and what a tap on the chart sets */
+export function setPosChartTool(tool) {
+  state.posChartTool = tool === 'add' ? 'add' : 'target';
+  renderPositionChart();
+}
+
+/** typing the stop or the add price; blank add price = the mark */
+export function posAddChanged() {
+  const c = state.posChart;
+  if (!c) return;
+  const stop = parseFloat(document.getElementById('posAddStop').value), price = parseFloat(document.getElementById('posAddPrice').value);
+  c.addStop = stop > 0 ? stop : null;
+  c.addPrice = price > 0 ? price : null;
   renderPositionChart();
 }
 
@@ -100,11 +121,12 @@ export function setPosTargetPortion(fraction) {
 
 const portionQty = (room, fraction) => fraction >= 1 ? room.free : Math.min(room.free, Math.max(1, Math.floor(room.held * fraction)));
 
-/** a target price picked on the chart */
+/** a price picked on the chart: the target, or Move breakeven's stop */
 function pickTarget(price) {
   const c = state.posChart;
   if (!c || !(price > 0)) return;
-  c.price = c.option ? optionPriceTick(price) : priceTick(price);
+  const ticked = c.option ? optionPriceTick(price) : priceTick(price);
+  if (state.posChartTool === 'add') c.addStop = ticked; else c.price = ticked;
   setTargetInputs();
   renderPositionChart();
 }
@@ -159,6 +181,23 @@ function targetStatus(c, row) {
   return { text: `<strong>${row.qty > 0 ? 'Sells' : 'Buys back'} ${c.qty.toLocaleString('en-US')} of ${units(c.option, held)} at ${px(plan.price)}</strong>${gain}<span class="shares-detail">${esc(stop)}</span>`, ok: true, html: true };
 }
 
+/** what Move breakeven says: how many to add, at what, and what the position looks like after */
+function addStatus(c, row) {
+  const p = state.positions;
+  if (!p) return { text: state.positionsBusy ? 'Reading Schwab…' : 'Positions are not loaded.', warn: false };
+  if (!row) return { text: `Schwab no longer shows a ${c.symbol} position.`, warn: true };
+  const long = row.qty > 0, px = v => fmtPositionPrice(v, row.tradeAs);
+  if (!(c.addStop > 0)) return { text: `Tap the chart where you want your stop, between your cost${row.avg > 0 ? ' ' + px(row.avg) : ''} and the price. It works out how many to add so your breakeven lands there.`, warn: false };
+  const a = breakevenAdd(row, { stop: c.addStop, price: c.addPrice });
+  if (a.error) return { text: a.error, warn: true };
+  const u = units(c.option, a.qty), all = units(c.option, a.newQty), acct = p.value > 0 ? ` (${(a.value / p.value * 100).toFixed(1)}% of account)` : '';
+  const locked = a.locked >= 0.005 ? ` (locks <span class="pos-locked">+${fmt$(a.locked)}</span>)` : '';
+  const now = row.risk === null ? '' : ` Your stops risk ${row.risk > 0 ? '−' + fmt$(row.risk) : 'nothing'} now.`;
+  return { html: true, text: `<strong>${long ? 'Buy' : (c.option ? 'Sell' : 'Short')} ${u} at ${px(a.price)}${c.addPrice > 0 ? '' : ' (now)'}</strong> · ${fmt$(a.cost)}`
+    + ` → ${all}, avg ${fmt$(a.avg)}. A stop at ${px(a.stop)} for all ${a.newQty.toLocaleString('en-US')} then risks nothing${locked}.`
+    + `<span class="shares-detail">${esc(`Position ${fmt$(a.value)}${acct} at that price.${now} Once it fills, move your stop to ${px(a.stop)} for every ${c.option ? 'contract' : 'share'}. Fees not counted.`)}</span>` };
+}
+
 export function renderPositionChart() {
   const c = state.posChart, open = !!c && state.positionsView;
   document.getElementById('posChartSection').style.display = open ? '' : 'none';
@@ -180,6 +219,20 @@ export function renderPositionChart() {
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosTargetPortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
   }).join('');
 
+  const adding = state.posChartTool === 'add';
+  for (const [id, on] of [['posToolTarget', !adding], ['posToolAdd', adding]]) {
+    const b = document.getElementById(id);
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+  document.getElementById('posTargetForm').style.display = adding ? 'none' : '';
+  document.getElementById('posAddForm').style.display = adding ? '' : 'none';
+  document.getElementById('posChartTapHint').textContent = adding ? 'Tap the chart where you want your stop' : 'Tap the chart to set the target';
+  document.getElementById('posAddPrice').placeholder = row && row.price > 0 ? `now ${row.price.toFixed(2)}` : 'now';
+  const add = addStatus(c, row), addSum = document.getElementById('posAddSummary');
+  addSum.className = 'pos-target-sum' + (add.warn ? ' warn' : '');
+  addSum.innerHTML = add.html ? add.text : esc(add.text);
+
   const status = targetStatus(c, row);
   const sum = document.getElementById('posTargetSummary');
   sum.className = 'pos-target-sum' + (status.warn ? ' warn' : '');
@@ -195,7 +248,8 @@ const levels = row => row ? positionLevels(row).filter(l => l.kind !== 'avg' || 
 
 function chartGeom(w) {
   const c = state.posChart, row = chartRow();
-  return candleGeom(c.bars, c.view, w, [...levels(row).map(l => l.price), c.price || 0]);
+  const add = state.posChartTool === 'add';
+  return candleGeom(c.bars, c.view, w, [...levels(row).map(l => l.price), (add ? c.addStop : c.price) || 0, (add && c.addPrice) || 0]);
 }
 
 function chartLines(c, row) {
@@ -205,7 +259,11 @@ function chartLines(c, row) {
   const lines = levels(row).map(l => l.kind === 'avg'
     ? { price: l.price, color: color('--blue'), label: 'avg ' + l.price.toFixed(2), left: true }
     : { price: l.price, color: color(l.kind === 'stop' ? '--red' : '--green'), label: `${l.kind} ${l.price.toFixed(2)}${size(l.qty)}` });
-  if (c.price > 0) lines.push({ price: c.price, color: color('--green'), label: `new target ${c.price.toFixed(2)}${c.qty > 0 ? size(c.qty) : ''}`, solid: true });
+  if (state.posChartTool === 'add') {
+    const a = row && c.addStop > 0 ? breakevenAdd(row, { stop: c.addStop, price: c.addPrice }) : null;
+    if (c.addStop > 0) lines.push({ price: c.addStop, color: color('--red'), label: `BE stop ${c.addStop.toFixed(2)}${a && !a.error ? size(a.newQty) : ''}`, solid: true });
+    if (c.addPrice > 0) lines.push({ price: c.addPrice, color: color('--blue'), label: `add ${c.addPrice.toFixed(2)}${a && !a.error ? size(a.qty) : ''}`, solid: true });
+  } else if (c.price > 0) lines.push({ price: c.price, color: color('--green'), label: `new target ${c.price.toFixed(2)}${c.qty > 0 ? size(c.qty) : ''}`, solid: true });
   return lines;
 }
 
@@ -235,7 +293,10 @@ export function drawPositionChart() {
   if (!b || c.hover < g.start || c.hover >= g.end) { readout.textContent = ''; return; }
   const onPlot = c.hoverY >= g.padT && c.hoverY <= g.h - g.padB;
   const at = g.price(c.hoverY), now = row ? row.price : 0;
-  readout.innerHTML = (onPlot && now > 0 ? `$${at.toFixed(2)} (${at >= now ? '+' : '−'}${Math.abs(at / now * 100 - 100).toFixed(1)}% from now) &nbsp; ` : '') + ohlcText(b);
+  // Move breakeven: how many to add for a stop right here
+  const add = onPlot && row && state.posChartTool === 'add' ? breakevenAdd(row, { stop: at, price: c.addPrice }) : null;
+  const adds = add && !add.error ? ` · add ${add.qty.toLocaleString('en-US')}` : '';
+  readout.innerHTML = (onPlot && now > 0 ? `$${at.toFixed(2)} (${at >= now ? '+' : '−'}${Math.abs(at / now * 100 - 100).toFixed(1)}% from now)${adds} &nbsp; ` : '') + ohlcText(b);
 }
 
 export function initPositionChartEvents() {

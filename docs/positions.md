@@ -96,4 +96,10 @@ The Positions tab: rows, spreads, optional columns and R, position trades (break
   Warnings: outside regular hours, and Today with a pair (the paired stop ends with the target at the close).
   Confirmed when Schwab's re-read shows qty more shares in LIMIT closers at the target price; then the form clears and the chart draws it from Schwab's orders.
   Each 30s read re-renders the card (lines, chips, summary) without touching the inputs; account changes close it.
+
+  **Move breakeven** (the form's second switch, Profit target | Move breakeven, state.posChartTool, kept while charts open and close; a calculator, nothing goes to Schwab): tap the chart where you want your stop (same snapping, priceTick / optionPriceTick) and it says how many shares or contracts to add so your average cost lands on it, so that stop risks nothing.
+  breakevenAdd (core/positions.js, pure): qty = held × (stop − avg) ÷ (add price − stop), rounded down, so the new average stops just short of the stop and the stop locks a little (shown); the add price is the mark unless one is typed (Add at).
+  The stop has to sit between your cost and the add price (long: above the cost, under the price; short: the other way); otherwise, or under 1 share, the form says why.
+  The summary: what to buy (or short) and what it costs, the new size and average, the position's value and % of account at that price, what your stops risk now, and to move the stop for every share once it fills; fees aren't counted.
+  The chart draws the stop (solid red, 'BE stop' with the new size) and a typed add price (solid blue, with the add size), and hovering says how many to add for a stop right there ('· add 490').
   The old saved-cards feature (save on pinned cards, editable fills, saved_positions) was removed by request
