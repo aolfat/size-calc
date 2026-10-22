@@ -30,7 +30,7 @@
 .positions-table tr.pos-leg td:first-child { background: var(--bg); padding-left: 22px; box-shadow: inset 2px 0 0 var(--border2); }
 .positions-table tr.pos-leg b { font-weight: 500; color: var(--text2); }
 .pos-acts { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; }
-.pos-acts.many { flex-wrap: wrap; } /* an option's four buttons go two by two on a phone instead of widening the pinned column */
+.pos-acts.many { flex-wrap: wrap; } /* four or five buttons go two by two on a phone instead of widening the pinned column */
 .pos-act { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 11px; font-weight: 600; padding: 3px 8px; cursor: pointer; }
 .pos-act:hover { color: var(--text); border-color: var(--blue-bd); }
 .pos-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
@@ -64,12 +64,14 @@
 .pos-chart .chart-cap { display: flex; gap: 5px; align-items: center; }
 .pos-chart .chart-cap .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
 .pos-chart .chart-cap .pos-chart-avg { margin-left: auto; }
-.pos-chart-ranges { display: contents; } /* range chips: 1M to 1Y on a stock's daily, 1D to 10D on an option's 5-minute */
+.pos-chart-kind { display: flex; gap: 5px; margin-right: 6px; } /* Daily | 5 min on a stock; just '5 min' on an option */
+.pos-chart-ranges { display: contents; } /* range chips: 1M to 1Y on a daily, 1D to 10D on 5-minute bars */
 .pos-chart-canvas { position: relative; }
 #posChartToday { position: absolute; right: 58px; bottom: 28px; padding: 2px 8px; font-size: 11px; }
 .pos-act.active { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
 .pos-target { margin-top: 16px; }
-.pos-target .section-title { margin-bottom: 10px; }
+.pos-tool { display: flex; margin-bottom: 10px; }
+.pos-tool button { flex: 1 1 0; }
 .pos-target-row { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; }
 .pos-target-row .field { flex: 1 1 130px; }
 .pos-portions { margin-top: 0; flex: 1 1 190px; flex-wrap: nowrap; }
@@ -80,13 +82,14 @@
 .pos-target-sum .shares-detail { display: block; font-family: var(--sans); }
 .pos-target-sum.warn { color: var(--amber); font-family: var(--sans); }
 .pos-target .trade-actions { margin-top: 10px; }
-/* the close ticket: the count, then 10% to All of the original size (25% and 75% among them) in two rows of six, the inputs as wide as a thumb needs */
+/* the close tickets: the count, then 25% to All of what's held in one row, the inputs as wide as a thumb needs */
 .trade-legs dt label { font: inherit; color: inherit; }
 .pos-close-qty { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
 .pos-close-qty input { flex: 0 1 110px; min-width: 80px; }
-.pos-close-qty .pos-close-portions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; flex: 1 1 100%; }
+.pos-close-qty .pos-close-portions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; flex: 1 1 100%; }
 .pos-close-portions .filter-btn { padding: 8px 2px; }
 .pos-close-price { width: 140px; }
+.pos-stop-at { padding: 9px 12px; font-size: 14px; } /* the stop ticket's Breakeven chip, beside its price */
 
 @media (min-width: 1100px) {
   .app.positions-view .positions-split.open { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(420px, 1fr); column-gap: 16px; align-items: start; }

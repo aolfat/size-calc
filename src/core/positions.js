@@ -1,6 +1,6 @@
 // @ts-check
 // Schwab positions as table rows (price, share of the account, stop and risk from working stop orders), the account's
-// working orders, the levels a position chart draws, and the order plans for a breakeven stop, a profit target, a close, or cancelling or changing a working order.
+// working orders, the levels a position chart draws, and the order plans for a breakeven stop, a stop at your price, a profit target, a close, or cancelling or changing a working order.
 import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, optionPriceTick, optionStopTick, priceTick, stopTick } from './orders.js';
 
 /**
@@ -548,32 +548,90 @@ export const atBreakeven = (/** @type {Row} */ row) => row.be !== null && row.st
  * @param {Row} row @param {StopDuration} stopDuration @param {{ limits?: 'pair' | 'keep' | 'cancel' }} [opts] @returns {Plan}
  */
 export function breakevenPlan(row, stopDuration, { limits = 'pair' } = {}) {
-  const fail = (/** @type {string} */ error) => ({ error, stop: row.be || 0, steps: [], paired: [], rest: 0, bare: 0, kept: 0, locked: 0 });
+  const fail = (/** @type {string} */ error) => stopFail(error, row.be || 0);
   const blocked = tradeError(row);
   if (blocked) return fail(blocked);
   if (!(row.avg > 0) || row.be === null) return fail('Schwab shows no cost basis for this position, so it has no breakeven.');
-  const long = row.qty > 0, be = row.be, held = Math.abs(row.qty), as = row.tradeAs || 'EQUITY', symbol = row.symbol;
-  const px = (/** @type {number} */ p) => fmtPositionPrice(p, as);
+  const long = row.qty > 0, be = row.be, px = (/** @type {number} */ p) => fmtPositionPrice(p, row.tradeAs || 'EQUITY');
   if (long ? !(row.price > be) : !(row.price < be)) {
-    return fail(`The price ${px(row.price)} is at or ${long ? 'below' : 'above'} the breakeven stop ${px(be)}. It would ${INSTRUCTION_WORDS[closingInstruction(as, long)]} right away.`);
+    return fail(`The price ${px(row.price)} is at or ${long ? 'below' : 'above'} the breakeven stop ${px(be)}. It would ${INSTRUCTION_WORDS[closingInstruction(row.tradeAs || 'EQUITY', long)]} right away.`);
   }
   if (atBreakeven(row)) {
     return fail(row.stopOrders.every(s => s.stop === be) ? 'The position is already at breakeven: every share has a breakeven stop.'
       : 'Every share already has a stop at or past breakeven. Moving it would loosen it.');
   }
-  const good = (/** @type {Resting} */ s) => pastBe(row, s);
-  const stopFor = (/** @type {number} */ qty) => closeStopOrder({ symbol, assetType: as, isLong: long, qty, stop: be, stopDuration });
+  return stopsAt(row, be, stopDuration, limits, { past: 'past breakeven', atOr: 'at or past breakeven', done: 'The position is already at breakeven: every share has a breakeven stop.' });
+}
+
+/**
+ * A stop at a price you pick for the shares that don't have one there yet, the same way as the breakeven stop: never selling more
+ * than you hold and never loosening a stop. Stops already at or tighter than it (at or above it on a long, at or below on a short)
+ * stay as they are; the others make room (the nearest moved there, the rest cancelled), and limits are kept, paired or cancelled
+ * by the caller's pick, as in breakevenPlan. Moving a stop the other way is an edit of that order (editPlan).
+ * The price snaps to the tick: cents (four decimals under $1), options on the $0.05 / $0.10 grid.
+ * @param {Row} row @param {{ stop: number, duration: StopDuration, limits?: 'pair' | 'keep' | 'cancel' }} opts @returns {Plan}
+ */
+export function stopPlan(row, { stop, duration, limits = 'pair' }) {
+  const as = row.tradeAs || 'EQUITY', long = row.qty > 0, px = (/** @type {number} */ p) => fmtPositionPrice(p, as);
+  const at = Number(stop) > 0 ? (as === 'OPTION' ? optionPriceTick(Number(stop)) : priceTick(Number(stop))) : 0;
+  const fail = (/** @type {string} */ error) => stopFail(error, at);
+  const blocked = tradeError(row);
+  if (blocked) return fail(blocked);
+  if (!(at > 0)) return fail('Set a stop price.');
+  if (long ? !(at < row.price) : !(at > row.price)) {
+    return fail(`The stop ${px(at)} is at or ${long ? 'above' : 'below'} the price ${px(row.price)}. It would ${INSTRUCTION_WORDS[closingInstruction(as, long)]} right away.`);
+  }
+  const side = `at or ${long ? 'above' : 'below'} ${px(at)}`;
+  const tighter = row.stopOrders.filter(s => long ? Number(s.stop) >= at - 1e-9 : Number(s.stop) <= at + 1e-9).reduce((n, s) => n + s.qty, 0);
+  if (tighter >= Math.abs(row.qty)) {
+    return fail(row.stopOrders.every(s => s.stop === at) ? `Every share already has a stop at ${px(at)}.`
+      : `Every share already has a stop ${side}. To move one ${long ? 'lower' : 'higher'}, edit it under Working orders.`);
+  }
+  return stopsAt(row, at, duration, limits, { past: side, atOr: side, done: `Every share already has a stop ${side}.` });
+}
+
+/**
+ * What a position locks over your cost (negative: what it risks) once every share stops at a price: the stops already at or
+ * tighter than it at their own prices, the rest at it, less bare shares that keep no stop.
+ * @param {Row} row @param {number} at @param {number} [bare]
+ */
+export function stopLocked(row, at, bare = 0) {
+  const long = row.qty > 0, gain = (/** @type {number} */ p) => (long ? p - row.avg : row.avg - p) * row.mult;
+  let left = Math.abs(row.qty), sum = 0;
+  for (const s of row.stopOrders.filter(o => long ? Number(o.stop) >= at - 1e-9 : Number(o.stop) <= at + 1e-9)) {
+    const q = Math.min(left, s.qty);
+    sum += gain(Number(s.stop)) * q;
+    left -= q;
+  }
+  return sum + gain(at) * Math.max(0, left - bare);
+}
+
+/** a plan that can't go: why, and the stop it was for. @param {string} error @param {number} stop @returns {Plan} */
+const stopFail = (error, stop) => ({ error, stop, steps: [], paired: [], rest: 0, bare: 0, kept: 0, locked: 0 });
+
+/**
+ * Stops at one price for every share no stop at or past it covers yet (the work of breakevenPlan and stopPlan).
+ * words: how the messages name stops already there ('past breakeven', 'at or above $36.00').
+ * @param {Row} row @param {number} at @param {StopDuration} stopDuration @param {'pair' | 'keep' | 'cancel'} limits
+ * @param {{ past: string, atOr: string, done: string }} words @returns {Plan}
+ */
+function stopsAt(row, at, stopDuration, limits, words) {
+  const fail = (/** @type {string} */ error) => stopFail(error, at);
+  const long = row.qty > 0, held = Math.abs(row.qty), as = row.tradeAs || 'EQUITY', symbol = row.symbol;
+  const px = (/** @type {number} */ p) => fmtPositionPrice(p, as);
+  const good = (/** @type {Resting} */ s) => long ? Number(s.stop) >= at - 1e-9 : Number(s.stop) <= at + 1e-9;
+  const stopFor = (/** @type {number} */ qty) => closeStopOrder({ symbol, assetType: as, isLong: long, qty, stop: at, stopDuration });
   const tick = as === 'OPTION' ? optionPriceTick : priceTick;
-  /** a stop short of breakeven, moved there: a stop limit keeps its limit as far from the stop as it was. @param {Resting} s @param {number} qty */
+  /** a stop short of the new price, moved there: a stop limit keeps its limit as far from the stop as it was. @param {Resting} s @param {number} qty */
   const moved = (s, qty) => {
-    const limit = s.orderType === 'STOP_LIMIT' && s.price !== null ? tick(be + s.price - Number(s.stop)) : 0;
+    const limit = s.orderType === 'STOP_LIMIT' && s.price !== null ? tick(at + s.price - Number(s.stop)) : 0;
     return limit > 0 ? { ...stopFor(qty), orderType: 'STOP_LIMIT', price: limit } : stopFor(qty);
   };
-  const plain = row.stopOrders.filter(o => o.oco === null); // nearest first, so the ones at or past breakeven lead
+  const plain = row.stopOrders.filter(o => o.oco === null); // nearest first, so the ones at or past the price lead
   const goodPlain = plain.filter(good).reduce((n, s) => n + s.qty, 0);
   const short = plain.filter(s => !good(s));
   /**
-   * need shares at breakeven out of the stops short of it: the nearest one that isn't trailing moves there, the others go,
+   * need shares at the price out of the stops short of it: the nearest one that isn't trailing moves there, the others go,
    * farthest first. clear: they go even when nothing is needed, to make room for a paired stop.
    * @param {number} need @param {boolean} clear @returns {Step[]}
    */
@@ -585,20 +643,14 @@ export function breakevenPlan(row, stopDuration, { limits = 'pair' } = {}) {
     out.push(mover ? { kind: 'replace', orderId: mover.orderId, was: mover, order: moved(mover, need) } : { kind: 'place', order: stopFor(need) });
     return out;
   };
-  // what the plan locks over your cost: the stops kept where they are, then breakeven for the rest it covers
-  const gain = (/** @type {number} */ p) => (long ? p - row.avg : row.avg - p) * row.mult;
-  const lockedWith = (/** @type {number} */ bare) => {
-    let left = held, sum = 0;
-    for (const s of row.stopOrders.filter(good)) { const q = Math.min(left, s.qty); sum += gain(Number(s.stop)) * q; left -= q; }
-    return sum + gain(be) * Math.max(0, left - bare);
-  };
-  const kept = breakevenCovered(row);
+  const lockedWith = (/** @type {number} */ bare) => stopLocked(row, at, bare);
+  const kept = Math.min(held, row.stopOrders.filter(good).reduce((n, s) => n + s.qty, 0));
   if (limits === 'cancel') {
     const pairedPast = row.stopOrders.find(o => o.oco !== null && good(o));
-    if (pairedPast) return fail(`Your stop ${px(Number(pairedPast.stop))} paired with a limit is already past breakeven. Cancelling it would loosen it.`);
-    // the limits and pairs first, then the stops short of breakeven make room for one stop on the rest
+    if (pairedPast) return fail(`Your stop ${px(Number(pairedPast.stop))} paired with a limit is already ${words.past}. Cancelling it would loosen it.`);
+    // the limits and pairs first, then the stops short of the price make room for one stop on the rest
     const steps = [...cancels([...closersInTheWay(row), ...row.stopOrders.filter(o => o.oco !== null)]), ...cover(held - goodPlain, true)];
-    return { error: unnamed(steps), stop: be, steps, paired: [], rest: held, bare: 0, kept, locked: lockedWith(0) };
+    return { error: unnamed(steps), stop: at, steps, paired: [], rest: held, bare: 0, kept, locked: lockedWith(0) };
   }
   const pair = limits === 'pair';
   const holding = limitsHolding(row);
@@ -606,10 +658,10 @@ export function breakevenPlan(row, stopDuration, { limits = 'pair' } = {}) {
   const { targets, pairs, reserved } = holding;
   const rest = held - reserved;
   if (!pair && rest === 0) return fail('Your limit holds the whole position, so no shares are left for a separate stop. Pair it with a stop instead.');
-  // a pair whose stop is already at or past breakeven stays as it is; without pairing, every limit does
+  // a pair whose stop is already at or past the price stays as it is; without pairing, every limit does
   const repair = pair ? [...targets, ...pairs.filter(p => !p.legs.some(l => isStop(l) && good(l)))] : [];
   if (repair.length && goodPlain > rest) {
-    return fail(`Stops at or past breakeven already cover ${goodPlain}, more than the ${rest} outside your limits, so a paired stop has no room. Cancel the limits instead.`);
+    return fail(`Stops ${words.atOr} already cover ${goodPlain}, more than the ${rest} outside your limits, so a paired stop has no room. Cancel the limits instead.`);
   }
   const bare = pair ? 0 : targets.reduce((n, p) => n + Number(p.limit?.qty), 0);
   /** @type {Step[]} */
@@ -621,8 +673,8 @@ export function breakevenPlan(row, stopDuration, { limits = 'pair' } = {}) {
     const target = closeLimitOrder({ symbol, assetType: as, isLong: long, qty: limit.qty, price: limit.price, duration: stopDuration });
     steps.push({ kind: 'place', order: ocoOrder(target, stopFor(limit.qty)), pairs: limit });
   }
-  if (!steps.length) return fail(pair ? 'The position is already at breakeven: every share has a breakeven stop.' : 'The stops outside your limit are already at or past breakeven.');
-  return { error: unnamed(steps), stop: be, steps, paired: repair.flatMap(p => p.limit ? [p.limit] : []), rest, bare, kept, locked: lockedWith(bare) };
+  if (!steps.length) return fail(pair ? words.done : `The stops outside your limit are already ${words.atOr}.`);
+  return { error: unnamed(steps), stop: at, steps, paired: repair.flatMap(p => p.limit ? [p.limit] : []), rest, bare, kept, locked: lockedWith(bare) };
 }
 
 /**
@@ -653,42 +705,6 @@ function cutStops(row, left, duration) {
     cuts.push(keep ? { kind: 'replace', orderId: s.orderId, was: s, order: cutStop(row, s, keep, duration) } : { kind: 'cancel', orderId: s.orderId, was: s });
   }
   return { steps: cuts.reverse(), moved, error }; // farthest first, so the nearest is the last one touched
-}
-
-/**
- * The most the position held since it was last flat, read back from today's quantity through the fills in Schwab's orders
- * (children walked): undo each fill, newest first, until the position would be flat or the other way. History older than
- * the orders read (Schwab's 60 days) or shares an option delivered (no order) can't be seen, so it's never less than held.
- * @param {Row} row @param {Order[]} orders @returns {number}
- */
-export function originalQty(row, orders) {
-  const held = Math.abs(row.qty), sign = Math.sign(row.qty);
-  /** @type {{ at: number, qty: number }[]} */
-  const fills = [], seen = new Set();
-  const walk = (/** @type {Order} */ o) => {
-    if (!o || typeof o !== 'object' || (o.orderId !== undefined && seen.has(o.orderId))) return;
-    seen.add(o.orderId);
-    const legs = o.orderLegCollection || [];
-    for (const a of o.orderActivityCollection || []) {
-      if (a?.activityType && a.activityType !== 'EXECUTION') continue;
-      for (const x of a?.executionLegs || []) {
-        const leg = legs.find(l => l.legId !== undefined && l.legId === x.legId) || legs[0];
-        const qty = Number(x.quantity);
-        if (!leg || leg.instrument?.symbol !== row.symbol || !(qty > 0)) continue;
-        fills.push({ at: schwabTime(x.time || o.closeTime || o.enteredTime || '') || 0, qty: /^BUY/.test(leg.instruction || '') ? qty : -qty });
-      }
-    }
-    (o.childOrderStrategies || []).forEach(walk);
-  };
-  (orders || []).forEach(walk);
-  fills.sort((a, b) => b.at - a.at);
-  let pos = row.qty, most = held;
-  for (const f of fills) {
-    pos -= f.qty;
-    if (Math.sign(pos) !== sign) break;
-    most = Math.max(most, Math.abs(pos));
-  }
-  return most;
 }
 
 /** How many shares a new target can take: what limits already hold is spoken for. @param {Row} row */
@@ -740,6 +756,32 @@ export function targetGain(row, price, qty) {
   const risk = row.stop === null ? 0 : long ? row.avg - row.stop : row.stop - row.avg;
   if (!(row.avg > 0)) return { gain: null, pct: null, r: null };
   return { gain: per * qty * row.mult, pct: per / row.avg * 100, r: risk > 0 ? per / risk : null };
+}
+
+/**
+ * How many shares to add so your average cost lands on a stop: a stop there then risks nothing. Adding at a price only pulls
+ * the average toward that price, so the stop has to sit between your cost and it (above the cost and under the price on a
+ * long, the other way on a short). Whole shares, rounded down, so the average stops just short of the stop and the stop
+ * locks a little. Options count contracts, on the option's own price.
+ * @param {Row} row @param {{ stop: number | null, price?: number | null }} add price: what you'd add at, the mark when left out
+ */
+export function breakevenAdd(row, { stop, price = null }) {
+  const fail = (/** @type {string} */ error) => ({ error, qty: 0, stop: 0, price: 0, newQty: 0, avg: 0, cost: 0, value: 0, locked: 0 });
+  const long = row.qty > 0, held = Math.abs(row.qty), side = long ? 1 : -1, option = row.tradeAs === 'OPTION';
+  const px = (/** @type {number} */ p) => fmtPositionPrice(p, row.tradeAs);
+  if (!(row.avg > 0)) return fail('Schwab shows no cost basis for this position.');
+  if (!(stop && stop > 0)) return fail('Tap the chart where you want the stop, or type it.');
+  const at = price && price > 0 ? price : row.price, where = price && price > 0 ? 'the add price' : 'the price';
+  if (!(at > 0)) return fail('Type the price you would add at.');
+  const level = option ? optionPriceTick(stop) : priceTick(stop);
+  if (side * (at - level) <= 0) return fail(`The stop ${px(level)} is at or ${long ? 'above' : 'below'} ${where} ${px(at)}. Pick a stop ${long ? 'under' : 'over'} it.`);
+  if (side * (level - row.avg) <= 0) {
+    return fail(`Your breakeven is ${px(row.avg)}, and adding at ${px(at)} moves it ${long ? 'up' : 'down'} toward ${px(at)}. Pick a stop between the two.`);
+  }
+  const qty = Math.floor(held * (level - row.avg) / (at - level) + 1e-9);
+  if (qty < 1) return fail(`Less than 1 ${option ? 'contract' : 'share'} gets your breakeven to ${px(level)}. Pick a stop further from your cost.`);
+  const newQty = held + qty, avg = (held * row.avg + qty * at) / newQty;
+  return { error: '', qty, stop: level, price: at, newQty, avg, cost: qty * at * row.mult, value: newQty * at * row.mult, locked: side * (level - avg) * newQty * row.mult };
 }
 
 /** The lines a position's chart draws: average cost, then its stops and limit targets, one line per price with the sizes added up. @param {Row} row */

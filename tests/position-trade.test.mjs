@@ -486,67 +486,27 @@ test('the close ticket picks market or limit, how many and the price, like a bro
   assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
 });
 
-// fills as Schwab lists them on an order: one execution per fill
-const filled = (orderId, instruction, qty, symbol, time, extra = {}) => ({ orderId, orderType: 'MARKET', status: 'FILLED', orderStrategyType: 'SINGLE', enteredTime: time, closeTime: time,
-  quantity: qty, filledQuantity: qty, orderLegCollection: [{ legId: 1, ...leg(instruction, qty, symbol) }],
-  orderActivityCollection: [{ activityType: 'EXECUTION', executionLegs: [{ legId: 1, quantity: qty, price: 40, time }] }], ...extra });
-
-test('the original size is the most held since flat, read back through the fills', async () => {
-  const { run } = await app();
-  const hood = orders => run(`originalQty(${rowWith('HOOD', orders)}, ${JSON.stringify(orders)})`);
-  assert.equal(hood(ORDERS), 300, 'no fills read: what is held');
-  const trade = [
-    filled(601, 'SELL', 50, 'HOOD', '2026-10-01T14:00:00+0000'), // an earlier trade, closed out
-    filled(602, 'BUY', 50, 'HOOD', '2026-09-30T14:00:00+0000'),
-    filled(603, 'BUY', 250, 'HOOD', '2026-10-05T14:00:00+0000'),
-    filled(604, 'BUY', 150, 'HOOD', '2026-10-06T14:00:00+0000'), // scaled in to 400
-    filled(605, 'SELL', 100, 'HOOD', '2026-10-07T14:00:00+0000'), // trimmed to 300
-    filled(606, 'BUY', 999, 'AMD', '2026-10-07T15:00:00+0000'),
-  ];
-  assert.equal(hood([...ORDERS, ...trade]), 400);
-  // a trim inside a filled trigger's child counts, and the same order listed twice only once
-  const child = { orderId: 607, orderType: 'LIMIT', status: 'FILLED', orderStrategyType: 'TRIGGER', orderLegCollection: [], childOrderStrategies: [filled(608, 'SELL', 100, 'HOOD', '2026-10-08T14:00:00+0000')] };
-  assert.equal(hood([...ORDERS, filled(603, 'BUY', 500, 'HOOD', '2026-10-05T14:00:00+0000'), child, child]), 400, '300 held + 100 sold');
-  // a flip: the long before the short isn't this trade
-  const tsla = [filled(701, 'BUY', 20, 'TSLA', '2026-10-01T14:00:00+0000'), filled(702, 'SELL_SHORT', 80, 'TSLA', '2026-10-02T14:00:00+0000'), filled(703, 'BUY_TO_COVER', 20, 'TSLA', '2026-10-03T14:00:00+0000')];
-  assert.equal(run(`originalQty(${rowWith('TSLA', tsla)}, ${JSON.stringify(tsla)})`), 60);
-});
-
-test('the close ticket\'s chips are tens of percent of the original size, capped at what can close', async () => {
+test('the close ticket\'s chips are 25% to All of what is held, capped at what can close', async () => {
   const b = broker();
-  b.live.orders.push(filled(603, 'BUY', 400, 'HOOD', '2026-10-05T14:00:00+0000'), filled(605, 'SELL', 100, 'HOOD', '2026-10-07T14:00:00+0000'));
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'close')");
   const body = () => elements.get('posTradeBody').innerHTML;
   const chip = f => body().match(new RegExp(`<button[^>]*data-arg="${f}"[^>]*>[^<]*</button>`))[0];
-  assert.match(body(), /% of your original 400 shares\. 300 left\./);
-  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['10%', '20%', '25%', '30%', '40%', '50%', '60%', '70%', '75%', '80%', '90%', 'All']);
+  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['25%', '50%', '75%', 'All']);
   assert.match(chip(1), /aria-pressed="true"/, 'all of it to start');
-  assert.match(chip(0.1), /title="40 shares"/);
-  assert.match(chip(0.6), /More than your other orders leave free"[^>]* disabled/, 'the target holds 100 of the 300');
-  assert.match(chip(0.8), /More than you hold now"[^>]* disabled/);
-  assert.match(chip(0.25), /title="100 shares"/, 'a quarter of the original 400');
-  assert.match(chip(0.75), /More than your other orders leave free"[^>]* disabled/, '300 is all held, but the target holds 100');
-  run('setClosePortion(0.3)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="120"/);
-  assert.match(chip(0.3), /aria-pressed="true"/);
+  assert.match(chip(0.25), /title="75 shares"/);
+  assert.match(chip(0.75), /More than your other orders leave free"[^>]* disabled/, 'the target holds 100 of the 300');
+  run('setClosePortion(0.25)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="75"/);
+  assert.match(chip(0.25), /aria-pressed="true"/);
   assert.match(chip(1), /aria-pressed="false"/);
-  run('setClosePortion(0.8)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="120"/, 'a disabled chip does nothing');
+  run('setClosePortion(0.75)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="75"/, 'a disabled chip does nothing');
   run("setCloseQty('40')");
-  assert.match(body(), /id="posCloseQty"[^>]*value="120"/, 'typing leaves the inputs alone');
-  run('setClosePortion(0.2)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="80"/);
-  assert.match(body(), />Sell 80 HOOD at market</);
-});
-
-test('without fills read the chips are tens of percent of what is held', async () => {
-  const b = broker();
-  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
-  await run("openPositionTrade('HOOD', 'close')");
-  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /your original/);
-  run('setClosePortion(0.1)');
-  assert.match(elements.get('posTradeBody').innerHTML, /id="posCloseQty"[^>]*value="30"/);
+  assert.match(body(), /id="posCloseQty"[^>]*value="75"/, 'typing leaves the inputs alone');
+  run('setClosePortion(0.5)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="150"/);
+  assert.match(body(), />Sell 150 HOOD at market</);
 });
 
 test('a partial market close sells only that many and confirms what is left', async () => {
@@ -1420,4 +1380,111 @@ test('an edit is checked against Schwab again before it goes', async () => {
   assert.match(elements.get('editBody').innerHTML, /Replace sell stop \$33\.00 for 50 shares HOOD with sell stop \$36\.00/, 'your change is kept on the new read');
   await run('sendOrderEdit()');
   assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['PUT /orders/102']);
+});
+
+// ---------- a stop at your price ----------
+
+test('a stop at your price covers a position with no stop, on the tick, long or short', async () => {
+  const { run } = await app();
+  const plan = plain(run(`stopPlan(${rowWith('NVDA')}, { stop: 108.004, duration: 'GOOD_TILL_CANCEL' })`));
+  assert.equal(plan.error, '');
+  assert.equal(plan.stop, 108);
+  assert.deepEqual(plan.steps.map(s => s.kind), ['place']);
+  assert.deepEqual(plan.steps[0].order, { orderType: 'STOP', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', orderStrategyType: 'SINGLE', stopPrice: 108,
+    orderLegCollection: [{ instruction: 'SELL', quantity: 150, instrument: { symbol: 'NVDA', assetType: 'EQUITY' } }] });
+  assert.ok(Math.abs(plan.locked - -1560) < 1e-6, 'risks (118.40 − 108) × 150 from your cost');
+  const short = plain(run(`stopPlan(${rowWith('TSLA')}, { stop: 266, duration: 'DAY' })`));
+  assert.deepEqual(short.steps.map(s => [s.kind, s.orderId]), [['replace', 201]], 'the $270 stop is tightened to $266');
+  assert.equal(short.steps[0].order.orderLegCollection[0].instruction, 'BUY_TO_COVER');
+  assert.equal(plain(run(`stopPlan(${rowWith(OPT)}, { stop: 3.42, duration: 'DAY' })`)).stop, 3.4, 'options on their grid');
+});
+
+test('a stop at your price never loosens one: tighter stops stay, and all of them tighter is refused', async () => {
+  const { run } = await app();
+  // HOOD: 300 held, stops $35.50 × 250 and $34 × 50, a $45 target for 100
+  assert.match(run(`stopPlan(${rowWith('HOOD')}, { stop: 35, duration: 'DAY', limits: 'keep' }).error`), /The stops outside your limit are already at or above \$35\.00\./,
+    'the $35.50 stop already covers the 200 outside the limit');
+  const up = plain(run(`stopPlan(${rowWith('HOOD')}, { stop: 37, duration: 'DAY', limits: 'keep' })`));
+  assert.deepEqual(up.steps.map(s => [s.kind, s.orderId]), [['cancel', 102], ['replace', 101]]);
+  assert.equal(up.steps[1].order.stopPrice, 37);
+  assert.equal(up.steps[1].order.orderLegCollection[0].quantity, 200);
+  assert.match(run(`stopPlan(${rowWith('TSLA')}, { stop: 275, duration: 'DAY' }).error`), /Every share already has a stop at or below \$275\.00\. To move one higher, edit it under Working orders\./);
+  assert.match(run(`stopPlan(${rowWith('QQQ')}, { stop: 400, duration: 'DAY' }).error`), /Every share already has a stop at \$400\.00\./);
+});
+
+test('a stop at your price is refused without a price, through the market, or on what orders here can\'t trade', async () => {
+  const { run } = await app();
+  assert.match(run(`stopPlan(${rowWith('NVDA')}, { stop: 0, duration: 'DAY' }).error`), /Set a stop price/);
+  assert.match(run(`stopPlan(${rowWith('NVDA')}, { stop: 112, duration: 'DAY' }).error`), /The stop \$112\.00 is at or above the price \$112\.00\. It would sell right away\./);
+  assert.match(run(`stopPlan(${rowWith('TSLA')}, { stop: 250, duration: 'DAY' }).error`), /at or below the price/);
+  assert.match(run(`stopPlan(${rowWith('SWVXX')}, { stop: 0.9, duration: 'DAY' }).error`), /stocks, ETFs and options/);
+  assert.equal(run(`stopPlan({ ...${rowWith('NVDA')}, avg: 0 }, { stop: 100, duration: 'DAY' }).error`), '', 'no cost basis is no breakeven, but a stop still goes');
+});
+
+test('a stop under a paired target places the pair again with the new stop', async () => {
+  const { run } = await app();
+  // AMD: 50 held, OCO(limit $170, stop $140)
+  const plan = plain(run(`stopPlan(${rowWith('AMD')}, { stop: 145, duration: 'GOOD_TILL_CANCEL' })`));
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 501], ['cancel', 502], ['place', null]]);
+  const [limit, stop] = plan.steps[2].order.childOrderStrategies;
+  assert.equal(limit.price, 170);
+  assert.equal(stop.stopPrice, 145);
+  assert.match(run(`stopPlan(${rowWith('AMD')}, { stop: 135, duration: 'DAY' }).error`), /already has a stop at or above \$135\.00/);
+});
+
+test('every tradable row gets a Stop button', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  const html = elements.get('positionsSection').innerHTML;
+  const cell = symbol => html.split('<tr>').find(r => r.includes(`>${symbol}<`) || r.includes(`>${symbol} `)) || '';
+  for (const s of ['HOOD', 'TSLA', 'NVDA', 'AMD', 'QQQ']) assert.match(cell(s), /data-arg2="stop"[^>]*>Stop</, s);
+  assert.match(cell('AAPL'), new RegExp(`data-arg="${OPT}" data-arg2="stop"`));
+  assert.doesNotMatch(cell('SWVXX'), /data-arg2="stop"/);
+});
+
+test('the stop review takes a typed price, shows the risk, sends once and confirms what Schwab shows', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('NVDA', 'stop')");
+  assert.equal(elements.get('posTradeTitle').textContent, 'Set a stop');
+  const empty = elements.get('posTradeBody').innerHTML;
+  assert.match(empty, /id="posStopPrice"[^>]*value=""/, 'no stop now, so no price yet');
+  assert.match(empty, /Set a stop price/);
+  assert.match(empty, /data-action="placePositionTrade" disabled/);
+  assert.doesNotMatch(empty, /Breakeven \$/, 'the price is under breakeven, so no breakeven chip');
+  await run('placePositionTrade()');
+  assert.equal(b.sent.length, 0);
+
+  run("setPositionStopPrice('108')");
+  const detail = elements.get('posTradeDetail').innerHTML;
+  assert.match(detail, /Place a stop \$108\.00 for 150 shares \(sell\)/);
+  assert.match(detail, /−\$1,560\.00/);
+  assert.match(detail, /1\.56% of acct/);
+  assert.match(detail, /data-action="placePositionTrade">Set stop \$108\.00</);
+  assert.doesNotMatch(detail, /Other stops are cancelled/, 'no stops to cancel');
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['POST /orders']);
+  assert.equal(b.sent[0].body.stopPrice, 108);
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a stop at \$108\.00 for 150 shares/);
+});
+
+test('the stop review asks what a limit in the way does, and offers breakeven when the price is past it', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'stop')");
+  const first = elements.get('posTradeBody').innerHTML;
+  assert.match(first, /data-action="setPositionStopAt" data-arg="38.2"[^>]*>Breakeven \$38\.20</);
+  run('setPositionStopAt(38.2)');
+  assert.match(elements.get('posTradeBody').innerHTML, /aria-pressed="true" data-action="setPositionStopAt"/);
+  run("setPositionStopPrice('37')");
+  const ask = elements.get('posTradeDetail').innerHTML;
+  assert.match(ask, /Stop at \$37\.00 for the 200 shares outside the limit/);
+  assert.match(ask, /Every share gets a stop at \$37\.00/);
+  assert.match(ask, /data-action="placePositionTrade" disabled/);
+  run("setPositionBeMode('keep')");
+  assert.match(elements.get('posTradeBody').innerHTML, /Replace stop \$35\.50 for 250 shares with stop \$37\.00 for 200 shares/);
+  await run('placePositionTrade()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/102', 'PUT /orders/101']);
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a stop at \$37\.00 for 200 shares\. Your limit keeps 100 shares without a stop\./);
 });
