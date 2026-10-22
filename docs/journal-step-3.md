@@ -49,6 +49,7 @@ Defaults, in the app's code (`src/core/journal-labels.js`). Your additions live 
 **Daily setups**
 - **Levels:** 50, 100 and 200 SMA; 8 and 21 EMA; support; resistance; AVWAP from the all-time high, the all-time low, and earnings.
 - **Actions:** bounce, undercut and rally, rejection.
+- **Long and short:** a setup has no direction; the trade's side gives it, so a bounce on a short reads as a rejection and a breakout as a breakdown (docs/journal.md, Long and short).
 - **Patterns:** base breakout, pennant or flag breakout, earnings gap.
 - **My setups:** each setup is saved once and picked from then on. It's an action (bounce, undercut & rally, rejection) at one or more levels ("21 EMA bounce", "50 SMA + support undercut & rally"), or a pattern ("Base breakout"). The list starts with nine; you add one with "+ New setup" when nothing fits.
   - **Search first:** picking what happened and the levels narrows My setups to the ones that fit. One you already have says so, and only a new combination gets saved.

@@ -419,5 +419,6 @@ export const journalTradeRange = which => {
 };
 
 // a review change redraws the page (the section, and the status line with it)
-onReviewChange(() => { if (state.journalTrade) renderJournalTrade(); });
+// a review change redraws the trade page, or the list under the choices sheet (a merge or a short word changes its names)
+onReviewChange(() => { if (state.journalTrade) renderJournalTrade(); else if (state.journalView) renderJournal(); });
 onShotsChange(() => { if (state.journalTrade) renderJournalTrade(); renderShotViewer(); });
