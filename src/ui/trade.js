@@ -4,6 +4,7 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fmtTick, inRegularHours, sharesStopOrder, sharesTicketError, stopTick } from '../core/orders.js';
+import { fillLegs } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
@@ -374,7 +375,7 @@ async function updateTradeStatus(t) {
   const entryOk = !ENDED.test(o.status || ''), stopOk = !!(child && child.status) && !ENDED.test(child.status);
   let text = orderStatusLine(t, o);
   if (entryOk && child && child.status && !stopOk) {
-    const filled = Number(o.filledQuantity) || (o.orderActivityCollection || []).flatMap(a => a.executionLegs || []).reduce((n, l) => n + (Number(l.quantity) || 0), 0);
+    const filled = Number(o.filledQuantity) || fillLegs(o).reduce((n, l) => n + (Number(l.quantity) || 0), 0);
     text += filled > 0 ? ` Your ${filled} ${t.symbol} have no stop. Set one in Schwab now.` : ' The stop is not in place. Check Schwab before the entry fills.';
   }
   t.result = { ok: !entryOk || (child && child.status && !stopOk) ? false : stopOk ? true : null, text };
@@ -383,7 +384,7 @@ async function updateTradeStatus(t) {
 /** "Order 123: filled 125 at $247.11. Stop $243.10: working." from Schwab's order record */
 export function orderStatusLine(t, o) {
   const word = s => String(s || 'unknown').toLowerCase().replace(/_/g, ' ');
-  const legs = (o.orderActivityCollection || []).flatMap(a => a.executionLegs || []);
+  const legs = fillLegs(o);
   const qty = legs.reduce((n, l) => n + (Number(l.quantity) || 0), 0);
   const avg = qty ? legs.reduce((n, l) => n + (Number(l.quantity) || 0) * (Number(l.price) || 0), 0) / qty : 0;
   let text = `Order ${t.orderId}: ${word(o.status)}`;

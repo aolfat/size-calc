@@ -5,7 +5,7 @@
 // Futures aren't in Schwab's API: their fills come from a thinkorswim statement, kept as kind 'statement_fill' rows whose
 // data is the fill itself (core/tos-statement.js).
 import { expiryCloseMs, nyDate } from './options.js';
-import { parseSchwabOption, positionLabel, schwabTime } from './positions.js';
+import { isFill, parseSchwabOption, positionLabel, schwabTime } from './positions.js';
 
 /** @typedef {{ kind: string, record_id: string, account?: string, entered_at?: string | null, data: any }} SavedRecord */
 /**
@@ -24,7 +24,7 @@ export const instructionWords = instruction => {
 
 /**
  * Every execution in an order and its children, one fill per execution leg, matched to its order leg by legId
- * (the first leg when Schwab sends no id). An execution without a positive quantity or price isn't a fill.
+ * (the first leg when Schwab sends no id). A cancel (executionType CANCELED) or an execution without a positive quantity or price isn't a fill.
  * @param {any} order
  * @returns {Fill[]}
  */
@@ -35,7 +35,7 @@ export function orderFills(order) {
     if (!o || typeof o !== 'object') return;
     const legs = Array.isArray(o.orderLegCollection) ? o.orderLegCollection : [];
     (o.orderActivityCollection || []).forEach((/** @type {any} */ a, /** @type {number} */ ai) => {
-      if (a?.activityType && a.activityType !== 'EXECUTION') return;
+      if (!isFill(a)) return;
       (a?.executionLegs || []).forEach((/** @type {any} */ x, /** @type {number} */ xi) => {
         const qty = Number(x?.quantity), price = Number(x?.price);
         if (!(qty > 0) || !(price > 0)) return;
