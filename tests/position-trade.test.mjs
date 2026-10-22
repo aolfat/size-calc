@@ -486,27 +486,29 @@ test('the close ticket picks market or limit, how many and the price, like a bro
   assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
 });
 
-test('the close ticket\'s chips are 25% to All of what is held, capped at what can close', async () => {
+test('the close ticket\'s chips are tens of percent of what is held, capped at what can close', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'close')");
   const body = () => elements.get('posTradeBody').innerHTML;
   const chip = f => body().match(new RegExp(`<button[^>]*data-arg="${f}"[^>]*>[^<]*</button>`))[0];
-  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['25%', '50%', '75%', 'All']);
+  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['10%', '20%', '25%', '30%', '40%', '50%', '60%', '70%', '75%', '80%', '90%', 'All']);
   assert.match(chip(1), /aria-pressed="true"/, 'all of it to start');
+  assert.match(chip(0.1), /title="30 shares"/);
   assert.match(chip(0.25), /title="75 shares"/);
-  assert.match(chip(0.75), /More than your other orders leave free"[^>]* disabled/, 'the target holds 100 of the 300');
-  run('setClosePortion(0.25)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="75"/);
-  assert.match(chip(0.25), /aria-pressed="true"/);
+  assert.match(chip(0.6), /title="180 shares"/);
+  assert.match(chip(0.7), /More than your other orders leave free"[^>]* disabled/, 'the target holds 100 of the 300');
+  run('setClosePortion(0.3)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="90"/);
+  assert.match(chip(0.3), /aria-pressed="true"/);
   assert.match(chip(1), /aria-pressed="false"/);
-  run('setClosePortion(0.75)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="75"/, 'a disabled chip does nothing');
+  run('setClosePortion(0.8)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="90"/, 'a disabled chip does nothing');
   run("setCloseQty('40')");
-  assert.match(body(), /id="posCloseQty"[^>]*value="75"/, 'typing leaves the inputs alone');
-  run('setClosePortion(0.5)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="150"/);
-  assert.match(body(), />Sell 150 HOOD at market</);
+  assert.match(body(), /id="posCloseQty"[^>]*value="90"/, 'typing leaves the inputs alone');
+  run('setClosePortion(0.2)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="60"/);
+  assert.match(body(), />Sell 60 HOOD at market</);
 });
 
 test('a partial market close sells only that many and confirms what is left', async () => {
