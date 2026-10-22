@@ -444,7 +444,7 @@ function targetHint(t) {
   return pairing + ' A limit fills at the target or better, and only if the price gets there.';
 }
 
-const CLOSE_PORTIONS = [0.25, 0.5, 0.75, 1];
+const CLOSE_PORTIONS = [0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1];
 
 /** what a portion chip closes: that share of what's held, at least one; 0 when it's more than is left to close (targets hold the rest) */
 function portionQty(t, f) {
@@ -466,7 +466,7 @@ function closeForm(t, duration) {
   const what = `${row.tradeAs === 'OPTION' ? 'Contracts' : 'Shares'} to ${row.qty > 0 ? 'sell' : 'buy back'}`;
   const price = c.price > 0 ? c.price.toFixed(row.tradeAs === 'OPTION' || c.price >= 1 ? 2 : 4) : '';
   return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div></dd></div>
-    <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions" role="group" aria-label="Percent of the position">${chips}</div></div></dd></div>
+    <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="Percent of the position">${chips}</div></div></dd></div>
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark</span></dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>` : ''}`;
 }
