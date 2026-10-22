@@ -486,67 +486,27 @@ test('the close ticket picks market or limit, how many and the price, like a bro
   assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
 });
 
-// fills as Schwab lists them on an order: one execution per fill
-const filled = (orderId, instruction, qty, symbol, time, extra = {}) => ({ orderId, orderType: 'MARKET', status: 'FILLED', orderStrategyType: 'SINGLE', enteredTime: time, closeTime: time,
-  quantity: qty, filledQuantity: qty, orderLegCollection: [{ legId: 1, ...leg(instruction, qty, symbol) }],
-  orderActivityCollection: [{ activityType: 'EXECUTION', executionLegs: [{ legId: 1, quantity: qty, price: 40, time }] }], ...extra });
-
-test('the original size is the most held since flat, read back through the fills', async () => {
-  const { run } = await app();
-  const hood = orders => run(`originalQty(${rowWith('HOOD', orders)}, ${JSON.stringify(orders)})`);
-  assert.equal(hood(ORDERS), 300, 'no fills read: what is held');
-  const trade = [
-    filled(601, 'SELL', 50, 'HOOD', '2026-10-01T14:00:00+0000'), // an earlier trade, closed out
-    filled(602, 'BUY', 50, 'HOOD', '2026-09-30T14:00:00+0000'),
-    filled(603, 'BUY', 250, 'HOOD', '2026-10-05T14:00:00+0000'),
-    filled(604, 'BUY', 150, 'HOOD', '2026-10-06T14:00:00+0000'), // scaled in to 400
-    filled(605, 'SELL', 100, 'HOOD', '2026-10-07T14:00:00+0000'), // trimmed to 300
-    filled(606, 'BUY', 999, 'AMD', '2026-10-07T15:00:00+0000'),
-  ];
-  assert.equal(hood([...ORDERS, ...trade]), 400);
-  // a trim inside a filled trigger's child counts, and the same order listed twice only once
-  const child = { orderId: 607, orderType: 'LIMIT', status: 'FILLED', orderStrategyType: 'TRIGGER', orderLegCollection: [], childOrderStrategies: [filled(608, 'SELL', 100, 'HOOD', '2026-10-08T14:00:00+0000')] };
-  assert.equal(hood([...ORDERS, filled(603, 'BUY', 500, 'HOOD', '2026-10-05T14:00:00+0000'), child, child]), 400, '300 held + 100 sold');
-  // a flip: the long before the short isn't this trade
-  const tsla = [filled(701, 'BUY', 20, 'TSLA', '2026-10-01T14:00:00+0000'), filled(702, 'SELL_SHORT', 80, 'TSLA', '2026-10-02T14:00:00+0000'), filled(703, 'BUY_TO_COVER', 20, 'TSLA', '2026-10-03T14:00:00+0000')];
-  assert.equal(run(`originalQty(${rowWith('TSLA', tsla)}, ${JSON.stringify(tsla)})`), 60);
-});
-
-test('the close ticket\'s chips are tens of percent of the original size, capped at what can close', async () => {
+test('the close ticket\'s chips are 25% to All of what is held, capped at what can close', async () => {
   const b = broker();
-  b.live.orders.push(filled(603, 'BUY', 400, 'HOOD', '2026-10-05T14:00:00+0000'), filled(605, 'SELL', 100, 'HOOD', '2026-10-07T14:00:00+0000'));
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'close')");
   const body = () => elements.get('posTradeBody').innerHTML;
   const chip = f => body().match(new RegExp(`<button[^>]*data-arg="${f}"[^>]*>[^<]*</button>`))[0];
-  assert.match(body(), /% of your original 400 shares\. 300 left\./);
-  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['10%', '20%', '25%', '30%', '40%', '50%', '60%', '70%', '75%', '80%', '90%', 'All']);
+  assert.deepEqual([...body().matchAll(/data-action="setClosePortion"[^>]*>([^<]*)</g)].map(m => m[1]), ['25%', '50%', '75%', 'All']);
   assert.match(chip(1), /aria-pressed="true"/, 'all of it to start');
-  assert.match(chip(0.1), /title="40 shares"/);
-  assert.match(chip(0.6), /More than your other orders leave free"[^>]* disabled/, 'the target holds 100 of the 300');
-  assert.match(chip(0.8), /More than you hold now"[^>]* disabled/);
-  assert.match(chip(0.25), /title="100 shares"/, 'a quarter of the original 400');
-  assert.match(chip(0.75), /More than your other orders leave free"[^>]* disabled/, '300 is all held, but the target holds 100');
-  run('setClosePortion(0.3)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="120"/);
-  assert.match(chip(0.3), /aria-pressed="true"/);
+  assert.match(chip(0.25), /title="75 shares"/);
+  assert.match(chip(0.75), /More than your other orders leave free"[^>]* disabled/, 'the target holds 100 of the 300');
+  run('setClosePortion(0.25)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="75"/);
+  assert.match(chip(0.25), /aria-pressed="true"/);
   assert.match(chip(1), /aria-pressed="false"/);
-  run('setClosePortion(0.8)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="120"/, 'a disabled chip does nothing');
+  run('setClosePortion(0.75)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="75"/, 'a disabled chip does nothing');
   run("setCloseQty('40')");
-  assert.match(body(), /id="posCloseQty"[^>]*value="120"/, 'typing leaves the inputs alone');
-  run('setClosePortion(0.2)');
-  assert.match(body(), /id="posCloseQty"[^>]*value="80"/);
-  assert.match(body(), />Sell 80 HOOD at market</);
-});
-
-test('without fills read the chips are tens of percent of what is held', async () => {
-  const b = broker();
-  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
-  await run("openPositionTrade('HOOD', 'close')");
-  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /your original/);
-  run('setClosePortion(0.1)');
-  assert.match(elements.get('posTradeBody').innerHTML, /id="posCloseQty"[^>]*value="30"/);
+  assert.match(body(), /id="posCloseQty"[^>]*value="75"/, 'typing leaves the inputs alone');
+  run('setClosePortion(0.5)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="150"/);
+  assert.match(body(), />Sell 150 HOOD at market</);
 });
 
 test('a partial market close sells only that many and confirms what is left', async () => {

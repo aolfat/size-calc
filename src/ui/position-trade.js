@@ -5,7 +5,7 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { closingInstruction, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
-import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, originalQty, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
+import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
@@ -75,7 +75,6 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
   if (kind === 'close') {
     const all = closePlan(row); // what blocks any close of it
     if (all.error) { t.error = all.error; return t; }
-    t.original = originalQty(row, state.positions ? state.positions.orders : []);
     t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
     planClose(t);
   } else if (kind === 'target') planTarget(t);
@@ -150,7 +149,7 @@ export function setCloseType(type) {
   closeChanged(true);
 }
 
-/** a portion chip: that share of the position at its largest (All = everything held, which cancels the targets) */
+/** a portion chip: that share of what's held (All = everything, which cancels the targets) */
 export function setClosePortion(fraction) {
   const t = closeOpen();
   const n = t && portionQty(t, fraction);
@@ -445,13 +444,13 @@ function targetHint(t) {
   return pairing + ' A limit fills at the target or better, and only if the price gets there.';
 }
 
-const CLOSE_PORTIONS = [0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1];
+const CLOSE_PORTIONS = [0.25, 0.5, 0.75, 1];
 
-/** what a portion chip closes: that share of the original size, at least one; 0 when it's more than is left to close (targets hold the rest) */
+/** what a portion chip closes: that share of what's held, at least one; 0 when it's more than is left to close (targets hold the rest) */
 function portionQty(t, f) {
   const held = Math.abs(t.row.qty);
   if (f >= 1) return held;
-  const n = Math.max(1, Math.floor(t.original * f + 1e-9));
+  const n = Math.max(1, Math.floor(held * f + 1e-9));
   return n <= Math.min(held, targetRoom(t.row).free) ? n : 0;
 }
 
@@ -461,14 +460,13 @@ function closeForm(t, duration) {
   const type = (v, label) => `<button class="${c.type === v ? 'active' : ''}" aria-pressed="${c.type === v}" data-action="setCloseType" data-arg="${v}"${off}>${label}</button>`;
   const chips = CLOSE_PORTIONS.map(f => {
     const n = portionQty(t, f), ok = !t.sent && n > 0, on = ok && c.qty === n && (c.portion === f || (f >= 1 && c.portion == null));
-    const why = n ? units(row, n) : Math.floor(t.original * f + 1e-9) > held ? 'More than you hold now' : 'More than your other orders leave free';
+    const why = n ? units(row, n) : 'More than your other orders leave free';
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setClosePortion" data-arg="${f}" title="${why}"${ok ? '' : ' disabled'}>${f >= 1 ? 'All' : Math.round(f * 100) + '%'}</button>`;
   }).join('');
-  const base = t.original > held ? `<span class="shares-detail">% of your original ${units(row, t.original)}. ${held} left.</span>` : '';
   const what = `${row.tradeAs === 'OPTION' ? 'Contracts' : 'Shares'} to ${row.qty > 0 ? 'sell' : 'buy back'}`;
   const price = c.price > 0 ? c.price.toFixed(row.tradeAs === 'OPTION' || c.price >= 1 ? 2 : 4) : '';
   return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div></dd></div>
-    <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions" role="group" aria-label="Percent of the original position">${chips}</div></div>${base}</dd></div>
+    <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions" role="group" aria-label="Percent of the position">${chips}</div></div></dd></div>
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark</span></dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>` : ''}`;
 }
