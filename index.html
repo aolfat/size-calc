@@ -390,10 +390,11 @@
     <div id="posChartPlot" style="display:none;">
       <div class="chart-cap" id="posChartCap"><span id="posChartKind">Daily</span><span class="pos-chart-ranges" id="posChartRanges"></span><button class="filter-btn active pos-chart-avg" id="posChartAvgBtn" data-action="togglePosChartAvg" aria-pressed="true" title="Show or hide your average cost on the chart">Avg</button></div>
       <div class="pos-chart-canvas"><canvas id="posChart" height="260"></canvas><button class="filter-btn" id="posChartToday" data-action="posChartToday" style="display:none;" title="Back to the latest session">Today →</button></div>
-      <div class="chart-hint">Tap the chart to set the target; near a candle's high or low it takes that exact price. Pinch or ctrl+scroll to zoom, drag to pan. Lines: <span style="color:var(--blue);">avg cost</span> · <span style="color:var(--red);">stops</span> · <span style="color:var(--green);">targets</span> · <span style="color:var(--purple);">8 EMA</span></div>
+      <div class="chart-hint"><span id="posChartTapHint">Tap the chart to set the target</span>; near a candle's high or low it takes that exact price. Pinch or ctrl+scroll to zoom, drag to pan. Lines: <span style="color:var(--blue);">avg cost</span> · <span style="color:var(--red);">stops</span> · <span style="color:var(--green);">targets</span> · <span style="color:var(--purple);">8 EMA</span></div>
     </div>
     <div class="pos-target">
-      <div class="section-title">Profit target</div>
+      <div class="seg pos-tool" id="posToolSeg" aria-label="What a tap on the chart sets"><button id="posToolTarget" class="active" aria-pressed="true" data-action="setPosChartTool" data-arg="target">Profit target</button><button id="posToolAdd" aria-pressed="false" data-action="setPosChartTool" data-arg="add" title="Tap where you want your stop: it works out how many to add so your breakeven moves there">Move breakeven</button></div>
+      <div id="posTargetForm">
       <div class="pos-target-row">
         <div class="field">
           <label for="posTargetPrice">Target price</label>
@@ -407,6 +408,20 @@
       </div>
       <div class="pos-target-sum" id="posTargetSummary" role="status"></div>
       <div class="trade-actions"><button class="btn trade-confirm" id="posTargetReview" data-action="openPositionTrade" data-arg="" data-arg2="target" disabled>Review target</button></div>
+      </div>
+      <div id="posAddForm" style="display:none;">
+        <div class="pos-target-row">
+          <div class="field">
+            <label for="posAddStop">Stop at new breakeven</label>
+            <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posAddStop" step="0.01" min="0" inputmode="decimal" placeholder="tap the chart" autocomplete="off" data-input="posAddChanged" /></div>
+          </div>
+          <div class="field">
+            <label for="posAddPrice">Add at</label>
+            <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posAddPrice" step="0.01" min="0" inputmode="decimal" placeholder="now" autocomplete="off" data-input="posAddChanged" /></div>
+          </div>
+        </div>
+        <div class="pos-target-sum" id="posAddSummary" role="status"></div>
+      </div>
     </div>
   </section>
   </div>

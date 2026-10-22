@@ -742,6 +742,32 @@ export function targetGain(row, price, qty) {
   return { gain: per * qty * row.mult, pct: per / row.avg * 100, r: risk > 0 ? per / risk : null };
 }
 
+/**
+ * How many shares to add so your average cost lands on a stop: a stop there then risks nothing. Adding at a price only pulls
+ * the average toward that price, so the stop has to sit between your cost and it (above the cost and under the price on a
+ * long, the other way on a short). Whole shares, rounded down, so the average stops just short of the stop and the stop
+ * locks a little. Options count contracts, on the option's own price.
+ * @param {Row} row @param {{ stop: number | null, price?: number | null }} add price: what you'd add at, the mark when left out
+ */
+export function breakevenAdd(row, { stop, price = null }) {
+  const fail = (/** @type {string} */ error) => ({ error, qty: 0, stop: 0, price: 0, newQty: 0, avg: 0, cost: 0, value: 0, locked: 0 });
+  const long = row.qty > 0, held = Math.abs(row.qty), side = long ? 1 : -1, option = row.tradeAs === 'OPTION';
+  const px = (/** @type {number} */ p) => fmtPositionPrice(p, row.tradeAs);
+  if (!(row.avg > 0)) return fail('Schwab shows no cost basis for this position.');
+  if (!(stop && stop > 0)) return fail('Tap the chart where you want the stop, or type it.');
+  const at = price && price > 0 ? price : row.price, where = price && price > 0 ? 'the add price' : 'the price';
+  if (!(at > 0)) return fail('Type the price you would add at.');
+  const level = option ? optionPriceTick(stop) : priceTick(stop);
+  if (side * (at - level) <= 0) return fail(`The stop ${px(level)} is at or ${long ? 'above' : 'below'} ${where} ${px(at)}. Pick a stop ${long ? 'under' : 'over'} it.`);
+  if (side * (level - row.avg) <= 0) {
+    return fail(`Your breakeven is ${px(row.avg)}, and adding at ${px(at)} moves it ${long ? 'up' : 'down'} toward ${px(at)}. Pick a stop between the two.`);
+  }
+  const qty = Math.floor(held * (level - row.avg) / (at - level) + 1e-9);
+  if (qty < 1) return fail(`Less than 1 ${option ? 'contract' : 'share'} gets your breakeven to ${px(level)}. Pick a stop further from your cost.`);
+  const newQty = held + qty, avg = (held * row.avg + qty * at) / newQty;
+  return { error: '', qty, stop: level, price: at, newQty, avg, cost: qty * at * row.mult, value: newQty * at * row.mult, locked: side * (level - avg) * newQty * row.mult };
+}
+
 /** The lines a position's chart draws: average cost, then its stops and limit targets, one line per price with the sizes added up. @param {Row} row */
 export function positionLevels(row) {
   /** @type {Level[]} */
