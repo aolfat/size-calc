@@ -64,7 +64,8 @@
 .pos-chart .chart-cap { display: flex; gap: 5px; align-items: center; }
 .pos-chart .chart-cap .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
 .pos-chart .chart-cap .pos-chart-avg { margin-left: auto; }
-.pos-chart-ranges { display: contents; } /* range chips: 1M to 1Y on a stock's daily, 1D to 10D on an option's 5-minute */
+.pos-chart-kind { display: flex; gap: 5px; margin-right: 6px; } /* Daily | 5 min on a stock; just '5 min' on an option */
+.pos-chart-ranges { display: contents; } /* range chips: 1M to 1Y on a daily, 1D to 10D on 5-minute bars */
 .pos-chart-canvas { position: relative; }
 #posChartToday { position: absolute; right: 58px; bottom: 28px; padding: 2px 8px; font-size: 11px; }
 .pos-act.active { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }

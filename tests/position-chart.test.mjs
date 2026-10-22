@@ -41,7 +41,7 @@ const OPT_BARS = ['2026-10-08', '2026-10-09', '2026-10-12'].flatMap((day, d) => 
 }));
 
 // Schwab answers from the fixtures; Tradier answers the daily history and the option's timesales, counted
-function network({ bars = BARS } = {}) {
+function network({ bars = BARS, fiveFails = false } = {}) {
   const tradier = [];
   const fetch = async (url) => {
     if (url.startsWith(PROXY)) {
@@ -49,7 +49,7 @@ function network({ bars = BARS } = {}) {
       return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
     }
     if (url.includes('/markets/history')) { tradier.push(url); return json({ history: bars.length ? { day: bars } : null }); }
-    if (url.includes('/markets/timesales')) { tradier.push(url); return json({ series: { data: OPT_BARS } }); }
+    if (url.includes('/markets/timesales')) { tradier.push(url); return fiveFails ? json({}, 400) : json({ series: { data: OPT_BARS } }); }
     throw new Error('Unexpected request ' + url);
   };
   return { fetch, tradier };
@@ -278,7 +278,7 @@ test('an option\'s chart is the contract\'s 5-minute bars from Tradier, with ses
   assert.deepEqual({ ...run('posChart.bars[29]') }, { date: '2026-10-12', time: '10:15', open: 3, high: 3.6, low: 2.8, close: 3.1 });
   assert.equal(elements.get('posChartTitle').textContent, 'HOOD 12/18/26 50C');
   assert.equal(elements.get('posChartMeta').textContent, 'Long 2 contracts · avg $2.50 · now $3.00');
-  assert.equal(elements.get('posChartKind').textContent, '5 min');
+  assert.equal(elements.get('posChartKind').innerHTML, '5 min', 'an option has no daily switch');
   assert.equal(elements.get('posTargetQtyLabel').textContent, 'Contracts to sell');
   const chips = () => elements.get('posChartRanges').innerHTML;
   for (const [n, label] of [[1, '1D'], [2, '2D'], [5, '5D'], [10, '10D']]) assert.match(chips(), new RegExp(`data-action="setPosChartRange" data-arg="${n}"[^>]*>${label}<`));
@@ -293,8 +293,60 @@ test('an option\'s chart is the contract\'s 5-minute bars from Tradier, with ses
   // a stock's chart keeps the daily chips
   run("togglePositionChart('HOOD')");
   await settle();
-  assert.equal(elements.get('posChartKind').textContent, 'Daily');
+  assert.match(elements.get('posChartKind').innerHTML, /class="filter-btn active" aria-pressed="true" data-action="setPosChartInterval" data-arg="daily">Daily</);
   assert.match(chips(), /data-arg="63"[^>]*>3M</);
+});
+
+test('a stock\'s chart switches between Daily and 5 min, reads each from Tradier once, and remembers the pick', async () => {
+  const { run, elements, tradier, storage } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  assert.equal(tradier.length, 1);
+  const kinds = () => elements.get('posChartKind').innerHTML;
+  assert.match(kinds(), /data-arg="5m">5 min</);
+  run("actions.setPosChartInterval({ dataset: { arg: '5m' } })");
+  await settle();
+  assert.equal(tradier.length, 2);
+  assert.match(decodeURIComponent(tradier[1]), /\/markets\/timesales\?symbol=HOOD&interval=5min/);
+  assert.equal(run('posChart.bars.length'), 30);
+  assert.equal(run('posChart.bars[29].time'), '10:15', 'bars carry their time for the readout and ticks');
+  assert.match(kinds(), /class="filter-btn active" aria-pressed="true" data-action="setPosChartInterval" data-arg="5m"/);
+  assert.match(elements.get('posChartRanges').innerHTML, /class="filter-btn active" data-action="setPosChartRange" data-arg="2"/, 'two sessions to start');
+  assert.equal(run('posChart.view.count'), 20);
+  assert.equal(elements.get('posTargetQtyLabel').textContent, 'Shares to sell', 'still shares');
+  assert.equal(storage.get('pos_chart_five'), '1');
+
+  run("setPosChartInterval('daily')");
+  await settle();
+  assert.equal(tradier.length, 2, 'the daily was already read');
+  assert.equal(run('posChart.bars.length'), 260);
+  assert.match(elements.get('posChartRanges').innerHTML, /data-arg="63"[^>]*>3M</);
+  run("setPosChartInterval('5m')");
+  assert.equal(tradier.length, 2, 'and so were the 5-minute bars');
+  assert.equal(run('posChart.bars.length'), 30);
+
+  // the next chart opens on 5 min; an option ignores the switch
+  run("togglePositionChart('TSLA')");
+  await settle();
+  assert.match(decodeURIComponent(tradier[2]), /timesales\?symbol=TSLA&interval=5min/);
+  run(`togglePositionChart('${OPT}')`);
+  await settle();
+  run("setPosChartInterval('daily')");
+  assert.equal(run('posChart.five'), true);
+});
+
+test('a stock\'s 5-minute bars that Tradier won\'t send say so', async () => {
+  const { run, elements } = await chartApp({ fiveFails: true });
+  run("togglePositionChart('HOOD')");
+  await settle();
+  run("setPosChartInterval('5m')");
+  await settle();
+  assert.equal(elements.get('posChartStatus').textContent, "Tradier would not send HOOD's 5-minute bars. They need a brokerage-linked key.");
+  assert.equal(elements.get('posChartPlot').style.display, 'none');
+  run("setPosChartInterval('daily')");
+  await settle();
+  assert.equal(elements.get('posChartStatus').textContent, '');
+  assert.equal(run('posChart.bars.length'), 260);
 });
 
 test('tapping an option\'s chart sets the target on the option price grid, and the review pairs it with the option\'s stop', async () => {
