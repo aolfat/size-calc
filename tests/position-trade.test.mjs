@@ -512,6 +512,27 @@ test('the original size is the most held since flat, read back through the fills
   assert.equal(run(`originalQty(${rowWith('TSLA', tsla)}, ${JSON.stringify(tsla)})`), 60);
 });
 
+// a cancel as Schwab lists it: an EXECUTION too, executionType CANCELED, the canceled quantity at $0
+const canceled = (orderId, instruction, qty, symbol, time) => ({ ...filled(orderId, instruction, qty, symbol, time), status: 'CANCELED', filledQuantity: 0,
+  orderActivityCollection: [{ activityType: 'EXECUTION', executionType: 'CANCELED', quantity: qty, orderRemainingQuantity: 0, executionLegs: [{ legId: 1, quantity: qty, price: 0, time }] }] });
+
+test('a canceled order is not a fill: the original size after going flat is the new trade', async () => {
+  const { run } = await app();
+  const orders = [
+    filled(801, 'BUY', 100, 'HOOD', '2026-09-25T18:14:19+0000'),
+    canceled(802, 'SELL', 20, 'HOOD', '2026-09-26T14:00:00+0000'),
+    filled(803, 'SELL', 100, 'HOOD', '2026-10-16T18:10:16+0000'), // flat
+    filled(804, 'BUY', 10, 'HOOD', '2026-10-21T14:36:27+0000'), // the new trade
+    canceled(805, 'SELL', 2, 'HOOD', '2026-10-22T14:15:16+0000'),
+    canceled(806, 'SELL', 10, 'HOOD', '2026-10-22T15:00:00+0000'),
+    filled(807, 'SELL', 4, 'HOOD', '2026-10-22T19:09:18+0000'),
+  ];
+  assert.equal(run(`originalQty({ ...${rowWith('HOOD', orders)}, qty: 6 }, ${JSON.stringify(orders)})`), 10, 'counting the cancels read 132');
+  const partial = { ...filled(808, 'BUY', 50, 'HOOD', '2026-10-22T15:00:00+0000'), status: 'CANCELED', filledQuantity: 0 };
+  partial.orderActivityCollection.push(canceled(808, 'BUY', 50, 'HOOD', '2026-10-22T15:05:00+0000').orderActivityCollection[0]);
+  assert.equal(run(`orderStatusLine({ orderId: 808 }, ${JSON.stringify(partial)})`), 'Order 808: canceled 50 at $40.00.', 'the cancel adds no shares at $0');
+});
+
 test('the close ticket\'s chips are tens of percent of the original size, capped at what can close', async () => {
   const b = broker();
   b.live.orders.push(filled(603, 'BUY', 400, 'HOOD', '2026-10-05T14:00:00+0000'), filled(605, 'SELL', 100, 'HOOD', '2026-10-07T14:00:00+0000'));
