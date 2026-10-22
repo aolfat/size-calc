@@ -358,7 +358,7 @@ function setupDraftHtml(lib, t) {
     : `<button class="btn primary" data-action="saveSetupDraft"${ready ? '' : ' disabled'}>Save to my setups and add</button><button class="pos-link" data-action="cancelSetupDraft">Cancel</button>`;
   return `<div class="jr-draft">
       <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(lib.nameOf('action', i.key, side).replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setDraftAction" data-arg="${esc(i.key)}"`)).join('')}${newBox('action')}</div>
-      <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(i.name, d.levels.includes(i.key), `data-action="toggleDraftLevel" data-arg="${esc(i.key)}"`)).join('')}${newBox('level')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(lib.nameOf('level', i.key, side), d.levels.includes(i.key), `data-action="toggleDraftLevel" data-arg="${esc(i.key)}"`)).join('')}${newBox('level')}</div>
       <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(lib.nameOf('pattern', i.key, side), d.pattern === i.key, `data-action="setDraftPattern" data-arg="${esc(i.key)}"`)).join('')}${newBox('pattern')}</div>
       <div class="jr-draft-row">${have ? '' : `<label class="jr-draft-q" for="setupDraftName">Name</label><input type="text" id="setupDraftName" maxlength="80" autocomplete="off" placeholder="${esc(auto || 'Pick what happened and at what')}" value="${esc(d.name)}" data-input="setupDraftNameInput" data-enter="saveSetupDraft" />`}
         ${finish}</div>
@@ -437,6 +437,7 @@ const KIND_WORDS = [['setup', 'My setups'], ['market', 'Market'], ['sector', 'Se
 /** what a kind's section says first: the second box is the words on a short */
 const KIND_NOTES = {
   setup: 'A setup reads by the trade\'s side: 9 EMA bounce on a long, 9 EMA rejection on a short. One named for its parts follows them; a typed name takes its own short name.',
+  level: 'The second box is the level on a short: a bounce off support on a short is a rejection at resistance. Moving averages read the same.',
   action: 'The second box is the word on a short: a bounce on a short is a rejection.',
   pattern: 'The second box is the name on a short: a breakout on a short is a breakdown.',
 };
@@ -454,7 +455,7 @@ export function renderJournalLibrary() {
     const rows = items.filter(i => !builtIn(i)).map(i => {
       const into = lib.merged.get(`${kind}:${i.key}`);
       const others = items.filter(o => o.key !== i.key && !lib.merged.has(`${kind}:${o.key}`));
-      const sideWords = kind === 'action' || kind === 'pattern' || (kind === 'setup' && !i.follows);
+      const sideWords = kind === 'level' || kind === 'action' || kind === 'pattern' || (kind === 'setup' && !i.follows);
       // a setup named for its parts says what it reads as on a short; one made of the same things as another offers the merge
       const shortWords = kind === 'setup' && i.follows && i.short && i.short !== i.name ? ` · on a short: ${i.short}` : '';
       const twin = into || i.hidden ? null : kind === 'setup' ? setupTwin(lib, i.key) : kind === 'action' || kind === 'pattern' ? shortTwin(lib, kind, i.key) : null;
@@ -492,7 +493,7 @@ export const toggleLibraryHidden = (kind, key) => changeLibrary(kind, key, { hid
 export const mergeLibraryItem = (kind, key, into) => into === '__unmerge' ? changeLibrary(kind, key, { merged_into: null }) : into ? changeLibrary(kind, key, { merged_into: into }) : null;
 /** a setup made of the same things as another, or a pattern or action that is another's short side, merged into it */
 export const mergeTwin = (kind, key, into) => kind && key && into ? mergeLibraryItem(kind, key, into) : null;
-/** an action's, pattern's or typed setup's words on a short; blank reads the same both ways */
+/** a level's, action's, pattern's or typed setup's words on a short; blank reads the same both ways */
 export function setLibraryShort(kind, key, value) {
   const short = String(value || '').trim().slice(0, 80);
   const base = libraryRow(kind, key);
