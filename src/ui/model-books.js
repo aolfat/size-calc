@@ -195,10 +195,10 @@ function modelExampleEditor(lib) {
     <label for="modelExampleBook">Model book</label><select id="modelExampleBook" data-change="modelExampleField" data-arg="book_id"${m.busy ? ' disabled' : ''}>${m.books.map(b => `<option value="${esc(b.id)}"${d.book_id === b.id ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
     <label for="modelExampleNotes">Notes <span>optional</span></label><textarea id="modelExampleNotes" rows="4" maxlength="4000" placeholder="What makes this example worth studying?" data-input="modelExampleField" data-arg="notes"${m.busy ? ' disabled' : ''}>${esc(d.notes)}</textarea>
     ${state.journalReviewError ? '<p class="mb-error" role="status">Your setups could not load. Reopen Journal to retry before saving.</p>' : ''}
-    <fieldset class="mb-setup-picker"${m.busy || state.journalReviewError ? ' disabled' : ''}><legend>My setups <span>optional</span></legend><p>Tag this example with your existing setups.</p><div class="mb-tags">${choices.map(k => `<button class="filter-btn${selected.includes(k) ? ' active' : ''}" aria-pressed="${selected.includes(k)}" data-action="toggleModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k))}</button>`).join('')}</div></fieldset>
+    <fieldset class="mb-setup-picker"${m.busy || state.journalReviewError ? ' disabled' : ''}><legend>My setups <span>optional</span></legend><p>Tag this example with your existing setups.</p><div class="mb-tags">${choices.map(k => `<button class="filter-btn${selected.includes(k) ? ' active' : ''}" aria-pressed="${selected.includes(k)}" data-action="toggleModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k, 'both'))}</button>`).join('')}</div></fieldset>
     <div class="mb-actions"><button class="btn primary" data-action="saveModelExample"${m.busy || state.journalReviewError ? ' disabled' : ''}>${m.busy ? 'Saving…' : 'Save example'}</button><button class="btn" data-action="cancelModelDraft"${m.busy ? ' disabled' : ''}>Cancel</button></div></div>`;
 }
-const modelTags = (keys, lib) => keys.length ? `<div class="mb-tags">${keys.map(k => `<button class="filter-btn" data-action="selectModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k))}</button>`).join('')}</div>` : '';
+const modelTags = (keys, lib) => keys.length ? `<div class="mb-tags">${keys.map(k => `<button class="filter-btn" data-action="selectModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k, 'both'))}</button>`).join('')}</div>` : '';
 /** A gallery tile: the chart first, then what it is. The book is named only where examples from several books mix. */
 function modelExampleCard(e, lib) {
   const m = modelState(), url = modelUrl(e.path), keys = modelSetupKeys(e.setup_keys, lib);
@@ -228,14 +228,14 @@ export function renderModelBooks() {
   const book = modelBookOf(m.bookId);
   const setupKeys = [...new Set(m.examples.flatMap(e => modelSetupKeys(e.setup_keys, lib)))];
   const nav = (label, count, action, key, active) => `<button class="mb-nav${active ? ' active' : ''}" ${action === 'selectModelSetup' ? 'data-action="selectModelSetup"' : 'data-action="selectModelBook"'} data-arg="${esc(key)}"${active ? ' aria-current="true"' : ''}><span>${esc(label)}</span><small>${count}</small></button>`;
-  const title = m.setupKey ? lib.nameOf('setup', m.setupKey) : book?.name || 'All examples';
+  const title = m.setupKey ? lib.nameOf('setup', m.setupKey, 'both') : book?.name || 'All examples';
   const err = m.error ? `<p class="mb-error" role="alert">${esc(m.error)}</p>` : '';
   el.innerHTML = `<div class="mb-shell"><aside class="mb-sidebar" aria-label="Model book navigation">
     <div class="mb-sidebar-head"><h2>Model books</h2><button class="pos-link" data-action="editModelBook"${m.busy || m.draft || m.bookDraft || !m.loaded || m.loading ? ' disabled' : ''}>+ New book</button></div>
     <div class="seg mb-browse" aria-label="Browse examples"><button class="${m.mode === 'books' ? 'active' : ''}" aria-pressed="${m.mode === 'books'}" data-action="setModelBrowse" data-arg="books">By book</button><button class="${m.mode === 'setups' ? 'active' : ''}" aria-pressed="${m.mode === 'setups'}" data-action="setModelBrowse" data-arg="setups">By setup</button></div>
     <div class="mb-nav-list">${nav('All examples', m.examples.length, m.mode === 'setups' ? 'selectModelSetup' : 'selectModelBook', '', !m.bookId && !m.setupKey)}${m.mode === 'books'
       ? m.books.map(b => nav(b.name, m.examples.filter(e => e.book_id === b.id).length, 'selectModelBook', b.id, m.bookId === b.id)).join('')
-      : setupKeys.map(k => nav(lib.nameOf('setup', k), modelExamplesFor(m.examples, { setupKey: k }, lib).length, 'selectModelSetup', k, m.setupKey === k)).join('')}</div>
+      : setupKeys.map(k => nav(lib.nameOf('setup', k, 'both'), modelExamplesFor(m.examples, { setupKey: k }, lib).length, 'selectModelSetup', k, m.setupKey === k)).join('')}</div>
     <p class="mb-sidebar-hint">${m.mode === 'setups' ? 'Your setup tags connect examples across books.' : 'Keep chart examples you want to study.'}</p></aside>
     <div class="mb-content">${err}${m.loading ? '<p class="hint" role="status">Loading model books…</p>' : ''}${m.error && !m.loaded ? '<button class="btn" data-action="loadModelBooks">Retry</button>' : ''}
     ${m.bookDraft ? modelBookEditor() : m.draft ? modelExampleEditor(lib) : `<div class="mb-feed-head"><div><h2>${esc(title)}</h2><p class="mb-meta">${modelCount(list.length)}${m.setupKey ? ' across your books' : ''}${book ? ` · <button class="pos-link" data-action="editModelBook" data-arg="${esc(book.id)}">Edit book</button> · <button class="pos-link journal-danger" data-action="deleteModelBook" data-arg="${esc(book.id)}">${m.deleteKey === book.id ? 'Delete for good?' : 'Delete book'}</button>${m.deleteKey === book.id ? ' <button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}` : ''}</p></div>

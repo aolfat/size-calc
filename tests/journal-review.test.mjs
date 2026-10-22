@@ -102,7 +102,8 @@ test('a setup named for its parts follows them renamed; a name you typed stays',
   ];
   const lib = `buildLibrary(${JSON.stringify(rows)})`;
   assert.equal(run(`${lib}.nameOf('setup', 'ema8_bounce')`), '9 EMA bounce', 'a starting setup follows its level');
-  assert.equal(run(`${lib}.nameOf('setup', 'mine:u2')`), '9 EMA rejection', 'yours too, when its name was its parts');
+  assert.equal(run(`${lib}.nameOf('setup', 'mine:u2', 'short')`), '9 EMA rejection', 'yours too, when its name was its parts');
+  assert.equal(run(`${lib}.nameOf('setup', 'mine:u2')`), '9 EMA bounce', 'a rejection is a bounce read from a long');
   assert.equal(run(`${lib}.nameOf('setup', 'mine:u3')`), 'My 8 EMA', 'a typed name stays');
   assert.equal(run(`${lib}.nameOf('setup', 'earnings_gap')`), 'Gap and go', 'a pattern setup follows its pattern');
   assert.equal(run(`${lib}.nameOf('setup', 'flag_breakout')`), 'Flag breakout', "a starting name that isn't its parts' stays");
@@ -273,7 +274,7 @@ test('editing a setup in Edit choices: its parts and name change, every trade wi
   run("editSetup('ema8_bounce'); setupEditNameInput('Morning 8 reclaim'); toggleEditLevel('support')");
   assert.match(sheet(), /value="Morning 8 reclaim"/);
   run("toggleEditLevel('support'); toggleEditLevel('ema8'); toggleEditLevel('ema21')");
-  assert.match(sheet(), /Same as <b>21 EMA undercut &amp; rally<\/b>\.<\/span><button class="btn" data-action="mergeEditedSetup" data-arg="ema21_unr">Merge into it/);
+  assert.match(sheet(), /Same as <b>21 EMA undercut &amp; rally \/ reclaim &amp; fail<\/b>\.<\/span><button class="btn" data-action="mergeEditedSetup" data-arg="ema21_unr">Merge into it/);
   assert.doesNotMatch(sheet(), /data-action="saveSetupEdit"/);
   await run('saveSetupEdit()');
   assert.equal(rows('library_items').find(r => r.default_key === 'ema8_bounce').settings.levels[0], 'ema8', 'no twin saved');
@@ -307,7 +308,7 @@ test('what fits while building a setup, and links: https only, named for the flo
   assert.deepEqual(fits({ action: 'undercut', levels: [] }), ['ema21_unr', 'sma50_unr'], 'what happened narrows to that action');
   assert.deepEqual(fits({ action: 'undercut', levels: ['sma50'] }), ['sma50_unr'], 'and a level to the ones at it');
   assert.deepEqual(fits({ action: 'undercut', levels: ['sma50', 'support'] }), [], 'nothing at both yet');
-  assert.deepEqual(fits({ action: '', levels: ['ema21'] }), ['ema21_bounce', 'ema21_unr', 'ema21_rejection'], 'a level alone: everything at it');
+  assert.deepEqual(fits({ action: '', levels: ['ema21'] }), ['ema21_bounce', 'ema21_unr'], 'a level alone: everything at it (the 21 EMA rejection is the bounce now)');
   assert.deepEqual(fits({ pattern: 'earnings_gap' }), ['earnings_gap']);
   assert.equal(run("cleanLink(' https://unusualwhales.com/flow/ticker_flows?ticker_symbol=NVDA ')"), 'https://unusualwhales.com/flow/ticker_flows?ticker_symbol=NVDA');
   assert.equal(run("cleanLink('http://bullflow.io/x')"), '', 'https only');
@@ -381,7 +382,7 @@ test('the Journal shows each trade\'s setups, and a setup filter narrows the lis
   run(`openJournalTrade('${KEY}')`);
   assert.match(body(), /<div class="jr-parts"><span>21 EMA bounce: Action <b>Bounce<\/b> · Level <b>21 EMA<\/b><\/span><span>Base breakout: Pattern <b>Base breakout<\/b><\/span><\/div>/, 'the trade page spells out the parts');
   run('closeJournalTrade()');
-  assert.match(list(), /<select id="journalSetupFilter" class="journal-setup-filter" data-change="setJournalSetupFilter" aria-label="Filter by setup">\s*<option value="">All setups<\/option><option value="base_breakout">Base breakout \(1\)<\/option><option value="action:bounce">Bounce \(1\)<\/option><option value="ema21_bounce">&nbsp;&nbsp;&nbsp;21 EMA bounce \(1\)<\/option><optgroup label="Any setup at"><option value="level:ema21">21 EMA \(1\)<\/option><\/optgroup>/, 'by kind, its setups under it, then by level; most used first, then by name');
+  assert.match(list(), /<select id="journalSetupFilter" class="journal-setup-filter" data-change="setJournalSetupFilter" aria-label="Filter by setup">\s*<option value="">All setups<\/option><option value="base_breakout">Base breakout \/ breakdown \(1\)<\/option><option value="action:bounce">Bounce \/ rejection \(1\)<\/option><option value="ema21_bounce">&nbsp;&nbsp;&nbsp;21 EMA bounce \/ rejection \(1\)<\/option><optgroup label="Any setup at"><option value="level:ema21">21 EMA \(1\)<\/option><\/optgroup>/, 'by kind, its setups under it, then by level; most used first, then by name');
   run("setJournalSetupFilter('ema21_flag')");
   assert.match(list(), /No trades match/, 'a setup no trade has: nothing');
   run("setJournalSetupFilter('ema21_bounce')");
@@ -407,7 +408,7 @@ test('setups add up by kind, the action first and the level second: every bounce
   run(`openJournalTrade('6789|MSFT|long|2026-10-05T14:00:00.000Z')`);
   await run(`toggleSetup(${t}, 'ema21_unr')`);
   run('closeJournalTrade()');
-  assert.match(list(), /<option value="action:bounce">Bounce \(1\)<\/option><option value="ema21_bounce">&nbsp;&nbsp;&nbsp;21 EMA bounce \(1\)<\/option><option value="sma50_bounce">&nbsp;&nbsp;&nbsp;50 SMA bounce \(1\)<\/option><option value="action:undercut">Undercut &amp; rally \(1\)<\/option><option value="ema21_unr">&nbsp;&nbsp;&nbsp;21 EMA undercut &amp; rally \(1\)<\/option>/, 'two bounces on one trade: Bounce counts it once');
+  assert.match(list(), /<option value="action:bounce">Bounce \/ rejection \(1\)<\/option><option value="ema21_bounce">&nbsp;&nbsp;&nbsp;21 EMA bounce \/ rejection \(1\)<\/option><option value="sma50_bounce">&nbsp;&nbsp;&nbsp;50 SMA bounce \/ rejection \(1\)<\/option><option value="action:undercut">Undercut &amp; rally \/ reclaim &amp; fail \(1\)<\/option><option value="ema21_unr">&nbsp;&nbsp;&nbsp;21 EMA undercut &amp; rally \/ reclaim &amp; fail \(1\)<\/option>/, 'two bounces on one trade: Bounce counts it once');
   assert.match(list(), /<optgroup label="Any setup at"><option value="level:ema21">21 EMA \(2\)<\/option><option value="level:sma50">50 SMA \(1\)<\/option><\/optgroup>/);
   run("setJournalSetupFilter('action:bounce')");
   assert.match(list(), /<b>AAPL<\/b>/);
@@ -416,7 +417,7 @@ test('setups add up by kind, the action first and the level second: every bounce
   assert.match(list(), /<b>AAPL<\/b>[\s\S]*<b>MSFT<\/b>|<b>MSFT<\/b>[\s\S]*<b>AAPL<\/b>/, 'both were at the 21 EMA');
   run("setJournalSetupFilter(''); setJournalTab('setups')");
   const table = title => list().split(`<div class="section-title js-sub">${title}</div>`)[1]?.split('</table>')[0] || '';
-  assert.match(table('By setup kind'), /<th scope="col">Kind<\/th>[\s\S]*<b>Undercut &amp; rally<\/b>[\s\S]*<td>1<\/td><td class="journal-buy">\+\$10\.00<\/td>[\s\S]*<b>Bounce<\/b>[\s\S]*<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'one trade each; ties go to the better net');
+  assert.match(table('By setup kind'), /<th scope="col">Kind<\/th>[\s\S]*<b>Undercut &amp; rally \/ reclaim &amp; fail<\/b>[\s\S]*<td>1<\/td><td class="journal-buy">\+\$10\.00<\/td>[\s\S]*<b>Bounce \/ rejection<\/b>[\s\S]*<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'one trade each; ties go to the better net');
   assert.match(table('By level'), /<b>21 EMA<\/b>[\s\S]*<td>2<\/td><td class="journal-sell">−\$494\.00<\/td>[\s\S]*<b>50 SMA<\/b>/);
   assert.doesNotMatch(list(), /Not graded/, 'a trade without a grade is just not in By setup grade');
 });
@@ -449,4 +450,94 @@ test('a setup filter on the Stats periods: Day and ‹ › only see the trades w
   run("setJournalPeriod('all'); setJournalSetupFilter('ema21_bounce'); setJournalPeriod('day')");
   assert.match(list(), /class="jc-title">Fri, Oct 2, 2026</, 'the AAPL trade with the setup, not the MSFT day');
   assert.match(list(), /aria-label="Earlier day with trades" disabled>[\s\S]*aria-label="Later day with trades" disabled>/, 'nothing else carries the setup');
+});
+
+test('setups read by side: one setup is a bounce on a long and a rejection on a short, a breakout and a breakdown', async () => {
+  const { run } = await app();
+  const lib = 'buildLibrary([])';
+  const name = (key, side) => run(`${lib}.nameOf('setup', '${key}', ${side ? `'${side}'` : 'undefined'})`);
+  assert.equal(name('ema21_bounce'), '21 EMA bounce', 'no side is a long');
+  assert.equal(name('ema21_bounce', 'short'), '21 EMA rejection');
+  assert.equal(name('ema21_bounce', 'both'), '21 EMA bounce / rejection', 'both share their first words');
+  assert.equal(name('sma50_unr', 'short'), '50 SMA reclaim & fail');
+  assert.equal(name('base_breakout', 'short'), 'Base breakdown');
+  assert.equal(name('flag_breakout', 'short'), 'Flag breakdown', "the starting flag setup's own short name");
+  assert.equal(name('earnings_gap', 'both'), 'Earnings gap', 'the same both ways');
+  assert.equal(run(`${lib}.resolve('setup', 'ema21_rejection')`), 'ema21_bounce', 'the starting 21 EMA rejection is the 21 EMA bounce on a short');
+  assert.equal(run(`${lib}.resolve('action', 'rejection')`), 'bounce');
+  assert.equal(name('ema21+rejection', 'long'), '21 EMA bounce', 'an old value written as its parts too');
+  assert.equal(run("bothWords('Pennant or flag breakout', 'Pennant or flag breakdown')"), 'Pennant or flag breakout / breakdown');
+  assert.equal(run("bothWords('Wedge pop', 'Wedge pop')"), 'Wedge pop');
+  assert.deepEqual(json(run, "['long', 'short', 'neutral', undefined].map(b => tradeSide({ bias: b }))"), ['long', 'short', 'both', 'long']);
+  assert.deepEqual(json(run, `setupGroups(${lib}, 'ema21_bounce', 'short')`), { kind: { key: 'action:bounce', name: 'Rejection', action: true }, levels: [{ key: 'level:ema21', name: '21 EMA' }] }, 'its kind reads by side, the key stays');
+
+  // your own: a short word in settings, a breakdown pattern merged into the flag, mirrored setups found as twins
+  const rows = [
+    { id: 'p1', kind: 'pattern', name: 'Wedge pop', settings: { short: 'Wedge drop' } },
+    { id: 'p2', kind: 'pattern', name: 'Pennant or flag breakdown', merged_into: 'flag_breakout' },
+    { id: 's1', kind: 'setup', name: 'Wedge pop', settings: { pattern: 'mine:p1' } },
+    { id: 's2', kind: 'setup', name: 'Pennant or flag breakdown', settings: { pattern: 'mine:p2' } },
+    { id: 's3', kind: 'setup', name: '21 EMA rejection', settings: { action: 'rejection', levels: ['ema21'] } },
+    { id: 's4', kind: 'setup', name: 'HVE candle', settings: { pattern: 'mine:p1' }, },
+    { id: 'u1', kind: 'action', name: 'bounce', default_key: 'bounce', settings: { short: '' } },
+  ];
+  const mine = `buildLibrary(${JSON.stringify(rows)})`;
+  assert.equal(run(`${mine}.nameOf('setup', 'mine:s1', 'short')`), 'Wedge drop', 'a pattern of yours with its short word');
+  assert.equal(run(`${mine}.nameOf('setup', 'mine:s2', 'long')`), 'Pennant or flag breakout', 'the breakdown setup reads by side once its pattern is the flag');
+  assert.equal(run(`${mine}.nameOf('setup', 'mine:s4', 'short')`), 'HVE candle', 'a typed name without a short one reads the same');
+  assert.equal(run(`${mine}.nameOf('setup', 'mine:s3', 'short')`), '21 EMA bounce', 'a short word cleared: the same both ways');
+  assert.equal(run(`setupTwin(${mine}, 'mine:s2')?.key`), 'flag_breakout', 'the breakdown setup is the same as the flag breakout');
+  assert.equal(run(`setupTwin(${mine}, 'mine:s3')?.key`), 'ema21_bounce', 'and your 21 EMA rejection the 21 EMA bounce');
+  assert.equal(run(`setupTwin(${mine}, 'ema8_bounce')`), null);
+});
+
+test('the trade page, the list and the filter read setups by side; the library takes short words and merges twins', async () => {
+  const leg = (id, instruction, time, price) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), user_id: 'user-1', data: {
+    orderId: id, enteredTime: time, status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction, quantity: 10, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: 10, price, time }] }],
+  } });
+  const { run, t, list, body, rows } = await page(sb => {
+    for (const r of [leg(601, 'SELL_SHORT', '2026-10-05T14:00:00+0000', 400), leg(602, 'BUY_TO_COVER', '2026-10-05T15:00:00+0000', 399)]) sb.table.set(`user-1:order:${r.record_id}`, r);
+  });
+  run(`closeJournalTrade(); openJournalTrade('6789|MSFT|short|2026-10-05T14:00:00.000Z')`);
+  assert.equal(run(`${t}.bias`), 'short');
+  await run(`toggleSetup(${t}, 'ema21_bounce')`);
+  assert.match(body(), /data-action="toggleSetup" data-arg="ema21_bounce" title="Rejection at 21 EMA">21 EMA rejection<\/button>/, 'a short reads its rejection');
+  assert.match(body(), /Action <b>Rejection<\/b> · Level <b>21 EMA<\/b>/);
+  run('startSetupDraft()');
+  assert.match(body(), /data-action="setDraftAction" data-arg="bounce">Rejection<\/button>/, 'the builder speaks the short side too');
+  assert.match(body(), /data-action="setDraftPattern" data-arg="base_breakout">Base breakdown<\/button>/);
+  assert.doesNotMatch(body(), /data-arg="rejection"/, 'no separate rejection to pick');
+  run('cancelSetupDraft(); closeJournalTrade()');
+  assert.match(list(), /<span class="journal-setup" title="21 EMA rejection"><span class="journal-setup-act">Rejection<\/span>/, "the list in the trade's words");
+  assert.match(list(), /<option value="action:bounce">Bounce \/ rejection \(1\)<\/option>/, 'every side: both words');
+  run("setJournalSide('short')");
+  assert.match(list(), /<option value="action:bounce">Rejection \(1\)<\/option><option value="ema21_bounce">&nbsp;&nbsp;&nbsp;21 EMA rejection \(1\)<\/option>/, 'shorts only: the short words');
+  run("setJournalSide('all')");
+
+  run('openJournalLibrary()');
+  const sheet = () => run("document.getElementById('journalLibraryBody').innerHTML");
+  assert.match(sheet(), /value="rejection" placeholder="On a short: same" aria-label="bounce on a short" data-change="setLibraryShort" data-arg="action" data-arg2="bounce"/, 'an action takes its short word');
+  assert.match(sheet(), /value="Pennant or flag breakdown" placeholder="On a short: same" aria-label="Pennant or flag breakout on a short" data-change="setLibraryShort" data-arg="pattern" data-arg2="flag_breakout"/);
+  assert.doesNotMatch(sheet(), /data-arg2="rejection"|data-arg2="ema21_rejection"/, 'the built-in rejection merge is not listed');
+  await run("setLibraryShort('pattern', 'base_breakout', 'Base failure')");
+  assert.equal(rows('library_items').find(r => r.default_key === 'base_breakout').settings.short, 'Base failure');
+  assert.equal(run("reviewLibrary().nameOf('setup', 'base_breakout', 'short')"), 'Base failure', 'the setup follows its pattern');
+  await run("saveReviewItem(journalPageTrade(), '')");
+  run(`journalReview.library.push({ id: 's9', kind: 'setup', name: '50 SMA rejection', settings: { action: 'rejection', levels: ['sma50'] } }); renderJournalLibrary()`);
+  assert.match(sheet(), /Same setup as <b>50 SMA bounce \/ rejection<\/b> <button class="pos-link" data-action="mergeTwin" data-arg="setup" data-arg2="mine:s9" data-into="sma50_bounce">Merge into it<\/button>/, 'a mirrored pair offers the merge');
+  run(`journalReview.library.push({ id: 'p9', kind: 'pattern', name: 'Pennant or flag breakdown' }); renderJournalLibrary()`);
+  assert.match(sheet(), /The short side of <b>Pennant or flag breakout \/ breakdown<\/b> <button class="pos-link" data-action="mergeTwin" data-arg="pattern" data-arg2="mine:p9" data-into="flag_breakout">/, 'a pattern named for the short side of another');
+  await run("mergeTwin('setup', 'mine:s9', 'sma50_bounce')");
+  assert.equal(rows('library_items').find(r => r.id === 's9').merged_into, 'sma50_bounce');
+  assert.doesNotMatch(sheet(), /data-arg2="mine:s9" data-into/, 'merged: no more twin');
+});
+
+test('a trade labelled with a setup merged away shows the kept one once', async () => {
+  const { run, t, body } = await page();
+  run("journalReview.library.push({ id: 's9', kind: 'setup', name: '9 EMA rejection', settings: { action: 'rejection', levels: ['ema8'] }, merged_into: 'ema8_bounce' })");
+  await run(`toggleSetup(${t}, 'mine:s9')`);
+  assert.equal((body().match(/>8 EMA bounce<\/button>/g) || []).length, 1, 'lit once, not offered again');
+  assert.match(body(), /class="filter-btn active" aria-pressed="true" data-action="toggleSetup" data-arg="mine:s9"/, 'tapping it takes the label it has off');
 });

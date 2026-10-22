@@ -4,7 +4,7 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupsByUse, SINGLE } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupsByUse, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
 import { store } from '../lib/store.js';
 import { addTradeLabel, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
@@ -160,7 +160,7 @@ export async function saveSetupDraft(t) {
   const parts = d.pattern ? { pattern: d.pattern } : { action: d.action, levels: d.levels };
   if (!parts.pattern && !(parts.action && parts.levels.length)) return;
   const name = (d.name.trim() || setupName(lib, parts)).slice(0, 80);
-  const same = lib.choices('setup').find(i => i.name.toLowerCase() === name.toLowerCase() || sameParts(lib.parts(i.key), parts));
+  const same = lib.choices('setup').find(i => [i.name, i.short].some(n => n && n.toLowerCase() === name.toLowerCase()) || sameParts(lib.parts(i.key), parts));
   state.setupDraft = null;
   let key = same?.key;
   if (!key) {
@@ -287,6 +287,7 @@ export function reviewSectionHtml(t) {
   if (t.status === 'history') return '';
   if (state.journalReviewError) return `<div class="section-title js-sub">Review</div><p class="hint" style="color:var(--amber)">Reviews couldn't load: ${esc(state.journalReviewError)}</p>`;
   const lib = library(), st = tradeReviewState(t), d = data(), rv = d.reviews[t.key] || {};
+  const side = tradeSide(t); // setups read in this trade's words: a short's bounce is a rejection
   const has = (kind, key) => labelsOf(t, kind).some(l => l.value === key);
   const miss = new Set(st.missing);
   const own = state.reviewMarketOwn || st.marketOwn;
@@ -297,18 +298,20 @@ export function reviewSectionHtml(t) {
   const pick = kind => lib.choices(kind).map(i => chip(i.name, has(kind, i.key), `data-action="toggleReviewLabel" data-arg="${kind}" data-arg2="${esc(i.key)}"`)).join('');
   // My setups: the ones on this trade (any, even hidden), then the rest, most used first; while + New setup is open,
   // only the ones that fit what's picked so far, so you tap one you have before making another
-  const on = labelsOf(t, 'setup').map(l => l.value);
+  // (a label on a setup merged away counts as the kept one: shown once, and the kept one isn't offered again)
+  const kept = new Set();
+  const on = labelsOf(t, 'setup').map(l => l.value).filter(v => { const k = lib.resolve('setup', v); return !kept.has(k) && kept.add(k); });
   const sd = state.setupDraft;
   const picking = !!sd && !!(sd.action || sd.levels.length || sd.pattern);
-  const offered = setupsByUse(lib, d.labels).filter(i => !on.includes(i.key) && (!picking || setupFits(lib, i.key, sd)));
-  const mySetups = [...on.map(k => chip(lib.nameOf('setup', k), true, `data-action="toggleSetup" data-arg="${esc(k)}" title="${esc(lib.partsWords(lib.parts(k)))}"`)),
-    ...offered.map(i => chip(i.name, false, `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.partsWords(lib.parts(i.key)))}"`))].join('');
+  const offered = setupsByUse(lib, d.labels).filter(i => !kept.has(i.key) && (!picking || setupFits(lib, i.key, sd)));
+  const mySetups = [...on.map(k => chip(lib.nameOf('setup', k, side), true, `data-action="toggleSetup" data-arg="${esc(k)}" title="${esc(lib.partsWords(lib.parts(k), side))}"`)),
+    ...offered.map(i => chip(lib.nameOf('setup', i.key, side), false, `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.partsWords(lib.parts(i.key), side))}"`))].join('');
   // what each setup on the trade is made of: Action Bounce · Level 8 EMA (a pattern says so)
   const partsLine = on.length && !sd ? `<div class="jr-parts">${on.map(k => {
-    const g = setupGroups(lib, lib.resolve('setup', k)), lvl = g.levels.map(l => l.name).join(', ');
+    const g = setupGroups(lib, lib.resolve('setup', k), side), lvl = g.levels.map(l => l.name).join(', ');
     const bits = g.kind && !g.kind.action ? [`Pattern <b>${esc(g.kind.name)}</b>`]
       : [...(g.kind ? [`Action <b>${esc(g.kind.name)}</b>`] : []), ...(lvl ? [`Level${g.levels.length > 1 ? 's' : ''} <b>${esc(lvl)}</b>`] : [])];
-    return `<span>${on.length > 1 ? `${esc(lib.nameOf('setup', k))}: ` : ''}${bits.join(' · ')}</span>`;
+    return `<span>${on.length > 1 ? `${esc(lib.nameOf('setup', k, side))}: ` : ''}${bits.join(' · ')}</span>`;
   }).join('')}</div>` : '';
   const fitNote = picking ? `<span class="jr-fit">${offered.length ? 'My setups that fit:' : 'None of My setups fit yet.'}</span>` : '';
   const builder = state.setupDraft ? setupDraftHtml(lib, t) : '<button class="pos-link jr-new" data-action="startSetupDraft">+ New setup</button><button class="pos-link jr-new" data-action="openJournalLibrary">Edit setups</button>';
@@ -344,19 +347,19 @@ export function reviewSectionHtml(t) {
 
 /** + New setup: what happened, at what (or a pattern), and the name it gets; one you already have says so instead */
 function setupDraftHtml(lib, t) {
-  const d = state.setupDraft;
+  const d = state.setupDraft, side = tradeSide(t);
   const parts = d.pattern ? { pattern: d.pattern } : { action: d.action, levels: d.levels };
-  const auto = setupName(lib, parts);
+  const auto = setupName(lib, parts, side);
   const ready = !!auto;
   const have = ready ? lib.choices('setup').find(i => sameParts(lib.parts(i.key), parts)) : null;
   const onTrade = have && labelsOf(t, 'setup').some(l => lib.resolve('setup', l.value) === have.key);
   const finish = have
-    ? `<span class="jr-have">${onTrade ? `Already on this trade: <b>${esc(have.name)}</b>` : `Already in My setups: ${chip(have.name, false, `data-action="useSetupDraftMatch" data-arg="${esc(have.key)}"`)} tap it to add`}</span><button class="pos-link" data-action="cancelSetupDraft">Close</button>`
+    ? `<span class="jr-have">${onTrade ? `Already on this trade: <b>${esc(lib.nameOf('setup', have.key, side))}</b>` : `Already in My setups: ${chip(lib.nameOf('setup', have.key, side), false, `data-action="useSetupDraftMatch" data-arg="${esc(have.key)}"`)} tap it to add`}</span><button class="pos-link" data-action="cancelSetupDraft">Close</button>`
     : `<button class="btn primary" data-action="saveSetupDraft"${ready ? '' : ' disabled'}>Save to my setups and add</button><button class="pos-link" data-action="cancelSetupDraft">Cancel</button>`;
   return `<div class="jr-draft">
-      <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(i.name.replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setDraftAction" data-arg="${esc(i.key)}"`)).join('')}${newBox('action')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(lib.nameOf('action', i.key, side).replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setDraftAction" data-arg="${esc(i.key)}"`)).join('')}${newBox('action')}</div>
       <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(i.name, d.levels.includes(i.key), `data-action="toggleDraftLevel" data-arg="${esc(i.key)}"`)).join('')}${newBox('level')}</div>
-      <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(i.name, d.pattern === i.key, `data-action="setDraftPattern" data-arg="${esc(i.key)}"`)).join('')}${newBox('pattern')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(lib.nameOf('pattern', i.key, side), d.pattern === i.key, `data-action="setDraftPattern" data-arg="${esc(i.key)}"`)).join('')}${newBox('pattern')}</div>
       <div class="jr-draft-row">${have ? '' : `<label class="jr-draft-q" for="setupDraftName">Name</label><input type="text" id="setupDraftName" maxlength="80" autocomplete="off" placeholder="${esc(auto || 'Pick what happened and at what')}" value="${esc(d.name)}" data-input="setupDraftNameInput" data-enter="saveSetupDraft" />`}
         ${finish}</div>
     </div>`;
@@ -371,7 +374,7 @@ const editTwin = (lib, d) => lib.choices('setup').find(i => i.key !== d.key && s
 /** Edit: the builder opens under the setup, with what it's made of now; a name that's its parts' follows the change */
 export function editSetup(key) {
   const lib = library(), p = lib.parts(key), name = lib.nameOf('setup', key);
-  state.setupEdit = { key, action: p.action || '', levels: [...(p.levels || [])], pattern: p.pattern || '', name, follow: name === setupName(lib, p) };
+  state.setupEdit = { key, action: p.action || '', levels: [...(p.levels || [])], pattern: p.pattern || '', name, follow: !!lib.item('setup', key)?.follows };
   renderJournalLibrary();
 }
 export function cancelSetupEdit() { state.setupEdit = null; renderJournalLibrary(); }
@@ -399,14 +402,16 @@ export function saveSetupEdit() {
   const parts = editParts(d), auto = setupName(lib, parts);
   if (!auto || editTwin(lib, d)) return;
   state.setupEdit = null;
-  return changeLibrary('setup', d.key, { name: (d.name.trim() || auto).slice(0, 80), settings: parts });
+  // a typed short name stays with it
+  const short = libraryRow('setup', d.key)?.settings?.short;
+  return changeLibrary('setup', d.key, { name: (d.name.trim() || auto).slice(0, 80), settings: typeof short === 'string' ? { ...parts, short } : parts });
 }
 
 /** the builder under a setup being edited; one made of the same things offers a merge instead of a twin */
 function setupEditHtml(lib) {
   const d = state.setupEdit, auto = setupName(lib, editParts(d)), twin = auto ? editTwin(lib, d) : null;
   const finish = twin
-    ? `<span class="jr-have">Same as <b>${esc(twin.name)}</b>.</span><button class="btn" data-action="mergeEditedSetup" data-arg="${esc(twin.key)}">Merge into it</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`
+    ? `<span class="jr-have">Same as <b>${esc(lib.nameOf('setup', twin.key, 'both'))}</b>.</span><button class="btn" data-action="mergeEditedSetup" data-arg="${esc(twin.key)}">Merge into it</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`
     : `<button class="btn primary" data-action="saveSetupEdit"${auto ? '' : ' disabled'}>Save</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`;
   return `<div class="jr-draft jl-edit">
       <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(i.name.replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setEditAction" data-arg="${esc(i.key)}"`)).join('')}</div>
@@ -429,6 +434,14 @@ export function mergeEditedSetup(into) {
 // ---------- the Library sheet ----------
 
 const KIND_WORDS = [['setup', 'My setups'], ['market', 'Market'], ['sector', 'Sector'], ['level', 'Levels'], ['action', 'What happened'], ['pattern', 'Patterns'], ['tactic', 'Entry tactics'], ['tag', 'Tags'], ['mistake', 'Mistakes']];
+/** what a kind's section says first: the second box is the words on a short */
+const KIND_NOTES = {
+  setup: 'A setup reads by the trade\'s side: 9 EMA bounce on a long, 9 EMA rejection on a short. One named for its parts follows them; a typed name takes its own short name.',
+  action: 'The second box is the word on a short: a bounce on a short is a rejection.',
+  pattern: 'The second box is the name on a short: a breakout on a short is a breakdown.',
+};
+/** the box for an item's words on a short */
+const shortBox = (kind, i) => `<input type="text" class="jl-short" maxlength="80" value="${esc(i.short)}" placeholder="On a short: same" aria-label="${esc(i.name)} on a short" data-change="setLibraryShort" data-arg="${kind}" data-arg2="${esc(i.key)}" />`;
 
 export function renderJournalLibrary() {
   const el = document.getElementById('journalLibraryBody');
@@ -436,17 +449,25 @@ export function renderJournalLibrary() {
   const lib = library();
   el.innerHTML = KIND_WORDS.map(([kind, words]) => {
     const items = lib.byKind[kind] || [];
-    const rows = items.map(i => {
+    // a built-in merge (the rejection: a bounce on a short) isn't yours to undo, so it isn't listed
+    const builtIn = i => BUILT_IN_MERGES.has(`${kind}:${i.key}`) && !libraryRow(kind, i.key)?.merged_into;
+    const rows = items.filter(i => !builtIn(i)).map(i => {
       const into = lib.merged.get(`${kind}:${i.key}`);
       const others = items.filter(o => o.key !== i.key && !lib.merged.has(`${kind}:${o.key}`));
-      return `<div class="jl-row${kind === 'setup' ? ' jl-setup' : ''}${i.hidden || into ? ' jl-off' : ''}"><input type="text" maxlength="80" value="${esc(i.name)}" aria-label="Rename ${esc(i.name)}" data-change="renameLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}" />
-        ${kind === 'setup' ? `<span class="jl-parts">${esc(lib.partsWords(lib.parts(i.key)))}</span>` : ''}${i.own ? '<span class="journal-tag journal-tag-quiet">yours</span>' : ''}
+      const sideWords = kind === 'action' || kind === 'pattern' || (kind === 'setup' && !i.follows);
+      // a setup named for its parts says what it reads as on a short; one made of the same things as another offers the merge
+      const shortWords = kind === 'setup' && i.follows && i.short && i.short !== i.name ? ` · on a short: ${i.short}` : '';
+      const twin = into || i.hidden ? null : kind === 'setup' ? setupTwin(lib, i.key) : kind === 'action' || kind === 'pattern' ? shortTwin(lib, kind, i.key) : null;
+      return `<div class="jl-row${kind === 'setup' ? ' jl-setup' : ''}${sideWords ? ' jl-sided' : ''}${i.hidden || into ? ' jl-off' : ''}"><input type="text" maxlength="80" value="${esc(i.name)}" aria-label="Rename ${esc(i.name)}" data-change="renameLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}" />
+        ${sideWords && !into ? shortBox(kind, i) : ''}
+        ${kind === 'setup' ? `<span class="jl-parts">${esc(lib.partsWords(lib.parts(i.key)) + shortWords)}</span>` : ''}${i.own ? '<span class="journal-tag journal-tag-quiet">yours</span>' : ''}
         ${kind === 'setup' && !into ? `<button class="pos-link" data-action="editSetup" data-arg="${esc(i.key)}" aria-expanded="${state.setupEdit?.key === i.key}">Edit</button>` : ''}
         <button class="pos-link" data-action="toggleLibraryHidden" data-arg="${kind}" data-arg2="${esc(i.key)}">${i.hidden ? 'Show' : 'Hide'}</button>
-        <select aria-label="Merge ${esc(i.name)} into" data-change="mergeLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}"><option value="">${into ? '' : 'Merge into…'}</option>${others.map(o => `<option value="${esc(o.key)}"${into === o.key ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}${into ? '<option value="__unmerge">Unmerge</option>' : ''}</select></div>
+        <select aria-label="Merge ${esc(i.name)} into" data-change="mergeLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}"><option value="">${into ? '' : 'Merge into…'}</option>${others.map(o => `<option value="${esc(o.key)}"${into === o.key ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}${into ? '<option value="__unmerge">Unmerge</option>' : ''}</select>
+        ${twin ? `<span class="jl-twin">${kind === 'setup' ? 'Same setup as' : 'The short side of'} <b>${esc(lib.nameOf(kind, twin.key, 'both'))}</b> <button class="pos-link" data-action="mergeTwin" data-arg="${kind}" data-arg2="${esc(i.key)}" data-into="${esc(twin.key)}">Merge into it</button></span>` : ''}</div>
         ${kind === 'setup' && state.setupEdit?.key === i.key ? setupEditHtml(lib) : ''}`;
     }).join('');
-    return `<div class="sheet-section"><div class="sheet-label">${words}</div><div class="jl-list">${rows}</div></div>`;
+    return `<div class="sheet-section"><div class="sheet-label">${words}</div>${KIND_NOTES[kind] ? `<p class="hint">${esc(KIND_NOTES[kind])}</p>` : ''}<div class="jl-list">${rows}</div></div>`;
   }).join('') + '<p class="hint">Hidden choices stop being offered; trades already labeled keep them. Merging counts one as the other everywhere, and the old name maps to the kept one from then on.</p>';
 }
 
@@ -469,14 +490,29 @@ function changeLibrary(kind, key, patch) {
 export const renameLibraryItem = (kind, key, name) => String(name || '').trim() ? changeLibrary(kind, key, { name: String(name).trim().slice(0, 80) }) : renderJournalLibrary();
 export const toggleLibraryHidden = (kind, key) => changeLibrary(kind, key, { hidden: !library().item(kind, key)?.hidden });
 export const mergeLibraryItem = (kind, key, into) => into === '__unmerge' ? changeLibrary(kind, key, { merged_into: null }) : into ? changeLibrary(kind, key, { merged_into: into }) : null;
+/** a setup made of the same things as another, or a pattern or action that is another's short side, merged into it */
+export const mergeTwin = (kind, key, into) => kind && key && into ? mergeLibraryItem(kind, key, into) : null;
+/** an action's, pattern's or typed setup's words on a short; blank reads the same both ways */
+export function setLibraryShort(kind, key, value) {
+  const short = String(value || '').trim().slice(0, 80);
+  const base = libraryRow(kind, key);
+  if (!base) return;
+  return changeLibrary(kind, key, { settings: { ...(base.settings || {}), short } });
+}
 
-/** a trade's setups as the list shows them: [{ key, name, kind, levels }], merges followed, in the order they were added; kind and levels are what it adds up under (setupGroups) */
-export function setupsOf(t) {
+/** the side the Journal's side filter shows, for names read off any one trade: a short's, a long's, or both */
+export const shownSide = () => state.journalSide === 'long' || state.journalSide === 'short' ? state.journalSide : 'both';
+
+/**
+ * a trade's setups as the list shows them: [{ key, name, kind, levels }], merges followed, in the order they were added;
+ * kind and levels are what it adds up under (setupGroups); names in the trade's own words unless a side is given
+ */
+export function setupsOf(t, side = tradeSide(t)) {
   if (!state.journalReview) return [];
   const lib = library();
   const seen = new Set();
   return (data().labels[t.key] || []).filter(l => l.kind === 'setup').map(l => lib.resolve('setup', l.value))
-    .filter(k => !seen.has(k) && seen.add(k)).map(key => ({ key, name: lib.nameOf('setup', key), ...setupGroups(lib, key) }));
+    .filter(k => !seen.has(k) && seen.add(k)).map(key => ({ key, name: lib.nameOf('setup', key, side), ...setupGroups(lib, key, side) }));
 }
 
 /** whether a trade fits the setup filter: a kind ('action:bounce': any bounce), a level ('level:ema21'), or one setup's key */
@@ -491,14 +527,15 @@ export function setupMatches(t, filter) {
 /**
  * The setup filter's menu, the action first and the level second: each kind (Bounce, Undercut & rally) with its count and
  * its setups under it, patterns and setups without a kind on their own, most used first; then every level on its own (any
- * action at the 21 EMA). A trade counts once in each. [{ value, name, count, depth }] and the levels, or empty.
+ * action at the 21 EMA). A trade counts once in each. [{ value, name, count, depth }] and the levels, or empty. Names in
+ * side's words: a short's when the side filter shows shorts, both ('Bounce / rejection') when it shows every side.
  */
-export function setupMenu(trades) {
+export function setupMenu(trades, side = shownSide()) {
   /** @type {Map<string, { value: string, name: string, count: number, kids?: Map<string, any> }>} */
   const top = new Map(), levels = new Map();
   const bump = (map, value, name) => { const e = map.get(value) || { value, name, count: 0 }; e.count++; map.set(value, e); return e; };
   for (const t of trades) {
-    const list = setupsOf(t);
+    const list = setupsOf(t, side);
     if (!list.length) continue;
     const kinds = new Set(), lvls = new Set();
     for (const s of list) {
@@ -531,7 +568,7 @@ export const reviewOf = t => ({ grade: data().reviews[t.key]?.setup_grade || '',
 /** a trade's labels in words, for the list and the deck later: 'Strong · 50 SMA bounce · 30-minute pivot' */
 export function labelWords(t) {
   const lib = library();
-  return (data().labels[t.key] || []).filter(l => l.kind !== 'mistake').map(l => lib.nameOf(l.kind, l.value)).join(' · ');
+  return (data().labels[t.key] || []).filter(l => l.kind !== 'mistake').map(l => lib.nameOf(l.kind, l.value, tradeSide(t))).join(' · ');
 }
 
 export { parseSetup };
@@ -546,8 +583,8 @@ export function periodReviewContext() {
     review: key => d.reviews[key],
     labels: key => (d.labels[key] || []).map(l => ({ kind: l.kind, value: lib.resolve(l.kind, l.value) })),
     market: t => tradeReviewState(t).market,
-    nameOf: (kind, value) => lib.nameOf(kind, value),
-    kinds: key => (d.labels[key] || []).filter(l => l.kind === 'setup').map(l => { const k = lib.resolve('setup', l.value); return setupGroups(lib, k).kind?.name || lib.nameOf('setup', k); }),
+    nameOf: (kind, value) => lib.nameOf(kind, value, 'both'),
+    kinds: key => (d.labels[key] || []).filter(l => l.kind === 'setup').map(l => { const k = lib.resolve('setup', l.value); return setupGroups(lib, k, 'both').kind?.name || lib.nameOf('setup', k, 'both'); }),
     reviewed: t => tradeReviewState(t).reviewed,
     saved: key => !!d.weekly?.[key],
   };

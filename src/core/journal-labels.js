@@ -1,14 +1,15 @@
 // @ts-check
 // Journal review, pure (docs/journal-step-3.md): the label defaults, your library on top of them (your own items,
 // renamed / hidden / merged defaults), My setups (each an action at one or more levels, or a pattern, saved once and
-// picked from then on), whether a trade is reviewed (market, sector, a setup, a tactic, both grades and an exit note), and the
+// picked from then on; each reads by the trade's side: a bounce on a short is a rejection), whether a trade is reviewed (market, sector, a setup, a tactic, both grades and an exit note), and the
 // review deck's queue (the pass each trade needs: opening while it's open, the plan, grade and exit note once it closes; newest
 // first, from the day you chose to start reviewing).
 import { nyParts } from './journal-stats.js';
 
 /** @typedef {'market' | 'sector' | 'setup' | 'level' | 'action' | 'pattern' | 'tactic' | 'tag' | 'mistake'} ItemKind */
 /** @typedef {{ action?: string, levels?: string[], pattern?: string }} SetupParts  an action at its levels, or a pattern */
-/** @typedef {{ key: string, kind: ItemKind, name: string, own: boolean, hidden: boolean, settings?: any }} Item */
+/** @typedef {{ key: string, kind: ItemKind, name: string, short: string, own: boolean, hidden: boolean, follows?: boolean, settings?: any }} Item  short: its words on a short ('' when the same) */
+/** @typedef {'long' | 'short' | 'both'} SideWords  which words to use: a long's, a short's, or both ('bounce / rejection') */
 /** @typedef {{ id: string, kind: ItemKind, name: string, default_key?: string | null, hidden?: boolean, merged_into?: string | null, settings?: any }} LibraryRow */
 /** @typedef {{ kind: string, value: string, set_by?: string }} Label */
 
@@ -24,6 +25,34 @@ export const DEFAULTS = /** @type {Record<ItemKind, [string, string][]>} */ ({
   tag: [['option_flow', 'Option flow']],
   mistake: [['chased', 'Chased the entry'], ['oversized', 'Oversized'], ['moved_stop', 'Moved the stop'], ['revenge', 'Revenge trade'], ['exited_early', 'Exited early'], ['skipped_stop', "Didn't take the stop"]],
 });
+
+/**
+ * What a default reads on a short (its name is the long side's). A default not here reads the same both ways; your own
+ * items and renamed defaults keep theirs in settings.short.
+ */
+export const DEFAULT_SHORT = /** @type {Record<string, string>} */ ({
+  'action:bounce': 'rejection', 'action:undercut': 'reclaim & fail',
+  'pattern:base_breakout': 'Base breakdown', 'pattern:flag_breakout': 'Pennant or flag breakdown',
+  'setup:flag_breakout': 'Flag breakdown',
+});
+/** defaults that are another one seen from the short side, merged into it for everyone: a rejection is a bounce on a short */
+export const BUILT_IN_MERGES = new Map([['action:rejection', 'bounce'], ['setup:ema21_rejection', 'ema21_bounce']]);
+
+/**
+ * Both sides' words in one: the words they share, then each one's rest ('9 EMA bounce / rejection'); one when they're the same.
+ * @param {string} long @param {string} [short]
+ */
+export function bothWords(long, short) {
+  if (!short || short === long) return long;
+  const a = long.split(' '), b = short.split(' ');
+  let n = 0;
+  while (n < a.length - 1 && n < b.length - 1 && a[n].toLowerCase() === b[n].toLowerCase()) n++;
+  return [...a.slice(0, n), `${a.slice(n).join(' ')} / ${b.slice(n).join(' ')}`].join(' ');
+}
+/** an item's words for a side; no side is the long one. @param {string} name @param {string} short @param {SideWords} [side] */
+const sided = (name, short, side) => !short || !side || side === 'long' ? name : side === 'short' ? short : bothWords(name, short);
+/** the words a trade's setups read in: its side, both for a neutral one. @param {{ bias?: string }} t @returns {SideWords} */
+export const tradeSide = t => t.bias === 'short' ? 'short' : t.bias === 'long' || !t.bias ? 'long' : 'both';
 
 /** what the starting setups are made of */
 export const DEFAULT_SETUP_PARTS = /** @type {Record<string, SetupParts>} */ ({
@@ -43,6 +72,13 @@ export const REQUIRED = ['market', 'sector', 'setup', 'tactic', 'setup grade', '
 
 /** every default's own words, 'level:ema8' → '8 EMA' */
 const DEFAULT_NAMES = new Map(Object.entries(DEFAULTS).flatMap(([kind, list]) => list.map(([key, name]) => [`${kind}:${key}`, name])));
+/** a default's own words for a side, '\0' for anything else (so a name made of it never matches). @param {'long' | 'short'} side */
+const defaultWords = side => (/** @type {string} */ kind, /** @type {string} */ key) => {
+  const n = DEFAULT_NAMES.get(`${kind}:${key}`);
+  return n === undefined ? '\0' : side === 'short' && DEFAULT_SHORT[`${kind}:${key}`] || n;
+};
+/** a short word kept in settings ('' clears a default's), else the default's own. @param {any} settings @param {string} id */
+const shortOf = (settings, id) => typeof settings?.short === 'string' ? settings.short.trim() : DEFAULT_SHORT[id] || '';
 
 /**
  * A setup's parts in a setup's name: the pattern's, or 'levels action'; '' when it isn't whole.
@@ -56,7 +92,8 @@ const ownKey = row => `mine:${row.id}`;
 
 /**
  * The library: the defaults with your changes (a row with a default_key renames or hides it), your own items, and
- * merges (an item merged into another resolves to it). resolve() follows merges; nameOf() names any key, a setup's too.
+ * merges (an item merged into another resolves to it; BUILT_IN_MERGES for everyone). resolve() follows merges; nameOf()
+ * names any key, a setup's too, in a side's words.
  * @param {LibraryRow[]} rows
  */
 export function buildLibrary(rows = []) {
@@ -72,15 +109,16 @@ export function buildLibrary(rows = []) {
     byKind[kind] = [];
     for (const [key, name] of list) {
       const c = changed.get(`${kind}:${key}`);
-      const item = { key, kind, name: c?.name || name, own: false, hidden: !!c?.hidden, settings: c?.settings || {} };
+      const item = { key, kind, name: c?.name || name, short: shortOf(c?.settings, `${kind}:${key}`), own: false, hidden: !!c?.hidden, settings: c?.settings || {} };
       byKind[kind].push(item);
       all.set(`${kind}:${key}`, item);
-      if (c?.merged_into) merged.set(`${kind}:${key}`, c.merged_into);
+      const into = c?.merged_into || BUILT_IN_MERGES.get(`${kind}:${key}`);
+      if (into) merged.set(`${kind}:${key}`, into);
     }
   }
   for (const r of rows) {
     if (r.default_key || !byKind[r.kind]) continue;
-    const item = { key: ownKey(r), kind: r.kind, name: r.name, own: true, hidden: !!r.hidden, settings: r.settings || {} };
+    const item = { key: ownKey(r), kind: r.kind, name: r.name, short: shortOf(r.settings, ''), own: true, hidden: !!r.hidden, settings: r.settings || {} };
     byKind[r.kind].push(item);
     all.set(`${r.kind}:${item.key}`, item);
     if (r.merged_into) merged.set(`${r.kind}:${item.key}`, r.merged_into);
@@ -94,23 +132,30 @@ export function buildLibrary(rows = []) {
   /** the item for a kind and key, merges followed. @param {string} kind @param {string} key */
   const item = (kind, key) => all.get(`${kind}:${resolve(kind, key)}`) || null;
   /**
-   * a label's words: 'Strong', '21 EMA bounce', 'Base breakout', or the key itself when it's unknown.
-   * @param {string} kind @param {string} value
+   * a label's words: 'Strong', '21 EMA bounce', 'Base breakout', or the key itself when it's unknown; side picks a long's
+   * words (the default), a short's ('21 EMA rejection') or both ('21 EMA bounce / rejection').
+   * @param {string} kind @param {string} value @param {SideWords} [side] @returns {string}
    */
-  const nameOf = (kind, value) => {
-    if (kind === 'setup' && item('setup', value)) return /** @type {Item} */ (item('setup', value)).name;
+  const nameOf = (kind, value, side) => {
+    const it = item(kind, value);
+    if (it) return sided(it.name, it.short, side);
     if (kind === 'setup') { // a setup written as its parts ('sma50+bounce', 'pattern:base_breakout')
       const s = parseSetup(value);
-      if (s.pattern) return item('pattern', s.pattern)?.name || s.pattern;
-      const level = item('level', s.level)?.name || s.level;
-      return s.action ? `${level} ${item('action', s.action)?.name || s.action}` : level;
+      if (s.pattern) return nameOf('pattern', s.pattern, side);
+      const level = nameOf('level', s.level, side);
+      return s.action ? `${level} ${nameOf('action', s.action, side)}` : level;
     }
-    return item(kind, value)?.name || value;
+    return value;
   };
   /** the choices to offer for a kind: not hidden, not merged away. @param {ItemKind} kind */
   const choices = kind => (byKind[kind] || []).filter(i => !i.hidden && !merged.has(`${kind}:${i.key}`));
-  /** what a setup is made of: { action, levels } or { pattern }, merges followed. @param {string} key */
+  /** what a setup is made of: { action, levels } or { pattern }, merges followed (its own and its parts'). @param {string} key */
   const parts = key => {
+    const p = rawParts(key);
+    return p.pattern ? { pattern: resolve('pattern', p.pattern) } : { action: p.action ? resolve('action', p.action) : '', levels: [...new Set((p.levels || []).map(l => resolve('level', l)))] };
+  };
+  /** @param {string} key @returns {SetupParts} */
+  const rawParts = key => {
     const k = resolve('setup', key);
     const own = /** @type {any} */ (all.get(`setup:${k}`));
     // yours keeps its parts; a default keeps its own unless you edited it (its row's settings)
@@ -120,22 +165,27 @@ export function buildLibrary(rows = []) {
     const s = parseSetup(k);
     return s.pattern ? { pattern: s.pattern } : { action: s.action, levels: s.level ? [s.level] : [] };
   };
-  /** a setup's parts in words: 'Bounce at 21 EMA + Support', or the pattern's name. @param {SetupParts} p */
-  const partsWords = p => p.pattern ? nameOf('pattern', p.pattern)
-    : `${(nameOf('action', p.action || '') || '').replace(/^./, c => c.toUpperCase())} at ${(p.levels || []).map(l => nameOf('level', l)).join(' + ')}`;
-  // a setup named for its parts in the defaults' words ('8 EMA bounce') was never typed: it follows them renamed ('9 EMA bounce')
+  /** a setup's parts in words: 'Bounce at 21 EMA + Support', or the pattern's name. @param {SetupParts} p @param {SideWords} [side] */
+  const partsWords = (p, side) => p.pattern ? nameOf('pattern', p.pattern, side)
+    : `${(nameOf('action', p.action || '', side) || '').replace(/^./, (/** @type {string} */ c) => c.toUpperCase())} at ${(p.levels || []).map(l => nameOf('level', l, side)).join(' + ')}`;
+  const words = (/** @type {SideWords} */ side) => (/** @type {string} */ kind, /** @type {string} */ key) => nameOf(kind, key, side);
+  // a setup named for its parts, either side's words, the defaults' or yours ('8 EMA bounce', '8 EMA rejection'), was never
+  // typed: it follows them renamed ('9 EMA bounce') and reads by side. A typed one keeps its name and its own short one.
   for (const i of byKind.setup) {
-    const p = parts(i.key);
-    if (i.name === partsName(p, (kind, key) => DEFAULT_NAMES.get(`${kind}:${key}`) ?? '\0')) i.name = partsName(p, nameOf) || i.name;
+    const p = parts(i.key), raw = rawParts(i.key), long = partsName(p, words('long'));
+    const said = [raw, p].flatMap(x => [partsName(x, defaultWords('long')), partsName(x, defaultWords('short'))]);
+    i.follows = !!long && [...said, long, partsName(p, words('short'))].includes(i.name);
+    if (i.follows) { i.name = long; i.short = partsName(p, words('short')); }
+    else if (typeof i.settings?.short !== 'string' && i.name !== DEFAULT_NAMES.get(`setup:${i.key}`)) i.short = '';
   }
   return { byKind, resolve, item, nameOf, choices, merged, parts, partsWords };
 }
 
 /**
  * The name a new setup gets until you type one: the pattern's, or 'levels action' ('50 SMA + Support undercut & rally').
- * @param {ReturnType<typeof buildLibrary>} lib @param {SetupParts} p
+ * @param {ReturnType<typeof buildLibrary>} lib @param {SetupParts} p @param {SideWords} [side]
  */
-export const setupName = (lib, p) => partsName(p, lib.nameOf);
+export const setupName = (lib, p, side) => partsName(p, (kind, key) => lib.nameOf(kind, key, side));
 
 /** two setups made of the same things (levels in any order). @param {SetupParts} a @param {SetupParts} b */
 export const sameParts = (a, b) => a.pattern || b.pattern ? a.pattern === b.pattern
@@ -155,21 +205,39 @@ export function setupsByUse(lib, labels) {
 /**
  * What a setup adds up under, the action first and the level second: its kind (the action, 'action:bounce' 'Bounce', or
  * for a pattern the pattern, 'pat:base_breakout') and its levels ('level:ema21' '21 EMA'), merges followed. A setup made
- * of neither (an old level-only value) has no kind. So every bounce adds up as Bounce, whatever it bounced off.
- * @param {ReturnType<typeof buildLibrary>} lib @param {string} key
+ * of neither (an old level-only value) has no kind. So every bounce adds up as Bounce, whatever it bounced off; the names
+ * are in side's words (a short's bounce is 'Rejection').
+ * @param {ReturnType<typeof buildLibrary>} lib @param {string} key @param {SideWords} [side]
  * @returns {{ kind: { key: string, name: string, action: boolean } | null, levels: { key: string, name: string }[] }}
  */
-export function setupGroups(lib, key) {
+export function setupGroups(lib, key, side) {
   const p = lib.parts(key);
-  if (p.pattern) {
-    const k = lib.resolve('pattern', p.pattern);
-    return { kind: { key: `pat:${k}`, name: lib.nameOf('pattern', k), action: false }, levels: [] };
-  }
-  const a = p.action ? lib.resolve('action', p.action) : '';
+  if (p.pattern) return { kind: { key: `pat:${p.pattern}`, name: lib.nameOf('pattern', p.pattern, side), action: false }, levels: [] };
+  const a = p.action || '';
   return {
-    kind: a ? { key: `action:${a}`, name: lib.nameOf('action', a).replace(/^./, c => c.toUpperCase()), action: true } : null,
-    levels: [...new Set((p.levels || []).map(l => lib.resolve('level', l)))].map(l => ({ key: `level:${l}`, name: lib.nameOf('level', l) })),
+    kind: a ? { key: `action:${a}`, name: lib.nameOf('action', a, side).replace(/^./, (/** @type {string} */ c) => c.toUpperCase()), action: true } : null,
+    levels: (p.levels || []).map(l => ({ key: `level:${l}`, name: lib.nameOf('level', l, side) })),
   };
+}
+
+/**
+ * An action or pattern that is another one's short side: its name is that one's short word ('Pennant or flag breakdown'
+ * beside the flag's breakout), so it can merge into it. The first offered, or null.
+ * @param {ReturnType<typeof buildLibrary>} lib @param {ItemKind} kind @param {string} key
+ */
+export function shortTwin(lib, kind, key) {
+  const it = lib.item(kind, key), name = it?.name.trim().toLowerCase();
+  return name ? lib.choices(kind).find(i => i.key !== it.key && i.short.trim().toLowerCase() === name) || null : null;
+}
+
+/**
+ * Another of My setups made of the same things as this one (now that a side reads it, a bounce and a rejection at the same
+ * level are one setup): the first offered, or null.
+ * @param {ReturnType<typeof buildLibrary>} lib @param {string} key
+ */
+export function setupTwin(lib, key) {
+  const k = lib.resolve('setup', key), p = lib.parts(k);
+  return lib.choices('setup').find(i => i.key !== k && sameParts(lib.parts(i.key), p)) || null;
 }
 
 /** a setup's key: 'sma50+bounce', 'sma50', or 'pattern:base_breakout'. @param {{ level?: string, action?: string, pattern?: string }} s */
