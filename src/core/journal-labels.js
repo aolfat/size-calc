@@ -17,7 +17,7 @@ import { nyParts } from './journal-stats.js';
 export const DEFAULTS = /** @type {Record<ItemKind, [string, string][]>} */ ({
   market: [['bullish', 'Bullish'], ['neutral', 'Neutral'], ['bearish', 'Bearish'], ['choppy', 'Choppy']],
   sector: [['strong', 'Strong'], ['weak', 'Weak'], ['neutral', 'Neutral'], ['na', 'N/A']],
-  setup: [['ema8_bounce', '8 EMA bounce'], ['ema21_bounce', '21 EMA bounce'], ['sma50_bounce', '50 SMA bounce'], ['ema21_unr', '21 EMA undercut & rally'], ['sma50_unr', '50 SMA undercut & rally'], ['ema21_rejection', '21 EMA rejection'], ['base_breakout', 'Base breakout'], ['flag_breakout', 'Flag breakout'], ['earnings_gap', 'Earnings gap']],
+  setup: [['ema8_bounce', '8 EMA bounce'], ['ema21_bounce', '21 EMA bounce'], ['sma50_bounce', '50 SMA bounce'], ['ema21_unr', '21 EMA undercut & rally'], ['sma50_unr', '50 SMA undercut & rally'], ['ema21_rejection', '21 EMA rejection'], ['base_breakout', 'Base breakout'], ['flag_breakout', 'Pennant or flag breakout'], ['earnings_gap', 'Earnings gap']],
   level: [['sma50', '50 SMA'], ['sma100', '100 SMA'], ['sma200', '200 SMA'], ['ema8', '8 EMA'], ['ema21', '21 EMA'], ['support', 'Support'], ['resistance', 'Resistance'], ['avwap_ath', 'AVWAP from ATH'], ['avwap_atl', 'AVWAP from ATL'], ['avwap_earnings', 'AVWAP from earnings']],
   action: [['bounce', 'bounce'], ['undercut', 'undercut & rally'], ['rejection', 'rejection']],
   pattern: [['base_breakout', 'Base breakout'], ['flag_breakout', 'Pennant or flag breakout'], ['earnings_gap', 'Earnings gap']],
@@ -35,8 +35,9 @@ export const DEFAULT_SHORT = /** @type {Record<string, string>} */ ({
   // a long off support is a short at resistance, a breakout through resistance a breakdown through support
   'level:support': 'Resistance', 'level:resistance': 'Support',
   'pattern:base_breakout': 'Base breakdown', 'pattern:flag_breakout': 'Pennant or flag breakdown',
-  'setup:flag_breakout': 'Flag breakdown',
 });
+/** names a starting setup had before it was named for its parts: a row that still says one was never typed, so it follows them */
+const FORMER_NAMES = /** @type {Record<string, string[]>} */ ({ 'setup:flag_breakout': ['Flag breakout', 'Flag breakdown'] });
 /** defaults that are another one seen from the short side, merged into it for everyone: a rejection is a bounce on a short */
 export const BUILT_IN_MERGES = new Map([['action:rejection', 'bounce'], ['setup:ema21_rejection', 'ema21_bounce']]);
 
@@ -81,13 +82,23 @@ const defaultWords = side => (/** @type {string} */ kind, /** @type {string} */ 
 };
 /** a short word kept in settings ('' clears a default's), else the default's own. @param {any} settings @param {string} id */
 const shortOf = (settings, id) => typeof settings?.short === 'string' ? settings.short.trim() : DEFAULT_SHORT[id] || '';
+/**
+ * An action or pattern of yours with no short word set: a breakout's is a breakdown ('Breakout' → 'Breakdown',
+ * 'Flat base breakout' → 'Flat base breakdown'); anything else reads the same both ways.
+ * @param {string} name
+ */
+export const guessShort = name => /break ?out/i.test(name) ? name.replace(/(break ?)(out)/gi, (_, b, o) => b + (o === 'OUT' ? 'DOWN' : o[0] === 'O' ? 'Down' : 'down')) : '';
+/** an action's word inside a setup's name: lower case like the defaults' ('Resistance breakout'), an acronym kept. @param {string} w */
+const lowerFirst = w => /^[A-Z][a-z]/.test(w) ? w[0].toLowerCase() + w.slice(1) : w;
+/** a moving average's place among the levels: by length, an EMA before the SMA of the same length; null for any other level. @param {string} name */
+const maOrder = name => { const m = /^(\d+)\s*(EMA|SMA)$/i.exec(name.trim()); return m ? +m[1] * 2 + (m[2].toUpperCase() === 'SMA' ? 1 : 0) : null; };
 
 /**
  * A setup's parts in a setup's name: the pattern's, or 'levels action'; '' when it isn't whole.
  * @param {SetupParts} p @param {(kind: string, key: string) => string} name
  */
 const partsName = (p, name) => p.pattern ? name('pattern', p.pattern)
-  : p.action && p.levels?.length ? `${p.levels.map(l => name('level', l)).join(' + ')} ${name('action', p.action)}` : '';
+  : p.action && p.levels?.length ? `${p.levels.map(l => name('level', l)).join(' + ')} ${lowerFirst(name('action', p.action))}` : '';
 
 /** a default's key as the library stores it ('sma50'), or your own ('mine:<uuid>'). @param {LibraryRow} row */
 const ownKey = row => `mine:${row.id}`;
@@ -120,7 +131,8 @@ export function buildLibrary(rows = []) {
   }
   for (const r of rows) {
     if (r.default_key || !byKind[r.kind]) continue;
-    const item = { key: ownKey(r), kind: r.kind, name: r.name, short: shortOf(r.settings, ''), own: true, hidden: !!r.hidden, settings: r.settings || {} };
+    const guess = typeof r.settings?.short !== 'string' && (r.kind === 'action' || r.kind === 'pattern') ? guessShort(r.name) : '';
+    const item = { key: ownKey(r), kind: r.kind, name: r.name, short: shortOf(r.settings, '') || guess, own: true, hidden: !!r.hidden, settings: r.settings || {} };
     byKind[r.kind].push(item);
     all.set(`${r.kind}:${item.key}`, item);
     if (r.merged_into) merged.set(`${r.kind}:${item.key}`, r.merged_into);
@@ -146,12 +158,19 @@ export function buildLibrary(rows = []) {
       const s = parseSetup(value);
       if (s.pattern) return nameOf('pattern', s.pattern, side);
       const level = nameOf('level', s.level, side);
-      return s.action ? `${level} ${nameOf('action', s.action, side)}` : level;
+      return s.action ? `${level} ${lowerFirst(nameOf('action', s.action, side))}` : level;
     }
     return value;
   };
-  /** the choices to offer for a kind: not hidden, not merged away. @param {ItemKind} kind */
-  const choices = kind => (byKind[kind] || []).filter(i => !i.hidden && !merged.has(`${kind}:${i.key}`));
+  /**
+   * the choices to offer for a kind: not hidden, not merged away; levels with the moving averages first by length
+   * (4 EMA, 9 EMA, 21 EMA, 50 SMA, 100 SMA, 200 SMA), then the rest in the list's order. @param {ItemKind} kind
+   */
+  const choices = kind => {
+    const list = (byKind[kind] || []).filter(i => !i.hidden && !merged.has(`${kind}:${i.key}`));
+    if (kind !== 'level') return list;
+    return list.map((i, n) => ({ i, n, m: maOrder(i.name) ?? Infinity })).sort((a, b) => (a.m - b.m) || a.n - b.n).map(x => x.i);
+  };
   /** what a setup is made of: { action, levels } or { pattern }, merges followed (its own and its parts'). @param {string} key */
   const parts = key => {
     const p = rawParts(key);
@@ -172,12 +191,14 @@ export function buildLibrary(rows = []) {
   const partsWords = (p, side) => p.pattern ? nameOf('pattern', p.pattern, side)
     : `${(nameOf('action', p.action || '', side) || '').replace(/^./, (/** @type {string} */ c) => c.toUpperCase())} at ${(p.levels || []).map(l => nameOf('level', l, side)).join(' + ')}`;
   const words = (/** @type {SideWords} */ side) => (/** @type {string} */ kind, /** @type {string} */ key) => nameOf(kind, key, side);
-  // a setup named for its parts, either side's words, the defaults' or yours ('8 EMA bounce', '8 EMA rejection'), was never
-  // typed: it follows them renamed ('9 EMA bounce') and reads by side. A typed one keeps its name and its own short one.
+  // a setup named for its parts, either side's words, the defaults' or yours ('8 EMA bounce', '8 EMA rejection'), in any
+  // case, was never typed: it follows them renamed ('9 EMA bounce') and reads by side. So does one still under a name the
+  // starting setups had before (FORMER_NAMES). A typed one keeps its name and its own short one.
   for (const i of byKind.setup) {
     const p = parts(i.key), raw = rawParts(i.key), long = partsName(p, words('long'));
     const said = [raw, p].flatMap(x => [partsName(x, defaultWords('long')), partsName(x, defaultWords('short'))]);
-    i.follows = !!long && [...said, long, partsName(p, words('short'))].includes(i.name);
+    const untyped = [...said, long, partsName(p, words('short')), ...(i.own ? [] : FORMER_NAMES[`setup:${i.key}`] || [])].map(n => n.toLowerCase());
+    i.follows = !!long && untyped.includes(i.name.toLowerCase());
     if (i.follows) { i.name = long; i.short = partsName(p, words('short')); }
     else if (typeof i.settings?.short !== 'string' && i.name !== DEFAULT_NAMES.get(`setup:${i.key}`)) i.short = '';
   }

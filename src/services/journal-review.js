@@ -117,6 +117,12 @@ export async function saveLibraryItem(row) {
   refused(await c.from('library_items').upsert([row], { onConflict: 'user_id,id' }), 'Supabase refused the save.');
 }
 
+/** one of your library rows, gone: a setup + New setup made and then moved off before anything else used it */
+export async function deleteLibraryItem(id) {
+  const c = await client();
+  refused(await c.from('library_items').delete().eq('id', id), 'Supabase refused the delete.');
+}
+
 /** a label's links, whole (the Option flow tag's Unusual Whales / Bullflow pages) */
 export async function saveLabelLinks(key, kind, value, links) {
   const c = await client();

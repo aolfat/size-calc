@@ -7,7 +7,7 @@ import { marketEscape as esc } from '../core/format.js';
 import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupsByUse, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
 import { store } from '../lib/store.js';
-import { addTradeLabel, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
+import { addTradeLabel, deleteLibraryItem, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { showError } from './feedback.js';
 import { openSheet } from './sheets.js';
@@ -55,17 +55,19 @@ export function onReviewChange(fn) { rerender = fn; }
 
 // ---------- saving: shown at once, back with an error if Supabase refuses ----------
 
+/** shown at once, saved after; true when it saved, false when it came back (or couldn't start) */
 async function apply(change, save) {
-  if (state.journalReviewError) return;
+  if (state.journalReviewError) return false;
   const before = JSON.stringify(data());
   if (!state.journalReview) state.journalReview = structuredClone(EMPTY);
   change(state.journalReview);
   rerender();
-  try { await save(); }
+  try { await save(); return true; }
   catch(e) {
     state.journalReview = JSON.parse(before);
     showError(`Couldn't save the review: ${String(e?.message || e)}`);
     rerender();
+    return false;
   }
 }
 
@@ -86,17 +88,22 @@ function setFields(t, fields) {
   });
 }
 
+/** labels off and on a trade, in what's shown */
+function editLabels(d, t, add, remove) {
+  const list = (d.labels[t.key] ||= []);
+  for (const [kind, value] of remove) { const i = list.findIndex(l => l.kind === kind && l.value === value); if (i >= 0) list.splice(i, 1); }
+  for (const [kind, value] of add) if (!list.some(l => l.kind === kind && l.value === value)) list.push({ kind, value, set_by: 'you' });
+}
+/** the same, saved, and reviewed_at stamped or cleared */
+async function saveLabelEdits(t, add, remove) {
+  for (const [kind, value] of remove) await removeTradeLabel(t.key, kind, value);
+  for (const [kind, value] of add) await addTradeLabel(t.key, kind, value);
+  const stamp = stampReviewed(t);
+  if (stamp) await saveReviewFields(t.key, stamp);
+}
+
 function labelChange(t, add, remove) {
-  return apply(d => {
-    const list = (d.labels[t.key] ||= []);
-    for (const [kind, value] of remove) { const i = list.findIndex(l => l.kind === kind && l.value === value); if (i >= 0) list.splice(i, 1); }
-    for (const [kind, value] of add) if (!list.some(l => l.kind === kind && l.value === value)) list.push({ kind, value, set_by: 'you' });
-  }, async () => {
-    for (const [kind, value] of remove) await removeTradeLabel(t.key, kind, value);
-    for (const [kind, value] of add) await addTradeLabel(t.key, kind, value);
-    const stamp = stampReviewed(t);
-    if (stamp) await saveReviewFields(t.key, stamp);
-  });
+  return apply(d => editLabels(d, t, add, remove), () => saveLabelEdits(t, add, remove));
 }
 
 const labelsOf = (t, kind) => (data().labels[t.key] || []).filter(l => l.kind === kind);
@@ -133,43 +140,56 @@ export function toggleReviewLabel(t, kind, value) {
 /** one of My setups on this trade, or off it */
 export const toggleSetup = (t, key) => toggleReviewLabel(t, 'setup', key);
 
-// + New setup: what happened (an action) at what (one or more levels), or a pattern; then a name
-export function startSetupDraft() { state.setupDraft = { action: '', levels: [], pattern: '', name: '' }; rerender(); }
+// + New setup: what happened (an action) at what (one or more levels), or a pattern. There's no Save: each tap puts the
+// setup those parts make on the trade, one of My setups made of the same things or else a new one named for them, and the
+// next tap changes it (21 EMA, then Support too, makes it the 21 EMA + Support one). The draft keeps the setup it put on
+// (key) and the one it made (made): one it made that the parts move off goes back out of My setups, so trying a few taps
+// leaves nothing behind. A name is typed in Edit setups.
+export function startSetupDraft() { state.setupDraft = { action: '', levels: [], pattern: '', key: '', made: '' }; rerender(); }
+/** Done: the builder closes; what it put on the trade stays */
 export function cancelSetupDraft() { state.setupDraft = null; rerender(); }
-export function setDraftAction(action) { const d = state.setupDraft; if (!d) return; d.action = d.action === action ? '' : action; d.pattern = ''; rerender(); }
-export function setDraftPattern(pattern) { const d = state.setupDraft; if (!d) return; d.pattern = d.pattern === pattern ? '' : pattern; if (d.pattern) { d.action = ''; d.levels = []; } rerender(); }
-export function toggleDraftLevel(level) {
+export function setDraftAction(t, action) { const d = state.setupDraft; if (!d) return; d.action = d.action === action ? '' : action; d.pattern = ''; return syncSetupDraft(t); }
+export function setDraftPattern(t, pattern) { const d = state.setupDraft; if (!d) return; d.pattern = d.pattern === pattern ? '' : pattern; if (d.pattern) { d.action = ''; d.levels = []; } return syncSetupDraft(t); }
+export function toggleDraftLevel(t, level) {
   const d = state.setupDraft;
   if (!d) return;
   d.levels = d.levels.includes(level) ? d.levels.filter(l => l !== level) : [...d.levels, level];
   d.pattern = '';
-  rerender();
+  return syncSetupDraft(t);
 }
-export function setupDraftNameInput(name) { if (state.setupDraft) state.setupDraft.name = name; }
-/** the setup you already have, from the builder: on the trade, builder closed */
-export function useSetupDraftMatch(t, key) {
-  state.setupDraft = null;
-  if (labelsOf(t, 'setup').some(l => l.value === key)) return rerender();
-  return labelChange(t, [['setup', key]], []);
-}
+const draftParts = d => d.pattern ? { pattern: d.pattern } : { action: d.action, levels: d.levels };
 
-/** Save to my setups and add: a setup made of the same things (or named the same) is reused, not made twice */
-export async function saveSetupDraft(t) {
+// one tap's saves wait for the last one's, so a quick second tap can't delete a setup before the first has written it
+let draftSaves = Promise.resolve();
+
+/** the trade gets the setup the picked parts make, in place of the one the builder put on before */
+function syncSetupDraft(t) {
   const d = state.setupDraft, lib = library();
-  if (!d) return;
-  const parts = d.pattern ? { pattern: d.pattern } : { action: d.action, levels: d.levels };
-  if (!parts.pattern && !(parts.action && parts.levels.length)) return;
-  const name = (d.name.trim() || setupName(lib, parts)).slice(0, 80);
-  const same = lib.choices('setup').find(i => [i.name, i.short].some(n => n && n.toLowerCase() === name.toLowerCase()) || sameParts(lib.parts(i.key), parts));
-  state.setupDraft = null;
-  let key = same?.key;
-  if (!key) {
-    const row = { id: newId(), kind: 'setup', name, settings: parts };
-    key = `mine:${row.id}`;
-    await apply(dd => { dd.library = [...dd.library, row]; }, () => saveLibraryItem(row));
-  }
-  if (!labelsOf(t, 'setup').some(l => l.value === key)) return labelChange(t, [['setup', key]], []);
-  rerender();
+  if (!d || !t) return rerender();
+  // a setup it made stops being the builder's once another trade carries it
+  if (d.made && Object.entries(data().labels).some(([k, list]) => k !== t.key && list.some(l => l.kind === 'setup' && l.value === d.made))) d.made = '';
+  const parts = draftParts(d), name = setupName(lib, parts);
+  const made = d.made ? data().library.find(r => `mine:${r.id}` === d.made) || null : null;
+  const have = name ? lib.choices('setup').find(i => i.key !== d.made && sameParts(lib.parts(i.key), parts)) : null;
+  const row = name && !have ? { ...(made || { id: newId(), kind: 'setup' }), name, settings: parts } : null;
+  const drop = made && !row ? made : null;
+  const target = have ? have.key : row ? `mine:${row.id}` : '';
+  const already = !!target && target !== d.key && labelsOf(t, 'setup').some(l => lib.resolve('setup', l.value) === target);
+  const remove = d.key && d.key !== target ? [['setup', d.key]] : [];
+  const add = target && target !== d.key && !already ? [['setup', target]] : [];
+  const before = { key: d.key, made: d.made };
+  d.key = already ? '' : target;
+  d.made = row ? target : '';
+  if (!row && !drop && !add.length && !remove.length) return rerender();
+  return apply(dd => {
+    if (row) dd.library = [...dd.library.filter(r => r.id !== row.id), row];
+    editLabels(dd, t, add, remove);
+    if (drop) dd.library = dd.library.filter(r => r.id !== drop.id);
+  }, () => (draftSaves = draftSaves.catch(() => {}).then(async () => {
+    if (row) await saveLibraryItem(row);
+    await saveLabelEdits(t, add, remove);
+    if (drop) await deleteLibraryItem(drop.id);
+  }))).then(ok => { if (!ok && state.setupDraft === d) Object.assign(d, before); });
 }
 
 const newId = () => globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
@@ -242,7 +262,7 @@ const noteText = (t, which) => {
 };
 
 /** + New: a box for your own item of that kind; Enter adds it to your library and to this trade */
-export function startReviewItem(kind) { state.reviewNewKind = kind; state.reviewNewName = ''; rerender(); }
+export function startReviewItem(kind) { state.reviewNewKind = kind; state.reviewNewName = ''; state.reviewNewShort = ''; rerender(); }
 export function cancelReviewItem() { state.reviewNewKind = ''; rerender(); }
 export async function saveReviewItem(t, name) {
   const kind = state.reviewNewKind;
@@ -253,15 +273,17 @@ export async function saveReviewItem(t, name) {
   state.reviewNewKind = '';
   const key = same ? same.key : `mine:${newId()}`;
   if (!same) {
-    const row = { id: key.slice(5), kind, name };
+    // an action or pattern takes its words on a short from the box beside it (blank: a breakout's is a breakdown, else the same)
+    const short = (kind === 'action' || kind === 'pattern') && String(state.reviewNewShort || '').trim().slice(0, 80);
+    const row = { id: key.slice(5), kind, name, ...(short ? { settings: { short } } : {}) };
     await apply(d => { d.library = [...d.library, row]; }, () => saveLibraryItem(row));
   }
   // and put it on the trade, the way tapping its chip would
   if (kind === 'market') return setReviewMarket(t, key);
   // inside + New setup: a new level, action or pattern goes into the setup being made
-  if (kind === 'level') return toggleDraftLevel(key);
-  if (kind === 'action') return setDraftAction(key);
-  if (kind === 'pattern') return setDraftPattern(key);
+  if (kind === 'level') return toggleDraftLevel(t, key);
+  if (kind === 'action') return setDraftAction(t, key);
+  if (kind === 'pattern') return setDraftPattern(t, key);
   const k = kind === 'tactic' || kind === 'sector' || kind === 'tag' || kind === 'mistake' ? kind : 'tag';
   // a name already on the trade stays on it (tapping its chip would take it off)
   if (labelsOf(t, k).some(l => l.value === key)) return rerender();
@@ -275,7 +297,10 @@ const chip = (label, on, attrs) => `<button class="filter-btn${on ? ' active' : 
 
 function newBox(kind) {
   if (state.reviewNewKind !== kind) return `<button class="pos-link jr-new" data-action="startReviewItem" data-arg="${kind}">+ New</button>`;
-  return `<span class="jr-newbox"><input type="text" id="reviewNewName" maxlength="80" placeholder="Name" autocomplete="off" value="${esc(state.reviewNewName || '')}" data-input="reviewNewNameInput" data-enter="saveReviewItem" aria-label="New choice" /><button class="btn" data-action="saveReviewItem">Add</button><button class="pos-link" data-action="cancelReviewItem">Cancel</button></span>`;
+  // an action or pattern asks for its words on a short too: a breakout on a short is a breakdown
+  const short = kind === 'action' || kind === 'pattern'
+    ? `<input type="text" id="reviewNewShort" maxlength="80" placeholder="On a short" autocomplete="off" value="${esc(state.reviewNewShort || '')}" data-input="reviewNewShortInput" data-enter="saveReviewItem" aria-label="Its words on a short" />` : '';
+  return `<span class="jr-newbox"><input type="text" id="reviewNewName" maxlength="80" placeholder="Name" autocomplete="off" value="${esc(state.reviewNewName || '')}" data-input="reviewNewNameInput" data-enter="saveReviewItem" aria-label="New choice" />${short}<button class="btn" data-action="saveReviewItem">Add</button><button class="pos-link" data-action="cancelReviewItem">Cancel</button></span>`;
 }
 
 function row(label, body, missing, cls = '') {
@@ -313,7 +338,8 @@ export function reviewSectionHtml(t) {
       : [...(g.kind ? [`Action <b>${esc(g.kind.name)}</b>`] : []), ...(lvl ? [`Level${g.levels.length > 1 ? 's' : ''} <b>${esc(lvl)}</b>`] : [])];
     return `<span>${on.length > 1 ? `${esc(lib.nameOf('setup', k, side))}: ` : ''}${bits.join(' · ')}</span>`;
   }).join('')}</div>` : '';
-  const fitNote = picking ? `<span class="jr-fit">${offered.length ? 'My setups that fit:' : 'None of My setups fit yet.'}</span>` : '';
+  // once the parts make a setup it's on the trade, so there's nothing left to say about fitting
+  const fitNote = picking && !setupName(lib, draftParts(sd)) ? `<span class="jr-fit">${offered.length ? 'My setups that fit:' : 'None of My setups fit yet.'}</span>` : '';
   const builder = state.setupDraft ? setupDraftHtml(lib, t) : '<button class="pos-link jr-new" data-action="startSetupDraft">+ New setup</button><button class="pos-link jr-new" data-action="openJournalLibrary">Edit setups</button>';
   // while it's live: the opening pass is what's asked; the plan and exit note wait for the close (shown if already in)
   const open = t.status === 'open';
@@ -345,23 +371,21 @@ export function reviewSectionHtml(t) {
   </div>`;
 }
 
-/** + New setup: what happened, at what (or a pattern), and the name it gets; one you already have says so instead */
+/** + New setup: what happened, at what (or a pattern); what's picked is on the trade already, and the line says which */
 function setupDraftHtml(lib, t) {
   const d = state.setupDraft, side = tradeSide(t);
-  const parts = d.pattern ? { pattern: d.pattern } : { action: d.action, levels: d.levels };
-  const auto = setupName(lib, parts, side);
-  const ready = !!auto;
-  const have = ready ? lib.choices('setup').find(i => sameParts(lib.parts(i.key), parts)) : null;
+  const parts = draftParts(d);
+  const on = d.key && labelsOf(t, 'setup').some(l => l.value === d.key) ? d.key : '';
+  const have = !on && setupName(lib, parts) ? lib.choices('setup').find(i => sameParts(lib.parts(i.key), parts)) : null;
   const onTrade = have && labelsOf(t, 'setup').some(l => lib.resolve('setup', l.value) === have.key);
-  const finish = have
-    ? `<span class="jr-have">${onTrade ? `Already on this trade: <b>${esc(lib.nameOf('setup', have.key, side))}</b>` : `Already in My setups: ${chip(lib.nameOf('setup', have.key, side), false, `data-action="useSetupDraftMatch" data-arg="${esc(have.key)}"`)} tap it to add`}</span><button class="pos-link" data-action="cancelSetupDraft">Close</button>`
-    : `<button class="btn primary" data-action="saveSetupDraft"${ready ? '' : ' disabled'}>Save to my setups and add</button><button class="pos-link" data-action="cancelSetupDraft">Cancel</button>`;
+  const said = on ? `Added <b>${esc(lib.nameOf('setup', on, side))}</b>${d.made === on ? ' to this trade and My setups. Rename it in Edit setups.' : '.'}`
+    : onTrade ? `Already on this trade: <b>${esc(lib.nameOf('setup', have.key, side))}</b>`
+    : d.action && !d.levels.length ? 'Now at what?' : 'Tap what happened and at what, or a pattern. It goes on this trade as you tap.';
   return `<div class="jr-draft">
       <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(lib.nameOf('action', i.key, side).replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setDraftAction" data-arg="${esc(i.key)}"`)).join('')}${newBox('action')}</div>
       <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(lib.nameOf('level', i.key, side), d.levels.includes(i.key), `data-action="toggleDraftLevel" data-arg="${esc(i.key)}"`)).join('')}${newBox('level')}</div>
       <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(lib.nameOf('pattern', i.key, side), d.pattern === i.key, `data-action="setDraftPattern" data-arg="${esc(i.key)}"`)).join('')}${newBox('pattern')}</div>
-      <div class="jr-draft-row">${have ? '' : `<label class="jr-draft-q" for="setupDraftName">Name</label><input type="text" id="setupDraftName" maxlength="80" autocomplete="off" placeholder="${esc(auto || 'Pick what happened and at what')}" value="${esc(d.name)}" data-input="setupDraftNameInput" data-enter="saveSetupDraft" />`}
-        ${finish}</div>
+      <div class="jr-draft-row"><span class="jr-have" role="status"><span>${said}</span></span><button class="btn${on ? ' primary' : ''}" data-action="cancelSetupDraft">Done</button></div>
     </div>`;
 }
 

@@ -131,5 +131,5 @@ test('a setup closed long with a short still open is not "long only"', async () 
     run('closeJournalTrade()');
   }
   run("setJournalTab('setups')");
-  assert.match(list(), /<b>Flag breakout \/ breakdown<\/b><\/button>[^]*?<span class="pos-sub">Pennant or flag breakout \/ breakdown · 1 open<\/span>/, 'both words, no "long only"');
+  assert.match(list(), /<b>Pennant or flag breakout \/ breakdown<\/b><\/button>[^]*?<span class="pos-sub">1 open<\/span>/, 'both words, no "long only"');
 });
