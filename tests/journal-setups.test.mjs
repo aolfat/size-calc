@@ -61,9 +61,9 @@ test('the Setups tab: every setup with its numbers, unused ones too, then the re
   assert.match(html, /data-action="setJournalTab" data-arg="setups">Setups<\/button>/);
   assert.match(html, /\d+ setups · 1 of 1 closed trade has a setup/);
   assert.match(html, /<div class="section-title js-sub">My setups<\/div>/);
-  assert.match(html, /data-action="openJournalSetup" data-arg="ema21_bounce"[^>]*><b>21 EMA bounce<\/b><\/button> <span class="journal-tag journal-tag-quiet"[^>]*>thin<\/span><span class="pos-sub">Bounce at 21 EMA · long only<\/span>[\s\S]*?<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'a used setup: its parts, one trade, its net');
+  assert.match(html, /data-action="openJournalSetup" data-arg="ema21_bounce"[^>]*><b>21 EMA bounce \/ rejection<\/b><\/button> <span class="journal-tag journal-tag-quiet"[^>]*>thin<\/span><span class="pos-sub">Bounce \/ rejection at 21 EMA · long only<\/span>[\s\S]*?<td>1<\/td><td class="journal-sell">−\$504\.00<\/td>/, 'a used setup: its parts, one trade, its net');
   assert.match(html, /<b>8 EMA bounce \/ rejection<\/b><\/button><span class="pos-sub">Bounce \/ rejection at 8 EMA · not used yet<\/span>/, 'the ones not used yet are listed too');
-  assert.ok(html.indexOf('<b>21 EMA bounce</b>') < html.indexOf('<b>8 EMA bounce / rejection</b>'), 'used ones first');
+  assert.ok(html.indexOf('<b>21 EMA bounce / rejection</b>') < html.indexOf('<b>8 EMA bounce / rejection</b>'), 'used ones first');
   assert.match(html, /By setup grade[\s\S]*<b>B<\/b>[\s\S]*<td>−1\.00R<\/td>/, 'the grade ladder, with average R');
   assert.match(html, /By entry tactic[\s\S]*<b>30-minute pivot<\/b>/);
   assert.match(html, /By mistake[\s\S]*<b>Chased the entry<\/b>/);
@@ -71,16 +71,16 @@ test('the Setups tab: every setup with its numbers, unused ones too, then the re
 
   run("openJournalSetup('ema21_bounce')");
   const page = list();
-  assert.match(page, /data-action="closeJournalSetup">← All setups<\/button>\s*<span class="jc-title">21 EMA bounce<\/span>/);
+  assert.match(page, /data-action="closeJournalSetup">← All setups<\/button>\s*<span class="jc-title">21 EMA bounce \/ rejection<\/span>/);
   assert.match(page, /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$504\.00/, 'its headline numbers');
-  assert.match(page, /Together with[\s\S]*<b>Base breakout<\/b>/, 'the other setups on its trades');
+  assert.match(page, /Together with[\s\S]*<b>Base breakout \/ breakdown<\/b>/, 'the other setups on its trades');
   assert.match(page, /data-action="openTradeRow" data-arg="[^"]*AAPL[^"]*"[\s\S]*<td>B<\/td>/, 'its trades, with their grades');
 
   run("showSetupIn('trades')");
   assert.equal(state.journalTab, 'trades');
   assert.equal(state.journalSetupFilter, 'ema21_bounce', 'its trades: the list narrowed to it');
   run("setJournalTab('setups')");
-  assert.match(list(), /<span class="jc-title">21 EMA bounce<\/span>/, 'back on the tab, the setup is still open');
+  assert.match(list(), /<span class="jc-title">21 EMA bounce \/ rejection<\/span>/, 'back on the tab, the setup is still open');
   run("showSetupIn('books')");
   assert.deepEqual([state.journalTab, state.modelBooks.mode, state.modelBooks.setupKey], ['books', 'setups', 'ema21_bounce'], 'its model book examples');
 });
