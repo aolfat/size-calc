@@ -1,6 +1,6 @@
 // Positions: the selected Schwab account's holdings, read live every 30s while the tab is open, with stops from its working stop orders,
 // option legs folded into the spreads they make (each spread's legs a tap away, the spread closed or trimmed as one order in spread-close.js),
-// buttons into a position's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the breakeven-stop and close reviews (position-trade.js),
+// buttons into a position's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the stop, breakeven-stop and close reviews (position-trade.js),
 // optional P/L and R columns picked from Columns (kept on this device; R reads the Journal's trades for each position's first stop), the account value hidden on request,
 // and every order still working in the account.
 import { store } from '../lib/store.js';
@@ -194,7 +194,7 @@ function riskCell(r) {
     : `<span class="pos-locked">+${fmt$(-r.risk)} locked</span>${partial}`;
 }
 
-// Chart (and Simulate for options), BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
+// Chart (and Simulate for options), Stop, BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
 function tradeButtons(r) {
   if (!r.tradeAs) return '';
   // every share already has a stop at or past breakeven: nothing to move, and moving it would loosen it
@@ -203,7 +203,8 @@ function tradeButtons(r) {
   const charted = !!state.posChart && state.posChart.symbol === r.symbol;
   const chart = `<button class="pos-act${charted ? ' active' : ''}" aria-pressed="${charted}" data-action="togglePositionChart" data-arg="${arg}" title="${r.tradeAs === 'OPTION' ? 'The contract\'s 5-minute chart' : 'Daily chart'} with your cost, stops and targets: set a profit target on it">Chart</button>`
     + (r.option ? `<button class="pos-act" data-action="simPosition" data-arg="${arg}" title="Simulate returns over time from your average cost (Black-Scholes)">Simulate</button>` : '');
-  return `<span class="pos-acts${r.option ? ' many' : ''}">${chart}${atBe ? `<span class="pos-locked">${atBe}</span>` :`<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button></span>`;
+  const stop = `<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="stop" title="Set a stop at a price you pick">Stop</button>`;
+  return `<span class="pos-acts many">${chart}${stop}${atBe ? `<span class="pos-locked">${atBe}</span>` :`<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button></span>`;
 }
 
 function positionRow(r, leg = false) {

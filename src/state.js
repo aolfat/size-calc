@@ -187,7 +187,7 @@ export function createState() {
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
     posChart: null, // the open position chart: { symbol, option, label, bars, view, range, loading, error, hover, hoverY, price, qty, addStop, addPrice } (range: sessions; price and qty = the target form, addStop and addPrice = Move breakeven's)
-    posChartTool: 'target', // what a tap on the position chart sets: 'target' (profit target) or 'add' (Move breakeven's stop); kept while charts open and close
+    posChartTool: 'target', // what a tap on the position chart sets: 'target' (profit target), 'stop' (a stop to review) or 'add' (Move breakeven's stop); kept while charts open and close
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,
     spreadPendingCredit: false,

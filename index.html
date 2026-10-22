@@ -393,7 +393,7 @@
       <div class="chart-hint"><span id="posChartTapHint">Tap the chart to set the target</span>; near a candle's high or low it takes that exact price. Pinch or ctrl+scroll to zoom, drag to pan. Lines: <span style="color:var(--blue);">avg cost</span> · <span style="color:var(--red);">stops</span> · <span style="color:var(--green);">targets</span> · <span style="color:var(--purple);">8 EMA</span></div>
     </div>
     <div class="pos-target">
-      <div class="seg pos-tool" id="posToolSeg" aria-label="What a tap on the chart sets"><button id="posToolTarget" class="active" aria-pressed="true" data-action="setPosChartTool" data-arg="target">Profit target</button><button id="posToolAdd" aria-pressed="false" data-action="setPosChartTool" data-arg="add" title="Tap where you want your stop: it works out how many to add so your breakeven moves there">Move breakeven</button></div>
+      <div class="seg pos-tool" id="posToolSeg" aria-label="What a tap on the chart sets"><button id="posToolTarget" class="active" aria-pressed="true" data-action="setPosChartTool" data-arg="target">Profit target</button><button id="posToolStop" aria-pressed="false" data-action="setPosChartTool" data-arg="stop" title="Tap where you want the stop, then review it">Stop</button><button id="posToolAdd" aria-pressed="false" data-action="setPosChartTool" data-arg="add" title="Tap where you want your stop: it works out how many to add so your breakeven moves there">Move breakeven</button></div>
       <div id="posTargetForm">
       <div class="pos-target-row">
         <div class="field">
@@ -408,6 +408,16 @@
       </div>
       <div class="pos-target-sum" id="posTargetSummary" role="status"></div>
       <div class="trade-actions"><button class="btn trade-confirm" id="posTargetReview" data-action="openPositionTrade" data-arg="" data-arg2="target" disabled>Review target</button></div>
+      </div>
+      <div id="posStopForm" style="display:none;">
+        <div class="pos-target-row">
+          <div class="field">
+            <label for="posChartStopPrice">Stop price</label>
+            <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posChartStopPrice" step="0.01" min="0" inputmode="decimal" placeholder="tap the chart" autocomplete="off" data-input="posChartStopChanged" /></div>
+          </div>
+        </div>
+        <div class="pos-target-sum" id="posStopSummary" role="status"></div>
+        <div class="trade-actions"><button class="btn trade-confirm" id="posStopReview" data-action="openPositionTrade" data-arg="" data-arg2="stop" disabled>Review stop</button></div>
       </div>
       <div id="posAddForm" style="display:none;">
         <div class="pos-target-row">

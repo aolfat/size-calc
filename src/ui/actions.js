@@ -16,11 +16,11 @@ import { effects } from './effects.js';
 import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsChanged, renderFutures, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { closePositionChart, posAddChanged, posChartToday, posTargetChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, togglePosChartAvg, togglePositionChart } from './position-chart.js';
+import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
-import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopDuration } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseType, setPositionBeMode, setPositionStopAt, setPositionStopDuration, setPositionStopPrice } from './position-trade.js';
 import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -323,6 +323,8 @@ export const actions = {
   setClosePortion: el => setClosePortion(num(el)),
   setCloseQty: el => setCloseQty(el.value),
   setClosePrice: el => setClosePrice(el.value),
+  setPositionStopPrice: el => setPositionStopPrice(el.value),
+  setPositionStopAt: el => setPositionStopAt(arg(el)),
   openSpreadClose: el => openSpreadClose(arg(el)),
   setSpreadCloseType: el => setSpreadCloseType(arg(el)),
   setSpreadClosePortion: el => setSpreadClosePortion(num(el)),
@@ -345,6 +347,7 @@ export const actions = {
   posChartToday: () => posChartToday(),
   togglePosChartAvg: () => togglePosChartAvg(),
   posTargetChanged: () => posTargetChanged(),
+  posChartStopChanged: () => posChartStopChanged(),
   setPosTargetPortion: el => setPosTargetPortion(num(el)),
   setPosChartTool: el => setPosChartTool(arg(el)),
   posAddChanged: () => posAddChanged(),
