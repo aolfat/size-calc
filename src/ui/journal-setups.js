@@ -57,10 +57,13 @@ function overview(trades, lib) {
   const list = keys.map(key => ({ key, stats: byKey.get(key) || empty, open: openBy.get(key) || 0 }));
   const setupRows = list.flatMap(s => {
     // every side shown: a setup closed one way only reads as that side's; one closed both ways gets a row per side
-    const bySide = side === 'both' ? statsByLabel(live.filter(t => labelKeys(t, 'setup').includes(s.key)), t => [t.bias || 'long'], ['long', 'short', 'neutral']).rows : [];
-    const only = bySide.length === 1 ? SIDE_READS[bySide[0].group] || 'both' : side;
+    const withIt = side === 'both' ? live.filter(t => labelKeys(t, 'setup').includes(s.key)) : [];
+    const bySide = statsByLabel(withIt, t => [t.bias || 'long'], ['long', 'short', 'neutral']).rows;
+    // one side only counts the open trades too: a long closed and a short still open is both ways
+    const taken = [...new Set(withIt.map(t => t.bias || 'long'))];
+    const only = taken.length === 1 ? SIDE_READS[taken[0]] || 'both' : side;
     const name = lib.nameOf('setup', s.key, only);
-    const sub = [madeOf(lib, s.key, only), bySide.length === 1 && only !== 'both' ? `${only} only` : '', s.open ? `${s.open} open` : '', !s.stats.trades && !s.open ? 'not used yet' : ''].filter(Boolean).join(' · ');
+    const sub = [madeOf(lib, s.key, only), taken.length === 1 && only !== 'both' ? `${only} only` : '', s.open ? `${s.open} open` : '', !s.stats.trades && !s.open ? 'not used yet' : ''].filter(Boolean).join(' · ');
     const main = { group: `<button class="journal-name" data-action="openJournalSetup" data-arg="${esc(s.key)}" aria-label="Open ${esc(name)}"><b>${esc(name)}</b></button>`, sub: esc(sub), stats: s.stats };
     if (bySide.length < 2) return [main];
     return [main, ...bySide.map(b => {

@@ -116,3 +116,20 @@ test('a setup traded both ways: one row, its long and short rows under it, the s
   run("openJournalSetup('base_breakout')");
   assert.match(list(), /<span class="jc-title">Base breakdown<\/span>/);
 });
+
+test('a setup closed long with a short still open is not "long only"', async () => {
+  const leg = (id, instruction, time, price) => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), user_id: 'user-1', data: {
+    orderId: id, enteredTime: time, status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction, quantity: 10, instrument: { symbol: 'MSFT', assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: 10, price, time }] }],
+  } });
+  const { run, list } = await journal(sb => { const r = leg(601, 'SELL_SHORT', '2026-10-05T14:00:00+0000', 400); sb.table.set(`user-1:order:${r.record_id}`, r); });
+  for (const key of [KEY, '6789|MSFT|short|2026-10-05T14:00:00.000Z']) {
+    run(`openJournalTrade('${key}')`);
+    await settle();
+    await run("toggleSetup(journalPageTrade(), 'flag_breakout')");
+    run('closeJournalTrade()');
+  }
+  run("setJournalTab('setups')");
+  assert.match(list(), /<b>Flag breakout \/ breakdown<\/b><\/button>[^]*?<span class="pos-sub">Pennant or flag breakout \/ breakdown · 1 open<\/span>/, 'both words, no "long only"');
+});
