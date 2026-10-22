@@ -85,11 +85,12 @@ export function createState() {
     shotsBusy: 0, // screenshots being shrunk and kept
     shotView: null, // the screenshot open in the viewer (its id)
     shotDeleteArmed: false, // Delete was tapped once: the next tap deletes
-    setupDraft: null, // + New setup being made: { action, levels, pattern, name }
+    setupDraft: null, // + New setup open: { action, levels, pattern, key (the setup it put on the trade), made (the one it made, while only it uses it) }
     setupEdit: null, // one of My setups being edited in Edit choices: { key, action, levels, pattern, name, follow (the name tracks the parts) }
     reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it
+    reviewNewShort: '', // and its words on a short (an action or pattern)
     reviewNoteDraft: null, // { key, which: 'entry' | 'exit', text }: the note being typed, so a redraw never loses it
     journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }

@@ -33,7 +33,7 @@ import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartK
 import { toggleTradeFeatures } from './journal-features.js';
 import { addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, moveNotebookItem, notebookItemInput, openJournalDay, openTodayNotebook, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, stepJournalDay, toggleDayFeeling } from './journal-notebook.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
-import { addReviewLink, cancelSetupEdit, editSetup, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, useSetupDraftMatch, cancelReviewItem, cancelSetupDraft, saveSetupDraft, setDraftAction, setDraftPattern, setupDraftNameInput, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
+import { addReviewLink, cancelSetupEdit, editSetup, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
@@ -171,11 +171,9 @@ export const actions = {
   clearReviewFrom: () => setReviewFrom(''),
   startSetupDraft: () => startSetupDraft(),
   cancelSetupDraft: () => cancelSetupDraft(),
-  setDraftAction: el => setDraftAction(arg(el)),
-  setDraftPattern: el => setDraftPattern(arg(el)),
-  toggleDraftLevel: el => toggleDraftLevel(arg(el)),
-  setupDraftNameInput: el => setupDraftNameInput(/** @type {HTMLInputElement} */ (el).value),
-  saveSetupDraft: () => withPageTrade(t => saveSetupDraft(t)),
+  setDraftAction: el => withPageTrade(t => setDraftAction(t, arg(el))),
+  setDraftPattern: el => withPageTrade(t => setDraftPattern(t, arg(el))),
+  toggleDraftLevel: el => withPageTrade(t => toggleDraftLevel(t, arg(el))),
   editSetup: el => editSetup(arg(el)),
   cancelSetupEdit: () => cancelSetupEdit(),
   setEditAction: el => setEditAction(arg(el)),
@@ -184,7 +182,6 @@ export const actions = {
   setupEditNameInput: el => setupEditNameInput(/** @type {HTMLInputElement} */ (el).value),
   saveSetupEdit: () => saveSetupEdit(),
   mergeEditedSetup: el => mergeEditedSetup(arg(el)),
-  useSetupDraftMatch: el => withPageTrade(t => useSetupDraftMatch(t, arg(el))),
   pasteTradeShot: () => withPageTrade(t => pasteTradeShot(t)),
   pickTradeShots: () => pickTradeShots(),
   addTradeShotsFromInput: el => withPageTrade(t => { const files = /** @type {HTMLInputElement} */ (el).files; const p = addTradeShots(t, files); /** @type {HTMLInputElement} */ (el).value = ''; return p; }),
@@ -202,6 +199,7 @@ export const actions = {
   startReviewItem: el => startReviewItem(arg(el)),
   cancelReviewItem: () => cancelReviewItem(),
   reviewNewNameInput: el => { state.reviewNewName = /** @type {HTMLInputElement} */ (el).value; },
+  reviewNewShortInput: el => { state.reviewNewShort = /** @type {HTMLInputElement} */ (el).value; },
   saveReviewItem: () => withPageTrade(t => saveReviewItem(t, state.reviewNewName || /** @type {HTMLInputElement | null} */ (document.getElementById('reviewNewName'))?.value || '')),
   openJournalLibrary: () => openJournalLibrary(),
   renameLibraryItem: el => renameLibraryItem(arg(el), el.dataset.arg2 || '', /** @type {HTMLInputElement} */ (el).value),
