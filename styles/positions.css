@@ -359,6 +359,8 @@ button.jc-day:hover { border-color: var(--border2); }
   .journal-table td:first-child { white-space: normal; min-width: 170px; max-width: 190px; }
   .journal-table td:first-child b, .journal-table td:first-child .journal-legs, .journal-table td:first-child .journal-tag { white-space: nowrap; }
   .journal-table td:first-child .journal-tag { display: inline-block; margin: 2px 4px 0 0; }
+  /* a stat table's group names ('21 EMA undercut & rally / reclaim & fail') wrap instead of running into Trades */
+  .js-table td:first-child b { white-space: normal; }
 }
 /* merge: a checkbox before each trade's symbol, and the pick bar (sticks to the bottom while you tick) */
 .journal-pick { flex: none; display: inline-flex; width: 20px; margin: 0 8px 0 0; padding: 2px; cursor: pointer; }
