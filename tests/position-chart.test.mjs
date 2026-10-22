@@ -106,7 +106,7 @@ test('Chart opens the position\'s daily next to the table, and tapping it again 
   assert.equal(elements.get('posChartTitle').textContent, 'HOOD');
   assert.equal(elements.get('posChartMeta').textContent, 'Long 300 shares · avg $38.20 · now $41.10');
   assert.equal(elements.get('posTargetQtyLabel').textContent, 'Shares to sell');
-  assert.match(elements.get('posTargetSummary').innerHTML, /Tap the chart for a target price, then pick how much to sell/);
+  assert.match(elements.get('posTargetSummary').innerHTML, /Tap the chart above the price for a target, then pick how much to sell/);
   assert.equal(elements.get('posTargetReview').disabled, true);
 
   run("togglePositionChart('HOOD')");
@@ -376,4 +376,63 @@ test('Avg hides the average cost line and lets the scale fit without it; the cho
 
   const again = await app({ fetch: async () => json({}), storage });
   assert.equal(again.run('posChartAvg'), false);
+});
+
+test('tapping below the price on a long sets the stop instead, and the stop form says what it covers and risks', async () => {
+  const { run, elements, canvas } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  assert.equal(elements.get('posStopSummary').innerHTML, 'Tap the chart below the price, or type a stop.');
+  assert.equal(elements.get('posStopReview').disabled, true);
+  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  canvas('mousedown', { clientX: g.x(259) });
+  canvas('click', { clientX: g.x(259), clientY: g.y(39) - 3 });
+  assert.equal(run('posChart.stop'), 39, 'the session\'s low');
+  assert.equal(run('posChart.price'), null, 'the target is untouched');
+  assert.equal(elements.get('posChartStopPrice').value, '39.00');
+  const sum = elements.get('posStopSummary').innerHTML;
+  assert.match(sum, /<strong>Stop at \$39\.00 for 300 shares<\/strong> · <span class="pos-locked">\+\$240\.00 locked<\/span>/);
+  assert.match(sum, /Your limit already closes part of it: the review asks what the stop covers\./);
+  assert.equal(elements.get('posStopReview').disabled, false);
+  assert.equal(elements.get('posStopReview').dataset.arg, 'HOOD');
+
+  elements.get('posChartStopPrice').value = '37';
+  elements.get('riskDollar').value = '300';
+  run('posChartStopChanged()');
+  const risky = elements.get('posStopSummary').innerHTML;
+  assert.match(risky, /<span class="pos-loss">−\$360\.00<\/span> \(0\.36% of acct\) from cost/);
+  assert.match(risky, /More than your max loss per trade, \$300\.00\./);
+  elements.get('posChartStopPrice').value = '42';
+  run('posChartStopChanged()');
+  assert.match(elements.get('posStopSummary').innerHTML, /The stop \$42\.00 is at or above the price \$41\.10/);
+  assert.equal(elements.get('posStopReview').disabled, true);
+});
+
+test('Review stop opens the stop sheet at the chart\'s price, warns past the max loss, and a placed stop clears the form', async () => {
+  const { run, elements } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  elements.get('posChartStopPrice').value = '37';
+  elements.get('riskDollar').value = '300';
+  run('posChartStopChanged()');
+  await run("openPositionTrade('HOOD', 'stop')");
+  const body = elements.get('posTradeBody').innerHTML;
+  assert.match(body, /id="posStopPrice"[^>]*value="37\.00"/);
+  assert.match(body, /At the stop this loses \$360\.00, more than your max loss per trade, \$300\.00\./);
+  elements.get('riskDollar').value = '1000';
+  run("setPositionStopPrice('37')");
+  assert.doesNotMatch(elements.get('posTradeDetail').innerHTML, /max loss/);
+  run("positionStopPlaced('HOOD')");
+  assert.equal(run('posChart.stop'), null);
+  assert.equal(elements.get('posChartStopPrice').value, '');
+});
+
+test('a short\'s stop is above the price', async () => {
+  const { run, elements } = await chartApp();
+  run("togglePositionChart('TSLA')");
+  await settle();
+  assert.equal(elements.get('posStopSummary').innerHTML, 'Tap the chart above the price, or type a stop.');
+  elements.get('posChartStopPrice').value = '266';
+  run('posChartStopChanged()');
+  assert.match(elements.get('posStopSummary').innerHTML, /Stop at \$266\.00 for 40 shares<\/strong> · <span class="pos-loss">−\$160\.00<\/span>/);
 });

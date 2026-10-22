@@ -150,3 +150,8 @@ export function riskFollowsDollars() {
 export function riskDollars() {
   return parseFloat(document.getElementById('riskDollar').value) || 0;
 }
+
+/** the max loss per trade a stop is checked against; 0 in allocation sizing, which has none */
+export function maxLossPerTrade() {
+  return state.sizingMode === 'allocation' ? 0 : riskDollars();
+}
