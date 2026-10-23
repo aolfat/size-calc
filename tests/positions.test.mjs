@@ -472,6 +472,38 @@ test('R without a Journal trade: the nearest stop, a long option\'s premium, not
   assert.match(noStop.why, /No stop/);
 });
 
+test('1R in the position\'s price sets a target in R: the Journal trade\'s risk per share at entry, else the nearest stop or the premium', async () => {
+  const { run } = await app();
+  const rows = orders => [...run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(orders)}).rows`)];
+  const unit = (row, trades = null) => run(`rUnit(${JSON.stringify(row)}, ${JSON.stringify(trades)}, '6789')`);
+  const price = (row, r, per) => run(`rTargetPrice(${JSON.stringify(row)}, ${r}, ${per})`);
+  const all = rows(ORDERS), stock = all.find(r => r.label === 'TEST');
+
+  const first = unit(stock, [openTrade()]);
+  assert.equal(first.source, 'journal');
+  assert.equal(first.per, 3, '$300 over 100 shares: the first stop $47, not the $48 working now');
+  assert.equal(unit(stock, [openTrade({ entryQty: 200, risk: 600, exits: 1, grossPnl: 400 })]).per, 3, 'over the whole entry, so a trim doesn\'t change 1R');
+  assert.equal(price(stock, 5, 3), 65, '5R: $50 cost + 5 × $3');
+  assert.equal(unit(stock).per, 2, 'no Journal trade: the nearest stop, $48');
+  assert.equal(unit(stock).stop, 48);
+
+  const short = all[1];
+  assert.equal(unit(short).per, 2, 'a short: $2 to the $22 stop');
+  assert.equal(price(short, 2, 2), 16, 'below the $20 cost on a short');
+  assert.equal(price(short, 12, 2), 0, 'a short target can\'t go under zero');
+
+  const call = rows([])[3];
+  assert.equal(unit(call).source, 'premium');
+  assert.equal(unit(call).per, 2.5, 'a long call with no stop: 1R is the premium');
+  assert.equal(price(call, 1.1, 2.53), 5.3, 'on the option grid: $5.283 goes to the nearest dime above $3');
+
+  const past = unit(all[3]);
+  assert.equal(past.per, null, 'a stop past breakeven');
+  assert.match(past.why, /breakeven/);
+  assert.equal(unit(rows([])[2]).per, null);
+  assert.equal(price(all[0], 2, 1), 0, 'no cost basis, no target in R');
+});
+
 // the TEST trade in the Journal: 100 bought at $50 with a $47 stop, replaced later by the $48 working now
 const TEST_BUY = { kind: 'order', record_id: '801', account: '6789', entered_at: '2026-10-05T14:00:00Z', data: {
   orderId: 801, enteredTime: '2026-10-05T14:00:00+0000', status: 'FILLED', orderType: 'MARKET', orderStrategyType: 'TRIGGER',

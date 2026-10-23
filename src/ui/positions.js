@@ -6,7 +6,7 @@
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
@@ -66,9 +66,22 @@ function positionTrades() {
 
 const rShown = () => state.posCols.includes('r');
 
-/** the records, your stops and merges, when the R column needs them and nothing has read them yet */
+/** 1R in a position's own price for the chart's targets, counted like the R column (the Journal trade's first stop when it's read) */
+export function positionRUnit(row) {
+  return rUnit(row, positionTrades(), state.positions?.last4 || '');
+}
+
+/** what 1R counts from, in a few words: 'the first stop $35.50', 'the stop $35.50', 'the premium' */
+export function rUnitWords(unit, row) {
+  const px = v => fmtPositionPrice(v, row.tradeAs);
+  if (unit.basis === 'premium') return 'the premium';
+  if (unit.source === 'journal') return unit.basis === 'stop' ? `the first stop ${px(unit.stop)}` : 'your Journal risk';
+  return `the stop ${px(unit.stop)}`;
+}
+
+/** the records, your stops and merges, when the R column or an open chart's targets need them and nothing has read them yet */
 function readPositionJournal(force = false) {
-  if (!rShown() || !state.session || state.posJournalBusy || state.journalLoading) return;
+  if (!(rShown() || state.posChart) || !state.session || state.posJournalBusy || state.journalLoading) return;
   if (!force && (state.journalRecords || state.posJournalError)) return;
   state.posJournalBusy = Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades()]).then(([records, reviews, saved]) => {
     if (records.status === 'fulfilled') { state.journalRecords = records.value; state.posJournalError = ''; }
@@ -77,7 +90,7 @@ function readPositionJournal(force = false) {
     if (saved.status === 'fulfilled') { state.journalSaved = saved.value; state.journalSavedError = ''; }
   }).finally(() => {
     state.posJournalBusy = false;
-    if (state.positionsView) renderPositionsTable();
+    if (state.positionsView) { renderPositionsTable(); renderPositionChart(); }
   });
 }
 

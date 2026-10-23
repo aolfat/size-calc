@@ -74,6 +74,7 @@
 .pos-tool button { flex: 1 1 0; }
 .pos-target-row { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; }
 .pos-target-row .field { flex: 1 1 130px; }
+.pos-target-row + .pos-target-row { margin-top: 10px; }
 .pos-portions { margin-top: 0; flex: 1 1 190px; flex-wrap: nowrap; }
 .pos-portions .filter-btn { flex: 1 1 0; min-width: 0; padding: 9px 4px; font-size: 14px; text-align: center; }
 .pos-portions .filter-btn:disabled { opacity: 0.45; cursor: default; }
