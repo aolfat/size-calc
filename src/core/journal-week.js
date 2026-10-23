@@ -6,6 +6,7 @@
 // trade's excursions from its saved 5-minute bars; nothing here reads state.
 import { fmt$ } from './format.js';
 import { GRADES, gradeOf } from './journal-labels.js';
+import { pnlPct } from './journal.js';
 import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf } from './journal-stats.js';
 
 /** @typedef {import('./journal-stats.js').StatTrade & { avgEntry?: number, entryQty?: number, multiplier?: number,
@@ -73,6 +74,9 @@ export const gradeColumn = k => `${k}_grade`;
 export const noteColumn = (/** @type {string} */ k) => `${k}_note`;
 /** the columns a period_reviews row carries, besides its unit and key */
 export const PERIOD_COLUMNS = [...PERIOD_CATEGORIES.flatMap(([k]) => [gradeColumn(k), noteColumn(k)]), 'rule_next', 'rule_kept', 'reviewed_at'];
+/** the notes on the period as a whole, after the parts: [column, label] (their own migration, read on their own; never needed to be reviewed) */
+export const PERIOD_OVERALL = /** @type {[string, string][]} */ ([['went_well', 'What went well'], ['work_on', 'What to work on'], ['note', 'More notes']]);
+export const PERIOD_OVERALL_COLUMNS = PERIOD_OVERALL.map(([c]) => c);
 
 /**
  * Where a period's review stands: reviewed once every part has a grade and the rule for the next one is set (notes and
@@ -117,6 +121,7 @@ export function cleanPeriodRow(raw) {
     row[gradeColumn(k)] = PERIOD_GRADES.includes(raw[gradeColumn(k)]) ? raw[gradeColumn(k)] : null;
     row[noteColumn(k)] = typeof raw[noteColumn(k)] === 'string' && raw[noteColumn(k)] ? raw[noteColumn(k)].slice(0, MAX_PERIOD_NOTE) : null;
   }
+  for (const c of PERIOD_OVERALL_COLUMNS) row[c] = typeof raw[c] === 'string' && raw[c] ? raw[c].slice(0, MAX_PERIOD_NOTE) : null;
   row.rule_next = typeof raw.rule_next === 'string' && raw.rule_next.trim() ? raw.rule_next.slice(0, MAX_RULE) : null;
   row.rule_kept = RULE_KEPT.some(([v]) => v === raw.rule_kept) ? raw.rule_kept : null;
   row.reviewed_at = raw.reviewed_at || null;
@@ -141,6 +146,41 @@ export function reviewTrades(trades, unit, key) {
   for (const t of [...opened, ...closedHere]) all.set(t.key, t);
   for (const t of closed) if (!all.has(t.key)) all.set(t.key, /** @type {WeekTrade} */ (live.find(x => x.key === t.key)));
   return { closed, closedHere, opened, all: [...all.values()] };
+}
+
+/** how the review's list of trades can be sorted: P&L, P&L %, R, or when each opened */
+export const PERIOD_TRADE_SORTS = ['pnl', 'pct', 'r', 'opened'];
+
+/**
+ * Every trade a review covers as a row of its list: the trade itself (its page, its name), and the P&L, P&L % and R of
+ * the exits taken in the period, like the calendar (sliceTrade: a trim counts the period it was taken in, its % over
+ * what the part sold cost); a trade opened in the period with nothing closed yet has none of them.
+ * @param {WeekTrade[]} trades @param {string} unit @param {string} key
+ */
+export function periodTradeRows(trades, unit, key) {
+  const { closed, all } = reviewTrades(trades, unit, key);
+  const here = new Map(closed.map(t => [t.key, t]));
+  return all.map(t => {
+    const c = /** @type {any} */ (here.get(t.key));
+    const pct = !c ? null : !c.partial ? pnlPct(c) : c.legs ? null : pnlPct({ ...c, status: 'open' });
+    return { trade: t, pnl: c ? c.pnl : null, pct, r: c?.r ?? null, open: t.status === 'open', partial: !!c?.partial };
+  });
+}
+
+/**
+ * The list in order: by 'pnl', 'pct', 'r' or 'opened', dir -1 biggest (or newest) first, 1 the other way; rows without
+ * the number always last, ties by when they opened.
+ * @template {{ trade: WeekTrade, pnl: number | null, pct: number | null, r: number | null }} Row
+ * @param {Row[]} rows @param {string} by @param {number} dir
+ */
+export function sortPeriodTrades(rows, by, dir) {
+  const opened = (/** @type {Row} */ x) => Date.parse(x.trade.openedAt || '') || 0;
+  const value = (/** @type {Row} */ x) => by === 'opened' ? opened(x) : /** @type {any} */ (x)[PERIOD_TRADE_SORTS.includes(by) ? by : 'pnl'];
+  return [...rows].sort((a, b) => {
+    const va = value(a), vb = value(b);
+    if (va === null || va === undefined || vb === null || vb === undefined) return (va === null || va === undefined ? 1 : 0) - (vb === null || vb === undefined ? 1 : 0) || opened(a) - opened(b);
+    return (va - vb) * (dir < 0 ? -1 : 1) || opened(a) - opened(b);
+  });
 }
 
 /**
