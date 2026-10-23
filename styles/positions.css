@@ -404,6 +404,8 @@ span.journal-pick { cursor: default; }
 .chart-wrap .jt-plot canvas { border: 0; border-radius: 0; background: none; cursor: inherit; }
 .jt-charts .chart-hint { grid-column: 1 / -1; }
 @media (min-width: 900px) { .jt-charts { grid-template-columns: 3fr 2fr; } .jt-plot { height: 380px; } }
+/* an option: its own 5 minutes and its underlying's side by side, the daily under both */
+@media (min-width: 900px) { .jt-charts.jt-under { grid-template-columns: 1fr 1fr; } .jt-under .jt-chart-d { grid-column: 1 / -1; } }
 .jt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; margin: 0 0 10px; }
 .jt-stats dt { font-size: 12px; color: var(--text2); }
 .jt-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-family: var(--num); }
