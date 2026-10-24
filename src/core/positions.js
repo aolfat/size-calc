@@ -434,6 +434,11 @@ export function spreadR(s) {
   return { r: s.pnl / s.maxLoss, why: '' };
 }
 
+/** the Journal's open trade on a position: same account, contract and direction, not deleted, not inside a spread */
+const journalTrade = (/** @type {Row} */ row, /** @type {import('./journal.js').Trade[] | null} */ trades, /** @type {string} */ last4) =>
+  (trades || []).find(x => x.status === 'open' && !x.deleted && x.kind !== 'spread' && x.account === last4
+    && x.symbol === row.symbol && x.direction === (row.qty > 0 ? 'long' : 'short')) || null;
+
 /**
  * @typedef {{ r: number | null, withTrims: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
  *   basis: string | null, stop: number | null, why: string, journalQty: number | null }} PositionR
@@ -452,9 +457,7 @@ export function spreadR(s) {
 export function positionR(row, trades, last4) {
   const out = /** @type {PositionR} */ ({ r: null, withTrims: null, risk: null, source: null, basis: null, stop: null, why: '', journalQty: null });
   if (row.pnl === null) return { ...out, why: 'No average cost from Schwab.' };
-  const long = row.qty > 0, held = Math.abs(row.qty);
-  const t = (trades || []).find(x => x.status === 'open' && !x.deleted && x.kind !== 'spread' && x.account === last4
-    && x.symbol === row.symbol && x.direction === (long ? 'long' : 'short'));
+  const long = row.qty > 0, held = Math.abs(row.qty), t = journalTrade(row, trades, last4);
   if (t && t.risk && t.risk > 0.005 && Math.abs(t.openQty - held) < 1e-6) {
     const r = row.pnl / t.risk;
     return { ...out, r, withTrims: t.exits ? r + t.grossPnl / t.risk : null, risk: t.risk, source: 'journal', basis: t.rBasis, stop: t.stop };
@@ -750,12 +753,37 @@ export function targetPlan(row, { price, qty, duration }) {
   return { error: unnamed(steps), stop: stop ?? 0, steps, paired: [], rest: free - qty, bare: stop === null ? qty : 0, price: limit, moved };
 }
 
-/** What a target makes over your cost, and in R (cost to the nearest stop) while that stop is a loss. @param {Row} row @param {number} price @param {number} qty */
-export function targetGain(row, price, qty) {
+/**
+ * What a target makes over your cost, and in R: per = 1R in the position's own price (rUnit's per), else cost to the nearest
+ * stop while that stop is a loss. @param {Row} row @param {number} price @param {number} qty @param {number | null} [unit]
+ */
+export function targetGain(row, price, qty, unit = null) {
   const long = row.qty > 0, per = long ? price - row.avg : row.avg - price;
-  const risk = row.stop === null ? 0 : long ? row.avg - row.stop : row.stop - row.avg;
+  const risk = unit !== null && unit > 0 ? unit : row.stop === null ? 0 : long ? row.avg - row.stop : row.stop - row.avg;
   if (!(row.avg > 0)) return { gain: null, pct: null, r: null };
   return { gain: per * qty * row.mult, pct: per / row.avg * 100, r: risk > 0 ? per / risk : null };
+}
+
+/**
+ * 1R in the position's own price, so a target can be set in R: the risk positionR counts from (the Journal trade's risk at
+ * entry over its entry size, so trims don't change it; else the nearest stop's distance from your cost, or a long option's
+ * premium), per share or contract. null with why when there's none.
+ * @param {Row} row @param {import('./journal.js').Trade[] | null} trades @param {string} last4
+ */
+export function rUnit(row, trades, last4) {
+  const p = positionR(row, trades, last4);
+  if (p.risk === null) return { per: null, source: p.source, basis: p.basis, stop: p.stop, why: p.why };
+  const t = p.source === 'journal' ? journalTrade(row, trades, last4) : null;
+  const size = t ? t.entryQty : Math.abs(row.qty);
+  return { per: p.risk / (size * row.mult), source: p.source, basis: p.basis, stop: p.stop, why: '' };
+}
+
+/** The price r R from your cost (above on a long, below on a short), on the order grid; 0 when it can't be. @param {Row} row @param {number} r @param {number} per */
+export function rTargetPrice(row, r, per) {
+  if (!(row.avg > 0) || !(per > 0) || !(r > 0)) return 0;
+  const price = row.avg + (row.qty > 0 ? 1 : -1) * r * per;
+  if (!(price > 0)) return 0;
+  return row.tradeAs === 'OPTION' ? optionPriceTick(price) : priceTick(price);
 }
 
 /**

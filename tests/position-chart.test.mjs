@@ -136,6 +136,7 @@ test('portion chips take a share of the position, never more than the other targ
   run("togglePositionChart('HOOD')");
   await settle();
   const chips = () => elements.get('posTargetPortions').innerHTML;
+  assert.match(chips(), /data-arg="0\.1" title="30 shares">10%</);
   assert.match(chips(), /data-arg="0\.25" title="75 shares">¼</);
   assert.match(chips(), /data-arg="0\.3333333333333333" title="100 shares">⅓</);
   assert.match(chips(), /data-arg="0\.5" title="150 shares">½</);
@@ -146,6 +147,49 @@ test('portion chips take a share of the position, never more than the other targ
   assert.match(elements.get('posTargetSummary').innerHTML, /Tap the chart or type a target price/);
   run("setPosTargetPortion(1)");
   assert.equal(run('posChart.qty'), 200);
+});
+
+test('a target in R: the chips and the R box set the price from your cost and the nearest stop, and a price reads back in R', async () => {
+  const { run, elements } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  // HOOD: 300 at $38.20, nearest stop $35.50, so 1R = $2.70 a share
+  const chips = () => elements.get('posTargetRChips').innerHTML;
+  assert.match(chips(), /data-action="setPosTargetR" data-arg="1" title="\$40\.90">1R</);
+  assert.match(chips(), /data-arg="5" title="\$51\.70">5R</);
+  run("actions.setPosTargetR({ dataset: { arg: '5' } })");
+  assert.equal(run('posChart.price'), 51.7);
+  assert.equal(elements.get('posTargetPrice').value, '51.70');
+  assert.equal(elements.get('posTargetR').value, '5');
+  assert.match(chips(), /class="filter-btn active" aria-pressed="true" data-action="setPosTargetR" data-arg="5"/);
+
+  run("actions.setPosTargetPortion({ dataset: { arg: '0.1' } })");
+  assert.equal(elements.get('posTargetQty').value, '30', '10% of 300');
+  const sum = elements.get('posTargetSummary').innerHTML;
+  assert.match(sum, /<strong>Sells 30 of 300 shares at \$51\.70<\/strong> · <span class="pos-locked">\+\$405\.00<\/span> \(\+35\.3%\) over cost · 5\.0R/);
+  assert.match(sum, /1R is \$2\.70 a share, from the stop \$35\.50\./);
+  assert.equal(elements.get('posTargetReview').disabled, false);
+
+  elements.get('posTargetR').value = '2.5';
+  run('actions.posTargetRChanged()');
+  assert.equal(elements.get('posTargetPrice').value, '44.95', 'typing R moves the price');
+  assert.doesNotMatch(chips(), /active/);
+  elements.get('posTargetPrice').value = '46';
+  run('posTargetChanged()');
+  assert.equal(run('posChart.r'), null, 'a typed price is a price');
+  assert.equal(elements.get('posTargetR').value, '2.9', 'and the R box follows it');
+});
+
+test('a target in R needs a risk to count from: a short with no stop greys the chips out', async () => {
+  const { run, elements } = await chartApp();
+  run("togglePositionChart('TSLA')");
+  await settle();
+  assert.match(elements.get('posTargetRChips').innerHTML, /data-arg="5" title="No stop to count R from\." disabled>5R</);
+  elements.get('posTargetR').value = '3';
+  run('posTargetRChanged()');
+  assert.equal(elements.get('posTargetPrice').value, '');
+  assert.match(elements.get('posTargetSummary').innerHTML, /No target in R: No stop to count R from\./);
+  assert.equal(elements.get('posTargetReview').disabled, true);
 });
 
 test('tapping the chart sets the target price, taking a candle\'s exact high when it lands near one', async () => {
@@ -389,7 +433,7 @@ test('an option\'s hover readout shows the bar\'s time', async () => {
   elements.get('posChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
   canvas('mousemove', { clientX: g.x(29), clientY: g.y(3.3) });
-  assert.match(elements.get('posChartOhlc').innerHTML, /\(\+10\.0% from now\) &nbsp; 5m 10\/12 10:15 &nbsp; O 3\.00/);
+  assert.match(elements.get('posChartOhlc').innerHTML, /\(\+10\.0% from now\) · 1\.6R &nbsp; 5m 10\/12 10:15 &nbsp; O 3\.00/);
   delete globalThis.getComputedStyle;
 });
 

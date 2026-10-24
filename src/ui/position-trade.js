@@ -10,7 +10,7 @@ import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { positionStopPlaced, positionTargetPlaced } from './position-chart.js';
-import { refreshPositions } from './positions.js';
+import { positionRUnit, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 import { openSheet } from './sheets.js';
 
@@ -426,9 +426,9 @@ function choicePrompt(t) {
 
 /** a target's own rows: how long its orders last, and what it makes */
 function targetRows(t, duration) {
-  const row = t.row, g = targetGain(row, t.price, t.target.qty);
+  const row = t.row, unit = positionRUnit(row), g = targetGain(row, t.price, t.target.qty, unit.per);
   const sign = v => (v >= 0 ? '+' : '−') + fmt$(Math.abs(v));
-  const r = g.r === null ? '' : ` · ${g.r.toFixed(1)}R from the ${fmtPositionPrice(t.stop, row.tradeAs)} stop`;
+  const r = g.r === null ? '' : ` · ${g.r.toFixed(1)}R from ${unit.per ? rUnitWords(unit, row) : `the ${fmtPositionPrice(row.stop, row.tradeAs)} stop`}`;
   const left = Math.abs(row.qty) - t.target.qty;
   return `<div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
     <div><dt>At target</dt><dd>${g.gain === null ? '<span class="shares-detail">Schwab shows no cost basis for this position.</span>'

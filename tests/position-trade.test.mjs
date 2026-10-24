@@ -715,7 +715,7 @@ test('the target review re-reads Schwab, sends the cut and the pair once, and co
   assert.match(review, /Cut stop \$35\.50 from 300 shares to 200/);
   assert.match(review, /Place limit \$50\.00 for 100 shares paired with stop \$35\.50 \(one cancels the other\)/);
   assert.match(review, /\+\$1,180\.00/);
-  assert.match(review, /\+30\.9% over your cost · 4\.4R from the \$35\.50 stop\. 200 shares left after it fills\./);
+  assert.match(review, /\+30\.9% over your cost · 4\.4R from the stop \$35\.50\. 200 shares left after it fills\./);
   assert.match(review, /your stop is cut to make room\. While the target goes in, 100 shares have no stop for a moment/);
   assert.match(review, /data-action="placePositionTrade"[^>]*>Place target \$50\.00</);
   assert.equal(b.sent.length, 0);
