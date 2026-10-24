@@ -26,6 +26,7 @@ import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
+import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
@@ -69,6 +70,9 @@ export const actions = {
   saveKey: () => saveKey(),
   signIn: () => signIn(),
   signOut: () => signOut(),
+  makeClaudeKey: () => makeClaudeAccessKey(),
+  copyClaudeKey: () => copyClaudeKey(),
+  revokeClaudeKey: el => revokeClaudeAccessKey(arg(el)),
 
   // ---------- settings: Schwab login ----------
   schwabProxyChanged: () => schwabProxyChanged(),

@@ -13,12 +13,13 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
     model_books: r => `${u(r)}:${r.id}`, model_examples: r => `${u(r)}:${r.id}`,
     period_reviews: r => `${u(r)}:${r.unit}:${r.period_key}`,
     trade_features: r => `${u(r)}:${r.trade_key}`,
+    claude_keys: r => `${u(r)}:${r.id}`,
   };
   const table = new Map(seed.map(r => [keys.schwab_records(r), { user_id: 'user-1', ...r }]));
   const reviews = new Map(reviewSeed.map(r => [keys.trade_reviews(r), { user_id: 'user-1', ...r }]));
   const trades = new Map(tradeSeed.map(r => [r.id, { ...r }]));
   const bars = new Map();
-  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map(), trade_shots: new Map(), model_books: new Map(), model_examples: new Map(), period_reviews: new Map(), trade_features: new Map() };
+  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map(), trade_shots: new Map(), model_books: new Map(), model_examples: new Map(), period_reviews: new Map(), trade_features: new Map(), claude_keys: new Map() };
   // Storage: files by bucket and path; signed links are fake https URLs
   const files = new Map();
   const storageOps = []; // settings: an account with none, for a session resumed on boot

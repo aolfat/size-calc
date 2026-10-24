@@ -9,8 +9,9 @@ import { riskDollars } from './risk.js';
 import { entryVal, stopLongVal, stopShortVal } from './stops.js';
 import { effects } from './effects.js';
 
-export function copyPlainText(text) {
-  const ok = () => showToast('Copied: ' + text);
+/** shown: what the toast names, when it shouldn't repeat the text (a key) */
+export function copyPlainText(text, shown = text) {
+  const ok = () => showToast('Copied: ' + shown);
   const fallback = () => {
     const ta = document.createElement('textarea');
     ta.value = text;
