@@ -27,7 +27,7 @@ import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
-import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setRuleKept, stepPeriodReview } from './journal-week.js';
+import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
@@ -141,6 +141,7 @@ export const actions = {
   stepPeriodReview: el => stepPeriodReview(arg(el)),
   setPeriodGrade: el => setPeriodGrade(arg(el), /** @type {HTMLSelectElement} */ (el).value),
   setRuleKept: el => setRuleKept(arg(el)),
+  setPeriodTradeSort: el => setPeriodTradeSort(arg(el)),
   periodTextInput: el => periodTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
   periodTextSave: el => periodTextSave(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
   setJournalSide: el => setJournalSide(arg(el)),

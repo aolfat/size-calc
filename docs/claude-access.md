@@ -7,7 +7,7 @@ It can't reach anything else: not your settings, your Tradier key, your Schwab l
 ## The key
 
 Settings has a **Claude access** section while you're signed in (src/ui/claude-access.js, src/services/claude-keys.js).
-**Make key** draws 32 random bytes in the browser (`scj_` and base64url) and saves only their SHA-256 in `claude_keys` (migration 20261102000000_claude_access.sql).
+**Make key** draws 32 random bytes in the browser (`scj_` and base64url) and saves only their SHA-256 in `claude_keys` (migration 20261103000000_claude_access.sql).
 The key is shown once, with Copy (its toast says "your Claude key", not the key), and forgotten when any sheet opens or closes.
 Each key lists when it was made and last used; **Revoke** deletes its row, and the next call with it is refused.
 A database without the migration says so in the section.

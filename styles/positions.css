@@ -284,6 +284,18 @@ button.jc-day:hover { border-color: var(--border2); }
 .jw-rule-label { display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 6px; }
 .jw-rule-text { margin: 0 0 8px; font-size: 13.5px; }
 .jw-rule-input { width: 100%; }
+.jw-trades { margin: 4px 0 10px; }
+.jw-trades-table { min-width: 0; }
+.jw-trades-table th.jw-sort { padding: 0; }
+.jw-trades-table th.jw-sort button { color: inherit; background: none; border: 0; font: inherit; text-transform: inherit; letter-spacing: inherit; width: 100%; padding: 6px 8px; cursor: pointer; text-align: inherit; white-space: nowrap; }
+.jw-trades-table th[aria-sort] { color: var(--text); }
+.jw-trades-table td:first-child .journal-tag { margin-left: 4px; }
+.jw-sub-day { display: none; }
+.jw-overall { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.jw-optional { font-weight: 400; font-size: 12px; color: var(--text2); margin-left: 4px; }
+.jw-overall-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 10px; }
+.jw-overall-label { display: block; font-size: 12.5px; color: var(--text2); margin-top: 8px; }
+.jw-overall .jw-note { margin-top: 4px; min-height: 64px; }
 .jw-kept { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .jw-kept-q { font-size: 12.5px; color: var(--text2); margin-right: 2px; }
 .jc-rev { font-size: 11px; font-weight: 500; }
@@ -291,7 +303,13 @@ button.jc-day:hover { border-color: var(--border2); }
 .jc-rev-due { color: var(--amber); }
 @media (max-width: 600px) {
   .jw-panel { padding: 10px; }
-  .jw-cat { padding: 8px 10px; }
+  .jw-cat, .jw-overall { padding: 8px 10px; }
+  .jw-trades-table .jw-col-opened { display: none; }
+  .jw-sub-day { display: inline; }
+  .jw-trades-table td, .jw-trades-table th.jw-sort button { padding: 7px 6px; }
+  .jw-trades-table th:not(.jw-sort) { padding: 7px 6px; }
+  .journal-table.jw-trades-table td:first-child { white-space: normal; min-width: 0; max-width: none; }
+  .journal-table.jw-trades-table td:first-child .journal-name, .journal-table.jw-trades-table td:first-child b { white-space: normal; text-align: left; }
   .jw-grade { min-height: 36px; }
   .jc-rev { font-size: 10px; }
   .jw-head .jc-title { min-width: 0; font-size: 14px; }
@@ -405,6 +423,8 @@ span.journal-pick { cursor: default; }
 .chart-wrap .jt-plot canvas { border: 0; border-radius: 0; background: none; cursor: inherit; }
 .jt-charts .chart-hint { grid-column: 1 / -1; }
 @media (min-width: 900px) { .jt-charts { grid-template-columns: 3fr 2fr; } .jt-plot { height: 380px; } }
+/* an option: its own 5 minutes and its underlying's side by side, the daily under both */
+@media (min-width: 900px) { .jt-charts.jt-under { grid-template-columns: 1fr 1fr; } .jt-under .jt-chart-d { grid-column: 1 / -1; } }
 .jt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; margin: 0 0 10px; }
 .jt-stats dt { font-size: 12px; color: var(--text2); }
 .jt-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-family: var(--num); }
