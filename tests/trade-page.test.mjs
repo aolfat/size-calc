@@ -413,14 +413,15 @@ async function xluPage(now, t) {
     const data = spans ? [10, 11].map(h => ({ time: `2026-10-16T${h}:00:00`, open: 1.2, high: 1.6, low: 1.1, close: 1.5, volume: 9 })) : [];
     return new Response(JSON.stringify({ series: data.length ? { data } : null }), { status: 200 });
   };
-  const supabase = fakeRecords(XLU_ORDERS);
-  const a = await app({ supabase, session: SESSION, fetch, clock: true, now });
+  const supabase = fakeRecords(XLU_ORDERS), charts = fakeCharts();
+  const a = await app({ supabase, session: SESSION, fetch, clock: true, now, charts });
   a.elements.get('apiKey').value = 'test-key';
   a.run("setView('journal')");
   await a.run('loadJournal()');
   a.run(`openJournalTrade('6789|${XLU}|long|2026-10-16T14:00:00.000Z')`);
   await settle();
-  return { ...a, calls, supabase };
+  const chart = id => charts.charts.find(c => c.container.id === id && !c.removed);
+  return { ...a, calls, supabase, chart };
 }
 
 test("today's bars: straight from Tradier while the day is on, saved once extended hours end at 20:00 ET", async t => {
@@ -436,6 +437,38 @@ test("today's bars: straight from Tradier while the day is on, saved once extend
     [['XLU', 2], ['XLU261120C00080000', 2]], 'saved, the contract and its underlying');
   assert.ok(saved.some(b => b.symbol === 'SPY'), "and the market basket's day, from the journal's background save");
   assert.equal(done.state.journalTrade.five.length, 2, 'read back from the saved rows');
+});
+
+test("an option: its underlying's 5 minutes beside its own, the same interval and fills, no lines; a stock has none", async t => {
+  const { state, elements, chart, calls, run } = await xluPage(Date.parse('2026-10-16T21:00:00Z'), t);
+  assert.ok(calls.some(c => c[0] === 'XLU' && c[1] === '2026-10-16 04:00'), "today's underlying bars asked of Tradier");
+  assert.equal(state.journalTrade.under.length, 2);
+  assert.equal(elements.get('jtWrapU').style.display, '', 'shown for an option');
+  assert.ok(elements.get('jtCharts').classList.contains('jt-under'), 'side by side on a wide screen');
+  assert.equal(elements.get('jtStatusU').textContent, '');
+  const own = chart('jtChart5'), under = chart('jtChartU');
+  assert.ok(under, "drawn into the underlying's box");
+  assert.deepEqual(under.series[0].lines, [], "no entry, exit or stop: they're the contract's prices");
+  assert.equal(own.series[0].lines.length, 2, "the contract's own chart keeps entry and exit");
+  assert.deepEqual(under.series[0].markers.map(m => [m.time, m.position]), [[Date.UTC(2026, 9, 16, 10, 0) / 1000, 'belowBar'], [Date.UTC(2026, 9, 16, 11, 0) / 1000, 'aboveBar']], 'the fills on the bars they happened in');
+  assert.match(elements.get('jtLegendU').innerHTML, /XLU · 5m/);
+  assert.match(elements.get('jtLegend5').innerHTML, /XLU261120C00080000 · 5m/);
+  assert.match(elements.get('jtToolsU').innerHTML, /data-action="toggleJournalLog" data-arg="U"/);
+  run('setJournalInterval(15)');
+  assert.match(elements.get('jtLegendU').innerHTML, /XLU · 15m/, 'one interval for both');
+  run("toggleJournalLog('U')");
+  assert.equal(under.scales.right.mode, 1);
+  assert.notEqual(own.scales.right.mode, 1, 'each its own log scale');
+  run("setJournalChartKind('ours')");
+  assert.equal(state.journalTrade.classic.U.bars.length, 2, 'ours draws it too');
+});
+
+test('a stock trade has no underlying chart', async t => {
+  const { run, elements } = await page({}, t);
+  run(`openJournalTrade('${KEY}')`);
+  await settle();
+  assert.equal(elements.get('jtWrapU').style.display, 'none');
+  assert.equal(elements.get('jtCharts').classList.contains('jt-under'), false);
 });
 
 test('a trade with nothing saved says why', async t => {
