@@ -78,6 +78,10 @@ export function createState() {
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
     journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
     journalReviewFilter: 'all', // the trades tab's review chips: all | todo (to review) | done (reviewed) | untagged (no setup)
+    claudeKeys: null, // your Claude access keys once read (Settings): [{ id, label, created_at, last_used_at }]
+    claudeKeysError: '', // they couldn't be read (the migration not pushed yet, say)
+    claudeNewKey: '', // a key just made, shown once until a sheet opens or closes
+    claudeBusy: false, // Make key is saving
     reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
     journalShots: null, // your screenshots once read: [{ id, trade_key, path, caption, width, height, bytes, created_at }]
     journalShotsError: '', // they couldn't be read (the migration not pushed yet, say)

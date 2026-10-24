@@ -608,6 +608,12 @@
         </div>
         <p class="hint" id="accountHint">Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. The calculator works without signing in.</p>
       </div>
+      <div class="sheet-section" id="claudeSection" style="display:none;">
+        <div class="sheet-label">Claude access</div>
+        <div id="claudeKeys"></div>
+        <p class="hint">A key lets a Claude Code session read your journal and save trade reviews. Nothing else: not your settings, Tradier key or Schwab login. Revoke cuts it off at once.</p>
+        <details class="hint-details"><summary>Setup</summary>Make a key and copy it. In your Claude Code environment's settings, allow dhohfavttsxwutanvcuj.supabase.co under network access and add the key as the JOURNAL_KEY secret. New sessions there can then read and review your trades. Never paste the key into a chat.</details>
+      </div>
       <div class="sheet-section">
         <div class="row">
           <div class="field" style="flex:2;">
