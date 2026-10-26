@@ -299,6 +299,54 @@ test('missed trades are cleaned on the way in: an id and a ticker each, choices 
   assert.equal(run(`cleanMissed(Array.from({ length: 30 }, (_, i) => ({ id: 'x' + i, symbol: 'SPY' }))).length`), 20);
 });
 
+test('a missed trade makes a new setup or entry tactic on the spot', async () => {
+  const { run, out, supabase, elements, state } = await journal();
+  run("openJournalDay('2026-10-06'); missedInput('nvda'); addMissedTrade()");
+  await settle();
+  const saved = () => supabase.tables.journal_days.get('user-1:2026-10-06').missed[0];
+  const id = saved().id;
+  const lib = () => [...supabase.tables.library_items.values()];
+  const sheet = () => elements.get('journalLibraryBody').innerHTML;
+
+  // a tactic: a name, Add, and it's in your library and on the missed trade
+  run(`startMissedTactic('${id}')`);
+  assert.match(out(), /id="nbMissedTactic"[^>]*data-enter="addMissedTactic"/);
+  run("missedTacticInput('ORB 5')");
+  await run(`addMissedTactic('${id}', 'ORB 5')`);
+  await settle();
+  const tactic = lib().find(r => r.kind === 'tactic');
+  assert.equal(tactic.name, 'ORB 5');
+  assert.equal(saved().tactic, `mine:${tactic.id}`);
+  assert.match(out(), new RegExp(`<option value="mine:${tactic.id}" selected>ORB 5</option>`));
+  run(`startMissedTactic('${id}')`);
+  await run(`addMissedTactic('${id}', '15-MINUTE pivot')`);
+  await settle();
+  assert.equal(saved().tactic, 'pivot15', 'a name you have is that one');
+  assert.equal(lib().filter(r => r.kind === 'tactic').length, 1);
+
+  // a setup: the builder on top of Edit choices; Add puts it in My setups and on the missed trade
+  run(`newMissedSetup('${id}')`);
+  assert.equal(state.openSheetName, 'journalLibrary');
+  assert.match(sheet(), /^<div class="sheet-section"><div class="sheet-label">New setup for the missed NVDA<\/div><div class="jr-draft jl-edit">/, 'on top');
+  assert.equal((sheet().match(/id="setupEditName"/g) || []).length, 1, 'once');
+  run("setEditAction('bounce'); toggleEditLevel('ema9w')");
+  assert.match(sheet(), /Already in My setups: <b>9 WK EMA bounce \/ rejection<\/b>\.<\/span><button class="btn primary" data-action="useSetupTwin" data-arg="ema9w_bounce">Use it/);
+  await run("useSetupTwin('ema9w_bounce')");
+  await settle();
+  assert.equal(saved().setup, 'ema9w_bounce', 'one you have goes on');
+  assert.equal(state.openSheetName, null, 'and the sheet closes');
+
+  run(`newMissedSetup('${id}'); setEditAction('undercut'); toggleEditLevel('ema9w')`);
+  assert.match(sheet(), /data-action="saveSetupEdit">Add to My setups and NVDA</);
+  await run('saveSetupEdit()');
+  await settle();
+  const setup = lib().find(r => r.kind === 'setup');
+  assert.deepEqual([setup.name, setup.settings], ['9 WK EMA undercut & rally', { action: 'undercut', levels: ['ema9w'] }]);
+  assert.equal(saved().setup, `mine:${setup.id}`, 'a new one goes on');
+  assert.equal(state.openSheetName, null);
+  assert.match(out(), new RegExp(`<option value="mine:${setup.id}" selected>9 WK EMA undercut &amp; rally</option>`));
+});
+
 test('a missed trade: added by ticker, filled in, on the calendar, removed with Undo', async () => {
   const { run, out, supabase, elements } = await journal();
   run("openJournalDay('2026-10-06')");

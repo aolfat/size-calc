@@ -89,8 +89,10 @@ export function createState() {
     shotsBusy: 0, // screenshots being shrunk and kept
     shotView: null, // the screenshot open in the viewer (its id)
     shotDeleteArmed: false, // Delete was tapped once: the next tap deletes
+    shotUndo: '', // the screenshot last X'd off, for the toast's Undo
     setupDraft: null, // + New setup open: { action, levels, pattern, key (the setup it put on the trade), made (the one it made, while only it uses it) }
-    setupEdit: null, // one of My setups being edited in Edit choices: { key, action, levels, pattern, name, follow (the name tracks the parts) }
+    setupEdit: null, // one of My setups being edited in Edit choices: { key ('' for + New setup), action, levels, pattern, name, follow (the name tracks the parts), missed ({ id, symbol }: made for that missed trade) }
+    libraryNew: null, // + New open in that builder: { kind (level, action or pattern), name, short }
     reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it
@@ -116,6 +118,8 @@ export function createState() {
     notebookItemDraft: '', // the new goal or rule being typed
     missedDraft: '', // the ticker of a missed trade being typed
     missedOpen: '', // the id of the missed trade open to edit
+    missedNewTactic: '', // the missed trade whose + New tactic box is open
+    missedTacticDraft: '', // the tactic's name being typed there
     missedUndo: null, // { day, list }: the missed trades before the last Remove, for the toast's Undo
     missedChart: null, // the open missed trade's charts: { symbol, day, five, daily, charts, ... } (ui/missed-chart.js)
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades

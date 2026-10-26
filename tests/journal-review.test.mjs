@@ -363,6 +363,42 @@ test('what a setup adds up under: its action as the kind, then each level; a pat
   assert.deepEqual(groups([...merged, { id: 'b2', kind: 'setup', name: 'x', settings: { action: 'bounce', levels: ['support', 'sma50'] } }], 'mine:b2').levels, [{ key: 'level:sma50', name: '50 SMA' }], 'a merged level counts as the one kept, once');
 });
 
+test('+ New setup in Edit choices: built from parts, a new level made on the way, added to My setups, a twin not made again', async () => {
+  const { run, t, body, rows, elements } = await page();
+  const sheet = () => elements.get('journalLibraryBody').innerHTML;
+  assert.equal(run("buildLibrary([]).nameOf('setup', 'ema9w_bounce')"), '9 WK EMA bounce', 'a starting setup: the 9 WK EMA bounce');
+  assert.equal(run("buildLibrary([]).nameOf('setup', 'ema9w_bounce', 'short')"), '9 WK EMA rejection');
+  assert.equal(run("JSON.stringify(buildLibrary([{ id: 'w', kind: 'level', name: '10 week SMA' }]).choices('level').map(i => i.name).slice(0, 5))"),
+    JSON.stringify(['8 EMA', '21 EMA', '9 WK EMA', '50 SMA', '10 week SMA']), 'a weekly average sits by its length in days');
+
+  run('openJournalLibrary()');
+  assert.match(sheet(), /data-action="newLibrarySetup">\+ New setup</);
+  run('newLibrarySetup()');
+  assert.match(sheet(), /data-action="saveSetupEdit" disabled>Add to My setups</, 'nothing picked yet');
+  run("setEditAction('undercut'); startLibraryChoice('level')");
+  assert.match(sheet(), /id="libraryNewName"[^>]*data-enter="addLibraryChoice"/);
+  run("state.libraryNew.name = '10 WK SMA'");
+  await run("addLibraryChoice(state.libraryNew.name)");
+  const lvl = rows('library_items').find(r => r.kind === 'level');
+  assert.equal(lvl.name, '10 WK SMA', 'the level goes into your library');
+  assert.match(sheet(), new RegExp(`aria-pressed="true" data-action="toggleEditLevel" data-arg="mine:${lvl.id}">10 WK SMA<`), 'and into the setup');
+  assert.match(sheet(), /id="setupEditName"[^>]*value="10 WK SMA undercut &amp; rally"/, 'named for its parts');
+  await run('saveSetupEdit()');
+  const made = rows('library_items').find(r => r.kind === 'setup');
+  assert.deepEqual([made.name, made.settings, made.default_key ?? null], ['10 WK SMA undercut & rally', { action: 'undercut', levels: [`mine:${lvl.id}`] }, null]);
+  assert.doesNotMatch(sheet(), /jl-edit/, 'the builder closes');
+  assert.match(sheet(), /value="10 WK SMA undercut &amp; rally"[\s\S]*data-action="newLibrarySetup"/, 'listed, + New setup under it');
+  assert.match(body(), new RegExp(`data-action="toggleSetup" data-arg="mine:${made.id}"[^>]*>10 WK SMA undercut &amp; rally<`), 'offered on the trade');
+
+  run("newLibrarySetup(); setEditAction('bounce'); toggleEditLevel('ema9w')");
+  assert.match(sheet(), /Already in My setups: <b>9 WK EMA bounce \/ rejection<\/b>/);
+  assert.doesNotMatch(sheet(), /data-action="saveSetupEdit"|data-action="mergeEditedSetup"/, 'nothing to save or merge');
+  await run('saveSetupEdit()');
+  assert.equal(rows('library_items').filter(r => r.kind === 'setup').length, 1, 'no twin made');
+  run('cancelSetupEdit()');
+  assert.doesNotMatch(sheet(), /jl-edit/);
+});
+
 test('+ New setup narrows My setups as you pick and offers the one you have; Option flow takes links', async () => {
   const { run, t, body, rows, elements } = await page();
   run('startSetupDraft()');
@@ -371,7 +407,7 @@ test('+ New setup narrows My setups as you pick and offers the one you have; Opt
   assert.match(body(), /data-arg="ema21_unr"[^>]*>21 EMA undercut &amp; rally/);
   assert.doesNotMatch(body(), /data-action="toggleSetup" data-arg="ema21_bounce"/, 'bounces step aside');
   const levels = [...body().matchAll(/data-action="toggleDraftLevel" data-arg="([^"]+)"/g)].map(m => m[1]);
-  assert.deepEqual(levels, ['ema8', 'ema21', 'sma50', 'sma100', 'sma200', 'support', 'resistance', 'avwap_ath', 'avwap_atl', 'avwap_earnings'], 'moving averages by length first');
+  assert.deepEqual(levels, ['ema8', 'ema21', 'ema9w', 'sma50', 'sma100', 'sma200', 'support', 'resistance', 'avwap_ath', 'avwap_atl', 'avwap_earnings'], 'moving averages by length first');
   run('startReviewItem("action")');
   assert.match(body(), /id="reviewNewName"[^>]*\/><input type="text" id="reviewNewShort" maxlength="80" placeholder="On a short"/, 'a new action asks for its words on a short');
   run('state.reviewNewShort = "Shakeout fail"');

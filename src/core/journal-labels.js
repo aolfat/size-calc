@@ -17,8 +17,8 @@ import { nyParts } from './journal-stats.js';
 export const DEFAULTS = /** @type {Record<ItemKind, [string, string][]>} */ ({
   market: [['bullish', 'Bullish'], ['neutral', 'Neutral'], ['bearish', 'Bearish'], ['choppy', 'Choppy']],
   sector: [['strong', 'Strong'], ['weak', 'Weak'], ['neutral', 'Neutral'], ['na', 'N/A']],
-  setup: [['ema8_bounce', '8 EMA bounce'], ['ema21_bounce', '21 EMA bounce'], ['sma50_bounce', '50 SMA bounce'], ['ema21_unr', '21 EMA undercut & rally'], ['sma50_unr', '50 SMA undercut & rally'], ['ema21_rejection', '21 EMA rejection'], ['base_breakout', 'Base breakout'], ['flag_breakout', 'Pennant or flag breakout'], ['earnings_gap', 'Earnings gap']],
-  level: [['sma50', '50 SMA'], ['sma100', '100 SMA'], ['sma200', '200 SMA'], ['ema8', '8 EMA'], ['ema21', '21 EMA'], ['support', 'Support'], ['resistance', 'Resistance'], ['avwap_ath', 'AVWAP from ATH'], ['avwap_atl', 'AVWAP from ATL'], ['avwap_earnings', 'AVWAP from earnings']],
+  setup: [['ema8_bounce', '8 EMA bounce'], ['ema21_bounce', '21 EMA bounce'], ['sma50_bounce', '50 SMA bounce'], ['ema9w_bounce', '9 WK EMA bounce'], ['ema21_unr', '21 EMA undercut & rally'], ['sma50_unr', '50 SMA undercut & rally'], ['ema21_rejection', '21 EMA rejection'], ['base_breakout', 'Base breakout'], ['flag_breakout', 'Pennant or flag breakout'], ['earnings_gap', 'Earnings gap']],
+  level: [['sma50', '50 SMA'], ['sma100', '100 SMA'], ['sma200', '200 SMA'], ['ema8', '8 EMA'], ['ema21', '21 EMA'], ['ema9w', '9 WK EMA'], ['support', 'Support'], ['resistance', 'Resistance'], ['avwap_ath', 'AVWAP from ATH'], ['avwap_atl', 'AVWAP from ATL'], ['avwap_earnings', 'AVWAP from earnings']],
   action: [['bounce', 'bounce'], ['undercut', 'undercut & rally'], ['rejection', 'rejection']],
   pattern: [['base_breakout', 'Base breakout'], ['flag_breakout', 'Pennant or flag breakout'], ['earnings_gap', 'Earnings gap']],
   tactic: [['six20', '6/20 (Gil Morales)'], ['pivot15', '15-minute pivot'], ['pivot30', '30-minute pivot']],
@@ -59,7 +59,7 @@ export const tradeSide = t => t.bias === 'short' ? 'short' : t.bias === 'long' |
 
 /** what the starting setups are made of */
 export const DEFAULT_SETUP_PARTS = /** @type {Record<string, SetupParts>} */ ({
-  ema8_bounce: { action: 'bounce', levels: ['ema8'] }, ema21_bounce: { action: 'bounce', levels: ['ema21'] }, sma50_bounce: { action: 'bounce', levels: ['sma50'] },
+  ema8_bounce: { action: 'bounce', levels: ['ema8'] }, ema21_bounce: { action: 'bounce', levels: ['ema21'] }, sma50_bounce: { action: 'bounce', levels: ['sma50'] }, ema9w_bounce: { action: 'bounce', levels: ['ema9w'] },
   ema21_unr: { action: 'undercut', levels: ['ema21'] }, sma50_unr: { action: 'undercut', levels: ['sma50'] }, ema21_rejection: { action: 'rejection', levels: ['ema21'] },
   base_breakout: { pattern: 'base_breakout' }, flag_breakout: { pattern: 'flag_breakout' }, earnings_gap: { pattern: 'earnings_gap' },
 });
@@ -90,8 +90,15 @@ const shortOf = (settings, id) => typeof settings?.short === 'string' ? settings
 export const guessShort = name => /break ?out/i.test(name) ? name.replace(/(break ?)(out)/gi, (_, b, o) => b + (o === 'OUT' ? 'DOWN' : o[0] === 'O' ? 'Down' : 'down')) : '';
 /** an action's word inside a setup's name: lower case like the defaults' ('Resistance breakout'), an acronym kept. @param {string} w */
 const lowerFirst = w => /^[A-Z][a-z]/.test(w) ? w[0].toLowerCase() + w.slice(1) : w;
-/** a moving average's place among the levels: by length, an EMA before the SMA of the same length; null for any other level. @param {string} name */
-const maOrder = name => { const m = /^(\d+)\s*(EMA|SMA)$/i.exec(name.trim()); return m ? +m[1] * 2 + (m[2].toUpperCase() === 'SMA' ? 1 : 0) : null; };
+/**
+ * A moving average's place among the levels: by length in days (a weekly one's weeks × 5, so 9 WK EMA sits between 21 EMA
+ * and 50 SMA), an EMA before the SMA of the same length; null for any other level.
+ * @param {string} name
+ */
+const maOrder = name => {
+  const m = /^(\d+)\s*(?:(wk|w|week|weekly)\s*)?(EMA|SMA)$/i.exec(name.trim());
+  return m ? +m[1] * (m[2] ? 5 : 1) * 2 + (m[3].toUpperCase() === 'SMA' ? 1 : 0) : null;
+};
 
 /**
  * A setup's parts in a setup's name: the pattern's, or 'levels action'; '' when it isn't whole.

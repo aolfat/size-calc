@@ -23,12 +23,18 @@ export function onShotsChange(fn) { redrawHook = fn; }
 /** read every screenshot of yours with the journal; a failure says why in the row and nothing else breaks */
 export async function loadJournalShots() {
   try {
-    state.journalShots = await loadShots();
+    // one waiting out its Undo stays out of sight
+    state.journalShots = (await loadShots()).filter(s => !removing.has(s.id));
     state.journalShotsError = '';
   } catch(e) {
     state.journalShotsError = String(e?.message || e);
   }
 }
+
+/** screenshots X'd off, kept until Undo's window passes: id → the shot */
+const removing = new Map();
+/** how long Undo can bring an X'd screenshot back (the toast's time, and a little) */
+const UNDO_MS = 10000;
 
 const shotsOf = t => (state.journalShots || []).filter(s => s.trade_key === t.key);
 
@@ -127,7 +133,7 @@ function shotsRow(t, buttons) {
   if (shots.some(s => !state.journalShotUrls[s.path])) queueMicrotask(() => sign(t));
   const thumbs = shots.map(s => {
     const url = state.journalShotUrls[s.path];
-    return `<button class="jr-shot" data-action="openShot" data-arg="${esc(s.id)}" aria-label="Open screenshot${s.caption ? `: ${esc(s.caption)}` : ''}">${url ? `<img src="${esc(url)}" alt="${esc(s.caption || 'Screenshot')}" loading="lazy" />` : '<span class="jr-shot-wait">…</span>'}</button>`;
+    return `<span class="jr-shot-box"><button class="jr-shot" data-action="openShot" data-arg="${esc(s.id)}" aria-label="Open screenshot${s.caption ? `: ${esc(s.caption)}` : ''}">${url ? `<img src="${esc(url)}" alt="${esc(s.caption || 'Screenshot')}" loading="lazy" />` : '<span class="jr-shot-wait">…</span>'}</button><button class="jr-shot-x" data-action="removeTradeShot" data-arg="${esc(s.id)}" aria-label="Delete screenshot${s.caption ? `: ${esc(s.caption)}` : ''}" title="Delete">×</button></span>`;
   }).join('');
   const busy = state.shotsBusy ? `<span class="jr-shot-busy">Keeping ${state.shotsBusy}…</span>` : '';
   const full = shots.length >= MAX_SHOTS ? ' disabled title="Ten a trade at most"' : '';
@@ -208,6 +214,38 @@ export async function deleteTradeShot() {
     showError(`Couldn't delete the screenshot: ${String(e?.message || e)}`);
     renderShotViewer();
   }
+}
+
+/** the X on a thumbnail: gone at once with Undo on the toast; the file and its row go once Undo's window passes */
+export function removeTradeShot(id) {
+  const s = shotById(id);
+  if (!s) return;
+  removing.set(id, s);
+  state.journalShots = (state.journalShots || []).filter(x => x.id !== id);
+  state.shotUndo = id;
+  if (state.shotView === id) closeShotViewer();
+  rerender();
+  showToast('Screenshot deleted.', '<button class="pos-link toast-act" data-action="undoRemoveShot">Undo</button>');
+  return effects.wait(UNDO_MS).then(async () => {
+    if (!removing.has(id)) return;
+    try { await deleteShot(s); removing.delete(id); delete state.journalShotUrls[s.path]; }
+    catch(e) {
+      // still yours: it comes back, and says why
+      removing.delete(id);
+      state.journalShots = [...(state.journalShots || []), s];
+      showError(`Couldn't delete the screenshot: ${String(e?.message || e)}`);
+      rerender();
+    }
+  });
+}
+/** Undo: the last screenshot X'd off comes back where it was */
+export function undoRemoveShot() {
+  const id = state.shotUndo, s = removing.get(id);
+  state.shotUndo = '';
+  if (!s) return;
+  removing.delete(id);
+  state.journalShots = [...(state.journalShots || []), s].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  rerender();
 }
 
 /** paste a screenshot anywhere on the trade page (or the notebook page, onto the open missed trade), drop one onto it, Esc closes the viewer */
