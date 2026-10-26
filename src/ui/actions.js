@@ -1,6 +1,7 @@
 // The action registry: every data-action / data-input / data-change / data-enter name in the markup
 // and in rendered templates maps to one call here. Adapters turn data-arg strings into arguments.
 import { store } from '../lib/store.js';
+import { growBox } from '../lib/grow.js';
 import { state } from '../state.js';
 import { cancelModelDraft, closeModelImage, deleteModelBook, deleteModelExample, editModelBook, editModelExample, loadModelBooks, modelBookField, modelExampleField, openModelImage, pasteModelImages, pickModelImage, refreshModelImages, saveModelBook, saveModelExample, selectModelBook, selectModelSetup, setModelBrowse, toggleModelSetup } from './model-books.js';
 import { addMissedShots, addTradeShots, closeShotViewer, deleteTradeShot, openShot, removeTradeShot, undoRemoveShot, pasteMissedShot, pasteTradeShot, pickMissedShots, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
@@ -120,7 +121,7 @@ export const actions = {
   setDayRule: el => setDayRule(arg(el), el.dataset.arg2 || ''),
   setDayFocusKept: el => setDayFocusKept(arg(el)),
   daySleepSave: el => daySleepSave(/** @type {HTMLInputElement} */ (el).value),
-  dayTextInput: el => dayTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
+  dayTextInput: el => { growBox(/** @type {HTMLTextAreaElement} */ (el)); dayTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value); },
   dayTextSave: el => dayTextSave(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
   editNotebookList: el => editNotebookList(arg(el)),
   notebookItemInput: el => notebookItemInput(/** @type {HTMLInputElement} */ (el).value),
@@ -139,8 +140,8 @@ export const actions = {
   cancelMissedTactic: () => cancelMissedTactic(),
   missedTacticInput: el => missedTacticInput(/** @type {HTMLInputElement} */ (el).value),
   addMissedTactic: el => addMissedTactic(arg(el), state.missedTacticDraft || /** @type {HTMLInputElement | null} */ (document.getElementById('nbMissedTactic'))?.value || ''),
-  missedNoteInput: el => missedNoteInput(arg(el), /** @type {HTMLInputElement} */ (el).value),
-  missedNoteSave: el => missedNoteSave(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  missedNoteInput: el => { growBox(/** @type {HTMLTextAreaElement} */ (el)); missedNoteInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value); },
+  missedNoteSave: el => missedNoteSave(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
   removeMissedTrade: el => removeMissedTrade(arg(el)),
   undoRemoveMissed: () => undoRemoveMissed(),
   retireNotebookItem: el => retireNotebookItem(arg(el)),

@@ -84,7 +84,7 @@ They never count in P&L, stats, the plan or the review.
 | What to work on | Note | This or What went well |
 | More notes | Anything else about the day (`journal_days.note`, the day note the first review migration made and nothing wrote) | No |
 | From today's trades | The exit notes on the day's trades, to read; a trade without one links to its review | Nothing to fill in |
-| Tomorrow's focus | One line, shown at the top of the next plan | No |
+| Tomorrow's focus | One line (it wraps as you type), shown at the top of the next plan | No |
 
 **Day reviewed** = the grade, every rule answered, and one of the two guided notes. `reviewed_at` is stamped while it's true.
 

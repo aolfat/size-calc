@@ -15,6 +15,7 @@ import { schwabAccount } from '../services/schwab.js';
 import { deleteSavedTrades, insertSavedTrades, loadSavedRecords, loadSavedTrades, loadTradeReviews, saveTradeReviews, updateSavedTrade } from '../services/journal.js';
 import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
+import { growBoxes } from '../lib/grow.js';
 import { mq, PHONE_MQ } from '../lib/media.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
@@ -543,6 +544,7 @@ export function renderJournal() {
   if (wrap) wrap.scrollLeft = scrolled;
   if (state.journalTab === 'stats' && fills.length) drawJournalEquity(onSetupFilter(filtered(all, t => t.bias)));
   drawMissedChart();
+  growBoxes(el);
 }
 
 // ---------- Import and Export sheets ----------

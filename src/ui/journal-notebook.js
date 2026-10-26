@@ -315,7 +315,7 @@ export function undoRemoveMissed() {
 const chip = (label, on, attrs, off = '') => `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" ${attrs}${off}>${esc(label)}</button>`;
 const row = (label, body, missing = false, cls = '') => `<div class="jr-row${missing ? ' jr-missing' : ''}${cls ? ` ${cls}` : ''}"><div class="jr-label">${label}</div><div class="chip-row jr-chips">${body}</div></div>`;
 const textRow = (label, field, day, placeholder, off, missing = false, rows = 3) => `<div class="jr-row${missing ? ' jr-missing' : ''}"><label class="jr-label" for="nb-${field}">${label}</label>
-  <textarea id="nb-${field}" rows="${rows}" maxlength="${DAY_TEXT[field]}" placeholder="${esc(placeholder)}" data-input="dayTextInput" data-change="dayTextSave" data-arg="${field}"${off}>${esc(textOf(day, field))}</textarea></div>`;
+  <textarea class="grow" id="nb-${field}" rows="${rows}" maxlength="${DAY_TEXT[field]}" placeholder="${esc(placeholder)}" data-input="dayTextInput" data-change="dayTextSave" data-arg="${field}"${off}>${esc(textOf(day, field))}</textarea></div>`;
 
 /** Goals or Rules: the list, or (Edit) each one as a box with ↑ ↓ Retire, the retired ones to bring back, and + Add */
 function listRow(kind, title, empty, off) {
@@ -406,7 +406,7 @@ function postmarket(day, trades, off) {
     ${textRow('More notes <span class="jr-sub">optional</span>', 'note', day, 'Anything else about the day', off, false, 2)}
     ${exitNotes}
     <div class="jr-row"><label class="jr-label" for="nbFocusNext">Tomorrow's focus <span class="jr-sub">optional</span></label>
-      <input type="text" class="nb-focus-input" id="nbFocusNext" maxlength="${DAY_TEXT.focus_next}" autocomplete="off" placeholder="One thing to do better next session" data-input="dayTextInput" data-change="dayTextSave" data-arg="focus_next" value="${esc(textOf(day, 'focus_next'))}"${off} /></div>
+      <textarea class="nb-focus-input grow" id="nbFocusNext" rows="1" maxlength="${DAY_TEXT.focus_next}" autocomplete="off" placeholder="One thing to do better next session" data-input="dayTextInput" data-change="dayTextSave" data-arg="focus_next"${off}>${esc(textOf(day, 'focus_next'))}</textarea></div>
   </section>`;
 }
 
@@ -436,7 +436,7 @@ function missedSection(day) {
         : `<button class="pos-link jr-new" data-action="startMissedTactic" data-arg="${esc(m.id)}">+ New</button>`}`)}
       ${row('Why you missed it', MISSED_WHY.map(([v, w]) => chip(w, m.why === v, `data-action="setMissedWhy" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
       <div class="jr-row"><label class="jr-label" for="nbMissedNote-${esc(m.id)}">Note <span class="jr-sub">optional</span></label>
-        <input type="text" class="nb-focus-input" id="nbMissedNote-${esc(m.id)}" maxlength="${MAX_MISSED_NOTE}" autocomplete="off" placeholder="What you saw, what held you back" data-input="missedNoteInput" data-change="missedNoteSave" data-arg="${esc(m.id)}" value="${esc(note)}" /></div>
+        <textarea class="nb-focus-input grow" id="nbMissedNote-${esc(m.id)}" rows="1" maxlength="${MAX_MISSED_NOTE}" autocomplete="off" placeholder="What you saw, what held you back" data-input="missedNoteInput" data-change="missedNoteSave" data-arg="${esc(m.id)}">${esc(note)}</textarea></div>
       ${missedShotsRowHtml(m.id)}
     </li>`;
   };

@@ -367,7 +367,7 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   run(`setMissedTactic('${id}', 'pivot15')`);
   run(`missedNoteInput('${id}', 'Saw the rejection')`);
   run('renderJournal()');
-  assert.match(out(), /id="nbMissedNote-[^"]*"[^>]*value="Saw the rejection"/, 'a redraw keeps the draft');
+  assert.match(out(), /id="nbMissedNote-[^"]*"[^>]*>Saw the rejection<\/textarea>/, 'a redraw keeps the draft');
   assert.match(out(), /<option value="ema8_bounce" selected>8 EMA rejection<\/option>/, 'setups in the side\'s words');
   run(`missedNoteSave('${id}', ' Saw the rejection, waited ')`);
   await settle();
@@ -452,4 +452,15 @@ test('before the missed trades column is pushed the section says so, and the res
   run("missedInput('NVDA'); addMissedTrade()");
   await settle();
   assert.equal(supabase.writes.filter(w => w.table === 'journal_days').length, 0, 'nothing written');
+});
+
+test('the text boxes grow with their text: as tall as what you typed, never shorter than their rows, the page held still', async () => {
+  const { growBox } = await import('../src/lib/grow.js');
+  const holder = { offsetHeight: 120, style: { minHeight: '' } }, seen = [];
+  const box = { parentElement: holder, style: { height: '' }, offsetHeight: 60, clientHeight: 58, scrollHeight: 0 };
+  Object.defineProperty(box, 'scrollHeight', { get: () => { seen.push([box.style.height, holder.style.minHeight]); return 200; } });
+  growBox(/** @type {any} */ (box));
+  assert.deepEqual(seen, [['auto', '120px']], 'measured at its rows, its holder keeping the page\'s height');
+  assert.equal(box.style.height, '202px', 'the text plus the borders');
+  assert.equal(holder.style.minHeight, '', 'the holder let go after');
 });
