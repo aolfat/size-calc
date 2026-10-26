@@ -1,8 +1,8 @@
 // Trade screenshots (step 3; docs/journal-step-3.md): the Screenshots row in the Review section (thumbnails, Add
 // screenshot, paste anywhere on the trade page, drop onto it), the viewer (#shotViewer: full size, caption, delete), and
 // the shrinking goes through effects.prepareImage (ui/image-prep.js). services/journal-shots.js keeps them.
-// A missed trade on the day's notebook page has them too (docs/journal-notebook.md): the same rows, keyed missed:<its id>,
-// pasted or dropped anywhere on the page while it's open.
+// A missed trade or a focus ticker on the day's notebook page has them too (docs/journal-notebook.md): the same rows,
+// keyed missed:<its id> or focus:<its id>, pasted or dropped anywhere on the page while it's open.
 import { marketEscape as esc } from '../core/format.js';
 import { deleteShot, loadShots, MAX_SHOT_BYTES, MAX_SHOTS, saveShotCaption, signShots, uploadShot } from '../services/journal-shots.js';
 import { state } from '../state.js';
@@ -38,13 +38,16 @@ const UNDO_MS = 10000;
 
 const shotsOf = t => (state.journalShots || []).filter(s => s.trade_key === t.key);
 
-/** a missed trade's screenshots are keyed by it, beside the trades' */
+/** a missed trade's or a focus ticker's screenshots are keyed by it, beside the trades' */
 export const missedShotKey = id => `missed:${id}`;
-/** the missed trade open on the notebook page, as something to keep screenshots on */
-const missedTarget = () => state.journalView && !state.journalTrade && state.journalNotebookDay && state.missedOpen
-  ? { key: missedShotKey(state.missedOpen), status: 'missed' } : null;
-/** how many screenshots a missed trade has */
+export const focusShotKey = id => `focus:${id}`;
+/** the missed trade or focus ticker open on the notebook page (one at a time), as something to keep screenshots on */
+const missedTarget = () => !state.journalView || state.journalTrade || !state.journalNotebookDay ? null
+  : state.missedOpen ? { key: missedShotKey(state.missedOpen), status: 'missed' }
+  : state.focusOpen ? { key: focusShotKey(state.focusOpen), status: 'focus' } : null;
+/** how many screenshots a missed trade, or a focus ticker, has */
 export const missedShotCount = id => shotsOf({ key: missedShotKey(id) }).length;
+export const focusShotCount = id => shotsOf({ key: focusShotKey(id) }).length;
 
 /** signed links for the trade's screenshots that don't have one yet (they last an hour; a reload signs again) */
 async function sign(t) {
@@ -108,14 +111,14 @@ export async function pasteTradeShot(t) {
 /** Add screenshot: the hidden file picker (the photo library on a phone) */
 export function pickTradeShots() { document.getElementById('tradeShotInput')?.click?.(); }
 
-/** the open missed trade's Paste, + Add screenshot and its picker */
+/** the open missed trade's (or focus ticker's) Paste, + Add screenshot and its picker */
 export function pasteMissedShot() { const t = missedTarget(); if (t) return pasteTradeShot(t); }
 export function pickMissedShots() { document.getElementById('missedShotInput')?.click?.(); }
 export function addMissedShots(files) { const t = missedTarget(); if (t) return addTradeShots(t, files); }
 
-/** a removed missed trade's screenshots, files and rows (once Undo can't bring it back); a failure leaves them be */
-export async function deleteMissedShots(id) {
-  for (const s of shotsOf({ key: missedShotKey(id) })) {
+/** a removed missed trade's (or focus ticker's) screenshots, files and rows, once Undo can't bring it back; a failure leaves them be */
+export async function deleteMissedShots(id, key = missedShotKey(id)) {
+  for (const s of shotsOf({ key })) {
     try {
       await deleteShot(s);
       state.journalShots = (state.journalShots || []).filter(x => x.id !== s.id);
@@ -123,6 +126,7 @@ export async function deleteMissedShots(id) {
     } catch(e) { /* kept: nothing shows it, and it's still yours */ }
   }
 }
+export const deleteFocusShots = id => deleteMissedShots(id, focusShotKey(id));
 
 // ---------- the row ----------
 
@@ -150,12 +154,13 @@ export function shotsRowHtml(t) {
       <input type="file" id="tradeShotInput" accept="image/*" multiple hidden data-change="addTradeShotsFromInput" />`);
 }
 
-/** the open missed trade's row: its own picker, so it never answers for the trade page's */
-export function missedShotsRowHtml(id) {
-  return shotsRow({ key: missedShotKey(id) }, full => `<button class="btn" data-action="pasteMissedShot"${full}>Paste from clipboard</button>
+/** the open missed trade's (or focus ticker's) row: its own picker, so it never answers for the trade page's */
+export function missedShotsRowHtml(id, key = missedShotKey(id)) {
+  return shotsRow({ key }, full => `<button class="btn" data-action="pasteMissedShot"${full}>Paste from clipboard</button>
       <button class="btn" data-action="pickMissedShots"${full}>+ Add screenshot</button>
       <input type="file" id="missedShotInput" accept="image/*" multiple hidden data-change="addMissedShotsFromInput" />`);
 }
+export const focusShotsRowHtml = id => missedShotsRowHtml(id, focusShotKey(id));
 
 // ---------- the viewer ----------
 
@@ -248,7 +253,7 @@ export function undoRemoveShot() {
   rerender();
 }
 
-/** paste a screenshot anywhere on the trade page (or the notebook page, onto the open missed trade), drop one onto it, Esc closes the viewer */
+/** paste a screenshot anywhere on the trade page (or the notebook page, onto the open missed trade or focus ticker), drop one onto it, Esc closes the viewer */
 export function initTradeShotEvents(pageTrade) {
   const target = () => state.journalView && state.journalTrade ? pageTrade() : missedTarget();
   document.addEventListener('paste', e => {

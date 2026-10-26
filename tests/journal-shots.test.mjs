@@ -193,3 +193,32 @@ test('a missed trade keeps screenshots too: added, pasted onto it on the noteboo
   assert.equal(shots().length, 0, 'then the rows go');
   assert.equal(supabase.storageOps.filter(o => o.op === 'remove').length, 2, 'and the files');
 });
+
+test('a focus ticker keeps screenshots too: keyed by it, pasted onto it while it is open, gone with it after Undo runs out', async () => {
+  const supabase = fakeRecords([{ kind: 'order', record_id: '501', account: '6789', entered_at: '2026-10-01T14:30:00Z', data: ENTRY }]);
+  const a = await app({ supabase, session: SESSION });
+  const { run, dispatch } = a;
+  run(PREPARE);
+  run('effects.wait = () => new Promise(r => { globalThis.__undoOver = r; })');
+  run("setView('journal')");
+  await run('loadJournal()');
+  run("openJournalDay('2026-10-01'); focusInput('QCOM'); addFocusTicker()");
+  await settle();
+  const out = () => a.elements.get('journalSection').innerHTML;
+  const id = a.state.journalReview.days['2026-10-01'].focus_list[0].id;
+  assert.match(out(), /id="nbFocusOpen"[\s\S]*data-action="pasteMissedShot">Paste from clipboard<\/button>/);
+  await run(`addMissedShots([${png()}])`);
+  run('initTradeShotEvents(() => journalPageTrade())');
+  dispatch('paste', { clipboardData: { files: [{ type: 'image/png', size: 1000 }] }, preventDefault() {} });
+  await settle();
+  const shots = () => [...supabase.tables.trade_shots.values()];
+  assert.deepEqual(shots().map(s => s.trade_key), [`focus:${id}`, `focus:${id}`]);
+  run(`openFocusTicker('${id}')`);
+  assert.match(out(), /<span class="nb-miss-shots">2 screenshots<\/span>/, 'closed, it counts them');
+  run(`removeFocusTicker('${id}')`);
+  await settle();
+  assert.equal(shots().length, 2, 'not while Undo can still bring it back');
+  run('globalThis.__undoOver()');
+  await settle();
+  assert.equal(shots().length, 0, 'then they go');
+});
