@@ -38,6 +38,7 @@
 .nb-later { margin: 4px 0 0; }
 /* missed trades: a line each, the open one in full */
 .nb-miss .nb-trade-name { min-width: 0; }
+.nb-miss-shots { flex: none; font-size: 12.5px; color: var(--text3); white-space: nowrap; }
 .nb-miss-note { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nb-miss-open { padding: 8px 10px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; }
 .nb-miss-head { display: flex; align-items: baseline; gap: 10px; font-size: 14px; }

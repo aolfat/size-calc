@@ -7,7 +7,8 @@
 // if Supabase refuses; text is a draft while you type and saves when the box loses focus. Goals and rules are
 // library_items rows (kinds goal and rule), edited in place. Missed trades: the ones you saw and didn't take, a ticker
 // each with its charts that day (ui/missed-chart.js), its side, the daily setup and entry tactic you could have taken, why
-// you missed it and a note (journal_days.missed, its own migration).
+// you missed it, a note and your screenshots (trade_shots keyed missed:<id>, ui/journal-shots.js) (journal_days.missed,
+// its own migration).
 // The calendar's marks: plan written, reviewed, review due, how many you missed.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
@@ -19,6 +20,8 @@ import { showError, showToast } from './feedback.js';
 import { reviewedMark } from './journal-review.js';
 import { journalTradeList, renderJournal } from './journal.js';
 import { loadMissedChart, missedChartHtml } from './missed-chart.js';
+import { deleteMissedShots, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
+import { effects } from './effects.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -264,14 +267,18 @@ export function missedNoteSave(id, text) {
   const note = String(text || '').trim().slice(0, MAX_MISSED_NOTE) || null;
   if (note !== (missedOne(id)?.note ?? null)) return changeMissed(id, { note });
 }
-/** Remove: out at once, with Undo on the toast */
+/** how long Undo can bring a removed missed trade back (the toast's 8 seconds, and a little) */
+const UNDO_MS = 10000;
+
+/** Remove: out at once, with Undo on the toast; its screenshots go once Undo can't bring it back */
 export function removeMissedTrade(id) {
-  const m = missedOne(id), list = missedOf(page());
+  const m = missedOne(id), day = page(), list = missedOf(day);
   if (!m || missedOff()) return;
-  state.missedUndo = { day: page(), list };
+  state.missedUndo = { day, list };
   if (state.missedOpen === id) state.missedOpen = '';
   const saving = saveMissed(list.filter(x => x.id !== id));
   showToast(`Removed ${m.symbol}.`, '<button class="pos-link toast-act" data-action="undoRemoveMissed">Undo</button>');
+  if (missedShotCount(id)) effects.wait(UNDO_MS).then(() => { if (!missedOf(day).some(x => x.id === id)) return deleteMissedShots(id); });
   return saving;
 }
 export function undoRemoveMissed() {
@@ -390,7 +397,8 @@ function missedSection(day) {
   const why = state.journalReviewError || !data() || data().notebookError ? '' : data().missedError ? `<p class="hint jw-db" role="status">Missed trades need a database update: ${esc(data().missedError)}</p>` : '';
   const line = m => {
     const what = [word(MISSED_SIDES, m.side).toLowerCase(), setupName(m.setup, m.side), tacticName(m.tactic), word(MISSED_WHY, m.why)].filter(Boolean).map(esc).join(' · ');
-    const summary = `<span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${what}` : ''}${m.note ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span>`;
+    const shots = missedShotCount(m.id);
+    const summary = `<span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${what}` : ''}${m.note ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span>${shots ? `<span class="nb-miss-shots">${shots} screenshot${shots === 1 ? '' : 's'}</span>` : ''}`;
     if (state.missedOpen !== m.id || off) return `<li><button class="nb-trade nb-miss" data-action="openMissedTrade" data-arg="${esc(m.id)}" aria-label="${esc(`${m.symbol} missed. Edit`)}"${off}>${summary}</button></li>`;
     const options = (kind, items, key, none) => `<option value="">${none}</option>${items.map(i => `<option value="${esc(i.key)}"${key && i.key === lib.resolve(kind, key) ? ' selected' : ''}>${esc(kind === 'setup' ? lib.nameOf('setup', i.key, m.side || 'long') : i.name)}</option>`).join('')}`;
     const setups = setupsByUse(lib, data()?.labels || {}), tactics = lib.choices('tactic');
@@ -404,6 +412,7 @@ function missedSection(day) {
       ${row('Why you missed it', MISSED_WHY.map(([v, w]) => chip(w, m.why === v, `data-action="setMissedWhy" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
       <div class="jr-row"><label class="jr-label" for="nbMissedNote-${esc(m.id)}">Note <span class="jr-sub">optional</span></label>
         <input type="text" class="nb-focus-input" id="nbMissedNote-${esc(m.id)}" maxlength="${MAX_MISSED_NOTE}" autocomplete="off" placeholder="What you saw, what held you back" data-input="missedNoteInput" data-change="missedNoteSave" data-arg="${esc(m.id)}" value="${esc(note)}" /></div>
+      ${missedShotsRowHtml(m.id)}
     </li>`;
   };
   return `<section class="jr nb-sec" aria-label="Missed trades">

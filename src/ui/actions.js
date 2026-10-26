@@ -3,7 +3,7 @@
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { cancelModelDraft, closeModelImage, deleteModelBook, deleteModelExample, editModelBook, editModelExample, loadModelBooks, modelBookField, modelExampleField, openModelImage, pasteModelImages, pickModelImage, refreshModelImages, saveModelBook, saveModelExample, selectModelBook, selectModelSetup, setModelBrowse, toggleModelSetup } from './model-books.js';
-import { addTradeShots, closeShotViewer, deleteTradeShot, openShot, pasteTradeShot, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
+import { addMissedShots, addTradeShots, closeShotViewer, deleteTradeShot, openShot, pasteMissedShot, pasteTradeShot, pickMissedShots, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
 import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
@@ -203,6 +203,9 @@ export const actions = {
   pickTradeShots: () => pickTradeShots(),
   addTradeShotsFromInput: el => withPageTrade(t => { const files = /** @type {HTMLInputElement} */ (el).files; const p = addTradeShots(t, files); /** @type {HTMLInputElement} */ (el).value = ''; return p; }),
   openShot: el => openShot(arg(el)),
+  pasteMissedShot: () => pasteMissedShot(),
+  pickMissedShots: () => pickMissedShots(),
+  addMissedShotsFromInput: el => { const files = /** @type {HTMLInputElement} */ (el).files; const p = addMissedShots(files); /** @type {HTMLInputElement} */ (el).value = ''; return p; },
   closeShotViewer: () => closeShotViewer(),
   deleteTradeShot: () => deleteTradeShot(),
   saveTradeShotCaption: el => saveTradeShotCaption(/** @type {HTMLInputElement} */ (el).value),
