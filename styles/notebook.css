@@ -19,6 +19,7 @@
 .nb-item input, .nb-focus-input { flex: 1 1 auto; min-width: 0; width: 100%; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
 .nb-item input:focus, .nb-focus-input:focus, .nb-hours input:focus { outline: none; border-color: var(--blue); }
 .nb-focus-input:disabled, .nb-hours input:disabled { opacity: .5; }
+.jr textarea.nb-focus-input { display: block; min-height: 0; padding: 6px 8px; font-size: 13px; line-height: 1.4; } /* one line until the text wraps */
 .nb-move { padding: 3px 9px; }
 .nb-item .btn { flex: none; white-space: nowrap; }
 .nb-move:disabled { opacity: .35; cursor: default; }
@@ -67,4 +68,5 @@ button.jc-quiet:hover, .jc-noted { opacity: 0.9; }
   .nb-head .jc-title { min-width: 0; font-size: 14px; }
   .nb-hours { margin: 4px 0 0; }
   .nb-trade { flex-wrap: wrap; }
+  .jr textarea.nb-focus-input { font-size: 16px; } /* they were inputs, which phones get at 16px: <16px triggers iOS focus zoom */
 }
