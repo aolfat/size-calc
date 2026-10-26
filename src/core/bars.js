@@ -96,19 +96,20 @@ const clockWords = hhmm => hhmm.replace(/^0/, '');
  * Today's opening range: the high and low of the 5-minute bars from 9:30 to 9:30 + minutes, New York time. Only once
  * the range has closed and its last bar is in (or a later one is, or five minutes have passed: a thin stock may not
  * trade in every bar). Bars are timesales' (t = the bar's start, exchange-local).
- * @param {Bar[]} bars5 @param {number} minutes @param {number} now
+ * `say` words a New York clock time in the notes ('9:45 ET' by default).
+ * @param {Bar[]} bars5 @param {number} minutes @param {number} now @param {(hhmm: string) => string} [say]
  * @returns {{ error: string, high: number, low: number, end: string, bars: number }}
  */
-export function openingRange(bars5, minutes, now) {
+export function openingRange(bars5, minutes, now, say = hhmm => `${clockWords(hhmm)} ET`) {
   const day = nyDay(now), clock = NY_CLOCK.format(new Date(now)), end = afterOpen(minutes), last = afterOpen(minutes - 5);
   const fail = (/** @type {string} */ error) => ({ error, high: 0, low: 0, end, bars: 0 });
-  if (clock < end) return fail(`The ${minutes}m range closes at ${clockWords(end)} ET.`);
+  if (clock < end) return fail(`The ${minutes}m range closes at ${say(end)}.`);
   const today = bars5.filter(b => (b.t || '').slice(0, 10) === day);
   const time = (/** @type {Bar} */ b) => (b.t || '').slice(11, 16);
   const range = today.filter(b => time(b) >= '09:30' && time(b) < end);
   if (!range.length) return fail(today.length ? `No trades in the first ${minutes} minutes today.` : 'No 5-minute bars from today\'s open yet.');
   const done = range.some(b => time(b) === last) || today.some(b => time(b) >= end) || clock >= afterOpen(minutes + 5);
-  if (!done) return fail(`Tradier hasn't sent the ${clockWords(last)} bar yet. Try again in a moment.`);
+  if (!done) return fail(`Tradier hasn't sent the ${say(last)} bar yet. Try again in a moment.`);
   return { error: '', high: Math.max(...range.map(b => b.h)), low: Math.min(...range.map(b => b.l)), end, bars: range.length };
 }
 

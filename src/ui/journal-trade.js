@@ -18,11 +18,12 @@ import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
 import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
 import { store } from '../lib/store.js';
+import { zoneAbbr } from '../lib/zone.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
-import { journalTradeList, marketTime, openTradeReview, renderJournal } from './journal.js';
+import { clockTime, journalTradeList, openTradeReview, renderJournal } from './journal.js';
 import { onReviewChange, reviewSectionHtml } from './journal-review.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
@@ -188,7 +189,7 @@ function statsHtml(t, ex) {
   const hide = deckHidesPnl(t), wait = label => cell(label, '<span class="jt-wait">Grade first</span>', '<button class="pos-link" data-action="revealDeckPnl">Show</button>');
   if (hide) return `<dl class="jt-stats">${[wait('P&amp;L'), wait('R'),
     cell('MFE', '—', 'after grading'), cell('MAE', '—', 'after grading'), wait('Exit efficiency'),
-    cell('Hold', open ? 'open' : esc(holdWords(t.holdMs)), `opened ${esc(marketTime(t.openedAt))}`)].join('')}</dl>`;
+    cell('Hold', open ? 'open' : esc(holdWords(t.holdMs)), `opened ${esc(clockTime(t.openedAt))}`)].join('')}</dl>`;
   const pct = pnlPct(t);
   const cells = [
     cell('P&amp;L', open && !t.exits ? '—' : signed$(t.pnl), [pct === null ? '' : signedPct(pct), open ? 'open' : t.afterFees ? 'after fees' : 'before fees'].filter(Boolean).join(' · '), open && !t.exits ? '' : pnlClass(t.pnl)),
@@ -196,23 +197,23 @@ function statsHtml(t, ex) {
     cell('MFE', ex ? signed$(ex.mfe) : '—', ex ? [ex.mfeR !== null ? signedR(ex.mfeR) : '', `best ${px(ex.mfePrice, t.assetType)}`].filter(Boolean).join(' · ') : '', ex && ex.mfe > 0 ? 'journal-buy' : ''),
     cell('MAE', ex ? signed$(ex.mae) : '—', ex ? [ex.maeR !== null ? signedR(ex.maeR) : '', `worst ${px(ex.maePrice, t.assetType)}`].filter(Boolean).join(' · ') : '', ex && ex.mae < 0 ? 'journal-sell' : ''),
     cell('Exit efficiency', ex && ex.efficiency !== null ? `${Math.round(ex.efficiency * 100)}%` : '—', ex && ex.efficiency !== null ? 'of the best move kept' : t.status === 'win' ? '' : 'winners only'),
-    cell('Hold', open ? 'open' : t.status === 'history' ? '—' : esc(holdWords(t.holdMs)), `opened ${esc(marketTime(t.openedAt))}`),
+    cell('Hold', open ? 'open' : t.status === 'history' ? '—' : esc(holdWords(t.holdMs)), `opened ${esc(clockTime(t.openedAt))}`),
   ];
   return `<dl class="jt-stats">${cells.join('')}</dl>`;
 }
 
 function fillsHtml(t, fills) {
   if (!fills.length) return '';
-  const rows = fills.map(f => `<tr><td>${esc(marketTime(f.time))}</td><td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(fillWords(f))}</td><td>${t.legs ? esc(f.label) : ''}${t.legs ? ' ' : ''}${f.qty}</td><td>${px(f.price, f.assetType === 'OPTION' ? 'OPTION' : null)}</td></tr>`).join('');
+  const rows = fills.map(f => `<tr><td>${esc(clockTime(f.time))}</td><td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(fillWords(f))}</td><td>${t.legs ? esc(f.label) : ''}${t.legs ? ' ' : ''}${f.qty}</td><td>${px(f.price, f.assetType === 'OPTION' ? 'OPTION' : null)}</td></tr>`).join('');
   return `<div class="section-title jt-sub">Fills</div>
-    <div class="positions-wrap"><table class="positions-table journal-table jt-table"><thead><tr><th scope="col">Time (ET)</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div class="positions-wrap"><table class="positions-table journal-table jt-table"><thead><tr><th scope="col">Time (${zoneAbbr()})</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function stopsHtml(t) {
   if (!t.stopTrail || !t.stopTrail.length) return '';
-  const rows = t.stopTrail.map(s => `<tr><td>${esc(marketTime(s.entered))}</td><td>${px(s.stopPrice, t.assetType)}${s.stopPrice === t.schwabStop ? ' <span class="journal-tag journal-tag-quiet">first</span>' : ''}</td><td>${esc(String(s.status || '').toLowerCase().replace(/_/g, ' '))}</td></tr>`).join('');
+  const rows = t.stopTrail.map(s => `<tr><td>${esc(clockTime(s.entered))}</td><td>${px(s.stopPrice, t.assetType)}${s.stopPrice === t.schwabStop ? ' <span class="journal-tag journal-tag-quiet">first</span>' : ''}</td><td>${esc(String(s.status || '').toLowerCase().replace(/_/g, ' '))}</td></tr>`).join('');
   return `<div class="section-title jt-sub">Stop orders</div>
-    <div class="positions-wrap"><table class="positions-table journal-table jt-table"><thead><tr><th scope="col">Entered (ET)</th><th scope="col">Stop</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div class="positions-wrap"><table class="positions-table journal-table jt-table"><thead><tr><th scope="col">Entered (${zoneAbbr()})</th><th scope="col">Stop</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 export function renderJournalTrade() {

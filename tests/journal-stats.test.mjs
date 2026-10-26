@@ -288,6 +288,10 @@ test('the Stats tab: headline numbers, the equity canvas, tables by group, thin 
   assert.match(out(), /id="journalEquity"/);
   assert.match(out(), /By symbol[\s\S]*<b>AAPL<\/b> <span class="journal-tag journal-tag-quiet"[^>]*>thin<\/span>/);
   assert.match(out(), /By time of day[\s\S]*9:30–9:45/);
+  run("setTimeZone('pt')");
+  assert.match(out(), /By time of day<\/div><p class="hint">When the trade opened \(PT\)\.<\/p>[\s\S]*6:30–6:45/, 'in PT: the same groups, on the Pacific clock');
+  run("setTimeZone('et')");
+  assert.match(out(), /By time of day[\s\S]*9:30–9:45/);
   assert.match(out(), /R distribution<\/div><p class="hint">No closed trades with an initial stop yet/);
   run("document.getElementById('journalSymbol').value = 'MSFT'; journalSymbolChanged()");
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00/, 'the symbol filter narrows the stats');

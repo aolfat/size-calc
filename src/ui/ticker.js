@@ -1,5 +1,6 @@
 // Ticker: load a symbol (or send shorthand to quick lookup), fetch the quote, recent ticker chips.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { marketEscape } from '../core/format.js';
 import { isShorthand, parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { store } from '../lib/store.js';
@@ -93,7 +94,7 @@ export async function fetchQuote() {
       markActiveExp(state.selectedExp);
       await fetchChain(sym, state.selectedExp, true);
     }
-    if (current()) document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    if (current()) document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
   } catch(e) {
     if (current()) showError('Error: ' + e.message);
   } finally {
@@ -116,7 +117,7 @@ export async function refreshQuote() {
     const q = qJson?.quotes?.quote;
     if (!q || q.symbol !== ticker || state.quoteData?.symbol !== ticker || state.currentMode === 'futures') return false;
     state.quoteData = q; renderQuote(); renderChain(); fetchChart(ticker);
-    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
     return true;
   } catch(e) { return false; }
 }

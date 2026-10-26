@@ -1,5 +1,6 @@
 // Pinned cards: chain and quick-lookup results and spreads, stop edits, requotes (shared with saved positions).
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
 import { cardValueAt, isBull, sizeUnit, spreadWidth, strikesLabel, yearsToExp } from '../core/options.js';
@@ -92,7 +93,7 @@ export async function refreshCardData(d) {
   // default stops track the fresh session levels; a user-set stop stays put
   if (d.stopName === 'LOD') d.stopLevel = uq.low || d.stopLevel;
   if (d.stopName === 'HOD') d.stopLevel = uq.high || d.stopLevel;
-  d.asOf = new Date().toLocaleTimeString();
+  d.asOf = inZone(Date.now());
   recalcPinnedStop(d);
 }
 

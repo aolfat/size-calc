@@ -50,6 +50,7 @@ Read it before changing that area, and update it in the same PR when behavior ch
 - `docs/journal.md`: the Journal tab (imports, trades, spreads, fees, reviews, bars, features, the trade page, the review deck, calendar and stats, the notebook)
 - `docs/market.md`: the Market tab
 - `docs/tools.md`: the top-level tabs and the Tools view
+- `docs/time-zone.md`: the Times switch (ET or PT for every clock time shown; the market's logic stays New York's)
 - `docs/claude-access.md`: Claude access keys in Settings, the two key-gated database functions, and `scripts/journal.mjs`
 - Design notes and plans: `docs/journal-plan.md`, `docs/journal-step-1-supabase.md`, `docs/journal-step-2.md`, `docs/journal-step-3.md`, `docs/journal-features.md`, `docs/journal-notebook.md`; market data sources in `data/README.md`
 
@@ -97,7 +98,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
 - The chart card lives in #mainPane outside quoteSection; on phones it follows the quote and shares answer (the sticky bar carries the share count while you tap the chart to set stops); updateChartVisibility gates on positionsView since the card doesn't inherit quoteSection's hiding. drawChart skips a hidden canvas (it would wipe it to zero width) and setView repaints on the way back
 - Page order = trade order: setup notice (only without a key), risk strip, ticket (instrument, ticker, entry and stops), quote bar, the answer, chart, quick lookup (collapsible, q expands), pinned cards, then the chain.
   Chart sits ABOVE the chain — levels before contracts.
-  Setup never sits in the page: the header settings button (amber dot until a key exists) opens #settingsSheet (account, key, environment) and the risk strip's summary link opens #riskSheet.
+  Setup never sits in the page: the header settings button (amber dot until a key exists) opens #settingsSheet (account, times, key, environment) and the risk strip's summary link opens #riskSheet.
   Sheets (openSheet/closeSheet) are a panel under the header on desktop and a bottom sheet on phones; missing-key actions call requireKey(), which toasts and opens Settings
 - Sticky context bar (fixed, appears when scrolled past the quote card; never on the desktop shell since the page doesn't scroll): symbol, price/chg, share count in shares mode, LOD/HOD, ADR used %, risk $, chart/chain jump chips (jumpTo — smooth-scroll, offset by bar height), and a live chip (sbLive — start/extend/stop live from anywhere on the page, synced with the main button via syncSbLive; stopPropagation so it doesn't trigger the bar's back-to-top).
   Click elsewhere on the bar = back to top

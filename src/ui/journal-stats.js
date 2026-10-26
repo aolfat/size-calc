@@ -8,8 +8,9 @@
 // A dot marks a day's economic releases, with a hover card of their times (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
 import { SANS_FONT } from '../lib/media.js';
+import { zoneAbbr, zoneClock, zoneDial } from '../lib/zone.js';
 import { state } from '../state.js';
 import { periodMark, periodStatus } from './journal-week.js';
 import { dayMark } from './journal-notebook.js';
@@ -162,6 +163,14 @@ function statRow(group, s, { withR = false, html = false } = {}, sub = '', cls =
     <td>${v(s.winRate, x => `${x}%`)}</td>${withR ? `<td>${v(s.avgR, signedR)}</td>` : ''}<td>${v(s.avgWin, signed$)}</td><td>${v(s.avgLoss, signed$)}</td><td>${v(s.profitFactor, x => x.toFixed(2))}</td><td>${s.bigLosses || ''}</td></tr>`;
 }
 
+/** a time-of-day group in the Settings zone: '9:30–9:45' is '6:30–6:45' in PT (the groups are New York's session, either way) */
+function bucketWords(group) {
+  const b = TIME_BUCKETS.find(x => x[2] === group);
+  if (!b) return group;
+  const today = nyParts(new Date().toISOString()).day;
+  return `${zoneDial(today, b[0])}–${zoneDial(today, b[1])}`;
+}
+
 /** a breakdown's table, the same columns for every group; rows are { group, stats, sub?, cls? } (cls on the row) */
 export function statTable(title, rows, note = '', first = 'Group', opts = {}) {
   if (!rows.length) return '';
@@ -200,7 +209,7 @@ export function statsView(trades) {
     ${statTable('By symbol', b.bySymbol, b.concentration ? `<span style="color:var(--amber)">${esc(b.concentration.group)} made ${b.concentration.share}% of your gross gains: one name is carrying the results.</span>` : 'Options and spreads count under their underlying.')}
     ${statTable('By side', b.bySide)}
     ${statTable('By instrument', b.byInstrument)}
-    ${statTable('By time of day', b.byTimeOfDay, 'When the trade opened, New York time.')}
+    ${statTable('By time of day', b.byTimeOfDay.map(r => ({ ...r, group: bucketWords(r.group) })), `When the trade opened (${zoneAbbr()}).`)}
     ${unit === 'day' ? '' : statTable('By weekday', b.byWeekday, 'The day it opened.')}
     ${statTable('By hold time', b.byHold, hold)}
     ${statTable('Scaled out or all at once', b.byExits, 'Scaled out: more than one exit.')}
@@ -252,7 +261,7 @@ export function drawJournalEquity(trades) {
   ctx.strokeStyle = col('--blue'); ctx.lineWidth = 1.75;
   ctx.beginPath(); points.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.total)) : ctx.moveTo(x(i), y(p.total)))); ctx.stroke();
   // a day's curve is labelled by time, longer ones by date (New York)
-  const md = at => { const p = nyParts(at); return unit === 'day' ? p.time.replace(/^0/, '') : `${+p.day.slice(5, 7)}/${+p.day.slice(8)}`; };
+  const md = at => { const p = nyParts(at); return unit === 'day' ? zoneClock(p.day, p.time).replace(/^0/, '') : `${+p.day.slice(5, 7)}/${+p.day.slice(8)}`; };
   ctx.fillStyle = col('--text3');
   ctx.fillText(md(points[0].at), padL, h - 6);
   const lastLabel = md(points[points.length - 1].at);

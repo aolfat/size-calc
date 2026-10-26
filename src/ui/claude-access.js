@@ -1,6 +1,7 @@
 // Claude access in Settings (docs/claude-access.md): your Claude keys (made, last used, Revoke), Make key, and a new key
 // shown once with Copy (forgotten when the sheet closes). Shown only while signed in; the list is read when Settings opens.
 import { marketEscape as esc } from '../core/format.js';
+import { inZone } from '../lib/zone.js';
 import { loadClaudeKeys, makeClaudeKey, revokeClaudeKey } from '../services/claude-keys.js';
 import { state } from '../state.js';
 import { effects } from './effects.js';
@@ -8,7 +9,7 @@ import { showError, showToast } from './feedback.js';
 import { onSheetChange } from './sheets.js';
 
 const day = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
-const when = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+const when = iso => inZone(iso, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export function renderClaudeAccess() {
   const section = document.getElementById('claudeSection');

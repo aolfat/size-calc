@@ -16,6 +16,7 @@ import { nyDay, weekdaysBetween } from '../core/bars.js';
 import { parseSchwabOption } from '../core/positions.js';
 import { loadTradeBars } from '../services/bars.js';
 import { loadPeriodReviews, savePeriodFields } from '../services/journal-review.js';
+import { zoneWords } from '../lib/zone.js';
 import { state } from '../state.js';
 import { showError } from './feedback.js';
 import { periodReviewContext, reviewedMark } from './journal-review.js';
@@ -329,7 +330,7 @@ function ruleNext(p, off) {
 export function periodReviewHtml(trades) {
   const p = state.journalReviewPeriod;
   if (!p) return '';
-  const r = periodReview(trades, p.unit, p.key, { ...periodReviewContext(), excursion: excursionOf, barsPending: state.periodBarsBusy });
+  const r = periodReview(trades, p.unit, p.key, { ...periodReviewContext(), excursion: excursionOf, barsPending: state.periodBarsBusy, clock: hhmm => zoneWords(nyDay(Date.now()), hhmm) });
   const word = p.unit === 'month' ? 'month' : 'week';
   const lock = state.periodReviews && !state.periodReviewsError ? '' : ' disabled';
   const active = activePeriods(trades, p.unit);

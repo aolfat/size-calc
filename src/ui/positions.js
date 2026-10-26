@@ -4,6 +4,7 @@
 // optional P/L and R columns picked from Columns (kept on this device; R reads the Journal's trades for each position's first stop), the account value hidden on request,
 // and every order still working in the account.
 import { store } from '../lib/store.js';
+import { inZone } from '../lib/zone.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
@@ -162,7 +163,7 @@ async function readPositions(id, acct, asked) {
     state.positions = { ...positionRows(account, orders || []), orders: orders || [], hash: acct.hash, last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
     state.positionsError = '';
     applyAccountValue(account, acct.hash); // the first read of the day sets the account size
-    if (asked) showToast(`Positions refreshed at ${new Date(state.positions.asOf).toLocaleTimeString()}.`);
+    if (asked) showToast(`Positions refreshed at ${inZone(state.positions.asOf)}.`);
   } catch(e) {
     if (id !== state.positionsRequest) return newest();
     state.positionsError = e instanceof TypeError ? 'Could not reach the Schwab worker. Check its URL in Settings.' : e.message;
@@ -285,7 +286,7 @@ function renderPositionsTable() {
   }
   // a 30s refresh must not jump a phone's sideways scroll back
   const scrolled = [...el.querySelectorAll('.positions-wrap')].map(w => w.scrollLeft);
-  const asOf = new Date(p.asOf).toLocaleTimeString();
+  const asOf = inZone(p.asOf);
   const cols = shownCols();
   const value = state.posHideValue ? 'Account value hidden' : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
   const hide = `<button class="pos-link" data-action="togglePosHideValue" aria-pressed="${state.posHideValue}" title="${state.posHideValue ? 'Show' : 'Hide'} the account value and cash">${state.posHideValue ? 'Show' : 'Hide'}</button>`;
@@ -328,8 +329,8 @@ const orderWords = o => o.legs > 1 ? `${o.legs}-leg ${orderTypeWord(o.orderType)
 function placed(entered) {
   const t = schwabTime(entered);
   if (Number.isNaN(t)) return '—';
-  const d = new Date(t), now = new Date();
-  return d.toDateString() === now.toDateString() ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : `${d.getMonth() + 1}/${d.getDate()}`;
+  const day = ms => inZone(ms, { month: 'numeric', day: 'numeric' });
+  return day(t) === day(Date.now()) ? inZone(t, { hour: 'numeric', minute: '2-digit' }) : day(t);
 }
 
 function orderRow(o, list) {

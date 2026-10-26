@@ -4,6 +4,7 @@
 // charts draw, and its excursions (MFE, MAE, exit efficiency; docs/journal-step-2.md, slice 3). Times are New York's, the
 // way the bars are stamped.
 import { aggregateBars, BARS_KEEP_DAYS, nyDay, weekdaysBetween } from './bars.js';
+import { nyWallIn } from './format.js';
 
 /** @typedef {{ date: string, time?: string, open: number, high: number, low: number, close: number, volume?: number }} Candle */
 
@@ -75,13 +76,15 @@ export function fillMarks(bars, fills, iv = 5) {
 }
 
 /**
- * A bar's time the way Lightweight Charts takes it: a daily bar's day ('YYYY-MM-DD'), an intraday bar's New York wall clock
- * as if it were UTC seconds (the library has no time zones and labels its axis in UTC, so this reads as New York time).
- * @param {Candle} b @returns {string | number}
+ * A bar's time the way Lightweight Charts takes it: a daily bar's day ('YYYY-MM-DD'), an intraday bar's wall clock in
+ * `zone` as if it were UTC seconds (the library has no time zones and labels its axis in UTC, so this reads as that
+ * zone's time; New York's by default, the way the bars are stamped).
+ * @param {Candle} b @param {string} [zone] @returns {string | number}
  */
-export function chartTime(b) {
+export function chartTime(b, zone = 'America/New_York') {
   if (!b.time) return b.date;
-  const [y, m, d] = b.date.split('-').map(Number), [hh, mm] = b.time.split(':').map(Number);
+  const w = nyWallIn(b.date, b.time, zone);
+  const [y, m, d] = w.day.split('-').map(Number), [hh, mm] = w.time.split(':').map(Number);
   return Date.UTC(y, m - 1, d, hh, mm) / 1000;
 }
 
@@ -156,10 +159,11 @@ export function sessionVwap(bars) {
  * What a trade chart draws, oldest first: the candles, the 8 EMA of the closes (seeded on the first close), the session
  * VWAP on intraday bars (sessionVwap; `end` on a day's last bar when another day follows, so the line can break there),
  * volume (up = closed at or over its open, like the candles), and each fill on its bar (fillMarks), in the order they happened.
- * @param {Candle[]} bars @param {{ time: string, side: 'buy' | 'sell', qty: number, price: number }[]} fills @param {number} [iv]
+ * Times read in `zone` (chartTime).
+ * @param {Candle[]} bars @param {{ time: string, side: 'buy' | 'sell', qty: number, price: number }[]} fills @param {number} [iv] @param {string} [zone]
  */
-export function chartSeries(bars, fills, iv = 5) {
-  const times = bars.map(chartTime), k = 2 / 9;
+export function chartSeries(bars, fills, iv = 5, zone = 'America/New_York') {
+  const times = bars.map(b => chartTime(b, zone)), k = 2 / 9;
   const byTime = [...fills].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
   let e = bars.length ? bars[0].close : 0;
   return {

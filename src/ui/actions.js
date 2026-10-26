@@ -26,7 +26,7 @@ import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideV
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
-import { saveKey, signIn, signOut } from './settings.js';
+import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
@@ -304,6 +304,7 @@ export const actions = {
   setStopStrategy: el => setStopStrategy(/** @type {HTMLSelectElement} */ (el).value),
   setAtrMultiplier: el => setAtrMultiplier(num(el)),
   setStopPercent: el => setStopPercent(num(el)),
+  setTimeZone: el => setTimeZone(arg(el)),
   stopPercentTyped: el => setStopPercent(/** @type {HTMLInputElement} */ (el).value, true),
 
   // ---------- shares answer ----------

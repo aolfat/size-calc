@@ -24,6 +24,7 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
  *   reviewed: (t: WeekTrade) => boolean,
  *   saved: (key: string) => boolean,
  *   barsPending?: boolean,
+ *   clock?: (hhmm: string) => string,
  * }} ReviewContext */
 
 /** the parts of a self-assessment, in the order the review shows them */
@@ -254,7 +255,7 @@ export function periodReview(trades, unit, key, ctx) {
     const early = opened.filter(t => nyParts(t.openedAt).time < EARLY);
     if (early.length) {
       const done = early.filter(t => t.status !== 'open');
-      add('entry', `${plural(early.length, 'trade')} opened before 9:45${done.length ? `: ${done.filter(t => t.pnl > 0).length} won, ${signed$(round2(sum(done.map(t => t.pnl))))}` : ''}`, done.length && sum(done.map(t => t.pnl)) < 0 ? 'bad' : '');
+      add('entry', `${plural(early.length, 'trade')} opened before ${ctx.clock ? ctx.clock(EARLY) : '9:45'}${done.length ? `: ${done.filter(t => t.pnl > 0).length} won, ${signed$(round2(sum(done.map(t => t.pnl))))}` : ''}`, done.length && sum(done.map(t => t.pnl)) < 0 ? 'bad' : '');
     }
     const tactics = byLabel(closed, t => label(t.key, 'tactic'));
     if (tactics.length) add('entry', `By entry tactic: ${tactics.map(g => `${ctx.nameOf('tactic', g.key)} ${plural(g.trades, 'trade')} ${signed$(g.net)}`).join(' · ')}`);

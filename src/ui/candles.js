@@ -3,6 +3,7 @@
 // and the gestures (zoom, pan, hover, tap to pick a price).
 import { panView, viewRange, zoomView } from '../core/chart-view.js';
 import { SANS_FONT } from '../lib/media.js';
+import { zoneClock } from '../lib/zone.js';
 import { attachTouchCrosshair } from './chart.js';
 
 export const CANDLE_H = 260;
@@ -71,7 +72,7 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
   // a daily tick is its date; an intraday tick is its time, or its date when it's the first tick on that day
   let tickDay = '';
   for (let i = Math.ceil(start / tickEvery) * tickEvery; i < end; i += tickEvery) {
-    const b = bars[i], label = b.time && b.date === tickDay ? b.time : monthDay(b.date);
+    const b = bars[i], label = b.time && b.date === tickDay ? zoneClock(b.date, b.time) : monthDay(b.date);
     if (!label || x(i) - 10 < 0 || x(i) + 14 > w - padR) continue;
     ctx.fillText(label, x(i) - 10, h - 8);
     tickDay = b.date;
@@ -166,7 +167,7 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
 export function ohlcText(b) {
   const css = getComputedStyle(document.documentElement);
   const chg = b.close - b.open;
-  return `${b.time ? `5m ${monthDay(b.date)} ${b.time}` : `1D ${b.date}`} &nbsp; O ${b.open.toFixed(2)} &nbsp; H ${b.high.toFixed(2)} &nbsp; L ${b.low.toFixed(2)} &nbsp; C <span style="color:${css.getPropertyValue(chg >= 0 ? '--green' : '--red').trim()}">${b.close.toFixed(2)}</span>`;
+  return `${b.time ? `5m ${monthDay(b.date)} ${zoneClock(b.date, b.time)}` : `1D ${b.date}`} &nbsp; O ${b.open.toFixed(2)} &nbsp; H ${b.high.toFixed(2)} &nbsp; L ${b.low.toFixed(2)} &nbsp; C <span style="color:${css.getPropertyValue(chg >= 0 ? '--green' : '--red').trim()}">${b.close.toFixed(2)}</span>`;
 }
 
 /**

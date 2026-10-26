@@ -1,5 +1,6 @@
 // Quick lookup: the shorthand box, its parse preview, and fetch-and-pin.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { calculateAtr5 } from '../core/stops.js';
@@ -93,7 +94,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
         delta: lg.delta - sh.delta, gamma: (q1.greeks?.gamma || 0) - (q2.greeks?.gamma || 0), iv: lg.iv,
         vol: Math.min(q1.volume || 0, q2.volume || 0), oi: Math.min(q1.open_interest || 0, q2.open_interest || 0),
         spreadPct: net > 0 ? ((lg.ask - sh.bid) - (lg.bid - sh.ask)) / net * 100 : 0,
-        asOf: new Date().toLocaleTimeString()
+        asOf: inZone(Date.now())
       };
     } else {
       const oq = oqRaw;
@@ -107,7 +108,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
         iv: oq.greeks?.smv_vol || oq.greeks?.mid_iv || 0,
         vol: oq.volume || 0, oi: oq.open_interest || 0,
         spreadPct: mid > 0 ? ((oq.ask || 0) - (oq.bid || 0)) / mid * 100 : 0,
-        asOf: new Date().toLocaleTimeString()
+        asOf: inZone(Date.now())
       };
     }
     recalcPinnedStop(d);
@@ -127,7 +128,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
       document.getElementById('quickInput').value = '';
       document.getElementById('quickParsed').textContent = '';
     }
-    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
   } catch(e) {
     showError('Error: ' + e.message);
   } finally {

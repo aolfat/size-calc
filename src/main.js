@@ -20,7 +20,7 @@ import { initJournalTradeEvents } from './ui/journal-trade.js';
 import { positionsVisibilityChanged } from './ui/positions.js';
 import { applyQuickOpen } from './ui/quick-lookup.js';
 import { renderUsdPresets, syncRiskDollar, updateRiskStatus } from './ui/risk.js';
-import { initCloud, loadKey, updateApiStatus } from './ui/settings.js';
+import { initCloud, loadKey, syncTimeZone, updateApiStatus } from './ui/settings.js';
 import { initShortcuts } from './ui/shortcuts.js';
 import { initSimEvents } from './ui/sim.js';
 import { updateStickyBar } from './ui/sticky-bar.js';
@@ -58,6 +58,7 @@ initMarketEvents();
 
 // first render
 updateApiStatus();
+syncTimeZone();
 renderUsdPresets();
 state.showDaily = store.get('show_daily') !== '0';
 if (store.get('both_strikes')) document.getElementById('bothStrikes').value = store.get('both_strikes');

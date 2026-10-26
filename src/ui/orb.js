@@ -2,7 +2,8 @@
 // entry a tick past the range and the stop at its other side; Trade at Schwab then sends it as a stop entry.
 import { state } from '../state.js';
 import { ORB_MINUTES, openingRange, orbLevels } from '../core/bars.js';
-import { fmt$ } from '../core/format.js';
+import { fmt$, nyDateStr } from '../core/format.js';
+import { zoneDial, zoneWords } from '../lib/zone.js';
 import { fetchFiveMinuteBars } from './chart.js';
 import { requireKey } from './settings.js';
 import { rawStop, stopsChanged } from './stops.js';
@@ -33,7 +34,7 @@ export async function setOrb(minutes) {
   try { bars = await fetchFiveMinuteBars(symbol); } catch(e) {}
   state.orbBusy = 0;
   if (state.quoteData?.symbol !== symbol) { renderOrb(); return; } // the ticker changed meanwhile
-  const range = bars ? openingRange(bars, minutes, Date.now()) : null;
+  const range = bars ? openingRange(bars, minutes, Date.now(), hhmm => zoneWords(nyDateStr(new Date()), hhmm)) : null;
   if (!range || range.error) {
     state.orbNote = range ? range.error : `Tradier would not send ${symbol}'s 5-minute bars. They need a brokerage-linked key.`;
     renderOrb();
@@ -61,6 +62,6 @@ export function renderOrb() {
   hint.className = 'orb-hint' + (state.orbNote && !busy ? ' warn' : '');
   hint.textContent = busy ? 'Reading today\'s 5-minute bars…'
     : state.orbNote ? state.orbNote
-    : o ? `${o.minutes}m range ${fmt$(o.low)} to ${fmt$(o.high)}, 9:30 to ${o.end.replace(/^0/, '')} ET. Entry a tick ${o.isLong ? 'over the high' : 'under the low'}, stop at the ${o.isLong ? 'low' : 'high'}.`
+    : o ? `${o.minutes}m range ${fmt$(o.low)} to ${fmt$(o.high)}, ${zoneDial(nyDateStr(new Date()), '09:30')} to ${zoneWords(nyDateStr(new Date()), o.end)}. Entry a tick ${o.isLong ? 'over the high' : 'under the low'}, stop at the ${o.isLong ? 'low' : 'high'}.`
     : 'Breakout entry: a tick past the range, stop at its other side.';
 }
