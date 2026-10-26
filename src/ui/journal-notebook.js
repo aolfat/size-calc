@@ -10,6 +10,7 @@
 // you missed it, a note and your screenshots (trade_shots keyed missed:<id>, ui/journal-shots.js) (journal_days.missed,
 // its own migration).
 // The calendar's marks: plan written, reviewed, review due, how many you missed.
+// Premarket opens with the day's economic releases (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
 import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
@@ -23,6 +24,7 @@ import { journalTradeList, renderJournal } from './journal.js';
 import { loadMissedChart, missedChartHtml } from './missed-chart.js';
 import { deleteMissedShots, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
 import { effects } from './effects.js';
+import { econDayRow, econTodayWords } from './econ-events.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -82,7 +84,7 @@ export function todayLineHtml() {
   const now = nowIso(), day = notebookToday(now), isToday = day === nyParts(now).day;
   const planned = planState(rowOf(day)).written, over = dayOver(day, now), reviewed = reviewOf(day).reviewed;
   const what = reviewed ? 'Day reviewed ✓' : over ? 'Review the day' : planned ? 'Plan written ✓' : 'Write your plan';
-  return `<p class="hint nb-today" role="status">${isToday ? 'Today' : 'Monday'}, ${esc(dayName(day, { weekday: 'short', month: 'short', day: 'numeric' }))}: <button class="pos-link" data-action="openTodayNotebook">${what}</button></p>`;
+  return `<p class="hint nb-today" role="status">${isToday ? 'Today' : 'Monday'}, ${esc(dayName(day, { weekday: 'short', month: 'short', day: 'numeric' }))}: <button class="pos-link" data-action="openTodayNotebook">${what}</button>${esc(econTodayWords(day))}</p>`;
 }
 
 // ---------- saving: shown at once, back with a toast if Supabase refuses ----------
@@ -364,6 +366,7 @@ function premarket(day, off) {
   const hours = r?.sleep_hours ?? '';
   return `<section class="jr nb-sec" aria-label="Premarket">
     <div class="jr-head"><span class="section-title js-sub">Premarket</span>${status}</div>
+    ${econDayRow(day)}
     ${focus ? `<p class="nb-focus"><span class="nb-focus-label">Your last focus (${esc(dayName(focus.day, { weekday: 'short', month: 'short', day: 'numeric' }))})</span> ${esc(focus.text)}</p>` : ''}
     <div class="nb-group">Mental check-in</div>
     ${row('How you feel', FEELINGS.map(([v, w]) => chip(w, !!r?.feelings.includes(v), `data-action="toggleDayFeeling" data-arg="${v}"`, off)).join(''), started && !st.feeling)}

@@ -115,7 +115,7 @@ test('a calendar day opens its page: premarket, the day\'s trades, post-market; 
   const { run, state, out } = await journal({ library: RULES });
   run("setJournalTab('calendar')");
   assert.match(out(), /<button class="jc-day journal-sell" data-action="openJournalDay" data-arg="2026-10-06"/);
-  assert.match(out(), /<button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-07" aria-label="2026-10-07: no exits\. Open the day">/, 'a quiet day opens too');
+  assert.match(out(), /<button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-08" aria-label="2026-10-08: no exits\. Open the day">/, 'a quiet day opens too');
   run("openJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'calendar');
   const page = out();
@@ -477,4 +477,21 @@ test('before the missed trades column is pushed the section says so, and the res
   run("missedInput('NVDA'); addMissedTrade()");
   await settle();
   assert.equal(supabase.writes.filter(w => w.table === 'journal_days').length, 0, 'nothing written');
+});
+
+test('economic releases: a dot and a hover card on the calendar, a row on the day page, today\'s on today\'s line', async () => {
+  const { run, out } = await journal({ now: Date.parse('2026-10-14T12:00:00Z') });
+  run("setJournalTab('calendar')");
+  const cal = out();
+  assert.match(cal, /<td class="jc-has-ev"><button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-14" aria-label="2026-10-14: no exits, CPI 8:30 am, Beige Book 2:00 pm\. Open the day"><span class="jc-num">14<\/span><span class="jc-ev jc-ev-high" aria-hidden="true"><\/span><\/button><div class="jc-pop" aria-hidden="true"><div class="ev-head">Wednesday, October 14, 2026<\/div>/);
+  assert.match(cal, /<li><span class="ev-time">8:30 am<\/span><span class="ev-dot ev-high"><\/span><span class="ev-name">CPI<span class="ev-note">Sep<\/span><\/span><\/li><li><span class="ev-time">2:00 pm<\/span><span class="ev-dot ev-medium"><\/span><span class="ev-name">Beige Book<\/span><\/li><\/ul><div class="ev-foot">2 events · New York time<\/div>/);
+  assert.match(cal, /data-arg="2026-10-07"[^>]*><span class="jc-num">7<\/span><span class="jc-ev jc-ev-medium"/, 'the minutes alone: amber');
+  assert.match(cal, /<td><button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-08"/, 'a quiet day has no card');
+  assert.match(cal, /nb-today" role="status">Today, Wed, Oct 14: <button[^>]*>Write your plan<\/button> · CPI 8:30 am<\/p>/, 'the high-impact ones');
+  run("openJournalDay('2026-10-28')");
+  assert.match(out(), /aria-label="Premarket"[\s\S]*Economic events <span class="jr-sub">New York time<\/span>[\s\S]*<span class="ev-time">2:00 pm<\/span><span class="ev-dot ev-high" role="img" aria-label="high impact"><\/span><span class="ev-name">Fed rate decision<\/span>[\s\S]*Fed press conference/);
+  run("openJournalDay('2026-10-26')");
+  assert.match(out(), /Economic events[\s\S]*No major releases\./);
+  run("openJournalDay('2028-01-03')");
+  assert.doesNotMatch(out(), /Economic events/, 'past the schedule it says nothing');
 });

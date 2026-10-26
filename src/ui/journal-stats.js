@@ -5,6 +5,7 @@
 // same ones the calendar adds up (‹ › step through the ones with exits): the headline numbers, the equity curve with its drawdown, results by month (or by day),
 // streaks and the breakdowns, each group with the same stats, thin under 10. The Journal's side, symbol and fee choices
 // apply here too.
+// A dot marks a day's economic releases, with a hover card of their times (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
 import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN } from '../core/journal-stats.js';
@@ -12,6 +13,7 @@ import { SANS_FONT } from '../lib/media.js';
 import { state } from '../state.js';
 import { periodMark, periodStatus } from './journal-week.js';
 import { dayMark } from './journal-notebook.js';
+import { econDot, econPopHtml, econWords } from './econ-events.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -41,10 +43,11 @@ const statCell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><d
 function dayCell(d) {
   if (!d) return '<td class="jc-out"></td>';
   const mark = dayMark(d.day, d.trades > 0);
-  if (!d.trades) return `<td><button class="jc-day jc-quiet${mark.html ? ' jc-noted' : ''}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}: no exits${mark.words}. Open the day`)}"><span class="jc-num">${+d.day.slice(8)}</span>${mark.html}</button></td>`;
+  const pop = econPopHtml(d.day), td = pop ? '<td class="jc-has-ev">' : '<td>', ev = econWords(d.day), dot = econDot(d.day);
+  if (!d.trades) return `${td}<button class="jc-day jc-quiet${mark.html ? ' jc-noted' : ''}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}: no exits${mark.words}${ev}. Open the day`)}"><span class="jc-num">${+d.day.slice(8)}</span>${dot}${mark.html}</button>${pop}</td>`;
   const pf = d.profitFactor === null ? '' : d.profitFactor.toFixed(2);
-  const label = `${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${pf}` : ''}${mark.words}. Open the day`;
-  return `<td><button class="jc-day ${pnlClass(d.pnl)}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}"><span class="jc-num">${+d.day.slice(8)}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span><span class="jc-rate">${pct(d.winRate)}<span class="jc-wide"> won${pf ? ` · PF ${pf}` : ''}</span></span>${mark.html}</button></td>`;
+  const label = `${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${pf}` : ''}${mark.words}${ev}. Open the day`;
+  return `${td}<button class="jc-day ${pnlClass(d.pnl)}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}"><span class="jc-num">${+d.day.slice(8)}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span><span class="jc-rate">${pct(d.winRate)}<span class="jc-wide"> won${pf ? ` · PF ${pf}` : ''}</span></span>${dot}${mark.html}</button>${pop}</td>`;
 }
 
 function weekCell(w) {
@@ -81,7 +84,7 @@ export function calendarView(trades) {
     </div>
     ${monthStats(cal)}
     <table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cells}</tbody></table>
-    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its notebook page (✎ plan written, ✓ reviewed, ● a day to review, ⊘ trades you missed), a week's total to review the week.</p>`;
+    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its notebook page (✎ plan written, ✓ reviewed, ● a day to review, ⊘ trades you missed), a week's total to review the week. A dot in a day's corner marks its economic releases, red for the Fed, CPI, PPI, jobs, PCE and GDP, amber for the FOMC minutes and Beige Book; point at the day for their times.</p>`;
 }
 
 /** ‹ or ›: the month before or after the one shown */

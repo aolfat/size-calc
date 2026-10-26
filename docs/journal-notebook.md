@@ -29,6 +29,7 @@ Four sections, always in this order.
 
 | Part | What | Required |
 |---|---|---|
+| Economic events | The day's US releases with their New York times and impact (docs/journal.md, Economic events), 'No major releases.' on a quiet day | Nothing to fill in |
 | Last focus | The focus you wrote in your last review (up to a week back), at the top | Shown only when there is one |
 | Mental check-in | How you feel (Calm, Focused, Confident, Anxious, Frustrated, Impatient, FOMO; any number), sleep and energy (Rested, OK, Tired), hours slept, where you're trading (At my desk, On my phone) | Feeling, energy and where; hours are optional |
 | Goals | Your standing goals | Nothing to fill in |
