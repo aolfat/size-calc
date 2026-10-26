@@ -7,7 +7,7 @@ import { GRADES } from './journal-labels.js';
 import { exitDays, nyParts } from './journal-stats.js';
 
 /** @typedef {{ key: string, id: string, kind: 'goal' | 'rule', name: string, hidden: boolean, order: number, since: string }} ListItem
- * @typedef {{ id: string, symbol: string, side: string | null, setup: string | null, tactics: string[], why: string | null, note: string | null }} MissedTrade
+ * @typedef {{ id: string, symbol: string, side: string | null, setups: string[], tactics: string[], why: string | null, note: string | null }} MissedTrade
  * @typedef {{ market: string | null, note: string | null, feelings: string[], energy: string | null, sleep_hours: number | null,
  *   place: string | null, plan: string | null, focus_list: any[], grade: string | null, rules: Record<string, string>,
  *   went_well: string | null, work_on: string | null, focus_next: string | null, focus_kept: string | null,
@@ -102,17 +102,17 @@ export const missedSymbol = v => {
 };
 
 const libKey = (/** @type {unknown} */ v) => typeof v === 'string' && v && v.length <= 100 ? v : null;
-/** a missed trade's entry tactics this many at most */
-export const MAX_MISSED_TACTICS = 6;
-/** its entry tactics: library keys, each once; one kept before it took several (tactic: 'pivot15') reads as a list of one */
+/** a missed trade's daily setups, and its entry tactics, this many at most */
+export const MAX_MISSED_PICKS = 6;
+/** its setups or entry tactics: library keys, each once; one kept before it took several (tactic: 'pivot15') reads as a list of one */
 const libKeys = (/** @type {unknown} */ list, /** @type {unknown} */ one) => {
   const keys = /** @type {string[]} */ ((Array.isArray(list) ? list : [one]).map(libKey).filter(Boolean));
-  return [...new Set(keys)].slice(0, MAX_MISSED_TACTICS);
+  return [...new Set(keys)].slice(0, MAX_MISSED_PICKS);
 };
 
 /**
  * A day's missed trades as the app keeps them: each with an id and a ticker, the side and why from their lists, a daily
- * setup and its entry tactics (library keys; an old single tactic read as one) and a trimmed note; duplicates by id and anything past MAX_MISSED dropped.
+ * setups and entry tactics (library keys; an old single setup or tactic read as one) and a trimmed note; duplicates by id and anything past MAX_MISSED dropped.
  * @param {unknown} raw @returns {MissedTrade[]}
  */
 export function cleanMissed(raw) {
@@ -122,10 +122,23 @@ export function cleanMissed(raw) {
   for (const m of raw) {
     const id = typeof m?.id === 'string' && m.id && m.id.length <= 64 ? m.id : '', symbol = missedSymbol(m?.symbol);
     if (!id || !symbol || out.some(x => x.id === id)) continue;
-    out.push({ id, symbol, side: pick(MISSED_SIDES, m.side), setup: libKey(m.setup), tactics: libKeys(m.tactics, m.tactic), why: pick(MISSED_WHY, m.why), note: text(m.note, MAX_MISSED_NOTE) });
+    out.push({ id, symbol, side: pick(MISSED_SIDES, m.side), setups: libKeys(m.setups, m.setup), tactics: libKeys(m.tactics, m.tactic), why: pick(MISSED_WHY, m.why), note: text(m.note, MAX_MISSED_NOTE) });
     if (out.length >= MAX_MISSED) break;
   }
   return out;
+}
+
+/**
+ * A week's or month's missed trades, oldest day first, each with its day: a week is its Monday through the Sunday after
+ * (a weekend's fold into it, like the calendar), a month every day in it.
+ * @param {Record<string, { missed?: MissedTrade[] }>} days the notebook rows by day @param {string} unit week | month @param {string} key its Monday or 'YYYY-MM'
+ * @returns {(MissedTrade & { day: string })[]}
+ */
+export function periodMissed(days, unit, key) {
+  const end = unit === 'month' ? '' : new Date(Date.parse(`${key}T12:00:00Z`) + 7 * 864e5).toISOString().slice(0, 10);
+  const inIt = (/** @type {string} */ day) => unit === 'month' ? day.slice(0, 7) === key : day >= key && day < end;
+  return Object.keys(days || {}).filter(d => isDay(d) && inIt(d)).sort()
+    .flatMap(day => (days[day]?.missed || []).map(m => ({ ...m, day })));
 }
 
 /**
