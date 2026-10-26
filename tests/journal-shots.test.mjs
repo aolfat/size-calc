@@ -103,7 +103,7 @@ test('if Storage refuses the file, no row is saved; before the migration, the ro
 
   const two = await page(s => s.failTable('trade_shots'));
   assert.match(two.body(), /Screenshots unavailable: the database doesn(?:'|&#39;)t have screenshots yet: npx supabase db push/);
-  assert.match(two.body(), /<dt>P&amp;L<\/dt>/, 'the rest of the page is there');
+  assert.match(two.body(), /<dt>MFE<\/dt>/, 'the rest of the page is there');
 });
 
 test('Paste from clipboard reads the copied image; an empty clipboard or a refusal says what to do instead', async () => {

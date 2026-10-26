@@ -98,6 +98,7 @@ export function createState() {
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it
     reviewNewShort: '', // and its words on a short (an action or pattern)
+    reviewSearch: { setup: '', tactic: '' }, // what's typed in the trade page's setup and tactic searches
     reviewNoteDraft: null, // { key, which: 'entry' | 'exit', text }: the note being typed, so a redraw never loses it
     journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
@@ -145,6 +146,8 @@ export function createState() {
     journalSaved: [], // the trades you shaped (merged trades, spreads, legs kept apart): trades rows, { id, account, fill_ids, created_at }
     journalSavedError: '', // the trades table couldn't be read (no migration yet): trades show as the app groups them, merging is off
     journalPicked: [], // trade keys ticked for Merge
+    journalSelecting: false, // phones: Select shows the cards' tick boxes
+    journalJustReviewed: '', // a trade reviewed on its page just now: its card pops once on the way back
     journalMerging: false, // a merge or separate is being saved
     tradeReviewsError: '', // the reviews couldn't be read (the trades still show, with Schwab's stops)
     journalShowDeleted: false, // deleted trades shown, dimmed, to restore one

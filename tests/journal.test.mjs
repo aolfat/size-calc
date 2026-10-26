@@ -120,6 +120,11 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   run("setJournalTab('fills')");
   const out = elements.get('journalSection').innerHTML;
   assert.match(out, /3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026/);
+  assert.match(out, /<span class="positions-meta journal-meta" id="journalKept" role="status" title="3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026 · Not imported yet">2 trades · not imported yet · <span style="color:var\(--amber\)">import failed<\/span> <button class="pos-link" data-action="openJournalImport">Details<\/button><span class="journal-features-line" id="journalFeaturesLine">Stamping/, 'the head says it in one quiet line (a failed import and a features run too); what\'s kept in full is its title');
+  assert.doesNotMatch(out, /id="journalStatus"/, 'no line of its own for the last import');
+  assert.match(out, /<div class="seg journal-tabs journal-nav" aria-label="Show">[^]*?<\/div>\s*<div class="journal-filters">/, 'the tabs, then the filters in a row of their own');
+  run('openJournalImport()');
+  assert.match(elements.get('journalImportBody').innerHTML, /<p class="hint">3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026<\/p>/, 'the Import sheet says it in full');
   const rows = [...out.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td class="journal-(buy|sell)">([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/g)].map(m => m.slice(1, 7));
   assert.deepEqual(rows, [
     ['AAPL 12/18/26 245C', 'buy', 'Buy to open', '1', '$4.15', '$415.00'],
@@ -225,6 +230,7 @@ test('Import lists the sources: Schwab with its last import and Import now, thin
   const body = elements.get('journalImportBody').innerHTML;
   assert.match(body, /Schwab <span class="sheet-status">.*Connected · ••6789/);
   assert.match(body, /Last import .*: 46 orders, 31 trades/);
+  assert.match(elements.get('journalSection').innerHTML, /title="[^"]*Last import [^"]*: 46 orders, 31 trades">[^<]*· imported \d+\/\d+, /, 'the head: when, and what it brought in its title');
   assert.match(body, /data-action="journalImport"[^>]*>Import now</);
   assert.match(body, /thinkorswim statement <span class="sheet-status">futures/);
   assert.match(body, /data-action="pickTosStatement"/);

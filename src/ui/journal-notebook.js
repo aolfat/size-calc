@@ -82,13 +82,21 @@ export function dayMark(day, hasExits) {
   return { html: marks ? `<span class="jc-marks" aria-hidden="true">${marks}</span>` : '', words: words.length ? `, ${words.join(', ')}` : '' };
 }
 
-/** today's line under the Journal's status: write the plan, then review the day after the close */
-export function todayLineHtml() {
+/** today in the Journal's head: write the plan, then review the day after the close; done reads quiet */
+export function todayButtonHtml() {
   if (!state.session || !data() || state.journalReviewError) return '';
   const now = nowIso(), day = notebookToday(now), isToday = day === nyParts(now).day;
   const planned = planState(rowOf(day)).written, over = dayOver(day, now), reviewed = reviewOf(day).reviewed;
   const what = reviewed ? 'Day reviewed ✓' : over ? 'Review the day' : planned ? 'Plan written ✓' : 'Write your plan';
-  return `<p class="hint nb-today" role="status">${isToday ? 'Today' : 'Monday'}, ${esc(dayName(day, { weekday: 'short', month: 'short', day: 'numeric' }))}: <button class="pos-link" data-action="openTodayNotebook">${what}</button>${esc(econTodayWords(day))}</p>`;
+  const when = `${isToday ? 'Today' : 'Monday'}, ${dayName(day, { weekday: 'short', month: 'short', day: 'numeric' })}`;
+  return `<button class="btn nb-today${reviewed || (planned && !over) ? ' nb-today-done' : ''}" data-action="openTodayNotebook" title="${esc(when)}: open the day's notebook">${what}</button>`;
+}
+
+/** today's high-impact releases for the Journal's head ('· Today: CPI 8:30 am'; Monday's on a weekend), or '' */
+export function todayEconWords() {
+  if (!state.session || !data() || state.journalReviewError) return '';
+  const now = nowIso(), day = notebookToday(now), words = econTodayWords(day);
+  return words ? ` · ${day === nyParts(now).day ? 'Today' : 'Monday'}: ${words.replace(/^ · /, '').split(' · ').join(', ')}` : '';
 }
 
 // ---------- saving: shown at once, back with a toast if Supabase refuses ----------

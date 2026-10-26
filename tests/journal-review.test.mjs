@@ -135,12 +135,15 @@ test('the Review section: market for the day or this trade, sector, My setups (o
   await run(`toggleReviewLabel(${t}, 'sector', 'strong')`);
   await run(`toggleReviewLabel(${t}, 'sector', 'weak')`);
   assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'sector').map(r => r.value), ['weak'], 'one sector: the new one replaces the old');
-  assert.match(body(), /<div class="jr-label">My setups<\/div>[\s\S]*data-action="toggleSetup" data-arg="ema8_bounce" title="Bounce at 8 EMA">8 EMA bounce/, 'the starting setups, one tap each');
+  assert.match(body(), /<div class="jr-label">My setups<\/div>[\s\S]*<span class="jr-group-name">Bounce<\/span><span class="jr-group-chips">[^]*?data-action="toggleSetup" data-arg="ema8_bounce" title="8 EMA bounce: Bounce at 8 EMA">8 EMA</, 'the starting setups, one tap each, grouped by what happened and named for their level');
+  assert.deepEqual([...body().matchAll(/<span class="jr-group-name">([^<]+)</g)].map(m => m[1]), ['Bounce', 'Undercut &amp; rally', 'Patterns'], 'every bounce together, every undercut & rally, then the patterns');
+  assert.deepEqual([...body().matchAll(/data-action="toggleSetup" data-arg="([^"]+)"/g)].map(m => m[1]),
+    ['ema8_bounce', 'ema21_bounce', 'ema9w_bounce', 'sma50_bounce', 'ema21_unr', 'sma50_unr', 'base_breakout', 'flag_breakout', 'earnings_gap'], 'in a fixed order: levels by length, patterns as listed');
   await run(`toggleSetup(${t}, 'ema21_bounce')`);
   await run(`toggleSetup(${t}, 'earnings_gap')`);
   await run(`toggleSetup(${t}, 'earnings_gap')`);
   assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'setup').map(r => r.value), ['ema21_bounce'], 'tapping a lit one takes it off');
-  assert.match(body(), /aria-pressed="true" data-action="toggleSetup" data-arg="ema21_bounce"/, 'lit, and first');
+  assert.match(body(), /aria-pressed="true" data-action="toggleSetup" data-arg="ema21_bounce"/, 'lit, in its place');
 
   run('startSetupDraft()');
   assert.match(body(), /What happened\?[\s\S]*At what\?[\s\S]*Or a pattern[\s\S]*Tap what happened and at what, or a pattern\. It goes on this trade as you tap\.<\/span><\/span><button class="btn" data-action="cancelSetupDraft">Done<\/button>/);
@@ -298,7 +301,7 @@ test('editing a setup in Edit choices: its parts and name change, every trade wi
   assert.deepEqual([row.name, row.settings], ['8 EMA undercut & rally', { action: 'undercut', levels: ['ema8'] }], 'a default is edited by a row of yours');
   assert.equal(run("journalReview.labels[journalPageTrade().key][0].value"), 'ema8_bounce', 'the trade keeps its label');
   assert.equal(run('setupsOf(journalPageTrade())[0].kind.key'), 'action:undercut', 'and groups the new way');
-  assert.match(body(), />8 EMA undercut &amp; rally</);
+  assert.match(body(), /Undercut &amp; rally<\/span><span class="jr-group-chips"><button[^>]*data-arg="ema8_bounce" title="8 EMA undercut &amp; rally: [^"]*">8 EMA</, 'it moved to the undercut & rally group');
 
   // a typed name stays put; one made of the same things as another offers a merge, not a twin
   run("editSetup('ema8_bounce'); setupEditNameInput('Morning 8 reclaim'); toggleEditLevel('support')");
@@ -327,7 +330,7 @@ test('a review save Supabase refuses goes back; before the migration is pushed, 
 
   const two = await page(s => s.failTable('trade_labels'));
   assert.match(two.body(), /Reviews couldn(?:'|&#39;)t load: the database doesn(?:'|&#39;)t have the review tables yet: npx supabase db push/);
-  assert.match(two.body(), /<dt>P&amp;L<\/dt>/, 'the rest of the page is there');
+  assert.match(two.body(), /<dt>MFE<\/dt>/, 'the rest of the page is there');
   assert.match(two.list(), /<b>AAPL<\/b>/, 'and so is the list');
 });
 
@@ -347,6 +350,67 @@ test('what fits while building a setup, and links: https only, named for the flo
   assert.equal(run("linkLabel('https://www.unusualwhales.com/flow/x')"), 'Unusual Whales');
   assert.equal(run("linkLabel('https://app.bullflow.io/flow?s=NVDA')"), 'Bullflow');
   assert.equal(run("linkLabel('https://x.com/someone/status/1')"), 'x.com');
+});
+
+test('My setups to pick: every bounce together and every undercut & rally, named for their levels; the search reads short words', async () => {
+  const { run } = await app();
+  const rows = [
+    { id: 'l9', kind: 'level', name: '9 EMA' },
+    { id: 's1', kind: 'setup', name: '9 EMA undercut & rally', settings: { action: 'undercut', levels: ['mine:l9'] } },
+    { id: 's2', kind: 'setup', name: 'My 21 reclaim', settings: { action: 'undercut', levels: ['ema21', 'support'] } },
+    { id: 's3', kind: 'setup', name: 'Old one', settings: {} },
+  ];
+  const lib = `buildLibrary(${JSON.stringify(rows)})`, keys = `${lib}.choices('setup').map(i => i.key)`;
+  const groups = side => json(run, `setupPickGroups(${lib}, ${keys}, '${side}')`);
+  assert.deepEqual(groups('long').map(g => [g.name, g.items.map(i => i.label)]), [
+    ['Bounce', ['8 EMA', '21 EMA', '9 WK EMA', '50 SMA']],
+    ['Undercut & rally', ['9 EMA', '21 EMA', 'My 21 reclaim', '50 SMA']],
+    ['Patterns', ['Base breakout', 'Pennant or flag breakout', 'Earnings gap']],
+    ['Other', ['Old one']],
+  ], 'a name you typed stays; the rest are their levels, the moving averages by length');
+  assert.deepEqual(groups('short').map(g => g.name), ['Rejection', 'Reclaim & fail', 'Patterns', 'Other'], 'a short\'s bounces are its rejections');
+
+  const find = q => json(run, `${keys}.filter(k => matchesQuery(setupSearchNames(${lib}, k), ${JSON.stringify(q)}))`);
+  assert.deepEqual(find('9 unr'), ['mine:s1'], '9 UnR: the level and the action\'s initials');
+  assert.deepEqual(find('U&R'), ['ema21_unr', 'sma50_unr', 'mine:s1', 'mine:s2'], 'u&r too, in any case');
+  assert.deepEqual(find('rej 21'), ['ema21_bounce'], 'the short side\'s words find the bounce');
+  assert.deepEqual(find('21ema'), ['ema21_bounce', 'ema21_unr', 'mine:s2'], 'run together');
+  assert.deepEqual(find('flag'), ['flag_breakout']);
+  assert.deepEqual(find('zz'), []);
+  assert.equal(find('').length, 12, 'nothing typed: every one');
+  assert.equal(run("matchesQuery(['15-minute pivot'], '15m')"), true);
+  assert.equal(run("matchesQuery(['6/20 (Gil Morales)'], 'gil')"), true);
+  assert.equal(run("matchesQuery(['6/20 (Gil Morales)'], '6/20')"), true);
+  assert.equal(run("matchesQuery(['30-minute pivot'], '15')"), false);
+});
+
+test('the setup and tactic searches narrow the chips in place; Enter puts the first match on and clears for the next', async () => {
+  const { run, state, t, body, rows, elements } = await page();
+  assert.match(body(), /<input type="search" class="jr-search" id="setupSearch"[^>]*data-input="reviewSearchInput" data-enter="reviewSearchPick" data-arg="setup"/);
+  assert.match(body(), /id="tacticSearch"[^>]*data-arg="tactic"/);
+  const pick = () => elements.get('jrSetupPick').innerHTML;
+  run(`reviewSearchInput(${t}, 'setup', 'unr')`);
+  assert.deepEqual([...pick().matchAll(/data-arg="([^"]+)"/g)].map(m => m[1]), ['ema21_unr', 'sma50_unr'], 'only the undercuts');
+  await run(`reviewSearchPick(${t}, 'setup')`);
+  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'setup').map(r => r.value), ['ema21_unr'], 'the first match goes on');
+  assert.equal(state.reviewSearch.setup, '', 'and the search clears');
+  run(`reviewSearchInput(${t}, 'setup', 'unr')`);
+  await run(`reviewSearchPick(${t}, 'setup')`);
+  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'setup').map(r => r.value), ['ema21_unr', 'sma50_unr'], 'one already on is passed over');
+  run(`reviewSearchInput(${t}, 'setup', 'zz')`);
+  assert.match(pick(), /No setup matches “zz”/);
+  await run(`reviewSearchPick(${t}, 'setup')`);
+  assert.equal(rows('trade_labels').filter(r => r.kind === 'setup').length, 2, 'nothing to put on');
+
+  run(`reviewSearchInput(${t}, 'tactic', 'piv')`);
+  assert.deepEqual([...elements.get('jrTacticPick').innerHTML.matchAll(/data-arg2="([^"]+)"/g)].map(m => m[1]), ['pivot15', 'pivot30']);
+  await run(`reviewSearchPick(${t}, 'tactic')`);
+  assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'tactic').map(r => r.value), ['pivot15']);
+
+  run(`reviewSearchInput(${t}, 'setup', 'base'); startSetupDraft()`);
+  assert.doesNotMatch(body(), /id="setupSearch"/, 'the + New setup builder narrows them instead');
+  run(`openJournalTrade(${t}.key)`);
+  assert.deepEqual(state.reviewSearch, { setup: '', tactic: '' }, 'a trade opens with the searches empty');
 });
 
 test('what a setup adds up under: its action as the kind, then each level; a pattern is its own kind; merges followed', async () => {
@@ -388,7 +452,7 @@ test('+ New setup in Edit choices: built from parts, a new level made on the way
   assert.deepEqual([made.name, made.settings, made.default_key ?? null], ['10 WK SMA undercut & rally', { action: 'undercut', levels: [`mine:${lvl.id}`] }, null]);
   assert.doesNotMatch(sheet(), /jl-edit/, 'the builder closes');
   assert.match(sheet(), /value="10 WK SMA undercut &amp; rally"[\s\S]*data-action="newLibrarySetup"/, 'listed, + New setup under it');
-  assert.match(body(), new RegExp(`data-action="toggleSetup" data-arg="mine:${made.id}"[^>]*>10 WK SMA undercut &amp; rally<`), 'offered on the trade');
+  assert.match(body(), new RegExp(`data-action="toggleSetup" data-arg="mine:${made.id}" title="10 WK SMA undercut &amp; rally: [^"]*">10 WK SMA<`), 'offered on the trade, with the undercuts');
 
   run("newLibrarySetup(); setEditAction('bounce'); toggleEditLevel('ema9w')");
   assert.match(sheet(), /Already in My setups: <b>9 WK EMA bounce \/ rejection<\/b>/);
@@ -404,7 +468,7 @@ test('+ New setup narrows My setups as you pick and offers the one you have; Opt
   run('startSetupDraft()');
   await run(`setDraftAction(${t}, 'undercut')`);
   assert.match(body(), /<span class="jr-fit">My setups that fit:<\/span>/);
-  assert.match(body(), /data-arg="ema21_unr"[^>]*>21 EMA undercut &amp; rally/);
+  assert.match(body(), /data-arg="ema21_unr" title="21 EMA undercut &amp; rally: [^"]*">21 EMA</);
   assert.doesNotMatch(body(), /data-action="toggleSetup" data-arg="ema21_bounce"/, 'bounces step aside');
   const levels = [...body().matchAll(/data-action="toggleDraftLevel" data-arg="([^"]+)"/g)].map(m => m[1]);
   assert.deepEqual(levels, ['ema8', 'ema21', 'ema9w', 'sma50', 'sma100', 'sma200', 'support', 'resistance', 'avwap_ath', 'avwap_atl', 'avwap_earnings'], 'moving averages by length first');
@@ -576,7 +640,7 @@ test('the trade page, the list and the filter read setups by side; the library t
   run(`closeJournalTrade(); openJournalTrade('6789|MSFT|short|2026-10-05T14:00:00.000Z')`);
   assert.equal(run(`${t}.bias`), 'short');
   await run(`toggleSetup(${t}, 'ema21_bounce')`);
-  assert.match(body(), /data-action="toggleSetup" data-arg="ema21_bounce" title="Rejection at 21 EMA">21 EMA rejection<\/button>/, 'a short reads its rejection');
+  assert.match(body(), /<span class="jr-group-name">Rejection<\/span><span class="jr-group-chips">[^]*?data-action="toggleSetup" data-arg="ema21_bounce" title="21 EMA rejection: Rejection at 21 EMA">21 EMA<\/button>/, 'a short reads its rejections, grouped');
   assert.match(body(), /Action <b>Rejection<\/b> · Level <b>21 EMA<\/b>/);
   run('startSetupDraft()');
   assert.match(body(), /data-action="setDraftAction" data-arg="bounce">Rejection<\/button>/, 'the builder speaks the short side too');
@@ -615,6 +679,6 @@ test('a trade labelled with a setup merged away shows the kept one once', async 
   const { run, t, body } = await page();
   run("journalReview.library.push({ id: 's9', kind: 'setup', name: '9 EMA rejection', settings: { action: 'rejection', levels: ['ema8'] }, merged_into: 'ema8_bounce' })");
   await run(`toggleSetup(${t}, 'mine:s9')`);
-  assert.equal((body().match(/>8 EMA bounce<\/button>/g) || []).length, 1, 'lit once, not offered again');
+  assert.equal((body().match(/title="8 EMA bounce: [^"]*">8 EMA<\/button>/g) || []).length, 1, 'lit once, not offered again');
   assert.match(body(), /class="filter-btn active" aria-pressed="true" data-action="toggleSetup" data-arg="mine:s9"/, 'tapping it takes the label it has off');
 });

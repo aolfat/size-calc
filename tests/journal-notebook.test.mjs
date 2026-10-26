@@ -153,7 +153,7 @@ test('economic releases: a dot and a hover card on the calendar, a row on the da
   assert.match(cal, /<li><span class="ev-time">8:30 am<\/span><span class="ev-dot ev-high"><\/span><span class="ev-name">CPI<span class="ev-note">Sep<\/span><\/span><\/li><li><span class="ev-time">2:00 pm<\/span><span class="ev-dot ev-medium"><\/span><span class="ev-name">Beige Book<\/span><\/li><\/ul><div class="ev-foot">2 events · New York time<\/div>/);
   assert.match(cal, /data-arg="2026-10-07"[^>]*><span class="jc-num">7<\/span><span class="jc-ev jc-ev-medium"/, 'the minutes alone: amber');
   assert.match(cal, /<td><button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-08"/, 'a quiet day has no card');
-  assert.match(cal, /nb-today" role="status">Today, Wed, Oct 14: <button[^>]*>Write your plan<\/button> · CPI 8:30 am<\/p>/, 'the high-impact ones');
+  assert.match(cal, /id="journalKept"[^>]*>[^<]*· Today: CPI 8:30 am</, 'the high-impact ones, on the head\'s meta line');
   run("openJournalDay('2026-10-28')");
   assert.match(out(), /aria-label="Premarket"[\s\S]*Economic events <span class="jr-sub">New York time<\/span>[\s\S]*<span class="ev-time">2:00 pm<\/span><span class="ev-dot ev-high" role="img" aria-label="high impact"><\/span><span class="ev-name">Fed rate decision<\/span>[\s\S]*Fed press conference/);
   run("openJournalDay('2026-10-26')");
@@ -250,14 +250,14 @@ test('post-market: the grade, every rule and a note make the day reviewed; the c
 
 test('today\'s line opens today\'s page: write the plan, then review the day after the close', async () => {
   const morning = await journal({ now: Date.parse('2026-10-07T12:30:00Z') });
-  assert.match(morning.out(), /<p class="hint nb-today" role="status">Today, Wed, Oct 7: <button class="pos-link" data-action="openTodayNotebook">Write your plan<\/button><\/p>/);
+  assert.match(morning.out(), /<button class="btn nb-today" data-action="openTodayNotebook" title="Today, Wed, Oct 7: [^"]*">Write your plan<\/button>/, 'a button in the head, the day in its title');
   morning.run('openTodayNotebook()');
   assert.equal(morning.state.journalNotebookDay, '2026-10-07');
   assert.match(morning.out(), /class="jc-title">Wed, Oct 7, 2026</);
   const evening = await journal({ days: [{ day: '2026-10-06', feelings: ['calm'], energy: 'ok', place: 'desk', market: 'choppy', plan: 'x' }] });
-  assert.match(evening.out(), /Today, Tue, Oct 6: <button class="pos-link" data-action="openTodayNotebook">Review the day<\/button>/);
+  assert.match(evening.out(), /title="Today, Tue, Oct 6: [^"]*">Review the day<\/button>/);
   const weekend = await journal({ now: Date.parse('2026-10-10T15:00:00Z') });
-  assert.match(weekend.out(), /Monday, Mon, Oct 12: <button[^>]*>Write your plan</);
+  assert.match(weekend.out(), /title="Monday, Mon, Oct 12: [^"]*">Write your plan</);
   const signedOut = await app();
   signedOut.run("setView('journal')");
   assert.doesNotMatch(signedOut.elements.get('journalSection').innerHTML, /nb-today/);

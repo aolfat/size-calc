@@ -17,7 +17,7 @@ A notebook for each trading day: write a plan before the open, then a short revi
 
 - **The calendar is the index.** Every weekday cell opens that day's page: a day with trades, a quiet day, today before the open, tomorrow (to write Monday's plan on Sunday). It used to narrow the Trades list to the day; that's the page's "The day's trades" link now.
 - **The day page** replaces the calendar inside the Calendar tab: ← Calendar goes back, ‹ › step one weekday. Tapping the Calendar tab goes back too.
-- **Today's line** under the Journal's status opens today's page (Monday's on a weekend): "Today: write your plan" until it's written, then "Review the day" after 4pm New York, then "Day reviewed".
+- **Today's button** in the Journal's head (todayButtonHtml) opens today's page (Monday's on a weekend; the day is its title): "Write your plan" until it's written, then "Review the day" after 4pm New York, then "Day reviewed ✓" in a quieter color.
 - **Calendar marks:** ✎ plan written, ✓ day reviewed, and an amber dot once a day with trades is over and isn't reviewed.
 - **Missed trades on the calendar:** ⊘ and how many you logged that day (⊘2), on any weekday.
 
@@ -151,7 +151,7 @@ Migration `20261104000000_missed_trades.sql`:
 
 ## Slices
 
-1. **The day page (built):** the calendar opens it, today's line, the marks; premarket (last focus, check-in, goals, rules, market, plan); the day's numbers and trades; post-market (grade, rules, kept the focus, the three notes, the day's exit notes, tomorrow's focus); goals and rules with their editor; the migration.
+1. **The day page (built):** the calendar opens it, today's button, the marks; premarket (last focus, check-in, goals, rules, market, plan); the day's numbers and trades; post-market (grade, rules, kept the focus, the three notes, the day's exit notes, tomorrow's focus); goals and rules with their editor; the migration.
 2. **Focus list and the app's checks:** the focus list (built: tickers with their setups, charts, screenshots, how each played, traded or not); trades tagged on plan or off plan (their underlying was on the list), P&L on plan against off it; the three rule checks pre-filled with their reason; numbers beside goals the app can measure (days you kept every rule, your streak of plans written).
 3. **Stats and the week review:** results by feeling, energy and where you traded; each rule's kept rate and P&L on days kept against broken; the week review's Preparedness (plans written), Emotional control (the check-ins), Execution consistency (rules kept), and the week's What to work on notes together. Day screenshots (trade_shots keyed `day:YYYY-MM-DD`), and "Review the day" after the review deck's last card.
 

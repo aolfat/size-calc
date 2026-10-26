@@ -4,7 +4,7 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, deckQueue, fromReviewDay, GRADES, linkLabel, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupsByUse, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
 import { store } from '../lib/store.js';
 import { addTradeLabel, deleteLibraryItem, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
@@ -24,6 +24,9 @@ export function tradeReviewState(t) {
   const d = data();
   return reviewState(d.reviews[t.key], d.labels[t.key] || [], d.days[dayOf(t)]?.market);
 }
+
+/** the setup grade a trade was given ('' before one): the phone card's Reviewed badge shows it */
+export const setupGradeOf = t => gradeOf(data().reviews[t.key]?.setup_grade) || '';
 
 /** the list's marks: a quiet "reviewed" tag on a reviewed trade (most are still to review), and "for weekly" on one saved for the weekly review */
 export const reviewedMark = t => !state.journalReview || t.status === 'history' ? ''
@@ -303,6 +306,61 @@ function newBox(kind) {
   return `<span class="jr-newbox"><input type="text" id="reviewNewName" maxlength="80" placeholder="Name" autocomplete="off" value="${esc(state.reviewNewName || '')}" data-input="reviewNewNameInput" data-enter="saveReviewItem" aria-label="New choice" />${short}<button class="btn" data-action="saveReviewItem">Add</button><button class="pos-link" data-action="cancelReviewItem">Cancel</button></span>`;
 }
 
+// ---------- searching My setups and the entry tactics: typing narrows the chips in place, Enter puts the first match on ----------
+
+const searchOf = kind => state.reviewSearch?.[kind] || '';
+function searchBox(kind, placeholder, label) {
+  return `<input type="search" class="jr-search" id="${kind}Search" placeholder="${placeholder}" autocomplete="off" spellcheck="false" value="${esc(searchOf(kind))}" data-input="reviewSearchInput" data-enter="reviewSearchPick" data-arg="${kind}" aria-label="${label}" />`;
+}
+
+/** My setups to show: the ones on this trade (any, even hidden; a label on a setup merged away counts as the kept one, shown once), then the rest; while + New setup is open, only the ones that fit what's picked so far */
+function setupChoices(t) {
+  const lib = library(), kept = new Set();
+  const on = labelsOf(t, 'setup').map(l => l.value).filter(v => { const k = lib.resolve('setup', v); return !kept.has(k) && kept.add(k); });
+  const sd = state.setupDraft, picking = !!sd && !!(sd.action || sd.levels.length || sd.pattern);
+  const offered = setupsByUse(lib, data().labels).filter(i => !kept.has(i.key) && (!picking || setupFits(lib, i.key, sd))).map(i => i.key);
+  // the search narrows them, but never while + New setup is open (the builder narrows them there)
+  const q = sd ? '' : searchOf('setup');
+  const shown = [...on, ...offered].filter(k => matchesQuery(setupSearchNames(lib, k), q));
+  return { lib, on, offered, picking, q, shown };
+}
+
+/** My setups grouped by what happened (every bounce together, every undercut & rally), then the patterns; a lit chip is on the trade */
+function setupPickHtml(t) {
+  const { lib, on, q, shown } = setupChoices(t), side = tradeSide(t);
+  if (q && !shown.length) return `<p class="jr-none">No setup matches “${esc(q)}”. Make it with + New setup.</p>`;
+  return setupPickGroups(lib, shown, side).map(g => `<div class="jr-group"><span class="jr-group-name">${esc(g.name)}</span><span class="jr-group-chips">${g.items.map(i =>
+    chip(i.label, on.includes(i.key), `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}: ${esc(lib.partsWords(lib.parts(i.key), side))}"`)).join('')}</span></div>`).join('');
+}
+
+/** the entry tactics the search lets through */
+function tacticPickHtml(t) {
+  const lib = library(), q = searchOf('tactic'), has = key => labelsOf(t, 'tactic').some(l => l.value === key);
+  const shown = lib.choices('tactic').filter(i => matchesQuery([i.name], q));
+  if (q && !shown.length) return `<p class="jr-none">No tactic matches “${esc(q)}”.</p>`;
+  return shown.map(i => chip(i.name, has(i.key), `data-action="toggleReviewLabel" data-arg="tactic" data-arg2="${esc(i.key)}"`)).join('');
+}
+
+/** typing in a search: only the chips under it redraw, so the cursor stays */
+export function reviewSearchInput(t, kind, value) {
+  if (kind !== 'setup' && kind !== 'tactic') return;
+  state.reviewSearch = { ...state.reviewSearch, [kind]: value };
+  const el = document.getElementById(kind === 'setup' ? 'jrSetupPick' : 'jrTacticPick');
+  if (el) el.innerHTML = kind === 'setup' ? setupPickHtml(t) : tacticPickHtml(t);
+}
+
+/** Enter in a search: the first match not on the trade goes on, and the search clears for the next */
+export function reviewSearchPick(t, kind) {
+  if ((kind !== 'setup' && kind !== 'tactic') || !searchOf(kind)) return;
+  const lib = library();
+  const key = kind === 'setup'
+    ? setupPickGroups(lib, setupChoices(t).shown, tradeSide(t)).flatMap(g => g.items).map(i => i.key).find(k => !labelsOf(t, 'setup').some(l => lib.resolve('setup', l.value) === k))
+    : lib.choices('tactic').find(i => matchesQuery([i.name], searchOf('tactic')) && !labelsOf(t, 'tactic').some(l => l.value === i.key))?.key;
+  if (!key) return;
+  state.reviewSearch = { ...state.reviewSearch, [kind]: '' };
+  return toggleReviewLabel(t, kind, key);
+}
+
 function row(label, body, missing, cls = '') {
   return `<div class="jr-row${missing ? ' jr-missing' : ''}${cls ? ` ${cls}` : ''}"><div class="jr-label">${label}</div><div class="chip-row jr-chips">${body}</div></div>`;
 }
@@ -321,16 +379,9 @@ export function reviewSectionHtml(t) {
   const marketNote = st.marketOwn ? `This trade only <button class="pos-link" data-action="toggleReviewMarketOwn">use ${dayWords}'s</button>`
     : `${own ? 'This trade only' : `For every trade on ${dayWords}`} · <button class="pos-link" data-action="toggleReviewMarketOwn">${own ? `back to ${dayWords}'s` : 'just this trade'}</button>`;
   const pick = kind => lib.choices(kind).map(i => chip(i.name, has(kind, i.key), `data-action="toggleReviewLabel" data-arg="${kind}" data-arg2="${esc(i.key)}"`)).join('');
-  // My setups: the ones on this trade (any, even hidden), then the rest, most used first; while + New setup is open,
-  // only the ones that fit what's picked so far, so you tap one you have before making another
-  // (a label on a setup merged away counts as the kept one: shown once, and the kept one isn't offered again)
-  const kept = new Set();
-  const on = labelsOf(t, 'setup').map(l => l.value).filter(v => { const k = lib.resolve('setup', v); return !kept.has(k) && kept.add(k); });
-  const sd = state.setupDraft;
-  const picking = !!sd && !!(sd.action || sd.levels.length || sd.pattern);
-  const offered = setupsByUse(lib, d.labels).filter(i => !kept.has(i.key) && (!picking || setupFits(lib, i.key, sd)));
-  const mySetups = [...on.map(k => chip(lib.nameOf('setup', k, side), true, `data-action="toggleSetup" data-arg="${esc(k)}" title="${esc(lib.partsWords(lib.parts(k), side))}"`)),
-    ...offered.map(i => chip(lib.nameOf('setup', i.key, side), false, `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.partsWords(lib.parts(i.key), side))}"`))].join('');
+  // My setups: grouped by what happened, searchable; while + New setup is open, only the ones that fit what's picked so far,
+  // so you tap one you have before making another
+  const { on, offered, picking } = setupChoices(t), sd = state.setupDraft;
   // what each setup on the trade is made of: Action Bounce · Level 8 EMA (a pattern says so)
   const partsLine = on.length && !sd ? `<div class="jr-parts">${on.map(k => {
     const g = setupGroups(lib, lib.resolve('setup', k), side), lvl = g.levels.map(l => l.name).join(', ');
@@ -340,7 +391,8 @@ export function reviewSectionHtml(t) {
   }).join('')}</div>` : '';
   // once the parts make a setup it's on the trade, so there's nothing left to say about fitting
   const fitNote = picking && !setupName(lib, draftParts(sd)) ? `<span class="jr-fit">${offered.length ? 'My setups that fit:' : 'None of My setups fit yet.'}</span>` : '';
-  const builder = state.setupDraft ? setupDraftHtml(lib, t) : '<button class="pos-link jr-new" data-action="startSetupDraft">+ New setup</button><button class="pos-link jr-new" data-action="openJournalLibrary">Edit setups</button>';
+  const builder = state.setupDraft ? setupDraftHtml(lib, t) : '<span class="jr-group-acts"><button class="pos-link jr-new" data-action="startSetupDraft">+ New setup</button><button class="pos-link jr-new" data-action="openJournalLibrary">Edit setups</button></span>';
+  const setupSearch = sd ? '' : searchBox('setup', 'Search setups: 21 bounce, 9 unr', 'Search My setups');
   // while it's live: the opening pass is what's asked; the plan and exit note wait for the close (shown if already in)
   const open = t.status === 'open';
   const openingMissing = st.missing.filter(m => OPENING_PASS.includes(m));
@@ -355,8 +407,8 @@ export function reviewSectionHtml(t) {
       <button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
     ${row(`Market <span class="jr-sub">${marketNote}</span>`, market + newBox('market'), miss.has('market'))}
     ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
-    ${row('My setups', `${fitNote}${mySetups}${builder}${partsLine}`, miss.has('setup'))}
-    ${row('Entry tactic', pick('tactic') + newBox('tactic'), miss.has('tactic'))}
+    ${row('My setups', `${setupSearch}${fitNote}<div class="jr-setup-pick" id="jrSetupPick">${setupPickHtml(t)}</div>${builder}${partsLine}`, miss.has('setup'), 'jr-setup-row')}
+    ${row('Entry tactic', `${searchBox('tactic', 'Search tactics', 'Search entry tactics')}<span class="jr-tactic-pick" id="jrTacticPick">${tacticPickHtml(t)}</span>${newBox('tactic')}`, miss.has('tactic'))}
     ${row('Tags', pick('tag') + newBox('tag') + linksHtml(t, lib))}
     <div class="jr-row"><label class="jr-label" for="entryNote">Entry note <span class="jr-sub">optional</span></label>
       <div><textarea id="entryNote" rows="2" maxlength="5000" placeholder="Why you're in, the plan, what proves it wrong" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="entry"${entryOff}>${esc(noteText(t, 'entry'))}</textarea>

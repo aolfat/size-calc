@@ -24,14 +24,14 @@ import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
-import { loadJournalReview, reviewedMark, savedForWeekly, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
+import { loadJournalReview, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
-import { deckButtonHtml, deckLineHtml, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
+import { deckButtonHtml, renderDeckEnd, reviewFromHtml, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { tosSectionHtml } from './journal-tos.js';
-import { dayPageHtml, todayLineHtml } from './journal-notebook.js';
+import { dayPageHtml, todayButtonHtml, todayEconWords } from './journal-notebook.js';
 import { drawMissedChart } from './missed-chart.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
@@ -44,7 +44,34 @@ const day = iso => iso ? new Date(iso).toLocaleDateString([], { month: 'short', 
 export const clockTime = iso => iso ? inZone(iso, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 const when = clockTime;
 
-/** the line under the title: importing, the last import, or why it can't run */
+/** what's kept, in words: '577 orders and 415 trades kept, 8 futures fills · Sep 9, 2026 to Oct 26, 2026' */
+function keptWords() {
+  const kept = recordsSummary(state.journalRecords || []);
+  return kept.orders || kept.transactions || kept.statementFills
+    ? `${kept.orders} orders and ${kept.transactions} trades kept${kept.statementFills ? `, ${kept.statementFills} futures fills` : ''} · ${day(kept.first)} to ${day(kept.last)}`
+    : state.journalLoading ? 'Loading…' : 'Nothing kept yet';
+}
+
+/**
+ * The quiet line beside the title: how many trades and when the last import was, or that one is running or failed (Details
+ * opens the Import sheet, which says it all); what's kept and the last import in full are its title
+ */
+function metaLine(all) {
+  if (state.captureBusy) return '<span class="spinner" style="vertical-align:middle;margin-right:6px;"></span>Importing from Schwab…';
+  const last = lastCapture(), n = all.filter(t => !t.deleted && t.status !== 'history').length;
+  const parts = [n ? `${n} trade${n === 1 ? '' : 's'}` : esc(keptWords()), last ? `imported ${when(new Date(last.at).toISOString())}` : 'not imported yet'];
+  if (state.captureError) parts.push('<span style="color:var(--amber)">import failed</span> <button class="pos-link" data-action="openJournalImport">Details</button>');
+  return parts.join(' · ') + esc(todayEconWords()); // today's high-impact releases, the old today line's
+}
+const metaTitle = () => [keptWords(), statusText()].join(' · ');
+/** the last import in plain words, for a title */
+function statusText() {
+  const last = lastCapture();
+  const what = last && 'kept' in last ? importWords(last) : last ? `${last.orders} orders, ${last.transactions} trades` : '';
+  return last ? `Last import ${when(new Date(last.at).toISOString())}: ${what}` : 'Not imported yet';
+}
+
+/** the Import sheet's line: importing, the last import, or why it can't run */
 function statusLine() {
   if (state.captureBusy) return '<span class="spinner" style="vertical-align:middle;margin-right:6px;"></span>Importing from Schwab…';
   const last = lastCapture();
@@ -275,15 +302,17 @@ function controls(all = [], navigationOnly = false) {
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const tabs = `<div class="seg journal-tabs" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
+  const tabs = `<div class="seg journal-tabs journal-nav" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
   if (state.journalTab === 'books' || state.journalTab === 'features' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   return `<div class="journal-controls">
     ${tabs}
-    <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
-    ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
-    ${setupFilter(all)}
-    <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
-    ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : ''}
+    <div class="journal-filters">
+      <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
+      ${setupFilter(all)}
+      <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
+      ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
+      ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : ''}
+    </div>
     ${state.journalTab === 'trades' ? reviewChips(all) : ''}
   </div>`;
 }
@@ -293,7 +322,7 @@ function reviewChips(all) {
   const base = onSetupFilter(onPickedDay(filtered(all, t => t.bias))).filter(t => !t.deleted);
   const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
   const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
-  return `<div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>`;
+  return `<div class="journal-chips-row"><div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>${reviewFromHtml(all)}</div>`;
 }
 
 /** what's ticked, Delete beside the count (away from Merge), why it can't be one trade (or Merge), and Clear;
@@ -325,10 +354,10 @@ function cardSub(t) {
   return parts.filter(Boolean).map(p => `<span class="jtc-nowrap">${p}</span>`).join(' · '); // breaks between the parts, never inside one
 }
 
-/** what the trade is and where its review stands, as pills */
+/** what the trade is, as pills (closed says nothing: the cards sit under Closed trades) */
 function cardPills(t) {
   const open = t.status === 'open';
-  const out = [t.status === 'history' ? pill('jtc-warn', 'Before your history', HISTORY_TITLE) : open ? pill('jtc-open', 'Open') : pill('', 'Closed')];
+  const out = [t.status === 'history' ? pill('jtc-warn', 'Before your history', HISTORY_TITLE) : open ? pill('jtc-open', 'Open') : ''];
   const side = { long: pill('jtc-long', 'Long'), short: pill('jtc-short', 'Short'), neutral: pill('', 'Neutral') }[t.bias];
   if (side) out.push(side);
   if (t.legs) out.push(pill('', esc(t.structure || `${t.spreadKind} spread`)));
@@ -338,11 +367,22 @@ function cardPills(t) {
   return out.join('');
 }
 
-/** top right: To review, or Reviewed once it is (nothing while the reviews haven't been read) */
-function cardReview(t) {
-  if (t.deleted || t.status === 'history' || !reviewsRead()) return '';
-  if (toReview(t)) return '<span class="jtc-review">To review</span>';
-  return isReviewed(t) ? '<span class="jtc-review jtc-done">Reviewed</span>' : '';
+const CHECK = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m7.5 12.3 3 3 6-6.3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const PENCIL = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/**
+ * The card's foot: a reviewed trade earns a big green Reviewed badge with its grade; one waiting gets Review this trade;
+ * any other (an open trade whose opening pass is done, or before the reviews are read) a quiet Open trade
+ */
+function cardFoot(t) {
+  if (t.deleted) return '';
+  const label = esc(t.label);
+  if (reviewsRead() && t.status !== 'history' && isReviewed(t)) {
+    const g = setupGradeOf(t);
+    return `<div class="jtc-badge" role="status">${CHECK}<span>Reviewed</span>${g ? `<span class="jtc-grade">Grade ${g}</span>` : ''}</div>`;
+  }
+  if (reviewsRead() && t.status !== 'history' && toReview(t)) return `<button class="jtc-go" data-action="openTradeRow" data-arg="${esc(t.key)}" aria-label="Review ${label}">${PENCIL}Review this trade</button>`;
+  return `<button class="jtc-go jtc-go-quiet" data-action="openTradeRow" data-arg="${esc(t.key)}" aria-label="Open ${label}">Open trade</button>`;
 }
 
 /** the card's P&L %, under the dollars */
@@ -359,20 +399,23 @@ function tradeCard(t) {
   const sub = t.legs ? esc(legWords(t.legs)) : t.kind === 'merged' ? `${t.parts.length} trades merged` : '';
   // the stop as a fact, not a control: changing it is on the trade page (Edit)
   const stop = t.legs || history || t.stop === null ? '' : `<span class="jtc-stop">Stop <b>${px(t.stop, t.assetType)}</b>${t.stopSource === 'yours' ? ' <span class="pos-sub">yours</span>' : t.movedTo !== null ? ` <span class="pos-sub">moved to ${px(t.movedTo, t.assetType)}</span>` : ''}</span>`;
-  const go = t.deleted ? '' : `<button class="btn primary jtc-go" data-action="openTradeRow" data-arg="${esc(t.key)}" aria-label="Review ${esc(t.label)}">Review</button>`;
-  return `<article class="jtc${open ? ' jtc-is-open' : ''}${t.deleted ? ' journal-deleted' : ''}"${rowOpen(t)}${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
-    <div class="jtc-head">${pickBox(t)}<div class="jtc-id">
+  const reviewed = !t.deleted && !history && reviewsRead() && isReviewed(t);
+  const pop = reviewed && state.journalJustReviewed === t.key ? ' jtc-pop' : '';
+  // the P&L is the card's headline, top right; Entry, Exit and R sit in tiles under the setups; the foot says where the review stands
+  return `<article class="jtc${open ? ' jtc-is-open' : ''}${reviewed ? ' jtc-reviewed' : ''}${pop}${t.deleted ? ' journal-deleted' : ''}"${rowOpen(t)}${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
+    <div class="jtc-head">${state.journalSelecting || state.journalPicked.length ? pickBox(t) : ''}<div class="jtc-id">
       <div class="jtc-name">${nameOf(t)}${cardPills(t)}</div>
       <div class="jtc-sub">${cardSub(t)}</div>${sub ? `<div class="jtc-sub">${sub}</div>` : ''}
-    </div>${cardReview(t)}</div>
+    </div>
+    <dl class="jtc-pnl"><div${noPnl ? '' : pnlTitle(t)}><dt>P&amp;L</dt><dd class="${noPnl ? '' : pnlClass(t.pnl)}">${noPnl ? '—' : signed$(t.pnl)}${noPnl ? '' : cardPct(t) + pnlSub(t)}</dd></div></dl></div>
     ${tags || weekly ? `<div class="jtc-tags">${tags}${weekly}</div>` : ''}
     <dl class="jtc-stats${[t.avgEntry, t.avgExit].some(v => v !== null && px(v, t.assetType).length > 8) ? ' jtc-stats-wide' : ''}">
       <div><dt>Entry</dt><dd>${history ? '—' : px(t.avgEntry, t.assetType)}</dd></div>
       <div><dt>${t.exits > 1 ? 'Avg exit' : 'Exit'}</dt><dd>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</dd></div>
       <div title="${esc(rTitleOf(t))}"><dt>R</dt><dd class="${t.r === null ? '' : pnlClass(t.r)}">${t.r === null ? '—' : signedR(t.r)}</dd></div>
-      <div${noPnl ? '' : pnlTitle(t)}><dt>P&amp;L</dt><dd class="${noPnl ? '' : pnlClass(t.pnl)}">${noPnl ? '—' : signed$(t.pnl)}${noPnl ? '' : cardPct(t) + pnlSub(t)}</dd></div>
     </dl>
-    <div class="jtc-foot">${stop}${restoreLink(t)}${go}</div>
+    ${stop || restoreLink(t) ? `<div class="jtc-foot">${stop}${restoreLink(t)}</div>` : ''}
+    ${cardFoot(t)}
   </article>`;
 }
 
@@ -385,7 +428,9 @@ function tradeCards(trades) {
     const total = counted.length ? `<span class="jtc-total">${word} <b class="${pnlClass(taken(list))}">${signed$(taken(list))}</b></span>` : '';
     return `<section class="jtc-group"><div class="jtc-group-head"><h3>${title} <span>${list.length}</span></h3>${total}</div>${list.map(tradeCard).join('')}</section>`;
   };
-  return `<div class="jtc-list">${group('Open trades', trades.filter(t => t.status === 'open'), 'Taken so far')}${group('Closed trades', trades.filter(t => t.status !== 'open'), 'Realized')}</div>`;
+  const html = `<div class="jtc-list">${group('Open trades', trades.filter(t => t.status === 'open'), 'Taken so far')}${group('Closed trades', trades.filter(t => t.status !== 'open'), 'Realized')}</div>`;
+  state.journalJustReviewed = ''; // the pop plays once
+  return html;
 }
 
 /** a phone turned sideways (or a window resized) swaps cards and table */
@@ -394,6 +439,18 @@ function watchPhone() {
   if (phoneWatched || !window.matchMedia) return;
   phoneWatched = true;
   window.matchMedia(PHONE_MQ).addEventListener?.('change', () => { if (state.journalView) renderJournal(); });
+}
+
+/** the Trades tab's trades: its side, symbol, day, review and setup filters, newest first */
+const tradesTabList = all => onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))));
+/**
+ * The trades a trade page's arrows step through: the Trades tab as it's filtered now (deleted ones only while shown), or
+ * every trade when the page opened from somewhere the trade isn't in that list (the calendar, a setup's page)
+ * @param {string} key
+ */
+export function journalNavKeys(key) {
+  const all = currentTrades(), shown = tradesTabList(all).filter(t => state.journalShowDeleted || !t.deleted);
+  return (shown.some(t => t.key === key) ? shown : all.filter(t => !t.deleted || t.key === key)).map(t => t.key);
 }
 
 function tradesView(all) {
@@ -409,7 +466,8 @@ function tradesView(all) {
       <thead><tr><th scope="col">Symbol</th>${shownTradeCols().map(([key, label]) => `<th scope="col">${colHead(key, label)}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(tradeRow).join('')}</tbody>
     </table></div>`;
-  const colsBtn = phone ? '' : `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
+  // phones hide the tick boxes until Select (bulk Merge and Delete are rare); Done puts them away and clears the picks
+  const colsBtn = phone ? `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button>` : `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
   return `<div class="journal-summary-row"><p class="hint journal-summary">${summaryLine(counted, deleted)}</p>${colsBtn}</div>
     ${list}${pickBar(trades)}
     ${trades.length > JOURNAL_SHOWN ? `<p class="hint">Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades.</p>` : ''}
@@ -504,7 +562,6 @@ export function renderJournal() {
     return;
   }
   const records = state.journalRecords || [];
-  const kept = recordsSummary(records);
   const fills = fillsFrom(records);
   const canImport = schwabConnected();
   const books = state.journalTab === 'books';
@@ -513,22 +570,19 @@ export function renderJournal() {
   const keys = new Set(all.map(t => t.key));
   state.journalPicked = state.journalPicked.filter(k => keys.has(k)); // a merge or a re-read can retire a key
   const scrolled = el.querySelector?.('.positions-wrap')?.scrollLeft || 0; // a tick redraws the table: keep it where it was sideways
-  const keptLine = kept.orders || kept.transactions || kept.statementFills
-    ? `${kept.orders} orders and ${kept.transactions} trades kept${kept.statementFills ? `, ${kept.statementFills} futures fills` : ''} · ${day(kept.first)} to ${day(kept.last)}`
-    : state.journalLoading ? 'Loading…' : 'Nothing kept yet';
+  // the head stays one line: the title, a quiet meta line (what's kept and the last import in full in its title and the
+  // Import sheet), and the buttons; a features run shows on the meta line only while it goes or after it failed
   el.innerHTML = `<div class="card positions-card journal-card">
     <div class="positions-head">
       <span class="section-title">Journal</span>
-      <span class="positions-meta" id="journalKept">${books ? 'Your chart study library' : keptLine}</span>
+      <span class="positions-meta journal-meta" id="journalKept" role="status"${books ? '' : ` title="${esc(metaTitle())}"`}>${books ? 'Your chart study library' : `${metaLine(all)}<span class="journal-features-line" id="journalFeaturesLine"${featuresLine() ? '' : ' hidden'}>${esc(featuresLine())}</span>`}</span>
       ${books ? '' : `<span class="journal-actions">
+        ${todayButtonHtml()}
         ${deckButtonHtml(all)}
         <button class="btn" id="journalImportBtn" data-action="openJournalImport" title="Bring in trades: Schwab now, files later">${state.captureBusy ? 'Importing…' : 'Import'}</button>
         <button class="btn" id="journalExportBtn" data-action="openJournalExport" title="Take your data with you as a file">Export</button>
       </span>`}
     </div>
-    ${!books ? `<p class="hint" id="journalStatus" role="status">${statusLine()}</p>` : ''}
-    ${!books ? `<p class="hint" id="journalFeaturesLine" role="status"${featuresLine() ? '' : ' hidden'}>${esc(featuresLine())}</p>` : ''}
-    ${!books ? deckLineHtml(all) + todayLineHtml() : ''}
     ${!books && state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${!books && state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
@@ -539,7 +593,7 @@ export function renderJournal() {
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
       : state.journalTab === 'setups' ? setupsView(filtered(all, t => t.bias))
       : state.journalTab === 'features' ? featuresView(all)
-      : tradesView(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))))))
+      : tradesView(tradesTabList(all)))
     : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
   </div>`;
   if (books) renderModelBooks();
@@ -560,6 +614,7 @@ export function renderImportSheet() {
   const schwab = schwabConnected()
     ? `<div class="sheet-label">Schwab <span class="sheet-status"><span style="color:var(--green)">●</span> Connected · ••${esc(acct ? acct.last4 : '')}</span></div>
       <p class="hint" id="journalImportStatus" role="status">${statusLine()}</p>
+      <p class="hint">${esc(keptWords())}</p>
       <div class="row" style="align-items:center;gap:8px;"><button class="btn primary" id="journalImportNow" data-action="journalImport"${state.captureBusy ? ' disabled' : ''}>${state.captureBusy ? 'Importing…' : 'Import now'}</button></div>
       <p class="hint">Saves your last 60 days of orders and up to a year of trades to your account. The app also imports on its own every 6 hours while you're signed in and connected.</p>`
     : `<div class="sheet-label">Schwab <span class="sheet-status">○ Not connected</span></div>
@@ -940,6 +995,12 @@ export function toggleJournalPick(key) {
   renderJournal();
 }
 export function clearJournalPicks() { state.journalPicked = []; renderJournal(); }
+/** phones: Select shows the cards' tick boxes, Done hides them and clears what's ticked */
+export function toggleJournalSelect() {
+  state.journalSelecting = !state.journalSelecting;
+  if (!state.journalSelecting) state.journalPicked = [];
+  renderJournal();
+}
 
 const savedRow = id => state.journalSaved.find(r => r.id === id);
 const byCreated = (a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''));
