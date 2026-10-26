@@ -7,7 +7,7 @@ import { GRADES } from './journal-labels.js';
 import { exitDays, nyParts } from './journal-stats.js';
 
 /** @typedef {{ key: string, id: string, kind: 'goal' | 'rule', name: string, hidden: boolean, order: number, since: string }} ListItem
- * @typedef {{ id: string, symbol: string, side: string | null, setup: string | null, why: string | null, r: number | null, note: string | null }} MissedTrade
+ * @typedef {{ id: string, symbol: string, side: string | null, setup: string | null, tactic: string | null, why: string | null, note: string | null }} MissedTrade
  * @typedef {{ market: string | null, note: string | null, feelings: string[], energy: string | null, sleep_hours: number | null,
  *   place: string | null, plan: string | null, focus_list: any[], grade: string | null, rules: Record<string, string>,
  *   went_well: string | null, work_on: string | null, focus_next: string | null, focus_kept: string | null,
@@ -101,15 +101,11 @@ export const missedSymbol = v => {
   return MISSED_SYMBOL_RE.test(s) ? s : null;
 };
 
-/** what it would have made in R: a number up to ±100, to a tenth; blank or anything else is none. @param {unknown} v */
-export const missedR = v => {
-  const n = v === null || v === undefined || v === '' ? NaN : Number(v);
-  return Number.isFinite(n) && Math.abs(n) <= 100 ? Math.round(n * 10) / 10 : null;
-};
+const libKey = (/** @type {unknown} */ v) => typeof v === 'string' && v && v.length <= 100 ? v : null;
 
 /**
- * A day's missed trades as the app keeps them: each with an id and a ticker, the side and why from their lists, a setup
- * key, R and a trimmed note; duplicates by id and anything past MAX_MISSED dropped.
+ * A day's missed trades as the app keeps them: each with an id and a ticker, the side and why from their lists, a daily
+ * setup and an entry tactic (library keys) and a trimmed note; duplicates by id and anything past MAX_MISSED dropped.
  * @param {unknown} raw @returns {MissedTrade[]}
  */
 export function cleanMissed(raw) {
@@ -119,8 +115,7 @@ export function cleanMissed(raw) {
   for (const m of raw) {
     const id = typeof m?.id === 'string' && m.id && m.id.length <= 64 ? m.id : '', symbol = missedSymbol(m?.symbol);
     if (!id || !symbol || out.some(x => x.id === id)) continue;
-    out.push({ id, symbol, side: pick(MISSED_SIDES, m.side), setup: typeof m.setup === 'string' && m.setup && m.setup.length <= 100 ? m.setup : null,
-      why: pick(MISSED_WHY, m.why), r: missedR(m.r), note: text(m.note, MAX_MISSED_NOTE) });
+    out.push({ id, symbol, side: pick(MISSED_SIDES, m.side), setup: libKey(m.setup), tactic: libKey(m.tactic), why: pick(MISSED_WHY, m.why), note: text(m.note, MAX_MISSED_NOTE) });
     if (out.length >= MAX_MISSED) break;
   }
   return out;

@@ -284,16 +284,16 @@ test('before the migration is pushed the page says so, nothing saves, and the re
 
 // ---------- missed trades ----------
 
-test('missed trades are cleaned on the way in: an id and a ticker each, choices from their lists, R to a tenth', async () => {
+test('missed trades are cleaned on the way in: an id and a ticker each, choices from their lists', async () => {
   const { run } = await app();
   const m = json(run, `cleanDayRow({ missed: [
-    { id: 'a', symbol: ' nvda ', side: 'long', why: 'hesitated', setup: 'ema8_bounce', r: '2.04', note: '  ran without me ' },
+    { id: 'a', symbol: ' nvda ', side: 'long', why: 'hesitated', setup: 'ema8_bounce', tactic: 'pivot15', r: 2, note: '  ran without me ' },
     { id: 'a', symbol: 'TSLA' }, { id: 'b', symbol: 'not a ticker!' }, { symbol: 'AMD' },
-    { id: 'c', symbol: 'BRK.B', side: 'sideways', why: 'bored', r: 500 },
+    { id: 'c', symbol: 'BRK.B', side: 'sideways', why: 'bored', tactic: 7 },
   ] }).missed`);
   assert.deepEqual(m, [
-    { id: 'a', symbol: 'NVDA', side: 'long', setup: 'ema8_bounce', why: 'hesitated', r: 2, note: 'ran without me' },
-    { id: 'c', symbol: 'BRK.B', side: null, setup: null, why: null, r: null, note: null },
+    { id: 'a', symbol: 'NVDA', side: 'long', setup: 'ema8_bounce', tactic: 'pivot15', why: 'hesitated', note: 'ran without me' },
+    { id: 'c', symbol: 'BRK.B', side: null, setup: null, tactic: null, why: null, note: null },
   ]);
   assert.deepEqual(json(run, 'cleanDayRow(null).missed'), []);
   assert.equal(run(`cleanMissed(Array.from({ length: 30 }, (_, i) => ({ id: 'x' + i, symbol: 'SPY' }))).length`), 20);
@@ -312,18 +312,22 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   assert.equal(saved().length, 1);
   const id = saved()[0].id;
   assert.equal(saved()[0].symbol, 'NVDA');
-  assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>/, 'open to fill in');
-  run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); setMissedSetup('${id}', 'ema8_bounce'); missedRSave('${id}', '2.5')`);
+  assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>[\s\S]*The day, 5 minutes[\s\S]*Daily setup[\s\S]*Entry tactic[\s\S]*Why you missed it/, 'open to fill in: the charts first, then the setup and tactic');
+  assert.match(out(), /Add a Tradier key in Settings for NVDA&#39;s 5-minute chart\./, 'no key: the charts say why');
+  assert.match(out(), /<option value="pivot15">15-minute pivot<\/option>/);
+  run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); setMissedSetup('${id}', 'ema8_bounce'); setMissedTactic('${id}', 'pivot15'); setMissedTactic('${id}', 'nope')`);
+  run(`setMissedTactic('${id}', 'pivot15')`);
   run(`missedNoteInput('${id}', 'Saw the rejection')`);
   run('renderJournal()');
   assert.match(out(), /id="nbMissedNote-[^"]*"[^>]*value="Saw the rejection"/, 'a redraw keeps the draft');
+  assert.match(out(), /<option value="ema8_bounce" selected>8 EMA rejection<\/option>/, 'setups in the side\'s words');
   run(`missedNoteSave('${id}', ' Saw the rejection, waited ')`);
   await settle();
-  assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setup: 'ema8_bounce', why: 'hesitated', r: 2.5, note: 'Saw the rejection, waited' }]);
+  assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setup: 'ema8_bounce', tactic: 'pivot15', why: 'hesitated', note: 'Saw the rejection, waited' }]);
   assert.ok(supabase.writes.filter(w => w.table === 'journal_days').every(w => Object.keys(w).filter(k => !['table', 'onConflict', 'ignoreDuplicates', 'day'].includes(k)).join() === 'missed'), 'only its own column');
   run(`openMissedTrade('${id}')`);
-  assert.match(out(), /<b>NVDA<\/b> short · 8 EMA rejection · Hesitated<span class="nb-miss-note">Saw the rejection, waited<\/span><\/span><span class="journal-buy">\+2\.5R<\/span>/, 'closed: one line, the setup in the side\'s words');
-  assert.match(out(), /<span class="jr-status nb-miss-count" role="status">1 missed · \+2\.5R not taken<\/span>/);
+  assert.match(out(), /<b>NVDA<\/b> short · 8 EMA rejection · 15-minute pivot · Hesitated<span class="nb-miss-note">Saw the rejection, waited<\/span><\/span><\/button>/, 'closed: one line');
+  assert.match(out(), /<span class="jr-status nb-miss-count" role="status">1 missed<\/span>/);
   run(`setMissedWhy('${id}', 'hesitated')`);
   await settle();
   assert.equal(saved()[0].why, null, 'tapping the lit one clears it');
@@ -337,6 +341,44 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   run('undoRemoveMissed()');
   await settle();
   assert.equal(saved()[0].symbol, 'NVDA', 'back');
+});
+
+test("a missed trade's charts: the day's 5 minutes and the daily from Tradier, the day marked, kept while you fill it in", async t => {
+  globalThis.getComputedStyle = () => ({ getPropertyValue: n => n });
+  t.after(() => { delete globalThis.getComputedStyle; });
+  const calls = [];
+  const fetch = async url => {
+    const u = new URL(url);
+    calls.push(`${u.pathname.split('/').pop()} ${u.searchParams.get('symbol')}`);
+    if (u.pathname.endsWith('/markets/timesales')) return new Response(JSON.stringify({ series: { data: [
+      { time: '2026-10-06T09:00:00', open: 50, high: 50, low: 50, close: 50, volume: 1 },
+      { time: '2026-10-06T09:30:00', open: 50, high: 51, low: 49.5, close: 50.5, volume: 9 },
+      { time: '2026-10-06T09:35:00', open: 50.5, high: 52, low: 50.2, close: 51.8, volume: 7 },
+    ] } }), { status: 200 });
+    if (u.pathname.endsWith('/markets/history')) return new Response(JSON.stringify({ history: { day: ['2026-10-02', '2026-10-05', '2026-10-06', '2026-10-07'].map((date, i) => ({ date, open: 48 + i, high: 50 + i, low: 47 + i, close: 49 + i, volume: 100 })) } }), { status: 200 });
+    throw new Error('unexpected ' + url);
+  };
+  const supabase = fakeRecords(RECORDS, []);
+  const charts = (await import('./helpers/charts.mjs')).fakeCharts();
+  const a = await app({ supabase, session: SESSION, clock: true, now: Date.parse('2026-10-06T21:00:00Z'), fetch, charts });
+  a.elements.get('apiKey').value = 'test-key';
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  a.run("openJournalDay('2026-10-06'); missedInput('AMD'); addMissedTrade()");
+  await settle();
+  const chart = id => charts.charts.find(c => c.container.id === id && !c.removed);
+  const five = chart('nbMissedPlot5'), daily = chart('nbMissedPlotD');
+  assert.ok(five && daily, 'both drawn');
+  assert.equal(five.series[0].data.length, 2, 'regular hours only');
+  assert.equal(daily.series[0].data.length, 4);
+  assert.deepEqual(daily.series[0].markers.map(m => [m.text, m.time]), [['missed', daily.series[0].data[2].time]], 'the day marked on the daily');
+  const made = charts.charts.length;
+  const id = a.state.journalReview.days['2026-10-06'].missed[0].id;
+  a.run(`setMissedSide('${id}', 'long')`);
+  await settle();
+  assert.equal(charts.charts.length, made, 'filling it in redraws in place, nothing loaded again');
+  assert.deepEqual(calls.filter(c => c.endsWith(' AMD')).sort(), ['history AMD', 'timesales AMD'], 'each read once, from Tradier: AMD has no kept bars');
 });
 
 test('before the missed trades column is pushed the section says so, and the rest of the notebook works', async () => {

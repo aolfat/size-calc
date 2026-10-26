@@ -117,6 +117,7 @@ export function createState() {
     missedDraft: '', // the ticker of a missed trade being typed
     missedOpen: '', // the id of the missed trade open to edit
     missedUndo: null, // { day, list }: the missed trades before the last Remove, for the toast's Undo
+    missedChart: null, // the open missed trade's charts: { symbol, day, five, daily, charts, ... } (ui/missed-chart.js)
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }

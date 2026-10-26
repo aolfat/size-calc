@@ -46,18 +46,24 @@ Worked out from the trades, nothing to type: the day's realized P&L, trades with
 ### Missed trades
 
 The trades you saw and didn't take, logged any time of the day.
-Type the ticker and + Add (or Enter); it opens to fill in the rest, all optional:
+Type the ticker and + Add (or Enter); it opens with its charts, and the rest is optional:
 
 | Part | What |
 |---|---|
+| Charts | The ticker's 5 minutes that day (regular hours, 8 EMA and VWAP) and its daily (8 EMA, framed 40 sessions before the day through 10 after, the day marked 'missed'), like the trade page's |
 | Side | Long, Short |
+| Daily setup | One of My setups (most used first), named in the side's words |
+| Entry tactic | The review's entry tactics (6/20, 15-minute pivot, 30-minute pivot and yours) |
 | Why you missed it | Hesitated, Didn't see it, Away, Too late, Didn't trust it, At my limit |
-| Setup | One of My setups (most used first), named in the side's words |
-| Would have made | R, to a tenth (up to ±100) |
 | Note | One line, up to 500 characters |
 
-Closed, each is one line: the ticker, side, setup and why, its note, and the R.
-The header counts them and adds up the R not taken ('2 missed · +3.5R not taken').
+Closed, each is one line: the ticker, side, setup, tactic and why, and its note.
+The header counts them ('2 missed').
+
+**Where the charts' bars come from:** the 5 minutes are the journal's kept bars when it has them (a trade of yours in that ticker that day), else Tradier's, read when you open it and never saved, so a day older than about 40 days has no 5-minute chart.
+The daily is Tradier's last year.
+Both need a Tradier key; without one each says so.
+One missed trade is open at a time, so there's one set of charts; filling it in keeps them on the view you left.
 Remove takes one out at once, with Undo on the toast.
 Up to 20 a day.
 They never count in P&L, stats, the plan or the review.
@@ -97,7 +103,7 @@ The new columns are read on their own query, so before the push the rest of the 
 
 Migration `20261104000000_missed_trades.sql`:
 
-- `journal_days` gains `missed` (jsonb array of `{ id, symbol, side, setup, why, r, note }`, cleanMissed on the way in).
+- `journal_days` gains `missed` (jsonb array of `{ id, symbol, side, setup, tactic, why, note }`, cleanMissed on the way in).
 - Read on its own query too (MISSED_COLUMNS), so before that push the notebook works and only the Missed trades section says it needs `npx supabase db push`.
 
 **Saving:** like the trade and week reviews. The missed trades save as one list, like any other field. Each choice upserts only its own columns on (user, day), shown at once, put back with a toast if Supabase refuses. Text is a draft while you type and saves when the box loses focus. `planned_at` and `reviewed_at` go with the save that flips them.

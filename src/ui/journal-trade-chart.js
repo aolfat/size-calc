@@ -110,12 +110,13 @@ export function makeTradeChart(lib, el, legend, { daily }) {
 /**
  * Draw bars on a chart. New bars, or a new rangeKey, set the view (range: { start, end } bar indexes, else the whole set);
  * the markers and lines are replaced every time, so a redraw never stacks them. iv: the intraday interval the fills are
- * placed by (0 = daily); title: the legend's name; log: a logarithmic price scale.
+ * placed by (0 = daily); title: the legend's name; log: a logarithmic price scale; marks: a dot over a bar, with its word
+ * (a missed trade's day on its daily chart).
  * @param {any} h @param {any[]} bars
  * @param {{ fills: any[], lines: { price: number, color: string, title: string }[], range?: { start: number, end: number } | null,
- *   rangeKey?: string, iv?: number, title?: string, log?: boolean }} o
+ *   rangeKey?: string, iv?: number, title?: string, log?: boolean, marks?: { index: number, text: string }[] }} o
  */
-export function paintTradeChart(h, bars, { fills, lines, range = null, rangeKey = '', iv = 5, title = '', log = false }) {
+export function paintTradeChart(h, bars, { fills, lines, range = null, rangeKey = '', iv = 5, title = '', log = false, marks = [] }) {
   const s = chartSeries(bars, fills, iv || 5), { lib, colors } = h;
   const fresh = h.bars !== bars;
   if (fresh) {
@@ -139,9 +140,10 @@ export function paintTradeChart(h, bars, { fills, lines, range = null, rangeKey 
   h.title = title;
   h.showLegend(bars.length - 1);
   const blue = cssColor('--blue'), amber = cssColor('--amber');
-  h.markers.setMarkers(s.markers.map(m => m.side === 'buy'
+  const dots = marks.filter(m => s.candles[m.index]).map(m => ({ time: s.candles[m.index].time, position: 'aboveBar', shape: 'circle', color: amber, text: m.text }));
+  h.markers.setMarkers([...s.markers.map(m => m.side === 'buy'
     ? { time: m.time, position: 'belowBar', shape: 'arrowUp', color: blue, text: String(m.qty) }
-    : { time: m.time, position: 'aboveBar', shape: 'arrowDown', color: amber, text: String(m.qty) }));
+    : { time: m.time, position: 'aboveBar', shape: 'arrowDown', color: amber, text: String(m.qty) }), ...dots].sort((a, b) => a.time - b.time));
   for (const l of h.lines) h.candles.removePriceLine(l);
   h.lines = lines.filter(l => l.price > 0).map(l => h.candles.createPriceLine({
     price: l.price, color: l.color, title: l.title, lineWidth: 1, lineStyle: lib.LineStyle.Dashed, axisLabelVisible: true,

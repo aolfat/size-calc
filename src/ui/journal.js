@@ -30,6 +30,7 @@ import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { tosSectionHtml } from './journal-tos.js';
 import { dayPageHtml, todayLineHtml } from './journal-notebook.js';
+import { drawMissedChart } from './missed-chart.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
 
@@ -541,6 +542,7 @@ export function renderJournal() {
   const wrap = scrolled && el.querySelector?.('.positions-wrap');
   if (wrap) wrap.scrollLeft = scrolled;
   if (state.journalTab === 'stats' && fills.length) drawJournalEquity(onSetupFilter(filtered(all, t => t.bias)));
+  drawMissedChart();
 }
 
 // ---------- Import and Export sheets ----------

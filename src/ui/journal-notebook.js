@@ -6,17 +6,19 @@
 // day's journal_days row field by field (core/journal-notebook.js has the rules), shown at once and put back with a toast
 // if Supabase refuses; text is a draft while you type and saves when the box loses focus. Goals and rules are
 // library_items rows (kinds goal and rule), edited in place. Missed trades: the ones you saw and didn't take, a ticker
-// each with its side, why, setup, what it would have made in R and a note (journal_days.missed, its own migration).
+// each with its charts that day (ui/missed-chart.js), its side, the daily setup and entry tactic you could have taken, why
+// you missed it and a note (journal_days.missed, its own migration).
 // The calendar's marks: plan written, reviewed, review due, how many you missed.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
-import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MISSED_SIDES, MISSED_WHY, missedR, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
+import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
 import { dailyPnl, nyParts } from '../core/journal-stats.js';
 import { saveJournalDay, saveLibraryItem } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { showError, showToast } from './feedback.js';
 import { reviewedMark } from './journal-review.js';
 import { journalTradeList, renderJournal } from './journal.js';
+import { loadMissedChart, missedChartHtml } from './missed-chart.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -236,22 +238,25 @@ export function addMissedTrade() {
   const id = newId();
   state.missedDraft = '';
   state.missedOpen = id;
-  return saveMissed([...list, { id, symbol, side: null, setup: null, why: null, r: null, note: null }]);
+  loadMissedChart(symbol, page());
+  return saveMissed([...list, { id, symbol, side: null, setup: null, tactic: null, why: null, note: null }]);
 }
-/** a missed trade's line: opens it to edit (again closes it) */
-export function openMissedTrade(id) { state.missedOpen = state.missedOpen === id || !missedOne(id) ? '' : id; renderJournal(); }
+/** a missed trade's line: opens it to edit, its charts with it (again closes it) */
+export function openMissedTrade(id) {
+  const m = missedOne(id);
+  state.missedOpen = state.missedOpen === id || !m ? '' : id;
+  if (state.missedOpen) loadMissedChart(m.symbol, page());
+  renderJournal();
+}
 export function setMissedSide(id, v) { return changeMissed(id, { side: one(MISSED_SIDES, v, missedOne(id)?.side) }); }
 export function setMissedWhy(id, v) { return changeMissed(id, { why: one(MISSED_WHY, v, missedOne(id)?.why) }); }
-/** one of My setups, or none */
-export function setMissedSetup(id, key) {
-  const ok = buildLibrary(data()?.library || []).choices('setup').some(i => i.key === key);
-  return changeMissed(id, { setup: ok ? key : null });
-}
-/** what it would have made in R: blank clears it */
-export function missedRSave(id, value) {
-  const r = missedR(value);
-  if (r !== (missedOne(id)?.r ?? null)) return changeMissed(id, { r });
-}
+/** the daily setup (one of My setups) or the entry tactic you could have taken, or none */
+const libPick = kind => (id, key) => {
+  const ok = buildLibrary(data()?.library || []).choices(kind).some(i => i.key === key);
+  return changeMissed(id, { [kind]: ok ? key : null });
+};
+export const setMissedSetup = libPick('setup');
+export const setMissedTactic = libPick('tactic');
 /** its note: a draft while you type (a redraw never loses it), saved when the box loses focus */
 export function missedNoteInput(id, text) { if (page()) state.notebookDraft = { day: page(), field: `missed:${id}`, text }; }
 export function missedNoteSave(id, text) {
@@ -375,29 +380,28 @@ function postmarket(day, trades, off) {
   </section>`;
 }
 
-const signedOneR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(1)}R`;
-
 /** the trades you saw and didn't take: a line each (tap to edit), the open one in full, and + Add */
 function missedSection(day) {
   const list = missedOf(day), lib = buildLibrary(data()?.library || []), off = missedOff() ? ' disabled' : '';
   const word = (pairs, v) => pairs.find(([k]) => k === v)?.[1] || '';
   const setupName = (key, side) => key ? lib.nameOf('setup', key, side || 'long') : '';
-  const withR = list.filter(m => m.r !== null), sumR = withR.reduce((s, m) => s + m.r, 0);
-  const status = list.length ? `<span class="jr-status nb-miss-count" role="status">${list.length} missed${withR.length ? ` · ${signedOneR(sumR)} not taken` : ''}</span>` : '';
+  const tacticName = key => key ? lib.nameOf('tactic', key) : '';
+  const status = list.length ? `<span class="jr-status nb-miss-count" role="status">${list.length} missed</span>` : '';
   const why = state.journalReviewError || !data() || data().notebookError ? '' : data().missedError ? `<p class="hint jw-db" role="status">Missed trades need a database update: ${esc(data().missedError)}</p>` : '';
   const line = m => {
-    const what = [word(MISSED_SIDES, m.side).toLowerCase(), setupName(m.setup, m.side), word(MISSED_WHY, m.why)].filter(Boolean).map(esc).join(' · ');
-    const summary = `<span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${what}` : ''}${m.note && state.missedOpen !== m.id ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span><span class="${pnlClass(m.r || 0)}">${m.r !== null ? signedOneR(m.r) : ''}</span>`;
+    const what = [word(MISSED_SIDES, m.side).toLowerCase(), setupName(m.setup, m.side), tacticName(m.tactic), word(MISSED_WHY, m.why)].filter(Boolean).map(esc).join(' · ');
+    const summary = `<span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${what}` : ''}${m.note ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span>`;
     if (state.missedOpen !== m.id || off) return `<li><button class="nb-trade nb-miss" data-action="openMissedTrade" data-arg="${esc(m.id)}" aria-label="${esc(`${m.symbol} missed. Edit`)}"${off}>${summary}</button></li>`;
-    const setups = setupsByUse(lib, data()?.labels || {});
-    const now = m.setup ? lib.resolve('setup', m.setup) : '';
+    const options = (kind, items, key, none) => `<option value="">${none}</option>${items.map(i => `<option value="${esc(i.key)}"${key && i.key === lib.resolve(kind, key) ? ' selected' : ''}>${esc(kind === 'setup' ? lib.nameOf('setup', i.key, m.side || 'long') : i.name)}</option>`).join('')}`;
+    const setups = setupsByUse(lib, data()?.labels || {}), tactics = lib.choices('tactic');
     const note = (() => { const d = state.notebookDraft; return d && d.day === day && d.field === `missed:${m.id}` ? d.text : m.note || ''; })();
     return `<li class="nb-miss-open">
       <div class="nb-miss-head"><b>${esc(m.symbol)}</b><span class="nb-links"><button class="pos-link" data-action="removeMissedTrade" data-arg="${esc(m.id)}">Remove</button><button class="pos-link" data-action="openMissedTrade" data-arg="${esc(m.id)}">Done</button></span></div>
+      ${missedChartHtml(m.symbol, day)}
       ${row('Side', MISSED_SIDES.map(([v, w]) => chip(w, m.side === v, `data-action="setMissedSide" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
+      ${setups.length ? row('Daily setup', `<select class="nb-select" data-change="setMissedSetup" data-arg="${esc(m.id)}" aria-label="Daily setup">${options('setup', setups, m.setup, 'No setup')}</select>`) : ''}
+      ${tactics.length ? row('Entry tactic', `<select class="nb-select" data-change="setMissedTactic" data-arg="${esc(m.id)}" aria-label="Entry tactic">${options('tactic', tactics, m.tactic, 'No tactic')}</select>`) : ''}
       ${row('Why you missed it', MISSED_WHY.map(([v, w]) => chip(w, m.why === v, `data-action="setMissedWhy" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
-      ${setups.length ? row('Setup', `<select class="nb-select" id="nbMissedSetup-${esc(m.id)}" data-change="setMissedSetup" data-arg="${esc(m.id)}" aria-label="Setup"><option value="">No setup</option>${setups.map(i => `<option value="${esc(i.key)}"${i.key === now ? ' selected' : ''}>${esc(i.name)}</option>`).join('')}</select>`) : ''}
-      ${row('Would have made', `<label class="nb-hours"><input type="number" id="nbMissedR-${esc(m.id)}" step="0.1" min="-100" max="100" inputmode="decimal" placeholder="—" value="${m.r ?? ''}" data-change="missedRSave" data-arg="${esc(m.id)}" aria-label="Would have made, in R" /> R</label>`)}
       <div class="jr-row"><label class="jr-label" for="nbMissedNote-${esc(m.id)}">Note <span class="jr-sub">optional</span></label>
         <input type="text" class="nb-focus-input" id="nbMissedNote-${esc(m.id)}" maxlength="${MAX_MISSED_NOTE}" autocomplete="off" placeholder="What you saw, what held you back" data-input="missedNoteInput" data-change="missedNoteSave" data-arg="${esc(m.id)}" value="${esc(note)}" /></div>
     </li>`;

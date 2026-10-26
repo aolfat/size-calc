@@ -41,6 +41,9 @@
 .nb-miss-note { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nb-miss-open { padding: 8px 10px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; }
 .nb-miss-head { display: flex; align-items: baseline; gap: 10px; font-size: 14px; }
+.nb-miss-charts { margin: 10px 0 4px; }
+.nb-miss-charts .jt-plot { height: 260px; }
+@media (min-width: 900px) { .nb-miss-charts { grid-template-columns: 1fr 1fr; } .nb-miss-charts .jt-plot { height: 320px; } }
 .nb-miss-open .jr-row:first-of-type { border-top: 0; }
 .nb-miss-count { color: var(--text2); }
 .nb-miss-add { margin-top: 8px; }
