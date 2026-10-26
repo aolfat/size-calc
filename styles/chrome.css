@@ -66,6 +66,10 @@
 .trade-legs dd { margin:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; font:13px var(--num); font-variant-numeric:tabular-nums; color:var(--text); }
 .trade-legs dd strong { font-size:15px; font-weight:600; }
 .trade-legs .shares-loss { color:var(--red); font-size:15px; font-weight:600; }
+.trade-limit { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.trade-limit label { font-size:12px; color:var(--text2); font-family:var(--sans); }
+.trade-limit .prefix-wrap { width:130px; }
+.seg button:disabled { opacity:0.45; cursor:default; }
 .trade-legs .shares-detail { font-family:inherit; }
 .trade-warn { color:var(--amber); background:var(--amber-bg); border:1px solid #594016; border-radius:var(--radius); padding:8px 10px; font-size:12.5px; line-height:1.45; margin:8px 0; }
 .trade-json { font:11px/1.45 var(--mono); color:var(--text2); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:8px; margin-top:6px; overflow:auto; max-height:220px; }

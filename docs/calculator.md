@@ -97,6 +97,11 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 - **Entry price**: optional underlying entry input (blank = current price) in the Entry & stops row, amber border/line (blue collided with VWAP).
   Shares size off |entry − stop|; chain prices premium@entry via the same BS move and losses run entry→stop (entryPrem is the cost basis for cts/total/loss%).
   Drawn on both charts, cleared on symbol change; sim uses entryPrem
+- **Opening range** (ui/orb.js, #orbRow under Entry & stops; shares on risk sizing only, like Trade at Schwab): 5m / 15m / 30m chips read today's 5-minute bars fresh from Tradier (fetchFiveMinuteBars; the range may have closed since the chart loaded) and take the high and low from 9:30 to 9:35, 9:45 or 10:00 ET (openingRange in core/bars.js, pure).
+  A long's entry goes a tick over the high with its stop at the low, a short's a tick under the low with its stop at the high (orbLevels: a cent, $0.0001 under $1), written into the Entry and stop inputs, so sizing and the chart work as if typed.
+  Refused with a line under the chips (state.orbNote): before the range closes ('The 15m range closes at 9:45 ET.'), when its last bar isn't in yet and no later one is (allowed five minutes on, since a thin stock may not trade every bar), with no bars from today's open, or when Tradier won't send bars (they need a brokerage-linked key).
+  state.orb remembers what the chip set; while the ticket still holds it (same symbol, direction, entry and stop) the chip stays lit, the line says the range, and the card names the entry '15m range high' and the stop '15m range low' instead of planned and Custom stop.
+  Changing either input, the direction or the ticker makes them yours again.
 - **Loss/ct cells** show dollar loss with % of premium lost stacked below, color coded (green <25%, amber 25–60%, red >60%)
 - **Vol/OI**: bold columns with blue tint, resting in muted gold (--gold #d9b968); BOTH turn full amber together when vol > OI (the signal is about the pair — they're always read together).
   This emphasis is intentional — don't tone it down
