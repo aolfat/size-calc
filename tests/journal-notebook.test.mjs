@@ -115,7 +115,7 @@ test('a calendar day opens its page: premarket, the day\'s trades, post-market; 
   const { run, state, out } = await journal({ library: RULES });
   run("setJournalTab('calendar')");
   assert.match(out(), /<button class="jc-day journal-sell" data-action="openJournalDay" data-arg="2026-10-06"/);
-  assert.match(out(), /<button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-07" aria-label="2026-10-07: no exits\. Open the day">/, 'a quiet day opens too');
+  assert.match(out(), /<button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-08" aria-label="2026-10-08: no exits\. Open the day">/, 'a quiet day opens too');
   run("openJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'calendar');
   const page = out();
@@ -143,6 +143,23 @@ test('a calendar day opens its page: premarket, the day\'s trades, post-market; 
   assert.match(out(), /class="jc-grid"/);
   run("openJournalDay('2026-10-05'); setJournalTab('calendar')");
   assert.equal(state.journalNotebookDay, '', 'the Calendar tab goes back to the calendar');
+});
+
+test('economic releases: a dot and a hover card on the calendar, a row on the day page, today\'s on today\'s line', async () => {
+  const { run, out } = await journal({ now: Date.parse('2026-10-14T12:00:00Z') });
+  run("setJournalTab('calendar')");
+  const cal = out();
+  assert.match(cal, /<td class="jc-has-ev"><button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-14" aria-label="2026-10-14: no exits, CPI 8:30 am, Beige Book 2:00 pm\. Open the day"><span class="jc-num">14<\/span><span class="jc-ev jc-ev-high" aria-hidden="true"><\/span><\/button><div class="jc-pop" aria-hidden="true"><div class="ev-head">Wednesday, October 14, 2026<\/div>/);
+  assert.match(cal, /<li><span class="ev-time">8:30 am<\/span><span class="ev-dot ev-high"><\/span><span class="ev-name">CPI<span class="ev-note">Sep<\/span><\/span><\/li><li><span class="ev-time">2:00 pm<\/span><span class="ev-dot ev-medium"><\/span><span class="ev-name">Beige Book<\/span><\/li><\/ul><div class="ev-foot">2 events · New York time<\/div>/);
+  assert.match(cal, /data-arg="2026-10-07"[^>]*><span class="jc-num">7<\/span><span class="jc-ev jc-ev-medium"/, 'the minutes alone: amber');
+  assert.match(cal, /<td><button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-08"/, 'a quiet day has no card');
+  assert.match(cal, /id="journalKept"[^>]*>[^<]*· Today: CPI 8:30 am</, 'the high-impact ones, on the head\'s meta line');
+  run("openJournalDay('2026-10-28')");
+  assert.match(out(), /aria-label="Premarket"[\s\S]*Economic events <span class="jr-sub">New York time<\/span>[\s\S]*<span class="ev-time">2:00 pm<\/span><span class="ev-dot ev-high" role="img" aria-label="high impact"><\/span><span class="ev-name">Fed rate decision<\/span>[\s\S]*Fed press conference/);
+  run("openJournalDay('2026-10-26')");
+  assert.match(out(), /Economic events[\s\S]*No major releases\./);
+  run("openJournalDay('2028-01-03')");
+  assert.doesNotMatch(out(), /Economic events/, 'past the schedule it says nothing');
 });
 
 test('the check-in and plan save field by field; the plan is stamped written; the market is the trades\' market too', async () => {
@@ -280,6 +297,109 @@ test('before the migration is pushed the page says so, nothing saves, and the re
   await settle();
   assert.equal(writes('journal_days').length, 0, 'nothing written');
   assert.ok(state.tradeReviews && !state.journalError && !state.journalReviewError, 'the rest of the journal loaded');
+});
+
+// ---------- the focus list ----------
+
+test('a focus list is cleaned on the way in: an id and a ticker each, each ticker once, choices from their lists', async () => {
+  const { run } = await app();
+  const f = json(run, `cleanDayRow({ focus_list: [
+    { id: 'a', symbol: ' qcom ', side: 'long', setups: ['flag_breakout', 'ema21_unr', 'flag_breakout', 7], note: '  over 170  ', played: 'worked', review: ' ' },
+    { id: 'b', symbol: 'QCOM' }, { id: 'a', symbol: 'AMD' }, { symbol: 'NVDA' }, { id: 'c', symbol: '?!' },
+    { id: 'd', symbol: 'AMD', side: 'up', played: 'maybe', setups: 'flag_breakout' },
+  ] }).focus_list`);
+  assert.deepEqual(f, [
+    { id: 'a', symbol: 'QCOM', side: 'long', setups: ['flag_breakout', 'ema21_unr'], note: 'over 170', played: 'worked', review: null },
+    { id: 'd', symbol: 'AMD', side: null, setups: [], note: null, played: null, review: null },
+  ], 'a second QCOM, a repeated id, no id, no ticker: dropped');
+  assert.deepEqual(json(run, 'cleanDayRow(null).focus_list'), []);
+  assert.equal(json(run, `cleanFocusList(Array.from({ length: 20 }, (_, i) => ({ id: 'x' + i, symbol: 'T' + i })))`).length, 12, 'twelve at most');
+  assert.equal(run("tradeUnderlying({ symbol: 'QCOM  261120C00170000', assetType: 'OPTION' })"), 'QCOM', "an option's root");
+  assert.equal(run("tradeUnderlying({ symbol: 'QCOM', legs: [] })"), 'QCOM', 'a spread');
+});
+
+test('a focus list: tickers added before the open with their setups, reviewed after the close, traded or not, removed with Undo', async () => {
+  const { run, out, supabase, elements, state } = await journal();
+  run("openJournalDay('2026-10-06')");
+  assert.match(out(), /aria-label="Premarket"[\s\S]*Market[\s\S]*<div class="nb-group">Focus list<\/div>[\s\S]*The tickers you're watching today[\s\S]*id="nb-plan"/, 'in the premarket, after the market, before the plan');
+  run("focusInput('?!'); addFocusTicker()");
+  assert.match(elements.get('errorBox').textContent, /Type the ticker you're watching/);
+  run("focusInput('qcom'); addFocusTicker()");
+  await settle();
+  const saved = () => supabase.tables.journal_days.get('user-1:2026-10-06').focus_list;
+  const id = saved()[0].id;
+  assert.equal(saved()[0].symbol, 'QCOM');
+  assert.equal(state.missedChart.mark, 'focus', 'the daily marks the day as focus');
+  assert.match(out(), /<li class="nb-miss-open" id="nbFocusOpen">\s*<div class="nb-miss-head"><b>QCOM<\/b>[\s\S]*The day, 5 minutes[\s\S]*Side[\s\S]*Setups[\s\S]*Note[\s\S]*Screenshots[\s\S]*How it played/, 'open: the charts, side, setups, note, screenshots, then how it played');
+  run(`setFocusSide('${id}', 'long'); toggleFocusSetup('${id}', 'flag_breakout'); toggleFocusSetup('${id}', 'ema21_unr'); toggleFocusSetup('${id}', 'nope')`);
+  run(`focusNoteInput('${id}', 'note', 'Over 170')`);
+  run('renderJournal()');
+  assert.match(out(), /id="nbFocusNote-[^"]*"[^>]*>Over 170<\/textarea>/, 'a redraw keeps the draft');
+  run(`focusNoteSave('${id}', 'note', ' Over 170, tight flag ')`);
+  await settle();
+  assert.deepEqual(saved(), [{ id, symbol: 'QCOM', side: 'long', setups: ['flag_breakout', 'ema21_unr'], note: 'Over 170, tight flag', played: null, review: null }]);
+  assert.ok(supabase.writes.filter(w => w.table === 'journal_days').every(w => Object.keys(w).filter(k => !['table', 'onConflict', 'ignoreDuplicates', 'day'].includes(k)).join() === 'focus_list'), 'only its own column');
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').planned_at, undefined, 'never part of the plan written');
+
+  // a second one; a ticker already on the list opens it instead
+  run("focusInput('MSFT'); addFocusTicker()");
+  await settle();
+  const msft = saved()[1].id;
+  assert.equal(state.focusOpen, msft);
+  run("focusInput('qcom'); addFocusTicker()");
+  assert.match(elements.get('errorBox').textContent, /QCOM is on the list already/);
+  assert.equal(state.focusOpen, id, 'opened instead');
+  assert.equal(saved().length, 2);
+  run(`openFocusTicker('${id}')`);
+  assert.match(out(), /<b>QCOM<\/b> long · Pennant or flag breakout, 21 EMA undercut &amp; rally<span class="nb-miss-note">Over 170, tight flag<\/span><\/span><\/button>/, 'closed: one line, setups in the side\'s words');
+  assert.match(out(), /<b>MSFT<\/b><span class="nb-traded nb-traded-yes">Traded<\/span>/, 'a trade on it that day');
+
+  // post-market: each one, traded or not, how it played
+  assert.match(out(), /aria-label="Post-market"[\s\S]*Your focus list[\s\S]*data-action="openFocusTicker" data-arg="[^"]+" data-arg2="review">QCOM<\/button> long · Pennant or flag breakout, 21 EMA undercut &amp; rally<span class="nb-traded">Not traded<\/span>[\s\S]*>MSFT<\/button><span class="nb-traded nb-traded-yes">Traded<\/span>/);
+  run(`setFocusPlayed('${id}', 'no_trigger'); setFocusPlayed('${msft}', 'worked')`);
+  await settle();
+  assert.deepEqual(saved().map(f => f.played), ['no_trigger', 'worked']);
+  assert.match(out(), /<span class="nb-played nb-played-no_trigger">Didn&#39;t trigger<\/span>/, 'on its line');
+  run(`setFocusPlayed('${msft}', 'worked')`);
+  await settle();
+  assert.equal(saved()[1].played, null, 'tapping the lit one clears it');
+  run(`openFocusTicker('${id}', 'review')`);
+  assert.equal(state.focusOpen, id, 'from the review: open');
+  run(`openFocusTicker('${id}', 'review')`);
+  assert.equal(state.focusOpen, id, 'and stays open');
+  run(`focusNoteSave('${id}', 'review', 'Never broke 170')`);
+  await settle();
+  assert.equal(saved()[0].review, 'Never broke 170');
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').reviewed_at, undefined, 'never part of the day reviewed');
+
+  // a missed trade and a focus ticker are never open at once
+  run("missedInput('NVDA'); addMissedTrade()");
+  await settle();
+  assert.equal(state.focusOpen, '');
+  run(`openFocusTicker('${id}')`);
+  assert.equal(state.missedOpen, '');
+
+  run(`removeFocusTicker('${id}')`);
+  await settle();
+  assert.deepEqual(saved().map(f => f.symbol), ['MSFT']);
+  assert.match(elements.get('errorBox').innerHTML, /Removed QCOM from the focus list\. <button[^>]*data-action="undoRemoveFocus">Undo<\/button>/);
+  run('undoRemoveFocus()');
+  await settle();
+  assert.deepEqual(saved().map(f => f.symbol), ['QCOM', 'MSFT'], 'back where it was');
+});
+
+test("a focus ticker's + New setup goes on it", async () => {
+  const { run, supabase, elements } = await journal();
+  run("openJournalDay('2026-10-06'); focusInput('QCOM'); addFocusTicker()");
+  await settle();
+  const id = supabase.tables.journal_days.get('user-1:2026-10-06').focus_list[0].id;
+  run(`newFocusSetup('${id}')`);
+  const sheet = () => elements.get('journalLibraryBody').innerHTML;
+  assert.match(sheet(), /<div class="sheet-label">New setup for QCOM on your focus list<\/div>/);
+  assert.match(sheet(), /It goes on QCOM on your focus list/);
+  run("useSetupTwin('ema8_bounce')");
+  await settle();
+  assert.deepEqual(supabase.tables.journal_days.get('user-1:2026-10-06').focus_list[0].setups, ['ema8_bounce']);
 });
 
 // ---------- missed trades ----------

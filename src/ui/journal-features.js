@@ -2,7 +2,8 @@
 // an import works out every feature missing or outdated on each trade (core/features) from the saved bars and the
 // provider's daily bars, and saves them (trade_features); the quiet line while it runs (#journalFeaturesLine); the
 // Features tab (every feature, what it reads, its version, how far it's stamped); and the trade page's Features tab.
-import { marketEscape as esc } from '../core/format.js';
+import { marketEscape as esc, nyDateStr, nyWallMs } from '../core/format.js';
+import { inZone, zoneAbbr } from '../lib/zone.js';
 import { nyDay } from '../core/bars.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { FEATURE_FAMILIES, FEATURES, featureCoverage, featureDataNeeds, featureDue, featureNeedsWords, featuresDue, featureValueWords, featureVersion, stampableTrade, stampTrade } from '../core/features/index.js';
@@ -133,7 +134,7 @@ function coverageCell(f, trades) {
   return `<td><b>${c.value + c.unknown} of ${c.total}</b>${subs.map(s => `<span class="pos-sub">${s}</span>`).join('')}</td>`;
 }
 
-const when = ms => new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const when = ms => inZone(ms, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /** every feature by family: what it measures and reads, its version, how far it's stamped over your trades */
 export function featuresView(trades) {
@@ -160,7 +161,7 @@ export function featuresView(trades) {
       <tbody>${groups}</tbody></table></div>`;
   return `<p class="hint">What the data says about each trade at its entry, worked out by the app from the saved bars and the daily history, never typed. A new or changed feature stamps itself onto every trade. ${counted.length} trade${counted.length === 1 ? '' : 's'} get features (not deleted ones, nor closes from before your history).</p>
     ${status}${table}
-    <details class="hint-details"><summary>How features are stamped</summary><p class="hint">Each feature sees the data up to its moment and nothing after: a 5-minute bar counts once it has ended, the bar your entry falls in only by its open. Unknown means the data is gone (Tradier keeps about 40 days of 5-minute bars, so older trades miss the intraday ones) and it isn't tried again; waiting means the data can still come (today's bars save after 8pm ET, daily bars need the Tradier key) and it's tried on the next load. Numbers are kept as numbers, not ranges, so how they're grouped can change later without restamping.</p></details>`;
+    <details class="hint-details"><summary>How features are stamped</summary><p class="hint">Each feature sees the data up to its moment and nothing after: a 5-minute bar counts once it has ended, the bar your entry falls in only by its open. Unknown means the data is gone (Tradier keeps about 40 days of 5-minute bars, so older trades miss the intraday ones) and it isn't tried again; waiting means the data can still come (today's bars save after ${inZone(nyWallMs(nyDateStr(new Date()), '20:00'), { hour: 'numeric' })} ${zoneAbbr()}, daily bars need the Tradier key) and it's tried on the next load. Numbers are kept as numbers, not ranges, so how they're grouped can change later without restamping.</p></details>`;
 }
 
 // ---------- the trade page ----------

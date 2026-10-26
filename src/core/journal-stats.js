@@ -257,7 +257,7 @@ export const periodResults = (trades, unit) => activePeriods(trades, unit).map(k
 export const monthlyResults = trades => periodResults(trades, 'month').map(({ key, ...s }) => ({ month: key, ...s }));
 
 // the time-of-day buckets on the first entry, New York time (from Trading-Journal-AI)
-const TIME_BUCKETS = [['09:30', '09:45', '9:30–9:45'], ['09:45', '10:30', '9:45–10:30'], ['10:30', '11:00', '10:30–11:00'], ['11:00', '13:30', '11:00–1:30'], ['13:30', '15:30', '1:30–3:30'], ['15:30', '16:00', '3:30–4:00']];
+export const TIME_BUCKETS = [['09:30', '09:45', '9:30–9:45'], ['09:45', '10:30', '9:45–10:30'], ['10:30', '11:00', '10:30–11:00'], ['11:00', '13:30', '11:00–1:30'], ['13:30', '15:30', '1:30–3:30'], ['15:30', '16:00', '3:30–4:00']];
 /** @param {string} time 'HH:MM' */
 export const timeBucket = time => (TIME_BUCKETS.find(([a, b]) => time >= a && time < b) || ['', '', 'Extended hours'])[2];
 

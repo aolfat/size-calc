@@ -1,5 +1,6 @@
 // Market view: category tabs, tables and heatmap, drilldown, cached quote refresh, and daily history for 1W–1Y. Data logic is core/market-data.js.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { marketEscape, nyDateStr } from '../core/format.js';
 import { MarketData } from '../core/market-data.js';
 import { store } from '../lib/store.js';
@@ -338,7 +339,7 @@ export function marketRenderRefreshStatus() {
   const history = ms.category === 'themes' ? '1W–YTD' : '1W–1Y';
   if (usingQuotes) {
     const age = Math.max(0, Math.floor((Date.now() - cached.fetchedAt) / 1000));
-    const ageText = age < 60 ? age + ' sec ago' : age < 3600 ? Math.floor(age / 60) + ' min ago' : new Date(cached.fetchedAt).toLocaleString();
+    const ageText = age < 60 ? age + ' sec ago' : age < 3600 ? Math.floor(age / 60) + ' min ago' : inZone(cached.fetchedAt, { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
     const count = scope.rows.filter(row => cached.quotes[row.ticker]).length;
     const job = ms.historyJob?.scope.id === scope.id ? ms.historyJob : null;
     const loaded = scope.rows.filter(row => ms.history[row.ticker]).length;

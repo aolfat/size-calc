@@ -3,6 +3,7 @@
 // the pair is cancelled and placed again with the change, only once Schwab shows both halves cancelled, never filled.
 // A limit entry with its stop waiting on it goes the same way: cancelled, then placed again with the same stop.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { editPlan, fmtPositionPrice, schwabTime, workingOrders, workingWords } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder } from '../services/schwab.js';
@@ -243,7 +244,7 @@ export function renderEditSheet(form = true) {
   if (!form) { document.getElementById('editDetail').innerHTML = detail; return; }
   const entered = schwabTime(o.entered);
   const meta = [cap(lasts(o.duration)), words(o.status),
-    Number.isNaN(entered) ? '' : 'placed ' + new Date(entered).toLocaleString('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ');
+    Number.isNaN(entered) ? '' : 'placed ' + inZone(entered, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ');
   body.innerHTML = `
     <dl class="trade-legs">
       <div><dt>Order</dt><dd><strong>${esc(cap(workingWords(o)))} · ${esc(units(o, open(o)))} ${esc(o.label)}</strong><span class="shares-detail">${esc(meta)}</span></dd></div>

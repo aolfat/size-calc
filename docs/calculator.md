@@ -99,6 +99,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Drawn on both charts, cleared on symbol change; sim uses entryPrem
 - **Opening range** (ui/orb.js, #orbRow under Entry & stops; shares on risk sizing only, like Trade at Schwab): 5m / 15m / 30m chips read today's 5-minute bars fresh from Tradier (fetchFiveMinuteBars; the range may have closed since the chart loaded) and take the high and low from 9:30 to 9:35, 9:45 or 10:00 ET (openingRange in core/bars.js, pure).
   A long's entry goes a tick over the high with its stop at the low, a short's a tick under the low with its stop at the high (orbLevels: a cent, $0.0001 under $1), written into the Entry and stop inputs, so sizing and the chart work as if typed.
+  Its times read in the Settings zone (docs/time-zone.md): 'The 15m range closes at 6:45 PT.' in PT, the window itself still New York's.
   Refused with a line under the chips (state.orbNote): before the range closes ('The 15m range closes at 9:45 ET.'), when its last bar isn't in yet and no later one is (allowed five minutes on, since a thin stock may not trade every bar), with no bars from today's open, or when Tradier won't send bars (they need a brokerage-linked key).
   state.orb remembers what the chip set; while the ticket still holds it (same symbol, direction, entry and stop) the chip stays lit, the line says the range, and the card names the entry '15m range high' and the stop '15m range low' instead of planned and Custom stop.
   Changing either input, the direction or the ticker makes them yours again.

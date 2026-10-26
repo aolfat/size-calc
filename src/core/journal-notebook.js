@@ -1,15 +1,16 @@
 // @ts-check
 // Journal notebook, pure (docs/journal-notebook.md): a page per New York trading day. The premarket plan (a mental
 // check-in, the market, the plan) and the post-market review (a grade, each rule kept or broken, two guided notes,
-// tomorrow's focus) and the trades you missed kept on the day's journal_days row; your goals and rules as standing lists (library_items rows of
+// tomorrow's focus), the focus list (the tickers you're watching, each with its setups, and how each played) and the trades you missed kept on the day's journal_days row; your goals and rules as standing lists (library_items rows of
 // kind goal and rule); when a day's plan is written and when it's reviewed; the trades a day touched; stepping weekdays.
 import { GRADES } from './journal-labels.js';
 import { exitDays, nyParts } from './journal-stats.js';
 
 /** @typedef {{ key: string, id: string, kind: 'goal' | 'rule', name: string, hidden: boolean, order: number, since: string }} ListItem
  * @typedef {{ id: string, symbol: string, side: string | null, setups: string[], tactics: string[], why: string | null, note: string | null }} MissedTrade
+ * @typedef {{ id: string, symbol: string, side: string | null, setups: string[], note: string | null, played: string | null, review: string | null }} FocusItem
  * @typedef {{ market: string | null, note: string | null, feelings: string[], energy: string | null, sleep_hours: number | null,
- *   place: string | null, plan: string | null, focus_list: any[], grade: string | null, rules: Record<string, string>,
+ *   place: string | null, plan: string | null, focus_list: FocusItem[], grade: string | null, rules: Record<string, string>,
  *   went_well: string | null, work_on: string | null, focus_next: string | null, focus_kept: string | null,
  *   planned_at: string | null, reviewed_at: string | null, missed: MissedTrade[] }} DayRow */
 
@@ -39,6 +40,11 @@ export const MISSED_SIDES = /** @type {[string, string][]} */ ([['long', 'Long']
 /** the most missed trades a day keeps, and a note's longest text */
 export const MAX_MISSED = 20;
 export const MAX_MISSED_NOTE = 500;
+/** how a focus ticker played, said after the close */
+export const FOCUS_PLAYED = /** @type {[string, string][]} */ ([['worked', 'Worked'], ['failed', 'Failed'], ['no_trigger', "Didn't trigger"]]);
+/** the most tickers a day's focus list keeps, and its notes' longest text */
+export const MAX_FOCUS_ITEMS = 12;
+export const MAX_FOCUS_NOTE = 500;
 const MISSED_SYMBOL_RE = /^[A-Z0-9][A-Z0-9./-]{0,11}$/;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -86,7 +92,7 @@ export function cleanDayRow(raw) {
     note: text(r.note, MAX_DAY_NOTE),
     feelings: Array.isArray(r.feelings) ? [...new Set(r.feelings.filter(f => pick(FEELINGS, f)))] : [],
     energy: pick(ENERGY, r.energy), sleep_hours: Number.isFinite(hours) && hours >= 0 && hours <= 24 ? hours : null, place: pick(PLACES, r.place),
-    plan: text(r.plan, MAX_DAY_NOTE), focus_list: Array.isArray(r.focus_list) ? r.focus_list : [],
+    plan: text(r.plan, MAX_DAY_NOTE), focus_list: cleanFocusList(r.focus_list),
     grade: GRADES.includes(r.grade) ? r.grade : null, rules,
     went_well: text(r.went_well, MAX_DAY_NOTE), work_on: text(r.work_on, MAX_DAY_NOTE),
     focus_next: text(r.focus_next, MAX_FOCUS), focus_kept: pick(FOCUS_KEPT, r.focus_kept),
@@ -127,6 +133,27 @@ export function cleanMissed(raw) {
   }
   return out;
 }
+
+/**
+ * A day's focus list as the app keeps it: each with an id and a ticker (each ticker once), the side and how it played from
+ * their lists, its setups (library keys) and two trimmed notes, the plan for it and the review; past MAX_FOCUS_ITEMS dropped.
+ * @param {unknown} raw @returns {FocusItem[]}
+ */
+export function cleanFocusList(raw) {
+  if (!Array.isArray(raw)) return [];
+  /** @type {FocusItem[]} */
+  const out = [];
+  for (const f of raw) {
+    const id = typeof f?.id === 'string' && f.id && f.id.length <= 64 ? f.id : '', symbol = missedSymbol(f?.symbol);
+    if (!id || !symbol || out.some(x => x.id === id || x.symbol === symbol)) continue;
+    out.push({ id, symbol, side: pick(MISSED_SIDES, f.side), setups: libKeys(f.setups, null), note: text(f.note, MAX_FOCUS_NOTE), played: pick(FOCUS_PLAYED, f.played), review: text(f.review, MAX_FOCUS_NOTE) });
+    if (out.length >= MAX_FOCUS_ITEMS) break;
+  }
+  return out;
+}
+
+/** the focus tickers you traded that day: their symbol matches a trade's underlying (tradeUnderlying). @param {FocusItem[]} list @param {string[]} underlyings */
+export const focusTraded = (list, underlyings) => new Set(list.filter(f => underlyings.includes(f.symbol)).map(f => f.id));
 
 /**
  * A week's or month's missed trades, oldest day first, each with its day: a week is its Monday through the Sunday after

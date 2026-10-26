@@ -460,7 +460,7 @@ export function newLibrarySetup(missed = null) {
   state.libraryNew = null;
   renderJournalLibrary();
 }
-/** a missed trade's + New setup: the builder on top of Edit choices; the setup it adds (or one you have) goes on that trade */
+/** a missed trade's (or a focus ticker's: { id, symbol, focus: true }) + New setup: the builder on top of Edit choices; the setup it adds (or one you have) goes on that trade */
 export function newSetupFor(missed) { newLibrarySetup(missed); openSheet('journalLibrary'); }
 let setupAdded = (/** @type {any} */ _d, /** @type {string} */ _key) => {};
 /** the notebook registers what a setup added for a missed trade does there */
@@ -559,7 +559,7 @@ function setupEditHtml(lib) {
       <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(i.name, d.pattern === i.key, `data-action="setEditPattern" data-arg="${esc(i.key)}"`)).join('')}${libraryNewBox('pattern')}</div>
       <div class="jr-draft-row"><label class="jr-draft-q" for="setupEditName">Name</label><input type="text" id="setupEditName" maxlength="80" autocomplete="off" placeholder="${esc(auto || 'Pick what happened and at what')}" value="${esc(d.name)}" data-input="setupEditNameInput" data-enter="saveSetupEdit" />
         ${finish}</div>
-      <p class="hint">${d.key ? 'Every trade with this setup counts the new way, in the filter, the stats and the reviews.' : d.missed ? `It goes on the missed ${esc(d.missed.symbol)}, and on any trade's review from then on.` : 'Then pick it on any trade\'s review.'}</p>
+      <p class="hint">${d.key ? 'Every trade with this setup counts the new way, in the filter, the stats and the reviews.' : d.missed ? `It goes on ${d.missed.focus ? `${esc(d.missed.symbol)} on your focus list` : `the missed ${esc(d.missed.symbol)}`}, and on any trade's review from then on.` : 'Then pick it on any trade\'s review.'}</p>
     </div>`;
 }
 
@@ -590,7 +590,7 @@ export function renderJournalLibrary() {
   const lib = library();
   // a missed trade's + New setup opens the builder on top, where the sheet opens
   const forMissed = !!state.setupEdit && !state.setupEdit.key && !!state.setupEdit.missed;
-  el.innerHTML = (forMissed ? `<div class="sheet-section"><div class="sheet-label">New setup for the missed ${esc(state.setupEdit.missed.symbol)}</div>${setupEditHtml(lib)}</div>` : '') + KIND_WORDS.map(([kind, words]) => {
+  el.innerHTML = (forMissed ? `<div class="sheet-section"><div class="sheet-label">New setup for ${state.setupEdit.missed.focus ? `${esc(state.setupEdit.missed.symbol)} on your focus list` : `the missed ${esc(state.setupEdit.missed.symbol)}`}</div>${setupEditHtml(lib)}</div>` : '') + KIND_WORDS.map(([kind, words]) => {
     const items = lib.byKind[kind] || [];
     // a built-in merge (the rejection: a bounce on a short) isn't yours to undo, so it isn't listed
     const builtIn = i => BUILT_IN_MERGES.has(`${kind}:${i.key}`) && !libraryRow(kind, i.key)?.merged_into;

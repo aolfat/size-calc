@@ -1,5 +1,6 @@
 // Direction, the global stop pair, and stop adjustments.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
 import { normalizeAtrMultiplier, normalizeStopStrategy, parseStopPercent } from '../core/stops.js';
@@ -131,7 +132,7 @@ export function updateStopAdjustment() {
   }
   const atr = currentAtr5();
   if (!atr) { info.textContent = '5m ATR(14) unavailable · load or refresh intraday data, enter a manual stop, or choose None.'; return; }
-  const asOf = new Date((atr.asOf + 300) * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const asOf = inZone((atr.asOf + 300) * 1000, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   info.textContent = `5m ATR(14) ${fmt$(atr.value)} × ${state.atrMultiplier} = ${fmt$(atr.value * state.atrMultiplier)} buffer · bar closed ${asOf}`;
 }
 

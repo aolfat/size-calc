@@ -1,5 +1,6 @@
 // Allocation sizing: target % of account less existing exposure, for long shares, long options and sold puts.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { expChat, fmt$, fmtN, marketEscape } from '../core/format.js';
 import { expiryCloseMs, isBull, sizeUnit, typeLabel } from '../core/options.js';
 import { calcAllocation, optionDte, shortPutMetrics, unitsFor } from '../core/sizing.js';
@@ -105,7 +106,7 @@ export function calcAllocationOption(opt, price) {
     parsed: { ticker: state.quoteData.symbol, strike: opt.strike, expStr: state.selectedExp, occ: opt.symbol },
     contractSize: opt.contract_size, rootSymbol: opt.root_symbol, underlyingType: state.quoteData.type, mid, bid: opt.bid, ask: opt.ask,
     delta: opt.greeks?.delta ?? null, iv: opt.greeks?.smv_vol || opt.greeks?.mid_iv || 0,
-    underlyingPrice: price, asOf: new Date().toLocaleTimeString() };
+    underlyingPrice: price, asOf: inZone(Date.now()) };
   const allocation = allocationForCard(d);
   return { opt, card: d, allocation, shortPut, isCall, mid, entryPrem: mid,
     delta: d.delta, iv: d.iv, contracts: allocation.units, unitCost: (shortPut ? opt.strike : mid) * 100,

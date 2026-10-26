@@ -15,6 +15,7 @@ export function createState() {
     chainData: [],
     selectedExp: null,
     currentMode: 'shares',
+    timeZone: store.get('time_zone') === 'pt' ? 'pt' : 'et', // the zone clock times show in (lib/zone.js), this device only
     direction: 'long',
     sizingMode: 'risk',
     optionTradeSide: 'buy',
@@ -122,7 +123,10 @@ export function createState() {
     missedNewTactic: '', // the missed trade whose + New tactic box is open
     missedTacticDraft: '', // the tactic's name being typed there
     missedUndo: null, // { day, list }: the missed trades before the last Remove, for the toast's Undo
-    missedChart: null, // the open missed trade's charts: { symbol, day, five, daily, charts, ... } (ui/missed-chart.js)
+    missedChart: null, // the open missed trade's (or focus ticker's) charts: { symbol, day, mark, five, daily, charts, ... } (ui/missed-chart.js)
+    focusDraft: '', // the ticker being typed into the day's focus list
+    focusOpen: '', // the id of the focus ticker open to edit (a missed trade and a focus ticker are never open at once)
+    focusUndo: null, // { day, list }: the focus list before the last Remove, for the toast's Undo
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }

@@ -10,12 +10,40 @@ import { renderClaudeAccess } from './claude-access.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
 import { loadJournal, renderJournal } from './journal.js';
-import { refreshPositions } from './positions.js';
+import { refreshPositions, renderPositions } from './positions.js';
+import { drawChart } from './chart.js';
+import { drawDailyChart } from './daily.js';
+import { renderOrb } from './orb.js';
+import { drawPositionChart } from './position-chart.js';
+import { updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
 import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
 import { updateStopVisibility } from './stops.js';
 import { updateSchwabUi } from './trade.js';
+
+/** the Times switch: every clock time shown in ET or PT (lib/zone.js), this device only; what's on screen redraws in it */
+export function setTimeZone(zone) {
+  state.timeZone = zone === 'pt' ? 'pt' : 'et';
+  store.set('time_zone', state.timeZone);
+  syncTimeZone();
+  if (state.chartBars.length) drawChart(); else if (state.dailyBars.length) drawDailyChart();
+  if (state.journalView) renderJournal();
+  if (state.positionsView) { renderPositions(); if (state.posChart) drawPositionChart(); }
+  renderOrb();
+  updateStopVisibility();
+  updateAccountSourceUi();
+  renderClaudeAccess();
+}
+
+/** the switch shows the zone in use */
+export function syncTimeZone() {
+  for (const [id, zone] of [['zoneEt', 'et'], ['zonePt', 'pt']]) {
+    const on = state.timeZone === zone, b = document.getElementById(id);
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
 
 export function saveKey() {
   if (!credentialOriginAllowed()) { clearUnsafeCredentials(); showError(CREDENTIAL_ORIGIN_MESSAGE); return; }

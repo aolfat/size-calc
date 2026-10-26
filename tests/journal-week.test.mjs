@@ -197,7 +197,7 @@ test('a week\'s total on the calendar opens its review under the grid, with exit
   assert.match(panel, /No 5-minute bars for 1 trade \(MSFT\)/);
   assert.match(panel, /<li class="jw-bad">2 trades with no stop: AAPL and MSFT<\/li>/, 'named in the order they opened');
   assert.match(panel, /<li class="">No more than 1 trade opened a day<\/li>/);
-  assert.match(panel, /2 trades opened before 9:45: 1 won, \+\$200\.00/);
+  assert.match(panel, /2 trades opened before 9:45 ET: 1 won, \+\$200\.00/);
   assert.match(panel, /Average heat: −0.5% of cost against you before the exit, worst −0.5% on AAPL/, 'no stops: heat as a share of the cost');
   assert.match(panel, /The whole week: the side, symbol and setup filters don't apply/);
   const reads = supabase.reads.filter(r => r.table === 'bars_5m').length;

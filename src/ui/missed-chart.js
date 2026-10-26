@@ -1,8 +1,8 @@
 // A missed trade's charts on the day's notebook page (state.missedChart; docs/journal-notebook.md): the ticker's 5 minutes
 // that day and its daily chart, the day marked, drawn by Lightweight Charts like the trade page (ui/journal-trade-chart.js).
 // The 5 minutes come from the kept bars when the journal has them (another trade in it that day), else straight from
-// Tradier (about 40 days back), never saved; the daily from Tradier's year. One missed trade is open at a time, so one set
-// of charts: the page's redraw replaces their boxes, and drawMissedChart (after every Journal render) moves each chart
+// Tradier (about 40 days back), never saved; the daily from Tradier's year. A focus ticker opened on the same page uses
+// them too, its day marked 'focus'. One missed trade or focus ticker is open at a time, so one set of charts: the page's redraw replaces their boxes, and drawMissedChart (after every Journal render) moves each chart
 // into its new box with the view you left it on.
 import { BARS_KEEP_DAYS, nyDay } from '../core/bars.js';
 import { viewRange } from '../core/chart-view.js';
@@ -16,12 +16,12 @@ import { renderJournal } from './journal.js';
 
 const BOXES = { 5: { plot: 'nbMissedPlot5', legend: 'nbMissedLegend5' }, D: { plot: 'nbMissedPlotD', legend: 'nbMissedLegendD' } };
 
-/** the charts for a ticker on a day: loaded once (opening the same one again keeps them) */
-export function loadMissedChart(symbol, day) {
+/** the charts for a ticker on a day, the day marked with `mark` on the daily: loaded once (opening the same one again keeps them) */
+export function loadMissedChart(symbol, day, mark = 'missed') {
   const now = state.missedChart;
-  if (now && now.symbol === symbol && now.day === day) return now.loaded;
+  if (now && now.symbol === symbol && now.day === day) { now.mark = mark; return now.loaded; }
   dropMissedChart();
-  const p = state.missedChart = { symbol, day, five: [], daily: [], dayIndex: -1, viewD: { count: 63, offset: 0 }, loading5: true, loadingD: true, status5: '', statusD: '', charts: {}, ranges: {}, libWait: false, libError: '', loaded: null };
+  const p = state.missedChart = { symbol, day, mark, five: [], daily: [], dayIndex: -1, viewD: { count: 63, offset: 0 }, loading5: true, loadingD: true, status5: '', statusD: '', charts: {}, ranges: {}, libWait: false, libError: '', loaded: null };
   const redraw = () => { if (state.missedChart === p) renderJournal(); };
   p.loaded = Promise.all([
     fiveMinute(p).then(() => { p.loading5 = false; redraw(); }),
@@ -120,7 +120,7 @@ export function drawMissedChart() {
     paintTradeChart(h, bars, {
       fills: [], lines: [], iv: five ? 5 : 0, rangeKey: which, title: `${p.symbol} · ${five ? '5m' : '1D'}`,
       range: p.ranges[which] || (five ? null : roomRight(viewRange(p.viewD, bars.length), bars.length)),
-      marks: !five && p.dayIndex >= 0 ? [{ index: p.dayIndex, text: 'missed' }] : [],
+      marks: !five && p.dayIndex >= 0 ? [{ index: p.dayIndex, text: p.mark }] : [],
     });
   }
 }

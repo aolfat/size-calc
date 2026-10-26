@@ -6,6 +6,7 @@ import { nyDateStr } from '../core/format.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
+import { zoneClock } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { renderChain } from './chain.js';
 import { drawDailyChart, updateChartVisibility } from './daily.js';
@@ -116,8 +117,8 @@ export function drawChart() {
   ctx.fillStyle = cText3;
   const labelStep = Math.max(1, Math.floor(n / 6));
   for (let i = 0; i < n; i += labelStep) {
-    const tm = (state.chartBars[i].t || '').slice(11, 16);
-    if (tm) ctx.fillText(tm, x(i) - 12, g.h - 8);
+    const t = state.chartBars[i].t || '', tm = t.slice(11, 16);
+    if (tm) ctx.fillText(zoneClock(t.slice(0, 10), tm), x(i) - 12, g.h - 8);
   }
   for (let i = 1; i < n; i++) {
     if ((state.chartBars[i].t || '').slice(0, 10) !== (state.chartBars[i - 1].t || '').slice(0, 10)) {
@@ -231,7 +232,7 @@ export function drawChart() {
     ctx.strokeStyle = cBorder; ctx.setLineDash([2, 3]);
     ctx.beginPath(); ctx.moveTo(x(state.chartHover), g.padT); ctx.lineTo(x(state.chartHover), g.h - g.padB); ctx.stroke();
     ctx.restore();
-    const tm = (b.t || '').slice(11, 16);
+    const tm = zoneClock((b.t || '').slice(0, 10), (b.t || '').slice(11, 16));
     const chg = b.c - b.o;
     document.getElementById('chartOhlc').innerHTML =
       `${tm} &nbsp; O ${b.o.toFixed(2)} &nbsp; H ${b.h.toFixed(2)} &nbsp; L ${b.l.toFixed(2)} &nbsp; C <span style="color:${chg >= 0 ? cGreen : cRed}">${b.c.toFixed(2)}</span> &nbsp; V ${Number(b.v || 0).toLocaleString()}`;
