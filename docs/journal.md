@@ -192,4 +192,8 @@ The Journal tab: imports, trades and spreads, fees, your stops and deletes, bars
   **Goals and rules** are library_items rows (kinds goal and rule, names up to 200, settings { order, since }, at most 20 active each), skipped by buildLibrary; Edit opens the list in place (state.notebookEdit): reword, ↑ ↓, Retire (hidden: out of the list and the check, its answers kept; Bring back), + Add.
   The new columns are read on their own query (loadNotebook, DAY_COLUMNS), so before the push the page says it needs `npx supabase db push`, everything in it is disabled, and the rest of the journal works.
   Calendar cells carry marks (dayMark): ✎ plan written, ✓ reviewed, an amber ● once a day with exits is over and not reviewed.
+
+  **Missed trades** (missedSection, between The day and Post-market; journal_days.missed, migration 20261104000000_missed_trades.sql, read on its own query: missedError disables only this section): the trades you saw and didn't take, a ticker each (+ Add or Enter, missedSymbol), then optional side, why (MISSED_WHY), one of My setups, would-have-made R and a note; cleanMissed keeps at most 20 a day.
+  Closed it's one line (tap to edit, state.missedOpen), the header counts them and adds up the R not taken, Remove has Undo on the toast (state.missedUndo).
+  They never count in P&L, stats or the day's review; the calendar cell shows ⊘ and the count.
   Focus list, the app's rule checks (max loss %, oversizing, past −1R) and goal numbers are slice 2; stats by check-in and rule, the week review's links and day screenshots slice 3

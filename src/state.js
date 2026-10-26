@@ -114,6 +114,9 @@ export function createState() {
     notebookDraft: null, // { day, field, text }: a notebook box being typed, saved on blur
     notebookEdit: '', // goal | rule: that list open in place to edit
     notebookItemDraft: '', // the new goal or rule being typed
+    missedDraft: '', // the ticker of a missed trade being typed
+    missedOpen: '', // the id of the missed trade open to edit
+    missedUndo: null, // { day, list }: the missed trades before the last Remove, for the toast's Undo
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }

@@ -32,7 +32,7 @@ import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup,
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { closeJournalTrade, editJournalTrade, journalPageTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
-import { addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, moveNotebookItem, notebookItemInput, openJournalDay, openTodayNotebook, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, stepJournalDay, toggleDayFeeling } from './journal-notebook.js';
+import { addMissedTrade, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, missedRSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setMissedSetup, setMissedSide, setMissedWhy, stepJournalDay, toggleDayFeeling, undoRemoveMissed } from './journal-notebook.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addReviewLink, cancelSetupEdit, editSetup, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalPick, tradeStopPreview, undoDeleteTrades } from './journal.js';
@@ -127,6 +127,17 @@ export const actions = {
   addNotebookItem: el => addNotebookItem(arg(el)),
   renameNotebookItem: el => renameNotebookItem(arg(el), /** @type {HTMLInputElement} */ (el).value),
   moveNotebookItem: el => moveNotebookItem(arg(el), Number(el.dataset.arg2)),
+  missedInput: el => missedInput(/** @type {HTMLInputElement} */ (el).value),
+  addMissedTrade: () => addMissedTrade(),
+  openMissedTrade: el => openMissedTrade(arg(el)),
+  setMissedSide: el => setMissedSide(arg(el), el.dataset.arg2 || ''),
+  setMissedWhy: el => setMissedWhy(arg(el), el.dataset.arg2 || ''),
+  setMissedSetup: el => setMissedSetup(arg(el), /** @type {HTMLSelectElement} */ (el).value),
+  missedRSave: el => missedRSave(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  missedNoteInput: el => missedNoteInput(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  missedNoteSave: el => missedNoteSave(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  removeMissedTrade: el => removeMissedTrade(arg(el)),
+  undoRemoveMissed: () => undoRemoveMissed(),
   retireNotebookItem: el => retireNotebookItem(arg(el)),
   clearJournalDay: () => clearJournalDay(),
   shiftJournalMonth: el => shiftJournalMonth(arg(el)),

@@ -281,3 +281,85 @@ test('before the migration is pushed the page says so, nothing saves, and the re
   assert.equal(writes('journal_days').length, 0, 'nothing written');
   assert.ok(state.tradeReviews && !state.journalError && !state.journalReviewError, 'the rest of the journal loaded');
 });
+
+// ---------- missed trades ----------
+
+test('missed trades are cleaned on the way in: an id and a ticker each, choices from their lists, R to a tenth', async () => {
+  const { run } = await app();
+  const m = json(run, `cleanDayRow({ missed: [
+    { id: 'a', symbol: ' nvda ', side: 'long', why: 'hesitated', setup: 'ema8_bounce', r: '2.04', note: '  ran without me ' },
+    { id: 'a', symbol: 'TSLA' }, { id: 'b', symbol: 'not a ticker!' }, { symbol: 'AMD' },
+    { id: 'c', symbol: 'BRK.B', side: 'sideways', why: 'bored', r: 500 },
+  ] }).missed`);
+  assert.deepEqual(m, [
+    { id: 'a', symbol: 'NVDA', side: 'long', setup: 'ema8_bounce', why: 'hesitated', r: 2, note: 'ran without me' },
+    { id: 'c', symbol: 'BRK.B', side: null, setup: null, why: null, r: null, note: null },
+  ]);
+  assert.deepEqual(json(run, 'cleanDayRow(null).missed'), []);
+  assert.equal(run(`cleanMissed(Array.from({ length: 30 }, (_, i) => ({ id: 'x' + i, symbol: 'SPY' }))).length`), 20);
+});
+
+test('a missed trade: added by ticker, filled in, on the calendar, removed with Undo', async () => {
+  const { run, out, supabase, elements } = await journal();
+  run("openJournalDay('2026-10-06')");
+  assert.match(out(), /aria-label="The day"[\s\S]*aria-label="Missed trades"[\s\S]*aria-label="Post-market"/, 'between the day and the review');
+  assert.match(out(), /Trades you saw and didn't take/);
+  run("missedInput('?!'); addMissedTrade()");
+  assert.match(elements.get('errorBox').textContent, /Type the ticker you missed/);
+  run("missedInput('nvda'); addMissedTrade()");
+  await settle();
+  const saved = () => supabase.tables.journal_days.get('user-1:2026-10-06').missed;
+  assert.equal(saved().length, 1);
+  const id = saved()[0].id;
+  assert.equal(saved()[0].symbol, 'NVDA');
+  assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>/, 'open to fill in');
+  run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); setMissedSetup('${id}', 'ema8_bounce'); missedRSave('${id}', '2.5')`);
+  run(`missedNoteInput('${id}', 'Saw the rejection')`);
+  run('renderJournal()');
+  assert.match(out(), /id="nbMissedNote-[^"]*"[^>]*value="Saw the rejection"/, 'a redraw keeps the draft');
+  run(`missedNoteSave('${id}', ' Saw the rejection, waited ')`);
+  await settle();
+  assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setup: 'ema8_bounce', why: 'hesitated', r: 2.5, note: 'Saw the rejection, waited' }]);
+  assert.ok(supabase.writes.filter(w => w.table === 'journal_days').every(w => Object.keys(w).filter(k => !['table', 'onConflict', 'ignoreDuplicates', 'day'].includes(k)).join() === 'missed'), 'only its own column');
+  run(`openMissedTrade('${id}')`);
+  assert.match(out(), /<b>NVDA<\/b> short · 8 EMA rejection · Hesitated<span class="nb-miss-note">Saw the rejection, waited<\/span><\/span><span class="journal-buy">\+2\.5R<\/span>/, 'closed: one line, the setup in the side\'s words');
+  assert.match(out(), /<span class="jr-status nb-miss-count" role="status">1 missed · \+2\.5R not taken<\/span>/);
+  run(`setMissedWhy('${id}', 'hesitated')`);
+  await settle();
+  assert.equal(saved()[0].why, null, 'tapping the lit one clears it');
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').reviewed_at, undefined, 'missed trades never make the day reviewed');
+  run('closeJournalDay()');
+  assert.match(out(), /data-arg="2026-10-06" aria-label="[^"]*, 1 missed\. Open the day">[\s\S]*?<span class="jc-mk jc-mk-missed">⊘1<\/span>/);
+  run(`openJournalDay('2026-10-06'); removeMissedTrade('${id}')`);
+  await settle();
+  assert.deepEqual(saved(), []);
+  assert.match(elements.get('errorBox').innerHTML, /Removed NVDA\. <button[^>]*data-action="undoRemoveMissed">Undo<\/button>/);
+  run('undoRemoveMissed()');
+  await settle();
+  assert.equal(saved()[0].symbol, 'NVDA', 'back');
+});
+
+test('before the missed trades column is pushed the section says so, and the rest of the notebook works', async () => {
+  const { supabase, ...rest } = await (async () => {
+    const supabase = fakeRecords(RECORDS, []);
+    supabase.tables.journal_days.set('user-1:2026-10-06', { user_id: 'user-1', day: '2026-10-06', grade: 'B' });
+    supabase.failColumn('journal_days', 'missed');
+    const a = await app({ supabase, session: SESSION, clock: true, now: Date.parse('2026-10-06T21:00:00Z') });
+    a.run("setView('journal')");
+    await a.run('loadJournal()');
+    await settle();
+    return { supabase, ...a };
+  })();
+  const { run, state, elements } = rest;
+  const out = () => elements.get('journalSection').innerHTML;
+  assert.match(state.journalReview.missedError, /npx supabase db push/);
+  assert.equal(state.journalReview.notebookError, '');
+  assert.equal(state.journalReview.days['2026-10-06'].grade, 'B', 'the notebook still reads');
+  run("openJournalDay('2026-10-06')");
+  assert.match(out(), /Missed trades need a database update/);
+  assert.match(out(), /id="nbMissedNew"[^>]*disabled/);
+  assert.doesNotMatch(out(), /data-action="setDayGrade" data-arg="A" disabled/, 'the rest of the page works');
+  run("missedInput('NVDA'); addMissedTrade()");
+  await settle();
+  assert.equal(supabase.writes.filter(w => w.table === 'journal_days').length, 0, 'nothing written');
+});

@@ -19,10 +19,11 @@ A notebook for each trading day: write a plan before the open, then a short revi
 - **The day page** replaces the calendar inside the Calendar tab: ← Calendar goes back, ‹ › step one weekday. Tapping the Calendar tab goes back too.
 - **Today's line** under the Journal's status opens today's page (Monday's on a weekend): "Today: write your plan" until it's written, then "Review the day" after 4pm New York, then "Day reviewed".
 - **Calendar marks:** ✎ plan written, ✓ day reviewed, and an amber dot once a day with trades is over and isn't reviewed.
+- **Missed trades on the calendar:** ⊘ and how many you logged that day (⊘2), on any weekday.
 
 ## The page
 
-Three sections, always in this order.
+Four sections, always in this order.
 
 ### Premarket
 
@@ -41,6 +42,25 @@ Three sections, always in this order.
 ### The day
 
 Worked out from the trades, nothing to type: the day's realized P&L, trades with an exit, win rate, trades opened, and each trade that opened or had an exit that day (its P&L that day, R, reviewed or not), each opening its trade page. Links: The day's trades (the Trades list narrowed to the day) and The day's stats. No filters apply: it's the whole day.
+
+### Missed trades
+
+The trades you saw and didn't take, logged any time of the day.
+Type the ticker and + Add (or Enter); it opens to fill in the rest, all optional:
+
+| Part | What |
+|---|---|
+| Side | Long, Short |
+| Why you missed it | Hesitated, Didn't see it, Away, Too late, Didn't trust it, At my limit |
+| Setup | One of My setups (most used first), named in the side's words |
+| Would have made | R, to a tenth (up to ±100) |
+| Note | One line, up to 500 characters |
+
+Closed, each is one line: the ticker, side, setup and why, its note, and the R.
+The header counts them and adds up the R not taken ('2 missed · +3.5R not taken').
+Remove takes one out at once, with Undo on the toast.
+Up to 20 a day.
+They never count in P&L, stats, the plan or the review.
 
 ### Post-market
 
@@ -75,7 +95,12 @@ Migration `20261031000000_day_notebook.sql`:
 
 The new columns are read on their own query, so before the push the rest of the review works and the notebook says it needs `npx supabase db push`.
 
-**Saving:** like the trade and week reviews. Each choice upserts only its own columns on (user, day), shown at once, put back with a toast if Supabase refuses. Text is a draft while you type and saves when the box loses focus. `planned_at` and `reviewed_at` go with the save that flips them.
+Migration `20261104000000_missed_trades.sql`:
+
+- `journal_days` gains `missed` (jsonb array of `{ id, symbol, side, setup, why, r, note }`, cleanMissed on the way in).
+- Read on its own query too (MISSED_COLUMNS), so before that push the notebook works and only the Missed trades section says it needs `npx supabase db push`.
+
+**Saving:** like the trade and week reviews. The missed trades save as one list, like any other field. Each choice upserts only its own columns on (user, day), shown at once, put back with a toast if Supabase refuses. Text is a draft while you type and saves when the box loses focus. `planned_at` and `reviewed_at` go with the save that flips them.
 
 ## Slices
 
