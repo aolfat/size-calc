@@ -73,6 +73,12 @@
 .trade-limit { display:flex; align-items:center; gap:8px; margin-top:8px; }
 .trade-limit label { font-size:12px; color:var(--text2); font-family:var(--sans); }
 .trade-limit .prefix-wrap { width:130px; }
+.seg.entry-types button { white-space:nowrap; }
+/* four entry types share a phone's row evenly instead of running off the sheet */
+@media (max-width: 600px) {
+  .seg.entry-types { width:100%; }
+  .seg.entry-types button { flex:1 1 0; padding:6px 4px; }
+}
 .seg button:disabled { opacity:0.45; cursor:default; }
 .trade-legs .shares-detail { font-family:inherit; }
 .trade-warn { color:var(--amber); background:var(--amber-bg); border:1px solid #594016; border-radius:var(--radius); padding:8px 10px; font-size:12.5px; line-height:1.45; margin:8px 0; }

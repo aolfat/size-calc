@@ -47,7 +47,7 @@ const account = (positions = POSITIONS) => ({ currentBalances: { liquidationValu
 const rowWith = (symbol, orders = ORDERS) => `positionRows(${JSON.stringify(account())}, ${JSON.stringify(orders)}).rows.find(r => r.symbol === '${symbol}')`;
 
 // a fake Schwab account that changes as orders arrive, so the re-read after sending tells the truth.
-// Cancelling one leg of a pair cancels both, and a second cancel is refused, as Schwab does.
+// Cancelling one leg of a pair cancels both, cancelling an entry cancels what waits on it, and a second cancel is refused, as Schwab does.
 function broker({ refuse = () => null, lag = false } = {}) {
   const live = { positions: plain(POSITIONS), orders: plain(ORDERS), nextId: 900 };
   const sent = [];
@@ -74,7 +74,8 @@ function broker({ refuse = () => null, lag = false } = {}) {
       const o = all().find(x => x.orderId === id);
       if (o.status !== 'WORKING') return json({ message: 'Order cannot be canceled.' }, 400);
       const parent = parentOf(o);
-      (parent && parent.orderStrategyType === 'OCO' ? parent.childOrderStrategies : [o]).forEach(x => { x.status = 'CANCELED'; });
+      // a pair goes together; an entry takes the orders waiting on it
+      (parent && parent.orderStrategyType === 'OCO' ? parent.childOrderStrategies : [o, ...(o.orderStrategyType === 'TRIGGER' ? o.childOrderStrategies : [])]).forEach(x => { x.status = 'CANCELED'; });
       return new Response(null, { status: 200 });
     }
     const orderId = live.nextId++;
@@ -1240,10 +1241,77 @@ test('an edit is refused when it would fire at once, holds more than you have, o
   assert.equal(editFor(800, { qty: 1000 }, entry).editError, '', 'an entry has no position to hold it to');
 });
 
+test('a limit entry with its stop waiting is cancelled and placed again with the change and the same stop', async () => {
+  ({ run: run_ } = await app());
+  const plan = editFor(600, { price: 111.004 }, [ENTRY]);
+  assert.deepEqual([plan.error, plan.editError, plan.child.orderId, plan.risk, plan.riskWas], ['', '', 601, 140, 120], '20 × (111 − 104), from 20 × (110 − 104)');
+  const order = (orderType, instruction, px, qty, duration) => ({ orderType, session: 'NORMAL', duration, orderStrategyType: 'SINGLE', ...(orderType === 'LIMIT' ? { price: px } : { stopPrice: px }),
+    orderLegCollection: [{ instruction, quantity: qty, instrument: { symbol: 'NVDA', assetType: 'EQUITY' } }] });
+  assert.deepEqual(plan.steps, [{ kind: 'cancel', orderId: 600 }, { kind: 'place', order: { ...order('LIMIT', 'BUY', 111, 20, 'DAY'), orderStrategyType: 'TRIGGER',
+    childOrderStrategies: [order('STOP', 'SELL', 104, 20, 'GOOD_TILL_CANCEL')] } }]);
+  const more = editFor(600, { qty: 30 }, [ENTRY]);
+  assert.deepEqual(more.steps[1].order.childOrderStrategies[0].orderLegCollection[0].quantity, 30, 'a new size goes for the stop too');
+  assert.match(editFor(600, { price: 104 }, [ENTRY]).editError, /The limit \$104\.00 is at or below its stop \$104\.00\. Buy above the stop\./);
+  assert.match(editFor(600, {}, [ENTRY]).editError, /Nothing changed yet/);
+  const short = { ...single(620, 'LIMIT', 'NVDA', 'SELL_SHORT', 10, 120, { duration: 'DAY' }), orderStrategyType: 'TRIGGER',
+    childOrderStrategies: [single(621, 'STOP', 'NVDA', 'BUY_TO_COVER', 10, 126, { status: 'AWAITING_PARENT_ORDER' })] };
+  assert.match(editFor(620, { price: 127 }, [short]).editError, /The limit \$127\.00 is at or above its stop \$126\.00\. Sell below the stop\./);
+  assert.equal(editFor(620, { price: 119 }, [short]).risk, 70);
+});
+
+test('moving a limit entry that is not filling: the entry and its stop go again, confirmed in Schwab', async () => {
+  const b = broker();
+  b.live.orders.push(plain(ENTRY));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  assert.match(elements.get('positionsSection').innerHTML, /data-action="openOrderEdit" data-arg="600"/);
+  await run('openOrderEdit(600)');
+  const body = () => elements.get('editBody').innerHTML;
+  const detail = () => elements.get('editDetail').innerHTML;
+  assert.match(body(), /Once it fills, the sell stop \$104\.00 for the same shares goes in/);
+  assert.match(body(), /id="editPrice"[^>]*value="110.00"/);
+  assert.doesNotMatch(body(), /id="editStop"/, 'the entry is a limit; its stop stays as it is');
+  run("setEditPrice('111')");
+  assert.match(detail(), /Risk at stop[\s\S]*\$140\.00[\s\S]*If 20 shares fill at the limit \$111\.00/);
+  assert.match(detail(), /Cancel buy limit \$110\.00 for 20 shares NVDA, and with it the sell stop \$104\.00 waiting on it/);
+  assert.match(detail(), /Place buy limit \$111\.00 for 20 shares, then sell stop \$104\.00 once it fills/);
+  assert.match(detail(), /A replace would drop the sell stop \$104\.00 waiting on it/);
+  assert.match(detail(), /At the limit \$111\.00, risk at the stop is \$140\.00, up from \$120\.00 at \$110\.00\./, 'chasing it costs risk, said out loud');
+  run("setEditPrice('110.5')");
+  assert.doesNotMatch(detail(), /risk at the stop is/, 'within 10% of what it risked');
+  run("setEditPrice('1100')");
+  assert.match(detail(), /At the limit \$1100\.00, risk at the stop is \$19,920\.00, up from \$120\.00 at \$110\.00\./, 'a fat finger shows');
+  run("setEditPrice('111')");
+  await run('sendOrderEdit()');
+  assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/600', 'POST /orders']);
+  assert.deepEqual([b.sent[1].body.orderStrategyType, b.sent[1].body.price, b.sent[1].body.childOrderStrategies[0].stopPrice], ['TRIGGER', 111, 104]);
+  assert.match(body(), /trade-result ok[\s\S]*Schwab now shows the buy limit \$111\.00 for 20 shares, then its sell stop \$104\.00\./);
+});
+
+test('a limit entry that fills before it moves stays filled, and nothing is placed again', async () => {
+  const b = broker({ refuse: (c, live) => {
+    if (c.method !== 'DELETE') return null;
+    live.orders.find(o => o.orderId === 600).status = 'FILLED';
+    return json({ message: 'Order cannot be canceled.' }, 400);
+  } });
+  b.live.orders.push(plain(ENTRY));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderEdit(600)');
+  run("setEditPrice('111')");
+  await run('sendOrderEdit()');
+  assert.deepEqual(b.sent.map(c => c.method), ['DELETE']);
+  assert.match(elements.get('editBody').innerHTML, /Schwab filled the buy limit \$110\.00 before it could be changed\. Nothing more was sent\./);
+});
+
 test('orders the edit can\'t rebuild are left to Schwab', async () => {
   ({ run: run_ } = await app());
   assert.match(editFor(601, { stop: 105 }, [ENTRY]).error, /This waits on its buy order\. Change it in Schwab/);
-  assert.match(editFor(600, { price: 111 }, [ENTRY]).error, /Its sell stop \$104\.00 waits on it, and a change from here would drop it\. Change it in Schwab\./);
+  const bracket = { ...single(610, 'LIMIT', 'NVDA', 'BUY', 20, 110, { duration: 'DAY' }), orderStrategyType: 'TRIGGER', childOrderStrategies: [{ orderId: 611, status: 'AWAITING_PARENT_ORDER', orderStrategyType: 'OCO',
+    childOrderStrategies: [single(612, 'LIMIT', 'NVDA', 'SELL', 20, 125, { status: 'AWAITING_PARENT_ORDER' }), single(613, 'STOP', 'NVDA', 'SELL', 20, 104, { status: 'AWAITING_PARENT_ORDER' })] }] };
+  assert.match(editFor(610, { price: 111 }, [bracket]).error, /Its sell limit \$125\.00 waits on it, and a change from here would drop it\. Change it in Schwab\./, 'an entry with a target and a stop stays with Schwab');
+  const part = { ...ENTRY, filledQuantity: 5 };
+  assert.match(editFor(600, { price: 111 }, [part]).error, /5 of 20 already filled, and its stop waits on the rest\. Change it in Schwab\./);
   assert.match(editFor(999, {}).error, /no longer shows this order as working/);
   const trailing = [single(702, 'TRAILING_STOP', 'AMD', 'SELL', 50, 0, { stopPriceOffset: 2 })];
   assert.match(editFor(702, {}, trailing).error, /A trailing stop can't be changed from here\. Change it in Schwab\./);

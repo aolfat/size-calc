@@ -182,7 +182,9 @@ export const editable = w => w.legs === 1 && ['STOP', 'LIMIT', 'STOP_LIMIT'].inc
  * Change one working order: its stop, its limit, its size or how long it lasts. A plain order is replaced (Schwab cancels it and
  * places the new one together). A half of a one-cancels-other pair can't be replaced alone, so the pair is cancelled and placed
  * again with the change (the sender places it only once Schwab shows both halves cancelled, never over a fill); both halves keep
- * the same size and duration. Prices snap to the tick: cents (four decimals under $1), options on the $0.05 / $0.10 grid.
+ * the same size and duration. A limit entry with its stop waiting on it (the app's limit trade) goes the same way: a replace would
+ * drop the stop, so the entry is cancelled, taking the stop with it, and placed again with the change and the same stop; only
+ * while nothing of it has filled. risk: what the size loses at that stop if it fills at the limit; riskWas: the same for the entry as it is. Prices snap to the tick: cents (four decimals under $1), options on the $0.05 / $0.10 grid.
  * error = the order can't be changed from here; editError = this change can't go (through the price, too many, nothing changed).
  * rows: the account's positions, to hold a closing order to what you hold and check it against the price.
  * @param {Order[]} orders @param {number | string} orderId @param {{ stop?: number | null, price?: number | null, qty?: number, duration?: string }} edit @param {Row[]} [rows]
@@ -190,13 +192,18 @@ export const editable = w => w.legs === 1 && ['STOP', 'LIMIT', 'STOP_LIMIT'].inc
 export function editPlan(orders, orderId, edit, rows = []) {
   const list = workingOrders(orders);
   const order = list.find(o => o.orderId !== null && String(o.orderId) === String(orderId)) || null;
-  const result = { error: '', editError: '', order, partner: /** @type {Working | null} */ (null), stop: /** @type {number | null} */ (null), price: /** @type {number | null} */ (null),
-    qty: 0, duration: '', fills: false, steps: /** @type {Step[]} */ ([]) };
+  const result = { error: '', editError: '', order, partner: /** @type {Working | null} */ (null), child: /** @type {Working | null} */ (null),
+    stop: /** @type {number | null} */ (null), price: /** @type {number | null} */ (null), qty: 0, duration: '', fills: false, risk: 0, riskWas: 0, steps: /** @type {Step[]} */ ([]) };
   const fail = (/** @type {string} */ error) => ({ ...result, error });
   if (!order) return fail('Schwab no longer shows this order as working.');
   if (order.status === 'AWAITING_PARENT_ORDER') return fail(`This waits on its ${INSTRUCTION_WORDS[order.parent] || 'entry'} order. Change it in Schwab.`);
-  const child = list.find(o => o.parentId !== null && o.parentId === order.orderId);
-  if (child) return fail(`Its ${workingWords(child)} waits on it, and a change from here would drop it. Change it in Schwab.`);
+  const children = list.filter(o => o.parentId !== null && o.parentId === order.orderId);
+  const child = children[0];
+  // a limit entry and the one stop waiting on it can go again together; anything else waiting on an order stays with Schwab
+  const entry = children.length === 1 && order.legs === 1 && order.orderType === 'LIMIT' && order.oco === null && child.legs === 1 && child.orderType === 'STOP'
+    && child.stop !== null && child.symbol === order.symbol;
+  if (child && !entry) return fail(`Its ${workingWords(child)} waits on it, and a change from here would drop it. Change it in Schwab.`);
+  if (entry && order.filled > 0) return fail(`${order.filled.toLocaleString('en-US')} of ${order.qty.toLocaleString('en-US')} already filled, and its stop waits on the rest. Change it in Schwab.`);
   if (!editable(order)) return fail(order.legs > 1 ? 'A multi-leg order can\'t be changed from here. Change it in Schwab.' : `A ${orderTypeWord(order.orderType)} can't be changed from here. Change it in Schwab.`);
   const partner = order.oco !== null ? list.find(o => o.oco === order.oco && o !== order) || null : null;
   if (partner && !editable(partner)) return fail(`It's paired with a ${orderTypeWord(partner.orderType)}, which can't be placed again from here. Change it in Schwab.`);
@@ -211,6 +218,16 @@ export function editPlan(orders, orderId, edit, rows = []) {
   if (stop !== null && !(stop > 0)) return bad('Set a stop price.');
   if (price !== null && !(price > 0)) return bad('Set a limit price.');
   if (!Number.isInteger(qty) || qty < 1) return bad(`Pick how many ${unit}.`);
+  if (entry && price !== null) {
+    const stopAt = /** @type {number} */ (child.stop), long = /^BUY/.test(order.instruction);
+    const next = /** @type {object} */ (singleOrder({ ...order, assetType, stop, price, qty, filled: 0, duration }));
+    const then = /** @type {object} */ (singleOrder({ ...child, assetType, qty, filled: 0 }));
+    const mult = option ? 100 : 1;
+    Object.assign(result, { child, risk: qty * Math.abs(price - stopAt) * mult, riskWas: open * Math.abs(Number(order.price) - stopAt) * mult });
+    if (long ? price <= stopAt : price >= stopAt) return bad(`The limit ${px(price)} is at or ${long ? 'below' : 'above'} its stop ${px(stopAt)}. ${long ? 'Buy above' : 'Sell below'} the stop.`);
+    if (price === order.price && qty === open && duration === order.duration) return bad('Nothing changed yet: change the price, the size or how long it lasts.');
+    return { ...result, steps: [{ kind: 'cancel', orderId: order.orderId }, { kind: 'place', order: { ...next, orderStrategyType: 'TRIGGER', childOrderStrategies: [then] } }] };
+  }
   const closes = CLOSES[order.instruction];
   const row = closes ? rows.find(r => r.symbol === order.symbol && (r.qty > 0 ? 'long' : 'short') === closes) : undefined;
   if (row) {

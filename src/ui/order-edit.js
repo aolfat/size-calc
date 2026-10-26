@@ -1,8 +1,9 @@
 // Order edit: change one working order from the Positions list (its stop, limit, size or how long it lasts), reviewed in a sheet
 // and sent once, after a re-read shows the same plan. A plain order is replaced; a half of a target-and-stop pair can't be, so
 // the pair is cancelled and placed again with the change, only once Schwab shows both halves cancelled, never filled.
+// A limit entry with its stop waiting on it goes the same way: cancelled, then placed again with the same stop.
 import { state } from '../state.js';
-import { marketEscape as esc } from '../core/format.js';
+import { fmt$, marketEscape as esc } from '../core/format.js';
 import { editPlan, fmtPositionPrice, schwabTime, workingOrders, workingWords } from '../core/positions.js';
 import { schwabAccount, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
@@ -26,8 +27,8 @@ const changed = t => ({ ...t.order, stop: t.stop, price: t.price, qty: t.qty, fi
 export function buildEditTicket(orderId, edit = {}, now = Date.now()) {
   const p = state.positions;
   // hash: the account the orders were read from, and the only one its steps go to
-  const t = { orderId, hash: (p && p.hash) || '', edit: { ...edit }, error: '', editError: '', notice: '', order: null, partner: null, stop: null, price: null, qty: 0, duration: '',
-    fills: false, steps: [], warnings: [], sent: false, checking: false, failure: '', done: '', confirmed: false, before: [] };
+  const t = { orderId, hash: (p && p.hash) || '', edit: { ...edit }, error: '', editError: '', notice: '', order: null, partner: null, child: null, stop: null, price: null, qty: 0, duration: '',
+    fills: false, risk: 0, riskWas: 0, steps: [], warnings: [], sent: false, checking: false, failure: '', done: '', confirmed: false, before: [] };
   if (!p) { t.error = 'Could not read your orders from Schwab. ' + state.positionsError; return t; }
   if (p.stopsMissing) { t.error = 'Schwab did not return the orders on this account. Try again in a moment.'; return t; }
   Object.assign(t, editPlan(p.orders, orderId, edit, p.rows));
@@ -49,6 +50,8 @@ function buildWarnings(t) {
   if (row) out.push(`The limit ${px(o, t.price)} is at or ${row.qty > 0 ? 'below' : 'above'} the price ${px(o, row.price)}, so it likely fills right away.`);
   if (o.filled > 0) out.push(`${o.filled.toLocaleString('en-US')} of ${o.qty.toLocaleString('en-US')} already filled and stay filled; the changed order is for ${units(o, t.qty)}.`);
   if (t.partner && [o, t.partner].some(isStopType)) out.push(`Until the pair is placed again, ${units(o, t.qty)} ${t.qty === 1 ? 'has' : 'have'} no stop for a moment.`);
+  // a limit typed far from the old one (a fat finger) shows as risk well over what the entry risked
+  if (t.child && t.risk > t.riskWas * 1.1 + 0.01) out.push(`At the limit ${px(o, t.price)}, risk at the stop is ${fmt$(t.risk)}, up from ${fmt$(t.riskWas)} at ${px(o, o.price)}.`);
   return out;
 }
 
@@ -95,7 +98,7 @@ async function replaceStep(t, step) {
 }
 
 /** the same order and the same steps to the same account: a change at Schwab to the order being edited counts too */
-const sameEdit = (a, b) => sendsSame(a, b) && JSON.stringify([a.order, a.partner]) === JSON.stringify([b.order, b.partner]);
+const sameEdit = (a, b) => sendsSame(a, b) && JSON.stringify([a.order, a.partner, a.child]) === JSON.stringify([b.order, b.partner, b.child]);
 
 export async function sendOrderEdit() {
   const t = state.editTicket;
@@ -125,8 +128,8 @@ export async function sendOrderEdit() {
         if (step.kind === 'replace') await replaceStep(t, step);
         else if (step.kind === 'cancel') await cancelWorking(t.order, t.hash, step, 'changed');
         else {
-          // the pair goes back in only over two cancelled halves, nothing more filled
-          for (const half of [t.order, t.partner]) await shownCancelled(half, t.hash, 'the changed pair was not placed');
+          // the pair goes back in only over two cancelled halves, an entry only over a cancelled entry, nothing more filled
+          for (const half of [t.order, t.partner].filter(Boolean)) await shownCancelled(half, t.hash, t.child ? 'the changed entry was not placed' : 'the changed pair was not placed');
           step.newId = (await schwabPlaceOrder(step.order, t.hash)).orderId;
         }
         step.status = 'done';
@@ -164,8 +167,11 @@ function outcome(t) {
   if (statusOf(p.orders, o.orderId) === 'FILLED') return { done: `Schwab shows the ${workingWords(o)} filled.`, confirmed: false };
   const next = changed(t), mine = like(t, next)(now);
   const other = t.partner ? like(t, { ...t.partner, duration: t.duration })(now) : null;
+  // an entry's stop waits on the new entry: same stop, same size
+  const then = t.child && mine ? now.find(n => n.parentId !== null && String(n.parentId) === String(mine.orderId) && n.instruction === t.child.instruction && n.stop === t.child.stop && open(n) === t.qty) : null;
+  if (mine && t.child && !then) return { done: `Schwab shows the ${workingWords(next)} for ${units(o, t.qty)}, but not its stop. Check Schwab before it fills.`, confirmed: false };
   if (mine && (!t.partner || (other && mine.oco !== null && mine.oco === other.oco))) {
-    const pair = t.partner ? `, paired with the ${workingWords(t.partner)}` : '';
+    const pair = t.partner ? `, paired with the ${workingWords(t.partner)}` : t.child ? `, then its ${workingWords(t.child)}` : '';
     return { done: `Schwab now shows the ${workingWords(next)} for ${units(o, t.qty)}${pair}.`, confirmed: true };
   }
   if (t.failure) return { done: '', confirmed: false };
@@ -180,7 +186,8 @@ const asWorking = c => ({ legs: 1, instruction: c.orderLegCollection[0].instruct
 function stepText(t, step) {
   const o = t.order, next = changed(t);
   if (step.kind === 'replace') return `Replace ${workingWords(o)} for ${units(o, open(o))} ${o.label} with ${workingWords(next)} for ${units(o, t.qty)}, ${lasts(t.duration)}`;
-  if (step.kind === 'cancel') return `Cancel ${workingWords(o)} for ${units(o, open(o))} ${o.label}, and with it the paired ${workingWords(t.partner)}${step.note ? ` (${step.note})` : ''}`;
+  if (step.kind === 'cancel') return `Cancel ${workingWords(o)} for ${units(o, open(o))} ${o.label}, and with it the ${t.child ? workingWords(t.child) + ' waiting on it' : 'paired ' + workingWords(t.partner)}${step.note ? ` (${step.note})` : ''}`;
+  if (step.order.orderStrategyType === 'TRIGGER') return `Place ${workingWords(asWorking(step.order))} for ${units(o, t.qty)}, then ${workingWords(asWorking(step.order.childOrderStrategies[0]))} once it fills`;
   const [a, b] = step.order.childOrderStrategies.map(asWorking);
   return `Place ${workingWords(a)} paired with ${workingWords(b)} for ${units(o, t.qty)} (one cancels the other)`;
 }
@@ -216,10 +223,12 @@ export function renderEditSheet(form = true) {
   const orders = t.steps.map(s => s.kind === 'cancel' ? { cancel: s.orderId } : s.kind === 'replace' ? { replace: s.orderId, with: s.order } : { place: s.order });
   const settled = t.sent && !state.posTradeBusy;
   const hint = q ? `Schwab won't change one half of a pair on its own, so the pair is cancelled and placed again with your change, once Schwab shows both halves cancelled. The ${workingWords(q)} stays as it is.`
+    : t.child ? `A replace would drop the ${workingWords(t.child)} waiting on it, so the entry is cancelled and placed again with your change and the same stop, once Schwab shows it cancelled with nothing filled.`
     : 'Schwab swaps the order for the changed one: it cancels this one and places the new one together.';
   const detail = `
     ${t.notice ? `<p class="trade-warn" role="alert">${esc(t.notice)}</p>` : ''}
     <dl class="trade-legs">
+      ${t.child && t.risk > 0 ? `<div><dt>Risk at stop</dt><dd><span class="shares-loss">${fmt$(t.risk)}</span><span class="shares-detail">If ${units(o, t.qty)} fill at the limit ${px(o, t.price)}</span></dd></div>` : ''}
       <div><dt>${t.sent ? 'Sent' : 'Will send'}</dt><dd>${t.editError ? `<span class="shares-detail">${esc(t.editError)}</span>` : `<ol class="pos-steps">${steps}</ol>`}</dd></div>
     </dl>
     ${t.warnings.map(w => `<p class="trade-warn">${esc(w)}</p>`).join('')}
@@ -238,6 +247,7 @@ export function renderEditSheet(form = true) {
   body.innerHTML = `
     <dl class="trade-legs">
       <div><dt>Order</dt><dd><strong>${esc(cap(workingWords(o)))} · ${esc(units(o, open(o)))} ${esc(o.label)}</strong><span class="shares-detail">${esc(meta)}</span></dd></div>
+      ${t.child ? `<div><dt>Then</dt><dd><span class="shares-detail">Once it fills, the ${esc(workingWords(t.child))} for the same ${o.assetType === 'OPTION' ? 'contracts' : 'shares'} goes in. It's placed again with the entry, so a new size goes for both.</span></dd></div>` : ''}
       ${q ? `<div><dt>Its pair</dt><dd><span class="shares-detail">It's paired with the ${esc(workingWords(q))} for ${esc(units(q, open(q)))}. Schwab cancels the two together, so a change places both again: the size and how long it lasts go for both.</span></dd></div>` : ''}
       ${editForm(t)}
     </dl>

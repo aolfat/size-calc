@@ -48,7 +48,7 @@ import { setAtrMultiplier, setDirection, setStopPercent, setStopStrategy, stopsC
 import { loadTicker, refreshQuote, submitTicker, tickerInputChanged } from './ticker.js';
 import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.js';
 import { setOrb } from './orb.js';
-import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeStopDuration } from './trade.js';
+import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
 import { setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
@@ -275,6 +275,7 @@ export const actions = {
   setTradeStopDuration: el => setTradeStopDuration(arg(el)),
   setTradeEntryType: el => setTradeEntryType(arg(el)),
   setTradeEntryLimit: el => setTradeEntryLimit(el.value),
+  setTradeLimit: el => setTradeLimit(el.value),
   setOrb: el => setOrb(num(el)),
   placeTrade: () => placeTrade(),
   checkTradeStatus: () => checkTradeStatus(),
