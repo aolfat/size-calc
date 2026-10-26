@@ -19,10 +19,11 @@ A notebook for each trading day: write a plan before the open, then a short revi
 - **The day page** replaces the calendar inside the Calendar tab: ← Calendar goes back, ‹ › step one weekday. Tapping the Calendar tab goes back too.
 - **Today's line** under the Journal's status opens today's page (Monday's on a weekend): "Today: write your plan" until it's written, then "Review the day" after 4pm New York, then "Day reviewed".
 - **Calendar marks:** ✎ plan written, ✓ day reviewed, and an amber dot once a day with trades is over and isn't reviewed.
+- **Missed trades on the calendar:** ⊘ and how many you logged that day (⊘2), on any weekday.
 
 ## The page
 
-Three sections, always in this order.
+Four sections, always in this order.
 
 ### Premarket
 
@@ -41,6 +42,32 @@ Three sections, always in this order.
 ### The day
 
 Worked out from the trades, nothing to type: the day's realized P&L, trades with an exit, win rate, trades opened, and each trade that opened or had an exit that day (its P&L that day, R, reviewed or not), each opening its trade page. Links: The day's trades (the Trades list narrowed to the day) and The day's stats. No filters apply: it's the whole day.
+
+### Missed trades
+
+The trades you saw and didn't take, logged any time of the day.
+Type the ticker and + Add (or Enter); it opens with its charts, and the rest is optional:
+
+| Part | What |
+|---|---|
+| Charts | The ticker's 5 minutes that day (regular hours, 8 EMA and VWAP) and its daily (8 EMA, framed 40 sessions before the day through 10 after, the day marked 'missed'), like the trade page's |
+| Side | Long, Short |
+| Daily setup | One of My setups (most used first), named in the side's words |
+| Entry tactic | The review's entry tactics (6/20, 15-minute pivot, 30-minute pivot and yours) |
+| Why you missed it | Hesitated, Didn't see it, Away, Too late, Didn't trust it, At my limit |
+| Note | One line, up to 500 characters |
+| Screenshots | Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most |
+
+Closed, each is one line: the ticker, side, setup, tactic and why, its note, and how many screenshots it has.
+The header counts them ('2 missed').
+
+**Where the charts' bars come from:** the 5 minutes are the journal's kept bars when it has them (a trade of yours in that ticker that day), else Tradier's, read when you open it and never saved, so a day older than about 40 days has no 5-minute chart.
+The daily is Tradier's last year.
+Both need a Tradier key; without one each says so.
+One missed trade is open at a time, so there's one set of charts; filling it in keeps them on the view you left.
+Remove takes one out at once, with Undo on the toast; its screenshots are deleted once Undo can't bring it back (10 seconds).
+Up to 20 a day.
+They never count in P&L, stats, the plan or the review.
 
 ### Post-market
 
@@ -75,7 +102,13 @@ Migration `20261031000000_day_notebook.sql`:
 
 The new columns are read on their own query, so before the push the rest of the review works and the notebook says it needs `npx supabase db push`.
 
-**Saving:** like the trade and week reviews. Each choice upserts only its own columns on (user, day), shown at once, put back with a toast if Supabase refuses. Text is a draft while you type and saves when the box loses focus. `planned_at` and `reviewed_at` go with the save that flips them.
+Migration `20261104000000_missed_trades.sql`:
+
+- `journal_days` gains `missed` (jsonb array of `{ id, symbol, side, setup, tactic, why, note }`, cleanMissed on the way in).
+- Screenshots need no new table: they're `trade_shots` rows like a trade's, `trade_key` = `missed:<its id>`, the files in the same private bucket.
+- Read on its own query too (MISSED_COLUMNS), so before that push the notebook works and only the Missed trades section says it needs `npx supabase db push`.
+
+**Saving:** like the trade and week reviews. The missed trades save as one list, like any other field. Each choice upserts only its own columns on (user, day), shown at once, put back with a toast if Supabase refuses. Text is a draft while you type and saves when the box loses focus. `planned_at` and `reviewed_at` go with the save that flips them.
 
 ## Slices
 

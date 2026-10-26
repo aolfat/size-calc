@@ -1,6 +1,8 @@
 // Trade screenshots (step 3; docs/journal-step-3.md): the Screenshots row in the Review section (thumbnails, Add
 // screenshot, paste anywhere on the trade page, drop onto it), the viewer (#shotViewer: full size, caption, delete), and
 // the shrinking goes through effects.prepareImage (ui/image-prep.js). services/journal-shots.js keeps them.
+// A missed trade on the day's notebook page has them too (docs/journal-notebook.md): the same rows, keyed missed:<its id>,
+// pasted or dropped anywhere on the page while it's open.
 import { marketEscape as esc } from '../core/format.js';
 import { deleteShot, loadShots, MAX_SHOT_BYTES, MAX_SHOTS, saveShotCaption, signShots, uploadShot } from '../services/journal-shots.js';
 import { state } from '../state.js';
@@ -29,6 +31,14 @@ export async function loadJournalShots() {
 }
 
 const shotsOf = t => (state.journalShots || []).filter(s => s.trade_key === t.key);
+
+/** a missed trade's screenshots are keyed by it, beside the trades' */
+export const missedShotKey = id => `missed:${id}`;
+/** the missed trade open on the notebook page, as something to keep screenshots on */
+const missedTarget = () => state.journalView && !state.journalTrade && state.journalNotebookDay && state.missedOpen
+  ? { key: missedShotKey(state.missedOpen), status: 'missed' } : null;
+/** how many screenshots a missed trade has */
+export const missedShotCount = id => shotsOf({ key: missedShotKey(id) }).length;
 
 /** signed links for the trade's screenshots that don't have one yet (they last an hour; a reload signs again) */
 async function sign(t) {
@@ -92,10 +102,26 @@ export async function pasteTradeShot(t) {
 /** Add screenshot: the hidden file picker (the photo library on a phone) */
 export function pickTradeShots() { document.getElementById('tradeShotInput')?.click?.(); }
 
+/** the open missed trade's Paste, + Add screenshot and its picker */
+export function pasteMissedShot() { const t = missedTarget(); if (t) return pasteTradeShot(t); }
+export function pickMissedShots() { document.getElementById('missedShotInput')?.click?.(); }
+export function addMissedShots(files) { const t = missedTarget(); if (t) return addTradeShots(t, files); }
+
+/** a removed missed trade's screenshots, files and rows (once Undo can't bring it back); a failure leaves them be */
+export async function deleteMissedShots(id) {
+  for (const s of shotsOf({ key: missedShotKey(id) })) {
+    try {
+      await deleteShot(s);
+      state.journalShots = (state.journalShots || []).filter(x => x.id !== s.id);
+      delete state.journalShotUrls[s.path];
+    } catch(e) { /* kept: nothing shows it, and it's still yours */ }
+  }
+}
+
 // ---------- the row ----------
 
-export function shotsRowHtml(t) {
-  if (t.status === 'history') return '';
+/** the row's label, thumbnails and busy note, or why there are none */
+function shotsRow(t, buttons) {
   if (state.journalShotsError) return `<div class="jr-row"><div class="jr-label">Screenshots</div><p class="hint" style="color:var(--amber)">Screenshots unavailable: ${esc(state.journalShotsError)}</p></div>`;
   const shots = shotsOf(t);
   if (shots.some(s => !state.journalShotUrls[s.path])) queueMicrotask(() => sign(t));
@@ -104,13 +130,25 @@ export function shotsRowHtml(t) {
     return `<button class="jr-shot" data-action="openShot" data-arg="${esc(s.id)}" aria-label="Open screenshot${s.caption ? `: ${esc(s.caption)}` : ''}">${url ? `<img src="${esc(url)}" alt="${esc(s.caption || 'Screenshot')}" loading="lazy" />` : '<span class="jr-shot-wait">…</span>'}</button>`;
   }).join('');
   const busy = state.shotsBusy ? `<span class="jr-shot-busy">Keeping ${state.shotsBusy}…</span>` : '';
-  const full = shots.length >= MAX_SHOTS;
+  const full = shots.length >= MAX_SHOTS ? ' disabled title="Ten a trade at most"' : '';
   return `<div class="jr-row"><div class="jr-label">Screenshots<span class="jr-sub">${touchOnly() ? 'copy a screenshot, then tap Paste' : `or press ${pasteKey()} on this page, or drop one here`}</span></div>
     <div class="chip-row jr-chips jr-shots">${thumbs}${busy}
-      <button class="btn" data-action="pasteTradeShot"${full ? ' disabled title="Ten a trade at most"' : ''}>Paste from clipboard</button>
-      <button class="btn" data-action="pickTradeShots"${full ? ' disabled title="Ten a trade at most"' : ''}>+ Add screenshot</button>
-      <input type="file" id="tradeShotInput" accept="image/*" multiple hidden data-change="addTradeShotsFromInput" />
+      ${buttons(full)}
     </div></div>`;
+}
+
+export function shotsRowHtml(t) {
+  if (t.status === 'history') return '';
+  return shotsRow(t, full => `<button class="btn" data-action="pasteTradeShot"${full}>Paste from clipboard</button>
+      <button class="btn" data-action="pickTradeShots"${full}>+ Add screenshot</button>
+      <input type="file" id="tradeShotInput" accept="image/*" multiple hidden data-change="addTradeShotsFromInput" />`);
+}
+
+/** the open missed trade's row: its own picker, so it never answers for the trade page's */
+export function missedShotsRowHtml(id) {
+  return shotsRow({ key: missedShotKey(id) }, full => `<button class="btn" data-action="pasteMissedShot"${full}>Paste from clipboard</button>
+      <button class="btn" data-action="pickMissedShots"${full}>+ Add screenshot</button>
+      <input type="file" id="missedShotInput" accept="image/*" multiple hidden data-change="addMissedShotsFromInput" />`);
 }
 
 // ---------- the viewer ----------
@@ -172,24 +210,27 @@ export async function deleteTradeShot() {
   }
 }
 
-/** paste a screenshot anywhere on the trade page, drop one onto it, Esc closes the viewer */
+/** paste a screenshot anywhere on the trade page (or the notebook page, onto the open missed trade), drop one onto it, Esc closes the viewer */
 export function initTradeShotEvents(pageTrade) {
-  const onPage = () => state.journalView && state.journalTrade;
+  const target = () => state.journalView && state.journalTrade ? pageTrade() : missedTarget();
   document.addEventListener('paste', e => {
-    if (!onPage()) return;
+    const t = target();
+    if (!t) return;
     const files = pastedImages(e.clipboardData);
     if (!files.length) return; // text pastes into the note as usual
     e.preventDefault();
-    addTradeShots(pageTrade(), files);
+    addTradeShots(t, files);
   });
-  const section = document.getElementById('journalTradeSection');
-  section?.addEventListener('dragover', e => { if (onPage() && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); section.classList.add('jr-dropping'); } });
-  section?.addEventListener('dragleave', () => section.classList.remove('jr-dropping'));
-  section?.addEventListener('drop', e => {
-    section.classList.remove('jr-dropping');
-    if (!onPage() || !e.dataTransfer?.files?.length) return;
-    e.preventDefault();
-    addTradeShots(pageTrade(), e.dataTransfer.files);
-  });
+  for (const section of [document.getElementById('journalTradeSection'), document.getElementById('journalSection')]) {
+    section?.addEventListener('dragover', e => { if (target() && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); section.classList.add('jr-dropping'); } });
+    section?.addEventListener('dragleave', () => section.classList.remove('jr-dropping'));
+    section?.addEventListener('drop', e => {
+      section.classList.remove('jr-dropping');
+      const t = target();
+      if (!t || !e.dataTransfer?.files?.length) return;
+      e.preventDefault();
+      addTradeShots(t, e.dataTransfer.files);
+    });
+  }
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.shotView) { e.preventDefault(); closeShotViewer(); } });
 }

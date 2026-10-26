@@ -5,16 +5,23 @@
 // your last focus, what went well, what to work on, more notes, the day's exit notes, and tomorrow's focus. Saved on the
 // day's journal_days row field by field (core/journal-notebook.js has the rules), shown at once and put back with a toast
 // if Supabase refuses; text is a draft while you type and saves when the box loses focus. Goals and rules are
-// library_items rows (kinds goal and rule), edited in place. The calendar's marks: plan written, reviewed, review due.
+// library_items rows (kinds goal and rule), edited in place. Missed trades: the ones you saw and didn't take, a ticker
+// each with its charts that day (ui/missed-chart.js), its side, the daily setup and entry tactic you could have taken, why
+// you missed it, a note and your screenshots (trade_shots keyed missed:<id>, ui/journal-shots.js) (journal_days.missed,
+// its own migration).
+// The calendar's marks: plan written, reviewed, review due, how many you missed.
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { buildLibrary } from '../core/journal-labels.js';
-import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
+import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
+import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
 import { dailyPnl, nyParts } from '../core/journal-stats.js';
 import { saveJournalDay, saveLibraryItem } from '../services/journal-review.js';
 import { state } from '../state.js';
-import { showError } from './feedback.js';
+import { showError, showToast } from './feedback.js';
 import { reviewedMark } from './journal-review.js';
 import { journalTradeList, renderJournal } from './journal.js';
+import { loadMissedChart, missedChartHtml } from './missed-chart.js';
+import { deleteMissedShots, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
+import { effects } from './effects.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -28,13 +35,16 @@ const rowOf = day => days()[day] || null;
 const lists = () => notebookLists(data()?.library || []);
 /** the notebook can't be read or saved: the reviews didn't load, or the database doesn't have its columns yet */
 const notebookOff = () => !data() || !!state.journalReviewError || !!data().notebookError;
+/** the missed trades can't: the notebook can't, or the database doesn't have their column yet */
+const missedOff = () => notebookOff() || !!data().missedError;
+const missedOf = day => rowOf(day)?.missed || [];
 
 // ---------- opening the page ----------
 
 /** a day's page (a calendar cell, today's line, ‹ ›): inside the Calendar tab, the calendar on its month behind it */
 export function openJournalDay(day) {
   if (!isDay(day)) return;
-  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: '', notebookDraft: null, notebookEdit: '', notebookItemDraft: '' });
+  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: '', notebookDraft: null, notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '' });
   renderJournal();
   window.scrollTo?.({ top: 0 });
 }
@@ -53,14 +63,15 @@ const reviewOf = day => dayReviewState(rowOf(day), applying(day));
 
 /**
  * A calendar cell's marks: ✎ the plan written, ✓ reviewed, an amber dot once a day with exits is over and isn't
- * reviewed; words for its label. Nothing while the notebook can't be read.
+ * reviewed, ⊘ and how many trades you missed; words for its label. Nothing while the notebook can't be read.
  */
 export function dayMark(day, hasExits) {
   if (notebookOff()) return { html: '', words: '' };
   const planned = planState(rowOf(day)).written, reviewed = reviewOf(day).reviewed;
   const due = !reviewed && hasExits && dayOver(day, nowIso());
-  const marks = `${planned ? '<span class="jc-mk jc-mk-plan">✎</span>' : ''}${reviewed ? '<span class="jc-mk jc-mk-done">✓</span>' : due ? '<span class="jc-mk jc-mk-due">●</span>' : ''}`;
-  const words = [planned ? 'plan written' : '', reviewed ? 'reviewed' : due ? 'review the day' : ''].filter(Boolean);
+  const missed = missedOff() ? 0 : missedOf(day).length;
+  const marks = `${planned ? '<span class="jc-mk jc-mk-plan">✎</span>' : ''}${reviewed ? '<span class="jc-mk jc-mk-done">✓</span>' : due ? '<span class="jc-mk jc-mk-due">●</span>' : ''}${missed ? `<span class="jc-mk jc-mk-missed">⊘${missed}</span>` : ''}`;
+  const words = [planned ? 'plan written' : '', reviewed ? 'reviewed' : due ? 'review the day' : '', missed ? `${missed} missed` : ''].filter(Boolean);
   return { html: marks ? `<span class="jc-marks" aria-hidden="true">${marks}</span>` : '', words: words.length ? `, ${words.join(', ')}` : '' };
 }
 
@@ -211,6 +222,71 @@ export function retireNotebookItem(id) {
   if (row) return saveItem({ ...row, hidden: !row.hidden });
 }
 
+// ---------- missed trades (journal_days.missed) ----------
+
+const missedOne = id => missedOf(page()).find(m => m.id === id);
+/** the whole list saved, like any of the day's fields */
+function saveMissed(list) { if (!missedOff() && page()) return saveDay(page(), { missed: list }); }
+function changeMissed(id, change) {
+  if (missedOne(id)) return saveMissed(missedOf(page()).map(m => m.id === id ? { ...m, ...change } : m));
+}
+
+export function missedInput(text) { state.missedDraft = String(text || ''); }
+/** + Add: the ticker you missed, open to fill in the rest */
+export function addMissedTrade() {
+  if (missedOff() || !page()) return;
+  const symbol = missedSymbol(state.missedDraft), list = missedOf(page());
+  if (!symbol) { showError('Type the ticker you missed, like NVDA.'); return; }
+  if (list.length >= MAX_MISSED) { showError(`${MAX_MISSED} missed trades a day at most.`); return; }
+  const id = newId();
+  state.missedDraft = '';
+  state.missedOpen = id;
+  loadMissedChart(symbol, page());
+  return saveMissed([...list, { id, symbol, side: null, setup: null, tactic: null, why: null, note: null }]);
+}
+/** a missed trade's line: opens it to edit, its charts with it (again closes it) */
+export function openMissedTrade(id) {
+  const m = missedOne(id);
+  state.missedOpen = state.missedOpen === id || !m ? '' : id;
+  if (state.missedOpen) loadMissedChart(m.symbol, page());
+  renderJournal();
+}
+export function setMissedSide(id, v) { return changeMissed(id, { side: one(MISSED_SIDES, v, missedOne(id)?.side) }); }
+export function setMissedWhy(id, v) { return changeMissed(id, { why: one(MISSED_WHY, v, missedOne(id)?.why) }); }
+/** the daily setup (one of My setups) or the entry tactic you could have taken, or none */
+const libPick = kind => (id, key) => {
+  const ok = buildLibrary(data()?.library || []).choices(kind).some(i => i.key === key);
+  return changeMissed(id, { [kind]: ok ? key : null });
+};
+export const setMissedSetup = libPick('setup');
+export const setMissedTactic = libPick('tactic');
+/** its note: a draft while you type (a redraw never loses it), saved when the box loses focus */
+export function missedNoteInput(id, text) { if (page()) state.notebookDraft = { day: page(), field: `missed:${id}`, text }; }
+export function missedNoteSave(id, text) {
+  state.notebookDraft = null;
+  const note = String(text || '').trim().slice(0, MAX_MISSED_NOTE) || null;
+  if (note !== (missedOne(id)?.note ?? null)) return changeMissed(id, { note });
+}
+/** how long Undo can bring a removed missed trade back (the toast's 8 seconds, and a little) */
+const UNDO_MS = 10000;
+
+/** Remove: out at once, with Undo on the toast; its screenshots go once Undo can't bring it back */
+export function removeMissedTrade(id) {
+  const m = missedOne(id), day = page(), list = missedOf(day);
+  if (!m || missedOff()) return;
+  state.missedUndo = { day, list };
+  if (state.missedOpen === id) state.missedOpen = '';
+  const saving = saveMissed(list.filter(x => x.id !== id));
+  showToast(`Removed ${m.symbol}.`, '<button class="pos-link toast-act" data-action="undoRemoveMissed">Undo</button>');
+  if (missedShotCount(id)) effects.wait(UNDO_MS).then(() => { if (!missedOf(day).some(x => x.id === id)) return deleteMissedShots(id); });
+  return saving;
+}
+export function undoRemoveMissed() {
+  const u = state.missedUndo;
+  state.missedUndo = null;
+  if (u && u.day === page()) return saveMissed(u.list);
+}
+
 // ---------- the page ----------
 
 const chip = (label, on, attrs, off = '') => `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" ${attrs}${off}>${esc(label)}</button>`;
@@ -311,6 +387,42 @@ function postmarket(day, trades, off) {
   </section>`;
 }
 
+/** the trades you saw and didn't take: a line each (tap to edit), the open one in full, and + Add */
+function missedSection(day) {
+  const list = missedOf(day), lib = buildLibrary(data()?.library || []), off = missedOff() ? ' disabled' : '';
+  const word = (pairs, v) => pairs.find(([k]) => k === v)?.[1] || '';
+  const setupName = (key, side) => key ? lib.nameOf('setup', key, side || 'long') : '';
+  const tacticName = key => key ? lib.nameOf('tactic', key) : '';
+  const status = list.length ? `<span class="jr-status nb-miss-count" role="status">${list.length} missed</span>` : '';
+  const why = state.journalReviewError || !data() || data().notebookError ? '' : data().missedError ? `<p class="hint jw-db" role="status">Missed trades need a database update: ${esc(data().missedError)}</p>` : '';
+  const line = m => {
+    const what = [word(MISSED_SIDES, m.side).toLowerCase(), setupName(m.setup, m.side), tacticName(m.tactic), word(MISSED_WHY, m.why)].filter(Boolean).map(esc).join(' · ');
+    const shots = missedShotCount(m.id);
+    const summary = `<span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${what}` : ''}${m.note ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span>${shots ? `<span class="nb-miss-shots">${shots} screenshot${shots === 1 ? '' : 's'}</span>` : ''}`;
+    if (state.missedOpen !== m.id || off) return `<li><button class="nb-trade nb-miss" data-action="openMissedTrade" data-arg="${esc(m.id)}" aria-label="${esc(`${m.symbol} missed. Edit`)}"${off}>${summary}</button></li>`;
+    const options = (kind, items, key, none) => `<option value="">${none}</option>${items.map(i => `<option value="${esc(i.key)}"${key && i.key === lib.resolve(kind, key) ? ' selected' : ''}>${esc(kind === 'setup' ? lib.nameOf('setup', i.key, m.side || 'long') : i.name)}</option>`).join('')}`;
+    const setups = setupsByUse(lib, data()?.labels || {}), tactics = lib.choices('tactic');
+    const note = (() => { const d = state.notebookDraft; return d && d.day === day && d.field === `missed:${m.id}` ? d.text : m.note || ''; })();
+    return `<li class="nb-miss-open">
+      <div class="nb-miss-head"><b>${esc(m.symbol)}</b><span class="nb-links"><button class="pos-link" data-action="removeMissedTrade" data-arg="${esc(m.id)}">Remove</button><button class="pos-link" data-action="openMissedTrade" data-arg="${esc(m.id)}">Done</button></span></div>
+      ${missedChartHtml(m.symbol, day)}
+      ${row('Side', MISSED_SIDES.map(([v, w]) => chip(w, m.side === v, `data-action="setMissedSide" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
+      ${setups.length ? row('Daily setup', `<select class="nb-select" data-change="setMissedSetup" data-arg="${esc(m.id)}" aria-label="Daily setup">${options('setup', setups, m.setup, 'No setup')}</select>`) : ''}
+      ${tactics.length ? row('Entry tactic', `<select class="nb-select" data-change="setMissedTactic" data-arg="${esc(m.id)}" aria-label="Entry tactic">${options('tactic', tactics, m.tactic, 'No tactic')}</select>`) : ''}
+      ${row('Why you missed it', MISSED_WHY.map(([v, w]) => chip(w, m.why === v, `data-action="setMissedWhy" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
+      <div class="jr-row"><label class="jr-label" for="nbMissedNote-${esc(m.id)}">Note <span class="jr-sub">optional</span></label>
+        <input type="text" class="nb-focus-input" id="nbMissedNote-${esc(m.id)}" maxlength="${MAX_MISSED_NOTE}" autocomplete="off" placeholder="What you saw, what held you back" data-input="missedNoteInput" data-change="missedNoteSave" data-arg="${esc(m.id)}" value="${esc(note)}" /></div>
+      ${missedShotsRowHtml(m.id)}
+    </li>`;
+  };
+  return `<section class="jr nb-sec" aria-label="Missed trades">
+    <div class="jr-head"><span class="section-title js-sub">Missed trades</span>${status}</div>
+    ${why}
+    ${list.length ? `<ul class="nb-trades nb-missed">${list.map(line).join('')}</ul>` : '<p class="hint nb-empty">Trades you saw and didn\'t take. They never count in your P&amp;L.</p>'}
+    <div class="nb-item nb-miss-add"><input type="text" id="nbMissedNew" maxlength="12" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Ticker you missed" aria-label="Ticker you missed" value="${esc(state.missedDraft)}" data-input="missedInput" data-enter="addMissedTrade"${off} /><button class="btn" data-action="addMissedTrade"${off}>+ Add</button></div>
+  </section>`;
+}
+
 /** the day's page, in place of the calendar */
 export function dayPageHtml() {
   const day = page(), trades = journalTradeList();
@@ -330,6 +442,7 @@ export function dayPageHtml() {
     ${why ? `<p class="hint jw-db" role="status">${esc(why)}</p>` : ''}
     ${premarket(day, off)}
     ${theDay(day, trades)}
+    ${missedSection(day)}
     ${postmarket(day, trades, off)}
     <p class="hint">Saved as you go; notes save when you leave the box. The plan is written once it has how you feel, sleep and energy, where you're trading, the market and the plan. The day is reviewed once it has a grade, every rule answered, and what went well or what to work on.</p>
   </div>`;

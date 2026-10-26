@@ -1,16 +1,17 @@
 // @ts-check
 // Journal notebook, pure (docs/journal-notebook.md): a page per New York trading day. The premarket plan (a mental
 // check-in, the market, the plan) and the post-market review (a grade, each rule kept or broken, two guided notes,
-// tomorrow's focus) kept on the day's journal_days row; your goals and rules as standing lists (library_items rows of
+// tomorrow's focus) and the trades you missed kept on the day's journal_days row; your goals and rules as standing lists (library_items rows of
 // kind goal and rule); when a day's plan is written and when it's reviewed; the trades a day touched; stepping weekdays.
 import { GRADES } from './journal-labels.js';
 import { exitDays, nyParts } from './journal-stats.js';
 
 /** @typedef {{ key: string, id: string, kind: 'goal' | 'rule', name: string, hidden: boolean, order: number, since: string }} ListItem
+ * @typedef {{ id: string, symbol: string, side: string | null, setup: string | null, tactic: string | null, why: string | null, note: string | null }} MissedTrade
  * @typedef {{ market: string | null, note: string | null, feelings: string[], energy: string | null, sleep_hours: number | null,
  *   place: string | null, plan: string | null, focus_list: any[], grade: string | null, rules: Record<string, string>,
  *   went_well: string | null, work_on: string | null, focus_next: string | null, focus_kept: string | null,
- *   planned_at: string | null, reviewed_at: string | null }} DayRow */
+ *   planned_at: string | null, reviewed_at: string | null, missed: MissedTrade[] }} DayRow */
 
 export const FEELINGS = /** @type {[string, string][]} */ ([['calm', 'Calm'], ['focused', 'Focused'], ['confident', 'Confident'], ['anxious', 'Anxious'], ['frustrated', 'Frustrated'], ['impatient', 'Impatient'], ['fomo', 'FOMO']]);
 export const ENERGY = /** @type {[string, string][]} */ ([['rested', 'Rested'], ['ok', 'OK'], ['tired', 'Tired']]);
@@ -30,6 +31,15 @@ export const DAY_TEXT = /** @type {Record<string, number>} */ ({ plan: MAX_DAY_N
 export const DAY_COLUMNS = ['feelings', 'energy', 'sleep_hours', 'place', 'plan', 'focus_list', 'grade', 'rules', 'went_well', 'work_on', 'focus_next', 'focus_kept', 'planned_at', 'reviewed_at'];
 /** how far back the last focus is looked for */
 export const FOCUS_LOOKBACK_DAYS = 7;
+/** the day's missed trades: the column their own migration adds (read on its own query too) */
+export const MISSED_COLUMNS = ['missed'];
+/** why a trade was missed */
+export const MISSED_WHY = /** @type {[string, string][]} */ ([['hesitated', 'Hesitated'], ['not_seen', "Didn't see it"], ['away', 'Away'], ['late', 'Too late'], ['no_trust', "Didn't trust it"], ['at_limit', 'At my limit']]);
+export const MISSED_SIDES = /** @type {[string, string][]} */ ([['long', 'Long'], ['short', 'Short']]);
+/** the most missed trades a day keeps, and a note's longest text */
+export const MAX_MISSED = 20;
+export const MAX_MISSED_NOTE = 500;
+const MISSED_SYMBOL_RE = /^[A-Z0-9][A-Z0-9./-]{0,11}$/;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** a real calendar day 'YYYY-MM-DD'. @param {unknown} s */
@@ -81,7 +91,34 @@ export function cleanDayRow(raw) {
     went_well: text(r.went_well, MAX_DAY_NOTE), work_on: text(r.work_on, MAX_DAY_NOTE),
     focus_next: text(r.focus_next, MAX_FOCUS), focus_kept: pick(FOCUS_KEPT, r.focus_kept),
     planned_at: r.planned_at || null, reviewed_at: r.reviewed_at || null,
+    missed: cleanMissed(r.missed),
   };
+}
+
+/** a missed trade's ticker, upper case; null unless it looks like one. @param {unknown} v */
+export const missedSymbol = v => {
+  const s = typeof v === 'string' ? v.trim().toUpperCase() : '';
+  return MISSED_SYMBOL_RE.test(s) ? s : null;
+};
+
+const libKey = (/** @type {unknown} */ v) => typeof v === 'string' && v && v.length <= 100 ? v : null;
+
+/**
+ * A day's missed trades as the app keeps them: each with an id and a ticker, the side and why from their lists, a daily
+ * setup and an entry tactic (library keys) and a trimmed note; duplicates by id and anything past MAX_MISSED dropped.
+ * @param {unknown} raw @returns {MissedTrade[]}
+ */
+export function cleanMissed(raw) {
+  if (!Array.isArray(raw)) return [];
+  /** @type {MissedTrade[]} */
+  const out = [];
+  for (const m of raw) {
+    const id = typeof m?.id === 'string' && m.id && m.id.length <= 64 ? m.id : '', symbol = missedSymbol(m?.symbol);
+    if (!id || !symbol || out.some(x => x.id === id)) continue;
+    out.push({ id, symbol, side: pick(MISSED_SIDES, m.side), setup: libKey(m.setup), tactic: libKey(m.tactic), why: pick(MISSED_WHY, m.why), note: text(m.note, MAX_MISSED_NOTE) });
+    if (out.length >= MAX_MISSED) break;
+  }
+  return out;
 }
 
 /**

@@ -5,7 +5,7 @@
 // returns only your rows. Never touches the page.
 import { cleanPeriodRow, PERIOD_COLUMNS, PERIOD_OVERALL_COLUMNS } from '../core/journal-week.js';
 import { gradeOf } from '../core/journal-labels.js';
-import { cleanDayRow, DAY_COLUMNS } from '../core/journal-notebook.js';
+import { cleanDayRow, DAY_COLUMNS, MISSED_COLUMNS } from '../core/journal-notebook.js';
 import { state } from '../state.js';
 import { JOURNAL_READ_LIMIT } from './journal.js';
 import { supabaseClient } from './supabase.js';
@@ -28,7 +28,8 @@ async function client() {
 /**
  * Everything a review reads, in one go: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note,
  * market, reviewed_at }, labels: key → [{ kind, value, set_by, links }], days: 'YYYY-MM-DD' → its notebook row (cleanDayRow:
- * market, note, the plan and the review), library: rows, weekly: key → when, weeklyError, entryNoteError, notebookError }.
+ * market, note, the plan, the review and the missed trades), library: rows, weekly: key → when, weeklyError, entryNoteError,
+ * notebookError, missedError }.
  */
 export async function loadReviewData() {
   const c = await client();
@@ -48,10 +49,17 @@ export async function loadReviewData() {
   /** @type {Record<string, any>} */
   const days = {};
   for (const r of dy.data || []) days[String(r.day).slice(0, 10)] = cleanDayRow(r);
-  const [weekly, entry, notebook] = await Promise.all([loadWeekly(c), loadEntryNotes(c), loadNotebook(c)]);
+  const [weekly, entry, notebook, missed] = await Promise.all([loadWeekly(c), loadEntryNotes(c), loadNotebook(c), loadMissed(c)]);
   for (const [key, text] of Object.entries(entry.entryNotes)) reviews[key] = { ...(reviews[key] || {}), entry_note: text };
-  for (const r of notebook.rows) { const day = String(r.day).slice(0, 10); days[day] = cleanDayRow({ ...days[day], ...r }); }
-  return { reviews, labels, days, library: li.data || [], ...weekly, entryNoteError: entry.entryNoteError, notebookError: notebook.notebookError };
+  for (const r of [...notebook.rows, ...missed.rows]) { const day = String(r.day).slice(0, 10); days[day] = cleanDayRow({ ...days[day], ...r }); }
+  return { reviews, labels, days, library: li.data || [], ...weekly, entryNoteError: entry.entryNoteError, notebookError: notebook.notebookError, missedError: missed.missedError };
+}
+
+/** Each day's missed trades (journal_days.missed, their own migration): read on their own like the notebook's columns. */
+async function loadMissed(c) {
+  const res = await c.from('journal_days').select(['day', ...MISSED_COLUMNS].join(',')).limit(5000);
+  if (res?.error) return { rows: [], missedError: notPushed(res) ? "the database doesn't have the missed trades column yet: npx supabase db push" : res.error.message || 'Supabase refused the read.' };
+  return { rows: res.data || [], missedError: '' };
 }
 
 /**

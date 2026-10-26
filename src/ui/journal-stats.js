@@ -81,7 +81,7 @@ export function calendarView(trades) {
     </div>
     ${monthStats(cal)}
     <table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cells}</tbody></table>
-    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its notebook page (✎ plan written, ✓ reviewed, ● a day to review), a week's total to review the week.</p>`;
+    <p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its notebook page (✎ plan written, ✓ reviewed, ● a day to review, ⊘ trades you missed), a week's total to review the week.</p>`;
 }
 
 /** ‹ or ›: the month before or after the one shown */
