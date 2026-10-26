@@ -84,6 +84,44 @@ export function lastDoneDay(now) {
   return NY_CLOCK.format(new Date(now)) >= DAY_DONE ? today : nyDay(Date.parse(today + 'T12:00:00Z') - DAY_MS);
 }
 
+/** what the opening-range chips offer: the first 5, 15 or 30 minutes of the regular session */
+export const ORB_MINUTES = [5, 15, 30];
+
+/** 'HH:MM' that many minutes after 9:30 @param {number} minutes */
+const afterOpen = minutes => { const m = 9 * 60 + 30 + minutes; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+/** '09:45' → '9:45' @param {string} hhmm */
+const clockWords = hhmm => hhmm.replace(/^0/, '');
+
+/**
+ * Today's opening range: the high and low of the 5-minute bars from 9:30 to 9:30 + minutes, New York time. Only once
+ * the range has closed and its last bar is in (or a later one is, or five minutes have passed: a thin stock may not
+ * trade in every bar). Bars are timesales' (t = the bar's start, exchange-local).
+ * @param {Bar[]} bars5 @param {number} minutes @param {number} now
+ * @returns {{ error: string, high: number, low: number, end: string, bars: number }}
+ */
+export function openingRange(bars5, minutes, now) {
+  const day = nyDay(now), clock = NY_CLOCK.format(new Date(now)), end = afterOpen(minutes), last = afterOpen(minutes - 5);
+  const fail = (/** @type {string} */ error) => ({ error, high: 0, low: 0, end, bars: 0 });
+  if (clock < end) return fail(`The ${minutes}m range closes at ${clockWords(end)} ET.`);
+  const today = bars5.filter(b => (b.t || '').slice(0, 10) === day);
+  const time = (/** @type {Bar} */ b) => (b.t || '').slice(11, 16);
+  const range = today.filter(b => time(b) >= '09:30' && time(b) < end);
+  if (!range.length) return fail(today.length ? `No trades in the first ${minutes} minutes today.` : 'No 5-minute bars from today\'s open yet.');
+  const done = range.some(b => time(b) === last) || today.some(b => time(b) >= end) || clock >= afterOpen(minutes + 5);
+  if (!done) return fail(`Tradier hasn't sent the ${clockWords(last)} bar yet. Try again in a moment.`);
+  return { error: '', high: Math.max(...range.map(b => b.h)), low: Math.min(...range.map(b => b.l)), end, bars: range.length };
+}
+
+/**
+ * The breakout off a range: a long enters one tick over the high with its stop at the low; a short one tick under the
+ * low with its stop at the high. Ticks are Schwab's: a cent from $1 up, $0.0001 below.
+ * @param {{ high: number, low: number }} range @param {boolean} isLong
+ */
+export function orbLevels({ high, low }, isLong) {
+  const tick = (/** @type {number} */ p) => p >= 1 ? 0.01 : 0.0001, round = (/** @type {number} */ p) => Math.round(p * 10000) / 10000;
+  return isLong ? { entry: round(high + tick(high)), stop: low } : { entry: round(low - tick(low)), stop: high };
+}
+
 /** the symbols a trade's charts need, in Tradier's form: the stock; an option and its underlying; none for a future (Tradier has none). @param {{ symbol: string, assetType: string }} trade */
 export function tradeBarSymbols(trade) {
   if (trade.assetType === 'FUTURE') return [];

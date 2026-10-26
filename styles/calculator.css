@@ -37,6 +37,10 @@
 /* stop inputs carry their chart line color: long stop lives at the LOD side (red), short at the HOD side (green) */
 #stopLong { border-left: 3px solid var(--red); }
 #stopShort { border-left: 3px solid var(--green); }
+.orb-row { display: flex; align-items: center; gap: 6px 0.5rem; flex-wrap: wrap; margin-top: 0.25rem; }
+.orb-chips { margin-top: 0; flex-wrap: nowrap; }
+.orb-hint { flex: 1 1 100%; font-size: 11.5px; color: var(--text3); }
+.orb-hint.warn { color: var(--amber); }
 .stop-buffer { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .stop-buffer-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .stop-buffer-label { font-size: 0.75rem; color: var(--text2); }
