@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
+import { chipScrollLeft } from '../src/core/model-books.js';
 
 const SESSION = { user: { id: 'user-1' } };
 const settle = async () => { for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r)); };
@@ -84,6 +85,13 @@ test('By setup lists every one of My setups, so the first example can start from
   assert.match(a.body(), /comes tagged with this setup/);
   await a.run("pasteModelImages([{ type: 'image/png', size: 1200 }])");
   assert.deepEqual([...a.run('modelBooks.draft.setup_keys')], ['ema21_bounce']);
+});
+
+test('the phone chip row scrolls just far enough to show the selected chip', () => {
+  assert.equal(chipScrollLeft(0, 340, 120, 100), 0, 'already in view: stays put');
+  assert.equal(chipScrollLeft(0, 340, 700, 180), 700 + 180 - 340 + 24, 'off to the right: its right edge comes in, with a peek of the next');
+  assert.equal(chipScrollLeft(500, 340, 300, 150), 276, 'off to the left: its left edge comes in');
+  assert.equal(chipScrollLeft(80, 340, 10, 150), 0, 'never past the start');
 });
 
 test('edit notes, setup tags and book without uploading another copy of the screenshot', async () => {

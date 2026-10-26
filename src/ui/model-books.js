@@ -1,7 +1,7 @@
 // Journal → Model Books: personal collections of pasted screenshots, notes, and references to My setups.
 import { marketEscape as esc } from '../core/format.js';
 import { buildLibrary } from '../core/journal-labels.js';
-import { modelExampleProblem, modelExamplesFor, modelSetupKeys } from '../core/model-books.js';
+import { chipScrollLeft, modelExampleProblem, modelExamplesFor, modelSetupKeys } from '../core/model-books.js';
 import { checkModelOwner, keepModelBook, keepModelExample, modelImageLinks, MODEL_IMAGE_BYTES, readModelBooks, removeModelBook, removeModelExample } from '../services/model-books.js';
 import { createState, state } from '../state.js';
 import { effects } from './effects.js';
@@ -224,6 +224,7 @@ export function renderModelBooks() {
   const m = modelState(); if (!owned(m)) { el.innerHTML = ''; return; }
   const active = document.activeElement;
   const focus = active?.id?.startsWith('model') ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
+  const rowScroll = el.querySelector?.('.mb-nav-list')?.scrollLeft || 0; // the phone's sideways chip row, kept where it was
   const lib = modelLibrary(), list = modelExamplesFor(m.examples, m, lib);
   const book = modelBookOf(m.bookId);
   // every one of My setups, so a setup's first example can start here, then any hidden one an example still carries
@@ -246,6 +247,11 @@ export function renderModelBooks() {
       ${list.length ? `<div class="mb-grid">${list.map(e => modelExampleCard(e, lib)).join('')}</div>` : !m.loading && m.loaded ? `<div class="mb-empty"><span class="mb-empty-icon" aria-hidden="true">▧</span><h3>${m.books.length ? 'Your next model starts with a chart' : 'Build your model books'}</h3><p>${m.books.length ? m.setupKey ? 'Add a chart and it comes tagged with this setup.' : 'Save an example, add what you noticed, and tag it with My setups.' : 'Create a book, then paste screenshots from your charting platform.'}</p>${!m.books.length ? '<button class="btn primary" data-action="editModelBook">+ New book</button>' : ''}</div>` : ''}`}
     <input type="file" id="modelImageInput" accept="image/png,image/jpeg,image/webp" hidden data-change="modelImagePicked" />
     </div></div>${m.viewerId && modelExampleOf(m.viewerId) ? modelViewer(modelExampleOf(m.viewerId), lib) : ''}`;
+  const row = el.querySelector?.('.mb-nav-list'), chip = row?.querySelector('.mb-nav.active');
+  if (row && chip && row.scrollWidth > row.clientWidth) { // phones: the selected book or setup stays in view
+    const at = chip.getBoundingClientRect().left - row.getBoundingClientRect().left;
+    row.scrollLeft = chipScrollLeft(rowScroll, row.clientWidth, at + row.scrollLeft, chip.getBoundingClientRect().width);
+  }
   if (m.viewerId) document.getElementById('modelImageViewer')?.showModal?.();
   if (focus && (m.draft || m.bookDraft)) {
     const field = document.getElementById(focus.id);
