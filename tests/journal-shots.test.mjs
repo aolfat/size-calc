@@ -131,6 +131,30 @@ test('Paste from clipboard reads the copied image; an empty clipboard or a refus
   assert.equal(shots().length, 2, 'taken from the items');
 });
 
+test('the X on a thumbnail: gone at once, Undo brings it back, deleted for good once Undo runs out', async () => {
+  const { run, t, body, shots, supabase, elements } = await page();
+  run('effects.wait = () => new Promise(r => { globalThis.__undoOver = r; })');
+  await run(`addTradeShots(${t}, [${png()}])`);
+  await settle();
+  const [row] = shots();
+  assert.match(body(), new RegExp(`data-action="removeTradeShot" data-arg="${row.id}" aria-label="Delete screenshot" title="Delete">×</button>`));
+  run(`removeTradeShot('${row.id}')`);
+  assert.doesNotMatch(body(), /data-action="openShot"/, 'gone from the row at once');
+  assert.match(elements.get('errorBox').innerHTML, /Screenshot deleted\. <button[^>]*data-action="undoRemoveShot">Undo<\/button>/);
+  run('undoRemoveShot()');
+  assert.match(body(), new RegExp(`data-action="openShot" data-arg="${row.id}"`), 'Undo brings it back');
+  run('globalThis.__undoOver()');
+  await settle();
+  assert.equal(shots().length, 1, 'and keeps it');
+  assert.ok(!supabase.storageOps.some(o => o.op === 'remove'));
+
+  run(`removeTradeShot('${row.id}')`);
+  run('globalThis.__undoOver()');
+  await settle();
+  assert.equal(shots().length, 0, 'once Undo runs out, the row goes');
+  assert.ok(supabase.storageOps.some(o => o.op === 'remove' && o.paths[0] === row.path), 'and the file');
+});
+
 test('a missed trade keeps screenshots too: added, pasted onto it on the notebook page, counted, and gone with it after Undo runs out', async () => {
   const supabase = fakeRecords([{ kind: 'order', record_id: '501', account: '6789', entered_at: '2026-10-01T14:30:00Z', data: ENTRY }]);
   const a = await app({ supabase, session: SESSION });

@@ -52,11 +52,15 @@ Type the ticker and + Add (or Enter); it opens with its charts, and the rest is 
 |---|---|
 | Charts | The ticker's 5 minutes that day (regular hours, 8 EMA and VWAP) and its daily (8 EMA, framed 40 sessions before the day through 10 after, the day marked 'missed'), like the trade page's |
 | Side | Long, Short |
-| Daily setup | One of My setups (most used first), named in the side's words |
-| Entry tactic | The review's entry tactics (6/20, 15-minute pivot, 30-minute pivot and yours) |
+| Daily setup | One of My setups (most used first), named in the side's words; + New setup makes one |
+| Entry tactic | The review's entry tactics (6/20, 15-minute pivot, 30-minute pivot and yours); + New adds one |
 | Why you missed it | Hesitated, Didn't see it, Away, Too late, Didn't trust it, At my limit |
 | Note | One line, up to 500 characters |
-| Screenshots | Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most |
+| Screenshots | Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most; the × on one deletes it |
+
+**A setup or tactic you don't have yet:** + New setup (newMissedSetup) opens Edit choices with the new-setup builder on top ('New setup for the missed NVDA'), + New for a level, action or pattern inside it; Add to My setups and NVDA saves it, puts it on the missed trade (onSetupAdded) and closes the sheet.
+Parts you already have say 'Already in My setups: …' with Use it, which puts that one on instead.
++ New beside the tactic (state.missedNewTactic) takes a name; Add puts it in your library and on the missed trade, and a name you have (any case) is that one.
 
 Closed, each is one line: the ticker, side, setup, tactic and why, its note, and how many screenshots it has.
 The header counts them ('2 missed').

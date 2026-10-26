@@ -389,7 +389,7 @@ function setupDraftHtml(lib, t) {
     </div>`;
 }
 
-// ---------- editing one of My setups (Edit choices): what it's made of, and its name ----------
+// ---------- editing one of My setups (Edit choices): what it's made of, and its name; + New setup makes one ----------
 
 const editParts = d => d.pattern ? { pattern: d.pattern } : { action: d.action, levels: d.levels };
 /** another of My setups made of the same things, which the edit would duplicate */
@@ -399,9 +399,30 @@ const editTwin = (lib, d) => lib.choices('setup').find(i => i.key !== d.key && s
 export function editSetup(key) {
   const lib = library(), p = lib.parts(key), name = lib.nameOf('setup', key);
   state.setupEdit = { key, action: p.action || '', levels: [...(p.levels || [])], pattern: p.pattern || '', name, follow: !!lib.item('setup', key)?.follows };
+  state.libraryNew = null;
   renderJournalLibrary();
 }
-export function cancelSetupEdit() { state.setupEdit = null; renderJournalLibrary(); }
+/** + New setup: the same builder, empty; Save adds it to My setups, to pick on any trade from then on */
+export function newLibrarySetup(missed = null) {
+  state.setupEdit = { key: '', action: '', levels: [], pattern: '', name: '', follow: true, missed };
+  state.libraryNew = null;
+  renderJournalLibrary();
+}
+/** a missed trade's + New setup: the builder on top of Edit choices; the setup it adds (or one you have) goes on that trade */
+export function newSetupFor(missed) { newLibrarySetup(missed); openSheet('journalLibrary'); }
+let setupAdded = (/** @type {any} */ _d, /** @type {string} */ _key) => {};
+/** the notebook registers what a setup added for a missed trade does there */
+export function onSetupAdded(fn) { setupAdded = fn; }
+/** Use it: a missed trade's new setup is one you have already */
+export function useSetupTwin(key) {
+  const d = state.setupEdit;
+  if (!d?.missed || !key) return;
+  state.setupEdit = null;
+  state.libraryNew = null;
+  renderJournalLibrary();
+  return setupAdded(d, key);
+}
+export function cancelSetupEdit() { state.setupEdit = null; state.libraryNew = null; renderJournalLibrary(); }
 function setupEdited() {
   const d = state.setupEdit;
   if (d.follow) d.name = setupName(library(), editParts(d)) || d.name;
@@ -426,24 +447,67 @@ export function saveSetupEdit() {
   const parts = editParts(d), auto = setupName(lib, parts);
   if (!auto || editTwin(lib, d)) return;
   state.setupEdit = null;
+  state.libraryNew = null;
+  const name = (d.name.trim() || auto).slice(0, 80);
+  if (!d.key) {
+    const row = { id: newId(), kind: 'setup', name, settings: parts };
+    return apply(dd => { dd.library = [...dd.library, row]; }, () => saveLibraryItem(row)).then(ok => { renderJournalLibrary(); if (ok) return setupAdded(d, `mine:${row.id}`); });
+  }
   // a typed short name stays with it
   const short = libraryRow('setup', d.key)?.settings?.short;
-  return changeLibrary('setup', d.key, { name: (d.name.trim() || auto).slice(0, 80), settings: typeof short === 'string' ? { ...parts, short } : parts });
+  return changeLibrary('setup', d.key, { name, settings: typeof short === 'string' ? { ...parts, short } : parts });
+}
+
+// + New inside that builder: a level, action or pattern you don't have yet goes into your library and into the setup
+export function startLibraryChoice(kind) { state.libraryNew = { kind, name: '', short: '' }; renderJournalLibrary(); }
+export function cancelLibraryChoice() { state.libraryNew = null; renderJournalLibrary(); }
+export async function addLibraryChoice(name) {
+  const n = state.libraryNew, d = state.setupEdit;
+  name = String(name || '').trim().slice(0, 80);
+  if (!n || !name) return;
+  const kind = n.kind;
+  const same = (library().byKind[kind] || []).find(i => i.name.toLowerCase() === name.toLowerCase());
+  state.libraryNew = null;
+  let key = same?.key || '';
+  if (!same) {
+    // an action or pattern takes its words on a short from the box beside it (blank: a breakout's is a breakdown, else the same)
+    const short = (kind === 'action' || kind === 'pattern') && String(n.short || '').trim().slice(0, 80);
+    const row = { id: newId(), kind, name, ...(short ? { settings: { short } } : {}) };
+    key = `mine:${row.id}`;
+    if (!await apply(dd => { dd.library = [...dd.library, row]; }, () => saveLibraryItem(row))) return renderJournalLibrary();
+  }
+  // picked in the builder, the way tapping its chip would (one already picked stays picked)
+  if (!d || state.setupEdit !== d) return renderJournalLibrary();
+  if (kind === 'level' && !d.levels.includes(key)) return toggleEditLevel(key);
+  if (kind === 'action' && d.action !== key) return setEditAction(key);
+  if (kind === 'pattern' && d.pattern !== key) return setEditPattern(key);
+  renderJournalLibrary();
+}
+/** the + New box in the builder: a name, and an action's or pattern's words on a short */
+function libraryNewBox(kind) {
+  const n = state.libraryNew;
+  if (n?.kind !== kind) return `<button class="pos-link jr-new" data-action="startLibraryChoice" data-arg="${kind}">+ New</button>`;
+  const short = kind === 'action' || kind === 'pattern'
+    ? `<input type="text" id="libraryNewShort" maxlength="80" placeholder="On a short" autocomplete="off" value="${esc(n.short)}" data-input="libraryChoiceShortInput" data-enter="addLibraryChoice" aria-label="Its words on a short" />` : '';
+  return `<span class="jr-newbox"><input type="text" id="libraryNewName" maxlength="80" placeholder="Name" autocomplete="off" value="${esc(n.name)}" data-input="libraryChoiceInput" data-enter="addLibraryChoice" aria-label="New choice" />${short}<button class="btn" data-action="addLibraryChoice">Add</button><button class="pos-link" data-action="cancelLibraryChoice">Cancel</button></span>`;
 }
 
 /** the builder under a setup being edited; one made of the same things offers a merge instead of a twin */
 function setupEditHtml(lib) {
   const d = state.setupEdit, auto = setupName(lib, editParts(d)), twin = auto ? editTwin(lib, d) : null;
-  const finish = twin
+  // a new one made of the same things as one you have is that one: nothing to merge
+  const finish = twin && !d.key
+    ? `<span class="jr-have">Already in My setups: <b>${esc(lib.nameOf('setup', twin.key, 'both'))}</b>.</span>${d.missed ? `<button class="btn primary" data-action="useSetupTwin" data-arg="${esc(twin.key)}">Use it</button>` : ''}<button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`
+    : twin
     ? `<span class="jr-have">Same as <b>${esc(lib.nameOf('setup', twin.key, 'both'))}</b>.</span><button class="btn" data-action="mergeEditedSetup" data-arg="${esc(twin.key)}">Merge into it</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`
-    : `<button class="btn primary" data-action="saveSetupEdit"${auto ? '' : ' disabled'}>Save</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`;
+    : `<button class="btn primary" data-action="saveSetupEdit"${auto ? '' : ' disabled'}>${d.key ? 'Save' : d.missed ? `Add to My setups and ${esc(d.missed.symbol)}` : 'Add to My setups'}</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`;
   return `<div class="jr-draft jl-edit">
-      <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(i.name.replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setEditAction" data-arg="${esc(i.key)}"`)).join('')}</div>
-      <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(i.name, d.levels.includes(i.key), `data-action="toggleEditLevel" data-arg="${esc(i.key)}"`)).join('')}</div>
-      <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(i.name, d.pattern === i.key, `data-action="setEditPattern" data-arg="${esc(i.key)}"`)).join('')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(i.name.replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setEditAction" data-arg="${esc(i.key)}"`)).join('')}${libraryNewBox('action')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(i.name, d.levels.includes(i.key), `data-action="toggleEditLevel" data-arg="${esc(i.key)}"`)).join('')}${libraryNewBox('level')}</div>
+      <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(i.name, d.pattern === i.key, `data-action="setEditPattern" data-arg="${esc(i.key)}"`)).join('')}${libraryNewBox('pattern')}</div>
       <div class="jr-draft-row"><label class="jr-draft-q" for="setupEditName">Name</label><input type="text" id="setupEditName" maxlength="80" autocomplete="off" placeholder="${esc(auto || 'Pick what happened and at what')}" value="${esc(d.name)}" data-input="setupEditNameInput" data-enter="saveSetupEdit" />
         ${finish}</div>
-      <p class="hint">Every trade with this setup counts the new way, in the filter, the stats and the reviews.</p>
+      <p class="hint">${d.key ? 'Every trade with this setup counts the new way, in the filter, the stats and the reviews.' : d.missed ? `It goes on the missed ${esc(d.missed.symbol)}, and on any trade's review from then on.` : 'Then pick it on any trade\'s review.'}</p>
     </div>`;
 }
 
@@ -472,7 +536,9 @@ export function renderJournalLibrary() {
   const el = document.getElementById('journalLibraryBody');
   if (!el) return;
   const lib = library();
-  el.innerHTML = KIND_WORDS.map(([kind, words]) => {
+  // a missed trade's + New setup opens the builder on top, where the sheet opens
+  const forMissed = !!state.setupEdit && !state.setupEdit.key && !!state.setupEdit.missed;
+  el.innerHTML = (forMissed ? `<div class="sheet-section"><div class="sheet-label">New setup for the missed ${esc(state.setupEdit.missed.symbol)}</div>${setupEditHtml(lib)}</div>` : '') + KIND_WORDS.map(([kind, words]) => {
     const items = lib.byKind[kind] || [];
     // a built-in merge (the rejection: a bounce on a short) isn't yours to undo, so it isn't listed
     const builtIn = i => BUILT_IN_MERGES.has(`${kind}:${i.key}`) && !libraryRow(kind, i.key)?.merged_into;
@@ -492,11 +558,13 @@ export function renderJournalLibrary() {
         ${twin ? `<span class="jl-twin">${kind === 'setup' ? 'Same setup as' : 'The short side of'} <b>${esc(lib.nameOf(kind, twin.key, 'both'))}</b> <button class="pos-link" data-action="mergeTwin" data-arg="${kind}" data-arg2="${esc(i.key)}" data-into="${esc(twin.key)}">Merge into it</button></span>` : ''}</div>
         ${kind === 'setup' && state.setupEdit?.key === i.key ? setupEditHtml(lib) : ''}`;
     }).join('');
-    return `<div class="sheet-section"><div class="sheet-label">${words}</div>${KIND_NOTES[kind] ? `<p class="hint">${esc(KIND_NOTES[kind])}</p>` : ''}<div class="jl-list">${rows}</div></div>`;
+    // My setups ends with + New setup, the builder in its place while it's open
+    const add = kind !== 'setup' || forMissed ? '' : state.setupEdit && !state.setupEdit.key ? setupEditHtml(lib) : '<div><button class="pos-link jr-new" data-action="newLibrarySetup">+ New setup</button></div>';
+    return `<div class="sheet-section"><div class="sheet-label">${words}</div>${KIND_NOTES[kind] ? `<p class="hint">${esc(KIND_NOTES[kind])}</p>` : ''}<div class="jl-list">${rows}${add}</div></div>`;
   }).join('') + '<p class="hint">Hidden choices stop being offered; trades already labeled keep them. Merging counts one as the other everywhere, and the old name maps to the kept one from then on.</p>';
 }
 
-export function openJournalLibrary() { state.setupEdit = null; renderJournalLibrary(); openSheet('journalLibrary'); }
+export function openJournalLibrary() { state.setupEdit = null; state.libraryNew = null; renderJournalLibrary(); openSheet('journalLibrary'); }
 
 /** the library row for an item: yours, or the one that changes a default (made when first needed) */
 function libraryRow(kind, key) {
