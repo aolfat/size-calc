@@ -99,6 +99,9 @@ full size, or deleted after a second tap. Books can be renamed; a book must be e
 One screenshot per example. Examples show as a gallery grid (one column on phones): the chart cropped to 16:10, the
 title, the book only where books mix, setups, and notes clamped to three lines; the viewer shows the whole chart with
 every setup and the full note. The browse switch reads By book | By setup, and the tab is just 'Books' on phones.
+By setup lists every one of My setups, those with no examples yet too (0), so a setup's first example starts there: + Add example tags it with the setup you're on.
+A hidden setup shows only while an example carries it.
+On phones the books or setups are a sideways chip row, and the selected one scrolls into view.
 
 Images use the existing shrinker (up to 2000px, WebP/JPEG, 2 MB) and the private `model-books` bucket. Metadata lives in
 `model_books` and `model_examples`, with owner rules and an owner-scoped book foreign key. Apply

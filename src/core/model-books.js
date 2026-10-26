@@ -22,3 +22,14 @@ export function modelExampleProblem(draft, books) {
   if (!draft.id && !draft.image) return 'Paste or choose a chart screenshot.';
   return '';
 }
+
+/**
+ * Where a sideways chip row scrolls so its selected chip shows: as it was when the chip is already in view, else just
+ * far enough to show it with a little of the next one. @param {number} scroll @param {number} view the row's width
+ * @param {number} start the chip's left edge in the row's content @param {number} size the chip's width
+ */
+export function chipScrollLeft(scroll, view, start, size, peek = 24) {
+  if (start < scroll) return Math.max(0, start - peek);
+  if (start + size > scroll + view) return start + size - view + peek;
+  return scroll;
+}
