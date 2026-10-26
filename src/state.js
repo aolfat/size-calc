@@ -78,6 +78,10 @@ export function createState() {
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
     journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
     journalReviewFilter: 'all', // the trades tab's review chips: all | todo (to review) | done (reviewed) | untagged (no setup)
+    claudeKeys: null, // your Claude access keys once read (Settings): [{ id, label, created_at, last_used_at }]
+    claudeKeysError: '', // they couldn't be read (the migration not pushed yet, say)
+    claudeNewKey: '', // a key just made, shown once until a sheet opens or closes
+    claudeBusy: false, // Make key is saving
     reviewMarketOwn: false, // the market chips set this trade's own market, not the day's
     journalShots: null, // your screenshots once read: [{ id, trade_key, path, caption, width, height, bytes, created_at }]
     journalShotsError: '', // they couldn't be read (the migration not pushed yet, say)
@@ -114,10 +118,12 @@ export function createState() {
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }
     journalExcursions: {}, // trade key → { sig, ex }: each closed trade's MFE, MAE and exit efficiency from its saved bars, for the reviews
+    periodTradeSort: { by: 'pnl', dir: -1 }, // the week or month review's trade list: 'pnl' | 'pct' | 'r' | 'opened', -1 biggest (newest) first
     periodBarsBusy: false, // a review is reading its trades' bars
     periodReviews: null, // 'week|2026-10-12' or 'month|2026-10' → its period_reviews row (grades, notes, the rules); null until read
     periodReviewsError: '', // why they couldn't be read (the table not pushed yet): the numbers still show, nothing saves
-    periodNoteDraft: null, // { unit, key, field, text }: a part's note or the rule for next week being typed, saved on blur
+    periodOverallError: '', // why the overall notes (went_well, work_on, note) couldn't be read (their columns not pushed yet): those boxes are off, the rest saves
+    periodNoteDraft: null, // { unit, key, field, text }: a part's note, an overall note or the rule for next week being typed, saved on blur
     journalPeriod: 'all', // the stats cover: all | day | week | month
     journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday) or 'YYYY-MM'; empty = the newest with closed trades
     journalPeriodShown: '', // the period the stats last showed (‹ › step from it)

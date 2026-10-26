@@ -40,18 +40,37 @@ test('every table carries its owner and is deleted with the account', () => {
   }
 });
 
-test('nothing is granted to the anonymous role', () => {
-  assert.doesNotMatch(sql, /grant[^;]*to[^;]*\banon\b/i);
+// Claude access (docs/claude-access.md): these take a key in place of a sign-in, so they're the one thing anon may run;
+// each one checks the key before anything else, and the check itself is never callable
+const KEYED = ['claude_journal_read', 'claude_journal_save'];
+const KEY_CHECK = 'claude_key_user';
+
+test('nothing is granted to the anonymous role but the functions that check a Claude key', () => {
+  for (const [grant] of sql.matchAll(/grant[^;]*to[^;]*\banon\b[^;]*;/gi)) {
+    const names = [...grant.matchAll(/public\.(\w+)\(/g)].map(m => m[1]);
+    assert.match(grant, /^grant execute on function/i, `only functions: ${grant}`);
+    assert.ok(names.length && names.every(n => KEYED.includes(n)), `only the keyed functions: ${grant}`);
+  }
   for (const t of tables) assert.match(sql, new RegExp(`revoke all on [^;]*public\\.${t}[^;]* from anon`, 'i'), t);
 });
 
-test('functions that run with elevated rights fix their search path and are callable only by signed-in users', () => {
+test('a keyed function checks the key first, and the check is callable by no one', () => {
+  for (const name of KEYED) {
+    const fn = sql.match(new RegExp(`create or replace function public\\.${name}\\(p_key text[^)]*\\)[^$]*\\$\\$\\s*declare\\s*uid uuid := public\\.${KEY_CHECK}\\(p_key\\);`, 'i'));
+    assert.ok(fn, `${name} starts with the key check`);
+  }
+  assert.match(sql, new RegExp(`revoke execute on function public\\.${KEY_CHECK}\\(text\\) from public, anon, authenticated`, 'i'));
+  assert.doesNotMatch(sql, new RegExp(`grant[^;]*public\\.${KEY_CHECK}\\(`, 'i'));
+});
+
+test('functions that run with elevated rights fix their search path and are callable only by signed-in users (or with a Claude key)', () => {
   const definers = [...sql.matchAll(/create (?:or replace )?function public\.(\w+)\(([^)]*)\)[^$]*?security definer[^$]*?\$\$/gi)];
   assert.ok(definers.length > 0);
   for (const [whole, name] of definers) {
     assert.match(whole, /set search_path = ''/i, `${name}: fixed search path`);
     assert.match(sql, new RegExp(`revoke execute on function [^;]*public\\.${name}\\(`, 'i'), `${name}: revoked from public`);
-    assert.match(sql, new RegExp(`grant execute on function [^;]*public\\.${name}\\([^;]*to authenticated`, 'i'), `${name}: signed-in users only`);
+    if (name === KEY_CHECK) continue; // checked above: callable by no one
+    assert.match(sql, new RegExp(`grant execute on function [^;]*public\\.${name}\\([^;]*to ${KEYED.includes(name) ? 'anon, ' : ''}authenticated`, 'i'), `${name}: signed-in users only`);
   }
 });
 

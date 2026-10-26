@@ -3,7 +3,7 @@
 // (journal_days, which also holds each day's notebook page), your library (library_items, your goals and rules too), and
 // the week and month reviews (period_reviews). Row-level security
 // returns only your rows. Never touches the page.
-import { cleanPeriodRow, PERIOD_COLUMNS } from '../core/journal-week.js';
+import { cleanPeriodRow, PERIOD_COLUMNS, PERIOD_OVERALL_COLUMNS } from '../core/journal-week.js';
 import { gradeOf } from '../core/journal-labels.js';
 import { cleanDayRow, DAY_COLUMNS } from '../core/journal-notebook.js';
 import { state } from '../state.js';
@@ -129,16 +129,22 @@ export async function saveLabelLinks(key, kind, value, links) {
   refused(await c.from('trade_labels').upsert([{ trade_key: key, kind, value, links }], { onConflict: 'user_id,trade_key,kind,value' }), 'Supabase refused the save.');
 }
 
-/** the week and month reviews' grades and notes (period_reviews, slice 6 part 2's migration): rows, newest first */
+/** the week and month reviews' grades and notes (period_reviews, slice 6 part 2's migration): { rows, overallError (why the overall notes couldn't be read) } */
 export async function loadPeriodReviews() {
   const c = await client();
-  const res = await c.from('period_reviews').select(['unit', 'period_key', ...PERIOD_COLUMNS].join(',')).limit(2000);
+  const [res, overall] = await Promise.all([
+    c.from('period_reviews').select(['unit', 'period_key', ...PERIOD_COLUMNS].join(',')).limit(2000),
+    c.from('period_reviews').select(['unit', 'period_key', ...PERIOD_OVERALL_COLUMNS].join(',')).limit(2000),
+  ]);
   if (res?.error) {
     const err = new Error(notPushed(res) ? "the database doesn't have the period_reviews table yet: npx supabase db push" : res.error.message || 'Supabase refused the read.');
     err.status = res.status || 0;
     throw err;
   }
-  return (res.data || []).map(cleanPeriodRow).filter(Boolean);
+  // the overall notes (their own migration) read on their own, so a database without them keeps the grades working
+  const notes = new Map(overall?.error ? [] : (overall.data || []).map(r => [`${r.unit}|${r.period_key}`, r]));
+  const overallError = !overall?.error ? '' : notPushed(overall) ? "the database doesn't have the overall note columns yet: npx supabase db push" : overall.error.message || 'Supabase refused the read.';
+  return { rows: (res.data || []).map(r => cleanPeriodRow({ ...notes.get(`${r.unit}|${r.period_key}`), ...r })).filter(Boolean), overallError };
 }
 
 /** a week's or month's review fields (only these columns: the other parts' grades and notes stay as they are) */

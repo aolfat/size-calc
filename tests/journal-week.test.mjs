@@ -2,7 +2,8 @@
 // Week and month reviews (journal step 3, slice 6, parts 1 and 2): a period's numbers per part of a self-assessment
 // (selection, entry, exits, risk, emotions, market, preparation, consistency), against the period before, and the review
 // panel the calendar opens for a week or a month, with exit efficiency from the trades' saved 5-minute bars; each part's
-// grade and note, last week's rule with Kept it?, the rule for next week, and the calendar's reviewed mark.
+// grade and note, last week's rule with Kept it?, the week overall, the rule for next week, the calendar's reviewed mark,
+// and the period's trades in a list sorted by P&L, P&L %, R or when they opened.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -128,6 +129,26 @@ test('an empty week has no facts, a month counts its weeks together, bars still 
   const exit = loading.categories.find(c => c.key === 'exit').facts.map(f => f.text);
   assert.ok(exit.includes('Loading the 5-minute bars for the best and worst of each trade…'));
   assert.ok(!exit.some(f => /No 5-minute bars/.test(f)), 'not read yet is not missing');
+});
+
+test('the list of trades: the period\'s exits like the calendar, a trim\'s % over what that part cost, sorted with blanks last', async () => {
+  const { run } = await app();
+  // opened the Friday before, half sold then for +$300 and half this week for +$200
+  const part = T('part', '2026-10-09T14:00:00Z', '2026-10-13T15:00:00Z', 500, { risk: 100, r: 5, exits: 2,
+    realized: [{ at: '2026-10-09T15:00:00Z', qty: 50, pnl: 300 }, { at: '2026-10-13T15:00:00Z', qty: 50, pnl: 200 }] });
+  const all = JSON.stringify([...TRADES, part]);
+  const rows = json(run, `periodTradeRows(${all}, 'week', '2026-10-12')`);
+  const by = k => rows.find(x => x.trade.key === k);
+  assert.deepEqual([by('part').pnl, by('part').pct, by('part').r, by('part').partial], [200, 4, 2, true], 'this week\'s half: $200 on $5,000');
+  assert.deepEqual([by('aapl').pnl, by('aapl').pct, by('aapl').r, by('aapl').partial], [400, 4, 2, false]);
+  assert.deepEqual([by('meta').pnl, by('meta').pct, by('meta').r, by('meta').open], [null, null, null, true], 'opened, nothing closed yet');
+  assert.ok(!by('gone') && !by('spy'), 'deleted and last week\'s trades left out');
+  const order = (sort, dir) => json(run, `sortPeriodTrades(periodTradeRows(${all}, 'week', '2026-10-12'), '${sort}', ${dir})`).map(x => x.trade.key);
+  assert.deepEqual(order('pnl', -1), ['aapl', 'nvda', 'part', 'tsla', 'amd', 'meta']);
+  assert.deepEqual(order('pnl', 1), ['amd', 'tsla', 'part', 'nvda', 'aapl', 'meta'], 'no P&L stays last either way');
+  assert.deepEqual(order('pct', -1), ['part', 'aapl', 'nvda', 'tsla', 'amd', 'meta'], 'a tie goes to the one opened first');
+  assert.deepEqual(order('r', 1), ['amd', 'tsla', 'nvda', 'part', 'aapl', 'meta']);
+  assert.deepEqual(order('opened', -1), ['meta', 'tsla', 'amd', 'nvda', 'aapl', 'part']);
 });
 
 // ---------- the panel ----------
@@ -276,6 +297,76 @@ test('grades and notes save as you go: one column per save, a note on blur, the 
   await settle();
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').reviewed_at, null, 'a grade cleared takes the mark off');
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').risk_grade, null);
+});
+
+test('the review lists the week\'s trades: tap a header to sort by it, again to flip it, a row opens the trade', async () => {
+  const { run, out } = await journal();
+  run("openPeriodReview('week', '2026-10-05')");
+  const keys = () => [...out().matchAll(/<tr data-action="openTradeRow" data-arg="([^"]+)">/g)].map(m => m[1]);
+  const names = () => [...out().matchAll(/<tr data-action="openTradeRow"[^>]*>\s*<td><button class="journal-name"[^>]*><b>([^<]+)<\/b>/g)].map(m => m[1]);
+  assert.match(out(), /<div class="section-title js-sub">Trades <span class="jw-optional">2<\/span><\/div>/);
+  assert.match(out(), /<th scope="col" class="jw-sort" aria-sort="descending"><button data-action="setPeriodTradeSort" data-arg="pnl"[^>]*>P&amp;L ↓<\/button><\/th>/, 'P&L, biggest first, to start');
+  assert.deepEqual(names(), ['AAPL', 'MSFT']);
+  assert.match(out(), /<td class="journal-buy">\+\$300\.00<\/td>\s*<td class="journal-buy">\+3\.00%<\/td>/);
+  assert.match(out(), /<td class="journal-sell">−\$100\.00<\/td>\s*<td class="journal-sell">−1\.00%<\/td>/);
+  run("setPeriodTradeSort('pnl')");
+  assert.deepEqual(names(), ['MSFT', 'AAPL'], 'again: smallest first');
+  assert.match(out(), /aria-sort="ascending"><button data-action="setPeriodTradeSort" data-arg="pnl"[^>]*>P&amp;L ↑/);
+  run("setPeriodTradeSort('pct')");
+  assert.deepEqual(names(), ['AAPL', 'MSFT'], 'a new column starts biggest first');
+  run("setPeriodTradeSort('opened')");
+  assert.deepEqual(names(), ['AAPL', 'MSFT'], 'Opened starts oldest first');
+  assert.match(out(), /aria-sort="ascending"><button data-action="setPeriodTradeSort" data-arg="opened"[^>]*>Opened ↑/);
+  run("setPeriodTradeSort('bogus')");
+  assert.match(out(), /data-arg="opened"[^>]*>Opened ↑/, 'an unknown column changes nothing');
+  assert.equal(keys().length, 2);
+});
+
+test('the week overall: what went well, what to work on, more notes, each its own column, never needed to finish', async () => {
+  const { run, out, supabase } = await journal();
+  const writes = () => supabase.writes.filter(w => w.table === 'period_reviews');
+  run("openPeriodReview('week', '2026-10-05')");
+  assert.match(out(), /<section class="jw-overall" aria-label="The week overall"><div class="jw-cat-name">The week overall <span class="jw-optional">optional<\/span><\/div>/);
+  for (const [col, label] of [['went_well', 'What went well'], ['work_on', 'What to work on'], ['note', 'More notes']])
+    assert.match(out(), new RegExp(`<label class="jw-overall-label" for="jwOverall-${col}">${label}</label>\\s*<textarea class="jw-note" id="jwOverall-${col}"[^>]*data-arg="${col}">`));
+  assert.ok(out().indexOf('jw-overall') > out().indexOf('jw-cats') && out().indexOf('jw-overall') < out().indexOf('jwRuleNext'), 'after the parts, before the rule');
+  run("periodTextInput('went_well', 'Waited for the 9:45 pivot')");
+  run('renderJournal()');
+  assert.match(out(), /id="jwOverall-went_well"[^>]*>Waited for the 9:45 pivot<\/textarea>/, 'a redraw keeps the draft');
+  run("periodTextSave('went_well', ' Waited for the 9:45 pivot ')");
+  await settle();
+  assert.deepEqual(writes().map(w => Object.keys(w).filter(k => !['unit', 'period_key', 'onConflict', 'ignoreDuplicates', 'user_id', 'table'].includes(k))), [['went_well']], 'only that column');
+  assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').went_well, 'Waited for the 9:45 pivot');
+  run("periodTextSave('note', 'Slept badly Wednesday')");
+  await settle();
+  assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').note, 'Slept badly Wednesday');
+  assert.match(out(), /To finish: grades on 8 parts and the rule for next week\./, 'notes don\'t count toward reviewed');
+  run("closePeriodReview()");
+  run("openPeriodReview('month', '2026-10')");
+  assert.match(out(), /aria-label="The month overall"/);
+  assert.match(out(), /placeholder="Anything else about the month"/);
+});
+
+test('before the overall notes\' columns are pushed their boxes are off and say so; grades still save', async () => {
+  const supabaseCols = s => s.failColumn('period_reviews', 'went_well');
+  const sb = fakeRecords(RECORDS);
+  supabaseCols(sb);
+  const a = await app({ supabase: sb, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  a.run("setJournalTab('calendar')");
+  const out = () => a.elements.get('journalSection').innerHTML;
+  assert.equal(a.state.periodReviewsError, '');
+  assert.match(a.state.periodOverallError, /overall note columns yet: npx supabase db push/);
+  a.run("openPeriodReview('week', '2026-10-05')");
+  assert.match(out(), /Overall notes need a database update: the database doesn&#39;t have the overall note columns yet: npx supabase db push\. Grades and the rest still save\./);
+  assert.match(out(), /id="jwOverall-work_on"[^>]*disabled>/);
+  assert.doesNotMatch(out(), /id="jwNote-exit"[^>]*disabled/, 'the parts\' notes still work');
+  a.run("periodTextSave('work_on', 'x')");
+  a.run("setPeriodGrade('exit', 'B')");
+  await settle();
+  assert.deepEqual(sb.writes.filter(w => w.table === 'period_reviews').map(w => w.exit_grade), ['B'], 'only the grade went out');
 });
 
 test('last week\'s rule shows on top with Kept it?, saved on this week', async () => {

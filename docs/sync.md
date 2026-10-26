@@ -24,3 +24,4 @@ Google sign-in through Supabase, which settings sync, the Tradier key in Vault, 
   Free plan: no automatic backups, pauses after a week of low activity.
   There is no export/import file (removed by request).
   The old encrypted Cloudflare sync worker is gone from the repo Saved position cards are retired (Positions shows live Schwab positions), so leftover `saved_positions` / `deleted_positions` keys on older devices are never sent; the `saved_positions` table from the first migration is dropped by the second
+A Claude access key (Settings, docs/claude-access.md) is separate from sync: it reads the journal and saves reviews, never settings or the Tradier key.
