@@ -147,6 +147,7 @@ export function createState() {
     journalSavedError: '', // the trades table couldn't be read (no migration yet): trades show as the app groups them, merging is off
     journalPicked: [], // trade keys ticked for Merge
     journalSelecting: false, // phones: Select shows the cards' tick boxes
+    journalFiltersOpen: false, // phones: Filters opens the setup, side, fees and Review from row
     journalJustReviewed: '', // a trade reviewed on its page just now: its card pops once on the way back
     journalMerging: false, // a merge or separate is being saved
     tradeReviewsError: '', // the reviews couldn't be read (the trades still show, with Schwab's stops)
