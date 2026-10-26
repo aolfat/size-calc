@@ -66,4 +66,5 @@ button.jc-quiet:hover, .jc-noted { opacity: 0.9; }
   .nb-head .jc-title { min-width: 0; font-size: 14px; }
   .nb-hours { margin: 4px 0 0; }
   .nb-trade { flex-wrap: wrap; }
+  .jr textarea.nb-focus-input { font-size: 16px; } /* they were inputs, which phones get at 16px: <16px triggers iOS focus zoom */
 }
