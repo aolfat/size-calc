@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push)",
+      "Bash(git push -u origin *)",
+      "Bash(git push origin *)",
+      "Bash(git fetch *)",
+      "Bash(gh pr *)",
+      "Bash(gh run *)",
+      "Bash(gh repo view *)",
+      "Bash(gh api *)",
+      "Bash(gh auth status)"
+    ],
+    "ask": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push origin main*)",
+      "Bash(gh pr merge *)",
+      "Bash(gh api * -X DELETE*)",
+      "Bash(gh api * --method DELETE*)"
+    ]
+  },
+  "sandbox": {
+    "excludedCommands": ["gh *"]
+  }
+}
