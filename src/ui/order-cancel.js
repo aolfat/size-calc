@@ -2,6 +2,7 @@
 // Schwab cancels a target-and-stop pair together, so the other half goes back in on its own unless you pick cancelling both,
 // and only once Schwab shows it cancelled, never filled; afterwards Schwab is re-read to say what it shows.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { marketEscape as esc } from '../core/format.js';
 import { cancelPlan, orderGone, ordersFor, schwabTime, workingOrders, workingWords } from '../core/positions.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder } from '../services/schwab.js';
@@ -249,7 +250,7 @@ export function renderCancelSheet() {
   const steps = t.steps.map(s => `<li class="pos-step${s.status ? ' ' + s.status : ''}">${s.status ? marks[s.status] + ' ' : ''}${esc(stepText(t, s))}</li>`).join('');
   const entered = schwabTime(o.entered);
   const meta = [o.duration === 'DAY' ? 'Today only' : o.duration === 'GOOD_TILL_CANCEL' ? 'Until canceled' : words(o.duration), words(o.status),
-    Number.isNaN(entered) ? '' : 'placed ' + new Date(entered).toLocaleString('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ');
+    Number.isNaN(entered) ? '' : 'placed ' + inZone(entered, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ');
   const orders = t.steps.map(s => s.kind === 'cancel' ? { cancel: s.orderId } : { place: s.order });
   const settled = t.sent && !state.posTradeBusy;
   body.innerHTML = `

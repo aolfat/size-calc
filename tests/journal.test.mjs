@@ -660,3 +660,17 @@ test('a fresh open with no tab in the address goes back to the tab open last on 
   storage.set('last_view', 'bogus');
   assert.equal(run("startView('')"), 'calc');
 });
+
+test('in Pacific time the trades and fills say PT and their times move three hours', async () => {
+  const records = RECORDS.map(r => ({ ...r, account: '6789' }));
+  const { run, elements } = await app({ storage: connected(), supabase: fakeSupabase(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const out = () => elements.get('journalSection').innerHTML;
+  const firstClock = () => { const m = /(\d{1,2}):(\d{2}) ([AP])M/.exec(out()); return (+m[1] % 12 + (m[3] === 'P' ? 12 : 0)) * 60 + +m[2]; };
+  assert.match(out(), /<th scope="col">Opened \(ET\)<\/th>/);
+  const et = firstClock();
+  run("setTimeZone('pt')");
+  assert.match(out(), /<th scope="col">Opened \(PT\)<\/th>/);
+  assert.equal(et - firstClock(), 180);
+});

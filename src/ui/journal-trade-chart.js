@@ -8,6 +8,7 @@
 import { marketEscape as esc } from '../core/format.js';
 import { chartSeries, compactVolume } from '../core/trade-page.js';
 import { SANS_FONT } from '../lib/media.js';
+import { displayZone } from '../lib/zone.js';
 import { state } from '../state.js';
 import { effects } from './effects.js';
 
@@ -80,7 +81,7 @@ export function makeTradeChart(lib, el, legend, { daily }) {
   const vwap = daily ? null : chart.addSeries(lib.LineSeries, { color: c.teal, lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
   const h = {
     lib, el, chart, candles, ema, vwap, volume, colors: c, markers: lib.createSeriesMarkers(candles, []), lines: [], off: new AbortController(),
-    bars: null, emaValues: [], vwapValues: [], rangeKey: null, title: '', digits: 2, legend, showLegend: (/** @type {number} */ i) => { legend.innerHTML = legendHtml(h, i); },
+    bars: null, zone: '', emaValues: [], vwapValues: [], rangeKey: null, title: '', digits: 2, legend, showLegend: (/** @type {number} */ i) => { legend.innerHTML = legendHtml(h, i); },
   };
 
   chart.subscribeCrosshairMove(param => {
@@ -109,7 +110,8 @@ export function makeTradeChart(lib, el, legend, { daily }) {
 
 /**
  * Draw bars on a chart. New bars, or a new rangeKey, set the view (range: { start, end } bar indexes, else the whole set);
- * the markers and lines are replaced every time, so a redraw never stacks them. iv: the intraday interval the fills are
+ * the markers and lines are replaced every time, so a redraw never stacks them. Times show in the Settings zone; a new zone
+ * sets the bars again. iv: the intraday interval the fills are
  * placed by (0 = daily); title: the legend's name; log: a logarithmic price scale; marks: a dot over a bar, with its word
  * (a missed trade's day on its daily chart).
  * @param {any} h @param {any[]} bars
@@ -117,9 +119,9 @@ export function makeTradeChart(lib, el, legend, { daily }) {
  *   rangeKey?: string, iv?: number, title?: string, log?: boolean, marks?: { index: number, text: string }[] }} o
  */
 export function paintTradeChart(h, bars, { fills, lines, range = null, rangeKey = '', iv = 5, title = '', log = false, marks = [] }) {
-  const s = chartSeries(bars, fills, iv || 5), { lib, colors } = h;
+  const zone = displayZone(), s = chartSeries(bars, fills, iv || 5, zone), { lib, colors } = h;
   const fresh = h.bars !== bars;
-  if (fresh) {
+  if (fresh || h.zone !== zone) { // a new zone keeps the view: same bars, relabeled
     const last = bars[bars.length - 1]?.close || 0;
     h.digits = last && last < 1 ? 4 : 2;
     h.candles.applyOptions({ priceFormat: { type: 'price', precision: h.digits, minMove: h.digits === 4 ? 0.0001 : 0.01 } });
@@ -128,6 +130,7 @@ export function paintTradeChart(h, bars, { fills, lines, range = null, rangeKey 
     h.vwap?.setData(s.vwap.map(v => v.end ? { time: v.time, value: v.value, color: 'transparent' } : { time: v.time, value: v.value }));
     h.volume.setData(s.volume.map(v => ({ time: v.time, value: v.value, color: fade(v.up ? colors.green : colors.red, 0.35) })));
     h.bars = bars;
+    h.zone = zone;
   }
   if (fresh || rangeKey !== h.rangeKey) {
     if (range) h.chart.timeScale().setVisibleLogicalRange({ from: range.start, to: range.end - 1 });

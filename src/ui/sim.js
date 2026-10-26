@@ -1,5 +1,6 @@
 // Returns simulator modal: Black-Scholes return % from now to expiry at a chosen underlying price.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { RISK_FREE, bsPrice, impliedVolatility } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
@@ -35,7 +36,7 @@ export function openSim(o) {
   state.simState = o;
   state.simHover = -1;
   document.getElementById('simTitle').textContent = o.label;
-  const markTime = typeof o.markAsOf === 'number' ? new Date(o.markAsOf).toLocaleTimeString() : o.markAsOf;
+  const markTime = typeof o.markAsOf === 'number' ? inZone(o.markAsOf) : o.markAsOf;
   const mark = o.mark != null ? `${o.markSource || 'Schwab'} ${fmt$(o.mark)}/ct${markTime ? ` as of ${markTime}` : ''} · ` : '';
   document.getElementById('simMeta').textContent = `${mark}${o.entryWord || (o.credit ? 'credit' : 'entry')} ${fmt$(o.entry)}/${o.sizing === 'allocation' ? 'share' : 'ct'} · ${o.qty} ct · IV ${(o.iv * 100).toFixed(1)}% ${o.mark != null ? 'fitted, ' : ''}held constant${o.shortPut ? ' · return on assignment notional' : ''}`;
   const sl = document.getElementById('simPrice');

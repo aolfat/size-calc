@@ -1,6 +1,7 @@
 // Account size from Schwab: the selected account's value (liquidation value) goes into the account size once per New York day,
 // on the first Schwab read of the day (boot, focus, a Positions refresh, a login or account switch). A typed number holds until the next day.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { fmt$ } from '../core/format.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabBalances, schwabConnected } from '../services/schwab.js';
@@ -67,8 +68,7 @@ export function setAccountSizeSource(source) {
 }
 
 const when = ms => {
-  const d = new Date(ms);
-  return nyDay(ms) === nyDay(Date.now()) ? 'at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : `on ${d.getMonth() + 1}/${d.getDate()}`;
+  return nyDay(ms) === nyDay(Date.now()) ? 'at ' + inZone(ms, { hour: 'numeric', minute: '2-digit' }) : `on ${inZone(ms, { month: 'numeric', day: 'numeric' })}`;
 };
 
 /** the source switch in the risk sheet: shown while logged in to Schwab */

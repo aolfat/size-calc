@@ -1,5 +1,6 @@
 // Vertical spread builder: mark the near leg, tap the far strike, pin the spread card.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
 import { strikesLabel, typeLabel } from '../core/options.js';
@@ -63,7 +64,7 @@ export function completeSpread(farC) {
     delta: L.delta - farC.delta, gamma: (L.gamma || 0) - (farC.gamma || 0), iv: L.iv,
     vol: Math.min(L.vol, farC.vol), oi: Math.min(L.oi, farC.oi),
     spreadPct: net > 0 ? (((L.opt.ask || 0) - (farC.opt.bid || 0)) - ((L.opt.bid || 0) - (farC.opt.ask || 0))) / net * 100 : 0,
-    asOf: new Date().toLocaleTimeString()
+    asOf: inZone(Date.now())
   };
   recalcPinnedStop(d);
   state.pinnedData[cardId] = d;

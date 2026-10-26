@@ -15,6 +15,7 @@ export function createState() {
     chainData: [],
     selectedExp: null,
     currentMode: 'shares',
+    timeZone: store.get('time_zone') === 'pt' ? 'pt' : 'et', // the zone clock times show in (lib/zone.js), this device only
     direction: 'long',
     sizingMode: 'risk',
     optionTradeSide: 'buy',

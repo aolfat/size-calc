@@ -2,6 +2,7 @@
 // pending and sent together after a pause; pulls ask only for rows changed since the last one; a device's first
 // sign-in merges with the account. Never touches the page: it reports through onCloudView.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { store, onStoreWrite } from '../lib/store.js';
 import { mergeFirstSignIn, pullFrom, seenAfter, unseenRows } from '../core/cloud-merge.js';
 import { hasStoredSession, supabaseClient } from './supabase.js';
@@ -32,7 +33,7 @@ export function cloudActive() { return !!state.session || hasStoredSession() || 
 const merged = () => !!state.session && store.get('cloud_user') === state.session.user.id;
 
 function readJson(k, fallback) { try { return JSON.parse(store.get(k) || 'null') ?? fallback; } catch(e) { return fallback; } }
-const clock = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const clock = () => inZone(Date.now(), { hour: 'numeric', minute: '2-digit' });
 
 /** a failed Supabase answer as an Error that carries its HTTP status */
 function check(res) {

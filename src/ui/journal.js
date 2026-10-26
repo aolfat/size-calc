@@ -16,6 +16,7 @@ import { deleteSavedTrades, insertSavedTrades, loadSavedRecords, loadSavedTrades
 import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
 import { mq, PHONE_MQ } from '../lib/media.js';
+import { inZone, zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
@@ -38,9 +39,9 @@ import { showError, showToast } from './feedback.js';
 export const JOURNAL_SHOWN = 200;
 
 const day = iso => iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-const when = iso => iso ? new Date(iso).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-/** a fill's time in market time (New York), whatever the device's zone: '10/13, 11:47 AM' */
-export const marketTime = iso => iso ? new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+/** a fill's time in the Settings zone (ET or PT), whatever the device's: '10/13, 11:47 AM' */
+export const clockTime = iso => iso ? inZone(iso, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+const when = clockTime;
 
 /** the line under the title: importing, the last import, or why it can't run */
 function statusLine() {
@@ -61,7 +62,7 @@ function fillRow(f) {
     <td>${f.qty}</td>
     <td>${fmtPositionPrice(f.price, f.assetType === 'OPTION' ? 'OPTION' : null)}</td>
     <td>${fmt$(f.qty * f.price * mult)}</td>
-    <td>${esc(marketTime(f.time))}</td>
+    <td>${esc(clockTime(f.time))}</td>
   </tr>`;
 }
 
@@ -146,9 +147,11 @@ function setupsCell(t) {
 /** the columns after Symbol, in table order: [key, header] */
 export const TRADE_COLS = [
   ['pnlPct', 'P&amp;L %'], ['pnl', 'P&amp;L'], ['r', 'R'], ['stop', 'Stop'], ['setups', 'Setups'], ['side', 'Side'],
-  ['qty', 'Qty'], ['entry', 'Entry'], ['exit', 'Exit'], ['hold', 'Hold'], ['opened', 'Opened (ET)'],
+  ['qty', 'Qty'], ['entry', 'Entry'], ['exit', 'Exit'], ['hold', 'Hold'], ['opened', 'Opened'],
 ];
 const shownTradeCols = () => TRADE_COLS.filter(([key]) => !state.journalHiddenCols.includes(key));
+/** a column's header: Opened names the zone its times are in */
+const colHead = (key, label) => key === 'opened' ? `${label} (${zoneAbbr()})` : label;
 
 /** the Columns button: shows or hides the column picker */
 export function toggleJournalColumnsMenu() { state.journalColsOpen = !state.journalColsOpen; renderJournal(); }
@@ -168,7 +171,7 @@ function columnPicker() {
   const last = shownTradeCols().length === 1;
   return `<div class="chip-row pos-cols journal-cols" role="group" aria-label="Columns">${TRADE_COLS.map(([key, label]) => {
     const on = !state.journalHiddenCols.includes(key);
-    return `<button class="filter-btn${on ? ' active' : ''}" data-action="toggleJournalColumn" data-arg="${key}" aria-pressed="${on}"${on && last ? ' disabled title="Keep one column"' : ''}>${label}</button>`;
+    return `<button class="filter-btn${on ? ' active' : ''}" data-action="toggleJournalColumn" data-arg="${key}" aria-pressed="${on}"${on && last ? ' disabled title="Keep one column"' : ''}>${colHead(key, label)}</button>`;
   }).join('')}</div>`;
 }
 
@@ -217,7 +220,7 @@ function tradeRow(t) {
       entry: `<td>${px(t.avgEntry, t.assetType)}</td>`,
       exit: `<td>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</td>`,
       hold: `<td>${open ? 'open' : esc(holdWords(t.holdMs))}</td>`,
-      opened: `<td>${esc(marketTime(t.openedAt))}</td>`,
+      opened: `<td>${esc(clockTime(t.openedAt))}</td>`,
     })}
   </tr>`;
 }
@@ -402,7 +405,7 @@ function tradesView(all) {
   const shown = trades.slice(0, JOURNAL_SHOWN);
   const phone = mq(PHONE_MQ);
   const list = phone ? tradeCards(shown) : `${columnPicker()}<div class="positions-wrap"><table class="positions-table journal-table">
-      <thead><tr><th scope="col">Symbol</th>${shownTradeCols().map(([, label]) => `<th scope="col">${label}</th>`).join('')}</tr></thead>
+      <thead><tr><th scope="col">Symbol</th>${shownTradeCols().map(([key, label]) => `<th scope="col">${colHead(key, label)}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(tradeRow).join('')}</tbody>
     </table></div>`;
   const colsBtn = phone ? '' : `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
@@ -417,7 +420,7 @@ function tradesView(all) {
 function fillsView(fills) {
   if (!fills.length) return '<p class="hint">No fills match.</p>';
   return `<div class="positions-wrap"><table class="positions-table journal-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Time (ET)</th></tr></thead>
+      <thead><tr><th scope="col">Symbol</th><th scope="col">Action</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Time (${zoneAbbr()})</th></tr></thead>
       <tbody>${fills.slice(0, JOURNAL_SHOWN).map(fillRow).join('')}</tbody>
     </table></div>
     <p class="hint">${fills.length > JOURNAL_SHOWN ? `Showing the newest ${JOURNAL_SHOWN} of ${fills.length} fills. ` : `${fills.length} fill${fills.length === 1 ? '' : 's'}. `}Fills are read from your saved Schwab orders.</p>`;
@@ -660,18 +663,18 @@ function stopNowLine(t) {
   if (t.stopSource === 'yours') return `Using your stop, ${px(t.stop, t.assetType)}. Risk ${fmt$(t.risk)}.${t.schwabStop !== null ? ` Schwab's first was ${px(t.schwabStop, t.assetType)}.` : ''}`;
   if (t.stopSource === 'schwab') {
     const first = t.stopTrail.find(x => x.stopPrice === t.stop);
-    return `Using Schwab's first stop, ${px(t.stop, t.assetType)}${first ? ` (${esc(marketTime(first.entered))})` : ''}. Risk ${fmt$(t.risk)}.${t.movedTo !== null ? ` Moved to ${px(t.movedTo, t.assetType)} later: R still counts from the first.` : ''}${ignored}`;
+    return `Using Schwab's first stop, ${px(t.stop, t.assetType)}${first ? ` (${esc(clockTime(first.entered))})` : ''}. Risk ${fmt$(t.risk)}.${t.movedTo !== null ? ` Moved to ${px(t.movedTo, t.assetType)} later: R still counts from the first.` : ''}${ignored}`;
   }
   if (t.rBasis === 'premium') return `No stop: the premium paid, ${fmt$(t.risk)}, is the risk. Set the stop you had in mind.${ignored}`;
   return `No stop, so no R. Set the stop you had in mind.${ignored}`;
 }
 
 const tradeFacts = t => t.legs
-  ? [`${t.spreadKind === 'debit' ? 'Paid' : 'Took in'} ${px(t.avgEntry, 'SPREAD')} × ${t.entryQty}`, `opened ${esc(marketTime(t.openedAt))} ET`,
+  ? [`${t.spreadKind === 'debit' ? 'Paid' : 'Took in'} ${px(t.avgEntry, 'SPREAD')} × ${t.entryQty}`, `opened ${esc(clockTime(t.openedAt))} ${zoneAbbr()}`,
     t.status === 'open' ? 'open' : `${signed$(t.pnl)} ${t.afterFees ? 'after' : 'before'} fees`].join(' · ')
   : t.status === 'history'
   ? `${t.direction === 'long' ? 'Sold' : 'Covered'} ${t.entryQty} at ${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)} · bought before your history, so no P&amp;L`
-  : [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(marketTime(t.openedAt))} ET`,
+  : [`${t.direction === 'long' ? 'Long' : 'Short'} ${t.entryQty} at ${px(t.avgEntry, t.assetType)}`, `opened ${esc(clockTime(t.openedAt))} ${zoneAbbr()}`,
   t.status === 'open' ? 'open' : `${signed$(t.pnl)} ${t.afterFees ? `after fees${t.fees ? ` of ${fmt$(t.fees)}` : ''}` : 'before fees'}`].join(' · ');
 
 /** the sheet's Delete: out at once, with Undo on the toast */
@@ -733,7 +736,7 @@ export function renderTradeReview() {
   const preview = stopPreview(t, typed);
   const chips = t.stopTrail.map(x => {
     const usable = !ownStopError(t, x.stopPrice);
-    return `<button class="filter-btn" data-action="pickTradeStop" data-arg="${x.stopPrice}"${usable ? '' : ' disabled title="Past the entry: it protected profit, it wasn\'t the risk"'}>${px(x.stopPrice, t.assetType)}<span class="journal-chip-time">${esc(marketTime(x.entered))}</span></button>`;
+    return `<button class="filter-btn" data-action="pickTradeStop" data-arg="${x.stopPrice}"${usable ? '' : ' disabled title="Past the entry: it protected profit, it wasn\'t the risk"'}>${px(x.stopPrice, t.assetType)}<span class="journal-chip-time">${esc(clockTime(x.entered))}</span></button>`;
   }).join('');
   const back = t.schwabStop !== null ? 'Use Schwab\'s stop instead' : t.assetType === 'OPTION' && t.direction === 'long' ? 'Go back to the premium' : 'Remove your stop';
   el.innerHTML = `<div class="sheet-section"><p class="hint" style="margin:0">${tradeFacts(t)}</p>

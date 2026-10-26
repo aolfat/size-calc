@@ -1,5 +1,6 @@
 // Live mode: polls quote, chain, chart and cards on a duration ladder; pauses while the app is backgrounded.
 import { state } from '../state.js';
+import { inZone } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { refreshAllPinned } from './cards.js';
 import { fetchChain } from './chain.js';
@@ -104,7 +105,7 @@ export async function livePoll() {
     if (state.liveTicks % 4 === 0) fetchChart(ticker);
     if (state.liveTicks % 4 === 2) refreshAllPinned();
     state.liveTicks++;
-    document.getElementById('lastUpdated').textContent = 'Live · updated ' + new Date().toLocaleTimeString();
+    document.getElementById('lastUpdated').textContent = 'Live · updated ' + inZone(Date.now());
   } catch(e) {} finally {
     state.livePolling = false;
   }

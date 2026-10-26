@@ -34,7 +34,7 @@ test('the opening range: the high and low from 9:30 until it closes, and not bef
   assert.equal(range(TODAY, 30, at(10, 0)).high, 101.2);
   assert.equal(range(TODAY, 30, at(10, 0)).low, 99.2);
   assert.equal(range(TODAY, 15, at(9, 44)).error, 'The 15m range closes at 9:45 ET.');
-  assert.equal(range(TODAY.slice(0, 3), 15, at(9, 45)).error, 'Tradier hasn\'t sent the 9:40 bar yet. Try again in a moment.');
+  assert.equal(range(TODAY.slice(0, 3), 15, at(9, 45)).error, 'Tradier hasn\'t sent the 9:40 ET bar yet. Try again in a moment.');
   assert.equal(range(TODAY.slice(0, 3), 15, at(9, 50)).error, '', 'five minutes on, a thin stock may just not have traded then');
   assert.equal(range(TODAY.slice(1, 2), 15, at(9, 50)).low, 99.6, 'only the 9:30 bar traded');
   assert.equal(range(TODAY.slice(0, 1), 5, at(9, 36)).error, 'No 5-minute bars from today\'s open yet.', 'only yesterday\'s');
@@ -207,4 +207,18 @@ test('a break through the entry between review and Place sends nothing', async (
   await run('placeTrade()');
   assert.equal(posts.length, 0);
   assert.match(state.tradeTicket.result.text, /The buy stop \$100\.51 is at or under the ask \$100\.62, so it would buy right away\. Use Market, or a higher entry\. Nothing was sent\./);
+});
+
+test('in Pacific time the range and its notes read in PT, and flipping redraws the line', async () => {
+  const early = await card({ now: at(9, 44) });
+  early.run("setTimeZone('pt')");
+  await early.run('setOrb(15)');
+  assert.equal(early.elements.get('orbHint').textContent, 'The 15m range closes at 6:45 PT.');
+
+  const { run, elements } = await card();
+  await run('setOrb(15)');
+  run("setTimeZone('pt')");
+  assert.equal(elements.get('orbHint').textContent, '15m range $99.40 to $100.50, 6:30 to 6:45 PT. Entry a tick over the high, stop at the low.');
+  run("setTimeZone('et')");
+  assert.match(elements.get('orbHint').textContent, /9:30 to 9:45 ET/);
 });

@@ -1,5 +1,6 @@
 // Share cards: hand-drawn PNG of a plan or position, copied to the clipboard (download fallback).
 import { state } from '../state.js';
+import { inZone, zoneAbbr } from '../lib/zone.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
 import { isBull, sizeUnit, spreadWidth, strikesLabel, typeLabel } from '../core/options.js';
@@ -153,7 +154,7 @@ export function shareShares() {
   const chg = q.change_percentage || 0;
   effects.shareCanvasToClipboard(effects.drawShareCard({
     title: [{ t: q.symbol + '  ' }, { t: fmt$(price) }, { t: `  ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%`, c: chg >= 0 ? SC.green : SC.red }],
-    sub: `${isLong ? 'LONG' : 'SHORT'} · risk ${(risk / acct * 100).toFixed(2)}% of account · ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+    sub: `${isLong ? 'LONG' : 'SHORT'} · risk ${(risk / acct * 100).toFixed(2)}% of account · ${inZone(Date.now(), { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '')} ${zoneAbbr()}`,
     stats: [
       { label: isLong ? 'Entry — long' : 'Entry — short', value: fmt$(entry), color: SC.blue, sub: rawStop('entryPrice') > 0 ? 'planned entry' : 'current price' },
       { label: 'Stop', value: fmt$(stop), color: SC.red, sub: `${(entry > 0 ? rps / entry * 100 : 0).toFixed(1)}% away · ${stopSourceName(isLong)}` },
