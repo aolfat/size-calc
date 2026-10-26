@@ -290,11 +290,13 @@ test('missed trades are cleaned on the way in: an id and a ticker each, choices 
     { id: 'a', symbol: ' nvda ', side: 'long', why: 'hesitated', setup: 'ema8_bounce', tactic: 'pivot15', r: 2, note: '  ran without me ' },
     { id: 'a', symbol: 'TSLA' }, { id: 'b', symbol: 'not a ticker!' }, { symbol: 'AMD' },
     { id: 'c', symbol: 'BRK.B', side: 'sideways', why: 'bored', tactic: 7 },
+    { id: 'd', symbol: 'AMD', tactics: ['six20', 'pivot15', 'six20', 4, ''] },
   ] }).missed`);
   assert.deepEqual(m, [
-    { id: 'a', symbol: 'NVDA', side: 'long', setup: 'ema8_bounce', tactic: 'pivot15', why: 'hesitated', note: 'ran without me' },
-    { id: 'c', symbol: 'BRK.B', side: null, setup: null, tactic: null, why: null, note: null },
-  ]);
+    { id: 'a', symbol: 'NVDA', side: 'long', setup: 'ema8_bounce', tactics: ['pivot15'], why: 'hesitated', note: 'ran without me' },
+    { id: 'c', symbol: 'BRK.B', side: null, setup: null, tactics: [], why: null, note: null },
+    { id: 'd', symbol: 'AMD', side: null, setup: null, tactics: ['six20', 'pivot15'], why: null, note: null },
+  ], 'an old single tactic reads as a list of one; several kept once each');
   assert.deepEqual(json(run, 'cleanDayRow(null).missed'), []);
   assert.equal(run(`cleanMissed(Array.from({ length: 30 }, (_, i) => ({ id: 'x' + i, symbol: 'SPY' }))).length`), 20);
 });
@@ -316,12 +318,12 @@ test('a missed trade makes a new setup or entry tactic on the spot', async () =>
   await settle();
   const tactic = lib().find(r => r.kind === 'tactic');
   assert.equal(tactic.name, 'ORB 5');
-  assert.equal(saved().tactic, `mine:${tactic.id}`);
-  assert.match(out(), new RegExp(`<option value="mine:${tactic.id}" selected>ORB 5</option>`));
+  assert.deepEqual(saved().tactics, [`mine:${tactic.id}`]);
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="mine:${tactic.id}">ORB 5<`));
   run(`startMissedTactic('${id}')`);
   await run(`addMissedTactic('${id}', '15-MINUTE pivot')`);
   await settle();
-  assert.equal(saved().tactic, 'pivot15', 'a name you have is that one');
+  assert.deepEqual(saved().tactics, [`mine:${tactic.id}`, 'pivot15'], 'a name you have is that one, beside the first');
   assert.equal(lib().filter(r => r.kind === 'tactic').length, 1);
 
   // a setup: the builder on top of Edit choices; Add puts it in My setups and on the missed trade
@@ -362,16 +364,19 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   assert.equal(saved()[0].symbol, 'NVDA');
   assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>[\s\S]*The day, 5 minutes[\s\S]*Daily setup[\s\S]*Entry tactic[\s\S]*Why you missed it/, 'open to fill in: the charts first, then the setup and tactic');
   assert.match(out(), /Add a Tradier key in Settings for NVDA&#39;s 5-minute chart\./, 'no key: the charts say why');
-  assert.match(out(), /<option value="pivot15">15-minute pivot<\/option>/);
-  run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); setMissedSetup('${id}', 'ema8_bounce'); setMissedTactic('${id}', 'pivot15'); setMissedTactic('${id}', 'nope')`);
-  run(`setMissedTactic('${id}', 'pivot15')`);
+  assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15">15-minute pivot<`));
+  run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); setMissedSetup('${id}', 'ema8_bounce'); toggleMissedTactic('${id}', 'pivot15'); toggleMissedTactic('${id}', 'nope')`);
+  run(`toggleMissedTactic('${id}', 'six20'); toggleMissedTactic('${id}', 'pivot30')`);
+  await settle();
+  assert.deepEqual(saved()[0].tactics, ['pivot15', 'six20', 'pivot30'], 'several tactics');
+  run(`toggleMissedTactic('${id}', 'six20'); toggleMissedTactic('${id}', 'pivot30')`);
   run(`missedNoteInput('${id}', 'Saw the rejection')`);
   run('renderJournal()');
   assert.match(out(), /id="nbMissedNote-[^"]*"[^>]*value="Saw the rejection"/, 'a redraw keeps the draft');
   assert.match(out(), /<option value="ema8_bounce" selected>8 EMA rejection<\/option>/, 'setups in the side\'s words');
   run(`missedNoteSave('${id}', ' Saw the rejection, waited ')`);
   await settle();
-  assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setup: 'ema8_bounce', tactic: 'pivot15', why: 'hesitated', note: 'Saw the rejection, waited' }]);
+  assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setup: 'ema8_bounce', tactics: ['pivot15'], why: 'hesitated', note: 'Saw the rejection, waited' }], 'tapped again: off');
   assert.ok(supabase.writes.filter(w => w.table === 'journal_days').every(w => Object.keys(w).filter(k => !['table', 'onConflict', 'ignoreDuplicates', 'day'].includes(k)).join() === 'missed'), 'only its own column');
   run(`openMissedTrade('${id}')`);
   assert.match(out(), /<b>NVDA<\/b> short · 8 EMA rejection · 15-minute pivot · Hesitated<span class="nb-miss-note">Saw the rejection, waited<\/span><\/span><\/button>/, 'closed: one line');
