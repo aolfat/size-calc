@@ -6,13 +6,13 @@
 // day's journal_days row field by field (core/journal-notebook.js has the rules), shown at once and put back with a toast
 // if Supabase refuses; text is a draft while you type and saves when the box loses focus. Goals and rules are
 // library_items rows (kinds goal and rule), edited in place. Missed trades: the ones you saw and didn't take, a ticker
-// each with its charts that day (ui/missed-chart.js), its side, the daily setup and entry tactic you could have taken, why
+// each with its charts that day (ui/missed-chart.js), its side, the daily setups and entry tactics you could have taken, why
 // you missed it, a note and your screenshots (trade_shots keyed missed:<id>, ui/journal-shots.js) (journal_days.missed,
 // its own migration).
 // The calendar's marks: plan written, reviewed, review due, how many you missed.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
-import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
+import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
 import { dailyPnl, nyParts } from '../core/journal-stats.js';
 import { saveJournalDay, saveLibraryItem } from '../services/journal-review.js';
 import { state } from '../state.js';
@@ -244,7 +244,18 @@ export function addMissedTrade() {
   state.missedDraft = '';
   state.missedOpen = id;
   loadMissedChart(symbol, page());
-  return saveMissed([...list, { id, symbol, side: null, setup: null, tactic: null, why: null, note: null }]);
+  return saveMissed([...list, { id, symbol, side: null, setups: [], tactics: [], why: null, note: null }]);
+}
+/** a missed trade's line from the week's review: its day's page, with it open */
+export function openMissedOnDay(day, id) {
+  if (!isDay(day)) return;
+  openJournalDay(day);
+  if (missedOne(id)) return openMissedTrade(id);
+}
+const word = (pairs, v) => pairs.find(([k]) => k === v)?.[1] || '';
+/** what a missed trade's line says after the ticker: side · setups · tactics · why, setups in the side's words */
+export function missedWords(lib, m) {
+  return [word(MISSED_SIDES, m.side).toLowerCase(), m.setups.map(k => lib.nameOf('setup', k, m.side || 'long')).join(', '), m.tactics.map(k => lib.nameOf('tactic', k)).join(', '), word(MISSED_WHY, m.why)].filter(Boolean).join(' · ');
 }
 /** a missed trade's line: opens it to edit, its charts with it (again closes it) */
 export function openMissedTrade(id) {
@@ -255,17 +266,23 @@ export function openMissedTrade(id) {
 }
 export function setMissedSide(id, v) { return changeMissed(id, { side: one(MISSED_SIDES, v, missedOne(id)?.side) }); }
 export function setMissedWhy(id, v) { return changeMissed(id, { why: one(MISSED_WHY, v, missedOne(id)?.why) }); }
-/** the daily setup (one of My setups) or the entry tactic you could have taken, or none */
-const libPick = kind => (id, key) => {
-  const ok = buildLibrary(data()?.library || []).choices(kind).some(i => i.key === key);
-  return changeMissed(id, { [kind]: ok ? key : null });
+/** a daily setup (one of My setups) or an entry tactic you could have taken, on or off; a missed trade takes several of each, like a trade's review */
+const missedPick = (kind, field, words) => (id, key, on) => {
+  const m = missedOne(id), lib = buildLibrary(data()?.library || []);
+  if (!m) return;
+  const had = m[field].some(k => lib.resolve(kind, k) === key);
+  if (on === undefined) on = !had;
+  if (on === had) return renderJournal();
+  if (on && !lib.choices(kind).some(i => i.key === key)) return;
+  if (on && m[field].length >= MAX_MISSED_PICKS) { showError(`${MAX_MISSED_PICKS} ${words} at most.`); return; }
+  return changeMissed(id, { [field]: on ? [...m[field], key] : m[field].filter(k => lib.resolve(kind, k) !== key) });
 };
-export const setMissedSetup = libPick('setup');
-export const setMissedTactic = libPick('tactic');
+export const toggleMissedSetup = missedPick('setup', 'setups', 'setups');
+export const toggleMissedTactic = missedPick('tactic', 'tactics', 'entry tactics');
 /** + New setup: the builder in Edit choices; what it adds goes on this missed trade and the sheet closes */
 export function newMissedSetup(id) { const m = missedOne(id); if (m && !missedOff()) newSetupFor({ id, symbol: m.symbol }); }
-onSetupAdded((d, key) => { if (!d?.missed) return; closeSheet(); return setMissedSetup(d.missed.id, key); });
-/** + New tactic: a name; Add puts it in your library and on this missed trade (the same name is the same tactic) */
+onSetupAdded((d, key) => { if (!d?.missed) return; closeSheet(); return toggleMissedSetup(d.missed.id, key, true); });
+/** + New tactic: a name; Add puts it in your library and turns it on for this missed trade (the same name is the same tactic) */
 export function startMissedTactic(id) { state.missedNewTactic = id; state.missedTacticDraft = ''; renderJournal(); }
 export function cancelMissedTactic() { state.missedNewTactic = ''; renderJournal(); }
 export function missedTacticInput(text) { state.missedTacticDraft = String(text || ''); }
@@ -281,7 +298,7 @@ export async function addMissedTactic(id, name) {
     if (!await saveItem(row)) return;
     key = `mine:${row.id}`;
   }
-  return setMissedTactic(id, key);
+  return toggleMissedTactic(id, key, true);
 }
 /** its note: a draft while you type (a redraw never loses it), saved when the box loses focus */
 export function missedNoteInput(id, text) { if (page()) state.notebookDraft = { day: page(), field: `missed:${id}`, text }; }
@@ -413,25 +430,24 @@ function postmarket(day, trades, off) {
 /** the trades you saw and didn't take: a line each (tap to edit), the open one in full, and + Add */
 function missedSection(day) {
   const list = missedOf(day), lib = buildLibrary(data()?.library || []), off = missedOff() ? ' disabled' : '';
-  const word = (pairs, v) => pairs.find(([k]) => k === v)?.[1] || '';
   const setupName = (key, side) => key ? lib.nameOf('setup', key, side || 'long') : '';
-  const tacticName = key => key ? lib.nameOf('tactic', key) : '';
   const status = list.length ? `<span class="jr-status nb-miss-count" role="status">${list.length} missed</span>` : '';
   const why = state.journalReviewError || !data() || data().notebookError ? '' : data().missedError ? `<p class="hint jw-db" role="status">Missed trades need a database update: ${esc(data().missedError)}</p>` : '';
   const line = m => {
-    const what = [word(MISSED_SIDES, m.side).toLowerCase(), setupName(m.setup, m.side), tacticName(m.tactic), word(MISSED_WHY, m.why)].filter(Boolean).map(esc).join(' · ');
+    const what = esc(missedWords(lib, m));
     const shots = missedShotCount(m.id);
     const summary = `<span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${what}` : ''}${m.note ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span>${shots ? `<span class="nb-miss-shots">${shots} screenshot${shots === 1 ? '' : 's'}</span>` : ''}`;
     if (state.missedOpen !== m.id || off) return `<li><button class="nb-trade nb-miss" data-action="openMissedTrade" data-arg="${esc(m.id)}" aria-label="${esc(`${m.symbol} missed. Edit`)}"${off}>${summary}</button></li>`;
-    const options = (kind, items, key, none) => `<option value="">${none}</option>${items.map(i => `<option value="${esc(i.key)}"${key && i.key === lib.resolve(kind, key) ? ' selected' : ''}>${esc(kind === 'setup' ? lib.nameOf('setup', i.key, m.side || 'long') : i.name)}</option>`).join('')}`;
-    const setups = setupsByUse(lib, data()?.labels || {}), tactics = lib.choices('tactic');
+    // My setups: the ones on (even hidden), then the rest, most used first; names in the side's words
+    const onSetups = [...new Set(m.setups.map(k => lib.resolve('setup', k)))];
+    const setups = [...onSetups, ...setupsByUse(lib, data()?.labels || {}).map(i => i.key).filter(k => !onSetups.includes(k))], tactics = lib.choices('tactic');
     const note = (() => { const d = state.notebookDraft; return d && d.day === day && d.field === `missed:${m.id}` ? d.text : m.note || ''; })();
     return `<li class="nb-miss-open">
       <div class="nb-miss-head"><b>${esc(m.symbol)}</b><span class="nb-links"><button class="pos-link" data-action="removeMissedTrade" data-arg="${esc(m.id)}">Remove</button><button class="pos-link" data-action="openMissedTrade" data-arg="${esc(m.id)}">Done</button></span></div>
       ${missedChartHtml(m.symbol, day)}
       ${row('Side', MISSED_SIDES.map(([v, w]) => chip(w, m.side === v, `data-action="setMissedSide" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
-      ${row('Daily setup', `<select class="nb-select" data-change="setMissedSetup" data-arg="${esc(m.id)}" aria-label="Daily setup">${options('setup', setups, m.setup, 'No setup')}</select><button class="pos-link jr-new" data-action="newMissedSetup" data-arg="${esc(m.id)}">+ New setup</button>`)}
-      ${row('Entry tactic', `<select class="nb-select" data-change="setMissedTactic" data-arg="${esc(m.id)}" aria-label="Entry tactic">${options('tactic', tactics, m.tactic, 'No tactic')}</select>${state.missedNewTactic === m.id
+      ${row('Daily setups', `${setups.map(k => chip(setupName(k, m.side), onSetups.includes(k), `data-action="toggleMissedSetup" data-arg="${esc(m.id)}" data-arg2="${esc(k)}"`)).join('')}<button class="pos-link jr-new" data-action="newMissedSetup" data-arg="${esc(m.id)}">+ New setup</button>`)}
+      ${row('Entry tactics', `${tactics.map(i => chip(i.name, m.tactics.some(k => lib.resolve('tactic', k) === i.key), `data-action="toggleMissedTactic" data-arg="${esc(m.id)}" data-arg2="${esc(i.key)}"`)).join('')}${state.missedNewTactic === m.id
         ? `<span class="jr-newbox"><input type="text" id="nbMissedTactic" maxlength="80" placeholder="Name" autocomplete="off" value="${esc(state.missedTacticDraft)}" data-input="missedTacticInput" data-enter="addMissedTactic" data-arg="${esc(m.id)}" aria-label="New entry tactic" /><button class="btn" data-action="addMissedTactic" data-arg="${esc(m.id)}">Add</button><button class="pos-link" data-action="cancelMissedTactic">Cancel</button></span>`
         : `<button class="pos-link jr-new" data-action="startMissedTactic" data-arg="${esc(m.id)}">+ New</button>`}`)}
       ${row('Why you missed it', MISSED_WHY.map(([v, w]) => chip(w, m.why === v, `data-action="setMissedWhy" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}

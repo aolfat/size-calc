@@ -7,6 +7,8 @@
 // trade (state.journalExcursions). Grades and notes are period_reviews rows (state.periodReviews), shown at once and put
 // back with a toast if Supabase refuses; a note is a draft while you type and saves when the box loses focus.
 import { fmt$, marketEscape as esc } from '../core/format.js';
+import { buildLibrary } from '../core/journal-labels.js';
+import { MISSED_WHY, periodMissed } from '../core/journal-notebook.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
 import { gradeColumn, MAX_PERIOD_NOTE, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, sortPeriodTrades } from '../core/journal-week.js';
 import { excursions, unpackBars } from '../core/trade-page.js';
@@ -17,6 +19,7 @@ import { loadPeriodReviews, savePeriodFields } from '../services/journal-review.
 import { state } from '../state.js';
 import { showError } from './feedback.js';
 import { periodReviewContext, reviewedMark } from './journal-review.js';
+import { missedWords } from './journal-notebook.js';
 import { periodName } from './journal-stats.js';
 import { journalTradeList, renderJournal } from './journal.js';
 
@@ -131,6 +134,27 @@ function tradeList(trades, p) {
       <thead><tr><th scope="col">Trade</th>${sortHead('opened', ' jw-col-opened')}${sortHead('pnl')}${sortHead('pct')}${sortHead('r')}</tr></thead>
       <tbody>${rows.map(x => tradeRow(x, word)).join('')}</tbody>
     </table></div>`;
+}
+
+// ---------- the trades you missed (journal_days.missed) ----------
+
+const missedDay = day => new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+
+/** every trade you logged as missed in the period, a line each (tap: its day, open), and how many for each reason */
+function missedList(p) {
+  const d = state.journalReview;
+  if (!d || d.notebookError || d.missedError) return '';
+  const list = periodMissed(d.days, p.unit, p.key);
+  if (!list.length) return '';
+  const lib = buildLibrary(d.library || []);
+  const whys = MISSED_WHY.map(([k, w]) => [w, list.filter(m => m.why === k).length]).filter(([, n]) => n);
+  const lines = list.map(m => {
+    const what = missedWords(lib, m);
+    return `<li><button class="nb-trade nb-miss" data-action="openMissedOnDay" data-arg="${esc(m.day)}" data-arg2="${esc(m.id)}" aria-label="${esc(`${m.symbol} missed on ${missedDay(m.day)}. Open the day`)}"><span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${esc(what)}` : ''}${m.note ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span><span class="jw-miss-day">${esc(missedDay(m.day))}</span></button></li>`;
+  }).join('');
+  return `<div class="section-title js-sub">Missed trades <span class="jw-optional">${list.length}</span></div>
+    ${whys.length ? `<p class="hint jw-lines">${whys.map(([w, n]) => `${esc(w)} ${n}`).join(' · ')}</p>` : ''}
+    <ul class="nb-trades jw-missed" aria-label="The ${unitWord(p.unit)}'s missed trades">${lines}</ul>`;
 }
 
 // ---------- grades and notes (period_reviews) ----------
@@ -329,11 +353,12 @@ export function periodReviewHtml(trades) {
     ${r.trades ? `${headline(r, word)}
       ${lines.length ? `<p class="hint jw-lines">${lines.join('<br>')}</p>` : ''}
       ${tradeList(trades, p)}
+      ${missedList(p)}
       ${reviewTop(p, lock)}
       <div class="jw-cats">${r.categories.map(c => category(c, p, lock)).join('')}</div>
       ${overall(p, lock)}
       ${ruleNext(p, lock)}
       <p class="hint">The whole ${word}: the side, symbol and setup filters don't apply. Results count the exits taken this ${word}, like the calendar (a trade partly closed shows that part's P&amp;L, % and R); entries, notes and trades per day count the trades opened in it. The best move and heat come from each trade's saved 5-minute bars. Green reads well, amber is worth a look. A ${word} is reviewed once every part has a grade and the rule for next ${word} is set; notes, the ${word} overall too, save when you leave the box.</p>`
-    : `<p class="hint">No trades this ${word}.</p>`}
+    : `<p class="hint">No trades this ${word}.</p>${missedList(p)}`}
   </div>`;
 }
