@@ -6,6 +6,9 @@ export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tr
 export const SHEET_BACKGROUND = ['stickyBar', 'appHeader', 'sidePane', 'mainPane', 'simOverlay'];
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const trapped = new WeakSet();
+/** told the sheet that opened, or null when they all close (Claude access forgets a new key then) */
+const watchers = [];
+export function onSheetChange(fn) { watchers.push(fn); }
 
 function setBackgroundInert(on) {
   for (const id of SHEET_BACKGROUND) { const el = document.getElementById(id); if (el) el.inert = on; }
@@ -34,6 +37,7 @@ export function openSheet(name) {
   const keyEl = document.getElementById('apiKey');
   if (name === 'settings' && !keyEl.value.trim()) keyEl.focus();
   else sheet.focus();
+  for (const fn of watchers) fn(name);
 }
 
 export function closeSheet() {
@@ -43,4 +47,5 @@ export function closeSheet() {
   setBackgroundInert(false); // first: an inert opener can't take focus back
   if (state.sheetOpener && state.sheetOpener.focus) state.sheetOpener.focus();
   state.sheetOpener = null;
+  for (const fn of watchers) fn(null);
 }

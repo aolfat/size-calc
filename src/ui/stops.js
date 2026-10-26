@@ -8,6 +8,7 @@ import { setSizingMode } from './allocation.js';
 import { renderChain } from './chain.js';
 import { drawChart } from './chart.js';
 import { drawDailyChart, renderAdr } from './daily.js';
+import { orbStopName, renderOrb } from './orb.js';
 import { renderShares } from './shares.js';
 
 export function setDirection(dir) {
@@ -62,7 +63,7 @@ export function autoStopName(isLong) {
 }
 
 export function stopSourceName(isLong, full = false) {
-  if (rawStop(isLong ? 'stopLong' : 'stopShort')) return 'Custom stop';
+  if (rawStop(isLong ? 'stopLong' : 'stopShort')) return orbStopName(isLong) || 'Custom stop';
   return state.stopStrategy === 'none' && full ? (isLong ? 'Low of day (LOD)' : 'High of day (HOD)') : autoStopName(isLong);
 }
 
@@ -148,6 +149,7 @@ export function tradeCtx() {
 // only show the stop that matches the trade you're taking
 
 export function updateStopVisibility() {
+  renderOrb();
   document.getElementById('stopAdjustment').style.display = state.sizingMode === 'allocation' ? 'none' : '';
   document.getElementById('entryStopsTitle').textContent = state.sizingMode === 'allocation' ? 'Entry' : 'Entry & stops';
   document.getElementById('entryStopsRow').style.display = state.sizingMode === 'allocation' && state.currentMode === 'options' ? 'none' : '';

@@ -6,6 +6,7 @@ import { CREDENTIAL_ORIGIN_MESSAGE, credentialOriginAllowed } from '../lib/crede
 import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, SESSION_KEY, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { schwabDisconnect, schwabSession } from '../services/schwab.js';
+import { renderClaudeAccess } from './claude-access.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
 import { loadJournal, renderJournal } from './journal.js';
@@ -149,6 +150,7 @@ export function setCloudUi(status) {
   who.textContent = s ? 'Signed in as ' + (s.user.email || 'your Google account') : '';
   who.style.display = s ? '' : 'none';
   document.getElementById('cloudStatus').textContent = status || '';
+  renderClaudeAccess();
   document.getElementById('accountHint').textContent = !allowed ? CREDENTIAL_ORIGIN_MESSAGE : s
     ? 'Your settings and Tradier key sync across your devices. Signing out disconnects Schwab on this device.'
     : 'Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. The calculator works without signing in.';

@@ -193,6 +193,8 @@ Parts, each usable alone:
    - **Saving:** a grade or "Kept it?" saves on its own upsert, shown at once. A note or the rule is a draft in state while you type and saves when the box loses focus. If Supabase refuses, the fields that save sent go back and a toast says why.
    - **Calendar:** the Week column says "✓ reviewed", or "review week" in amber once the week is over (after Friday's 4pm close in New York). "Review the month" reads "Month reviewed ✓" once the month is.
    - **Before the migration is pushed:** the panel says the database needs `npx supabase db push`, the grade and note boxes are disabled, and the numbers still show.
+   - **The week overall (built):** What went well, What to work on and More notes on the period as a whole, after the categories and before the rule (`went_well`, `work_on`, `note`, migration `20261102000000_period_overall_notes.sql`). Optional, like the day notebook's. Read on their own query, so before that push only those three boxes are off.
+   - **The trades (built):** every trade the period covers in a list under the headline, sorted by P&L, P&L %, R or when it opened (tap a header, again to flip). Each row shows the period's exits, like the calendar, and opens the trade.
 3. **Help writing it:** one category at a time, like the deck. A suggested grade from the numbers, a draft sentence, the exit notes and mistakes you wrote on the period's trades, a few questions, and quick phrases you can edit.
 4. **The month:** each category's grade across the month's weeks side by side, a month grade, notes and one focus for next month.
 5. **Goals** for win rate, profit factor, expectancy and exit efficiency, measured against.

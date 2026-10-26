@@ -12,6 +12,7 @@ import { withFlash } from './feedback.js';
 import { riskDollars, syncFromDollar } from './risk.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { currentAtr5, entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName, updateStopAdjustment } from './stops.js';
+import { orbEntryName, renderOrb } from './orb.js';
 import { updateTradeButton } from './trade.js';
 
 // reverse sizing: type a share/contract count, risk $ follows
@@ -112,6 +113,7 @@ export function renderShares() {
     return;
   }
   const price = effectivePrice(q);
+  renderOrb();
   updateStopAdjustment();
   const { isLong, stop, entry, riskPerShare, valid, shares } = sharesPlan();
   const customEntry = rawStop('entryPrice') > 0;
@@ -139,7 +141,7 @@ export function renderShares() {
       <div class="shares-quantity">
         <label class="shares-label" for="sharesQty">Shares to ${isLong ? 'buy' : 'short'}</label>
         <div class="s-val"><input id="sharesQty" type="number" class="s-val-input" value="${shares}" min="0" step="1" title="Type a share count, risk $ follows" aria-describedby="sharesQtyHint" data-change="sharesQtyChanged" /></div>
-        <div class="shares-detail">Entry <strong>${fmt$(entry)}</strong>${customEntry ? ' · planned' : ''}</div>
+        <div class="shares-detail">Entry <strong>${fmt$(entry)}</strong>${customEntry ? ' · ' + (orbEntryName() || 'planned') : ''}</div>
         <div class="shares-edit-hint" id="sharesQtyHint">Edit shares to set risk</div>
       </div>
       <div class="shares-stop">

@@ -1,13 +1,14 @@
 // Week and month reviews (docs/journal-step-3.md, slice 6, parts 1 and 2): a week's total on the calendar, or Review the
 // month, opens the period's review under the grid (state.journalReviewPeriod): the headline against the period before, the
-// best and worst trade, the trades saved for the weekly review, and each part of a self-assessment with its numbers
-// (core/journal-week.js), its grade and its note; last week's rule with Kept it? on top, the rule for next week at the
-// bottom. The whole period, no filters. Exit efficiency and heat come from the trades' saved 5-minute bars, read once per
+// best and worst trade, the trades saved for the weekly review, every trade in a list you sort (by P&L, P&L %, R or when
+// it opened), and each part of a self-assessment with its numbers
+// (core/journal-week.js), its grade and its note; last week's rule with Kept it? on top, the week overall (what went well,
+// what to work on, more notes) and the rule for next week at the bottom. The whole period, no filters. Exit efficiency and heat come from the trades' saved 5-minute bars, read once per
 // trade (state.journalExcursions). Grades and notes are period_reviews rows (state.periodReviews), shown at once and put
 // back with a toast if Supabase refuses; a note is a draft while you type and saves when the box loses focus.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
-import { gradeColumn, MAX_PERIOD_NOTE, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, periodMissingWords, periodOver, periodReview, periodReviewState, previousPeriod, reviewTrades, RULE_KEPT } from '../core/journal-week.js';
+import { gradeColumn, MAX_PERIOD_NOTE, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, sortPeriodTrades } from '../core/journal-week.js';
 import { excursions, unpackBars } from '../core/trade-page.js';
 import { nyDay, weekdaysBetween } from '../core/bars.js';
 import { parseSchwabOption } from '../core/positions.js';
@@ -15,7 +16,7 @@ import { loadTradeBars } from '../services/bars.js';
 import { loadPeriodReviews, savePeriodFields } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { showError } from './feedback.js';
-import { periodReviewContext } from './journal-review.js';
+import { periodReviewContext, reviewedMark } from './journal-review.js';
 import { periodName } from './journal-stats.js';
 import { journalTradeList, renderJournal } from './journal.js';
 
@@ -87,6 +88,51 @@ export function stepPeriodReview(by) {
   loadExcursions(p.unit, next);
 }
 
+// ---------- the period's trades, sorted ----------
+
+const SORT_WORDS = { pnl: 'P&L', pct: 'P&L %', r: 'R', opened: 'Opened' };
+/** a column header: sort by it (biggest first, or oldest first for Opened); again flips it */
+export function setPeriodTradeSort(by) {
+  if (!PERIOD_TRADE_SORTS.includes(by)) return;
+  const now = state.periodTradeSort;
+  state.periodTradeSort = now.by === by ? { by, dir: -now.dir } : { by, dir: by === 'opened' ? 1 : -1 };
+  renderJournal();
+}
+
+const signedPct = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
+const SIDE_WORDS = { long: 'Long', short: 'Short', neutral: 'Neutral' };
+const openedDay = iso => iso ? new Date(iso).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' }) : '';
+
+function sortHead(by, cls = '') {
+  const { by: on, dir } = state.periodTradeSort, lit = on === by;
+  const sort = lit ? ` aria-sort="${dir < 0 ? 'descending' : 'ascending'}"` : '';
+  return `<th scope="col" class="jw-sort${cls}"${sort}><button data-action="setPeriodTradeSort" data-arg="${by}" title="Sort by ${esc(SORT_WORDS[by])}; again to reverse">${esc(SORT_WORDS[by])}${lit ? dir < 0 ? ' ↓' : ' ↑' : ''}</button></th>`;
+}
+
+function tradeRow(x, word) {
+  const t = x.trade, none = x.pnl === null;
+  const what = x.open ? `<span class="journal-tag">open</span>` : x.partial ? `<span class="journal-tag journal-tag-quiet" title="Part of it closed this ${word}: the P&amp;L, % and R are that part's">part</span>` : '';
+  return `<tr data-action="openTradeRow" data-arg="${esc(t.key)}">
+    <td><button class="journal-name" data-action="openTradeRow" data-arg="${esc(t.key)}" aria-label="Open the ${esc(t.label || underlyingOf(t))} trade"><b>${esc(t.label || underlyingOf(t))}</b></button> ${what}${reviewedMark(t)}<span class="pos-sub"><span class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${esc(SIDE_WORDS[t.bias] || '')}</span><span class="jw-sub-day"> · ${esc(openedDay(t.openedAt))}</span></span></td>
+    <td class="jw-col-opened">${esc(openedDay(t.openedAt))}</td>
+    <td class="${none ? '' : pnlClass(x.pnl)}">${none ? '—' : signed$(x.pnl)}</td>
+    <td class="${x.pct === null ? '' : pnlClass(x.pnl)}">${x.pct === null ? '—' : signedPct(x.pct)}</td>
+    <td>${x.r === null ? '—' : signedR(x.r)}</td>
+  </tr>`;
+}
+
+/** every trade the review covers, in the order you picked: tap a header to sort, a row to open the trade */
+function tradeList(trades, p) {
+  const word = unitWord(p.unit);
+  const rows = sortPeriodTrades(periodTradeRows(trades, p.unit, p.key), state.periodTradeSort.by, state.periodTradeSort.dir);
+  if (!rows.length) return '';
+  return `<div class="section-title js-sub">Trades <span class="jw-optional">${rows.length}</span></div>
+    <div class="positions-wrap jw-trades"><table class="positions-table journal-table jw-trades-table" aria-label="The ${word}'s trades">
+      <thead><tr><th scope="col">Trade</th>${sortHead('opened', ' jw-col-opened')}${sortHead('pnl')}${sortHead('pct')}${sortHead('r')}</tr></thead>
+      <tbody>${rows.map(x => tradeRow(x, word)).join('')}</tbody>
+    </table></div>`;
+}
+
 // ---------- grades and notes (period_reviews) ----------
 
 const CATEGORY_KEYS = new Set(PERIOD_CATEGORIES.map(([k]) => k));
@@ -97,9 +143,10 @@ const unitWord = unit => unit === 'month' ? 'month' : 'week';
 /** read every period's grades and notes; a failure (the table not pushed yet) keeps the numbers working and says why */
 export async function loadPeriodReviewRows() {
   try {
-    const rows = await loadPeriodReviews();
+    const { rows, overallError } = await loadPeriodReviews();
     state.periodReviews = Object.fromEntries(rows.map(r => [rowId(r.unit, r.period_key), r]));
     state.periodReviewsError = '';
+    state.periodOverallError = overallError;
   } catch(e) {
     state.periodReviewsError = String(e?.message || e);
   }
@@ -159,8 +206,10 @@ export function setRuleKept(value) {
   return savePeriod({ rule_kept: RULE_KEPT.some(([v]) => v === value) && value !== now ? value : null });
 }
 
-/** a part's note ('selection' … 'consistency') or the rule for next week ('rule'): its column and longest text */
-const textField = field => field === 'rule' ? { col: 'rule_next', max: MAX_RULE } : CATEGORY_KEYS.has(field) ? { col: noteColumn(field), max: MAX_PERIOD_NOTE } : null;
+const OVERALL_KEYS = new Set(PERIOD_OVERALL_COLUMNS);
+/** a part's note ('selection' … 'consistency'), an overall note ('went_well', 'work_on', 'note') or the rule for next week ('rule'): its column and longest text */
+const textField = field => field === 'rule' ? { col: 'rule_next', max: MAX_RULE } : CATEGORY_KEYS.has(field) ? { col: noteColumn(field), max: MAX_PERIOD_NOTE }
+  : OVERALL_KEYS.has(field) && !state.periodOverallError ? { col: field, max: MAX_PERIOD_NOTE } : null;
 /** typing: a draft (a redraw never loses it) */
 export function periodTextInput(field, text) {
   const p = state.journalReviewPeriod;
@@ -233,6 +282,18 @@ function reviewTop(p, off) {
   return status + rule;
 }
 
+const OVERALL_HINTS = { went_well: 'What you did right, what worked', work_on: "What to fix, what you'd do differently", note: 'Anything else about the week' };
+
+/** under the parts: notes on the week (or month) as a whole, none of them needed to finish it */
+function overall(p, off) {
+  const word = unitWord(p.unit), dbOff = off || (state.periodOverallError ? ' disabled' : '');
+  const box = ([col, label]) => `<div class="jw-overall-field"><label class="jw-overall-label" for="jwOverall-${col}">${esc(label)}</label>
+      <textarea class="jw-note" id="jwOverall-${col}" rows="3" maxlength="${MAX_PERIOD_NOTE}" placeholder="${esc(OVERALL_HINTS[col].replace('week', word))}" data-input="periodTextInput" data-change="periodTextSave" data-arg="${col}"${dbOff}>${esc(textOf(p.unit, p.key, col))}</textarea></div>`;
+  const why = state.periodOverallError && !off ? `<p class="hint jw-db">Overall notes need a database update: ${esc(state.periodOverallError)}. Grades and the rest still save.</p>` : '';
+  return `<section class="jw-overall" aria-label="The ${word} overall"><div class="jw-cat-name">The ${word} overall <span class="jw-optional">optional</span></div>${why}
+    <div class="jw-overall-grid">${PERIOD_OVERALL.map(box).join('')}</div></section>`;
+}
+
 /** under the parts: the one rule for next week (or month) */
 function ruleNext(p, off) {
   const word = unitWord(p.unit), missing = !off && !periodReviewState(rowOf(p.unit, p.key)).rule;
@@ -267,10 +328,12 @@ export function periodReviewHtml(trades) {
     </div>
     ${r.trades ? `${headline(r, word)}
       ${lines.length ? `<p class="hint jw-lines">${lines.join('<br>')}</p>` : ''}
+      ${tradeList(trades, p)}
       ${reviewTop(p, lock)}
       <div class="jw-cats">${r.categories.map(c => category(c, p, lock)).join('')}</div>
+      ${overall(p, lock)}
       ${ruleNext(p, lock)}
-      <p class="hint">The whole ${word}: the side, symbol and setup filters don't apply. Results count the exits taken this ${word}, like the calendar; entries, notes and trades per day count the trades opened in it. The best move and heat come from each trade's saved 5-minute bars. Green reads well, amber is worth a look. A ${word} is reviewed once every part has a grade and the rule for next ${word} is set; notes save when you leave the box.</p>`
+      <p class="hint">The whole ${word}: the side, symbol and setup filters don't apply. Results count the exits taken this ${word}, like the calendar (a trade partly closed shows that part's P&amp;L, % and R); entries, notes and trades per day count the trades opened in it. The best move and heat come from each trade's saved 5-minute bars. Green reads well, amber is worth a look. A ${word} is reviewed once every part has a grade and the rule for next ${word} is set; notes, the ${word} overall too, save when you leave the box.</p>`
     : `<p class="hint">No trades this ${word}.</p>`}
   </div>`;
 }

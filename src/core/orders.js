@@ -1,5 +1,5 @@
 // @ts-check
-// Schwab orders: the shares entry (market or limit) that triggers a stop, stops and market closes for held positions, price ticks, and ticket checks.
+// Schwab orders: the shares entry (market, limit, stop or stop limit) that triggers a stop, stops and market closes for held positions, price ticks, and ticket checks.
 
 /** @typedef {'DAY' | 'GOOD_TILL_CANCEL'} StopDuration */
 
@@ -25,16 +25,22 @@ export function priceTick(p) {
 /** Price as Schwab ticks it: two decimals from $1 up, four below. @param {number} p @returns {string} */
 export function fmtTick(p) { return '$' + Number(p).toFixed(p >= 1 ? 2 : 4); }
 
+/** @typedef {'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT'} EntryType */
+
 /**
- * One order that triggers another: buy (or sell short) at market, or at a limit when one is given, and once it fills, a stop for the same shares.
- * @param {{ symbol: string, qty: number, isLong: boolean, stop: number, stopDuration: StopDuration, limit?: number }} t
+ * One order that triggers another: buy (or sell short), and once it fills, a stop for the same shares. The entry is at
+ * market, or a limit (at entryLimit or better), or a stop (a buy stop over the market, a sell-short stop under it: market
+ * once it trades there), or a stop limit (once it trades at the stop, a limit at entryLimit or better). The entry lasts today.
+ * @param {{ symbol: string, qty: number, isLong: boolean, stop: number, stopDuration: StopDuration, entryType?: EntryType, entryStop?: number, entryLimit?: number }} t
  */
-export function sharesStopOrder({ symbol, qty, isLong, stop, stopDuration, limit }) {
+export function sharesStopOrder({ symbol, qty, isLong, stop, stopDuration, entryType = 'MARKET', entryStop = 0, entryLimit = 0 }) {
   const leg = (/** @type {string} */ instruction) => ({ instruction, quantity: qty, instrument: { symbol, assetType: 'EQUITY' } });
   return {
-    ...(limit ? { orderType: 'LIMIT', price: limit } : { orderType: 'MARKET' }),
+    orderType: entryType,
     session: 'NORMAL',
     duration: 'DAY',
+    ...(entryType === 'STOP_LIMIT' || entryType === 'LIMIT' ? { price: entryLimit } : {}),
+    ...(entryType === 'STOP' || entryType === 'STOP_LIMIT' ? { stopPrice: entryStop } : {}),
     orderStrategyType: 'TRIGGER',
     orderLegCollection: [leg(isLong ? 'BUY' : 'SELL_SHORT')],
     childOrderStrategies: [{
@@ -103,19 +109,41 @@ export function ocoOrder(a, b) { return { orderStrategyType: 'OCO', childOrderSt
 
 /**
  * Why a shares ticket can't be sent, or '' when it can.
- * @param {{ symbol: string, type?: string, qty: number, isLong: boolean, stop: number, bid?: number, ask?: number, last?: number }} t
+ * @param {{ symbol: string, type?: string, qty: number, isLong: boolean, stop: number, bid?: number, ask?: number, last?: number, entryType?: EntryType, entryStop?: number }} t
  * @returns {string}
  */
-export function sharesTicketError({ symbol, type, qty, isLong, stop, bid = 0, ask = 0, last = 0 }) {
+export function sharesTicketError({ symbol, type, qty, isLong, stop, bid = 0, ask = 0, last = 0, entryType = 'MARKET', entryStop = 0 }) {
   if (type && type !== 'stock' && type !== 'etf') return `${symbol} is not a stock or ETF.`;
   if (!/^[A-Z][A-Z0-9./]{0,9}$/.test(symbol)) return `${symbol} is not a symbol Schwab can trade.`;
   if (!Number.isInteger(qty) || qty < 1) return 'The size is under one share. Raise the risk or tighten the stop.';
   if (!(stop > 0)) return 'No valid stop price.';
+  // a stop entry: the stop only goes in once the entry fills there, so it's checked against the entry, which has to be past the market;
+  // a limit can fill right away like a market order, so its stop is checked against the market
+  if (entryType === 'STOP' || entryType === 'STOP_LIMIT') {
+    const early = stopEntryError({ isLong, entryStop, bid, ask, last });
+    if (early) return early;
+    if (isLong ? stop >= entryStop : stop <= entryStop) return `The stop ${fmtTick(stop)} is not ${isLong ? 'under' : 'over'} the entry ${fmtTick(entryStop)}.`;
+    return '';
+  }
   // a stop already through the market would fire the moment the entry fills
   const ref = isLong ? (bid > 0 ? bid : last) : (ask > 0 ? ask : last);
   if (!(ref > 0)) return 'No live quote for ' + symbol + '.';
   if (isLong && stop >= ref) return `The stop ${fmtTick(stop)} is at or above the bid ${fmtTick(ref)}. It would sell as soon as the buy fills.`;
   if (!isLong && stop <= ref) return `The stop ${fmtTick(stop)} is at or below the ask ${fmtTick(ref)}. It would cover as soon as the short fills.`;
+  return '';
+}
+
+/**
+ * Why a stop entry can't go: a buy stop has to sit over the ask (a sell-short stop under the bid), or it triggers the moment
+ * it's placed. '' when it can.
+ * @param {{ isLong: boolean, entryStop: number, bid?: number, ask?: number, last?: number }} t
+ */
+export function stopEntryError({ isLong, entryStop, bid = 0, ask = 0, last = 0 }) {
+  if (!(entryStop > 0)) return 'Set a planned entry for the stop to wait at.';
+  const ref = isLong ? (ask > 0 ? ask : last) : (bid > 0 ? bid : last);
+  if (!(ref > 0)) return 'No live quote to place a stop entry against.';
+  if (isLong && entryStop <= ref) return `The buy stop ${fmtTick(entryStop)} is at or under the ask ${fmtTick(ref)}, so it would buy right away. Use Market, or a higher entry.`;
+  if (!isLong && entryStop >= ref) return `The sell-short stop ${fmtTick(entryStop)} is at or over the bid ${fmtTick(ref)}, so it would short right away. Use Market, or a lower entry.`;
   return '';
 }
 
@@ -128,6 +156,24 @@ export function limitEntryError({ isLong, stop, limit }) {
   if (isLong && limit <= stop) return `The limit ${fmtTick(limit)} is at or below the stop ${fmtTick(stop)}. Buy above the stop.`;
   if (!isLong && limit >= stop) return `The limit ${fmtTick(limit)} is at or above the stop ${fmtTick(stop)}. Sell short below the stop.`;
   return '';
+}
+
+/**
+ * Why a stop limit's limit can't work: a buy's limit under its stop (a short's over it) can never fill once it triggers.
+ * @param {{ isLong: boolean, entryStop: number, entryLimit: number }} t
+ */
+export function entryLimitError({ isLong, entryStop, entryLimit }) {
+  if (!(entryLimit > 0)) return 'Set the limit: the most you\'ll pay once the stop triggers.';
+  if (isLong && entryLimit < entryStop) return `The limit ${fmtTick(entryLimit)} is under the stop ${fmtTick(entryStop)}, so it could never fill.`;
+  if (!isLong && entryLimit > entryStop) return `The limit ${fmtTick(entryLimit)} is over the stop ${fmtTick(entryStop)}, so it could never fill.`;
+  return '';
+}
+
+/** A stop limit's first limit: 0.2% past the stop (at least a tick), on Schwab's tick. @param {number} entryStop @param {boolean} isLong */
+export function defaultEntryLimit(entryStop, isLong) {
+  const tick = entryStop >= 1 ? 0.01 : 0.0001;
+  const room = Math.max(tick, priceTick(entryStop * 0.002));
+  return priceTick(entryStop + (isLong ? room : -room));
 }
 
 /**

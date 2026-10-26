@@ -67,8 +67,8 @@ test('a long is a market buy that triggers a sell stop for the same shares', asy
 
 test('a limit entry is the same trigger with a price: buy at the limit or better, then the stop', async () => {
   const { run } = await app();
-  const order = JSON.parse(JSON.stringify(run("sharesStopOrder({ symbol: 'TEST', qty: 250, isLong: true, stop: 98, stopDuration: 'GOOD_TILL_CANCEL', limit: 99.5 })")));
-  assert.deepEqual([order.orderType, order.price, order.duration, order.orderStrategyType], ['LIMIT', 99.5, 'DAY', 'TRIGGER']);
+  const order = JSON.parse(JSON.stringify(run("sharesStopOrder({ symbol: 'TEST', qty: 250, isLong: true, stop: 98, stopDuration: 'GOOD_TILL_CANCEL', entryType: 'LIMIT', entryLimit: 99.5 })")));
+  assert.deepEqual([order.orderType, order.price, order.duration, order.orderStrategyType, order.stopPrice], ['LIMIT', 99.5, 'DAY', 'TRIGGER', undefined]);
   assert.deepEqual([order.childOrderStrategies[0].orderType, order.childOrderStrategies[0].stopPrice], ['STOP', 98]);
   assert.equal(run("limitEntryError({ isLong: true, stop: 98, limit: 99.5 })"), '');
   assert.match(run("limitEntryError({ isLong: true, stop: 98, limit: 98 })"), /The limit \$98\.00 is at or below the stop \$98\.00/);
@@ -485,40 +485,43 @@ test('the stop duration choice is remembered and rebuilds the order before sendi
   assert.equal(storage.get('schwab_stop_duration'), 'DAY');
 });
 
-test('the entry is market by default; a limit starts at the planned entry, moves as you type and caps the risk', async () => {
+test('a limit entry starts at the planned entry, moves as you type and caps the risk; a review never opens on it', async () => {
   const net = network(async (path, init) => {
     if (path === '/trader/v1/accounts/HASH1/orders' && init.method === 'POST') return json(null, 201, { Location: `${PROXY}/trader/v1/accounts/HASH1/orders/1001` });
     if (path === '/trader/v1/accounts/HASH1/orders/1001') return json({ status: 'WORKING', childOrderStrategies: [{ status: 'AWAITING_PARENT_ORDER' }] });
     return json({}, 404);
   });
-  const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  const storage = connected();
+  const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage });
   await run('openTrade()');
   const body = () => elements.get('tradeBody').innerHTML;
   const detail = () => elements.get('tradeDetail').innerHTML;
   assert.equal(state.tradeTicket.order.orderType, 'MARKET');
-  assert.match(body(), /aria-pressed="true" data-action="setTradeEntryType" data-arg="MARKET"/);
+  assert.match(body(), /data-action="setTradeEntryType" data-arg="MARKET">Market<\/button><button[^>]*data-arg="LIMIT">Limit<\/button>/, 'Limit sits next to Market, never greyed out');
   assert.doesNotMatch(body(), /id="tradeLimit"/);
   run("actions.setTradeEntryType({ dataset: { arg: 'LIMIT' } })");
-  assert.deepEqual([state.tradeTicket.order.orderType, state.tradeTicket.order.price, state.tradeTicket.qty], ['LIMIT', 100, 250], 'at the entry the shares were sized on');
+  assert.deepEqual([state.tradeTicket.order.orderType, state.tradeTicket.order.price, state.tradeTicket.order.stopPrice, state.tradeTicket.qty], ['LIMIT', 100, undefined, 250], 'at the entry the shares were sized on');
+  assert.equal(storage.get('schwab_entry_type'), undefined, 'a limit is not the stop entry remembered');
   assert.match(body(), /id="tradeLimit"[^>]*value="100.00"/);
-  assert.match(body(), /Limit order, today, at your price or better/);
-  assert.match(body(), /data-action="placeTrade">Buy 250 TEST at \$100\.00</);
+  assert.match(body(), /Buy 250 TEST at \$100\.00 limit<\/strong><span class="shares-detail">At the limit or better, not past it\. Today only\./);
+  assert.match(body(), /id="tradePlace" data-action="placeTrade">Buy 250 TEST at \$100\.00</);
   assert.match(body(), /Waits until the price comes to \$100\.00\. If it hasn.{1,5}t filled by the close, it ends and the stop never goes in\./);
   // typing redraws what follows the input, not the input
   elements.get('tradeLimit').value = '100.5';
   run("actions.setTradeLimit({ value: '100.5' })");
   assert.equal(elements.get('tradeLimit').value, '100.5');
+  assert.equal(elements.get('tradePlace').textContent, 'Buy 250 TEST at $100.50');
   assert.match(detail(), /\$625\.00[\s\S]*If it fills at the limit; planned \$500\.00 from entry \$100\.00/);
   assert.match(detail(), /At the limit \$100\.50, risk is \$625\.00, over your \$500\.00 plan\./);
   assert.match(detail(), /At or through the ask \$100\.02, so it likely fills right away, at \$100\.50 or better\./);
   run("setTradeLimit('97.9')");
   assert.match(detail(), /The limit \$97\.90 is at or below the stop \$98\.00\. Buy above the stop\./);
-  assert.match(detail(), /id="tradePlace" data-action="placeTrade" disabled/);
+  assert.equal(elements.get('tradePlace').disabled, true);
   run("setTradeLimit('')");
   assert.match(detail(), /Set a limit price\./);
   run("setTradeLimit('99.504')");
   run("setTradeStopDuration('DAY')");
-  assert.deepEqual([state.tradeTicket.entryType, state.tradeTicket.limit], ['LIMIT', 99.5], 'the limit holds through other changes, on the tick');
+  assert.deepEqual([state.tradeTicket.entryType, state.tradeTicket.limitPrice, state.tradeTicket.order.childOrderStrategies[0].duration], ['LIMIT', 99.5, 'DAY'], 'the limit holds through other changes, on the tick');
   await run('placeTrade()');
   const posts = net.schwabCalls().filter(c => c.method === 'POST');
   assert.equal(posts.length, 1);
