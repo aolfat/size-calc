@@ -24,7 +24,7 @@ import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
-import { loadJournalReview, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
+import { loadJournalReview, reviewFrom, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, renderDeckEnd, reviewFromHtml, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
@@ -271,6 +271,27 @@ export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v |
 export function setJournalReviewFilter(v) { state.journalReviewFilter = v in REVIEW_TESTS ? v : 'all'; renderJournal(); }
 const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
 
+/** phones: the summary as three tiles (net, win rate, average) and a quiet line for the rest */
+function summaryTiles(trades, deleted) {
+  const s = tradesSummary(trades);
+  const deletedNote = deleted ? `${deleted} deleted <button class="pos-link" data-action="toggleDeletedTrades">${state.journalShowDeleted ? 'Hide them' : 'Show'}</button>` : '';
+  if (!s.closed && !s.open && !s.history) return `<p class="hint journal-summary">No trades match.${deletedNote ? ` ${deletedNote}` : ''}</p>`;
+  const tile = (label, value, sub, cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}</dd>${sub ? `<span class="pos-sub">${sub}</span>` : ''}</div>`;
+  const tiles = s.closed ? `<dl class="journal-summary-tiles">
+      ${tile('Net P&amp;L', signed$(s.pnl), feeWords(), pnlClass(s.pnl))}
+      ${tile('Win rate', `${s.winRate}%`, `${s.wins} of ${s.closed} won`)}
+      ${s.avgR !== null ? tile('Avg R', signedR(s.avgR), s.avgPct !== null ? `${signedPct(s.avgPct)} avg` : '', pnlClass(s.avgR)) : tile('Avg', s.avgPct !== null ? signedPct(s.avgPct) : '—', '', s.avgPct !== null ? pnlClass(s.avgPct) : '')}
+    </dl>` : '';
+  const notes = [
+    s.closed && journalAfterFees() && s.fees ? `fees ${fmt$(s.fees)}` : '',
+    s.closed && journalAfterFees() && s.feesMissing ? `<span class="journal-fees-missing">fees not in yet on ${s.feesMissing}</span>` : '',
+    s.open ? `${s.open} open` : '',
+    s.history ? `<span class="journal-fees-missing" title="${esc(HISTORY_TITLE)}">${s.history} from before your history</span>` : '',
+    deletedNote,
+  ].filter(Boolean);
+  return `${tiles}${notes.length ? `<p class="hint journal-summary">${notes.join(' · ')}</p>` : ''}`;
+}
+
 function summaryLine(trades, deleted) {
   const s = tradesSummary(trades);
   const deletedNote = deleted ? ` · ${deleted} deleted <button class="pos-link" data-action="toggleDeletedTrades">${state.journalShowDeleted ? 'Hide them' : 'Show'}</button>` : '';
@@ -304,25 +325,48 @@ function controls(all = [], navigationOnly = false) {
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
   const tabs = `<div class="seg journal-tabs journal-nav" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
   if (state.journalTab === 'books' || state.journalTab === 'features' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
-  return `<div class="journal-controls">
+  const symbol = `<input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />`;
+  const dayChip = state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : '';
+  if (mq(PHONE_MQ)) {
+    // phones: the symbol box, Filters (how many are on) and Select on one line; the rest opens under it
+    const trades = state.journalTab === 'trades';
+    const on = (state.journalSetupFilter && setupFilter(all) ? 1 : 0) + (state.journalSide !== 'all' ? 1 : 0) + (trades && reviewFrom() ? 1 : 0);
+    const open = state.journalFiltersOpen;
+    return `<div class="journal-controls">
     ${tabs}
-    <div class="journal-filters">
-      <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
+    <div class="journal-phone-bar">${symbol}
+      <button class="btn journal-filters-btn${on ? ' active' : ''}" data-action="toggleJournalFilters" aria-expanded="${open}">Filters${on ? ` <b>${on}</b>` : ''}</button>
+      ${trades ? `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button>` : ''}
+    </div>
+    ${open ? `<div class="journal-filters">
       ${setupFilter(all)}
       <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
       ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
-      ${state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : ''}
+      ${trades ? reviewFromHtml(all) : ''}
+    </div>` : ''}
+    ${dayChip ? `<div class="journal-filters">${dayChip}</div>` : ''}
+    ${trades ? reviewChips(all, false) : ''}
+  </div>`;
+  }
+  return `<div class="journal-controls">
+    ${tabs}
+    <div class="journal-filters">
+      ${symbol}
+      ${setupFilter(all)}
+      <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
+      ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
+      ${dayChip}
     </div>
     ${state.journalTab === 'trades' ? reviewChips(all) : ''}
   </div>`;
 }
 
 /** All · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
-function reviewChips(all) {
+function reviewChips(all, withFrom = true) {
   const base = onSetupFilter(onPickedDay(filtered(all, t => t.bias))).filter(t => !t.deleted);
   const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
   const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
-  return `<div class="journal-chips-row"><div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>${reviewFromHtml(all)}</div>`;
+  return `<div class="journal-chips-row"><div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>${withFrom ? reviewFromHtml(all) : ''}</div>`;
 }
 
 /** what's ticked, Delete beside the count (away from Merge), why it can't be one trade (or Merge), and Clear;
@@ -466,9 +510,9 @@ function tradesView(all) {
       <thead><tr><th scope="col">Symbol</th>${shownTradeCols().map(([key, label]) => `<th scope="col">${colHead(key, label)}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(tradeRow).join('')}</tbody>
     </table></div>`;
-  // phones hide the tick boxes until Select (bulk Merge and Delete are rare); Done puts them away and clears the picks
-  const colsBtn = phone ? `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button>` : `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
-  return `<div class="journal-summary-row"><p class="hint journal-summary">${summaryLine(counted, deleted)}</p>${colsBtn}</div>
+  // phones hide the tick boxes until Select (in the bar above: bulk Merge and Delete are rare), and show the summary as tiles
+  const colsBtn = `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
+  return `${phone ? summaryTiles(counted, deleted) : `<div class="journal-summary-row"><p class="hint journal-summary">${summaryLine(counted, deleted)}</p>${colsBtn}</div>`}
     ${list}${pickBar(trades)}
     ${trades.length > JOURNAL_SHOWN ? `<p class="hint">Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades.</p>` : ''}
     <details class="hint-details"><summary>How trades are built</summary><p class="hint">Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades, an entry note while it's live and an exit note after; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
@@ -996,6 +1040,8 @@ export function toggleJournalPick(key) {
 }
 export function clearJournalPicks() { state.journalPicked = []; renderJournal(); }
 /** phones: Select shows the cards' tick boxes, Done hides them and clears what's ticked */
+/** phones: Filters opens the setup menu, side, fees and Review from under the symbol box, and closes them */
+export function toggleJournalFilters() { state.journalFiltersOpen = !state.journalFiltersOpen; renderJournal(); }
 export function toggleJournalSelect() {
   state.journalSelecting = !state.journalSelecting;
   if (!state.journalSelecting) state.journalPicked = [];

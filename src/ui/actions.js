@@ -36,7 +36,7 @@ import { toggleTradeFeatures } from './journal-features.js';
 import { addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, cancelSetupEdit, editSetup, newLibrarySetup, startLibraryChoice, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, reviewSearchInput, reviewSearchPick, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
-import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
+import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalFilters, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
@@ -273,6 +273,7 @@ export const actions = {
   toggleJournalPick: el => toggleJournalPick(arg(el)),
   clearJournalPicks: () => clearJournalPicks(),
   toggleJournalSelect: () => toggleJournalSelect(),
+  toggleJournalFilters: () => toggleJournalFilters(),
   mergePicked: () => mergePicked(),
   separateTrade: el => separateTrade(arg(el)),
   schwabProxyDone: () => schwabProxyDone(),

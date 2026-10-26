@@ -565,6 +565,18 @@ span.journal-pick { cursor: default; }
 .seg.journal-tabs.journal-nav button.active { color: var(--text); font-weight: 600; background: none; border-bottom-color: var(--blue); }
 .journal-filters { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .journal-filters .journal-setup-filter { max-width: 220px; min-width: 0; }
+/* phones (rendered only there): the symbol box, Filters and Select on one line; the summary as three tiles */
+.journal-phone-bar { flex-basis: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.journal-controls .journal-phone-bar #journalSymbol { flex: 1 1 0; width: 0; min-width: 0; } /* takes what the buttons leave */
+.journal-phone-bar .btn { flex: none; margin: 0; padding: 8px 14px; font-size: 13px; }
+.journal-filters-btn.active { color: var(--blue); border-color: var(--blue-bd); }
+.journal-filters-btn b { margin-left: 2px; padding: 0 6px; font-size: 11px; color: #fff; background: var(--blue); border-radius: 999px; }
+.journal-filters .jr-queue { grid-column: 1 / -1; }
+.journal-summary-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 2px 0 10px; }
+.journal-summary-tiles > div { min-width: 0; padding: 10px 12px; background: var(--bg3); border-radius: 16px; }
+.journal-summary-tiles dt { font-size: 12px; color: var(--text2); }
+.journal-summary-tiles dd { margin: 2px 0 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.journal-summary-tiles .pos-sub { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .journal-chips-row { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .journal-chips-row .jr-queue { margin: 0; }
 .journal-chips { flex: 0 1 auto; max-width: 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
