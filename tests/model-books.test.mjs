@@ -72,6 +72,20 @@ test('setup browsing spans books and follows renames and merges in My setups', a
   assert.equal(a.run('modelBooks.setupKey'), '');
 });
 
+test('By setup lists every one of My setups, so the first example can start from a setup with none', async () => {
+  const a = await books();
+  await addBook(a);
+  a.run("journalReview.library = [{ id: 'hide', kind: 'setup', default_key: 'earnings_gap', hidden: true }]");
+  a.run("setModelBrowse('setups')");
+  const nav = a.body().split('mb-nav-list')[1].split('</aside>')[0];
+  assert.match(nav, /data-arg="ema21_bounce"><span>21 EMA bounce[^<]*<\/span><small>0<\/small>/);
+  assert.doesNotMatch(nav, /earnings_gap/, 'a hidden setup without examples stays out');
+  a.run("selectModelSetup('ema21_bounce')");
+  assert.match(a.body(), /comes tagged with this setup/);
+  await a.run("pasteModelImages([{ type: 'image/png', size: 1200 }])");
+  assert.deepEqual([...a.run('modelBooks.draft.setup_keys')], ['ema21_bounce']);
+});
+
 test('edit notes, setup tags and book without uploading another copy of the screenshot', async () => {
   const a = await books();
   await addBook(a); const row = await example(a); const other = await addBook(a, 'Study later');
