@@ -460,6 +460,8 @@ function orderSpreads(legs) {
 }
 
 const OPTIONISH = new Set(['OPTION', 'SPREAD']);
+/** a trade's underlying: a stock's symbol, an option's root, a spread's symbol (already its root). @param {{ symbol: string, assetType?: string, legs?: unknown }} t */
+export const tradeUnderlying = t => t.legs ? t.symbol : (parseSchwabOption(t.symbol)?.root || t.symbol);
 /** a stock's symbol, or an option's (or a spread's) root. @param {{ symbol: string, assetType: string }} t */
 const underlyingOf = t => t.assetType === 'OPTION' ? (parseSchwabOption(t.symbol)?.root || t.symbol) : t.symbol;
 

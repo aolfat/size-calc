@@ -35,10 +35,35 @@ Four sections, always in this order.
 | Goals | Your standing goals | Nothing to fill in |
 | Rules | Your standing rules | Nothing to fill in; they're checked after the close |
 | Market | The day's market chips, the same `journal_days.market` the trade review sets, so every trade that day inherits it | Yes |
-| Focus list | Tickers with a line each (slice 2) | |
+| Focus list | The tickers you're watching, each with its setups (below) | No |
 | Plan | Free text: catalysts, levels, limits for the day | Yes |
 
 **Plan written** = a feeling, energy, where, the market, and the plan. `planned_at` is stamped while it's true.
+
+### Focus list
+
+The tickers you're watching for the day, in the premarket after the market and before the plan.
+Type the ticker and + Add (or Enter); it opens with its charts, and the rest is optional:
+
+| Part | What |
+|---|---|
+| Charts | The missed trades' charts: the ticker's 5 minutes that day and its daily, the day marked 'focus' |
+| Side | Long, Short |
+| Setups | My setups as chips, the ones on first, then most used; any number on at once (six at most), named in the side's words; + New setup makes one ('New setup for QCOM on your focus list') |
+| Note | One line, up to 500 characters: levels, the trigger, what you're waiting for |
+| Screenshots | Like a missed trade's: Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most |
+| How it played | Worked, Failed, Didn't trigger; for after the close, but there any time |
+| Review | One line, up to 500 characters: what it did, what you did |
+
+Closed, each is one line: the ticker, side and setups, Traded once a trade on it opened or took P&L that day (a stock's symbol, an option's or a spread's underlying), its note, how it played and how many screenshots it has.
+A ticker already on the list opens instead of adding a second one.
+Up to 12 a day.
+Remove takes one out at once, with Undo on the toast; its screenshots are deleted once Undo can't bring it back (10 seconds).
+A missed trade and a focus ticker are never open at once: they share one set of charts.
+
+**In the post-market**, Your focus list lists each ticker with its setups, Traded or Not traded, and How it played as chips, so the review is one tap each.
+Tapping a ticker there opens it in the premarket and scrolls to it, for its review line and screenshots.
+The focus list never counts toward the plan written or the day reviewed.
 
 ### The day
 
@@ -110,6 +135,12 @@ Migration `20261031000000_day_notebook.sql`:
 
 The new columns are read on their own query, so before the push the rest of the review works and the notebook says it needs `npx supabase db push`.
 
+Migration `20261105000000_focus_list.sql`:
+
+- `journal_days.focus_list` (the notebook's migration made it, empty until now) holds `[{ id, symbol, side, setups, note, played, review }]`, cleanFocusList on the way in.
+- Its size limit grows from 8000 bytes to 30000, for 12 tickers with full notes; before the push a list over the old limit doesn't save and says why.
+- Screenshots are `trade_shots` rows keyed `focus:<its id>`.
+
 Migration `20261104000000_missed_trades.sql`:
 
 - `journal_days` gains `missed` (jsonb array of `{ id, symbol, side, setup, tactic, why, note }`, cleanMissed on the way in).
@@ -121,7 +152,7 @@ Migration `20261104000000_missed_trades.sql`:
 ## Slices
 
 1. **The day page (built):** the calendar opens it, today's line, the marks; premarket (last focus, check-in, goals, rules, market, plan); the day's numbers and trades; post-market (grade, rules, kept the focus, the three notes, the day's exit notes, tomorrow's focus); goals and rules with their editor; the migration.
-2. **Focus list and the app's checks:** tickers with a line each, trades tagged on plan or off plan (their underlying was on the list), P&L on plan against off it; the three rule checks pre-filled with their reason; numbers beside goals the app can measure (days you kept every rule, your streak of plans written).
+2. **Focus list and the app's checks:** the focus list (built: tickers with their setups, charts, screenshots, how each played, traded or not); trades tagged on plan or off plan (their underlying was on the list), P&L on plan against off it; the three rule checks pre-filled with their reason; numbers beside goals the app can measure (days you kept every rule, your streak of plans written).
 3. **Stats and the week review:** results by feeling, energy and where you traded; each rule's kept rate and P&L on days kept against broken; the week review's Preparedness (plans written), Emotional control (the check-ins), Execution consistency (rules kept), and the week's What to work on notes together. Day screenshots (trade_shots keyed `day:YYYY-MM-DD`), and "Review the day" after the review deck's last card.
 
 ## Open questions

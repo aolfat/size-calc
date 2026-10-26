@@ -8,12 +8,15 @@
 // library_items rows (kinds goal and rule), edited in place. Missed trades: the ones you saw and didn't take, a ticker
 // each with its charts that day (ui/missed-chart.js), its side, the daily setups and entry tactics you could have taken, why
 // you missed it, a note and your screenshots (trade_shots keyed missed:<id>, ui/journal-shots.js) (journal_days.missed,
-// its own migration).
+// its own migration). The focus list: the tickers you're watching, each with its side, the setups you want on it, a note,
+// the same charts and screenshots (keyed focus:<id>), and after the close how it played and whether you traded it
+// (journal_days.focus_list). One missed trade or focus ticker is open at a time.
 // The calendar's marks: plan written, reviewed, review due, how many you missed.
 // Premarket opens with the day's economic releases (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
-import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
+import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
+import { tradeUnderlying } from '../core/journal.js';
 import { dailyPnl, nyParts } from '../core/journal-stats.js';
 import { saveJournalDay, saveLibraryItem } from '../services/journal-review.js';
 import { state } from '../state.js';
@@ -22,7 +25,7 @@ import { newSetupFor, onSetupAdded, reviewedMark } from './journal-review.js';
 import { closeSheet } from './sheets.js';
 import { journalTradeList, renderJournal } from './journal.js';
 import { loadMissedChart, missedChartHtml } from './missed-chart.js';
-import { deleteMissedShots, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
+import { deleteFocusShots, deleteMissedShots, focusShotCount, focusShotsRowHtml, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
 import { effects } from './effects.js';
 import { econDayRow, econTodayWords } from './econ-events.js';
 
@@ -41,13 +44,14 @@ const notebookOff = () => !data() || !!state.journalReviewError || !!data().note
 /** the missed trades can't: the notebook can't, or the database doesn't have their column yet */
 const missedOff = () => notebookOff() || !!data().missedError;
 const missedOf = day => rowOf(day)?.missed || [];
+const focusOf = day => rowOf(day)?.focus_list || [];
 
 // ---------- opening the page ----------
 
 /** a day's page (a calendar cell, today's line, ‹ ›): inside the Calendar tab, the calendar on its month behind it */
 export function openJournalDay(day) {
   if (!isDay(day)) return;
-  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: '', notebookDraft: null, notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '' });
+  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: '', notebookDraft: null, notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
   renderJournal();
   window.scrollTo?.({ top: 0 });
 }
@@ -245,6 +249,7 @@ export function addMissedTrade() {
   const id = newId();
   state.missedDraft = '';
   state.missedOpen = id;
+  state.focusOpen = '';
   loadMissedChart(symbol, page());
   return saveMissed([...list, { id, symbol, side: null, setups: [], tactics: [], why: null, note: null }]);
 }
@@ -263,27 +268,28 @@ export function missedWords(lib, m) {
 export function openMissedTrade(id) {
   const m = missedOne(id);
   state.missedOpen = state.missedOpen === id || !m ? '' : id;
-  if (state.missedOpen) loadMissedChart(m.symbol, page());
+  if (state.missedOpen) { state.focusOpen = ''; loadMissedChart(m.symbol, page()); }
   renderJournal();
 }
 export function setMissedSide(id, v) { return changeMissed(id, { side: one(MISSED_SIDES, v, missedOne(id)?.side) }); }
 export function setMissedWhy(id, v) { return changeMissed(id, { why: one(MISSED_WHY, v, missedOne(id)?.why) }); }
-/** a daily setup (one of My setups) or an entry tactic you could have taken, on or off; a missed trade takes several of each, like a trade's review */
-const missedPick = (kind, field, words) => (id, key, on) => {
-  const m = missedOne(id), lib = buildLibrary(data()?.library || []);
+/** a daily setup (one of My setups) or an entry tactic you could have taken, on or off; a missed trade takes several of each, like a trade's review (a focus ticker its setups) */
+const libPick = (find, change) => (kind, field, words) => (id, key, on) => {
+  const m = find(id), lib = buildLibrary(data()?.library || []);
   if (!m) return;
   const had = m[field].some(k => lib.resolve(kind, k) === key);
   if (on === undefined) on = !had;
   if (on === had) return renderJournal();
   if (on && !lib.choices(kind).some(i => i.key === key)) return;
   if (on && m[field].length >= MAX_MISSED_PICKS) { showError(`${MAX_MISSED_PICKS} ${words} at most.`); return; }
-  return changeMissed(id, { [field]: on ? [...m[field], key] : m[field].filter(k => lib.resolve(kind, k) !== key) });
+  return change(id, { [field]: on ? [...m[field], key] : m[field].filter(k => lib.resolve(kind, k) !== key) });
 };
+const missedPick = libPick(id => missedOne(id), (id, c) => changeMissed(id, c));
 export const toggleMissedSetup = missedPick('setup', 'setups', 'setups');
 export const toggleMissedTactic = missedPick('tactic', 'tactics', 'entry tactics');
 /** + New setup: the builder in Edit choices; what it adds goes on this missed trade and the sheet closes */
 export function newMissedSetup(id) { const m = missedOne(id); if (m && !missedOff()) newSetupFor({ id, symbol: m.symbol }); }
-onSetupAdded((d, key) => { if (!d?.missed) return; closeSheet(); return toggleMissedSetup(d.missed.id, key, true); });
+onSetupAdded((d, key) => { if (!d?.missed) return; closeSheet(); return (d.missed.focus ? toggleFocusSetup : toggleMissedSetup)(d.missed.id, key, true); });
 /** + New tactic: a name; Add puts it in your library and turns it on for this missed trade (the same name is the same tactic) */
 export function startMissedTactic(id) { state.missedNewTactic = id; state.missedTacticDraft = ''; renderJournal(); }
 export function cancelMissedTactic() { state.missedNewTactic = ''; renderJournal(); }
@@ -329,6 +335,78 @@ export function undoRemoveMissed() {
   if (u && u.day === page()) return saveMissed(u.list);
 }
 
+// ---------- the focus list (journal_days.focus_list) ----------
+
+const focusOne = id => focusOf(page()).find(f => f.id === id);
+/** the whole list saved, like any of the day's fields */
+function saveFocus(list) { if (!notebookOff() && page()) return saveDay(page(), { focus_list: list }); }
+function changeFocus(id, change) {
+  if (focusOne(id)) return saveFocus(focusOf(page()).map(f => f.id === id ? { ...f, ...change } : f));
+}
+
+export function focusInput(text) { state.focusDraft = String(text || ''); }
+/** + Add: a ticker you're watching today, open to pick its setups */
+export function addFocusTicker() {
+  if (notebookOff() || !page()) return;
+  const symbol = missedSymbol(state.focusDraft), list = focusOf(page());
+  if (!symbol) { showError('Type the ticker you\'re watching, like QCOM.'); return; }
+  const had = list.find(f => f.symbol === symbol);
+  if (had) { state.focusDraft = ''; showError(`${symbol} is on the list already.`); if (state.focusOpen !== had.id) openFocusTicker(had.id); return; }
+  if (list.length >= MAX_FOCUS_ITEMS) { showError(`${MAX_FOCUS_ITEMS} tickers on a focus list at most.`); return; }
+  const id = newId();
+  state.focusDraft = '';
+  state.focusOpen = id;
+  state.missedOpen = '';
+  loadMissedChart(symbol, page(), 'focus');
+  return saveFocus([...list, { id, symbol, side: null, setups: [], note: null, played: null, review: null }]);
+}
+/** a focus ticker's line: opens it to edit, its charts with it (again closes it); from the post-market list it scrolls up to it */
+export function openFocusTicker(id, from = '') {
+  const f = focusOne(id);
+  state.focusOpen = (state.focusOpen === id && from !== 'review') || !f ? '' : id;
+  if (state.focusOpen) { state.missedOpen = ''; loadMissedChart(f.symbol, page(), 'focus'); }
+  renderJournal();
+  if (state.focusOpen && from === 'review') document.getElementById('nbFocusOpen')?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+}
+export function setFocusSide(id, v) { return changeFocus(id, { side: one(MISSED_SIDES, v, focusOne(id)?.side) }); }
+/** how it played (tapping the lit one clears it) */
+export function setFocusPlayed(id, v) { return changeFocus(id, { played: one(FOCUS_PLAYED, v, focusOne(id)?.played) }); }
+/** a setup you want on it, on or off; several at once */
+export const toggleFocusSetup = libPick(id => focusOne(id), (id, c) => changeFocus(id, c))('setup', 'setups', 'setups');
+/** + New setup: the builder in Edit choices; what it adds goes on this ticker and the sheet closes */
+export function newFocusSetup(id) { const f = focusOne(id); if (f && !notebookOff()) newSetupFor({ id, symbol: f.symbol, focus: true }); }
+const FOCUS_NOTES = { note: 'note', review: 'review' };
+/** its note (the plan for it) or its review: a draft while you type, saved when the box loses focus */
+export function focusNoteInput(id, which, text) { if (page() && FOCUS_NOTES[which]) state.notebookDraft = { day: page(), field: `focus:${id}:${which}`, text }; }
+export function focusNoteSave(id, which, text) {
+  state.notebookDraft = null;
+  if (!FOCUS_NOTES[which]) return;
+  const value = String(text || '').trim().slice(0, MAX_FOCUS_NOTE) || null;
+  if (value !== (focusOne(id)?.[which] ?? null)) return changeFocus(id, { [which]: value });
+}
+/** Remove: out at once, with Undo on the toast; its screenshots go once Undo can't bring it back */
+export function removeFocusTicker(id) {
+  const f = focusOne(id), day = page(), list = focusOf(day);
+  if (!f || notebookOff()) return;
+  state.focusUndo = { day, list };
+  if (state.focusOpen === id) state.focusOpen = '';
+  const saving = saveFocus(list.filter(x => x.id !== id));
+  showToast(`Removed ${f.symbol} from the focus list.`, '<button class="pos-link toast-act" data-action="undoRemoveFocus">Undo</button>');
+  if (focusShotCount(id)) effects.wait(UNDO_MS).then(() => { if (!focusOf(day).some(x => x.id === id)) return deleteFocusShots(id); });
+  return saving;
+}
+export function undoRemoveFocus() {
+  const u = state.focusUndo;
+  state.focusUndo = null;
+  if (u && u.day === page()) return saveFocus(u.list);
+}
+/** what a focus ticker's line says after the ticker: side · its setups, in the side's words */
+export function focusWords(lib, f) {
+  return [word(MISSED_SIDES, f.side).toLowerCase(), f.setups.map(k => lib.nameOf('setup', k, f.side || 'long')).join(', ')].filter(Boolean).join(' · ');
+}
+/** the focus tickers you traded that day (a trade on it opened or took P&L then) */
+const tradedOn = (day, trades) => focusTraded(focusOf(day), dayTrades(trades, day).map(tradeUnderlying));
+
 // ---------- the page ----------
 
 const chip = (label, on, attrs, off = '') => `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" ${attrs}${off}>${esc(label)}</button>`;
@@ -358,7 +436,55 @@ function listRow(kind, title, empty, off) {
   </div></div>`;
 }
 
-function premarket(day, off) {
+/** a focus ticker's note box: the plan for it, or its review */
+function focusNoteRow(day, f, which, label, placeholder) {
+  const d = state.notebookDraft, v = d && d.day === day && d.field === `focus:${f.id}:${which}` ? d.text : f[which] || '';
+  const id = `nbFocus${which === 'note' ? 'Note' : 'Review'}-${esc(f.id)}`;
+  return `<div class="jr-row"><label class="jr-label" for="${id}">${label}</label>
+    <textarea class="nb-focus-input grow" id="${id}" rows="1" maxlength="${MAX_FOCUS_NOTE}" autocomplete="off" placeholder="${esc(placeholder)}" data-input="focusNoteInput" data-change="focusNoteSave" data-arg="${esc(f.id)}" data-arg2="${which}">${esc(v)}</textarea></div>`;
+}
+const playedChips = (f, off = '') => FOCUS_PLAYED.map(([v, w]) => chip(w, f.played === v, `data-action="setFocusPlayed" data-arg="${esc(f.id)}" data-arg2="${v}"`, off)).join('');
+const tradedTag = (traded, over) => traded ? '<span class="nb-traded nb-traded-yes">Traded</span>' : over ? '<span class="nb-traded">Not traded</span>' : '';
+
+/** the tickers you're watching: a line each (tap to edit), the open one in full, and + Add */
+function focusSection(day, trades, off) {
+  const list = focusOf(day), lib = buildLibrary(data()?.library || []), traded = tradedOn(day, trades), over = dayOver(day, nowIso());
+  const line = f => {
+    const what = esc(focusWords(lib, f)), shots = focusShotCount(f.id), played = word(FOCUS_PLAYED, f.played);
+    const side = [played ? `<span class="nb-played nb-played-${f.played}">${esc(played)}</span>` : '', shots ? `${shots} screenshot${shots === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
+    const summary = `<span class="nb-trade-name"><b>${esc(f.symbol)}</b>${what ? ` ${what}` : ''}${tradedTag(traded.has(f.id), false)}${f.note ? `<span class="nb-miss-note">${esc(f.note)}</span>` : ''}</span>${side ? `<span class="nb-miss-shots">${side}</span>` : ''}`;
+    if (state.focusOpen !== f.id || off) return `<li><button class="nb-trade nb-miss" data-action="openFocusTicker" data-arg="${esc(f.id)}" aria-label="${esc(`${f.symbol} on your focus list. Edit`)}"${off}>${summary}</button></li>`;
+    // My setups: the ones on (even hidden), then the rest, most used first; names in the side's words
+    const onSetups = [...new Set(f.setups.map(k => lib.resolve('setup', k)))];
+    const setups = [...onSetups, ...setupsByUse(lib, data()?.labels || {}).map(i => i.key).filter(k => !onSetups.includes(k))];
+    return `<li class="nb-miss-open" id="nbFocusOpen">
+      <div class="nb-miss-head"><b>${esc(f.symbol)}</b>${tradedTag(traded.has(f.id), over)}<span class="nb-links"><button class="pos-link" data-action="removeFocusTicker" data-arg="${esc(f.id)}">Remove</button><button class="pos-link" data-action="openFocusTicker" data-arg="${esc(f.id)}">Done</button></span></div>
+      ${missedChartHtml(f.symbol, day)}
+      ${row('Side', MISSED_SIDES.map(([v, w]) => chip(w, f.side === v, `data-action="setFocusSide" data-arg="${esc(f.id)}" data-arg2="${v}"`)).join(''))}
+      ${row('Setups', `${setups.map(k => chip(lib.nameOf('setup', k, f.side || 'long'), onSetups.includes(k), `data-action="toggleFocusSetup" data-arg="${esc(f.id)}" data-arg2="${esc(k)}"`)).join('')}<button class="pos-link jr-new" data-action="newFocusSetup" data-arg="${esc(f.id)}">+ New setup</button>`)}
+      ${focusNoteRow(day, f, 'note', 'Note <span class="jr-sub">optional</span>', 'Levels, the trigger, what you\'re waiting for')}
+      ${focusShotsRowHtml(f.id)}
+      ${row(`How it played <span class="jr-sub">${over ? 'after the close' : 'for after the close'}</span>`, playedChips(f))}
+      ${focusNoteRow(day, f, 'review', 'Review <span class="jr-sub">optional</span>', 'What it did, what you did')}
+    </li>`;
+  };
+  return `<div class="nb-group">Focus list${list.length ? ` <span class="jr-sub">${list.length} ticker${list.length === 1 ? '' : 's'}</span>` : ''}</div>
+    ${list.length ? `<ul class="nb-trades nb-missed nb-focus-list" aria-label="Focus list">${list.map(line).join('')}</ul>` : '<p class="hint nb-empty">The tickers you\'re watching today, and the setups you want on each.</p>'}
+    <div class="nb-item nb-miss-add"><input type="text" id="nbFocusNew" maxlength="12" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Ticker to watch" aria-label="Ticker to watch" value="${esc(state.focusDraft)}" data-input="focusInput" data-enter="addFocusTicker"${off} /><button class="btn" data-action="addFocusTicker"${off}>+ Add</button></div>`;
+}
+
+/** post-market: each focus ticker, its setups, traded or not, and how it played, one tap each */
+function focusReviewRow(day, trades, off) {
+  const list = focusOf(day);
+  if (!list.length) return '';
+  const lib = buildLibrary(data()?.library || []), traded = tradedOn(day, trades), over = dayOver(day, nowIso());
+  return `<div class="jr-row"><div class="jr-label">Your focus list <span class="jr-sub">how each played</span></div><ul class="nb-rules nb-focus-review">${list.map(f => {
+    const what = focusWords(lib, f);
+    return `<li><span class="nb-rule-name"><button class="pos-link nb-focus-name" data-action="openFocusTicker" data-arg="${esc(f.id)}" data-arg2="review"${off}>${esc(f.symbol)}</button>${what ? ` ${esc(what)}` : ''}${tradedTag(traded.has(f.id), over)}</span><span class="chip-row jr-chips">${playedChips(f, off)}</span></li>`;
+  }).join('')}</ul></div>`;
+}
+
+function premarket(day, trades, off) {
   const r = rowOf(day), st = planState(r), started = Object.values(st).some(Boolean) && !st.written;
   const lib = buildLibrary(data()?.library || []);
   const focus = lastFocus(days(), day);
@@ -376,6 +502,7 @@ function premarket(day, off) {
     ${listRow('goal', 'Goals', 'No goals yet. Add what you\'re working toward.', off)}
     ${listRow('rule', 'Rules', 'No rules yet. Add the ones you trade by: each gets checked after the close.', off)}
     ${row('Market <span class="jr-sub">For every trade this day</span>', lib.choices('market').map(i => chip(i.name, r?.market === i.key, `data-action="setDayMarket" data-arg="${esc(i.key)}"`, off)).join(''), started && !st.market)}
+    ${focusSection(day, trades, off)}
     ${textRow('Plan', 'plan', day, 'Catalysts, levels, what you will and won\'t do today', off, started && !st.plan, 4)}
   </section>`;
 }
@@ -420,6 +547,7 @@ function postmarket(day, trades, off) {
     ${dayOver(day, nowIso()) ? '' : '<p class="hint nb-later">For after the close.</p>'}
     ${row('Day grade', DAY_GRADES.map(g => chip(g, r?.grade === g, `data-action="setDayGrade" data-arg="${g}"`, off)).join(''), started && !st.grade)}
     <div class="jr-row${started && !st.rules ? ' jr-missing' : ''}"><div class="jr-label">Your rules</div><div>${ruleRows}</div></div>
+    ${focusReviewRow(day, trades, off)}
     ${focus ? row(`Kept your last focus? <span class="jr-sub">${esc(focus.text)}</span>`, FOCUS_KEPT.map(([v, w]) => chip(w, r?.focus_kept === v, `data-action="setDayFocusKept" data-arg="${v}"`, off)).join('')) : ''}
     ${textRow('What went well', 'went_well', day, 'What you did right, what worked', off, started && !st.note, 2)}
     ${textRow('What to work on', 'work_on', day, 'What to fix, what you\'d do differently', off, started && !st.note, 2)}
@@ -484,7 +612,7 @@ export function dayPageHtml() {
       ${day === today ? '' : '<button class="btn jc-today" data-action="openTodayNotebook">Today</button>'}
     </div>
     ${why ? `<p class="hint jw-db" role="status">${esc(why)}</p>` : ''}
-    ${premarket(day, off)}
+    ${premarket(day, trades, off)}
     ${theDay(day, trades)}
     ${missedSection(day)}
     ${postmarket(day, trades, off)}

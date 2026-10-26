@@ -39,6 +39,7 @@
 .nb-later { margin: 4px 0 0; }
 /* missed trades: a line each, the open one in full */
 .nb-miss .nb-trade-name { min-width: 0; }
+.nb-missed { grid-template-columns: minmax(0, 1fr); } /* a long note ellipsizes instead of widening the page */
 .nb-miss-shots { flex: none; font-size: 12.5px; color: var(--text3); white-space: nowrap; }
 .jw-miss-day { flex: none; font-size: 12.5px; color: var(--text3); white-space: nowrap; }
 .jw-missed { margin-bottom: 12px; grid-template-columns: minmax(0, 1fr); }
@@ -54,6 +55,13 @@
 .nb-miss-add input { flex: 0 1 220px; text-transform: uppercase; }
 .nb-miss-add input::placeholder { text-transform: none; }
 .nb-miss-add input:disabled, .nb-miss-add .btn:disabled { opacity: .5; }
+/* the focus list: the same lines, plus traded or not and how each played */
+.nb-focus-list { margin-top: 6px; }
+.nb-traded { display: inline-block; margin-left: 8px; padding: 1px 6px; font-size: 11px; font-weight: 500; color: var(--text3); border: 1px solid var(--border2); border-radius: 999px; vertical-align: 1px; }
+.nb-traded-yes { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
+.nb-played-worked { color: var(--green); }
+.nb-played-failed { color: var(--red); }
+.nb-focus-name { margin-left: 0; font-weight: 600; }
 .nb-select { padding: 5px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
 .nb-select:focus { outline: none; border-color: var(--blue); }
 /* the calendar's marks: the plan written, reviewed, a review due */
