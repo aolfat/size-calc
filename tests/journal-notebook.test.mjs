@@ -233,14 +233,14 @@ test('post-market: the grade, every rule and a note make the day reviewed; the c
 
 test('today\'s line opens today\'s page: write the plan, then review the day after the close', async () => {
   const morning = await journal({ now: Date.parse('2026-10-07T12:30:00Z') });
-  assert.match(morning.out(), /<p class="hint nb-today" role="status">Today, Wed, Oct 7: <button class="pos-link" data-action="openTodayNotebook">Write your plan<\/button><\/p>/);
+  assert.match(morning.out(), /<button class="btn nb-today" data-action="openTodayNotebook" title="Today, Wed, Oct 7: [^"]*">Write your plan<\/button>/, 'a button in the head, the day in its title');
   morning.run('openTodayNotebook()');
   assert.equal(morning.state.journalNotebookDay, '2026-10-07');
   assert.match(morning.out(), /class="jc-title">Wed, Oct 7, 2026</);
   const evening = await journal({ days: [{ day: '2026-10-06', feelings: ['calm'], energy: 'ok', place: 'desk', market: 'choppy', plan: 'x' }] });
-  assert.match(evening.out(), /Today, Tue, Oct 6: <button class="pos-link" data-action="openTodayNotebook">Review the day<\/button>/);
+  assert.match(evening.out(), /title="Today, Tue, Oct 6: [^"]*">Review the day<\/button>/);
   const weekend = await journal({ now: Date.parse('2026-10-10T15:00:00Z') });
-  assert.match(weekend.out(), /Monday, Mon, Oct 12: <button[^>]*>Write your plan</);
+  assert.match(weekend.out(), /title="Monday, Mon, Oct 12: [^"]*">Write your plan</);
   const signedOut = await app();
   signedOut.run("setView('journal')");
   assert.doesNotMatch(signedOut.elements.get('journalSection').innerHTML, /nb-today/);

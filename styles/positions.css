@@ -115,6 +115,9 @@
 .journal-sell { color: var(--red); font-weight: 600; }
 .journal-card .positions-head .journal-actions { margin-left: auto; display: inline-flex; gap: 8px; }
 .journal-card .positions-head .journal-actions .btn { margin-left: 0; }
+.journal-meta { min-width: 0; }
+.journal-meta .journal-features-line::before { content: ' · '; }
+.btn.nb-today-done { color: var(--text2); }
 .journal-soon .sheet-label, .journal-soon .sheet-status, .journal-soon .hint { color: var(--text3); }
 .journal-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 10px; }
 .journal-controls .seg button { padding: 6px 12px; font-size: 12px; }
@@ -144,6 +147,20 @@
 .jr-chips .filter-btn.active { color: #fff; background: color-mix(in srgb, var(--blue) 30%, var(--bg2)); border-color: color-mix(in srgb, var(--blue) 70%, var(--border)); }
 .jr-row.jr-mistakes .filter-btn.active { background: color-mix(in srgb, var(--red) 26%, var(--bg2)); border-color: color-mix(in srgb, var(--red) 65%, var(--border)); }
 .jr-new { font-size: 12.5px; padding: 5px 2px; }
+.jr-chips .filter-btn:not(.active):hover { color: var(--text); background: var(--bg4); border-color: var(--border2); }
+/* the setup and tactic searches, and My setups grouped by what happened */
+.jr-search { flex: 0 1 200px; min-width: 0; padding: 6px 10px 6px 30px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='14' height='14'%3E%3Ccircle cx='7' cy='7' r='4.5' fill='none' stroke='%2397a0b3' stroke-width='1.6'/%3E%3Cpath d='m10.5 10.5 3 3' stroke='%2397a0b3' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 10px center; border: 1px solid var(--border2); border-radius: 8px; }
+.jr-search:focus { outline: none; border-color: var(--blue); }
+.jr-setup-row .jr-search { flex: 1 1 100%; max-width: 420px; padding-top: 7px; padding-bottom: 7px; font-size: 13px; }
+.jr-setup-pick { width: 100%; display: grid; }
+.jr-group { display: grid; grid-template-columns: 130px 1fr; gap: 6px 10px; align-items: start; padding: 7px 0; }
+.jr-group + .jr-group { border-top: 1px dashed var(--border); }
+.jr-group-name { font-size: 12px; font-weight: 600; color: var(--text3); padding-top: 6px; }
+.jr-group-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.jr-group-acts { width: 100%; display: flex; gap: 14px; }
+.jr-tactic-pick { display: contents; }
+.jr-none { width: 100%; margin: 0; padding: 5px 0; font-size: 12.5px; color: var(--text3); }
+@media (max-width: 600px) { .jr-group { grid-template-columns: 1fr; gap: 4px; } .jr-group-name { padding-top: 0; } }
 .jr-newbox { display: inline-flex; gap: 6px; align-items: center; }
 .jr-newbox input { width: 150px; padding: 5px 8px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
 .jr-setups { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-bottom: 4px; }
@@ -360,6 +377,10 @@ button.jc-day:hover { border-color: var(--border2); }
 .journal-sym-main { min-width: 0; }
 /* a row opens its trade: the name is the button (keyboard, screen readers), the rest of the row a bigger target */
 .journal-table tbody tr[data-action] { cursor: pointer; }
+/* the row under the pointer lights up, so you see which trade a click opens (over the open-trade tint too) */
+.journal-table tbody tr[data-action]:hover td { background: color-mix(in srgb, var(--blue) 10%, var(--bg2)); }
+.journal-table tbody tr[data-action]:hover td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+.jtc:not(.jtc-reviewed):hover { border-color: var(--blue-bd); }
 .journal-name { background: none; border: none; padding: 0; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
 .journal-name:hover b, .journal-name:focus-visible b, .journal-table tr[data-action]:hover .journal-name b { color: var(--blue); }
 .journal-name:hover b, .journal-name:focus-visible b { text-decoration: underline; text-underline-offset: 3px; }
@@ -405,8 +426,34 @@ span.journal-pick { cursor: default; }
   .journal-pick input { width: 18px; height: 18px; }
 }
 /* the Journal's trade page */
-.jt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 12px; }
-.jt-head .journal-actions { margin-left: auto; }
+/* its head: back, the trade, its numbers, then '3 of 25' and the arrows to the trade before and after */
+.jt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-bottom: 16px; }
+.jt-back { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; font: inherit; font-size: 13px; font-weight: 500; color: var(--text); background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.jt-back:hover, .jt-back:focus-visible { background: var(--bg4); border-color: var(--border2); outline: none; }
+.jt-id { display: grid; gap: 2px; min-width: 0; }
+.jt-id .section-title { margin: 0; color: var(--text); font-size: 18px; }
+.jt-id .section-title::after { display: none; }
+.jt-head-stats { display: flex; gap: 8px 24px; margin: 0 0 0 auto; }
+.jt-head-stats div { text-align: right; }
+.jt-head-stats dt { font-size: 12px; color: var(--text2); }
+.jt-head-stats dd { margin: 2px 0 0; font-size: 17px; font-weight: 600; font-family: var(--num); white-space: nowrap; }
+.jt-nav { display: flex; align-items: center; gap: 8px; }
+.jt-nav-count { font-size: 13px; color: var(--text2); margin-right: 4px; white-space: nowrap; }
+.jt-arrow { display: inline-grid; place-items: center; width: 38px; height: 38px; padding: 0; color: var(--text); background: var(--bg3); border: 1px solid var(--border2); border-radius: 10px; cursor: pointer; }
+.jt-arrow:hover:not(:disabled), .jt-arrow:focus-visible { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; }
+.jt-arrow:disabled { opacity: .35; cursor: default; }
+.jt-id .pos-link { font-size: inherit; }
+@media (max-width: 900px) { .jt-head-stats { order: 5; flex-basis: 100%; margin: 0; } }
+/* phones: back and the arrows on top, the trade and Edit, then its numbers four across */
+@media (max-width: 600px) {
+  .jt-head { gap: 12px; }
+  .jt-nav { order: 1; margin-left: auto; }
+  .jt-id { order: 2; flex-basis: 100%; }
+  .jt-head-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; background: var(--bg3); border-radius: 10px; }
+  .jt-head-stats div { text-align: left; min-width: 0; }
+  .jt-head-stats dd { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+  .jt-arrow { width: 40px; height: 40px; }
+}
 .jt-charts { display: grid; gap: 14px; margin-bottom: 14px; }
 .jt-chart { min-width: 0; }
 .jt-chart .chart-cap { display: flex; gap: 10px; align-items: center; }
@@ -511,9 +558,18 @@ span.journal-pick { cursor: default; }
 .seg.journal-tabs { background: none; border: 0; padding: 0; gap: 8px; }
 .seg.journal-tabs button { padding: 7px 16px; font-size: 13.5px; font-weight: 600; letter-spacing: 0; color: var(--text); border: 1px solid var(--border2); border-radius: 999px; }
 .seg.journal-tabs button.active { color: var(--blue); background: var(--blue-bg); border-color: var(--blue); box-shadow: none; }
-.journal-chips { flex-basis: 100%; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+/* the Journal's own tabs: a slim bar with a line under the one you're on, the filters one row under it */
+.seg.journal-tabs.journal-nav { flex-basis: 100%; gap: 4px; border-bottom: 1px solid var(--border); border-radius: 0; }
+.seg.journal-tabs.journal-nav button { margin-bottom: -1px; padding: 8px 12px 9px; font-size: 13.5px; font-weight: 500; color: var(--text2); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
+.seg.journal-tabs.journal-nav button:hover { color: var(--text); }
+.seg.journal-tabs.journal-nav button.active { color: var(--text); font-weight: 600; background: none; border-bottom-color: var(--blue); }
+.journal-filters { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.journal-filters .journal-setup-filter { max-width: 220px; min-width: 0; }
+.journal-chips-row { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.journal-chips-row .jr-queue { margin: 0; }
+.journal-chips { flex: 0 1 auto; max-width: 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .journal-chips::-webkit-scrollbar { display: none; }
-.journal-chip { flex: none; padding: 6px 14px; font: inherit; font-size: 13.5px; font-weight: 500; white-space: nowrap; color: var(--text); background: none; border: 1px solid var(--border2); border-radius: 999px; cursor: pointer; }
+.journal-chip { flex: none; padding: 5px 12px; font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; color: var(--text); background: none; border: 1px solid var(--border2); border-radius: 999px; cursor: pointer; }
 .journal-chip b { font-weight: 700; margin-left: 4px; }
 .journal-chip.active { color: var(--blue); background: var(--blue-bg); border-color: var(--blue); }
 /* phones: a card per trade (tradeCards), Open trades then Closed trades */
@@ -524,42 +580,71 @@ span.journal-pick { cursor: default; }
 .jtc-group-head h3 span { font-size: 14px; font-weight: 500; color: var(--text2); margin-left: 4px; }
 .jtc-total { font-size: 13.5px; color: var(--text2); }
 .jtc-total b { font-weight: 600; }
-.jtc { display: grid; gap: 12px; padding: 16px; background: var(--bg3); border-radius: 18px; cursor: pointer; }
+.jtc { display: grid; gap: 14px; padding: 18px 18px 16px; background: var(--bg3); border: 1.5px solid transparent; border-radius: 24px; cursor: pointer; transition: border-color .15s, background .15s; }
 .jtc.jtc-is-open { box-shadow: inset 3px 0 0 var(--blue); }
 .jtc.journal-deleted { opacity: .55; }
-.jtc-head { display: flex; align-items: flex-start; gap: 4px; }
+/* reviewed: the card turns green, the reward for finishing it */
+.jtc.jtc-reviewed { background: color-mix(in srgb, var(--green) 9%, var(--bg3)); border-color: color-mix(in srgb, var(--green) 45%, transparent); }
+.jtc-head { display: flex; align-items: flex-start; gap: 6px; }
 .jtc-head .journal-pick { margin-top: 3px; }
 .jtc-id { flex: 1 1 auto; min-width: 0; }
 .jtc-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.jtc-name .journal-name, .jtc-name > b { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; margin-right: 2px; }
+.jtc-name .journal-name, .jtc-name > b { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin-right: 2px; }
 @media (hover: none) { .jtc-name .journal-name::after { content: none; } } /* the whole card opens */
 .jtc-sub { margin-top: 4px; font-size: 13.5px; color: var(--text2); }
 .jtc-nowrap { white-space: nowrap; }
-.jtc-pill { display: inline-block; padding: 2px 9px; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; color: var(--text); background: var(--bg4); border-radius: 999px; }
-.jtc-pill.jtc-open, .jtc-pill.jtc-long { color: var(--blue); background: var(--blue-bg); }
+.jtc-pill { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; color: var(--text); background: var(--bg4); border-radius: 999px; }
+.jtc-pill.jtc-open { color: var(--blue); background: var(--blue-bg); }
 .jtc-pill.jtc-long { color: var(--green); background: var(--green-bg); }
 .jtc-pill.jtc-short { color: var(--red); background: var(--red-bg); }
 .jtc-pill.jtc-warn { color: var(--amber); background: var(--amber-bg); }
-.jtc-review { flex: none; padding: 4px 11px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: var(--amber); background: var(--amber-bg); border-radius: 999px; }
-.jtc-review.jtc-done { color: var(--green); background: var(--green-bg); }
+/* the P&L: the headline, top right, the % under it */
+.jtc-pnl { flex: none; margin: 0; text-align: right; }
+.jtc-pnl dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read out, not shown */
+.jtc-pnl dd { margin: 0; font-size: 21px; font-weight: 700; white-space: nowrap; }
+.jtc-pnl .jtc-pct { margin-top: 1px; font-size: 13px; font-weight: 600; }
+.jtc-pnl .pos-sub { font-size: 11px; font-weight: 400; }
 .jtc-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.jtc-tags .journal-setup { margin: 0; padding: 2px 9px; font-size: 12px; }
-.jtc-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .65fr) minmax(0, 1.35fr); gap: 8px; margin: 0; }
-/* prices too long for four across (futures at 29,000, stocks over $1,000): two by two */
-.jtc-stats-wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: 10px; }
-.jtc-stats dt { font-size: 12.5px; font-weight: 500; color: var(--text2); }
-.jtc-stats dd { margin: 3px 0 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.jtc-stats dd .pos-sub { font-size: 11px; font-weight: 400; white-space: normal; }
-.jtc-foot { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; min-height: 32px; }
+.jtc-tags .journal-setup { margin: 0; padding: 3px 10px; font-size: 12px; border-radius: 999px; }
+/* Entry, Exit and R in soft tiles */
+.jtc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.jtc-stats-wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.jtc-stats > div { min-width: 0; padding: 9px 12px; background: var(--bg2); border-radius: 14px; }
+.jtc-reviewed .jtc-stats > div { background: color-mix(in srgb, var(--bg2) 75%, transparent); }
+.jtc-stats dt { font-size: 12px; font-weight: 500; color: var(--text2); }
+.jtc-stats dd { margin: 2px 0 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jtc-foot { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
 .jtc-stop { font-size: 13.5px; color: var(--text2); }
 .jtc-stop b { font-size: 15px; font-weight: 600; color: var(--text); margin-left: 4px; }
 .jtc-stop .pos-sub { display: inline; margin-left: 6px; }
 .jtc-foot .journal-row-acts { margin: 0; }
-.btn.primary.jtc-go { margin-left: auto; padding: 9px 22px; font-size: 14.5px; font-weight: 600; color: #fff; background: var(--blue); border-color: var(--blue); border-radius: 12px; }
+/* the foot: Review this trade (amber, still to do), the Reviewed badge (green, done), or a quiet Open trade */
+.jtc-go { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px 16px; font: inherit; font-size: 15px; font-weight: 700; color: var(--amber); background: var(--amber-bg); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: 999px; cursor: pointer; }
+.jtc-go:active { transform: scale(.98); }
+.jtc-go.jtc-go-quiet { color: var(--text); background: var(--bg4); border-color: var(--border2); }
+.jtc-badge { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 11px 16px; font-size: 16px; font-weight: 700; color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--bg2)); border-radius: 999px; }
+.jtc-grade { padding: 2px 11px; font-size: 13px; font-weight: 700; border: 1.5px solid currentColor; border-radius: 999px; }
+/* reviewed just now on its page: the card pops once on the way back */
+@media (prefers-reduced-motion: no-preference) {
+  .jtc-pop { animation: jtc-pop .6s cubic-bezier(.3, 1.6, .5, 1); }
+  .jtc-pop .jtc-badge svg { animation: jtc-check .7s .15s cubic-bezier(.3, 1.8, .5, 1) both; }
+}
+@keyframes jtc-pop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: none; } }
+@keyframes jtc-check { 0% { transform: scale(0) rotate(-30deg); } 100% { transform: none; } }
 @media (max-width: 600px) {
   /* the trades sit on the page, not in a card in a card */
   .journal-card { background: none; border: 0; box-shadow: none; padding: 4px 2px 0; }
   .journal-card > .positions-head .section-title { display: none; } /* the screen title already says Journal */
+  /* the meta line first, then the buttons sharing the width (two rows when they need it); the filters two to a row */
+  .journal-card > .positions-head .journal-meta { order: 0; flex-basis: 100%; }
+  .journal-card .positions-head .journal-actions { order: 1; margin-left: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .journal-card .positions-head .journal-actions .btn { justify-content: center; padding: 8px 6px; white-space: nowrap; }
+  .journal-card .positions-head .journal-actions #journalDeckBtn { order: -1; } /* the deck first: it's what waits */
+  .journal-filters { display: grid; grid-template-columns: 1fr 1fr; }
+  .journal-filters #journalSymbol, .journal-filters .journal-setup-filter { width: 100%; min-width: 0; max-width: none; }
+  .journal-filters .seg { display: flex; min-width: 0; }
+  .journal-filters .seg button { flex: 1 1 0; min-width: 0; padding: 6px 4px; white-space: nowrap; }
+  .journal-filters .jc-daychip { justify-self: start; }
 }
 
 /* the Import sheet's zone picker for a thinkorswim statement */

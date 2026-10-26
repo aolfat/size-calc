@@ -179,9 +179,10 @@ test('a row opens the trade page: its saved bars, MFE and MAE, the fills and sto
   await settle();
   assert.equal(elements.get('journalSection').style.display, 'none', 'the list steps aside');
   assert.equal(elements.get('journalTradeSection').style.display, '');
-  assert.match(head(), /data-action="closeJournalTrade">← Trades/);
+  assert.match(head(), /<button class="jt-back" data-action="closeJournalTrade">[^]*?All trades</);
   assert.match(head(), /id="jtTitle">AAPL<\/span>/);
-  assert.match(head(), /Long 100 at \$100\.02 → \$94\.98/);
+  assert.match(head(), /Long 100 · 10\/1, 10:30 AM · <button class="pos-link" data-action="editJournalTrade"/);
+  assert.match(head(), /<dt>Avg entry<\/dt><dd class="">\$100\.02<\/dd>[^]*<dt>Avg exit<\/dt><dd class="">\$94\.98<\/dd>[^]*<dt>P&amp;L %<\/dt><dd class="journal-sell">−5\.04%<\/dd>[^]*<dt>P&amp;L<\/dt><dd class="journal-sell">−\$504\.00<span class="pos-sub">before fees/, 'the numbers up top');
   assert.ok(supabase.reads.some(r => r.table === 'bars_5m' && r.cols === 'day,bars'), 'the saved bars are read');
   assert.equal(state.journalTrade.five.length, 5, 'the hold\'s days, regular hours');
   assert.match(body(), /<dt>MFE<\/dt><dd class="journal-buy">\+\$398\.00<span class="pos-sub">\+0\.79R · best \$104\.00<\/span>/, '(104 − 100.02) × 100, the 10:25 bar before the entry left out');
@@ -314,7 +315,8 @@ test('an open trade trimmed twice: how much was sold at what average, and how mu
   await a.run('loadJournal()');
   a.run(`openJournalTrade('${KEY}')`);
   await settle();
-  assert.match(a.elements.get('jtHead').innerHTML, /Long 100 at \$100\.02 · 60 sold at \$102\.00 avg · 40 open</);
+  assert.match(a.elements.get('jtHead').innerHTML, /Long 100 · 40 open · /);
+  assert.match(a.elements.get('jtHead').innerHTML, /<dt>Avg exit<\/dt><dd class="">\$102\.00<span class="pos-sub">60 sold<\/span>/);
 });
 
 test('with a key: the daily chart from Tradier, framed on the trade', async t => {

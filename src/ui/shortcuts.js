@@ -9,6 +9,7 @@ import { refreshPositions } from './positions.js';
 import { toggleQuick } from './quick-lookup.js';
 import { stepRisk } from './risk.js';
 import { deckBack, deckNext, deckOpen, endReviewDeck } from './journal-deck.js';
+import { closeJournalTrade, stepJournalTrade } from './journal-trade.js';
 import { closeSheet } from './sheets.js';
 import { closeSim } from './sim.js';
 import { cancelSpread } from './spreads.js';
@@ -33,6 +34,7 @@ export function initShortcuts() {
       if (typing) { e.target.blur(); return; }
       if (state.shotView) return; // the screenshot viewer closes first (journal-shots.js)
       if (deckOpen()) { endReviewDeck(); return; }
+      if (state.journalView && state.journalTrade) { closeJournalTrade(); return; } // a trade page: back to the list
       if (state.marketView && state.marketState.group) { marketSetScope('groups'); return; }
       closeDetails();
       return;
@@ -41,6 +43,7 @@ export function initShortcuts() {
     if (typing || state.openSheetName || state.simState) return; // never hijack keys while filling a field or working in a sheet or the simulator
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
     if (deckOpen() && !state.shotView && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); if (e.key === 'ArrowRight') deckNext(); else deckBack(); return; }
+    if (state.journalView && state.journalTrade && !state.shotView && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); stepJournalTrade(e.key === 'ArrowRight' ? 1 : -1); return; }
     if (state.marketView && !['/', 'm', 's', 'o', 'f', 'v', 'j', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
       case '/': {

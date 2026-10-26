@@ -252,6 +252,69 @@ export function setupGroups(lib, key, side) {
 }
 
 /**
+ * My setups in groups to pick from, in a fixed order so a setup stays where you saw it: each action's setups together (every
+ * bounce, a short's rejections), in the library's order of actions, each named for its levels alone ('21 EMA') when its name
+ * is its parts, levels in the library's order (the moving averages by length); then every pattern as 'Patterns'; then any
+ * made of neither as 'Other'. Names are in side's words.
+ * @param {ReturnType<typeof buildLibrary>} lib @param {string[]} keys @param {SideWords} [side]
+ * @returns {{ key: string, name: string, items: { key: string, label: string }[] }[]}
+ */
+export function setupPickGroups(lib, keys, side) {
+  const actions = lib.choices('action').map(i => i.key), levels = lib.choices('level').map(i => i.key), patterns = lib.choices('pattern').map(i => i.key);
+  const at = (/** @type {string[]} */ list, /** @type {string} */ k) => { const n = list.indexOf(k); return n < 0 ? Infinity : n; };
+  /** @type {Map<string, { key: string, name: string, order: number, items: { key: string, label: string, order: number[] }[] }>} */
+  const groups = new Map();
+  [...new Set(keys)].forEach((key, n) => {
+    const p = lib.parts(key), g = setupGroups(lib, key, side), name = lib.nameOf('setup', key, side);
+    const follows = !!lib.item('setup', key)?.follows;
+    const [gk, gname, gorder, label, order] = p.pattern ? ['patterns', 'Patterns', 1e6, name, [at(patterns, p.pattern), n]]
+      : g.kind ? [g.kind.key, g.kind.name, at(actions, p.action || ''), follows && g.levels.length ? g.levels.map(l => l.name).join(' + ') : name, [...(p.levels || []).map(l => at(levels, l)).sort((a, b) => a - b), n]]
+      : ['other', 'Other', 2e6, name, [n]];
+    if (!groups.has(gk)) groups.set(gk, { key: gk, name: gname, order: gorder, items: [] });
+    groups.get(gk)?.items.push({ key, label, order });
+  });
+  const byOrder = (/** @type {number[]} */ a, /** @type {number[]} */ b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = (a[i] ?? -1) - (b[i] ?? -1); if (d) return d; } return 0; };
+  return [...groups.values()].sort((a, b) => a.order - b.order)
+    .map(g => ({ key: g.key, name: g.name, items: g.items.sort((a, b) => byOrder(a.order, b.order)).map(({ key, label }) => ({ key, label })) }));
+}
+
+/**
+ * The words a search finds a name by: every word, and for a name of several words its initials, with '&' kept, read as
+ * 'n' and dropped ('undercut & rally': u&r, unr, ur), so short ways of writing a setup find it.
+ * @param {string[]} names
+ */
+function searchWords(names) {
+  const words = new Set();
+  for (const name of names) {
+    const ws = String(name || '').toLowerCase().split(/[\s()\-,.:]+/).filter(Boolean);
+    ws.forEach(w => words.add(w));
+    if (ws.length < 2) continue;
+    const initials = ws.map(w => w === '&' || w === 'and' ? '&' : w[0]).join('');
+    for (const a of [initials, initials.replace(/&/g, 'n'), initials.replace(/&/g, '')]) if (a.length > 1) words.add(a);
+  }
+  return [...words];
+}
+
+/**
+ * Whether names match what's typed: every word typed starts one of their words or initials ('9 unr' finds 9 EMA undercut &
+ * rally), or, three letters or more, sits anywhere in them run together ('21ema'). Nothing typed matches everything.
+ * @param {string[]} names @param {string} query
+ */
+export function matchesQuery(names, query) {
+  const typed = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!typed.length) return true;
+  const words = searchWords(names), runTogether = names.join('').toLowerCase().replace(/[^a-z0-9&/]+/g, '');
+  return typed.every(q => words.some(w => w.startsWith(q)) || (q.length >= 3 && runTogether.includes(q.replace(/[^a-z0-9&/]+/g, ''))));
+}
+
+/**
+ * The names a setup is searched by: its name, its parts and its action, long and short ('9 EMA rejection' finds the bounce).
+ * @param {ReturnType<typeof buildLibrary>} lib @param {string} key
+ */
+export const setupSearchNames = (lib, key) => /** @type {SideWords[]} */ (['long', 'short'])
+  .flatMap(side => [lib.nameOf('setup', key, side), lib.partsWords(lib.parts(key), side), setupGroups(lib, key, side).kind?.name || '']);
+
+/**
  * An action or pattern that is another one's short side: its name is that one's short word ('Pennant or flag breakdown'
  * beside the flag's breakout), so it can merge into it. The first offered, or null.
  * @param {ReturnType<typeof buildLibrary>} lib @param {ItemKind} kind @param {string} key

@@ -1,5 +1,5 @@
 /* the Journal's notebook: a page per trading day (src/ui/journal-notebook.js, docs/journal-notebook.md) */
-.nb-today { margin: 2px 0 0; }
+.nb-today { white-space: nowrap; }
 .nb-head { margin-bottom: 4px; }
 .nb-head .jc-title { min-width: 11em; }
 .nb-sec { margin-top: 14px; }

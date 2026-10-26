@@ -32,18 +32,16 @@ export function deckButtonHtml(list) {
 }
 
 /**
- * the Journal's line: "12 trades to review · Start", or "All reviewed", then Review from (a day: older trades leave the
- * deck, the count says how many) with All days to take it back; nothing before the reviews are read
+ * Review from, beside the To review chip (the Review N trades button and the chip already say how many wait): a day, older
+ * trades leave the deck (the count says how many), with All days to take it back; nothing before the reviews are read
  */
-export function deckLineHtml(list) {
+export function reviewFromHtml(list) {
   if (!state.journalReview || state.journalReviewError || !list.some(t => t.status !== 'history' && !t.deleted)) return '';
-  const n = reviewQueue(list).length, from = reviewFrom();
-  if (!n && !from) return '<p class="hint jr-queue" role="status">All reviewed</p>';
+  const from = reviewFrom();
   const older = from ? list.filter(t => !fromReviewDay(t, from) && tradePass(t)).length : 0;
   const today = nyParts(new Date().toISOString()).day;
-  return `<p class="hint jr-queue" role="status">${n ? `${n} trade${n === 1 ? '' : 's'} to review · <button class="pos-link" data-action="startReviewDeck">Start</button>` : 'All reviewed'}
-    · <label class="jr-from">Review from <input type="date" id="journalReviewFrom" value="${from}" max="${today}" data-change="setReviewFrom" aria-label="Review trades opened from this day" /></label>${from
-      ? ` <button class="pos-link" data-action="clearReviewFrom">All days</button>${older ? ` · ${older} older left out` : ''}` : ''}</p>`;
+  return `<span class="hint jr-queue"><label class="jr-from">Review from <input type="date" id="journalReviewFrom" value="${from}" max="${today}" data-change="setReviewFrom" aria-label="Review trades opened from this day" /></label>${from
+      ? ` <button class="pos-link" data-action="clearReviewFrom">All days</button>${older ? ` · ${older} older left out` : ''}` : ''}</span>`;
 }
 
 /** Review from: trades opened before the day leave the deck, the count and To review (journal_review_from, synced); '' = every day */

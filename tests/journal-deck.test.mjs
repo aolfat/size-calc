@@ -79,7 +79,8 @@ test('the pass a trade needs: opening while open, the plan, grade and exit note 
 test('Review N trades, the Journal\'s line and the tab count are the whole queue: filters don\'t touch it', async () => {
   const { run, list, badge } = await journal();
   assert.match(list(), /<button class="btn primary" id="journalDeckBtn" data-action="startReviewDeck">Review 3 trades<\/button>/);
-  assert.match(list(), /<p class="hint jr-queue" role="status">3 trades to review · <button class="pos-link" data-action="startReviewDeck">Start<\/button>\s*· <label class="jr-from">Review from <input type="date" id="journalReviewFrom" value="" /);
+  assert.match(list(), /To review <b>3<\/b><\/button>[^]*?<\/div><span class="hint jr-queue"><label class="jr-from">Review from <input type="date" id="journalReviewFrom" value="" /, 'Review from sits by the To review chip');
+  assert.doesNotMatch(list(), /trades to review · /, 'no line repeating what the button and the chip say');
   assert.doesNotMatch(list(), /clearReviewFrom|older left out/, 'no day chosen: nothing to take back');
   assert.equal(badge(), '3');
   run("setJournalSide('short'); setJournalReviewFilter('todo')");
@@ -127,29 +128,30 @@ test('a card: the trade page with the deck bar; Next moves on finished or not, B
 });
 
 test('P&L, R and exit efficiency wait for the grade; Show reveals them; Always show is a synced choice', async () => {
-  const { run, t, body, storage } = await journal();
+  const { run, t, body, head, storage } = await journal();
   run('startReviewDeck(); deckNext()');
-  assert.match(body(), /<dt>P&amp;L<\/dt><dd class=""><span class="jt-wait">Grade first<\/span><span class="pos-sub"><button class="pos-link" data-action="revealDeckPnl">Show<\/button>/);
-  assert.doesNotMatch(body(), /−\$400/, 'the result isn\'t anywhere on the card');
+  assert.match(head(), /<dt>P&amp;L<\/dt><dd class=""><span class="jt-wait">Grade first<\/span><span class="pos-sub"><button class="pos-link" data-action="revealDeckPnl">Show<\/button>/, 'in the head, with Show');
+  assert.match(head(), /<dt>P&amp;L %<\/dt><dd class=""><span class="jt-wait">Grade first/);
+  assert.doesNotMatch(head() + body(), /−\$400|−[\d.]+%/, 'the result isn\'t anywhere on the card');
   assert.match(body(), /P&amp;L hidden until you grade · <button class="pos-link" data-action="setDeckPnl" data-arg="always">Always show<\/button>/);
   await run(`setSetupGrade(${t}, 'A')`);
-  assert.match(body(), /<dt>P&amp;L<\/dt><dd class="journal-sell">−\$400/, 'graded: the result is back');
+  assert.match(head(), /<dt>P&amp;L<\/dt><dd class="journal-sell">−\$400/, 'graded: the result is back');
 
   run('deckNext()');
-  assert.match(body(), /Grade first/);
+  assert.match(head() + body(), /Grade first/);
   run('revealDeckPnl()');
-  assert.match(body(), /<dt>P&amp;L<\/dt><dd class="journal-buy">\+\$400/, 'Show: this card only');
+  assert.match(head(), /<dt>P&amp;L<\/dt><dd class="journal-buy">\+\$400/, 'Show: this card only');
   run('deckBack(); deckBack()');
   run("setDeckPnl('always')");
   assert.equal(storage.get('journal_deck_pnl'), 'always');
   assert.ok(run("CLOUD_KEYS.includes('journal_deck_pnl')"), 'the choice goes with your account');
-  assert.doesNotMatch(body(), /Grade first/);
+  assert.doesNotMatch(head() + body(), /Grade first/);
   assert.match(body(), /P&amp;L shown up front in the deck · <button class="pos-link" data-action="setDeckPnl" data-arg="graded">Hide until I grade<\/button>/);
 
   run('endReviewDeck()');
   run("setDeckPnl('graded')");
   run(`openJournalTrade('${'6789|MSFT|long|2026-10-05T14:00:01.000Z'}')`);
-  assert.match(body(), /−\$400/, 'the trade page outside the deck always shows it');
+  assert.match(head(), /−\$400/, 'the trade page outside the deck always shows it');
   assert.doesNotMatch(body(), /jt-deck-pnl/);
 });
 
@@ -234,10 +236,75 @@ test('← and → move through the deck, Esc leaves; never while typing', async 
   assert.equal(run('journalTrade'), null, 'back on the list');
 });
 
+test('outside the deck the trade page steps through the list as it was filtered: 2 of 3, the arrows, ← and →, Esc back', async () => {
+  const { run, at, head, dispatch } = await journal();
+  run('initShortcuts()');
+  run(`openJournalTrade('${B}')`);
+  assert.match(head(), /<span class="jt-nav-count">2 of 3<\/span>/, 'newest first, as the list shows them');
+  run('stepJournalTrade(1)');
+  assert.equal(at(), A, 'the next one down the list');
+  assert.match(head(), /3 of 3[^]*data-arg="1" aria-label="Next trade"[^>]* disabled>/, 'the last one: no next');
+  run('stepJournalTrade(1)');
+  assert.equal(at(), A);
+  const key = (k, tagName = 'BODY') => dispatch('keydown', { key: k, target: { tagName, blur() {} }, preventDefault() {} });
+  key('ArrowLeft');
+  assert.equal(at(), B);
+  key('ArrowLeft', 'INPUT');
+  assert.equal(at(), B, 'never while typing');
+  key('Escape');
+  assert.equal(run('journalTrade'), null, 'back on the list');
+
+  run("journalSymbol = 'MSFT'");
+  run(`openJournalTrade('${B}')`);
+  assert.doesNotMatch(head(), /jt-nav/, 'the symbol filter leaves one trade: nothing to step to');
+  run("journalSymbol = 'AAPL'");
+  run(`openJournalTrade('${B}')`);
+  assert.match(head(), /2 of 3/, 'opened from somewhere it isn\'t in the list: every trade');
+  run("journalSymbol = ''; startReviewDeck()");
+  assert.doesNotMatch(head(), /jt-nav/, 'the deck has its own bar');
+});
+
+test('phone cards: a reviewed trade turns green with a Reviewed badge and its grade; one waiting says Review this trade; Select shows the tick boxes', async () => {
+  const supabase = fakeRecords(ORDERS.map(o => ({ kind: 'order', record_id: String(o.orderId), account: '6789', entered_at: o.enteredTime.replace('+0000', 'Z'), data: o })));
+  reviewedElsewhere(supabase, A, '2026-10-01');
+  const a = await app({ width: 390, supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  const out = () => a.elements.get('journalSection').innerHTML;
+  const card = key => out().split('<article ').find(c => c.includes(`data-arg="${key}"`)) || '';
+  assert.match(card(A), /^class="jtc jtc-reviewed"/);
+  assert.match(card(A), /<div class="jtc-badge" role="status"><svg[^]*?<\/svg><span>Reviewed<\/span><span class="jtc-grade">Grade B<\/span><\/div>/, 'the reward: Reviewed, with the grade given');
+  assert.doesNotMatch(card(A), /Review this trade/);
+  assert.match(card(B), /<button class="jtc-go" data-action="openTradeRow" data-arg="[^"]+" aria-label="Review MSFT">[^]*?Review this trade<\/button>/);
+  assert.match(card(B), /<dl class="jtc-pnl"><div[^>]*><dt>P&amp;L<\/dt><dd class="journal-sell">−\$400\.00/, 'the P&L heads the card');
+  assert.doesNotMatch(out(), /jtc-pill">Closed</, 'no Closed pill: the cards sit under Closed trades');
+  assert.doesNotMatch(out(), /toggleJournalPick/, 'no tick boxes until Select');
+  a.run('toggleJournalSelect()');
+  assert.match(out(), /data-action="toggleJournalSelect" aria-pressed="true">Done</);
+  assert.match(card(B), /data-change="toggleJournalPick"/);
+  a.run(`toggleJournalPick('${B}'); toggleJournalSelect()`);
+  assert.deepEqual(a.run('journalPicked'), [], 'Done puts them away and clears the picks');
+
+  // reviewed on its page just now: the card pops once on the way back
+  a.run(`openJournalTrade('${B}')`);
+  const t = 'journalPageTrade()';
+  await openingPass(a.run, t);
+  await a.run(`setSetupGrade(${t}, 'A')`);
+  await a.run(`setPlanFollowed(${t}, 'yes')`);
+  await a.run(`reviewNoteSave(${t}, 'sold the bounce', 'exit')`);
+  a.run('closeJournalTrade()');
+  assert.match(card(B), /^class="jtc jtc-reviewed jtc-pop"/);
+  a.run('renderJournal()');
+  assert.match(card(B), /^class="jtc jtc-reviewed"/, 'once');
+  a.run(`openJournalTrade('${A}'); closeJournalTrade()`);
+  assert.doesNotMatch(out(), /jtc-pop/, 'one already reviewed doesn\'t pop again');
+});
+
 test('nothing to review: no button, the line says so, the count is blank; the review tables missing hide the deck', async () => {
   const one = await journal(s => { reviewedElsewhere(s, A, '2026-10-01'); reviewedElsewhere(s, B, '2026-10-05'); reviewedElsewhere(s, C, '2026-10-08'); });
   assert.doesNotMatch(one.list(), /journalDeckBtn/);
-  assert.match(one.list(), /<p class="hint jr-queue" role="status">All reviewed<\/p>/);
+  assert.match(one.list(), /data-arg="todo">To review <b>0<\/b>/, 'the chip says so');
   assert.equal(one.badge(), '');
   one.run('startReviewDeck()');
   assert.match(one.elements.get('errorBox').textContent, /Nothing to review\./);
@@ -254,7 +321,7 @@ test('Review from a day: older trades leave the deck, the count and To review; A
   assert.equal(storage.get('journal_review_from'), '2026-10-05');
   assert.ok(run("CLOUD_KEYS.includes('journal_review_from')"), 'the day goes with your account');
   assert.match(list(), /Review 2 trades/);
-  assert.match(list(), /2 trades to review · [^]*?<input type="date" id="journalReviewFrom" value="2026-10-05"[^>]*\/><\/label> <button class="pos-link" data-action="clearReviewFrom">All days<\/button> · 1 older left out<\/p>/);
+  assert.match(list(), /<input type="date" id="journalReviewFrom" value="2026-10-05"[^>]*\/><\/label> <button class="pos-link" data-action="clearReviewFrom">All days<\/button> · 1 older left out<\/span>/);
   assert.equal(badge(), '2');
   run("setJournalReviewFilter('todo')");
   assert.doesNotMatch(list(), /<b>AAPL<\/b>/, 'To review matches the deck');
@@ -265,7 +332,7 @@ test('Review from a day: older trades leave the deck, the count and To review; A
 
   run("setReviewFrom('2026-10-09')");
   assert.doesNotMatch(list(), /journalDeckBtn/);
-  assert.match(list(), /All reviewed\s*· <label class="jr-from">[^]*?All days<\/button> · 3 older left out/, 'nothing since: the day stays so it can be taken back');
+  assert.match(list(), /<label class="jr-from">[^]*?All days<\/button> · 3 older left out/, 'nothing since: the day stays so it can be taken back');
   assert.equal(badge(), '');
   run("setReviewFrom('not a day')");
   assert.equal(storage.get('journal_review_from'), '', 'anything but a day is every day');
