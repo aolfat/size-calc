@@ -85,7 +85,11 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   It re-reads Schwab, then plans with editPlan (core/positions.js, pure): a form with the stop and/or limit (priceTick, options optionPriceTick), the size (the open quantity) and Today / Until canceled; typing re-plans from the same read and redraws only #editDetail.
   A plain order is one replace (PUT), keeping its session.
   A half of a pair can't be replaced alone, so the pair is cancelled and placed again as a new OCO with the change, the other half unchanged, both the same size and duration, and only once Schwab shows BOTH halves CANCELED with no new fills (shownCancelled, shared with Cancel; 'the changed pair was not placed' otherwise).
-  Refused (error): an order waiting on its entry, an entry with an order waiting on it (a change would drop it), trailing and multi-leg orders, a pair whose other half is trailing.
+  A limit entry with one stop waiting on it (a Trade at Schwab limit that isn't filling) goes the same way: a replace would drop the stop, so the entry is cancelled (its stop goes with it) and placed again as a new TRIGGER with the change and the same stop, at the new size, only once Schwab shows the entry CANCELED with nothing filled ('the changed entry was not placed' otherwise).
+  The form has its limit, size and Today / Until canceled (the stop keeps its own); the detail shows the risk at the stop if it fills at the limit, and a limit at or through the stop is blocked.
+  A new limit whose risk at the stop is more than 10% over what the entry risked at its old limit is a warning (chasing a fill, or a fat finger).
+  It's confirmed when the new entry shows with its stop waiting on it; a new entry without its stop says to check Schwab before it fills.
+  Refused (error): an order waiting on its entry, an entry with anything else waiting on it (a market or stop entry, a target and a stop; a change would drop them), an entry already partly filled, trailing and multi-leg orders, a pair whose other half is trailing.
   Blocked in the form (editError): nothing changed, no price, a stop at or through the position's mark, more than you hold less the other closing orders (a pair counted once; only checked when the size goes up).
   A limit through the mark is a warning (likely fills right away).
   A refused replace or cancel stops the run, saying so when the order FILLED.

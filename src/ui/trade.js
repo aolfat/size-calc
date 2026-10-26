@@ -1,9 +1,9 @@
 // Schwab trading: the connect section in Settings, the shares card's trade button, and the order review sheet.
 // The sheet freezes one ticket when it opens, for the account selected then; Place re-checks it against a fresh quote,
-// then sends exactly that payload once and never retries it.
+// then sends exactly that payload once and never retries it. The entry is a market order unless you pick a limit there.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { fmtTick, inRegularHours, sharesStopOrder, sharesTicketError, stopTick } from '../core/orders.js';
+import { fmtTick, inRegularHours, limitEntryError, priceTick, sharesStopOrder, sharesTicketError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
 import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
@@ -228,30 +228,36 @@ export function buildTradeTicket(now = Date.now()) {
   const { isLong, entry, shares: qty } = plan;
   const stop = plan.valid ? stopTick(plan.stop, isLong) : NaN;
   const acct = schwabAccount();
-  return ticketFor({ symbol: q.symbol, qty, isLong, stop, entry, customEntry: rawStop('entryPrice') > 0, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '', valid: plan.valid }, q, now);
+  // every review starts at market; a limit starts at the entry the shares were sized on
+  return ticketFor({ symbol: q.symbol, qty, isLong, stop, entry, customEntry: rawStop('entryPrice') > 0, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '', valid: plan.valid,
+    entryType: 'MARKET', limit: entry > 0 ? priceTick(entry) : 0 }, q, now);
 }
 
 /**
- * A ticket for these frozen terms (symbol, size, stop, entry, the account it goes to) against quote q. flags name the warnings,
- * so a re-check before sending can tell a new one from one already reviewed.
+ * A ticket for these frozen terms (symbol, size, stop, entry, market or limit, the account it goes to) against quote q. flags name the warnings,
+ * so a re-check before sending can tell a new one from one already reviewed. limitError: a limit that can't go, shown in the form.
  */
 function ticketFor(p, q, now) {
-  const { symbol, qty, isLong, stop, entry } = p;
+  const { symbol, qty, isLong, stop, entry, entryType, limit } = p;
+  const isLimit = entryType === 'LIMIT';
   const error = !p.valid ? 'No valid stop on the card. Fix the stop first.'
     : sharesTicketError({ symbol, type: q.type, qty, isLong, stop, bid: q.bid, ask: q.ask, last: q.last });
-  const fill = (isLong ? q.ask : q.bid) || q.last || entry; // where a market order is likely to fill
+  // where it is likely to fill: a market order at the ask (bid), a limit no worse than its price
+  const fill = isLimit ? limit : (isLong ? q.ask : q.bid) || q.last || entry;
   const perShare = px => isLong ? px - stop : stop - px;
   const t = {
-    symbol, qty, isLong, stop, entry, fill, bid: q.bid || 0, ask: q.ask || 0, last: q.last || 0,
-    customEntry: p.customEntry, stopDuration: p.stopDuration, hash: p.hash, valid: p.valid,
+    symbol, qty, isLong, stop, entry, fill, type: q.type, bid: q.bid || 0, ask: q.ask || 0, last: q.last || 0,
+    customEntry: p.customEntry, stopDuration: p.stopDuration, hash: p.hash, valid: p.valid, entryType: isLimit ? 'LIMIT' : 'MARKET', limit,
     plannedRisk: qty * perShare(entry), fillRisk: qty * perShare(fill),
-    error, order: null, warnings: [], flags: [], sent: false, orderId: '', result: null,
+    error, limitError: '', order: null, warnings: [], flags: [], sent: false, orderId: '', result: null, entryStatus: '', filled: 0,
   };
   if (error) return t;
-  t.order = sharesStopOrder({ symbol, qty, isLong, stop, stopDuration: t.stopDuration });
+  t.limitError = isLimit ? limitEntryError({ isLong, stop, limit }) : '';
+  if (t.limitError) return t;
+  t.order = sharesStopOrder({ symbol, qty, isLong, stop, stopDuration: t.stopDuration, ...(isLimit ? { limit } : {}) });
   const warn = (flag, text) => { t.flags.push(flag); t.warnings.push(text); };
-  if (!inRegularHours(now)) warn('hours', 'Outside regular hours. A market order waits for the next open and can fill far from here.');
-  if (t.fillRisk > t.plannedRisk * 1.1 + 0.01) warn('risk', `At the ${isLong ? 'ask' : 'bid'} ${fmtTick(fill)}, risk is ${fmt$(t.fillRisk)}, over your ${fmt$(t.plannedRisk)} plan${t.customEntry ? ' from the planned entry' : ''}.`);
+  if (!inRegularHours(now)) warn('hours', isLimit ? 'Outside regular hours. The limit waits for the next open.' : 'Outside regular hours. A market order waits for the next open and can fill far from here.');
+  if (t.fillRisk > t.plannedRisk * 1.1 + 0.01) warn('risk', `At the ${isLimit ? 'limit' : isLong ? 'ask' : 'bid'} ${fmtTick(fill)}, risk is ${fmt$(t.fillRisk)}, over your ${fmt$(t.plannedRisk)} plan${t.customEntry ? ' from the planned entry' : ''}.`);
   const last = state.tradeLast;
   if (last && last.symbol === symbol && now - last.at < 120000) warn('repeat', `You sent a ${symbol} order ${Math.round((now - last.at) / 1000)}s ago. This places another one.`);
   return t;
@@ -285,13 +291,30 @@ export async function openTrade() {
   openSheet('trade');
 }
 
+/** the review's ticket again with a change in its terms, against the quote it was reviewed on; form false redraws only what follows the inputs */
+function retick(changes, form = true) {
+  const t = state.tradeTicket;
+  if (!t || t.error || t.sent || state.tradeBusy) return;
+  state.tradeTicket = ticketFor({ ...t, ...changes }, { type: t.type, bid: t.bid, ask: t.ask, last: t.last }, Date.now());
+  renderTradeSheet(form);
+}
+
 export function setTradeStopDuration(d) {
   const t = state.tradeTicket;
-  if (!t || !t.order || t.sent || state.tradeBusy || (d !== 'DAY' && d !== 'GOOD_TILL_CANCEL')) return;
+  if (!t || t.error || t.sent || state.tradeBusy || (d !== 'DAY' && d !== 'GOOD_TILL_CANCEL')) return;
   store.set('schwab_stop_duration', d);
-  t.stopDuration = d;
-  t.order = sharesStopOrder({ symbol: t.symbol, qty: t.qty, isLong: t.isLong, stop: t.stop, stopDuration: d });
-  renderTradeSheet();
+  retick({ stopDuration: d });
+}
+
+/** Market or Limit for the entry; each review starts at Market */
+export function setTradeEntryType(type) {
+  if (type === 'MARKET' || type === 'LIMIT') retick({ entryType: type });
+}
+
+/** the limit as typed, on Schwab's tick; blank is no price */
+export function setTradeLimit(value) {
+  const n = String(value).trim() === '' ? 0 : Number(value);
+  retick({ limit: n > 0 ? priceTick(n) : 0 }, false);
 }
 
 /** why the reviewed ticket can't go as it is, from a fresh quote; '' when it still can */
@@ -336,7 +359,7 @@ export async function placeTrade() {
     state.tradeLast = { symbol: t.symbol, at: Date.now() };
     t.result = { ok: null, text: `Sent${orderId ? ', order ' + orderId : ''}. Checking status…` };
     renderTradeSheet();
-    showToast(`Order sent: ${t.isLong ? 'buy' : 'short'} ${t.qty} ${t.symbol}, stop ${fmtTick(t.stop)}.`);
+    showToast(`Order sent: ${t.isLong ? 'buy' : 'short'} ${t.qty} ${t.symbol}${t.entryType === 'LIMIT' ? ' at ' + fmtTick(t.limit) + ' limit' : ''}, stop ${fmtTick(t.stop)}.`);
     await updateTradeStatus(t);
   } catch(e) {
     if (e.notSent) {
@@ -372,9 +395,11 @@ async function updateTradeStatus(t) {
   if (!o) { t.result = { ok: null, text: `Sent${t.orderId ? ', order ' + t.orderId : ''}. Check Schwab for the fill and the stop.` }; return; }
   const child = o.childOrderStrategies && o.childOrderStrategies[0];
   const entryOk = !ENDED.test(o.status || ''), stopOk = !!(child && child.status) && !ENDED.test(child.status);
+  const filled = Number(o.filledQuantity) || (o.orderActivityCollection || []).flatMap(a => a.executionLegs || []).reduce((n, l) => n + (Number(l.quantity) || 0), 0);
+  t.entryStatus = o.status || '';
+  t.filled = filled;
   let text = orderStatusLine(t, o);
   if (entryOk && child && child.status && !stopOk) {
-    const filled = Number(o.filledQuantity) || (o.orderActivityCollection || []).flatMap(a => a.executionLegs || []).reduce((n, l) => n + (Number(l.quantity) || 0), 0);
     text += filled > 0 ? ` Your ${filled} ${t.symbol} have no stop. Set one in Schwab now.` : ' The stop is not in place. Check Schwab before the entry fills.';
   }
   t.result = { ok: !entryOk || (child && child.status && !stopOk) ? false : stopOk ? true : null, text };
@@ -394,7 +419,13 @@ export function orderStatusLine(t, o) {
   return text + '.';
 }
 
-export function renderTradeSheet() {
+/** a limit entry still waiting with nothing filled: its price can move (Positions' Edit, which places it again with its stop) */
+export const limitWaiting = t => t.entryType === 'LIMIT' && !!t.orderId && t.filled === 0 && !!t.entryStatus && t.entryStatus !== 'FILLED' && !ENDED.test(t.entryStatus);
+
+const priceText = v => v > 0 ? v.toFixed(v >= 1 ? 2 : 4) : '';
+
+/** form false: typing the limit redraws only #tradeDetail, so the cursor stays */
+export function renderTradeSheet(form = true) {
   const t = state.tradeTicket;
   const acct = (t && schwabAccounts().find(a => a.hash === t.hash)) || schwabAccount(); // the account the ticket goes to
   document.getElementById('tradeAccount').textContent = acct ? 'Account ' + mask(acct.last4) : '';
@@ -405,27 +436,50 @@ export function renderTradeSheet() {
     return;
   }
   const verb = t.isLong ? 'Buy' : 'Sell short';
-  const duration = (d, label) => `<button class="${t.stopDuration === d ? 'active' : ''}" aria-pressed="${t.stopDuration === d}" data-action="setTradeStopDuration" data-arg="${d}"${t.sent ? ' disabled' : ''}>${label}</button>`;
+  const isLimit = t.entryType === 'LIMIT';
+  const off = t.sent ? ' disabled' : '';
+  const pressed = on => `class="${on ? 'active' : ''}" aria-pressed="${on}"`;
+  const entryAs = (type, label) => `<button ${pressed(t.entryType === type)} data-action="setTradeEntryType" data-arg="${type}"${off}>${label}</button>`;
+  const duration = (d, label) => `<button ${pressed(t.stopDuration === d)} data-action="setTradeStopDuration" data-arg="${d}"${off}>${label}</button>`;
   const market = t.bid > 0 && t.ask > 0 ? `Bid ${fmtTick(t.bid)} · ask ${fmtTick(t.ask)}` : `Last ${fmtTick(t.last)}`;
+  const side = t.isLong ? 'ask' : 'bid', quoteSide = t.isLong ? t.ask : t.bid;
+  const fillsNow = isLimit && quoteSide > 0 && (t.isLong ? t.limit >= quoteSide : t.limit <= quoteSide);
+  const limitHint = !isLimit || t.limitError ? ''
+    : fillsNow ? `At or through the ${side} ${fmtTick(quoteSide)}, so it likely fills right away, at ${fmtTick(t.limit)} or better.`
+    : `Waits until the price comes to ${fmtTick(t.limit)}. If it hasn't filled by the close, it ends and the stop never goes in.`;
+  const label = isLimit ? `${verb} ${t.qty} ${t.symbol} at ${fmtTick(t.limit)}` : `${verb} ${t.qty} ${t.symbol}`;
   const action = t.sent
     ? (t.orderId ? `<button class="btn" data-action="checkTradeStatus"${state.tradeBusy ? ' disabled' : ''}>↻ Status</button>` : '')
-    : `<button class="btn trade-confirm" id="tradePlace" data-action="placeTrade"${state.tradeBusy ? ' disabled' : ''}>${verb} ${t.qty} ${esc(t.symbol)}</button>`;
-  body.innerHTML = `
+      + (limitWaiting(t) ? `<button class="btn" data-action="openOrderEdit" data-arg="${esc(t.orderId)}" title="Move the limit if it isn't filling">Change limit</button>` : '')
+    : `<button class="btn trade-confirm" id="tradePlace" data-action="placeTrade"${state.tradeBusy || t.limitError ? ' disabled' : ''}>${esc(label)}</button>`;
+  const risk = isLimit && !t.limitError
+    ? `<span class="shares-loss">${fmt$(t.fillRisk)}</span><span class="shares-detail">If it fills at the limit; planned ${fmt$(t.plannedRisk)} from ${t.customEntry ? 'planned ' : ''}entry ${fmtTick(t.entry)}</span>`
+    : `<span class="shares-loss">${fmt$(t.plannedRisk)}</span><span class="shares-detail">From ${t.customEntry ? 'planned ' : ''}entry ${fmtTick(t.entry)}</span>`;
+  const detail = `
     <dl class="trade-legs">
-      <div><dt>Entry</dt><dd><strong>${verb} ${t.qty} ${esc(t.symbol)}</strong><span class="shares-detail">Market order, today</span></dd></div>
-      <div><dt>Then stop</dt><dd><strong>${t.isLong ? 'Sell' : 'Buy to cover'} ${t.qty} at ${fmtTick(t.stop)}</strong><span class="shares-detail">Stop order, placed once the ${t.isLong ? 'buy' : 'short'} fills</span></dd></div>
-      <div><dt>Stop lasts</dt><dd><div class="seg" role="group" aria-label="Stop lasts">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
-      <div><dt>Risk at stop</dt><dd><span class="shares-loss">${fmt$(t.plannedRisk)}</span><span class="shares-detail">From ${t.customEntry ? 'planned ' : ''}entry ${fmtTick(t.entry)}</span></dd></div>
+      <div><dt>Risk at stop</dt><dd>${risk}</dd></div>
       <div><dt>Market</dt><dd>${market}</dd></div>
     </dl>
+    ${t.limitError ? `<p class="trade-warn" role="alert">${esc(t.limitError)}</p>` : ''}
+    ${limitHint ? `<p class="hint">${esc(limitHint)}</p>` : ''}
     ${t.warnings.map(w => `<p class="trade-warn">${esc(w)}</p>`).join('')}
     <p class="hint">A triggered stop becomes a market order, so a gap can fill past it.${t.isLong ? '' : ' Shorting needs margin and shares to borrow.'}</p>
-    <details class="hint-details"><summary>Order sent to Schwab</summary><pre class="trade-json">${esc(JSON.stringify(t.order, null, 2))}</pre></details>
+    ${t.order ? `<details class="hint-details"><summary>Order sent to Schwab</summary><pre class="trade-json">${esc(JSON.stringify(t.order, null, 2))}</pre></details>` : ''}
     <div class="trade-actions">
       <button class="btn" data-action="closeSheet">${t.sent ? 'Close' : 'Cancel'}</button>
       ${action}
     </div>
     <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>`;
+  if (!form) { document.getElementById('tradeDetail').innerHTML = detail; return; }
+  body.innerHTML = `
+    <dl class="trade-legs">
+      <div><dt>Entry</dt><dd><strong>${verb} ${t.qty} ${esc(t.symbol)}</strong><span class="shares-detail">${isLimit ? 'Limit order, today, at your price or better' : 'Market order, today'}</span></dd></div>
+      <div><dt>Entry as</dt><dd><div class="seg" role="group" aria-label="Entry order type">${entryAs('MARKET', 'Market')}${entryAs('LIMIT', 'Limit')}</div></dd></div>
+      ${isLimit ? `<div><dt><label for="tradeLimit">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="tradeLimit" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${priceText(t.limit)}" data-input="setTradeLimit"${off} /></div></dd></div>` : ''}
+      <div><dt>Then stop</dt><dd><strong>${t.isLong ? 'Sell' : 'Buy to cover'} ${t.qty} at ${fmtTick(t.stop)}</strong><span class="shares-detail">Stop order, placed once the ${t.isLong ? 'buy' : 'short'} fills</span></dd></div>
+      <div><dt>Stop lasts</dt><dd><div class="seg" role="group" aria-label="Stop lasts">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
+    </dl>
+    <div id="tradeDetail">${detail}</div>`;
 }
 
 // ---------- boot ----------

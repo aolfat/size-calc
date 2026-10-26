@@ -1,5 +1,5 @@
 // @ts-check
-// Schwab orders: the shares entry that triggers a stop, stops and market closes for held positions, price ticks, and ticket checks.
+// Schwab orders: the shares entry (market or limit) that triggers a stop, stops and market closes for held positions, price ticks, and ticket checks.
 
 /** @typedef {'DAY' | 'GOOD_TILL_CANCEL'} StopDuration */
 
@@ -26,13 +26,13 @@ export function priceTick(p) {
 export function fmtTick(p) { return '$' + Number(p).toFixed(p >= 1 ? 2 : 4); }
 
 /**
- * One order that triggers another: buy (or sell short) at market, and once it fills, a stop for the same shares.
- * @param {{ symbol: string, qty: number, isLong: boolean, stop: number, stopDuration: StopDuration }} t
+ * One order that triggers another: buy (or sell short) at market, or at a limit when one is given, and once it fills, a stop for the same shares.
+ * @param {{ symbol: string, qty: number, isLong: boolean, stop: number, stopDuration: StopDuration, limit?: number }} t
  */
-export function sharesStopOrder({ symbol, qty, isLong, stop, stopDuration }) {
+export function sharesStopOrder({ symbol, qty, isLong, stop, stopDuration, limit }) {
   const leg = (/** @type {string} */ instruction) => ({ instruction, quantity: qty, instrument: { symbol, assetType: 'EQUITY' } });
   return {
-    orderType: 'MARKET',
+    ...(limit ? { orderType: 'LIMIT', price: limit } : { orderType: 'MARKET' }),
     session: 'NORMAL',
     duration: 'DAY',
     orderStrategyType: 'TRIGGER',
@@ -116,6 +116,17 @@ export function sharesTicketError({ symbol, type, qty, isLong, stop, bid = 0, as
   if (!(ref > 0)) return 'No live quote for ' + symbol + '.';
   if (isLong && stop >= ref) return `The stop ${fmtTick(stop)} is at or above the bid ${fmtTick(ref)}. It would sell as soon as the buy fills.`;
   if (!isLong && stop <= ref) return `The stop ${fmtTick(stop)} is at or below the ask ${fmtTick(ref)}. It would cover as soon as the short fills.`;
+  return '';
+}
+
+/**
+ * Why a limit entry can't go with its stop, or '' when it can: a buy limit must sit above its stop, a short's below.
+ * @param {{ isLong: boolean, stop: number, limit: number }} t @returns {string}
+ */
+export function limitEntryError({ isLong, stop, limit }) {
+  if (!(limit > 0)) return 'Set a limit price.';
+  if (isLong && limit <= stop) return `The limit ${fmtTick(limit)} is at or below the stop ${fmtTick(stop)}. Buy above the stop.`;
+  if (!isLong && limit >= stop) return `The limit ${fmtTick(limit)} is at or above the stop ${fmtTick(stop)}. Sell short below the stop.`;
   return '';
 }
 
