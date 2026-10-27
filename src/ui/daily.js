@@ -4,7 +4,7 @@ import { hv20At, percentileOf } from '../core/bars.js';
 import { clampView, viewRange } from '../core/chart-view.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmtN, nyDateStr } from '../core/format.js';
-import { futuresSessionClock, futuresSymbol } from '../core/futures.js';
+import { futuresSessionClock, futuresSymbol, priceLabeler } from '../core/futures.js';
 import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
@@ -136,7 +136,7 @@ export function drawDailyChart() {
   if (tc !== 'short') lines.push(line(chartStopVal(true), '--red', 'long stop'));
   if (tc !== 'long') lines.push(line(chartStopVal(false), '--green', 'short stop'));
   lines.push(line(rawStop('entryPrice'), '--blue', 'entry'));
-  paintCandles(canvas, dailyGeom(w), state.dailyBars, { lines, hover: { index: state.dailyHover, y: state.dailyHoverY } });
+  paintCandles(canvas, dailyGeom(w), state.dailyBars, { lines, hover: { index: state.dailyHover, y: state.dailyHoverY }, price: priceLabeler(state.quoteData) });
   // hover crosshair shares the OHLC readout with the 5-min chart
   const b = state.dailyBars[state.dailyHover];
   const { start, end } = viewRange(state.dailyView, state.dailyBars.length);

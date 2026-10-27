@@ -207,6 +207,11 @@ export function futuresPlan({ risk, entry, stop, direction, root, fees = 0 }) {
 /** a quote the futures path loaded (parseFuturesQuote), not a stock's @param {any} q */
 export const isFuturesQuote = q => q?.type === 'future';
 
+/** how a chart labels its prices: a futures quote's on its tick's decimals, anything else in dollars @param {any} q */
+export function priceLabeler(q) {
+  return isFuturesQuote(q) ? (/** @type {number} */ v) => fmtTicks(v, q.tickSize) : (/** @type {number} */ v) => '$' + v.toFixed(2);
+}
+
 /** a futures price with the decimals its tick has ('6,012.25', '21,000.00', '44,210') @param {number} v @param {number} tickSize */
 export function fmtTicks(v, tickSize) {
   const d = Math.min(6, (String(tickSize).split('.')[1] || '').length);

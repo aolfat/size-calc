@@ -56,8 +56,7 @@
 /* a futures ticker in the shares card: Schwab's feed tag in the quote bar, the fees box, amber warnings */
 .futures-realtime { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); }
 .futures-delayed { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
-.futures-fees { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--text2); }
-.futures-fees .prefix-wrap { width: 110px; }
+.futures-fees { margin-top: 12px; max-width: 220px; }
 .futures-warn { margin: 10px 0 0; color: var(--amber); font-size: 13px; }
 
 /* Shares and the selected stop lead; supporting metrics share a quieter row. */

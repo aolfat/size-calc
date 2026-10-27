@@ -42,6 +42,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   The quote bar shows the contract, prices on the tick's decimals (fmtTicks), and Real-time or Delayed from Schwab's realtime flag; there is no extended-hours price for futures.
   The 5-minute chart reads 8 days of `/marketdata/v1/pricehistory` 5-minute candles, overnight included (schwabFuturesBars, futuresBars), and the daily chart a year of daily candles (futuresDays).
   Bars carry their CME trading day: from 18:00 New York a bar belongs to the next day's session (futuresSessionClock), so the 5-minute view shows today's session from the evening open, and prior-day levels and ADR read whole sessions.
+  Until the new session has 24 bars (two hours, so about 20:00), the 5-minute view keeps the session before it on screen too.
+  Chart price labels for futures use the tick's decimals and no $ (priceLabeler).
   ATR reads those bars, overnight ones included.
   Sizing is the shares card counting contracts: futuresPlan puts the entry on the nearest tick and the stop on the tick past it, away from the entry (a chart click or a buffer can land between ticks), then contracts = risk$ / (ticks × tick value + round-trip fees), floored.
   sharesPlan answers it in the shares form (shares = contracts, riskPerShare = risk per contract), so reverse sizing, the sticky bar and Live work unchanged.

@@ -63,6 +63,8 @@ test('a futures ticker: a root or one month of a contract the app knows, never a
   assert.equal(run('fmtTicks(6012, 0.25)'), '6,012.00');
   assert.equal(run('fmtTicks(44210, 1)'), '44,210');
   assert.equal(run('fmtTicks(71.2, 0.01)'), '71.20');
+  assert.equal(run("priceLabeler({ type: 'future', tickSize: 0.25 })(6046.77)"), '6,046.77');
+  assert.equal(run("priceLabeler({ symbol: 'AAPL' })(231.5)"), '$231.50', 'a stock keeps its dollars');
 });
 
 test('the quote: the active contract, its prices, the change from the close, and the feed', async () => {
@@ -151,7 +153,8 @@ test('/MES in the ticker box loads from Schwab: quote bar, contracts at the LOD,
   const five = history.find(p => p.get('frequencyType') === 'minute');
   assert.deepEqual([five.get('symbol'), five.get('frequency'), five.get('needExtendedHoursData')], ['/MES', '5', 'true']);
   assert.ok(history.some(p => p.get('frequencyType') === 'daily' && p.get('periodType') === 'year'));
-  assert.deepEqual(state.chartBars.map(b => b.t), ['2026-10-27T18:00:00', '2026-10-27T09:30:00'], "the 5-minute chart: today's session from 18:00");
+  // today's session from 18:00; it has 2 bars, so yesterday's stays on (until today's has 2 hours of them)
+  assert.deepEqual(state.chartBars.map(b => b.t), ['2026-10-26T15:55:00', '2026-10-27T18:00:00', '2026-10-27T09:30:00']);
   assert.deepEqual(state.dailyBars.map(d => d.date), ['2026-10-23', '2026-10-26']);
   assert.equal(elements.get('chartWrap').style.display, 'block');
   assert.equal(run("JSON.parse(localStorage.getItem('recent_tickers'))[0]"), '/MES');

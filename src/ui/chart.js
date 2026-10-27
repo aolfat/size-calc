@@ -3,7 +3,7 @@ import { state } from '../state.js';
 import { aggregateBars } from '../core/bars.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { nyDateStr } from '../core/format.js';
-import { futuresSymbol } from '../core/futures.js';
+import { futuresSymbol, priceLabeler } from '../core/futures.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
@@ -44,8 +44,10 @@ export async function fetchChart(ticker) {
   // futures: the trading day from 18:00 the evening before, overnight included (core/futures.js futuresBars)
   try { raw = futuresSymbol(ticker) ? await fetchFuturesBars(ticker) : await fetchFiveMinuteBars(ticker); } catch(e) {}
   if (requestId !== state.chartRequestId || ticker !== (state.quoteData?.symbol ?? ticker)) return; // only the latest request, for the loaded symbol
-  const sessions = CHART_SESSIONS[state.chartInterval] || 1;
   const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
+  // a futures session opens at 18:00 with a handful of bars: the one before stays on until the new one is two hours old
+  const young = !!futuresSymbol(ticker) && raw.filter(b => (b.t || '').startsWith(days[days.length - 1])).length < 24;
+  const sessions = (CHART_SESSIONS[state.chartInterval] || 1) + (young ? 1 : 0);
   const keep = new Set(days.slice(-sessions));
   state.chartBars = aggregateBars(raw.filter(b => keep.has((b.t || '').slice(0, 10))), state.chartInterval);
   const result = calculateAtr5(raw);
@@ -113,7 +115,7 @@ export function drawChart() {
     const p = lo + (hi - lo) * i / steps;
     const yy = y(p);
     ctx.beginPath(); ctx.moveTo(g.padL, yy); ctx.lineTo(g.w - g.padR, yy); ctx.stroke();
-    ctx.fillText('$' + p.toFixed(2), g.w - g.padR + 6, yy + 3);
+    ctx.fillText(priceLabeler(state.quoteData)(p), g.w - g.padR + 6, yy + 3);
   }
 
   // time labels (~6 across) + faint separators where a new session starts
@@ -226,7 +228,7 @@ export function drawChart() {
     ctx.fillStyle = css.getPropertyValue('--bg4').trim();
     ctx.fillRect(g.w - g.padR + 2, state.chartHoverY - 8, g.padR - 4, 15);
     ctx.fillStyle = css.getPropertyValue('--text').trim();
-    ctx.fillText('$' + price.toFixed(2), g.w - g.padR + 6, state.chartHoverY + 3);
+    ctx.fillText(priceLabeler(state.quoteData)(price), g.w - g.padR + 6, state.chartHoverY + 3);
     ctx.restore();
   }
   if (state.chartHover >= 0 && state.chartHover < n) {

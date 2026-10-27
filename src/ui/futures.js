@@ -92,7 +92,7 @@ export function futuresAnswerHtml(q, p, { isLong, stopSource, entryNote, acct })
       <div><dt>Risk per contract</dt><dd>${fmt$(p.riskPerContract)}<span class="shares-detail">${p.ticks} ticks × ${fmt$(p.tickValue)}${fees > 0 ? ' + ' + fmt$(fees) + ' fees' : ''}</span></dd></div>
       <div><dt>Notional</dt><dd>${fmt$(notional)}<span class="shares-detail">${fmt$(p.pointValue)} a point</span></dd></div>
     </dl>
-    <div class="futures-fees">
+    <div class="field futures-fees">
       <label for="futuresFees">Round-trip fees per contract</label>
       <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresFees" value="${fees || ''}" placeholder="0" step="0.01" min="0" data-change="futuresFeesChanged" data-arg="${marketEscape(q.root)}" /></div>
     </div>
