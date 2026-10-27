@@ -13,7 +13,7 @@ import { withFlash } from './feedback.js';
 import { futuresAnswerHtml, futuresFeedTag, futuresFees } from './futures.js';
 import { riskDollars, syncFromDollar } from './risk.js';
 import { updateStickyBar } from './sticky-bar.js';
-import { currentAtr5, entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName, updateStopAdjustment } from './stops.js';
+import { currentAtr5, dayRange, entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName, updateStopAdjustment } from './stops.js';
 import { orbEntryName, renderOrb } from './orb.js';
 import { updateTradeButton } from './trade.js';
 
@@ -60,18 +60,28 @@ export function updateModeSections() {
   document.getElementById('optionTicket').style.display = quoteShown && state.currentMode === 'options' && state.railDetailSym ? '' : 'none';
 }
 
+/** the quote bar's LOD / HOD: the day's range the default stops use (extended hours in when Ext is on) */
+export function renderLevels() {
+  const q = state.quoteData;
+  const price = q.last || q.ask || 0;
+  const { low: lod, high: hod } = dayRange(q);
+  const money = isFuturesQuote(q) ? v => fmtTicks(v, q.tickSize) : fmt$;
+  const lodPct = price > 0 ? ((lod - price) / price * 100).toFixed(2) : 0;
+  const hodPct = price > 0 ? ((hod - price) / price * 100).toFixed(2) : 0;
+  document.getElementById('qLod').textContent = money(lod);
+  document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
+  document.getElementById('qHod').textContent = money(hod);
+  document.getElementById('qHodPct').textContent = `(${+hodPct >= 0 ? '+' : ''}${hodPct}%)`; // HOD sits under an after-hours price
+}
+
 export function renderQuote() {
   updateSizingControls();
   const q = state.quoteData;
   const fut = isFuturesQuote(q);
   const money = fut ? v => fmtTicks(v, q.tickSize) : fmt$;
   const price = q.last || q.ask || 0;
-  const lod = q.low || 0;
-  const hod = q.high || 0;
   const chg = q.change || 0;
   const chgPct = q.change_percentage || 0;
-  const lodPct = price > 0 ? ((lod - price) / price * 100).toFixed(2) : 0;
-  const hodPct = price > 0 ? ((hod - price) / price * 100).toFixed(2) : 0;
 
   document.getElementById('qTicker').textContent = (fut ? q.contract : q.symbol) + '  ';
   document.getElementById('qPrice').textContent = money(price);
@@ -80,10 +90,7 @@ export function renderQuote() {
   chgEl.className = 'quote-chg ' + (chg >= 0 ? 'up' : 'dn');
   renderExt(q);
   if (fut) document.getElementById('qExt').innerHTML = futuresFeedTag(q); // futures trade nearly around the clock: no extended session
-  document.getElementById('qLod').textContent = money(lod);
-  document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
-  document.getElementById('qHod').textContent = money(hod);
-  document.getElementById('qHodPct').textContent = `(+${hodPct}%)`;
+  renderLevels();
   document.getElementById('qVol').textContent = 'Vol ' + Number(q.volume || 0).toLocaleString();
 
   renderAdr();

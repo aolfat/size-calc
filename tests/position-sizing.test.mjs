@@ -216,6 +216,60 @@ test('ATR stays on five-minute data across chart intervals, ignores stale reques
   assert.equal(elements.get('sharesCopy').disabled, true);
 });
 
+test('extended range: pre-market bars stand alone; once regular hours begin the quote joins in', async () => {
+  const { run } = await app();
+  assert.equal(run("regularBar('2025-07-01T09:30:00')"), true);
+  assert.equal(run("regularBar('2025-07-01T15:55:00')"), true);
+  assert.equal(run("regularBar('2025-07-01T16:00:00')"), false);
+  assert.equal(run("regularBar('2025-07-01T09:25:00')"), false);
+  // before 9:30 the quote's low and high are the prior session's
+  assert.deepEqual(run("extendedRange([{ t: '2025-07-01T07:00:00', h: 101, l: 95 }], { low: 90, high: 110 })"), { low: 95, high: 101 });
+  assert.deepEqual(run("extendedRange([{ t: '2025-07-01T07:00:00', h: 101, l: 95 }, { t: '2025-07-01T09:30:00', h: 100, l: 99 }], { low: 94, high: 103 })"), { low: 94, high: 103 });
+  assert.deepEqual(run("extendedRange([], { low: 99, high: 102 })"), { low: 99, high: 102 });
+});
+
+test('Ext pulls 4:00 to 20:00 bars, widens the default LOD / HOD, keeps ATR on regular hours, and switches back at once', async () => {
+  const urls = [];
+  const day = 1751342400; // 2025-07-01 00:00 New York
+  const bar = (mins, high, low) => {
+    const hm = `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+    return { timestamp: day + mins * 60, time: `2025-07-01T${hm}:00`, open: 100, high, low, close: 100, volume: 1 };
+  };
+  const regular = Array.from({ length: 16 }, (_, i) => bar(570 + i * 5, 100.25, 99.75));
+  const all = [bar(420, 101, 95), bar(425, 100.5, 96), ...regular, bar(960, 104, 100), bar(965, 103, 100)];
+  const { run, elements, storage } = await app({ fetch: async url => {
+    urls.push(url);
+    return { ok: true, json: async () => ({ series: { data: url.includes('session_filter=all') ? all : regular } }) };
+  } });
+  run("quoteData = { symbol: 'TEST', last: 100, low: 99, high: 102 }; drawChart = () => {};");
+  await run('toggleExtHours()');
+  assert.match(urls.at(-1), /start=[^&]*%2004%3A00&end=[^&]*%2020%3A00&session_filter=all/);
+  assert.equal(storage.get('chart_ext'), '1');
+  assert.equal(elements.get('extToggle').getAttribute('aria-pressed'), 'true');
+  assert.equal(run('chartBars.length'), 20);
+  assert.deepEqual(run('dayRange()'), { low: 95, high: 104, ext: true });
+  assert.equal(run('stopLongVal()'), 95);
+  assert.equal(run('stopShortVal()'), 104);
+  assert.match(elements.get('qLod').textContent, /95\.00/);
+  assert.match(elements.get('qHod').textContent, /104\.00/);
+  run('renderShares()');
+  assert.match(elements.get('sharesStats').innerHTML, /Low of day, ext hours/);
+  // the pre-market bars' 6-point range stays out of the ATR
+  assert.equal(run('atr5.value'), 0.5);
+  run('setAtrMultiplier(0.5)');
+  assert.equal(run('stopLongVal()'), 94.75);
+  // off: sizing is back on the quote's range before the regular-hours bars land
+  run("stopStrategy = 'none'");
+  const off = run('toggleExtHours()');
+  assert.equal(run('stopLongVal()'), 99);
+  assert.match(elements.get('qLod').textContent, /99\.00/);
+  await off;
+  assert.match(urls.at(-1), /%2009%3A30&end=[^&]*%2016%3A00&session_filter=open/);
+  assert.equal(storage.get('chart_ext'), '0');
+  assert.equal(run('chartBars.length'), 16);
+  assert.equal(run('stopShortVal()'), 102);
+});
+
 test('quick lookup snapshots the buffered stop and quote refresh preserves that price', async () => {
   let underlying = { symbol: 'TEST', last: 100, low: 99, high: 102 };
   const { run, elements } = await app({ fetch: async url => ({ ok: true, json: async () => ({ quotes: { quote: url.includes('greeks=true')

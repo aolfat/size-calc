@@ -28,6 +28,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Tests: `node --test`.
 - **Five-minute ATR calculation**: long stops use LOD minus multiplier × ATR(14); shorts use HOD plus the buffer.
   ATR uses regular-session native 5m bars, 14 true ranges seeded with a simple average then Wilder smoothing, including gaps from the previous session.
+  With Ext on, the extended bars are filtered out (regularBar: 9:30 to 16:00) before the ATR, so thin overnight bars never widen the buffer.
   API epoch timestamps exclude incomplete bars.
   A fixed 14-calendar-day fetch keeps the seed independent of the visible 5/15/30/65m chart interval.
   The readout includes the last completed bar's date/time.
@@ -173,3 +174,12 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 - **Sizing anchors on effectivePrice(q)** — the extended price when live, else last: entryVal blank default, renderShares/renderChain/shareShares, ADR usage, chart-click both-view split, sim spot, quick lookup + card refresh underlying.
   The entry input's placeholder cues it ("AH 181.00").
   The headline qPrice and sticky-bar price stay the official last with the ext figure alongside
+- **Ext chip** (in the intraday interval row, extHours, persisted as chart_ext, device-local like show_daily): off by default, which keeps everything on regular hours.
+  On, the chart's timesales fetch asks for 4:00 to 20:00 with session_filter=all, and pre-market and after-hours bars draw on a faint band.
+  The default LOD / HOD then come from dayRange(): the latest session's 5m bars, extended hours included (extDay, extendedRange).
+  Once that session's regular hours have begun the quote's low and high join in, since they update every live tick; before 9:30 they are still the prior session's, so pre-market bars stand alone.
+  Everything that reads the day's range follows it: the default stops and their buffers, the quote bar and sticky bar LOD / HOD, ADR used, and the refresh of a pinned card on the loaded symbol.
+  The shares card names the source 'Low of day, ext hours (LOD)' while extended bars are in.
+  Turning it off puts sizing back on the quote's range at once, then refetches regular hours.
+  The chart's VWAP and dashed HOD / LOD follow the bars shown, so with Ext on they start at 4:00.
+  ATR, the opening range, quick lookup on other tickers, and the position chart stay on regular hours.

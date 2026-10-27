@@ -11,7 +11,7 @@ import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './cand
 import { drawChart, setStopFromPrice } from './chart.js';
 import { fetchFuturesDays } from './futures.js';
 import { updateStickyBar } from './sticky-bar.js';
-import { chartStopVal, rawStop, tradeCtx } from './stops.js';
+import { chartStopVal, dayRange, rawStop, tradeCtx } from './stops.js';
 
 export function applyDailyHistory(list, today = nyDateStr(new Date())) {
   state.dailyBars = list; // the bars carry New York dates (a futures bar its trading day's)
@@ -94,8 +94,7 @@ export function updateChartVisibility() {
 export function adrUsage() {
   if (!(state.adrValue > 0) || !state.quoteData) return null;
   const price = effectivePrice(state.quoteData);
-  const lod = state.quoteData.low || 0;
-  const hod = state.quoteData.high || 0;
+  const { low: lod, high: hod } = dayRange();
   // % of the ADR already consumed from the reference level; long trades
   // measure off LOD, shorts off HOD — follow the active context
   const used = ref => Math.max(0, (ref === 'lod' ? price - lod : hod - price) / state.adrValue * 100);
