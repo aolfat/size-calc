@@ -47,6 +47,11 @@ export function createState() {
     flashNext: false,
     editingUsd: false,
     futuresDirection: 'long',
+    futuresQuote: null, // the picked contract's live quote from Schwab (core/futures.js parseFuturesQuote), or null
+    futuresQuoteError: '', // why the last read failed ('' when it worked); the last good quote stays
+    futuresQuoteBusy: false, // a read is out
+    futuresQuoteId: 0, // bumped per read and per contract change: only the latest read lands
+    futuresTyped: { entry: false, stop: false }, // a typed entry or stop holds; an empty one follows the live quote
     stopStrategy: 'none',
     stopPercent: 0.05,
     atrMultiplier: 0,

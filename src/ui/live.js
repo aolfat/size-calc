@@ -1,10 +1,11 @@
-// Live mode: polls quote, chain, chart and cards on a duration ladder; pauses while the app is backgrounded.
+// Live mode: polls quote, chain, chart and cards (in Futures, the Schwab futures quote) on a duration ladder; pauses while the app is backgrounded.
 import { state } from '../state.js';
 import { inZone } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { refreshAllPinned } from './cards.js';
 import { fetchChain } from './chain.js';
 import { fetchChart } from './chart.js';
+import { futuresLiveError, refreshFuturesQuote } from './futures.js';
 import { clearError, showError } from './feedback.js';
 import { renderQuote } from './shares.js';
 import { syncSbLive } from './sticky-bar.js';
@@ -23,8 +24,17 @@ export function startLiveTimers() {
   state.liveCountdown = setInterval(updateLiveBtn, 1000);
 }
 
+/** both Live buttons (the ticker row's and the futures ticket's) show the one live session */
+function paintLive(className, html) {
+  for (const id of ['liveBtn', 'futuresLiveBtn']) {
+    const b = document.getElementById(id);
+    b.className = className;
+    b.innerHTML = html;
+  }
+  syncSbLive();
+}
+
 export function toggleLive() {
-  if (state.currentMode === 'futures') return;
   if (state.liveInterval || state.livePausedRemaining > 0) {
     // running (or paused): climb to the next rung, or stop past the last one
     if (state.liveModeIdx + 1 >= LIVE_MODES.length) { stopLive(); return; }
@@ -35,7 +45,9 @@ export function toggleLive() {
     updateLiveBtn();
     return;
   }
-  if (!state.quoteData) { showError('Load a ticker first, then go live.'); return; }
+  const futures = state.currentMode === 'futures';
+  const notReady = futures ? futuresLiveError() : state.quoteData ? '' : 'Load a ticker first, then go live.';
+  if (notReady) { showError(notReady); return; }
   clearError();
   state.liveModeIdx = 0;
   state.liveEnd = Date.now() + LIVE_MODES[0].dur;
@@ -49,10 +61,7 @@ export function stopLive() {
   clearInterval(state.liveInterval); clearInterval(state.liveCountdown);
   state.liveInterval = null; state.liveCountdown = null;
   state.livePausedRemaining = 0;
-  const b = document.getElementById('liveBtn');
-  b.className = 'btn';
-  b.innerHTML = '⚡ Live';
-  syncSbLive();
+  paintLive('btn', '⚡ Live');
 }
 
 export function pauseLive() { // backgrounded: keep the session, stop the polling
@@ -61,10 +70,7 @@ export function pauseLive() { // backgrounded: keep the session, stop the pollin
   clearInterval(state.liveInterval); clearInterval(state.liveCountdown);
   state.liveInterval = null; state.liveCountdown = null;
   if (!(state.livePausedRemaining > 0)) { stopLive(); return; }
-  const b = document.getElementById('liveBtn');
-  b.className = 'btn live-on';
-  b.innerHTML = `<span class="pulse"></span> Live paused`;
-  syncSbLive();
+  paintLive('btn live-on', `<span class="pulse"></span> Live paused`);
 }
 
 export function resumeLive() {
@@ -79,15 +85,13 @@ export function resumeLive() {
 export function updateLiveBtn() {
   const remain = Math.max(0, Math.ceil((state.liveEnd - Date.now()) / 1000));
   if (remain <= 0) { stopLive(); return; }
-  const b = document.getElementById('liveBtn');
-  b.className = 'btn live-on';
   const mmss = remain >= 60 ? `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, '0')}` : `${remain}s`;
   const next = state.liveModeIdx + 1 < LIVE_MODES.length ? `tap: ${LIVE_MODES[state.liveModeIdx + 1].label}` : 'tap: stop';
-  b.innerHTML = `<span class="pulse"></span> Live ${mmss} · ${next}`;
-  syncSbLive();
+  paintLive('btn live-on', `<span class="pulse"></span> Live ${mmss} · ${next}`);
 }
 
 export async function livePoll() {
+  if (state.currentMode === 'futures') { await liveFuturesPoll(); return; }
   // the loaded symbol, never the field: it doubles as the search box and may hold half a new ticker
   const ticker = state.quoteData?.symbol;
   if (state.livePolling || state.currentMode === 'futures' || !ticker) return;
@@ -109,4 +113,12 @@ export async function livePoll() {
   } catch(e) {} finally {
     state.livePolling = false;
   }
+}
+
+/** a futures tick: the picked contract's Schwab quote; a custom contract or a lost login ends the session */
+async function liveFuturesPoll() {
+  if (state.livePolling) return;
+  if (futuresLiveError()) { stopLive(); return; }
+  state.livePolling = true;
+  try { await refreshFuturesQuote(); } finally { state.livePolling = false; }
 }

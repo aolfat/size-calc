@@ -14,7 +14,7 @@ import { copyPinned, copyShares } from './copy-text.js';
 import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
 import { effects } from './effects.js';
-import { copyFutures, futuresContractChanged, futuresQtyChanged, futuresSpecsChanged, renderFutures, setFuturesDirection } from './futures.js';
+import { copyFutures, futuresContractChanged, futuresPriceTyped, futuresQtyChanged, futuresSpecsChanged, refreshFuturesQuote, renderFutures, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
 import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, togglePosChartAvg, togglePositionChart } from './position-chart.js';
@@ -334,6 +334,8 @@ export const actions = {
   setFuturesDirection: el => setFuturesDirection(arg(el)),
   renderFutures: () => renderFutures(),
   futuresQtyChanged: el => futuresQtyChanged(el),
+  futuresPriceTyped: el => futuresPriceTyped(el, arg(el)),
+  refreshFutures: () => refreshFuturesQuote(),
   copyFutures: () => copyFutures(),
 
   // ---------- charts ----------

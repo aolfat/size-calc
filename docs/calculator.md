@@ -36,6 +36,22 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Formula reference: https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/atr; candle timestamps: https://docs.tradier.com/docs/timesale
 - **Shares mode** (default): Shares = risk$ / |entry − stop|.
   The Long/Short toggle lives FIRST in the Entry & stops row (direction is the first decision; dirField hidden in options mode where chain side plays that role)
+- **Futures mode** (ui/futures.js, core/futures.js): contracts = risk$ / (ticks between entry and stop × tick value + round-trip fees), floored; prices must sit on the contract's tick grid.
+  FUTURES_CONTRACTS lists the CME roots with their tick size and value; Custom contract takes both typed (futures_custom_tick_size / _value).
+  The picked contract persists as futures_contract.
+  **Live prices** come from Schwab's market data (Tradier has no futures): with a Schwab login, opening Futures, changing the contract, ↻ (or r) and each Live tick read `/marketdata/v1/quotes?symbols=/MES` through the worker (schwabFuturesQuote), which Schwab answers with the active contract (/MESZ26).
+  parseFuturesQuote keeps it only when it is that root's, treats a zero price as none and a crossed bid and ask as no market.
+  The ticket shows the contract, last, change from the close, Real-time or Delayed (Schwab's realtime flag), bid, ask, LOD, HOD and the quote time.
+  An untyped entry follows the ask on a long and the bid on a short (the last when there is none), and an untyped stop follows the LOD on a long and the HOD on a short, both on the tick grid (onTick).
+  Typing a price holds it (state.futuresTyped); clearing the box follows the market again; changing the contract clears both.
+  The line under the quote says where each comes from.
+  A delayed quote, or a Schwab tick that disagrees with FUTURES_CONTRACTS, is said in amber on the ticket; sizing still uses the ticket's tick.
+  A failed read keeps the last good quote and says why: 404 means the worker predates the market data relay (redeploy it), 401 or 403 that the Schwab app lacks Market Data Production.
+  An answer for a contract no longer picked is dropped (state.futuresQuoteId).
+  Without a Schwab login, or on a Custom contract, nothing is read and typed prices work as before.
+  The ticket's ⚡ Live (#futuresLiveBtn) runs the same ladder as the ticker row's (one session, both buttons painted); a futures tick is one quote read; switching between Futures and Shares or Options ends the session.
+  Copy names the active month when a quote is in.
+  No futures chart yet: Schwab's price history has no futures bars.
 - **Allocation sizing**: Risk remains the default on load.
   Allocation uses `floor((account × allocation% − existing exposure) / unit cost)`, floored at zero.
   Long shares use planned entry (current quote if blank), long options use full mid debit × 100, and explicitly selected **Sell put** uses strike × 100.

@@ -1,5 +1,5 @@
 // Schwab Trader API through the size-calc-schwab worker, which holds the app secret, swaps codes for tokens,
-// and relays /trader/v1 calls. Login tokens are device-local: not in CLOUD_KEYS, so never in the account. Only the worker URL syncs.
+// and relays /trader/v1 calls and /marketdata/v1 reads (futures quotes). Login tokens are device-local: not in CLOUD_KEYS, so never in the account. Only the worker URL syncs.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { assertCredentialOrigin, credentialOriginAllowed } from '../lib/credential-origin.js';
@@ -167,8 +167,11 @@ export async function schwabAccessToken() {
 
 const READ_TIMEOUT = 15000;
 
-/** one Trader API call, never cached and never retried here, so an order is never sent twice; a login that fails first is tagged notSent */
-export async function schwabApi(path, { method = 'GET', body } = {}) {
+/**
+ * One Trader API call (base '/marketdata/v1' for a market data read), never cached and never retried here, so an order
+ * is never sent twice; a login that fails first is tagged notSent.
+ */
+export async function schwabApi(path, { method = 'GET', body, base = '/trader/v1' } = {}) {
   const connection = schwabSession();
   let token;
   try { token = await schwabAccessToken(); } catch(e) { throw notSent(e); }
@@ -178,7 +181,7 @@ export async function schwabApi(path, { method = 'GET', body } = {}) {
   const timer = ctrl ? setTimeout(() => ctrl.abort(), READ_TIMEOUT) : 0;
   let res;
   try {
-    res = await fetch(connection.proxy + '/trader/v1' + path, {
+    res = await fetch(connection.proxy + base + path, {
       method,
       cache: 'no-store',
       headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
@@ -291,6 +294,19 @@ export async function schwabTransactions(from, to, hash) {
   const res = await schwabApi(`${accountPath(hash)}/transactions?${q}`);
   const body = await readJson(res);
   if (!res.ok || !Array.isArray(body)) throw schwabError(body, res.status);
+  return body;
+}
+
+/**
+ * One futures root's quote ('MES' asks for /MES, which Schwab answers with the active contract), through the worker's
+ * market data relay. Answers Schwab's body; a worker from before the relay answers 404, a Schwab app without market data 401 or 403.
+ * @param {string} root
+ */
+export async function schwabFuturesQuote(root) {
+  const q = new URLSearchParams({ symbols: '/' + root, fields: 'quote,reference' });
+  const res = await schwabApi(`/quotes?${q}`, { base: '/marketdata/v1' });
+  const body = await readJson(res);
+  if (!res.ok) throw schwabError(body, res.status);
   return body;
 }
 

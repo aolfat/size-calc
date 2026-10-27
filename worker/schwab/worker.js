@@ -1,5 +1,5 @@
 // size-calc Schwab worker: holds the app key and secret, swaps OAuth codes and refresh tokens for access tokens,
-// and relays Trader API calls, which browsers can't make to api.schwabapi.com directly. It stores nothing:
+// and relays Trader API calls and market data reads, which browsers can't make to api.schwabapi.com directly. It stores nothing:
 // tokens pass through to the app, which keeps them on the device. Deploy: see README.md here.
 const SCHWAB = 'https://api.schwabapi.com';
 
@@ -60,8 +60,10 @@ export default {
         : json({ error: body.error || 'token_error', error_description: body.error_description || body.message || '' }, res.status, cors);
     }
 
-    // Trader API relay: the app's bearer token passes through untouched
-    if (url.pathname.startsWith('/trader/v1/') && ['GET', 'POST', 'PUT', 'DELETE'].includes(req.method)) {
+    // Trader API relay (and market data, read only): the app's bearer token passes through untouched
+    const trader = url.pathname.startsWith('/trader/v1/') && ['GET', 'POST', 'PUT', 'DELETE'].includes(req.method);
+    const marketData = url.pathname.startsWith('/marketdata/v1/') && req.method === 'GET';
+    if (trader || marketData) {
       const auth = req.headers.get('Authorization') || '';
       if (!/^Bearer \S+$/.test(auth)) return json({ message: 'missing bearer token' }, 401, cors);
       const hasBody = req.method === 'POST' || req.method === 'PUT';

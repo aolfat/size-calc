@@ -191,7 +191,12 @@
         <label for="futuresContract">Contract</label>
         <select id="futuresContract" data-change="futuresContractChanged"></select>
       </div>
-      <div class="hint">Manual prices · no API key needed</div>
+      <div class="futures-quote" id="futuresQuote" aria-live="polite"></div>
+      <div class="futures-feed">
+        <div class="hint" id="futuresFeed" role="status"></div>
+        <button class="btn" id="futuresRefresh" data-action="refreshFutures" title="Refresh the futures quote from Schwab (r)" disabled>↻<span class="btn-word"> Refresh</span></button>
+        <button class="btn" id="futuresLiveBtn" data-action="toggleLive" title="Live futures quotes from Schwab: tap for 1m (5s ticks), tap again for 5m (10s), again for 30m (20s), again to stop. Pauses while backgrounded (l)" disabled>⚡ Live</button>
+      </div>
       <div class="futures-grid" style="margin-top:14px;">
         <div class="field">
           <label for="futuresTickSize">Tick size · points</label>
@@ -214,11 +219,11 @@
         </div>
         <div class="field">
           <label for="futuresEntry">Entry price</label>
-          <input type="number" id="futuresEntry" placeholder="Enter price" step="0.25" data-input="renderFutures" />
+          <input type="number" id="futuresEntry" placeholder="Enter price" step="0.25" data-input="futuresPriceTyped" data-arg="entry" />
         </div>
         <div class="field">
           <label for="futuresStop">Stop price</label>
-          <input type="number" id="futuresStop" placeholder="Below entry" step="0.25" data-input="renderFutures" />
+          <input type="number" id="futuresStop" placeholder="Below entry" step="0.25" data-input="futuresPriceTyped" data-arg="stop" />
         </div>
         <div class="field" style="grid-column:1/-1;">
           <label for="futuresFees">Round-trip fees · $ / contract</label>
