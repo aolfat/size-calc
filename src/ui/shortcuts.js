@@ -2,7 +2,7 @@
 import { state } from '../state.js';
 import { cycleExp, setSide, setZoneMode } from './chain.js';
 import { closeDetails } from './detail.js';
-import { setFuturesDirection } from './futures.js';
+import { refreshFuturesQuote, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketRefreshToday, marketSetScope } from './market.js';
 import { refreshPositions } from './positions.js';
@@ -60,7 +60,7 @@ export function initShortcuts() {
       case 't':
       case 'u': setView(state.utilsView ? 'calc' : 'utils'); break;
       case 'm': setView(state.marketView ? 'calc' : 'market'); break;
-      case 'r': if (state.marketView) marketRefreshToday(); else if (state.positionsView) refreshPositions(true); else refreshQuote(); break;
+      case 'r': if (state.marketView) marketRefreshToday(); else if (state.positionsView) refreshPositions(true); else if (state.currentMode === 'futures') refreshFuturesQuote(); else refreshQuote(); break;
       case 'l': toggleLive(); break;
       case '-': stepRisk(-1); break;
       case '=':
