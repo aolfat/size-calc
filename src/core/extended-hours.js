@@ -49,3 +49,26 @@ export function effectivePrice(q) {
   const ext = extSession(q);
   return ext ? ext.price : (q.last || q.ask || 0);
 }
+
+// the Ext chart chip: pre-market and after-hours 5-minute bars, and the day's range they widen
+
+/** whether a bar's New York clock time ('YYYY-MM-DDTHH:MM...') falls in regular hours, 9:30 to 16:00 @param {string | undefined} t */
+export const regularBar = t => { const hm = (t || '').slice(11, 16); return hm >= '09:30' && hm < '16:00'; };
+
+/**
+ * The low and high the default stops sit on with extended hours in: one session's 5-minute bars, pre-market and after
+ * hours included. Once that session's regular hours have begun the quote's low and high join in (fresher than the bars
+ * between chart fetches); before 9:30 they still describe the prior session, so the bars stand alone.
+ * @param {{ t?: string, h: number, l: number }[]} bars @param {{ low?: number, high?: number }} q
+ * @returns {{ low: number, high: number }}
+ */
+export function extendedRange(bars, q) {
+  const ok = bars.filter(b => b.h > 0 && b.l > 0);
+  if (!ok.length) return { low: q.low || 0, high: q.high || 0 };
+  let low = Math.min(...ok.map(b => b.l)), high = Math.max(...ok.map(b => b.h));
+  if (ok.some(b => regularBar(b.t))) {
+    if (q.low && q.low > 0) low = Math.min(low, q.low);
+    if (q.high && q.high > 0) high = Math.max(high, q.high);
+  }
+  return { low, high };
+}

@@ -165,6 +165,8 @@ export function createState() {
     levDir: 'both', // both | long | short — a display filter, re-renders the last result
     levLast: null,
     chartInterval: parseInt(store.get('chart_interval')) || 5,
+    extHours: store.get('chart_ext') === '1', // the Ext chip: the chart pulls 4:00 to 20:00 and the default LOD / HOD include those bars, this device only
+    extDay: null, // { symbol, bars }: the latest session's 5-minute bars, extended hours included, while Ext is on
     chartRequestId: 0,
     adrValue: 0,
     prevDay: null, // { h, l, c } of the last completed session

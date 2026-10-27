@@ -1,7 +1,7 @@
 // Direction, the global stop pair, and stop adjustments.
 import { state } from '../state.js';
 import { inZone } from '../lib/zone.js';
-import { effectivePrice } from '../core/extended-hours.js';
+import { effectivePrice, extendedRange } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
 import { normalizeAtrMultiplier, normalizeStopStrategy, parseStopPercent } from '../core/stops.js';
 import { store } from '../lib/store.js';
@@ -52,9 +52,19 @@ export function adjustedStop(level, isLong, atr) {
   return rounded > 0 ? rounded : NaN;
 }
 
-export function stopLongVal() { return rawStop('stopLong') || adjustedStop(state.quoteData?.low, true, currentAtr5()); }
+/**
+ * the day's low and high the default stops sit on: the quote's, or with Ext on the loaded symbol's latest session
+ * including pre-market and after hours (ext: true when those bars are in)
+ */
+export function dayRange(q = state.quoteData) {
+  const x = state.extHours && state.extDay;
+  if (x && q && x.symbol === q.symbol) return { ...extendedRange(x.bars, q), ext: true };
+  return { low: q?.low || 0, high: q?.high || 0, ext: false };
+}
 
-export function stopShortVal() { return rawStop('stopShort') || adjustedStop(state.quoteData?.high, false, currentAtr5()); }
+export function stopLongVal() { return rawStop('stopLong') || adjustedStop(dayRange().low, true, currentAtr5()); }
+
+export function stopShortVal() { return rawStop('stopShort') || adjustedStop(dayRange().high, false, currentAtr5()); }
 
 export function autoStopName(isLong) {
   const level = isLong ? 'LOD' : 'HOD';
@@ -65,7 +75,9 @@ export function autoStopName(isLong) {
 
 export function stopSourceName(isLong, full = false) {
   if (rawStop(isLong ? 'stopLong' : 'stopShort')) return orbStopName(isLong) || 'Custom stop';
-  return state.stopStrategy === 'none' && full ? (isLong ? 'Low of day (LOD)' : 'High of day (HOD)') : autoStopName(isLong);
+  if (!(state.stopStrategy === 'none' && full)) return autoStopName(isLong);
+  const ext = dayRange().ext ? ', ext hours' : '';
+  return isLong ? `Low of day${ext} (LOD)` : `High of day${ext} (HOD)`;
 }
 
 export function chartStopVal(isLong) {
@@ -122,7 +134,7 @@ export function updateStopAdjustment() {
   if (state.stopStrategy === 'percent') {
     if (!Number.isFinite(state.stopPercent)) { info.textContent = 'Enter a percentage from 0% to less than 100%.'; return; }
     const preview = isLong => {
-      const level = isLong ? state.quoteData?.low : state.quoteData?.high;
+      const level = isLong ? dayRange().low : dayRange().high;
       const stop = adjustedStop(level, isLong, null);
       return Number.isFinite(stop) ? `${isLong ? 'LOD' : 'HOD'} ${fmt$(level)} → ${fmt$(stop)}` : '';
     };
