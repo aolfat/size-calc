@@ -43,6 +43,8 @@ const lists = () => notebookLists(data()?.library || []);
 const notebookOff = () => !data() || !!state.journalReviewError || !!data().notebookError;
 /** the missed trades can't: the notebook can't, or the database doesn't have their column yet */
 const missedOff = () => notebookOff() || !!data().missedError;
+/** woke up before the open can't be saved: the notebook can't, or the database doesn't have its column yet */
+const wokeOff = () => notebookOff() || !!data().wokeError;
 const missedOf = day => rowOf(day)?.missed || [];
 const focusOf = day => rowOf(day)?.focus_list || [];
 
@@ -159,6 +161,12 @@ export function daySleepSave(value) {
   const hours = s === '' || !Number.isFinite(n) || n < 0 || n > 24 ? null : Math.round(n * 2) / 2;
   if (hours === (rowOf(page())?.sleep_hours ?? null)) return;
   return saveDay(page(), { sleep_hours: hours });
+}
+
+/** woke up before the open: a checkmark, tapped on or off */
+export function toggleWokeEarly() {
+  if (wokeOff()) return;
+  return saveDay(page(), { woke_early: !rowOf(page())?.woke_early });
 }
 
 /** typing in a box: a draft (a redraw never loses it) */
@@ -492,6 +500,12 @@ function focusReviewRow(day, trades, off) {
   }).join('')}</ul></div>`;
 }
 
+/** woke up before the open: one checkmark, optional; before its column is pushed it says so */
+function wokeChip(r) {
+  const on = !!r?.woke_early, why = !notebookOff() && data().wokeError;
+  return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="toggleWokeEarly"${wokeOff() ? ' disabled' : ''}${why ? ` title="${esc(`Needs a database update: ${why}`)}"` : ''}>${on ? '✓ ' : ''}Woke up before the open</button>`;
+}
+
 function premarket(day, trades, off) {
   const r = rowOf(day), st = planState(r), started = Object.values(st).some(Boolean) && !st.written;
   const lib = buildLibrary(data()?.library || []);
@@ -505,7 +519,8 @@ function premarket(day, trades, off) {
     <div class="nb-group">Mental check-in</div>
     ${row('How you feel', FEELINGS.map(([v, w]) => chip(w, !!r?.feelings.includes(v), `data-action="toggleDayFeeling" data-arg="${v}"`, off)).join(''), started && !st.feeling)}
     ${row('Sleep and energy', ENERGY.map(([v, w]) => chip(w, r?.energy === v, `data-action="setDayEnergy" data-arg="${v}"`, off)).join('')
-      + `<label class="nb-hours">Slept <input type="number" id="nbSleep" min="0" max="24" step="0.5" inputmode="decimal" placeholder="—" value="${hours}" data-change="daySleepSave" aria-label="Hours slept"${off} /> h</label>`, started && !st.energy)}
+      + `<label class="nb-hours">Slept <input type="number" id="nbSleep" min="0" max="24" step="0.5" inputmode="decimal" placeholder="—" value="${hours}" data-change="daySleepSave" aria-label="Hours slept"${off} /> h</label>`
+      + wokeChip(r), started && !st.energy)}
     ${row("Where you're trading", PLACES.map(([v, w]) => chip(w, r?.place === v, `data-action="setDayPlace" data-arg="${v}"`, off)).join(''), started && !st.place)}
     ${listRow('goal', 'Goals', 'No goals yet. Add what you\'re working toward.', off)}
     ${listRow('rule', 'Rules', 'No rules yet. Add the ones you trade by: each gets checked after the close.', off)}
