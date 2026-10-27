@@ -37,8 +37,9 @@ export function snapToBar(g, bar, yy, px = 6) {
 }
 
 /**
- * Paint the window g describes. lines: [{ price, color, label, solid?, left? }], dashed unless solid, under the candles,
- * labelled over them on the right (left = on the left edge). hover: { index, y } draws the crosshair, the price tag when y is on the plot.
+ * Paint the window g describes. lines: [{ price, color, label, solid?, left?, faint? }], dashed unless solid, under the candles,
+ * labelled over them on the right (left = on the left edge); a faint line (a reference level, not one of yours) is dotted
+ * and lighter, and left out when it falls outside the scale. hover: { index, y } draws the crosshair, the price tag when y is on the plot.
  */
 // marks: [{ index, side }] fills, a buy as an up triangle under its bar's low, a sell as a down triangle over its high
 // vwap: a value per bar (core/trade-page.js sessionVwap), drawn teal and broken where the day changes
@@ -78,10 +79,11 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
     tickDay = b.date;
   }
 
-  const drawn = lines.filter(l => l.price > 0);
+  const drawn = lines.filter(l => l.price > 0 && (!l.faint || (l.price >= lo && l.price <= hi)));
   for (const l of drawn) {
     ctx.save();
-    ctx.strokeStyle = l.color; ctx.setLineDash(l.solid ? [] : [6, 3]); ctx.lineWidth = l.solid ? 1.75 : 1.25;
+    ctx.strokeStyle = l.color; ctx.setLineDash(l.solid ? [] : l.faint ? [2, 5] : [6, 3]); ctx.lineWidth = l.solid ? 1.75 : l.faint ? 1 : 1.25;
+    if (l.faint) ctx.globalAlpha = 0.6;
     ctx.beginPath(); ctx.moveTo(padL, y(l.price)); ctx.lineTo(w - padR, y(l.price)); ctx.stroke();
     ctx.restore();
   }
@@ -136,9 +138,16 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
     ctx.restore();
   }
 
-  // line labels on top of the candles, on a backing so a candle can't hide them
+  // line labels on top of the candles, on a backing so a candle can't hide them; a left label that would sit on another
+  // (two levels a few cents apart) moves along to its right
+  const placed = [];
   for (const l of drawn) {
-    const tw = ctx.measureText(l.label).width, lx = l.left ? padL + 4 : w - padR - 4 - tw, ly = y(l.price) - 4;
+    const tw = ctx.measureText(l.label).width, ly = y(l.price) - 4;
+    let lx = l.left ? padL + 4 : w - padR - 4 - tw;
+    if (l.left) {
+      for (const p of placed) if (Math.abs(p.y - ly) < 12 && lx < p.x + p.w + 8) lx = p.x + p.w + 8;
+      placed.push({ x: lx, y: ly, w: tw });
+    }
     ctx.save();
     ctx.fillStyle = 'rgba(26,30,39,0.85)'; // the canvas background, --bg3
     ctx.fillRect(lx - 3, ly - 9, tw + 6, 12);

@@ -53,8 +53,8 @@
   .positions-table th, .positions-table td { padding: 8px; }
 }
 
-/* Position chart: one stock's daily with its cost, stops and targets, and the profit-target form. Under the table on phones
-   and tablets, beside it on the desktop shell. */
+/* Position chart: one position's 5-minute and daily charts with its cost, stops and targets, and the profit-target form.
+   Under the table on phones and tablets, beside it on the desktop shell. */
 .positions-split { display: contents; }
 #posChartSection { order: 12; }
 .pos-chart .chart-head .section-title { margin: 0; color: var(--text); font-size: 14px; }
@@ -63,11 +63,24 @@
 .pos-chart #posChartStatus:empty { display: none; }
 .pos-chart .chart-cap { display: flex; gap: 5px; align-items: center; }
 .pos-chart .chart-cap .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
-.pos-chart .chart-cap .pos-chart-avg { margin-left: auto; }
-.pos-chart-kind { display: flex; gap: 5px; margin-right: 6px; } /* Daily | 5 min on a stock; just '5 min' on an option */
-.pos-chart-ranges { display: contents; } /* range chips: 1M to 1Y on a daily, 1D to 10D on 5-minute bars */
+.pos-chart .chart-head .pos-chart-avg { margin-left: auto; flex: none; padding: 2px 8px; font-size: 11px; }
+.pos-chart .chart-head .pos-chart-avg + .sheet-close { margin-left: 0; }
+/* phones: Avg and × stay on the title's line, the meta goes under it */
+@media (max-width: 600px) { .pos-chart-meta { order: 1; flex-basis: 100%; } .pos-chart .chart-head .ohlc { order: 2; } }
+.pos-chart-kind { margin-right: 6px; }
+.pos-chart-ranges { display: contents; } /* range chips: 1D to 10D on the 5-minute pane, 1M to 1Y on the daily */
 .pos-chart-canvas { position: relative; }
-#posChartToday { position: absolute; right: 58px; bottom: 28px; padding: 2px 8px; font-size: 11px; }
+.pos-chart-today { position: absolute; right: 58px; bottom: 28px; padding: 2px 8px; font-size: 11px; }
+/* 5 min and daily: stacked (5 min on top) until the card is wide enough to set them side by side, 5 min the wider, like the
+   Journal's trade page. The card's own width decides, since on the desktop shell it shares the row with the table */
+.pos-chart { container-type: inline-size; }
+.pos-chart-row { display: flex; flex-direction: column; gap: 12px; }
+.pos-chart-col { min-width: 0; }
+@container (min-width: 600px) {
+  .pos-chart-row { flex-direction: row; }
+  #posCol5 { flex: 3 1 0; }
+  #posColD { flex: 2 1 0; }
+}
 .pos-act.active { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
 .pos-target { margin-top: 16px; }
 .pos-tool { display: flex; margin-bottom: 10px; }
@@ -94,7 +107,8 @@
 .pos-stop-at { padding: 9px 12px; font-size: 14px; } /* the stop ticket's Breakeven chip, beside its price */
 
 @media (min-width: 1100px) {
-  .app.positions-view .positions-split.open { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(420px, 1fr); column-gap: 16px; align-items: start; }
+  /* the chart gets the larger share, so its 5 min and daily sit side by side from about 1200px; the table scrolls sideways when it needs to */
+  .app.positions-view .positions-split.open { display: grid; grid-template-columns: minmax(0, 1fr) minmax(460px, 1.25fr); column-gap: 16px; align-items: start; }
 }
 
 /* Working orders: the account's orders still in play, under the positions table */

@@ -209,8 +209,7 @@ export function createState() {
     posRTrades: null, // the Journal's trades as the R column last built them: { records, reviews, saved, fees, trades }
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
-    posChartFive: store.get('pos_chart_five') === '1', // a stock's position chart shows 5-minute bars instead of the daily (pos_chart_five, this device only; options are always 5-minute)
-    posChart: null, // the open position chart: { symbol, option, label, bars, view, range, loading, error, hover, hoverY, price, qty, addStop, addPrice } (range: sessions; price and qty = the target form, addStop and addPrice = Move breakeven's)
+    posChart: null, // the open position chart: { symbol, option, label, five, daily, error, price, qty, addStop, addPrice } (five and daily: a pane each, { kind, bars, vwap, view, range, loading, error, hover, hoverY }, range in sessions; price and qty = the target form, addStop and addPrice = Move breakeven's)
     posChartTool: 'target', // what a tap on the position chart sets: 'target' (profit target), 'stop' (a stop to review) or 'add' (Move breakeven's stop); kept while charts open and close
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,

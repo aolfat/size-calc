@@ -741,7 +741,8 @@ test('the chart levels add up sizes per price, and a target reads in R off the n
 
 // the chart's form, as a tap and a portion chip leave it
 const setTarget = (run, elements, symbol, price, qty) => {
-  run(`posChart = { symbol: '${symbol}', bars: [], view: { count: 63, offset: 0 }, range: 63, loading: false, error: '', hover: -1, hoverY: -1, price: null, qty: null }`);
+  const pane = kind => `{ kind: '${kind}', bars: [], vwap: [], view: { count: 63, offset: 0 }, range: 63, loading: false, error: '', hover: -1, hoverY: -1 }`;
+  run(`posChart = { symbol: '${symbol}', five: ${pane('five')}, daily: ${pane('daily')}, error: '', price: null, qty: null }`);
   elements.get('posTargetPrice').value = String(price);
   elements.get('posTargetQty').value = String(qty);
   run('posTargetChanged()');

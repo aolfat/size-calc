@@ -1,5 +1,6 @@
-// Position chart: one Schwab position's chart with its average cost, stops and targets drawn on it: a stock or ETF's daily
-// (Tradier history) or its 5-minute bars (Daily | 5 min), an option's own 5-minute bars (Tradier timesales). And the profit-target form: tap the chart (or type it, or
+// Position chart: one Schwab position's charts with its average cost, stops and targets drawn on them: its 5-minute bars
+// (Tradier timesales, with VWAP and the prior day's high, low and close) beside its daily (Tradier history); an option's are the
+// contract's own. And the profit-target form: tap either chart (or type it, or
 // set it in R) for the price, pick a portion, review it in the position sheet. Or Stop: tap (or type) the stop, see what it covers and risks,
 // review it in the position sheet. Or Move breakeven: tap where you want the stop, and it says how many to add so your average
 // cost lands there (a calculator; nothing goes to Schwab).
@@ -9,6 +10,7 @@ import { clampView, viewRange } from '../core/chart-view.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { optionPriceTick, priceTick } from '../core/orders.js';
 import { breakevenAdd, closersInTheWay, fmtPositionPrice, positionLevels, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
+import { sessionVwap } from '../core/trade-page.js';
 import { schwabStopDuration } from '../services/schwab.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles, snapToBar } from './candles.js';
@@ -30,10 +32,18 @@ function sessionBars(bars, n) {
   return bars.filter(b => days.includes(b.date)).length;
 }
 
+// the two panes, 5-minute first (left when they sit side by side, on top when stacked), and their elements' id suffixes
+const PANES = ['five', 'daily'];
+const SUFFIX = { five: '5', daily: 'D' };
+
+// a pane: one timeframe's bars, VWAP (5-minute only), view, range chip, hover and load state
+function newPane(kind) {
+  const range = kind === 'five' ? 2 : state.dailyRange; // two sessions of 5-minute bars, the daily_range preference on the daily
+  return { kind, bars: [], vwap: [], view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1 };
+}
+
 // what a range chip shows: n sessions back from now
-const rangeView = c => ({ count: c.five ? Math.max(1, sessionBars(c.bars, c.range)) : c.range, offset: 0 });
-// a range chip's default: two sessions of 5-minute bars, the daily_range preference on a daily
-const firstRange = five => five ? 2 : state.dailyRange;
+const rangeView = p => ({ count: p.kind === 'five' ? Math.max(1, sessionBars(p.bars, p.range)) : p.range, offset: 0 });
 
 /** the open chart's position in the last Schwab read, or null */
 function chartRow() {
@@ -45,10 +55,7 @@ function chartRow() {
 export function togglePositionChart(symbol) {
   if (state.posChart && state.posChart.symbol === symbol) { closePositionChart(); return; }
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
-  const option = !!(row && row.tradeAs === 'OPTION'), five = option || state.posChartFive;
-  const range = firstRange(five);
-  // loaded: the bars fetched so far, by kind, so switching Daily | 5 min back and forth reads Tradier once each
-  const c = { symbol, option, five, label: row ? row.label : symbol, bars: [], loaded: {}, view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1, price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null };
+  const c = { symbol, option: !!(row && row.tradeAs === 'OPTION'), label: row ? row.label : symbol, five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null };
   state.posChart = c;
   setTargetInputs();
   renderPositions(); // the button lights, and the chart renders with the table
@@ -61,39 +68,30 @@ export function closePositionChart() {
   renderPositions();
 }
 
-async function loadBars(c) {
+function loadBars(c) {
   if (!document.getElementById('apiKey').value.trim()) { c.error = 'The chart needs a Tradier key: add one in Settings. You can still type a target below.'; renderPositionChart(); return; }
-  const five = c.five, kind = five ? 'five' : 'daily';
-  if (c.loaded[kind]) { Object.assign(c, c.loaded[kind]); c.view = rangeView(c); renderPositionChart(); return; }
-  c.loading = true;
-  c.bars = [];
+  for (const kind of PANES) c[kind].loading = true;
   renderPositionChart();
-  const got = { bars: [], error: '' };
-  try {
-    got.bars = five
-      ? (await fetchFiveMinuteBars(tradierSymbol(c.symbol))).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c }))
-      : await dailyHistory(c.symbol);
-    got.error = got.bars.length ? '' : c.option ? `Tradier shows no trades in ${c.label} in the last two weeks.`
-      : five ? `Tradier shows no 5-minute bars for ${c.symbol} in the last two weeks.` : `Tradier has no daily history for ${c.symbol}.`;
-  } catch(e) {
-    got.error = five ? `Tradier would not send ${c.option ? 'this contract' : c.symbol}'s 5-minute bars. They need a brokerage-linked key.` : 'Could not load the daily chart from Tradier.';
-  }
-  c.loaded[kind] = got;
-  if (state.posChart !== c || c.five !== five) return; // closed, or switched while it loaded
-  Object.assign(c, got);
-  c.view = rangeView(c);
-  c.loading = false;
-  renderPositionChart();
+  for (const kind of PANES) loadPane(c, kind); // both at once, each drawn when it lands
 }
 
-/** Daily | 5 min on a stock's chart (options are always 5-minute); the pick stays on this device */
-export function setPosChartInterval(kind) {
-  const c = state.posChart, five = kind === '5m';
-  if (!c || c.option || c.five === five) return;
-  state.posChartFive = five;
-  store.set('pos_chart_five', five ? '1' : '0');
-  Object.assign(c, { five, range: firstRange(five), hover: -1, hoverY: -1, loading: false, error: '' });
-  loadBars(c);
+async function loadPane(c, kind) {
+  const five = kind === 'five', sym = tradierSymbol(c.symbol);
+  let bars = [], error = '';
+  try {
+    bars = five
+      ? (await fetchFiveMinuteBars(sym)).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }))
+      : await dailyHistory(sym);
+    error = bars.length ? '' : c.option ? (five ? `Tradier shows no trades in ${c.label} in the last two weeks.` : `Tradier has no daily history for ${c.label}.`)
+      : five ? `Tradier shows no 5-minute bars for ${c.symbol} in the last two weeks.` : `Tradier has no daily history for ${c.symbol}.`;
+  } catch(e) {
+    error = five ? `Tradier would not send ${c.option ? 'this contract' : c.symbol}'s 5-minute bars. They need a brokerage-linked key.` : 'Could not load the daily chart from Tradier.';
+  }
+  if (state.posChart !== c) return; // closed while it loaded
+  const p = c[kind];
+  Object.assign(p, { bars, error, loading: false, vwap: five ? sessionVwap(bars) : [] });
+  p.view = rangeView(p);
+  renderPositionChart();
 }
 
 const priceText = (c, p) => c && p > 0 ? p.toFixed(p >= 1 || c.option ? 2 : 4) : '';
@@ -230,18 +228,19 @@ export function togglePosChartAvg() {
   drawPositionChart();
 }
 
-export function setPosChartRange(count) {
-  const c = state.posChart;
-  if (!c) return;
-  c.range = count;
-  c.view = rangeView(c); // tapping the lit chip again is the reset
+/** a range chip on one pane ('five' or 'daily'); the other pane keeps its own */
+export function setPosChartRange(count, kind) {
+  const p = state.posChart && state.posChart[kind === 'daily' ? 'daily' : 'five'];
+  if (!p) return;
+  p.range = count;
+  p.view = rangeView(p); // tapping the lit chip again is the reset
   drawPositionChart();
 }
 
-export function posChartToday() {
-  const c = state.posChart;
-  if (!c) return;
-  c.view = { count: c.view.count, offset: 0 };
+export function posChartToday(kind) {
+  const p = state.posChart && state.posChart[kind === 'daily' ? 'daily' : 'five'];
+  if (!p) return;
+  p.view = { count: p.view.count, offset: 0 };
   drawPositionChart();
 }
 
@@ -312,8 +311,11 @@ export function renderPositionChart() {
   document.getElementById('posChartMeta').textContent = row
     ? `${row.qty > 0 ? 'Long' : 'Short'} ${units(c.option, Math.abs(row.qty))} · avg ${row.avg > 0 ? fmt$(row.avg) : '—'} · now ${fmt$(row.price)}`
     : '';
-  document.getElementById('posChartStatus').textContent = c.loading ? `Loading the ${c.label} ${c.five ? '5-minute' : 'daily'} chart…` : c.error;
-  document.getElementById('posChartPlot').style.display = c.bars.length ? '' : 'none';
+  // a pane without bars hides, and says why here: still loading, or what Tradier answered
+  const notes = c.error ? [c.error] : PANES.filter(k => !c[k].bars.length).map(k => c[k].loading ? `Loading the ${c.label} ${k === 'five' ? '5-minute' : 'daily'} chart…` : c[k].error);
+  document.getElementById('posChartStatus').textContent = notes.filter(Boolean).join(' ');
+  for (const k of PANES) document.getElementById('posCol' + SUFFIX[k]).style.display = c[k].bars.length ? '' : 'none';
+  document.getElementById('posChartPlot').style.display = c.five.bars.length || c.daily.bars.length ? '' : 'none';
   document.getElementById('posTargetQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
 
   const room = row ? targetRoom(row) : null;
@@ -364,10 +366,17 @@ export function renderPositionChart() {
 // the levels drawn: your average cost only while Avg is on
 const levels = row => row ? positionLevels(row).filter(l => l.kind !== 'avg' || state.posChartAvg) : [];
 
-function chartGeom(w) {
+function chartGeom(p, w) {
   const c = state.posChart, row = chartRow();
   const tool = state.posChartTool, add = tool === 'add';
-  return candleGeom(c.bars, c.view, w, [...levels(row).map(l => l.price), (add ? c.addStop : tool === 'stop' ? c.stop : c.price) || 0, (add && c.addPrice) || 0]);
+  return candleGeom(p.bars, p.view, w, [...levels(row).map(l => l.price), (add ? c.addStop : tool === 'stop' ? c.stop : c.price) || 0, (add && c.addPrice) || 0]);
+}
+
+/** the session before the 5-minute chart's latest, from the daily bars: its high, low and close, or null */
+export function priorDay(fiveBars, dailyBars) {
+  const last = fiveBars.length ? fiveBars[fiveBars.length - 1].date : '';
+  const prev = last ? dailyBars.filter(d => d.date < last).pop() : null;
+  return prev ? { h: prev.high, l: prev.low, c: prev.close } : null;
 }
 
 function chartLines(c, row) {
@@ -387,73 +396,90 @@ function chartLines(c, row) {
   return lines;
 }
 
+// the prior day's levels on the 5-minute chart, faint and drawn only when they fall inside its range
+function priorDayLines(c) {
+  const pd = priorDay(c.five.bars, c.daily.bars);
+  if (!pd) return [];
+  const color = getComputedStyle(document.documentElement).getPropertyValue('--text3').trim();
+  return [[pd.h, 'PDH'], [pd.l, 'PDL'], [pd.c, 'PDC']].map(([price, label]) => ({ price, color, label, left: true, faint: true }));
+}
+
+/** one pane's chips, Today and candles; returns its geometry, or null when it isn't drawn */
+function drawPane(c, p, row) {
+  const n = p.bars.length, sfx = SUFFIX[p.kind];
+  // a chip lights while the view shows exactly its range
+  const active = n && Math.round(clampView(p.view, n).count) === Math.round(clampView(rangeView(p), n).count) ? p.range : 0;
+  const chips = (p.kind === 'five' ? FIVE_CHIPS : DAILY_CHIPS).map(([count, label]) =>
+    `<button class="filter-btn${count === active ? ' active' : ''}" data-action="setPosChartRange" data-arg="${count}" data-arg2="${p.kind}">${label}</button>`).join('');
+  const ranges = document.getElementById('posChartRanges' + sfx);
+  if (ranges.innerHTML !== chips) ranges.innerHTML = chips; // hover redraws often; the chips rarely change
+  document.getElementById('posChartToday' + sfx).style.display = n && viewRange(p.view, n).end < n ? '' : 'none';
+  if (!n) return null;
+  const canvas = document.getElementById('posChart' + sfx);
+  const w = canvas.clientWidth;
+  if (!w) return null; // hidden: painting now would wipe the canvas to zero width
+  const g = chartGeom(p, w), five = p.kind === 'five';
+  const lines = [...(five ? priorDayLines(c) : []), ...chartLines(c, row)];
+  paintCandles(canvas, g, p.bars, { lines, hover: { index: p.hover, y: p.hoverY }, vwap: five ? p.vwap : null });
+  return g;
+}
+
 export function drawPositionChart() {
   const c = state.posChart;
   if (!c) return;
-  const n = c.bars.length;
-  // a chip lights while the view shows exactly its range
-  const active = n && Math.round(clampView(c.view, n).count) === Math.round(clampView(rangeView(c), n).count) ? c.range : 0;
-  // a stock picks Daily or 5 min; an option's chart is always 5-minute
-  const kind = (five, label) => `<button class="filter-btn${c.five === five ? ' active' : ''}" aria-pressed="${c.five === five}" data-action="setPosChartInterval" data-arg="${five ? '5m' : 'daily'}">${label}</button>`;
-  const kinds = c.option ? '5 min' : kind(false, 'Daily') + kind(true, '5 min');
-  const kindEl = document.getElementById('posChartKind');
-  if (kindEl.innerHTML !== kinds) kindEl.innerHTML = kinds;
   const avg = document.getElementById('posChartAvgBtn');
   avg.classList.toggle('active', state.posChartAvg);
   avg.setAttribute('aria-pressed', String(state.posChartAvg));
-  const chips = (c.five ? FIVE_CHIPS : DAILY_CHIPS).map(([count, label]) =>
-    `<button class="filter-btn${count === active ? ' active' : ''}" data-action="setPosChartRange" data-arg="${count}">${label}</button>`).join('');
-  const ranges = document.getElementById('posChartRanges');
-  if (ranges.innerHTML !== chips) ranges.innerHTML = chips; // hover redraws often; the chips rarely change
-  document.getElementById('posChartToday').style.display = n && viewRange(c.view, n).end < n ? '' : 'none';
-  if (!n) return;
-  const canvas = document.getElementById('posChart');
-  const w = canvas.clientWidth;
-  if (!w) return; // hidden: painting now would wipe the canvas to zero width
-  const row = chartRow(), g = chartGeom(w);
-  paintCandles(canvas, g, c.bars, { lines: chartLines(c, row), hover: { index: c.hover, y: c.hoverY } });
+  const row = chartRow(), geoms = { five: drawPane(c, c.five, row), daily: drawPane(c, c.daily, row) };
+  // one readout for both: the hovered pane's bar
   const readout = document.getElementById('posChartOhlc');
-  const b = c.bars[c.hover];
-  if (!b || c.hover < g.start || c.hover >= g.end) { readout.textContent = ''; return; }
-  const onPlot = c.hoverY >= g.padT && c.hoverY <= g.h - g.padB;
-  const at = g.price(c.hoverY), now = row ? row.price : 0;
+  const p = PANES.map(k => c[k]).find(x => x.hover >= 0), g = p && geoms[p.kind];
+  const b = p && p.bars[p.hover];
+  if (!b || !g || p.hover < g.start || p.hover >= g.end) { readout.textContent = ''; return; }
+  const onPlot = p.hoverY >= g.padT && p.hoverY <= g.h - g.padB;
+  const at = g.price(p.hoverY), now = row ? row.price : 0;
   // Move breakeven: how many to add for a stop right here
   const add = onPlot && row && state.posChartTool === 'add' ? breakevenAdd(row, { stop: at, price: c.addPrice }) : null;
   const adds = add && !add.error ? ` · add ${add.qty.toLocaleString('en-US')}` : '';
   // Profit target: the price counted in R
   const per = onPlot && row && state.posChartTool === 'target' ? unitFor(row).per : null, gain = per ? targetGain(row, at, 1, per) : null;
   const rs = gain && gain.r !== null ? ` · ${gain.r >= 0 ? '' : '−'}${Math.abs(gain.r).toFixed(1)}R` : '';
-  readout.innerHTML = (onPlot && now > 0 ? `$${at.toFixed(2)} (${at >= now ? '+' : '−'}${Math.abs(at / now * 100 - 100).toFixed(1)}% from now)${adds}${rs} &nbsp; ` : '') + ohlcText(b);
+  const vw = p.vwap[p.hover] > 0 ? ` &nbsp; VWAP ${p.vwap[p.hover].toFixed(2)}` : '';
+  readout.innerHTML = (onPlot && now > 0 ? `$${at.toFixed(2)} (${at >= now ? '+' : '−'}${Math.abs(at / now * 100 - 100).toFixed(1)}% from now)${adds}${rs} &nbsp; ` : '') + ohlcText(b) + vw;
 }
 
 export function initPositionChartEvents() {
-  const canvas = document.getElementById('posChart');
-  const geom = () => chartGeom(canvas.getBoundingClientRect().width);
-  // the price under the pointer, or a candle's high or low when it's within a few pixels of one; null off the plot
-  const priceAt = (clientX, clientY) => {
-    const rect = canvas.getBoundingClientRect(), g = geom(), yy = clientY - rect.top;
-    if (yy < g.padT || yy > g.h - g.padB) return { index: g.index(clientX - rect.left), price: null, yy };
-    const index = g.index(clientX - rect.left);
-    return { index, price: snapToBar(g, state.posChart.bars[index], yy), yy };
-  };
-  attachCandleGestures(canvas, {
-    count: () => state.posChart ? state.posChart.bars.length : 0,
-    view: () => state.posChart ? state.posChart.view : { count: state.dailyRange, offset: 0 },
-    setView: view => { state.posChart.view = view; drawPositionChart(); },
-    geom,
-    hover: (clientX, clientY) => {
-      const c = state.posChart, at = priceAt(clientX, clientY);
-      c.hover = at.index;
-      c.hoverY = at.price === null ? at.yy : geom().y(at.price);
-      drawPositionChart();
-    },
-    leave: () => {
-      if (!state.posChart) return;
-      state.posChart.hover = -1;
-      state.posChart.hoverY = -1;
-      drawPositionChart();
-    },
-    pick: (clientX, clientY) => pickTarget(priceAt(clientX, clientY).price),
-  });
+  for (const kind of PANES) {
+    const canvas = document.getElementById('posChart' + SUFFIX[kind]);
+    const pane = () => state.posChart ? state.posChart[kind] : null;
+    const geom = () => chartGeom(pane(), canvas.getBoundingClientRect().width);
+    // the price under the pointer, or a candle's high or low when it's within a few pixels of one; null off the plot
+    const priceAt = (clientX, clientY) => {
+      const rect = canvas.getBoundingClientRect(), g = geom(), yy = clientY - rect.top;
+      const index = g.index(clientX - rect.left);
+      if (yy < g.padT || yy > g.h - g.padB) return { index, price: null, yy };
+      return { index, price: snapToBar(g, pane().bars[index], yy), yy };
+    };
+    attachCandleGestures(canvas, {
+      count: () => pane() ? pane().bars.length : 0,
+      view: () => pane() ? pane().view : { count: state.dailyRange, offset: 0 },
+      setView: view => { pane().view = view; drawPositionChart(); },
+      geom,
+      hover: (clientX, clientY) => {
+        const p = pane(), at = priceAt(clientX, clientY);
+        p.hover = at.index;
+        p.hoverY = at.price === null ? at.yy : geom().y(at.price);
+        drawPositionChart();
+      },
+      leave: () => {
+        const p = pane();
+        if (!p) return;
+        p.hover = -1;
+        p.hoverY = -1;
+        drawPositionChart();
+      },
+      pick: (clientX, clientY) => pickTarget(priceAt(clientX, clientY).price),
+    });
+  }
   window.addEventListener('resize', () => { if (state.positionsView) drawPositionChart(); });
 }
