@@ -13,6 +13,8 @@
 .cap-note { color: var(--text3); font-weight: 400; }
 /* range chips keep their size; on a narrow pane the hide hint truncates instead of wrapping */
 #dailyCap .filter-btn { flex: none; }
+/* the intraday row holds four intervals, Ext and D1: on narrow phones the chips tighten so it stays one line */
+@media (max-width: 420px) { #ivChips .filter-btn { padding: 2px 6px !important; } }
 .daily-toggle { cursor: pointer; margin-right: 2px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* panned back in time: a way home in the plot's bottom-right corner, clear of the price and date axes */
 #dailyToday { position: absolute; right: 58px; bottom: 28px; }

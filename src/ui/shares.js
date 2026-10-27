@@ -71,7 +71,7 @@ export function renderLevels() {
   document.getElementById('qLod').textContent = fmt$(lod);
   document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
   document.getElementById('qHod').textContent = fmt$(hod);
-  document.getElementById('qHodPct').textContent = `(+${hodPct}%)`;
+  document.getElementById('qHodPct').textContent = `(${+hodPct >= 0 ? '+' : ''}${hodPct}%)`; // HOD sits under an after-hours price
 }
 
 export function renderQuote() {
