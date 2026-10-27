@@ -73,9 +73,7 @@ test('refreshQuote says whether a fresh quote for the loaded symbol landed', asy
   assert.equal(await h.run('refreshQuote()'), false, 'an answer for another symbol');
   assert.equal(h.run('quoteData.symbol'), 'AAPL');
   other = false;
-  h.run("currentMode = 'futures'");
-  assert.equal(await h.run('refreshQuote()'), false, 'futures');
-  h.run("currentMode = 'shares'; quoteData = null");
+  h.run("quoteData = null");
   assert.equal(await h.run('refreshQuote()'), false, 'nothing loaded');
 });
 

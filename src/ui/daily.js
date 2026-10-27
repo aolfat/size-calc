@@ -4,16 +4,17 @@ import { hv20At, percentileOf } from '../core/bars.js';
 import { clampView, viewRange } from '../core/chart-view.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmtN, nyDateStr } from '../core/format.js';
+import { futuresSessionClock, futuresSymbol } from '../core/futures.js';
 import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { drawChart, setStopFromPrice } from './chart.js';
+import { fetchFuturesDays } from './futures.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { chartStopVal, rawStop, tradeCtx } from './stops.js';
 
-export function applyDailyHistory(list) {
-  state.dailyBars = list;
-  const today = nyDateStr(new Date()); // the bars carry New York dates
+export function applyDailyHistory(list, today = nyDateStr(new Date())) {
+  state.dailyBars = list; // the bars carry New York dates (a futures bar its trading day's)
   const done = list.filter(x => x.date !== today); // today's range is still forming
   const last14 = done.slice(-14);
   if (last14.length) state.adrValue = last14.reduce((s, x) => s + (x.high - x.low), 0) / last14.length;
@@ -39,9 +40,10 @@ export async function fetchAdr(ticker) {
   state.hvDist = []; // or IV percentile ranks this symbol against the last one's vol
   state.dailyBars = [];
   try {
-    const days = await dailyHistory(ticker);
+    const futures = !!futuresSymbol(ticker);
+    const days = futures ? await fetchFuturesDays(ticker) : await dailyHistory(ticker);
     if (ticker !== state.dailySymbol) return; // a newer symbol was requested meanwhile
-    if (days.length) applyDailyHistory(days);
+    if (days.length) applyDailyHistory(days, futures ? futuresSessionClock(Date.now()).day : undefined);
   } catch(e) {}
   renderAdr();
   updateChartVisibility();
@@ -83,7 +85,7 @@ function updateDailyControls() {
 
 export function updateChartVisibility() {
   const has5 = state.chartBars.length > 0, hasD = state.dailyBars.length > 0 && state.showDaily;
-  document.getElementById('chartWrap').style.display = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView && state.currentMode !== 'futures' && (has5 || hasD) ? 'block' : 'none';
+  document.getElementById('chartWrap').style.display = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView && (has5 || hasD) ? 'block' : 'none';
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
   document.getElementById('dailyToggle').classList.toggle('active', state.showDaily);

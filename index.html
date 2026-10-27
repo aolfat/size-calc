@@ -49,7 +49,7 @@
   <div id="railPane" class="pane">
   <div class="card setup-card" id="setupNotice" style="display:none;">
     <div class="setup-title">Connect Tradier to load quotes</div>
-    <p>Add your Tradier API key in Settings to load quotes, charts, and option chains. Futures sizing works without one.</p>
+    <p>Add your Tradier API key in Settings to load stock quotes, charts, and option chains. Futures come from Schwab.</p>
     <div class="setup-actions">
       <button class="btn primary" data-action="openSheet" data-arg="settings">Add API key</button>
       <button class="btn" data-action="openSheet" data-arg="risk">Set account and risk</button>
@@ -92,15 +92,14 @@
 
   <div class="card" id="modeCard">
     <div class="seg mode-big" id="modeSeg" aria-label="Instrument">
-      <button id="modeShares" class="active" data-action="setMode" data-arg="shares">Shares</button>
+      <button id="modeShares" class="active" data-action="setMode" data-arg="shares">Stocks &amp; futures</button>
       <button id="modeOptions" data-action="setMode" data-arg="options">Options</button>
-      <button id="modeFutures" data-action="setMode" data-arg="futures">Futures</button>
     </div>
     <div id="sizingControls">
     <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
       <div class="field" id="symbolField" style="flex:0 0 140px;">
         <label for="ticker">Ticker</label>
-        <input type="text" id="ticker" placeholder="AAPL" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
+        <input type="text" id="ticker" placeholder="AAPL, /MES" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
@@ -185,52 +184,6 @@
       <details class="hint-details"><summary>How adjustments work</summary>Moves the stop below the LOD for longs and above the HOD for shorts. A stop you type or set on the chart overrides it. It's a price trigger with no 5m close confirmation, and the presets are untested.</details>
     </div>
     </div>
-    <div id="futuresControls" style="display:none;">
-      <div class="section-title" style="margin-top:16px;">Futures contract</div>
-      <div class="field">
-        <label for="futuresContract">Contract</label>
-        <select id="futuresContract" data-change="futuresContractChanged"></select>
-      </div>
-      <div class="futures-quote" id="futuresQuote" aria-live="polite"></div>
-      <div class="futures-feed">
-        <div class="hint" id="futuresFeed" role="status"></div>
-        <button class="btn" id="futuresRefresh" data-action="refreshFutures" title="Refresh the futures quote from Schwab (r)" disabled>↻<span class="btn-word"> Refresh</span></button>
-        <button class="btn" id="futuresLiveBtn" data-action="toggleLive" title="Live futures quotes from Schwab: tap for 1m (5s ticks), tap again for 5m (10s), again for 30m (20s), again to stop. Pauses while backgrounded (l)" disabled>⚡ Live</button>
-      </div>
-      <div class="futures-grid" style="margin-top:14px;">
-        <div class="field">
-          <label for="futuresTickSize">Tick size · points</label>
-          <input type="number" id="futuresTickSize" value="0.25" step="any" min="0" readonly data-input="futuresSpecsChanged" />
-        </div>
-        <div class="field">
-          <label for="futuresTickValue">Tick value · $ / contract</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresTickValue" value="1.25" step="any" min="0" readonly data-input="futuresSpecsChanged" /></div>
-        </div>
-      </div>
-      <div class="hint" id="futuresSpecInfo"></div>
-      <div class="section-title" style="margin-top:16px;">Entry &amp; stop</div>
-      <div class="futures-grid">
-        <div class="field" style="grid-column:1/-1;">
-          <label>Direction</label>
-          <div class="seg dir" id="futuresDirSeg">
-            <button id="futuresLong" class="active long" data-action="setFuturesDirection" data-arg="long">Long</button>
-            <button id="futuresShort" data-action="setFuturesDirection" data-arg="short">Short</button>
-          </div>
-        </div>
-        <div class="field">
-          <label for="futuresEntry">Entry price</label>
-          <input type="number" id="futuresEntry" placeholder="Enter price" step="0.25" data-input="futuresPriceTyped" data-arg="entry" />
-        </div>
-        <div class="field">
-          <label for="futuresStop">Stop price</label>
-          <input type="number" id="futuresStop" placeholder="Below entry" step="0.25" data-input="futuresPriceTyped" data-arg="stop" />
-        </div>
-        <div class="field" style="grid-column:1/-1;">
-          <label for="futuresFees">Round-trip fees · $ / contract</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="futuresFees" placeholder="0" step="0.01" min="0" data-input="renderFutures" /></div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div class="card shares-card" id="sharesSection" style="display:none;">
@@ -243,13 +196,6 @@
   </div>
 
   <div class="card option-ticket" id="optionTicket" style="display:none;" aria-live="polite"></div>
-
-  <div class="card" id="futuresSection" style="display:none;">
-    <div class="section-title">Futures sizing<button class="filter-btn" id="futuresCopy" style="margin-left:10px;" data-action="copyFutures" disabled title="Copy this futures plan as text">copy</button></div>
-    <div class="stat-grid" id="futuresStats" aria-live="polite"></div>
-    <div id="futuresMessage" role="status"></div>
-    <div class="hint">Risk at your stop, including entered fees · slippage can increase loss · broker margin is separate</div>
-  </div>
 
   </div>
 
@@ -290,9 +236,8 @@
         <span><kbd>?</kbd> this help</span>
       </div>
       <div class="kbd-group"><div class="kbd-h">Views</div>
-        <span><kbd>s</kbd> shares</span>
+        <span><kbd>s</kbd> stocks &amp; futures</span>
         <span><kbd>o</kbd> options</span>
-        <span><kbd>f</kbd> futures</span>
         <span><kbd>v</kbd> positions</span>
         <span><kbd>j</kbd> journal · <kbd>←</kbd> <kbd>→</kbd> trade before / after · <kbd>esc</kbd> back to trades</span>
         <span><kbd>t</kbd>/<kbd>u</kbd> tools ⇄ size</span>

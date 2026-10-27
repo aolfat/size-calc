@@ -8,7 +8,7 @@
 /* Phone and tablet: one column in trade order. Inputs, quote, the answer, the chart to set stops, ideas, then the chain.
    The pane wrappers are display:contents here, so every card is a flex item of .app and `order` places it. */
 #appHeader, #schwabBanner { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #riskStrip { order: 3; } /* risk first: the max loss frames the trade */
-#modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection, #futuresSection { order: 6; }
+#modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection { order: 6; }
 #optionTicket { order: 7; } #chartWrap { order: 8; }
 #quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #positionsSection { order: 12; }
 #optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection, #journalTradeSection { order: 15; }
@@ -27,10 +27,10 @@
   .app.calc-view #mainPane, .app.positions-view #mainPane { display: flex; flex-direction: column; grid-column: 2; grid-row: 3; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
   .app.positions-view #sidePane { display: none; }
   .app.positions-view #mainPane { grid-column: 1 / -1; }
-  /* Tools, Futures and Market scroll as a page, but the header stays where the shell puts it (full width, same height)
+  /* Tools and Market scroll as a page, but the header stays where the shell puts it (full width, same height)
      so switching views never moves the tabs; their content is a centered column under it */
-  .app.utils-view, .app.futures-view, .app.market-view, .app.journal-view { max-width: none; padding: 0 20px 60px; }
-  .app.utils-view .pane > *, .app.futures-view .pane > * { width: 100%; max-width: 888px; margin-inline: auto; }
+  .app.utils-view, .app.market-view, .app.journal-view { max-width: none; padding: 0 20px 60px; }
+  .app.utils-view .pane > * { width: 100%; max-width: 888px; margin-inline: auto; }
   .app.journal-view .pane > * { width: 100%; max-width: 1100px; margin-inline: auto; }
   .app.market-view .pane > * { width: 100%; max-width: 1468px; margin-inline: auto; }
 

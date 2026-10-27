@@ -1,8 +1,9 @@
-// Intraday chart: 5-minute timesales, aggregated intervals, canvas candles, VWAP and EMA, stop lines, touch crosshair.
+// Intraday chart: 5-minute timesales (Schwab's price history for futures), aggregated intervals, canvas candles, VWAP and EMA, stop lines, touch crosshair.
 import { state } from '../state.js';
 import { aggregateBars } from '../core/bars.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { nyDateStr } from '../core/format.js';
+import { futuresSymbol } from '../core/futures.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
@@ -10,6 +11,7 @@ import { zoneClock } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { renderChain } from './chain.js';
 import { drawDailyChart, updateChartVisibility } from './daily.js';
+import { fetchFuturesBars } from './futures.js';
 import { chartStopVal, rawStop, stopsChanged, tradeCtx } from './stops.js';
 
 export const CHART_SESSIONS = { 5: 1, 15: 2, 30: 3, 65: 5 };
@@ -39,7 +41,8 @@ export async function fetchFiveMinuteBars(ticker) {
 export async function fetchChart(ticker) {
   const requestId = ++state.chartRequestId;
   let raw = [];
-  try { raw = await fetchFiveMinuteBars(ticker); } catch(e) {}
+  // futures: the trading day from 18:00 the evening before, overnight included (core/futures.js futuresBars)
+  try { raw = futuresSymbol(ticker) ? await fetchFuturesBars(ticker) : await fetchFiveMinuteBars(ticker); } catch(e) {}
   if (requestId !== state.chartRequestId || ticker !== (state.quoteData?.symbol ?? ticker)) return; // only the latest request, for the loaded symbol
   const sessions = CHART_SESSIONS[state.chartInterval] || 1;
   const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
