@@ -61,6 +61,17 @@
 #futuresControls input[readonly] { color: var(--text2); }
 #futuresMessage { grid-column: 1 / -1; color: var(--amber); font-size: 13px; }
 #futuresCopy:disabled { opacity: 0.4; cursor: default; }
+.futures-quote:empty { display: none; }
+.futures-quote { margin-top: 12px; }
+.futures-quote-bar { gap: 12px; margin-bottom: 2px; }
+.futures-last { font-size: 24px; font-weight: 600; font-family: var(--num); }
+.futures-quote-row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--text2); font-family: var(--num); }
+.futures-quote-error { margin-top: 6px; color: var(--amber); font-size: 13px; }
+.futures-realtime { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); }
+.futures-delayed { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
+.futures-feed { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.futures-feed .hint { flex: 1; min-width: 0; margin: 0; }
+.futures-feed .btn { flex: 0 0 auto; }
 
 /* Shares and the selected stop lead; supporting metrics share a quieter row. */
 .shares-primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }

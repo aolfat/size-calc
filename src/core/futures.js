@@ -1,5 +1,5 @@
 // @ts-check
-// Futures sizing: manual prices and risk per tick, no market-data dependency.
+// Futures sizing: risk per tick between entry and stop, and the live quote (Schwab's) that can fill them.
 import { unitsFor } from './sizing.js';
 
 // Outright contract specs (CME, checked September 2026):
@@ -72,4 +72,62 @@ export function futuresSpec(symbol) {
     year: m[3].length === 2 ? 2000 + yy : 2020 + yy,
     pointValue: Math.round(spec.tickValue / spec.tickSize * 1e6) / 1e6,
   };
+}
+
+/** a price on the contract's tick grid (the nearest tick), without binary float dust @param {number} price @param {number} tickSize */
+export function onTick(price, tickSize) {
+  return Number((Math.round(price / tickSize) * tickSize).toFixed(10));
+}
+
+/**
+ * @typedef {{ root: string, contract: string, last: number | null, bid: number | null, ask: number | null, high: number | null,
+ *   low: number | null, close: number | null, change: number | null, changePct: number | null, realtime: boolean | null,
+ *   time: number | null, specMismatch: { tick: number, tickAmount: number } | null }} FuturesQuote
+ */
+
+/**
+ * One root's quote from Schwab's /marketdata/v1/quotes answer (requested as '/MES', which Schwab answers with the active
+ * contract): its prices, or null when it isn't there, isn't that root's, or has no price. A zero price is no price;
+ * a crossed bid and ask is no market. specMismatch is Schwab's tick when it disagrees with FUTURES_CONTRACTS.
+ * @param {any} body @param {string} root
+ * @returns {FuturesQuote | null}
+ */
+export function parseFuturesQuote(body, root) {
+  const key = '/' + root;
+  if (!body || typeof body !== 'object') return null;
+  const entry = body[key] ?? Object.values(body).find(e => e?.reference?.product === key);
+  if (!entry || typeof entry !== 'object') return null;
+  const q = entry.quote || {}, ref = entry.reference || {};
+  const contract = String(ref.futureActiveSymbol || entry.symbol || '').trim().toUpperCase();
+  if (contract !== key && futuresSpec(contract)?.root !== root) return null;
+  /** @param {unknown} v */
+  const price = v => (typeof v === 'number' && Number.isFinite(v) && v !== 0 ? v : null);
+  let bid = price(q.bidPrice), ask = price(q.askPrice);
+  if (bid !== null && ask !== null && bid > ask) bid = ask = null;
+  const last = price(q.lastPrice) ?? price(q.mark);
+  if (last === null && bid === null && ask === null) return null;
+  const close = price(q.closePrice);
+  const change = last !== null && close !== null ? last - close : null;
+  const spec = FUTURES_CONTRACTS[root];
+  const tick = price(q.tick), tickAmount = price(q.tickAmount);
+  const mismatch = !!spec && tick !== null && tickAmount !== null
+    && (Math.abs(tick - spec.tickSize) > 1e-9 || Math.abs(tickAmount - spec.tickValue) > 1e-9);
+  const time = [q.tradeTime, q.quoteTime].find(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+  return {
+    root, contract, last, bid, ask, high: price(q.highPrice), low: price(q.lowPrice), close,
+    change, changePct: change !== null && close !== null ? change / close * 100 : null,
+    realtime: typeof entry.realtime === 'boolean' ? entry.realtime : null,
+    time: time ?? null,
+    specMismatch: mismatch ? { tick: /** @type {number} */ (tick), tickAmount: /** @type {number} */ (tickAmount) } : null,
+  };
+}
+
+/** where a market entry fills: the ask for a long, the bid for a short, else the last trade @param {FuturesQuote} q @param {string} direction */
+export function futuresEntryFrom(q, direction) {
+  return (direction === 'short' ? q.bid : q.ask) ?? q.last;
+}
+
+/** the default stop: the session low under a long, the high over a short @param {FuturesQuote} q @param {string} direction */
+export function futuresStopFrom(q, direction) {
+  return direction === 'short' ? q.high : q.low;
 }

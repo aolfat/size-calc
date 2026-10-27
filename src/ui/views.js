@@ -5,7 +5,7 @@ import { baseUrl, headers } from '../services/tradier.js';
 import { fetchChain, markActiveExp, renderExpTabs } from './chain.js';
 import { drawChart } from './chart.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
-import { renderFutures } from './futures.js';
+import { refreshFuturesQuote, renderFutures } from './futures.js';
 import { pauseLive, resumeLive, stopLive } from './live.js';
 import { openJournal } from './journal.js';
 import { closeModelImage } from './model-books.js';
@@ -67,7 +67,7 @@ export function setView(v) {
   const hide = calc && !futures ? '' : 'none';
   document.getElementById('futuresControls').style.display = futures ? '' : 'none';
   document.getElementById('futuresSection').style.display = futures ? '' : 'none';
-  if (futures) renderFutures();
+  if (futures) { renderFutures(); if (!state.liveInterval) refreshFuturesQuote(); } // a live session reads on its own ticks
   document.getElementById('sizingControls').style.display = hide;
   document.getElementById('quickCard').style.display = hide;
   document.getElementById('pinnedBar').style.display = hide;
@@ -93,10 +93,11 @@ export function setView(v) {
 
 export async function setMode(mode) {
   cancelSpread();
+  const wasFutures = state.currentMode === 'futures';
   state.currentMode = mode;
   if (mode !== 'options') state.optionTradeSide = 'buy';
   if (mode === 'futures') { state.sizingMode = 'risk'; state.optionTradeSide = 'buy'; }
-  if (mode === 'futures') stopLive();
+  if ((mode === 'futures') !== wasFutures) stopLive(); // a live session follows one thing: the loaded ticker or the futures contract
   setView('calc');
   document.getElementById('fetchBtnText').innerHTML = mode === 'shares' ? 'Load<span class="btn-word"> quote</span>' : 'Load<span class="btn-word"> chain</span>';
   updateStopVisibility();
