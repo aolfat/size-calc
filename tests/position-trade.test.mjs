@@ -487,6 +487,49 @@ test('the close ticket picks market or limit, how many and the price, like a bro
   assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
 });
 
+test('the close ticket sets its limit in R, like the chart\'s target', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  const detail = () => elements.get('posTradeDetail').innerHTML;
+  assert.doesNotMatch(body(), /data-action="setCloseR"/, 'a market order has no limit in R');
+  assert.match(body(), /\+7\.6%\) on your cost · 1\.1R/, 'its estimate counts R: ($41.10 − $38.20) / $2.70');
+  run("setCloseType('LIMIT')");
+  assert.match(body(), /data-action="setCloseR" data-arg="2" title="\$43\.60">2R</, '1R is the $2.70 from cost to the $35.50 stop');
+  assert.match(body(), /1R is \$2\.70 a share, from the stop \$35\.50/);
+  assert.match(body(), /id="posCloseR"[^>]*value="1\.1"/, 'the mark counted in R');
+  run('setCloseR(2)');
+  assert.match(body(), /id="posClosePrice"[^>]*value="43.60"/);
+  assert.match(body(), /class="filter-btn active" aria-pressed="true" data-action="setCloseR" data-arg="2"/);
+  assert.match(body(), />Sell 300 HOOD, limit \$43\.60</);
+  assert.match(body(), /\+\$1,620\.00<\/span> \(\+14\.1%\) on your cost · 2\.0R/);
+  run("setCloseRText('3')");
+  assert.equal(elements.get('posClosePrice').value, '46.30', 'typing R moves the price');
+  assert.match(detail(), />Sell 300 HOOD, limit \$46\.30</);
+  assert.match(elements.get('posCloseRChips').innerHTML, /class="filter-btn active" aria-pressed="true" data-action="setCloseR" data-arg="3"/);
+  run("setClosePrice('44.95')");
+  assert.equal(elements.get('posCloseR').value, '2.5', 'a typed price clears the R and the box follows it');
+  assert.doesNotMatch(elements.get('posCloseRChips').innerHTML, /active/);
+  run('setClosePortion(0.5)');
+  run('setCloseR(5)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="150"/, 'R leaves the quantity alone');
+  assert.match(body(), />Sell 150 HOOD, limit \$51\.70</);
+});
+
+test('a close with no risk to count R from greys the R out', async () => {
+  const b = broker();
+  b.live.orders = b.live.orders.filter(o => !JSON.stringify(o).includes('"TSLA"'));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('TSLA', 'close')");
+  run("setCloseType('LIMIT')");
+  const body = elements.get('posTradeBody').innerHTML;
+  assert.match(body, /id="posCloseR"[^>]* disabled/);
+  assert.match(body, /data-action="setCloseR" data-arg="1"[^>]* disabled>1R</);
+  run('setCloseR(1)');
+  assert.match(elements.get('posTradeBody').innerHTML, />Buy to cover 40 TSLA, limit \$255\.30</, 'a greyed chip does nothing');
+});
+
 test('the close ticket\'s chips are tens of percent of what is held, capped at what can close', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });

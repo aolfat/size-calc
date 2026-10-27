@@ -31,7 +31,7 @@ Four sections, always in this order.
 |---|---|---|
 | Economic events | The day's US releases with their New York times and impact (docs/journal.md, Economic events), 'No major releases.' on a quiet day | Nothing to fill in |
 | Last focus | The focus you wrote in your last review (up to a week back), at the top | Shown only when there is one |
-| Mental check-in | How you feel (Calm, Focused, Confident, Anxious, Frustrated, Impatient, FOMO; any number), sleep and energy (Rested, OK, Tired), hours slept, where you're trading (At my desk, On my phone) | Feeling, energy and where; hours are optional |
+| Mental check-in | How you feel (Calm, Focused, Confident, Anxious, Frustrated, Impatient, FOMO; any number), sleep and energy (Rested, OK, Tired), hours slept, Woke up before the open (a checkmark), where you're trading (At my desk, On my phone) | Feeling, energy and where; hours and the checkmark are optional |
 | Goals | Your standing goals | Nothing to fill in |
 | Rules | Your standing rules | Nothing to fill in; they're checked after the close |
 | Market | The day's market chips, the same `journal_days.market` the trade review sets, so every trade that day inherits it | Yes |
@@ -138,6 +138,11 @@ The new columns are read on their own query, so before the push the rest of the 
 Migration `20261105000000_focus_list.sql`:
 
 - `journal_days.focus_list` (the notebook's migration made it, empty until now) holds `[{ id, symbol, side, setups, note, played, review }]`, cleanFocusList on the way in.
+
+Migration `20261106000000_woke_early.sql`:
+
+- `journal_days.woke_early` (boolean, false by default): Woke up before the open, the check-in's checkmark.
+- It's read on its own query too: before the push the checkmark is greyed out and says it needs `npx supabase db push`, and the rest of the notebook works.
 - Its size limit grows from 8000 bytes to 30000, for 12 tickers with full notes; before the push a list over the old limit doesn't save and says why.
 - Screenshots are `trade_shots` rows keyed `focus:<its id>`.
 

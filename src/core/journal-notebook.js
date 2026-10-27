@@ -10,7 +10,7 @@ import { exitDays, nyParts } from './journal-stats.js';
  * @typedef {{ id: string, symbol: string, side: string | null, setups: string[], tactics: string[], why: string | null, note: string | null }} MissedTrade
  * @typedef {{ id: string, symbol: string, side: string | null, setups: string[], note: string | null, played: string | null, review: string | null }} FocusItem
  * @typedef {{ market: string | null, note: string | null, feelings: string[], energy: string | null, sleep_hours: number | null,
- *   place: string | null, plan: string | null, focus_list: FocusItem[], grade: string | null, rules: Record<string, string>,
+ *   woke_early: boolean, place: string | null, plan: string | null, focus_list: FocusItem[], grade: string | null, rules: Record<string, string>,
  *   went_well: string | null, work_on: string | null, focus_next: string | null, focus_kept: string | null,
  *   planned_at: string | null, reviewed_at: string | null, missed: MissedTrade[] }} DayRow */
 
@@ -34,6 +34,8 @@ export const DAY_COLUMNS = ['feelings', 'energy', 'sleep_hours', 'place', 'plan'
 export const FOCUS_LOOKBACK_DAYS = 7;
 /** the day's missed trades: the column their own migration adds (read on its own query too) */
 export const MISSED_COLUMNS = ['missed'];
+/** woke up before the open: the column its own migration adds (read on its own query too) */
+export const WOKE_COLUMNS = ['woke_early'];
 /** why a trade was missed */
 export const MISSED_WHY = /** @type {[string, string][]} */ ([['hesitated', 'Hesitated'], ['not_seen', "Didn't see it"], ['away', 'Away'], ['late', 'Too late'], ['no_trust', "Didn't trust it"], ['at_limit', 'At my limit']]);
 export const MISSED_SIDES = /** @type {[string, string][]} */ ([['long', 'Long'], ['short', 'Short']]);
@@ -91,7 +93,8 @@ export function cleanDayRow(raw) {
     market: typeof r.market === 'string' && r.market ? r.market : null,
     note: text(r.note, MAX_DAY_NOTE),
     feelings: Array.isArray(r.feelings) ? [...new Set(r.feelings.filter(f => pick(FEELINGS, f)))] : [],
-    energy: pick(ENERGY, r.energy), sleep_hours: Number.isFinite(hours) && hours >= 0 && hours <= 24 ? hours : null, place: pick(PLACES, r.place),
+    energy: pick(ENERGY, r.energy), sleep_hours: Number.isFinite(hours) && hours >= 0 && hours <= 24 ? hours : null,
+    woke_early: r.woke_early === true, place: pick(PLACES, r.place),
     plan: text(r.plan, MAX_DAY_NOTE), focus_list: cleanFocusList(r.focus_list),
     grade: GRADES.includes(r.grade) ? r.grade : null, rules,
     went_well: text(r.went_well, MAX_DAY_NOTE), work_on: text(r.work_on, MAX_DAY_NOTE),
