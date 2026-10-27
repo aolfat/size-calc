@@ -9,7 +9,7 @@ import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
 import { renderChain, selectExp, setSide, setZoneMode, toggleExps } from './chain.js';
-import { setChartInterval } from './chart.js';
+import { setChartInterval, toggleExtHours } from './chart.js';
 import { copyPinned, copyShares } from './copy-text.js';
 import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
@@ -338,6 +338,7 @@ export const actions = {
 
   // ---------- charts ----------
   setChartInterval: el => setChartInterval(num(el)),
+  toggleExtHours: () => toggleExtHours(),
   toggleDaily: () => toggleDaily(),
   setDailyRange: el => setDailyRange(num(el)),
   dailyToday: () => dailyToday(),

@@ -1,7 +1,7 @@
 // Intraday chart: 5-minute timesales, aggregated intervals, canvas candles, VWAP and EMA, stop lines, touch crosshair.
 import { state } from '../state.js';
 import { aggregateBars } from '../core/bars.js';
-import { effectivePrice } from '../core/extended-hours.js';
+import { effectivePrice, regularBar } from '../core/extended-hours.js';
 import { nyDateStr } from '../core/format.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
@@ -9,7 +9,8 @@ import { store } from '../lib/store.js';
 import { zoneClock } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { renderChain } from './chain.js';
-import { drawDailyChart, updateChartVisibility } from './daily.js';
+import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
+import { renderLevels } from './shares.js';
 import { chartStopVal, rawStop, stopsChanged, tradeCtx } from './stops.js';
 
 export const CHART_SESSIONS = { 5: 1, 15: 2, 30: 3, 65: 5 };
@@ -24,12 +25,31 @@ export function setChartInterval(iv) {
 export function updateIntervalChips() {
   document.querySelectorAll('#ivChips .filter-btn').forEach(b =>
     b.classList.toggle('active', +b.dataset.iv === state.chartInterval));
+  const ext = document.getElementById('extToggle');
+  ext.classList.toggle('active', state.extHours);
+  ext.setAttribute('aria-pressed', String(state.extHours));
 }
 
-export async function fetchFiveMinuteBars(ticker) {
+// Ext: pre-market and after-hours bars on the chart, and in the default LOD / HOD; ATR stays on regular hours
+export function toggleExtHours() {
+  state.extHours = !state.extHours;
+  store.set('chart_ext', state.extHours ? '1' : '0');
+  updateIntervalChips();
+  if (!state.extHours) { state.extDay = null; levelsChanged(); } // sizing goes back to the quote's range right away
+  if (state.quoteData?.symbol) return fetchChart(state.quoteData.symbol);
+}
+
+/** the day's range may have moved: the stops, the quote bar's LOD / HOD and the ADR used */
+function levelsChanged() {
+  stopsChanged();
+  if (state.quoteData) { renderLevels(); renderAdr(); }
+}
+
+export async function fetchFiveMinuteBars(ticker, extended = false) {
   // Fixed history keeps the ATR seed independent of the visible chart interval; dates are New York's, like the bars.
   const from = new Date(Date.now() - 14 * 864e5);
-  const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(ticker)}&interval=5min&start=${encodeURIComponent(nyDateStr(from) + ' 09:30')}&end=${encodeURIComponent(nyDateStr(new Date()) + ' 16:00')}&session_filter=open`;
+  const [open, close, filter] = extended ? ['04:00', '20:00', 'all'] : ['09:30', '16:00', 'open'];
+  const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(ticker)}&interval=5min&start=${encodeURIComponent(nyDateStr(from) + ' ' + open)}&end=${encodeURIComponent(nyDateStr(new Date()) + ' ' + close)}&session_filter=${filter}`;
   const res = await fetch(url, { headers: headers() });
   if (!res.ok) throw new Error('Intraday data unavailable');
   const data = (await res.json())?.series?.data;
@@ -39,16 +59,19 @@ export async function fetchFiveMinuteBars(ticker) {
 export async function fetchChart(ticker) {
   const requestId = ++state.chartRequestId;
   let raw = [];
-  try { raw = await fetchFiveMinuteBars(ticker); } catch(e) {}
+  const extended = state.extHours;
+  try { raw = await fetchFiveMinuteBars(ticker, extended); } catch(e) {}
   if (requestId !== state.chartRequestId || ticker !== (state.quoteData?.symbol ?? ticker)) return; // only the latest request, for the loaded symbol
   const sessions = CHART_SESSIONS[state.chartInterval] || 1;
   const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
   const keep = new Set(days.slice(-sessions));
   state.chartBars = aggregateBars(raw.filter(b => keep.has((b.t || '').slice(0, 10))), state.chartInterval);
-  const result = calculateAtr5(raw);
+  const result = calculateAtr5(extended ? raw.filter(b => regularBar(b.t)) : raw);
   state.atr5 = result ? { symbol: ticker, ...result } : null;
+  const lastDay = days[days.length - 1];
+  state.extDay = extended && lastDay ? { symbol: ticker, bars: raw.filter(b => (b.t || '').slice(0, 10) === lastDay) } : null;
   updateChartVisibility();
-  stopsChanged();
+  levelsChanged();
 }
 
 export function chartGeom(canvas) {
@@ -111,6 +134,20 @@ export function drawChart() {
     const yy = y(p);
     ctx.beginPath(); ctx.moveTo(g.padL, yy); ctx.lineTo(g.w - g.padR, yy); ctx.stroke();
     ctx.fillText('$' + p.toFixed(2), g.w - g.padR + 6, yy + 3);
+  }
+
+  // extended hours (Ext on): a faint band behind each run of pre-market or after-hours bars
+  if (state.extHours) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    for (let i = 0; i < n; i++) {
+      if (regularBar(state.chartBars[i].t)) continue;
+      let j = i;
+      while (j + 1 < n && !regularBar(state.chartBars[j + 1].t) && (state.chartBars[j + 1].t || '').slice(0, 10) === (state.chartBars[i].t || '').slice(0, 10)) j++;
+      ctx.fillRect(x(i) - slot / 2, g.padT, (j - i + 1) * slot, g.plotH);
+      i = j;
+    }
+    ctx.restore();
   }
 
   // time labels (~6 across) + faint separators where a new session starts

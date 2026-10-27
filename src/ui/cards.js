@@ -10,6 +10,7 @@ import { renderAllocationCard } from './allocation.js';
 import { showError, withFlash } from './feedback.js';
 import { riskDollars } from './risk.js';
 import { requireKey } from './settings.js';
+import { dayRange } from './stops.js';
 
 export function removePinned(cardId) {
   delete state.pinnedData[cardId];
@@ -91,8 +92,8 @@ export async function refreshCardData(d) {
     d.spreadPct = d.mid > 0 ? (d.ask - d.bid) / d.mid * 100 : 0;
   }
   // default stops track the fresh session levels; a user-set stop stays put
-  if (d.stopName === 'LOD') d.stopLevel = uq.low || d.stopLevel;
-  if (d.stopName === 'HOD') d.stopLevel = uq.high || d.stopLevel;
+  if (d.stopName === 'LOD') d.stopLevel = dayRange(uq).low || d.stopLevel;
+  if (d.stopName === 'HOD') d.stopLevel = dayRange(uq).high || d.stopLevel;
   d.asOf = inZone(Date.now());
   recalcPinnedStop(d);
 }

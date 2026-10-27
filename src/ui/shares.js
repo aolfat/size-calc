@@ -11,7 +11,7 @@ import { renderAdr } from './daily.js';
 import { withFlash } from './feedback.js';
 import { riskDollars, syncFromDollar } from './risk.js';
 import { updateStickyBar } from './sticky-bar.js';
-import { currentAtr5, entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName, updateStopAdjustment } from './stops.js';
+import { currentAtr5, dayRange, entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName, updateStopAdjustment } from './stops.js';
 import { orbEntryName, renderOrb } from './orb.js';
 import { updateTradeButton } from './trade.js';
 
@@ -61,16 +61,25 @@ export function updateModeSections() {
   document.getElementById('optionTicket').style.display = quoteShown && state.currentMode === 'options' && state.railDetailSym ? '' : 'none';
 }
 
+/** the quote bar's LOD / HOD: the day's range the default stops use (extended hours in when Ext is on) */
+export function renderLevels() {
+  const q = state.quoteData;
+  const price = q.last || q.ask || 0;
+  const { low: lod, high: hod } = dayRange(q);
+  const lodPct = price > 0 ? ((lod - price) / price * 100).toFixed(2) : 0;
+  const hodPct = price > 0 ? ((hod - price) / price * 100).toFixed(2) : 0;
+  document.getElementById('qLod').textContent = fmt$(lod);
+  document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
+  document.getElementById('qHod').textContent = fmt$(hod);
+  document.getElementById('qHodPct').textContent = `(+${hodPct}%)`;
+}
+
 export function renderQuote() {
   updateSizingControls();
   const q = state.quoteData;
   const price = q.last || q.ask || 0;
-  const lod = q.low || 0;
-  const hod = q.high || 0;
   const chg = q.change || 0;
   const chgPct = q.change_percentage || 0;
-  const lodPct = price > 0 ? ((lod - price) / price * 100).toFixed(2) : 0;
-  const hodPct = price > 0 ? ((hod - price) / price * 100).toFixed(2) : 0;
 
   document.getElementById('qTicker').textContent = q.symbol + '  ';
   document.getElementById('qPrice').textContent = fmt$(price);
@@ -78,10 +87,7 @@ export function renderQuote() {
   chgEl.textContent = ` ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)} (${chgPct >= 0 ? '+' : ''}${fmtN(chgPct, 2)}%)`;
   chgEl.className = 'quote-chg ' + (chg >= 0 ? 'up' : 'dn');
   renderExt(q);
-  document.getElementById('qLod').textContent = fmt$(lod);
-  document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
-  document.getElementById('qHod').textContent = fmt$(hod);
-  document.getElementById('qHodPct').textContent = `(+${hodPct}%)`;
+  renderLevels();
   document.getElementById('qVol').textContent = 'Vol ' + Number(q.volume || 0).toLocaleString();
 
   renderAdr();
