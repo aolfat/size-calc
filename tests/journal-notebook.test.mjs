@@ -189,6 +189,41 @@ test('the check-in and plan save field by field; the plan is stamped written; th
   assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').planned_at, null, 'tapping the lit one clears it, and the stamp');
 });
 
+test('woke up before the open: a checkmark in the check-in, tapped on and off, never needed for the plan', async () => {
+  const { run, out, writes, supabase } = await journal({ days: [{ day: '2026-10-05', woke_early: true }] });
+  assert.equal(run("cleanDayRow({ woke_early: 'yes' }).woke_early"), false, 'only true is true');
+  run("openJournalDay('2026-10-06')");
+  assert.match(out(), /aria-label="Premarket"[\s\S]*Sleep and energy[\s\S]*<button class="filter-btn" aria-pressed="false" data-action="toggleWokeEarly">Woke up before the open<\/button>[\s\S]*Where you're trading/);
+  run('toggleWokeEarly()');
+  await settle();
+  assert.deepEqual(writes('journal_days').map(w => [w.day, w.woke_early]), [['2026-10-06', true]]);
+  assert.deepEqual(Object.keys(writes('journal_days')[0]).filter(k => !['table', 'onConflict', 'ignoreDuplicates', 'day'].includes(k)), ['woke_early'], 'only its own column');
+  assert.match(out(), /class="filter-btn active" aria-pressed="true" data-action="toggleWokeEarly">✓ Woke up before the open/);
+  assert.match(out(), /To write: how you feel/, 'the checkmark alone never writes the plan');
+  run('toggleWokeEarly()');
+  await settle();
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').woke_early, false, 'tapped again, off');
+  run("stepJournalDay(-1)");
+  assert.match(out(), /aria-pressed="true" data-action="toggleWokeEarly">✓ Woke up/, 'read back from the database');
+});
+
+test('before the woke up early column is pushed the checkmark is greyed out, and the rest of the check-in saves', async () => {
+  const supabase = fakeRecords(RECORDS, []);
+  supabase.failColumn('journal_days', 'woke_early');
+  const a = await app({ supabase, session: SESSION, clock: true, now: Date.parse('2026-10-06T21:00:00Z') });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  const out = () => a.elements.get('journalSection').innerHTML;
+  assert.match(a.state.journalReview.wokeError, /npx supabase db push/);
+  assert.equal(a.state.journalReview.notebookError, '');
+  a.run("openJournalDay('2026-10-06')");
+  assert.match(out(), /data-action="toggleWokeEarly" disabled title="Needs a database update: [^"]*npx supabase db push">Woke up/);
+  a.run("toggleWokeEarly(); setDayEnergy('ok')");
+  await settle();
+  assert.deepEqual(supabase.writes.filter(w => w.table === 'journal_days').map(w => w.energy), ['ok'], 'only the energy saved');
+});
+
 test('goals and rules: added, reworded, moved and retired in place, each a library row', async () => {
   const { run, out, writes, supabase } = await journal();
   run("openJournalDay('2026-10-06'); editNotebookList('rule')");
