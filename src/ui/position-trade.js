@@ -5,11 +5,11 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { closingInstruction, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
-import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
+import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
-import { positionStopPlaced, positionTargetPlaced } from './position-chart.js';
+import { R_CHIPS, positionStopPlaced, positionTargetPlaced } from './position-chart.js';
 import { positionRUnit, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -75,7 +75,7 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
   if (kind === 'close') {
     const all = closePlan(row); // what blocks any close of it
     if (all.error) { t.error = all.error; return t; }
-    t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
+    t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, r: null, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
     planClose(t);
   } else if (kind === 'target') planTarget(t);
   else {
@@ -172,7 +172,55 @@ export function setClosePrice(value) {
   const t = closeOpen();
   if (!t) return;
   t.close.price = parseFloat(value) || 0;
+  t.close.r = null; // a typed price is a price; the R box follows it
+  closeRSync(t, 'posCloseR');
   closeChanged(false);
+}
+
+/** typing the limit in R: the price follows, on the order grid; the input keeps what was typed */
+export function setCloseRText(value) {
+  const t = closeOpen();
+  if (!t) return;
+  const r = parseFloat(value), per = positionRUnit(t.row).per;
+  t.close.r = r > 0 ? r : null;
+  if (t.close.r && per) t.close.price = rTargetPrice(t.row, t.close.r, per);
+  closeRSync(t, 'posClosePrice');
+  closeChanged(false);
+}
+
+/** an R chip: the limit that many R from your cost */
+export function setCloseR(r) {
+  const t = closeOpen(), per = t && positionRUnit(t.row).per;
+  const price = per && r > 0 ? rTargetPrice(t.row, r, per) : 0;
+  if (!price) return;
+  Object.assign(t.close, { type: 'LIMIT', r, price });
+  closeChanged(true);
+}
+
+/** the close limit's R: what was typed or picked, else the limit counted in R */
+function closeRText(t) {
+  const c = t.close, per = positionRUnit(t.row).per;
+  if (c.r > 0) return String(c.r);
+  const g = per && c.price > 0 ? targetGain(t.row, c.price, 1, per) : null;
+  return g && g.r !== null && g.r > 0 ? g.r.toFixed(1) : '';
+}
+
+/** typing redraws only the detail, so the other box and the lit R chip are set here */
+function closeRSync(t, id) {
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById(id));
+  if (input) input.value = id === 'posCloseR' ? closeRText(t) : closePriceText(t);
+  const chips = document.getElementById('posCloseRChips');
+  if (chips) chips.innerHTML = closeRChips(t, positionRUnit(t.row));
+}
+
+const closePriceText = t => t.close.price > 0 ? t.close.price.toFixed(t.row.tradeAs === 'OPTION' || t.close.price >= 1 ? 2 : 4) : '';
+
+function closeRChips(t, unit) {
+  return R_CHIPS.map(r => {
+    const at = unit.per ? rTargetPrice(t.row, r, unit.per) : 0, ok = at > 0 && !t.sent, on = ok && t.close.r === r;
+    const title = at > 0 ? fmtPositionPrice(at, t.row.tradeAs) : unit.why || 'No risk to count R from.';
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setCloseR" data-arg="${r}" title="${esc(title)}"${ok ? '' : ' disabled'}>${r}R</button>`;
+  }).join('');
 }
 
 function planTarget(t) {
@@ -464,18 +512,21 @@ function closeForm(t, duration) {
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setClosePortion" data-arg="${f}" title="${why}"${ok ? '' : ' disabled'}>${f >= 1 ? 'All' : Math.round(f * 100) + '%'}</button>`;
   }).join('');
   const what = `${row.tradeAs === 'OPTION' ? 'Contracts' : 'Shares'} to ${row.qty > 0 ? 'sell' : 'buy back'}`;
-  const price = c.price > 0 ? c.price.toFixed(row.tradeAs === 'OPTION' || c.price >= 1 ? 2 : 4) : '';
+  const price = closePriceText(t), unit = positionRUnit(row);
+  const per = unit.per ? `1R is ${fmt$(unit.per)} a ${row.tradeAs === 'OPTION' ? 'contract' : 'share'}, from ${rUnitWords(unit, row)}` : unit.why || 'No risk to count R from.';
   return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div></dd></div>
     <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="Percent of the position">${chips}</div></div></dd></div>
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark</span></dd></div>
+    <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span></dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>` : ''}`;
 }
 
 /** what the close brings in (or costs, for a short) and what it makes over your cost */
 function closeEstimate(t) {
   const row = t.row, limit = t.close.type === 'LIMIT', n = t.close.qty, at = limit ? t.price : row.price;
-  const g = targetGain(row, at, n);
-  const gain = g.gain === null ? '' : ` · <span class="${g.gain >= 0 ? 'pos-locked' : 'pos-loss'}">${(g.gain >= 0 ? '+' : '−') + fmt$(Math.abs(g.gain))}</span> (${g.pct >= 0 ? '+' : '−'}${Math.abs(g.pct).toFixed(1)}%) on your cost`;
+  const g = targetGain(row, at, n, positionRUnit(row).per);
+  const r = g.r === null ? '' : ` · ${g.r >= 0 ? '' : '−'}${Math.abs(g.r).toFixed(1)}R`;
+  const gain = g.gain === null ? '' : ` · <span class="${g.gain >= 0 ? 'pos-locked' : 'pos-loss'}">${(g.gain >= 0 ? '+' : '−') + fmt$(Math.abs(g.gain))}</span> (${g.pct >= 0 ? '+' : '−'}${Math.abs(g.pct).toFixed(1)}%) on your cost${r}`;
   return `<div><dt>Estimate</dt><dd>${fmt$(n * at * row.mult)}<span class="shares-detail">${limit ? 'If it fills at the limit' : "At Schwab's mark, before the fill"}${gain}</span></dd></div>`;
 }
 
