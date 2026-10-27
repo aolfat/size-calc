@@ -1,4 +1,4 @@
-// Position chart: one Schwab position's charts with its average cost, stops and targets drawn on them: its 5-minute bars
+// Position chart: one Schwab position's charts with its average cost, stops and targets drawn on them: today's 5-minute bars
 // (Tradier timesales, with VWAP and the prior day's high, low and close) beside its daily (Tradier history); an option's are the
 // contract's own. And the profit-target form: tap either chart (or type it, or
 // set it in R) for the price, pick a portion, review it in the position sheet. Or Stop: tap (or type) the stop, see what it covers and risks,
@@ -7,7 +7,7 @@
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { clampView, viewRange } from '../core/chart-view.js';
-import { fmt$, marketEscape as esc } from '../core/format.js';
+import { fmt$, marketEscape as esc, nyDateStr } from '../core/format.js';
 import { optionPriceTick, priceTick } from '../core/orders.js';
 import { breakevenAdd, closersInTheWay, fmtPositionPrice, positionLevels, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
 import { sessionVwap } from '../core/trade-page.js';
@@ -21,29 +21,35 @@ import { maxLossPerTrade } from './risk.js';
 export const PORTIONS = [[0.1, '10%'], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [1, 'All']];
 // target chips in R: that many times the risk per share above your cost (below on a short)
 export const R_CHIPS = [1, 2, 3, 5];
-// range chips: sessions of daily bars, sessions of 5-minute bars
+// range chips on the daily, in sessions (the 5-minute pane is the latest session only)
 const DAILY_CHIPS = [[21, '1M'], [63, '3M'], [126, '6M'], [252, '1Y']];
-const FIVE_CHIPS = [[1, '1D'], [2, '2D'], [5, '5D'], [10, '10D']];
 const units = (option, n) => `${n.toLocaleString('en-US')} ${option ? (n === 1 ? 'contract' : 'contracts') : (n === 1 ? 'share' : 'shares')}`;
 
-/** the bars in the last n sessions: a thin contract trades fewer than 78 a day */
-function sessionBars(bars, n) {
-  const days = [...new Set(bars.map(b => b.date))].slice(-n);
-  return bars.filter(b => days.includes(b.date)).length;
+/** the latest session's bars: today's once the market has traded, else the last day the symbol traded */
+export function latestSession(bars) {
+  const day = bars.length ? bars[bars.length - 1].date : '';
+  return bars.filter(b => b.date === day);
+}
+
+/** what the 5-minute pane's caption calls its session: 'today', or the day it is from ('Fri 10/24') */
+export function sessionWords(date, today = nyDateStr(new Date())) {
+  if (!date || date === today) return 'today';
+  const d = new Date(date + 'T12:00:00Z');
+  return `${d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })} ${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 }
 
 // the two panes, 5-minute first (left when they sit side by side, on top when stacked), and their elements' id suffixes
 const PANES = ['five', 'daily'];
 const SUFFIX = { five: '5', daily: 'D' };
 
-// a pane: one timeframe's bars, VWAP (5-minute only), view, range chip, hover and load state
+// a pane: one timeframe's bars, VWAP (5-minute only), view, range chip (daily only), hover and load state
 function newPane(kind) {
-  const range = kind === 'five' ? 2 : state.dailyRange; // two sessions of 5-minute bars, the daily_range preference on the daily
+  const range = kind === 'five' ? 0 : state.dailyRange; // the daily starts at the daily_range preference
   return { kind, bars: [], vwap: [], view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1 };
 }
 
-// what a range chip shows: n sessions back from now
-const rangeView = p => ({ count: p.kind === 'five' ? Math.max(1, sessionBars(p.bars, p.range)) : p.range, offset: 0 });
+// the pane's whole view: the whole session on the 5-minute, the range chip's sessions back from now on the daily
+const rangeView = p => ({ count: p.kind === 'five' ? Math.max(1, p.bars.length) : p.range, offset: 0 });
 
 /** the open chart's position in the last Schwab read, or null */
 function chartRow() {
@@ -80,7 +86,7 @@ async function loadPane(c, kind) {
   let bars = [], error = '';
   try {
     bars = five
-      ? (await fetchFiveMinuteBars(sym)).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }))
+      ? latestSession((await fetchFiveMinuteBars(sym)).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 })))
       : await dailyHistory(sym);
     error = bars.length ? '' : c.option ? (five ? `Tradier shows no trades in ${c.label} in the last two weeks.` : `Tradier has no daily history for ${c.label}.`)
       : five ? `Tradier shows no 5-minute bars for ${c.symbol} in the last two weeks.` : `Tradier has no daily history for ${c.symbol}.`;
@@ -228,9 +234,9 @@ export function togglePosChartAvg() {
   drawPositionChart();
 }
 
-/** a range chip on one pane ('five' or 'daily'); the other pane keeps its own */
-export function setPosChartRange(count, kind) {
-  const p = state.posChart && state.posChart[kind === 'daily' ? 'daily' : 'five'];
+/** a range chip on the daily */
+export function setPosChartRange(count) {
+  const p = state.posChart && state.posChart.daily;
   if (!p) return;
   p.range = count;
   p.view = rangeView(p); // tapping the lit chip again is the reset
@@ -407,12 +413,15 @@ function priorDayLines(c) {
 /** one pane's chips, Today and candles; returns its geometry, or null when it isn't drawn */
 function drawPane(c, p, row) {
   const n = p.bars.length, sfx = SUFFIX[p.kind];
-  // a chip lights while the view shows exactly its range
-  const active = n && Math.round(clampView(p.view, n).count) === Math.round(clampView(rangeView(p), n).count) ? p.range : 0;
-  const chips = (p.kind === 'five' ? FIVE_CHIPS : DAILY_CHIPS).map(([count, label]) =>
-    `<button class="filter-btn${count === active ? ' active' : ''}" data-action="setPosChartRange" data-arg="${count}" data-arg2="${p.kind}">${label}</button>`).join('');
-  const ranges = document.getElementById('posChartRanges' + sfx);
-  if (ranges.innerHTML !== chips) ranges.innerHTML = chips; // hover redraws often; the chips rarely change
+  if (p.kind === 'five') document.getElementById('posChartDay5').textContent = n ? sessionWords(p.bars[0].date) : '';
+  else {
+    // a chip lights while the view shows exactly its range
+    const active = n && Math.round(clampView(p.view, n).count) === Math.round(clampView(rangeView(p), n).count) ? p.range : 0;
+    const chips = DAILY_CHIPS.map(([count, label]) =>
+      `<button class="filter-btn${count === active ? ' active' : ''}" data-action="setPosChartRange" data-arg="${count}">${label}</button>`).join('');
+    const ranges = document.getElementById('posChartRangesD');
+    if (ranges.innerHTML !== chips) ranges.innerHTML = chips; // hover redraws often; the chips rarely change
+  }
   document.getElementById('posChartToday' + sfx).style.display = n && viewRange(p.view, n).end < n ? '' : 'none';
   if (!n) return null;
   const canvas = document.getElementById('posChart' + sfx);

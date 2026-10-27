@@ -61,14 +61,15 @@
 .pos-chart .chart-head .section-title::after { display: none; }
 .pos-chart-meta { font-size: 12px; color: var(--text2); font-family: var(--num); }
 .pos-chart #posChartStatus:empty { display: none; }
-.pos-chart .chart-cap { display: flex; gap: 5px; align-items: center; }
+.pos-chart .chart-cap { display: flex; gap: 5px; align-items: center; min-height: 19px; } /* a chip's height, so the 5 min plot (no chips) lines up with the daily's */
 .pos-chart .chart-cap .filter-btn { flex: none; padding: 2px 8px; font-size: 11px; }
 .pos-chart .chart-head .pos-chart-avg { margin-left: auto; flex: none; padding: 2px 8px; font-size: 11px; }
 .pos-chart .chart-head .pos-chart-avg + .sheet-close { margin-left: 0; }
 /* phones: Avg and × stay on the title's line, the meta goes under it */
 @media (max-width: 600px) { .pos-chart-meta { order: 1; flex-basis: 100%; } .pos-chart .chart-head .ohlc { order: 2; } }
 .pos-chart-kind { margin-right: 6px; }
-.pos-chart-ranges { display: contents; } /* range chips: 1D to 10D on the 5-minute pane, 1M to 1Y on the daily */
+.pos-chart-ranges { display: contents; } /* the daily's range chips, 1M to 1Y */
+.pos-chart-day { color: var(--text3); } /* the 5-minute pane's session: 'today', or the day it is from */
 .pos-chart-canvas { position: relative; }
 .pos-chart-today { position: absolute; right: 58px; bottom: 28px; padding: 2px 8px; font-size: 11px; }
 /* 5 min and daily: stacked (5 min on top) until the card is wide enough to set them side by side, 5 min the wider, like the
