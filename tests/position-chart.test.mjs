@@ -71,12 +71,13 @@ async function chartApp({ key = true, ...opts } = {}) {
   const net = network(opts);
   const h = await app({ fetch: net.fetch, storage: connected(key ? [['tradier_key', 'tk']] : []) });
   if (key) h.elements.get('apiKey').value = 'tk';
-  const canvas = fakeCanvas(h.elements.get('posChart'));
+  // canvas: the daily pane, canvas5: the 5-minute pane
+  const canvas5 = fakeCanvas(h.elements.get('posChart5')), canvas = fakeCanvas(h.elements.get('posChartD'));
   globalThis.window.addEventListener = () => {};
   h.run('initPositionChartEvents()');
   h.run("setView('positions')");
   await settle();
-  return { ...h, canvas, tradier: net.tradier };
+  return { ...h, canvas, canvas5, tradier: net.tradier };
 }
 
 const tableRow = (elements, symbol) => elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes(`<b>${symbol}`)) || '';
@@ -90,7 +91,7 @@ test('stocks and options get a Chart button; cash does not', async () => {
   assert.doesNotMatch(tableRow(elements, 'SWVXX'), /togglePositionChart/);
 });
 
-test('Chart opens the position\'s daily next to the table, and tapping it again closes it', async () => {
+test('Chart opens the position\'s 5-minute and daily charts next to the table, and tapping it again closes it', async () => {
   const { run, elements, tradier } = await chartApp();
   assert.equal(elements.get('posChartSection').style.display, 'none');
   run("actions.togglePositionChart({ dataset: { arg: 'HOOD' } })");
@@ -98,10 +99,14 @@ test('Chart opens the position\'s daily next to the table, and tapping it again 
   assert.equal(elements.get('posChartSection').style.display, '');
   assert.ok(elements.get('positionsSplit').classList.contains('open'), 'beside the table on the desktop shell');
   assert.match(tableRow(elements, 'HOOD'), /class="pos-act active" aria-pressed="true" data-action="togglePositionChart"/);
-  assert.equal(tradier.length, 1);
-  assert.match(tradier[0], /symbol=HOOD&interval=daily/);
-  assert.equal(run('posChart.bars.length'), 260);
+  assert.equal(tradier.length, 2, 'both at once');
+  assert.match(decodeURIComponent(tradier[0]), /\/markets\/timesales\?symbol=HOOD&interval=5min/);
+  assert.match(tradier[1], /symbol=HOOD&interval=daily/);
+  assert.equal(run('posChart.five.bars.length'), 30);
+  assert.equal(run('posChart.daily.bars.length'), 260);
   assert.equal(elements.get('posChartPlot').style.display, '');
+  assert.equal(elements.get('posCol5').style.display, '');
+  assert.equal(elements.get('posColD').style.display, '');
   assert.equal(elements.get('posChartStatus').textContent, '');
   assert.equal(elements.get('posChartTitle').textContent, 'HOOD');
   assert.equal(elements.get('posChartMeta').textContent, 'Long 300 shares · avg $38.20 · now $41.10');
@@ -196,7 +201,7 @@ test('tapping the chart sets the target price, taking a candle\'s exact high whe
   const { run, elements, canvas } = await chartApp();
   run("togglePositionChart('HOOD')");
   await settle();
-  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
   const lastX = g.x(259);
   canvas('mousedown', { clientX: lastX });
   canvas('click', { clientX: lastX, clientY: g.y(46) + 4 });
@@ -220,16 +225,16 @@ test('hover shows the price and its distance from now, snapped like a tap', asyn
   const { run, elements, canvas } = await chartApp();
   run("togglePositionChart('HOOD')");
   await settle();
-  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
-  elements.get('posChart').clientWidth = 458;
-  elements.get('posChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  elements.get('posChartD').clientWidth = 458;
+  elements.get('posChartD').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
   canvas('mousemove', { clientX: g.x(259), clientY: g.y(46) + 3 });
-  assert.equal(run('posChart.hover'), 259);
-  assert.ok(Math.abs(run('posChart.hoverY') - g.y(46)) < 1e-9, 'the crosshair sits on the high');
+  assert.equal(run('posChart.daily.hover'), 259);
+  assert.ok(Math.abs(run('posChart.daily.hoverY') - g.y(46)) < 1e-9, 'the crosshair sits on the high');
   assert.match(elements.get('posChartOhlc').innerHTML, /^\$46\.00 \(\+11\.9% from now\)/);
   canvas('mouseleave', {});
-  assert.equal(run('posChart.hover'), -1);
+  assert.equal(run('posChart.daily.hover'), -1);
   assert.equal(elements.get('posChartOhlc').textContent, '');
   delete globalThis.getComputedStyle;
 });
@@ -263,18 +268,22 @@ test('a short reads as buying back', async () => {
   assert.match(elements.get('posTargetSummary').innerHTML, /no stop, so the target goes alone/);
 });
 
-test('range chips and Today work on the position chart\'s own view', async () => {
+test('range chips and Today work on each pane\'s own view', async () => {
   const { run, elements } = await chartApp();
   run("togglePositionChart('HOOD')");
   await settle();
-  run("actions.setPosChartRange({ dataset: { arg: '252' } })");
-  assert.deepEqual({ ...run('viewRange(posChart.view, 260)') }, { start: 8, end: 260 });
+  assert.match(elements.get('posChartRangesD').innerHTML, /class="filter-btn active" data-action="setPosChartRange" data-arg="63" data-arg2="daily">3M</);
+  assert.match(elements.get('posChartRanges5').innerHTML, /class="filter-btn active" data-action="setPosChartRange" data-arg="2" data-arg2="five">2D</);
+  run("actions.setPosChartRange({ dataset: { arg: '252', arg2: 'daily' } })");
+  assert.deepEqual({ ...run('viewRange(posChart.daily.view, 260)') }, { start: 8, end: 260 });
+  assert.equal(run('posChart.five.view.count'), 20, 'the 5-minute pane keeps its two sessions');
   assert.equal(run('dailyView.count'), 63, 'the calculator\'s daily is untouched');
-  run('posChart.view = panView(posChart.view, 260, 5); drawPositionChart()');
-  assert.equal(elements.get('posChartToday').style.display, '');
-  run('actions.posChartToday()');
-  assert.equal(run('posChart.view.offset'), 0);
-  assert.equal(elements.get('posChartToday').style.display, 'none');
+  run('posChart.daily.view = panView(posChart.daily.view, 260, 5); drawPositionChart()');
+  assert.equal(elements.get('posChartTodayD').style.display, '');
+  assert.equal(elements.get('posChartToday5').style.display, 'none');
+  run("actions.posChartToday({ dataset: { arg: 'daily' } })");
+  assert.equal(run('posChart.daily.view.offset'), 0);
+  assert.equal(elements.get('posChartTodayD').style.display, 'none');
 });
 
 test('leaving Positions hides the chart; coming back shows it again; switching accounts closes it', async () => {
@@ -302,104 +311,123 @@ test('a position Schwab stops showing leaves the chart up but blocks the review'
   assert.equal(elements.get('posChartMeta').textContent, '');
 });
 
-test('no daily history says so instead of drawing', async () => {
+test('no daily history says so, and the 5-minute chart takes the card', async () => {
   const { run, elements } = await chartApp({ bars: [] });
   run("togglePositionChart('HOOD')");
   await settle();
-  assert.match(elements.get('posChartStatus').textContent, /Tradier has no daily history for HOOD/);
-  assert.equal(elements.get('posChartPlot').style.display, 'none');
+  assert.match(elements.get('posChartStatus').textContent, /^Tradier has no daily history for HOOD\.$/);
+  assert.equal(elements.get('posChartPlot').style.display, '');
+  assert.equal(elements.get('posCol5').style.display, '');
+  assert.equal(elements.get('posColD').style.display, 'none');
 });
 
-// ---------- option positions: the contract's own 5-minute chart ----------
-
-test('an option\'s chart is the contract\'s 5-minute bars from Tradier, with session chips and contract wording', async () => {
-  const { run, elements, tradier } = await chartApp();
-  run(`togglePositionChart('${OPT}')`);
-  await settle();
-  assert.equal(tradier.length, 1);
-  assert.match(decodeURIComponent(tradier[0]), /\/markets\/timesales\?symbol=HOOD261218C00050000&interval=5min&start=\S+ 09:30&end=\S+ 16:00&session_filter=open/);
-  assert.equal(run('posChart.bars.length'), 30);
-  assert.deepEqual({ ...run('posChart.bars[29]') }, { date: '2026-10-12', time: '10:15', open: 3, high: 3.6, low: 2.8, close: 3.1 });
-  assert.equal(elements.get('posChartTitle').textContent, 'HOOD 12/18/26 50C');
-  assert.equal(elements.get('posChartMeta').textContent, 'Long 2 contracts · avg $2.50 · now $3.00');
-  assert.equal(elements.get('posChartKind').innerHTML, '5 min', 'an option has no daily switch');
-  assert.equal(elements.get('posTargetQtyLabel').textContent, 'Contracts to sell');
-  const chips = () => elements.get('posChartRanges').innerHTML;
-  for (const [n, label] of [[1, '1D'], [2, '2D'], [5, '5D'], [10, '10D']]) assert.match(chips(), new RegExp(`data-action="setPosChartRange" data-arg="${n}"[^>]*>${label}<`));
-  assert.match(chips(), /class="filter-btn active" data-action="setPosChartRange" data-arg="2"/, 'two sessions to start');
-  assert.equal(run('posChart.view.count'), 20, 'the bars of the last two sessions, however many traded');
-  run("actions.setPosChartRange({ dataset: { arg: '1' } })");
-  assert.equal(run('posChart.view.count'), 10);
-  assert.match(chips(), /class="filter-btn active" data-action="setPosChartRange" data-arg="1"/);
-  run('setPosChartRange(10)');
-  assert.equal(run('posChart.view.count'), 30, 'all there is');
-
-  // a stock's chart keeps the daily chips
-  run("togglePositionChart('HOOD')");
-  await settle();
-  assert.match(elements.get('posChartKind').innerHTML, /class="filter-btn active" aria-pressed="true" data-action="setPosChartInterval" data-arg="daily">Daily</);
-  assert.match(chips(), /data-arg="63"[^>]*>3M</);
-});
-
-test('a stock\'s chart switches between Daily and 5 min, reads each from Tradier once, and remembers the pick', async () => {
-  const { run, elements, tradier, storage } = await chartApp();
-  run("togglePositionChart('HOOD')");
-  await settle();
-  assert.equal(tradier.length, 1);
-  const kinds = () => elements.get('posChartKind').innerHTML;
-  assert.match(kinds(), /data-arg="5m">5 min</);
-  run("actions.setPosChartInterval({ dataset: { arg: '5m' } })");
-  await settle();
-  assert.equal(tradier.length, 2);
-  assert.match(decodeURIComponent(tradier[1]), /\/markets\/timesales\?symbol=HOOD&interval=5min/);
-  assert.equal(run('posChart.bars.length'), 30);
-  assert.equal(run('posChart.bars[29].time'), '10:15', 'bars carry their time for the readout and ticks');
-  assert.match(kinds(), /class="filter-btn active" aria-pressed="true" data-action="setPosChartInterval" data-arg="5m"/);
-  assert.match(elements.get('posChartRanges').innerHTML, /class="filter-btn active" data-action="setPosChartRange" data-arg="2"/, 'two sessions to start');
-  assert.equal(run('posChart.view.count'), 20);
-  assert.equal(elements.get('posTargetQtyLabel').textContent, 'Shares to sell', 'still shares');
-  assert.equal(storage.get('pos_chart_five'), '1');
-
-  run("setPosChartInterval('daily')");
-  await settle();
-  assert.equal(tradier.length, 2, 'the daily was already read');
-  assert.equal(run('posChart.bars.length'), 260);
-  assert.match(elements.get('posChartRanges').innerHTML, /data-arg="63"[^>]*>3M</);
-  run("setPosChartInterval('5m')");
-  assert.equal(tradier.length, 2, 'and so were the 5-minute bars');
-  assert.equal(run('posChart.bars.length'), 30);
-
-  // the next chart opens on 5 min; an option ignores the switch
-  run("togglePositionChart('TSLA')");
-  await settle();
-  assert.match(decodeURIComponent(tradier[2]), /timesales\?symbol=TSLA&interval=5min/);
-  run(`togglePositionChart('${OPT}')`);
-  await settle();
-  run("setPosChartInterval('daily')");
-  assert.equal(run('posChart.five'), true);
-});
-
-test('a stock\'s 5-minute bars that Tradier won\'t send say so', async () => {
+test('5-minute bars Tradier won\'t send say so, and the daily takes the card', async () => {
   const { run, elements } = await chartApp({ fiveFails: true });
   run("togglePositionChart('HOOD')");
   await settle();
-  run("setPosChartInterval('5m')");
-  await settle();
   assert.equal(elements.get('posChartStatus').textContent, "Tradier would not send HOOD's 5-minute bars. They need a brokerage-linked key.");
-  assert.equal(elements.get('posChartPlot').style.display, 'none');
-  run("setPosChartInterval('daily')");
+  assert.equal(elements.get('posCol5').style.display, 'none');
+  assert.equal(elements.get('posColD').style.display, '');
+  assert.equal(run('posChart.daily.bars.length'), 260);
+});
+
+test('neither chart: the plot hides and the note says why for each', async () => {
+  const { run, elements } = await chartApp({ bars: [], fiveFails: true });
+  run("togglePositionChart('HOOD')");
   await settle();
-  assert.equal(elements.get('posChartStatus').textContent, '');
-  assert.equal(run('posChart.bars.length'), 260);
+  assert.equal(elements.get('posChartStatus').textContent, "Tradier would not send HOOD's 5-minute bars. They need a brokerage-linked key. Tradier has no daily history for HOOD.");
+  assert.equal(elements.get('posChartPlot').style.display, 'none');
+});
+
+test('while they load the note says so, and a chart closed meanwhile stays closed', async () => {
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const net = network();
+  const h = await app({ fetch: async url => { if (url.includes('/markets/')) await gate; return net.fetch(url); }, storage: connected([['tradier_key', 'tk']]) });
+  h.elements.get('apiKey').value = 'tk';
+  h.run("setView('positions')");
+  await settle();
+  h.run("togglePositionChart('HOOD')");
+  assert.equal(h.elements.get('posChartStatus').textContent, 'Loading the HOOD 5-minute chart… Loading the HOOD daily chart…');
+  assert.equal(h.elements.get('posChartPlot').style.display, 'none');
+  h.run('closePositionChart()');
+  release();
+  await settle();
+  assert.equal(h.run('posChart'), null);
+});
+
+// ---------- the 5-minute pane: VWAP, the prior day's levels ----------
+
+test('the 5-minute pane carries volume and its session VWAP, and draws the prior day\'s levels that fit its scale', async () => {
+  // daily bars to 10/09 and 10/12, the second inside the 5-minute chart's $2.80 to $3.60
+  const days = [{ date: '2026-10-09', open: 3, high: 3.4, low: 2.9, close: 3.05 }, { date: '2026-10-12', open: 3, high: 3.6, low: 2.8, close: 3.1 }];
+  const { run, elements } = await chartApp({ bars: days });
+  run(`togglePositionChart('${OPT}')`);
+  await settle();
+  assert.deepEqual({ ...run('posChart.five.bars[29]') }, { date: '2026-10-12', time: '10:15', open: 3, high: 3.6, low: 2.8, close: 3.1, volume: 5 });
+  assert.equal(run('posChart.five.vwap.length'), 30);
+  assert.ok(Math.abs(run('posChart.five.vwap[0]') - 9.1 / 3) < 1e-9, 'the first bar\'s typical price');
+  assert.equal(run('posChart.daily.vwap.length'), 0, 'the daily has none');
+  assert.deepEqual({ ...run('priorDay(posChart.five.bars, posChart.daily.bars)') }, { h: 3.4, l: 2.9, c: 3.05 }, 'the session before 10/12, not 10/12 itself');
+  assert.equal(run('priorDay([], posChart.daily.bars)'), null);
+
+  const texts = [];
+  for (const id of ['posChart5', 'posChartD']) {
+    elements.get(id).clientWidth = 458;
+    elements.get(id).getContext = () => new Proxy({ measureText: () => ({ width: 40 }), fillText: t => texts.push(id + ':' + t) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  }
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
+  run('drawPositionChart()');
+  for (const l of ['PDH', 'PDL', 'PDC']) assert.ok(texts.includes('posChart5:' + l), l + ' on the 5-minute pane');
+  assert.ok(!texts.some(t => /^posChartD:PD/.test(t)), 'not on the daily');
+  assert.ok(texts.includes('posChart5:avg 2.50') && texts.includes('posChartD:avg 2.50'), 'your lines on both');
+
+  // a prior day far from the bars stays off the chart and off its scale
+  texts.length = 0;
+  run("posChart.daily.bars = [{ date: '2026-10-09', open: 9, high: 9.5, low: 8, close: 9 }, ...posChart.daily.bars.slice(1)]; drawPositionChart()");
+  assert.ok(!texts.some(t => /^posChart5:PD/.test(t)));
+  assert.ok(!texts.some(t => /^posChart5:\$9/.test(t)), 'the scale ignores it');
+  delete globalThis.getComputedStyle;
+});
+
+// ---------- option positions: the contract's own charts ----------
+
+test('an option\'s charts are the contract\'s own bars from Tradier, with session chips and contract wording', async () => {
+  const { run, elements, tradier } = await chartApp();
+  run(`togglePositionChart('${OPT}')`);
+  await settle();
+  assert.equal(tradier.length, 2);
+  assert.match(decodeURIComponent(tradier[0]), /\/markets\/timesales\?symbol=HOOD261218C00050000&interval=5min&start=\S+ 09:30&end=\S+ 16:00&session_filter=open/);
+  assert.match(tradier[1], /\/markets\/history\?symbol=HOOD261218C00050000&interval=daily/);
+  assert.equal(run('posChart.five.bars.length'), 30);
+  assert.equal(elements.get('posChartTitle').textContent, 'HOOD 12/18/26 50C');
+  assert.equal(elements.get('posChartMeta').textContent, 'Long 2 contracts · avg $2.50 · now $3.00');
+  assert.equal(elements.get('posTargetQtyLabel').textContent, 'Contracts to sell');
+  const chips = () => elements.get('posChartRanges5').innerHTML;
+  for (const [n, label] of [[1, '1D'], [2, '2D'], [5, '5D'], [10, '10D']]) assert.match(chips(), new RegExp(`data-action="setPosChartRange" data-arg="${n}" data-arg2="five">${label}<`));
+  assert.match(chips(), /class="filter-btn active" data-action="setPosChartRange" data-arg="2"/, 'two sessions to start');
+  assert.equal(run('posChart.five.view.count'), 20, 'the bars of the last two sessions, however many traded');
+  run("actions.setPosChartRange({ dataset: { arg: '1', arg2: 'five' } })");
+  assert.equal(run('posChart.five.view.count'), 10);
+  assert.match(chips(), /class="filter-btn active" data-action="setPosChartRange" data-arg="1"/);
+  run("setPosChartRange(10, 'five')");
+  assert.equal(run('posChart.five.view.count'), 30, 'all there is');
+});
+
+test('an option with no daily history says so in its own words', async () => {
+  const { run, elements } = await chartApp({ bars: [] });
+  run(`togglePositionChart('${OPT}')`);
+  await settle();
+  assert.match(elements.get('posChartStatus').textContent, /Tradier has no daily history for HOOD 12\/18\/26 50C\./);
 });
 
 test('tapping an option\'s chart sets the target on the option price grid, and the review pairs it with the option\'s stop', async () => {
-  const { run, elements, canvas } = await chartApp();
+  const { run, elements, canvas5 } = await chartApp();
   run(`togglePositionChart('${OPT}')`);
   await settle();
-  const g = run(`candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === '${OPT}')).map(l => l.price))`);
-  canvas('mousedown', { clientX: g.x(29) });
-  canvas('click', { clientX: g.x(29), clientY: g.y(3.47) });
+  const g = run(`candleGeom(posChart.five.bars, posChart.five.view, 458, positionLevels(positions.rows.find(r => r.symbol === '${OPT}')).map(l => l.price))`);
+  canvas5('mousedown', { clientX: g.x(29) });
+  canvas5('click', { clientX: g.x(29), clientY: g.y(3.47) });
   assert.equal(run('posChart.price'), 3.5, '$0.10 steps from $3');
   assert.equal(elements.get('posTargetPrice').value, '3.50');
   run('setPosTargetPortion(0.5)');
@@ -424,16 +452,18 @@ test('tapping an option\'s chart sets the target on the option price grid, and t
   assert.match(elements.get('posTradeBody').innerHTML, /While the target goes in, 1 contract has no stop for a moment/);
 });
 
-test('an option\'s hover readout shows the bar\'s time', async () => {
-  const { run, elements, canvas } = await chartApp();
+test('a 5-minute hover readout shows the bar\'s time and its VWAP', async () => {
+  const { run, elements, canvas5 } = await chartApp();
   run(`togglePositionChart('${OPT}')`);
   await settle();
-  const g = run(`candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === '${OPT}')).map(l => l.price))`);
-  elements.get('posChart').clientWidth = 458;
-  elements.get('posChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  const g = run(`candleGeom(posChart.five.bars, posChart.five.view, 458, positionLevels(positions.rows.find(r => r.symbol === '${OPT}')).map(l => l.price))`);
+  elements.get('posChart5').clientWidth = 458;
+  elements.get('posChart5').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
-  canvas('mousemove', { clientX: g.x(29), clientY: g.y(3.3) });
+  canvas5('mousemove', { clientX: g.x(29), clientY: g.y(3.3) });
   assert.match(elements.get('posChartOhlc').innerHTML, /\(\+10\.0% from now\) · 1\.6R &nbsp; 5m 10\/12 10:15 &nbsp; O 3\.00/);
+  // the last session's typical prices: nine bars of (3.2 + 2.8 + 3.1) / 3 and one of (3.6 + 2.8 + 3.1) / 3, equal volume
+  assert.match(elements.get('posChartOhlc').innerHTML, /&nbsp; VWAP 3\.05$/);
   delete globalThis.getComputedStyle;
 });
 
@@ -442,8 +472,8 @@ test('Avg hides the average cost line and lets the scale fit without it; the cho
   run(`togglePositionChart('${OPT}')`);
   await settle();
   const texts = [];
-  elements.get('posChart').clientWidth = 458;
-  elements.get('posChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }), fillText: t => texts.push(t) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  elements.get('posChartD').clientWidth = 458;
+  elements.get('posChartD').getContext = () => new Proxy({ measureText: () => ({ width: 40 }), fillText: t => texts.push(t) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
   const btn = elements.get('posChartAvgBtn');
   run('drawPositionChart()');
@@ -487,7 +517,7 @@ test('the Stop tool: a tap sets the stop, and the stop form says what it covers 
   assert.equal(elements.get('posChartTapHint').textContent, 'Tap the chart to set the stop');
   assert.equal(elements.get('posStopSummary').innerHTML, 'Tap the chart below the price, or type a stop.');
   assert.equal(elements.get('posStopReview').disabled, true);
-  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
   canvas('mousedown', { clientX: g.x(259) });
   canvas('click', { clientX: g.x(259), clientY: g.y(39) - 3 });
   assert.equal(run('posChart.stop'), 39, 'the session\'s low');
@@ -595,7 +625,7 @@ test('Move breakeven: a tap sets the stop, and the form says how many to add', a
   assert.equal(elements.get('posAddPrice').placeholder, 'now 41.10');
   assert.match(elements.get('posAddSummary').innerHTML, /Tap the chart where you want your stop, between your cost \$38\.20 and the price/);
 
-  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
   canvas('mousedown', { clientX: g.x(200) });
   canvas('click', { clientX: g.x(200), clientY: g.y(40) });
   assert.ok(Math.abs(run('posChart.addStop') - 40) <= 0.01, 'the tap is the stop, not the target');
@@ -628,9 +658,9 @@ test('Move breakeven: hovering says how many to add for a stop right there', asy
   run("togglePositionChart('HOOD')");
   await settle();
   run("setPosChartTool('add')");
-  const g = run('candleGeom(posChart.bars, posChart.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
-  elements.get('posChart').clientWidth = 458;
-  elements.get('posChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  elements.get('posChartD').clientWidth = 458;
+  elements.get('posChartD').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
   canvas('mousemove', { clientX: g.x(200), clientY: g.y(40) });
   assert.match(elements.get('posChartOhlc').innerHTML, /from now\) · add \d{3}/);
