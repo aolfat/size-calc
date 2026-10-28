@@ -1,5 +1,5 @@
-// A fake Supabase client over in-memory schwab_records, trade_reviews, trades, bars_5m, trade_labels, journal_days, library_items, period_reviews and trade_features tables, close enough to the real ones
-// for the journal tests: select(...).eq().in().order().limit() reads rows (records newest first when ordered),
+// A fake Supabase client over in-memory schwab_records, trade_reviews, trades, bars_5m, trade_labels, journal_days, library_items, period_reviews, trade_features and order_plans tables, close enough to the real ones
+// for the journal tests: select(...).eq().in().contains().order().limit() reads rows (records newest first when ordered),
 // upsert(rows, { ignoreDuplicates }) inserts or replaces by the table's key ((user, kind, record id), or (user, trade
 // key)), insert / update().eq() / delete().in() write trades rows by id (logged in tradeOps), fail() makes every call
 // answer with an error, failTable(name) only that table's (a migration not applied yet), and failColumn(name, col) only
@@ -14,12 +14,13 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
     period_reviews: r => `${u(r)}:${r.unit}:${r.period_key}`,
     trade_features: r => `${u(r)}:${r.trade_key}`,
     claude_keys: r => `${u(r)}:${r.id}`,
+    order_plans: r => `${u(r)}:${r.id}`,
   };
   const table = new Map(seed.map(r => [keys.schwab_records(r), { user_id: 'user-1', ...r }]));
   const reviews = new Map(reviewSeed.map(r => [keys.trade_reviews(r), { user_id: 'user-1', ...r }]));
   const trades = new Map(tradeSeed.map(r => [r.id, { ...r }]));
   const bars = new Map();
-  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map(), trade_shots: new Map(), model_books: new Map(), model_examples: new Map(), period_reviews: new Map(), trade_features: new Map(), claude_keys: new Map() };
+  const tables = { schwab_records: table, trade_reviews: reviews, trades, bars_5m: bars, settings: new Map(), trade_labels: new Map(), journal_days: new Map(), library_items: new Map(), trade_shots: new Map(), model_books: new Map(), model_examples: new Map(), period_reviews: new Map(), trade_features: new Map(), claude_keys: new Map(), order_plans: new Map() };
   // Storage: files by bucket and path; signed links are fake https URLs
   const files = new Map();
   const storageOps = []; // settings: an account with none, for a session resumed on boot
@@ -97,6 +98,7 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
           eq: (col, v) => { filters.push(r => r[col] === v); return q; },
           in: (col, list) => { const set = new Set(list); filters.push(r => set.has(r[col])); return q; },
           gte: (col, v) => { filters.push(r => String(r[col]) >= String(v)); return q; },
+          contains: (col, list) => { filters.push(r => list.every(v => (r[col] || []).includes(v))); return q; },
           order: () => { ordered = true; return q; },
           limit: () => q,
           then: (resolve, reject) => {

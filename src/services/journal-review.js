@@ -116,6 +116,13 @@ export async function addTradeLabel(key, kind, value) {
   refused(await c.from('trade_labels').upsert([{ trade_key: key, kind, value, set_by: 'you' }], { onConflict: 'user_id,trade_key,kind,value', ignoreDuplicates: true }), 'Supabase refused the save.');
 }
 
+/** labels the app put on a trade (an order plan's picks), with why; one you already have stays yours */
+export async function addAppLabels(key, labels, reason) {
+  const c = await client();
+  const rows = labels.map(([kind, value]) => ({ trade_key: key, kind, value, set_by: 'app', reason }));
+  refused(await c.from('trade_labels').upsert(rows, { onConflict: 'user_id,trade_key,kind,value', ignoreDuplicates: true }), 'Supabase refused the save.');
+}
+
 export async function removeTradeLabel(key, kind, value) {
   const c = await client();
   refused(await c.from('trade_labels').delete().eq('trade_key', key).eq('kind', kind).eq('value', value), 'Supabase refused the delete.');

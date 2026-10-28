@@ -8,6 +8,7 @@ import { fillWords, fillsFrom } from '../src/core/journal-records.js';
 import { holdWords, journalTrades } from '../src/core/journal.js';
 import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
 import { nyParts } from '../src/core/journal-stats.js';
+import { cleanPlanRow, matchPlans, planLines } from '../src/core/order-plans.js';
 
 /** label kinds a review sets, by the word a review uses for them */
 export const LABEL_FIELDS = { sector: 'sector', setups: 'setup', tactics: 'tactic', tags: 'tag', mistakes: 'mistake' };
@@ -21,8 +22,8 @@ export const dayOf = t => t.openedAt ? nyParts(t.openedAt).day : '';
 
 /**
  * The read made into the journal: trades newest first (deleted ones flagged), the library, and each trade's review,
- * labels and day market by key.
- * @param {{ records: any[], trades: any[], reviews: any[], labels: any[], days: any[], library: any[] }} data
+ * labels, day market and order plans (the Trade at Schwab sheet's, matched as the Journal does) by key.
+ * @param {{ records: any[], trades: any[], reviews: any[], labels: any[], days: any[], library: any[], order_plans?: any[] }} data
  * @param {{ now?: number }} [opts]
  */
 export function journalFrom(data, opts = {}) {
@@ -33,7 +34,8 @@ export function journalFrom(data, opts = {}) {
   const records = data.records || [];
   const fills = fillsFrom(records);
   const trades = journalTrades(fills, records, reviews, { now: opts.now ?? Date.now(), saved: data.trades || [] });
-  return { trades, fills, reviews, labels, days, rows: data.library || [], lib: buildLibrary(data.library || []) };
+  const plans = matchPlans(trades, (data.order_plans || []).map(cleanPlanRow).filter(Boolean));
+  return { trades, fills, reviews, labels, days, plans, rows: data.library || [], lib: buildLibrary(data.library || []) };
 }
 
 /** where a trade's review stands (core reviewState) */
@@ -94,6 +96,7 @@ export function tradeDetail(j, t) {
     `  entry note: ${rv.entry_note || '—'}`,
     `  exit note: ${rv.note || '—'}`,
     `  ${st.reviewed ? 'reviewed' : `missing: ${st.missing.join(', ')}`}`,
+    ...(j.plans?.get(t.key) ? ['order plan:', ...planLines(j.plans.get(t.key), t).map(l => `  ${l}`)] : []),
   ].join('\n');
 }
 
@@ -120,6 +123,41 @@ export function findItem(lib, kind, ref) {
 }
 
 /**
+ * Names made into keys the way + New does: an item of a kind by its key or name, added to your library when it's new (a
+ * setup that isn't one becomes a pattern of that name and the setup made of it). library is the rows to save, said what
+ * was added, lib the library with them.
+ * @param {{ rows: any[], lib: ReturnType<typeof buildLibrary> }} j @param {{ newId?: () => string }} [opts]
+ */
+export function librarian(j, opts = {}) {
+  const newId = opts.newId || randomUUID;
+  const rows = [...j.rows];
+  const out = { library: /** @type {any[]} */ ([]), said: /** @type {string[]} */ ([]), lib: j.lib, itemKey };
+  const add = row => { rows.push(row); out.library.push(row); out.lib = buildLibrary(rows); };
+  /** @param {string} kind @param {string} ref @returns {string} */
+  function itemKey(kind, ref) {
+    const hit = findItem(out.lib, kind, ref);
+    if (hit) return hit.key;
+    const name = String(ref).trim().slice(0, 80);
+    if (!name) throw new Error(`a ${kind} needs a name`);
+    if (kind === 'setup') {
+      const pattern = itemKey('pattern', name);
+      const parts = { pattern };
+      const same = out.lib.choices('setup').find(i => sameParts(out.lib.parts(i.key), parts));
+      if (same) return same.key;
+      const row = { id: newId(), kind: 'setup', name: setupName(out.lib, parts), settings: parts };
+      add(row);
+      out.said.push(`New setup in My setups: ${row.name}.`);
+      return `mine:${row.id}`;
+    }
+    const row = { id: newId(), kind, name, settings: {} };
+    add(row);
+    out.said.push(`New ${kind} in your choices: ${name}.`);
+    return `mine:${row.id}`;
+  }
+  return out;
+}
+
+/**
  * A review turned into the changes claude_journal_save takes. Labels: each kind the review names is set to exactly
  * those (a name not among your choices is added to your library; a setup that isn't one becomes a pattern of that name
  * and the setup made of it, as + New setup does). market goes on the day unless the day already has another (then this
@@ -133,30 +171,7 @@ export function planReview(j, t, input, opts = {}) {
   const unknown = Object.keys(input).filter(k => !REVIEW_FIELDS.includes(k));
   if (unknown.length) throw new Error(`a review takes ${REVIEW_FIELDS.join(', ')}; not ${unknown.join(', ')}`);
   if (t.status === 'history') throw new Error("a trade from before your history can't be reviewed");
-  const rows = [...j.rows], library = [], said = [];
-  let lib = j.lib;
-  const add = row => { rows.push(row); library.push(row); lib = buildLibrary(rows); };
-  /** an item's key by name, added to the library when it's new */
-  const itemKey = (kind, ref) => {
-    const hit = findItem(lib, kind, ref);
-    if (hit) return hit.key;
-    const name = String(ref).trim().slice(0, 80);
-    if (!name) throw new Error(`a ${kind} needs a name`);
-    if (kind === 'setup') {
-      const pattern = itemKey('pattern', name);
-      const parts = { pattern };
-      const same = lib.choices('setup').find(i => sameParts(lib.parts(i.key), parts));
-      if (same) return same.key;
-      const row = { id: newId(), kind: 'setup', name: setupName(lib, parts), settings: parts };
-      add(row);
-      said.push(`New setup in My setups: ${row.name}.`);
-      return `mine:${row.id}`;
-    }
-    const row = { id: newId(), kind, name, settings: {} };
-    add(row);
-    said.push(`New ${kind} in your choices: ${name}.`);
-    return `mine:${row.id}`;
-  };
+  const names = librarian(j, { newId }), { library, said, itemKey } = names;
 
   const labels = (j.labels[t.key] || []).map(l => ({ ...l }));
   const labels_add = [], labels_remove = [];
@@ -167,8 +182,8 @@ export function planReview(j, t, input, opts = {}) {
     if (SINGLE.has(kind) && list.length > 1) throw new Error(`one ${kind} per trade`);
     const want = [...new Set(list.map(ref => itemKey(kind, ref)))];
     const have = labels.filter(l => l.kind === kind);
-    for (const l of have) if (!want.includes(lib.resolve(kind, l.value))) { labels_remove.push({ trade_key: t.key, kind, value: l.value }); labels.splice(labels.indexOf(l), 1); }
-    for (const k of want) if (!have.some(l => lib.resolve(kind, l.value) === k)) { labels_add.push({ trade_key: t.key, kind, value: k }); labels.push({ kind, value: k, set_by: 'you' }); }
+    for (const l of have) if (!want.includes(names.lib.resolve(kind, l.value))) { labels_remove.push({ trade_key: t.key, kind, value: l.value }); labels.splice(labels.indexOf(l), 1); }
+    for (const k of want) if (!have.some(l => names.lib.resolve(kind, l.value) === k)) { labels_add.push({ trade_key: t.key, kind, value: k }); labels.push({ kind, value: k, set_by: 'you' }); }
   }
 
   const rv = { ...(j.reviews[t.key] || {}) }, fields = {};
@@ -206,13 +221,13 @@ export function planReview(j, t, input, opts = {}) {
     const own = input.marketFor === 'trade' || (input.marketFor !== 'day' && (!!rv.market || clash));
     if (own) {
       field('market', m);
-      if (clash && !input.marketFor && !(j.reviews[t.key] || {}).market) said.push(`${day} is already ${lib.nameOf('market', dayMarket)}, so ${lib.nameOf('market', m)} is this trade's own.`);
+      if (clash && !input.marketFor && !(j.reviews[t.key] || {}).market) said.push(`${day} is already ${names.lib.nameOf('market', dayMarket)}, so ${names.lib.nameOf('market', m)} is this trade's own.`);
     } else {
       if (rv.market) field('market', null); // back to the day's
       if (dayMarket !== m) {
         days.push({ day, market: m });
         dayMarket = m;
-        if (m) said.push(`Market ${lib.nameOf('market', m)} for every trade on ${day}.`);
+        if (m) said.push(`Market ${names.lib.nameOf('market', m)} for every trade on ${day}.`);
       }
     }
   }
