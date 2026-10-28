@@ -208,6 +208,7 @@ export function createState() {
     posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
     posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again
     posRTrades: null, // the Journal's trades as the R column last built them: { records, reviews, saved, fees, trades }
+    posFills: null, // the fills the close ticket's original size reads, as last built: { records, orders, fills }
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
     posChart: null, // the open position chart: { symbol, option, label, five, daily, error, price, qty, addStop, addPrice } (five and daily: a pane each, { kind, bars, vwap, view, range, loading, error, hover, hoverY }, range in sessions; price and qty = the target form, addStop and addPrice = Move breakeven's)

@@ -24,7 +24,7 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  *   instruction: string, side: 'buy' | 'sell', qty: number, price: number, via?: 'assigned' | 'exercised' | 'delivered' }} Fill
  * @typedef {{ orderId: string, rootId: string, account: string, symbol: string, instruction: string, stopPrice: number, entered: string, status: string }} StopOrder
  * @typedef {{ key: string, account: string, symbol: string, label: string, assetType: string, multiplier: number,
- *   direction: 'long' | 'short', openedAt: string, closedAt: string | null, entryQty: number, openQty: number,
+ *   direction: 'long' | 'short', openedAt: string, closedAt: string | null, entryQty: number, openQty: number, peakQty?: number,
  *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
  *   status: 'open' | 'win' | 'loss' | 'breakeven' | 'history', expired: boolean, via?: 'assigned' | 'exercised' | 'delivered' | null, stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | 'debit' | 'width' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
@@ -39,6 +39,7 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
  * via = an option delivered it: the option's trade closed at $0 by an assignment or exercise, or the shares' trade opened
  * or closed by one at the strike (delivered: the option is older than the history). From Schwab's transactions.
+ * peakQty = the most held at once (a single or merged trade; a spread has none).
  * realized = the P&L each exit took, when it took it (a trim's profit is that day's, even while the rest stays open).
  * @typedef {{ at: string, qty: number, pnl: number }} Realized one exit: its time, the quantity it closed, its P&L (net after fees)
  * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
@@ -57,7 +58,7 @@ function startTrade(fill, account, direction) {
     key: `${account}|${fill.symbol}|${direction}|${fill.time}`,
     account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType, fill.symbol),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
-    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, via: /** @type {Fill['via'] | null} */ (null), lots: /** @type {{ qty: number, price: number }[]} */ ([]),
+    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, via: /** @type {Fill['via'] | null} */ (null), lots: /** @type {{ qty: number, price: number }[]} */ ([]), peakQty: 0,
     realized: /** @type {Realized[]} */ ([]),
   };
 }
@@ -70,7 +71,7 @@ function finish(t) {
   return {
     key: t.key, account: t.account, symbol: t.symbol, label: t.label, assetType: t.assetType, multiplier: t.multiplier,
     direction: t.direction, openedAt: t.openedAt, closedAt: closed ? t.closedAt : null,
-    entryQty: t.entryQty, openQty: closed ? 0 : openQty,
+    entryQty: t.entryQty, openQty: closed ? 0 : openQty, peakQty: t.peakQty,
     avgEntry: t.entryQty ? t.entryNotional / t.entryQty : 0,
     avgExit: t.exitQty ? t.exitNotional / t.exitQty : null,
     pnl, exits: t.exits, fillIds: t.fillIds, entryOrderIds: t.entryOrderIds, orderQty: t.orderQty,
@@ -118,6 +119,7 @@ export function buildTrades(fills, opts = {}) {
       if (f.via && !gap.via) gap.via = f.via;
       gap.exits++;
       gap.entryQty += qty;
+      gap.peakQty += qty;
       gap.exitQty += qty;
       gap.exitNotional += qty * f.price;
       gap.orderQty[f.orderId] = (gap.orderQty[f.orderId] || 0) + qty;
@@ -141,6 +143,7 @@ export function buildTrades(fills, opts = {}) {
         t.lots.push({ qty, price: f.price });
         t.entryQty += qty;
         t.entryNotional += qty * f.price;
+        t.peakQty = Math.max(t.peakQty, t.lots.reduce((/** @type {number} */ n, /** @type {{ qty: number }} */ l) => n + l.qty, 0));
         if (!t.entryOrderIds.includes(f.orderId)) t.entryOrderIds.push(f.orderId);
         continue;
       }
@@ -175,6 +178,7 @@ export function buildTrades(fills, opts = {}) {
           t.lots.push({ qty, price: f.price });
           t.entryQty += qty;
           t.entryNotional += qty * f.price;
+          t.peakQty = qty;
           t.entryOrderIds.push(f.orderId);
           t.orderQty[f.orderId] = qty;
         }
@@ -185,6 +189,23 @@ export function buildTrades(fills, opts = {}) {
     if (t) trades.push(finish(t));
   }
   return trades;
+}
+
+/**
+ * A position's original size: the most it held at once since it was last flat, from the fills on its account and contract
+ * grouped like the Journal's trades (your merges and deletes aside). Trusted only when those fills leave it holding what
+ * Schwab holds now; otherwise (opened before the history, shares in by transfer or a split, a fill not read yet) it's null
+ * with what the fills leave. Never less than held.
+ * @param {Fill[]} fills @param {{ account: string, symbol: string, qty: number }} position qty signed, as Schwab holds it
+ * @param {number} [now] options open past their expiry close at $0, like the Journal's
+ * @returns {{ qty: number | null, found: number | null }} found = what the fills leave open on that side, when it isn't held
+ */
+export function originalSize(fills, { account, symbol, qty }, now) {
+  const held = Math.abs(qty), direction = qty > 0 ? 'long' : 'short';
+  const mine = fills.filter(f => (f.account || '') === account && f.symbol === symbol);
+  const open = buildTrades(mine, now === undefined ? {} : { now }).find(t => t.status === 'open' && t.direction === direction);
+  if (!open || Math.abs(open.openQty - held) > EPS) return { qty: null, found: open ? open.openQty : 0 };
+  return { qty: Math.max(open.peakQty || 0, held), found: null };
 }
 
 /** an option still open after its expiry's close: closed there at $0. @param {any} t @param {number} now */
@@ -505,7 +526,7 @@ function mergedTrade(parts, key, reviews, stops) {
   for (const p of parts) for (const [id, q] of Object.entries(p.orderQty)) orderQty[id] = (orderQty[id] || 0) + q;
   /** @type {Trade} */
   const t = {
-    ...parts[0], key, openedAt: parts[0].openedAt, closedAt, entryQty, openQty: sum(p => p.openQty),
+    ...parts[0], key, openedAt: parts[0].openedAt, closedAt, entryQty, openQty: sum(p => p.openQty), peakQty: Math.max(...parts.map(p => p.peakQty || 0)),
     avgEntry: round8(sum(p => p.avgEntry * p.entryQty) / entryQty),
     avgExit: exitQty > EPS ? round8(sum(p => (p.avgExit || 0) * (p.entryQty - p.openQty)) / exitQty) : null,
     pnl, grossPnl: round2(sum(p => p.grossPnl)), fees: round2(sum(p => p.fees)), feesMissing: sum(p => p.feesMissing),

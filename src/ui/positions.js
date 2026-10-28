@@ -7,6 +7,8 @@ import { store } from '../lib/store.js';
 import { inZone } from '../lib/zone.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
+import { fillsFrom } from '../core/journal-records.js';
+import { originalSize } from '../core/journal.js';
 import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
@@ -80,9 +82,10 @@ export function rUnitWords(unit, row) {
   return `the stop ${px(unit.stop)}`;
 }
 
-/** the records, your stops and merges, when the R column or an open chart's targets need them and nothing has read them yet */
-function readPositionJournal(force = false) {
-  if (!(rShown() || state.posChart) || !state.session || state.posJournalBusy || state.journalLoading) return;
+/** the records, your stops and merges, when the R column, an open chart's targets or a close's original size need them and nothing has read them yet */
+function readPositionJournal(force = false, need = false) {
+  if (!(rShown() || state.posChart || need) || !state.session || state.journalLoading) return;
+  if (state.posJournalBusy) return state.posJournalBusy;
   if (!force && (state.journalRecords || state.posJournalError)) return;
   state.posJournalBusy = Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades()]).then(([records, reviews, saved]) => {
     if (records.status === 'fulfilled') { state.journalRecords = records.value; state.posJournalError = ''; }
@@ -93,6 +96,42 @@ function readPositionJournal(force = false) {
     state.posJournalBusy = false;
     if (state.positionsView) { renderPositionsTable(); renderPositionChart(); }
   });
+  return state.posJournalBusy;
+}
+
+/** a close ticket waits for the Journal's records (signed in, not read yet), so its percents of the original start right */
+export async function readPositionJournalForClose() { await readPositionJournal(false, true); }
+
+/** every fill the kept records and this read's orders hold: an order in both is taken from the read, the newer of the two */
+function positionFills() {
+  const p = state.positions, records = state.journalRecords || [];
+  const memo = state.posFills;
+  if (memo && memo.records === records && memo.orders === p.orders) return memo.fills;
+  const live = new Set(p.orders.map(o => String(o?.orderId ?? '')));
+  const fills = fillsFrom([
+    ...records.filter(r => !(r.kind === 'order' && live.has(String(r.record_id)))),
+    ...p.orders.map(o => ({ kind: 'order', record_id: String(o?.orderId ?? ''), account: p.last4, data: o })),
+  ]);
+  state.posFills = { records, orders: p.orders, fills };
+  return fills;
+}
+
+/**
+ * A position's original size for the close ticket's percents: the most it held at once since it was last flat (originalSize),
+ * from the Journal's kept records when signed in and the orders this read got. qty null with why when the fills don't add up
+ * to what Schwab holds.
+ * @returns {{ qty: number | null, why: string }}
+ */
+export function positionOriginal(row, now = Date.now()) {
+  const p = state.positions;
+  if (!p || !row) return { qty: null, why: '' };
+  const o = originalSize(positionFills(), { account: p.last4, symbol: row.symbol, qty: row.qty }, now);
+  if (o.qty !== null) return { qty: o.qty, why: '' };
+  const where = !state.session ? "Schwab's last 59 days of orders (sign in for the Journal's older ones)"
+    : state.posJournalError || !state.journalRecords ? "Schwab's last 59 days of orders (the Journal didn't load)"
+    : "the Journal and Schwab's orders";
+  const unit = row.tradeAs === 'OPTION' ? 'contracts' : 'shares';
+  return { qty: null, why: o.found ? `The fills in ${where} leave ${o.found.toLocaleString('en-US')} ${unit} open, not the ${Math.abs(row.qty).toLocaleString('en-US')} held.` : `No fills in ${where} open this position.` };
 }
 
 // an import landed while Positions is open: its trades (a trim, a scale-in) change what R counts from

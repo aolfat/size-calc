@@ -49,8 +49,8 @@ const rowWith = (symbol, orders = ORDERS) => `positionRows(${JSON.stringify(acco
 
 // a fake Schwab account that changes as orders arrive, so the re-read after sending tells the truth.
 // Cancelling one leg of a pair cancels both, cancelling an entry cancels what waits on it, and a second cancel is refused, as Schwab does.
-function broker({ refuse = () => null, lag = false } = {}) {
-  const live = { positions: plain(POSITIONS), orders: plain(ORDERS), nextId: 900 };
+function broker({ refuse = () => null, lag = false, orders = ORDERS } = {}) {
+  const live = { positions: plain(POSITIONS), orders: plain(orders), nextId: 900 };
   const sent = [];
   const all = () => live.orders.flatMap(o => [o, ...(o.childOrderStrategies || [])]);
   const parentOf = o => live.orders.find(p => (p.childOrderStrategies || []).includes(o));
@@ -554,6 +554,75 @@ test('the close ticket\'s chips are tens of percent of what is held, capped at w
   run('setClosePortion(0.2)');
   assert.match(body(), /id="posCloseQty"[^>]*value="60"/);
   assert.match(body(), />Sell 60 HOOD at market</);
+});
+
+// fills as Schwab lists them: an order's executions, each leg with its quantity, price and time
+const filled = (orderId, symbol, instruction, qty, price, time, extra = {}) => ({ orderId, orderType: 'MARKET', status: 'FILLED', orderStrategyType: 'SINGLE', enteredTime: time,
+  orderLegCollection: [{ legId: 1, ...leg(instruction, qty, symbol) }],
+  orderActivityCollection: [{ activityType: 'EXECUTION', activityId: orderId * 10, executionLegs: [{ legId: 1, quantity: qty, price, time }] }], ...extra });
+const fill = (symbol, instruction, qty, time, account = '6789', price = 10) => ({ id: `${symbol}:${time}:${instruction}`, orderId: time, account, time, symbol, label: symbol,
+  assetType: 'EQUITY', instruction, side: /^BUY/.test(instruction) ? 'buy' : 'sell', qty, price });
+
+test('the original size is the most held at once since flat, and only when the fills add up to what Schwab holds', async () => {
+  const { run } = await app();
+  const original = (fills, qty, symbol = 'HOOD') => ({ ...run(`originalSize(${JSON.stringify(fills)}, { account: '6789', symbol: '${symbol}', qty: ${qty} })`) });
+  const t = i => `2026-10-${String(10 + i).padStart(2, '0')}T14:00:00.000Z`;
+  assert.deepEqual(original([fill('HOOD', 'BUY', 100, t(1)), fill('HOOD', 'BUY', 100, t(2)), fill('HOOD', 'SELL', 50, t(3))], 150), { qty: 200, found: null }, 'scaled in to 200, trimmed 50');
+  assert.deepEqual(original([fill('HOOD', 'BUY', 100, t(1)), fill('HOOD', 'SELL', 50, t(2)), fill('HOOD', 'BUY', 50, t(3))], 100), { qty: 100, found: null },
+    'added back after a trim: the most held at once, 100, not the 150 bought');
+  assert.deepEqual(original([fill('HOOD', 'BUY', 372, t(1)), fill('HOOD', 'SELL', 372, t(2)), fill('HOOD', 'BUY', 10, t(3)), fill('HOOD', 'SELL', 4, t(4))], 6), { qty: 10, found: null },
+    'flat, then bought again: the new trade starts at zero');
+  assert.deepEqual(original([fill('HOOD', 'SELL_SHORT', 100, t(1)), fill('HOOD', 'BUY_TO_COVER', 40, t(2))], -60), { qty: 100, found: null }, 'a short');
+  assert.deepEqual(original([fill('HOOD', 'BUY', 100, t(1)), fill('HOOD', 'SELL', 50, t(2))], 150), { qty: null, found: 50 },
+    'the fills leave 50 but Schwab holds 150 (bought before the history, a transfer, a split): no guess');
+  assert.deepEqual(original([fill('HOOD', 'SELL', 100, t(1))], 200), { qty: null, found: 0 }, 'only a close older than the history: no open trade');
+  assert.deepEqual(original([], 300), { qty: null, found: 0 });
+  assert.deepEqual(original([fill('HOOD', 'BUY', 500, t(1), '4321'), fill('AMD', 'BUY', 500, t(1)), fill('HOOD', 'BUY', 300, t(2))], 300), { qty: 300, found: null },
+    'other accounts and symbols don\'t count');
+  assert.deepEqual(original([fill('HOOD', 'BUY', 100, t(1))], 100), { qty: 100, found: null }, 'no trims: what\'s held');
+});
+
+test('the close ticket\'s chips are percents of the original size when Schwab\'s fills show it, and say so', async () => {
+  // bought 250 then 150, sold 100: holds 300 of an original 400. A canceled sell is listed as a $0 execution (not a fill).
+  const orders = [
+    ...ORDERS.map(o => o.orderId === 100 ? { ...o, enteredTime: '2026-10-20T14:00:00+0000', orderLegCollection: [{ legId: 1, ...leg('BUY', 250, 'HOOD') }],
+      orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 1000, executionLegs: [{ legId: 1, quantity: 250, price: 38, time: '2026-10-20T14:00:01+0000' }] }] } : o),
+    filled(104, 'HOOD', 'BUY', 150, 38.5, '2026-10-21T14:00:00+0000'),
+    filled(105, 'HOOD', 'SELL', 100, 41, '2026-10-22T14:00:00+0000'),
+    filled(106, 'HOOD', 'SELL', 50, 0, '2026-10-23T14:00:00+0000', { status: 'CANCELED',
+      orderActivityCollection: [{ activityType: 'EXECUTION', executionType: 'CANCELED', activityId: 1060, executionLegs: [{ legId: 1, quantity: 50, price: 0, time: '2026-10-23T14:00:00+0000' }] }] }),
+  ];
+  const b = broker({ orders });
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  const chip = f => body().match(new RegExp(`<button[^>]*data-arg="${f}"[^>]*>[^<]*</button>`))[0];
+  assert.match(body(), /% of your original 400 shares, the most held since you were last flat\. 300 left \(75%\)\./);
+  assert.match(body(), /aria-label="Percent of the original position"/);
+  assert.match(chip(0.1), /title="40 shares"/);
+  assert.match(chip(0.25), /title="100 shares"/);
+  assert.match(chip(0.5), /title="200 shares"/);
+  assert.match(chip(0.6), /More than your other orders leave free"[^>]* disabled/, '240: the target holds 100 of the 300');
+  assert.match(chip(0.8), /title="320 shares, more than the 300 left"[^>]* disabled/);
+  assert.match(chip(1), /title="300 shares"/, 'All is everything held');
+  run('setClosePortion(0.25)');
+  assert.match(body(), /id="posCloseQty"[^>]*value="100"/);
+  assert.match(body(), /Left after<\/dt><dd>200 shares<span class="shares-detail">This closes 25% of your original 400 shares, leaving 50%\./);
+  run("setCloseQty('30')");
+  assert.match(elements.get('posTradeDetail').innerHTML, /This closes 7\.5% of your original 400 shares, leaving 67\.5%\./, 'typing shows its percent too');
+  run('setClosePortion(1)');
+  assert.doesNotMatch(body(), /Left after/, 'all of it leaves nothing');
+});
+
+test('without fills that add up, the chips are of what\'s held, and the ticket says why', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = elements.get('posTradeBody').innerHTML;
+  assert.match(body, /% of what&#39;s held: the original size is unknown\. No fills in Schwab&#39;s last 59 days of orders \(sign in for the Journal&#39;s older ones\) open this position\./);
+  assert.match(body, /aria-label="Percent of the position"/);
+  run("setCloseQty('30')");
+  assert.match(elements.get('posTradeDetail').innerHTML, /This closes 10% of what you hold, leaving 90%\./);
 });
 
 test('a partial market close sells only that many and confirms what is left', async () => {
