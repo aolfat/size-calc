@@ -438,8 +438,12 @@ test('+ New setup in Edit choices: built from parts, a new level made on the way
   run('openJournalLibrary()');
   assert.match(sheet(), /data-action="newLibrarySetup">\+ New setup</);
   run('newLibrarySetup()');
-  assert.match(sheet(), /data-action="saveSetupEdit" disabled>Add to My setups</, 'nothing picked yet');
+  assert.match(sheet(), /data-action="saveSetupEdit">Add to My setups</, 'nothing picked yet, and still a button');
+  await run('saveSetupEdit()');
+  assert.match(sheet(), /role="status"[^>]*>Pick what happened and at what, or a pattern\. A new one: \+ New in its row\.</, 'a save with nothing picked says what it needs');
+  assert.equal(rows('library_items').length, 0, 'and makes nothing');
   run("setEditAction('undercut'); startLibraryChoice('level')");
+  assert.doesNotMatch(sheet(), /role="status"[^>]*>Pick what happened/, 'a pick clears it');
   assert.match(sheet(), /id="libraryNewName"[^>]*data-enter="addLibraryChoice"/);
   run("state.libraryNew.name = '10 WK SMA'");
   await run("addLibraryChoice(state.libraryNew.name)");
@@ -461,6 +465,16 @@ test('+ New setup in Edit choices: built from parts, a new level made on the way
   assert.equal(rows('library_items').filter(r => r.kind === 'setup').length, 1, 'no twin made');
   run('cancelSetupEdit()');
   assert.doesNotMatch(sheet(), /jl-edit/);
+
+  // a new pattern typed and not added yet: Add to My setups adds it, then the setup on it
+  run("newLibrarySetup(); startLibraryChoice('pattern')");
+  run("state.libraryNew.name = 'Earnings failure'");
+  await run('saveSetupEdit()');
+  const pat = rows('library_items').find(r => r.kind === 'pattern');
+  assert.equal(pat?.name, 'Earnings failure', 'the pattern goes into your library');
+  const onIt = rows('library_items').find(r => r.kind === 'setup' && r.settings.pattern === `mine:${pat.id}`);
+  assert.equal(onIt?.name, 'Earnings failure', 'and the setup on it into My setups');
+  assert.doesNotMatch(sheet(), /jl-edit/, 'the builder closes');
 });
 
 test('+ New setup narrows My setups as you pick and offers the one you have; Option flow takes links', async () => {
