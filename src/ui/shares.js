@@ -1,7 +1,8 @@
-// Quote bar and the shares answer card; editable quantities write risk back.
+// Quote bar and the shares answer card (contracts for a futures ticker); editable quantities write risk back.
 import { state } from '../state.js';
 import { effectivePrice, extSession } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
+import { fmtTicks, futuresPlan, isFuturesQuote } from '../core/futures.js';
 import { calcAllocation, riskForQty, unitsFor } from '../core/sizing.js';
 import { allocationInputs, allocationQtyChanged, allocationStats, updateSizingControls } from './allocation.js';
 import { renderPinnedCards } from './cards.js';
@@ -9,6 +10,7 @@ import { renderChain } from './chain.js';
 import { drawChart } from './chart.js';
 import { renderAdr } from './daily.js';
 import { withFlash } from './feedback.js';
+import { futuresAnswerHtml, futuresFeedTag, futuresFees } from './futures.js';
 import { riskDollars, syncFromDollar } from './risk.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { currentAtr5, dayRange, entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName, updateStopAdjustment } from './stops.js';
@@ -21,12 +23,9 @@ export function sharesQtyChanged(el) {
   if (state.sizingMode === 'allocation' && state.quoteData) { allocationQtyChanged(Math.floor(Number(el.value)), entryVal(), state.quoteData.symbol); renderShares(); return; }
   const qty = Math.floor(parseFloat(el.value) || 0);
   if (!state.quoteData || qty <= 0) { renderShares(); return; }
-  const entry = entryVal();
-  const isLong = state.direction === 'long';
-  const stop = isLong ? stopLongVal() : stopShortVal();
-  const rps = isLong ? entry - stop : stop - entry;
-  if (!(rps > 0) || !Number.isFinite(stop)) { renderShares(); return; }
-  document.getElementById('riskDollar').value = riskForQty(qty, rps);
+  const { valid, riskPerShare } = sharesPlan(); // a futures plan's is the risk per contract
+  if (!valid || !(riskPerShare > 0)) { renderShares(); return; }
+  document.getElementById('riskDollar').value = riskForQty(qty, riskPerShare);
   syncFromDollar();
 }
 
@@ -66,27 +65,31 @@ export function renderLevels() {
   const q = state.quoteData;
   const price = q.last || q.ask || 0;
   const { low: lod, high: hod } = dayRange(q);
+  const money = isFuturesQuote(q) ? v => fmtTicks(v, q.tickSize) : fmt$;
   const lodPct = price > 0 ? ((lod - price) / price * 100).toFixed(2) : 0;
   const hodPct = price > 0 ? ((hod - price) / price * 100).toFixed(2) : 0;
-  document.getElementById('qLod').textContent = fmt$(lod);
+  document.getElementById('qLod').textContent = money(lod);
   document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
-  document.getElementById('qHod').textContent = fmt$(hod);
+  document.getElementById('qHod').textContent = money(hod);
   document.getElementById('qHodPct').textContent = `(${+hodPct >= 0 ? '+' : ''}${hodPct}%)`; // HOD sits under an after-hours price
 }
 
 export function renderQuote() {
   updateSizingControls();
   const q = state.quoteData;
+  const fut = isFuturesQuote(q);
+  const money = fut ? v => fmtTicks(v, q.tickSize) : fmt$;
   const price = q.last || q.ask || 0;
   const chg = q.change || 0;
   const chgPct = q.change_percentage || 0;
 
-  document.getElementById('qTicker').textContent = q.symbol + '  ';
-  document.getElementById('qPrice').textContent = fmt$(price);
+  document.getElementById('qTicker').textContent = (fut ? q.contract : q.symbol) + '  ';
+  document.getElementById('qPrice').textContent = money(price);
   const chgEl = document.getElementById('qChg');
-  chgEl.textContent = ` ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)} (${chgPct >= 0 ? '+' : ''}${fmtN(chgPct, 2)}%)`;
+  chgEl.textContent = ` ${chg >= 0 ? '+' : ''}${fut ? fmtTicks(chg, q.tickSize) : fmtN(chg, 2)} (${chgPct >= 0 ? '+' : ''}${fmtN(chgPct, 2)}%)`;
   chgEl.className = 'quote-chg ' + (chg >= 0 ? 'up' : 'dn');
   renderExt(q);
+  if (fut) document.getElementById('qExt').innerHTML = futuresFeedTag(q); // futures trade nearly around the clock: no extended session
   renderLevels();
   document.getElementById('qVol').textContent = 'Vol ' + Number(q.volume || 0).toLocaleString();
 
@@ -101,6 +104,13 @@ export function sharesPlan() {
   const isLong = state.direction === 'long';
   const stop = isLong ? stopLongVal() : stopShortVal();
   const entry = entryVal();
+  const q = state.quoteData;
+  if (isFuturesQuote(q)) {
+    // contracts on whole ticks: shares is the contract count, riskPerShare the risk per contract
+    const futures = futuresPlan({ risk: riskDollars(), entry, stop, direction: state.direction, root: q.root, fees: futuresFees(q.root) });
+    const valid = !futures.error;
+    return { isLong, stop: valid ? futures.stop : stop, entry: valid ? futures.entry : entry, riskPerShare: valid ? futures.riskPerContract : NaN, valid, shares: valid ? futures.contracts : 0, futures };
+  }
   const riskPerShare = isLong ? (entry - stop) : (stop - entry);
   const valid = !!state.quoteData && Number.isFinite(stop) && stop > 0 && Number.isFinite(entry) && riskPerShare > 0;
   return { isLong, stop, entry, riskPerShare, valid, shares: valid ? unitsFor(riskDollars(), riskPerShare) : 0 };
@@ -121,12 +131,22 @@ export function renderShares() {
   const price = effectivePrice(q);
   renderOrb();
   updateStopAdjustment();
-  const { isLong, stop, entry, riskPerShare, valid, shares } = sharesPlan();
+  const { isLong, stop, entry, riskPerShare, valid, shares, futures } = sharesPlan();
   const customEntry = rawStop('entryPrice') > 0;
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
+  document.getElementById('sharesImage').style.display = futures ? 'none' : ''; // the image card is a shares card
   document.getElementById('sharesImage').disabled = !valid;
-  document.getElementById('sharesCopy').disabled = !valid;
+  document.getElementById('sharesCopy').disabled = !valid || (!!futures && shares < 1);
   updateTradeButton();
+  if (futures) {
+    document.getElementById('sharesStats').innerHTML = valid
+      ? futuresAnswerHtml(q, futures, { isLong, stopSource: stopSourceName(isLong, true), entryNote: customEntry ? 'planned' : '', acct })
+      : `<div class="shares-error" role="status">${futures.error}</div>`;
+    if (valid) withFlash(document.getElementById('sharesStats'));
+    if (state.chartBars.length) drawChart();
+    updateStickyBar();
+    return;
+  }
 
   if (!valid) {
     const msg = !Number.isFinite(stop)

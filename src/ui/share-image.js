@@ -3,6 +3,7 @@ import { state } from '../state.js';
 import { inZone, zoneAbbr } from '../lib/zone.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
+import { isFuturesQuote } from '../core/futures.js';
 import { isBull, sizeUnit, spreadWidth, strikesLabel, typeLabel } from '../core/options.js';
 import { calcAllocation, unitsFor } from '../core/sizing.js';
 import { SANS_FONT } from '../lib/media.js';
@@ -134,6 +135,7 @@ export function shareCanvasToClipboard(canvas, name) {
 export function shareShares() {
   const q = state.quoteData;
   if (!q) { showError('Load a ticker first.'); return; }
+  if (isFuturesQuote(q)) { showError('The image card is for shares. Copy summary works for futures.'); return; }
   if (state.sizingMode === 'allocation') {
     const r = calcAllocation({ ...allocationInputs(q.symbol), unitCost: entryVal() });
     if (r.error) return;

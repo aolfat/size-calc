@@ -2,7 +2,6 @@
 import { state } from '../state.js';
 import { cycleExp, setSide, setZoneMode } from './chain.js';
 import { closeDetails } from './detail.js';
-import { refreshFuturesQuote, setFuturesDirection } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketRefreshToday, marketSetScope } from './market.js';
 import { refreshPositions } from './positions.js';
@@ -44,30 +43,27 @@ export function initShortcuts() {
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
     if (deckOpen() && !state.shotView && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); if (e.key === 'ArrowRight') deckNext(); else deckBack(); return; }
     if (state.journalView && state.journalTrade && !state.shotView && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); stepJournalTrade(e.key === 'ArrowRight' ? 1 : -1); return; }
-    if (state.marketView && !['/', 'm', 's', 'o', 'f', 'v', 'j', 't', 'u', 'r', '?'].includes(e.key)) return;
+    if (state.marketView && !['/', 'm', 's', 'o', 'v', 'j', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
       case '/': {
-        if (!state.marketView && state.currentMode === 'futures') { setView('calc'); focus('futuresContract'); break; }
         const id = state.marketView ? 'marketSearch' : 'ticker';
         focus(id); document.getElementById(id).select(); break;
       }
-      case 'q': if (state.currentMode !== 'futures') { toggleQuick(true); focus('quickInput'); } break;
+      case 'q': toggleQuick(true); focus('quickInput'); break;
       case 's': setMode('shares'); break;
       case 'o': setMode('options'); break;
-      case 'f': setMode('futures'); break;
       case 'v': setView(state.positionsView ? 'calc' : 'positions'); break;
       case 'j': setView(state.journalView ? 'calc' : 'journal'); break;
       case 't':
       case 'u': setView(state.utilsView ? 'calc' : 'utils'); break;
       case 'm': setView(state.marketView ? 'calc' : 'market'); break;
-      case 'r': if (state.marketView) marketRefreshToday(); else if (state.positionsView) refreshPositions(true); else if (state.currentMode === 'futures') refreshFuturesQuote(); else refreshQuote(); break;
+      case 'r': if (state.marketView) marketRefreshToday(); else if (state.positionsView) refreshPositions(true); else refreshQuote(); break;
       case 'l': toggleLive(); break;
       case '-': stepRisk(-1); break;
       case '=':
       case '+': stepRisk(1); break;
       case 'd':
-        if (state.currentMode === 'futures') setFuturesDirection(state.futuresDirection === 'long' ? 'short' : 'long');
-        else if (state.currentMode === 'shares') setDirection(state.direction === 'long' ? 'short' : 'long');
+        if (state.currentMode === 'shares') setDirection(state.direction === 'long' ? 'short' : 'long');
         break;
       case 'b': if (state.currentMode === 'options') setSide('both'); break;
       case 'c': if (state.currentMode === 'options') setSide('call'); break;

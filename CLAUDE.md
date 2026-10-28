@@ -7,7 +7,7 @@ Two exceptions, both pinned in `vendor/`, committed and updated by hand, never l
 They sit outside `src/` on purpose (the test harness loads and scans every `src/` module).
 
 ## Code layout
-- **Layers** (imports only point down): `src/core/` pure math and parsing, no DOM or state (bars, chart-view, black-scholes, options, sizing, stops, shorthand, futures, tos-statement, extended-hours, format, lev-etfs, market-data, orders, positions, cloud-merge; `core/features/` the trade features: one file per family plus the context and the stamping) → `src/lib/` store (guarded localStorage), media (DESKTOP_MQ / COMPACT_CHAIN_MQ, the SANS_FONT stack canvases draw with), delegate → `src/services/` tradier (base URL + headers, read from the settings inputs; dailyHistory, the ~1 year of daily bars both daily charts use), supabase (project URL + publishable key, the lazily loaded client, Google sign-in), bars (the journal's 5-minute bars: what's kept in bars_5m, the bar provider for what's missing), bar-source (where bars come from: barSource, Tradier's timesales and daily history for now, every provider answering in the app's own form), features (the trade_features stamps, the kept bars a stamping run reads, daily bars), cloud (the signed-in account's settings and Tradier key), claude-keys (Claude access keys: drawn in the browser, only their hash kept), schwab (tokens + Trader API and futures quotes via the Schwab worker); services never import UI → `src/ui/` one module per surface (risk, account-size, ticker, shares, chain, chart, daily, candles, cards, positions, position-chart, position-trade, market, tools, settings, trade, ...) → `src/main.js` boot.
+- **Layers** (imports only point down): `src/core/` pure math and parsing, no DOM or state (bars, chart-view, black-scholes, options, sizing, stops, shorthand, futures, tos-statement, extended-hours, format, lev-etfs, market-data, orders, positions, cloud-merge; `core/features/` the trade features: one file per family plus the context and the stamping) → `src/lib/` store (guarded localStorage), media (DESKTOP_MQ / COMPACT_CHAIN_MQ, the SANS_FONT stack canvases draw with), delegate → `src/services/` tradier (base URL + headers, read from the settings inputs; dailyHistory, the ~1 year of daily bars both daily charts use), supabase (project URL + publishable key, the lazily loaded client, Google sign-in), bars (the journal's 5-minute bars: what's kept in bars_5m, the bar provider for what's missing), bar-source (where bars come from: barSource, Tradier's timesales and daily history for now, every provider answering in the app's own form), features (the trade_features stamps, the kept bars a stamping run reads, daily bars), cloud (the signed-in account's settings and Tradier key), claude-keys (Claude access keys: drawn in the browser, only their hash kept), schwab (tokens + Trader API, and futures quotes and bars, via the Schwab worker); services never import UI → `src/ui/` one module per surface (risk, account-size, ticker, shares, chain, chart, daily, candles, cards, positions, position-chart, position-trade, market, tools, settings, trade, ...) → `src/main.js` boot.
   Each module's first line says what it owns
 - **State**: all mutable app state is one object in `src/state.js` (`state.quoteData`, `state.currentMode`, ...); `createState()` lists every field with its default, `resetState()` restores them (tests).
   No loose globals: nothing is put on `window`
@@ -29,6 +29,7 @@ They sit outside `src/` on purpose (the test harness loads and scans every `src/
 
 ## What it does
 Sizes shares and options positions off a dollar risk amount (account size × risk %), using Tradier's REST API directly from the browser (key stored in localStorage, never in the file).
+Futures (/MES) size in contracts in the same ticket, from Schwab's market data through the Schwab worker (Tradier has no futures).
 Account size and risk % persist in localStorage.
 Risk $ (labelled "Max loss per trade") is styled as the loud number (big, bold, red — it's the max loss).
 Risk % preset chips: .125/.25/.50/1/2/3%, plus fixed dollar chips (default 100/250/500/1000, editable via the ✎ chip → comma list, deduped, max 6, persisted as risk_usd_presets).
@@ -36,7 +37,7 @@ Active chips track whatever the current values resolve to — a $ tap can light 
 The amount per trade must stay ONE TAP away: the risk strip (#riskStrip) is one of the FIRST things on the page (owner request: the max loss frames the trade): top of the rail on desktop, first card under the header on phones, in every mode, after only the first-run setup notice.
 It holds the risk $ input and both chip rows; the active chips tint red.
 Its summary link (#riskStatus, '1% of $50,000'; allocation mode retitles the strip 'Allocation' and swaps in #allocationControls) opens #riskSheet, which only holds the slower settings: Risk / Allocation method, account size, risk %.
-The strip shows in shares, options and futures, hidden in Positions, Tools and Market.
+The strip shows in Stocks & futures and Options, hidden in Positions, Tools and Market.
 Keys - and = (or +) step risk through one ladder of every preset (riskLadder: % chips at this account size ∪ your $ chips; stepRisk, no-op in allocation).
 There is no header risk pill (it was removed: two extra taps per change). risk_open is an orphan key from the old collapsible card.
 
@@ -81,9 +82,9 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Never infer the source from price equality.
   Image and summary actions sit in the footer.
 - Desktop shell (≥1100px, calculator and Positions only, media-only — no toggle): .app becomes a 100vh grid and the PAGE HOLDS STILL; each pane scrolls on its own (no position:sticky anywhere — sticky charts once shifted against the page; don't re-add).
-  Panes: #sidePane = #railPane (setup notice, #riskStrip, ticket card #modeCard, shares answer, #optionTicket, futures) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, quote card, charts, chain (and the positions table in Positions, which spans the full width).
-  Tools, Futures and Market scroll as a normal page at ≥1100 but keep the shell's full-width header at the same position and height (`.app > .header`), so switching views never moves the tabs; their content is a centered column (888px; Market 1468px). ≥1800px: #sidePane goes display:contents and the tray becomes its own right column (360 / 1fr / 340).
-  Below 1100 every pane wrapper is display:contents and .app is a flex column, so the cards are flex items placed by `order` (setupNotice, riskStrip, modeCard, quoteCard, sharesSection / futuresSection, chartWrap, quick lookup, pinned, positions, then optionsSection).
+  Panes: #sidePane = #railPane (setup notice, #riskStrip, ticket card #modeCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, quote card, charts, chain (and the positions table in Positions, which spans the full width).
+  Tools and Market scroll as a normal page at ≥1100 but keep the shell's full-width header at the same position and height (`.app > .header`), so switching views never moves the tabs; their content is a centered column (888px; Market 1468px). ≥1800px: #sidePane goes display:contents and the tray becomes its own right column (360 / 1fr / 340).
+  Below 1100 every pane wrapper is display:contents and .app is a flex column, so the cards are flex items placed by `order` (setupNotice, riskStrip, modeCard, quoteCard, sharesSection, chartWrap, quick lookup, pinned, positions, then optionsSection).
   Chain tiers: COMPACT_CHAIN_MQ (1100–1439) keeps the compact columns (twoPaneChain(), isMobileChain() true, Δ/OI re-shown, colspans both 13 / single 8 / banner 6, charts stacked 5m first); ≥1440 the main pane is ~1000px so the full table returns (min-width dropped to fit, charts side by side).
   CSS mirrors DESKTOP_MQ / COMPACT_CHAIN_MQ exactly.
   On desktop, tapping a chain contract fills the rail ticket (#optionTicket via detailBody/showDetail, railDetailSym, re-armed on re-render, cleared by closeDetails) instead of an inline row; phones and tablets keep the inline detail row.
@@ -105,7 +106,8 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
 - Stop inputs carry their chart line colors (red long stop, green short stop — a stop is a loss point, and it groups with the level it defaults to: LOD red, HOD green).
   Recalc-triggered re-renders pulse stat values (.pulse).
   Errors are fixed-position toasts, self-dismiss in 6s
-- Big Shares / Options / Futures segmented switcher at top of ticker card — keep it prominent
+- Big Stocks & futures / Options segmented switcher at top of ticker card — keep it prominent.
+  Futures are a ticker in Stocks & futures (/MES), not a tab of their own (owner request); the mode is still 'shares' in code
 - localStorage wrapped in try/catch (`store` helper) so sandboxed previews don't crash
 - Content-Security-Policy meta in index.html, copied in `_headers` plus `frame-ancestors 'none'` (a test keeps them equal): `default-src 'self'`, no inline scripts, eval or other-origin scripts, styles self plus inline (style attributes), images self / data: / blob: / the Supabase project (signed screenshot links), no frames, objects or other-origin form posts; connect-src is any https (plus localhost) because the Schwab worker URL is user-configured.
   GitHub Pages ignores `_headers`, so main.js refuses to boot inside another site's frame (framedCrossOrigin: it empties the page).

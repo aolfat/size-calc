@@ -4,7 +4,6 @@ import { store } from '../lib/store.js';
 import { updateSizingControls } from './allocation.js';
 import { renderPinnedCards } from './cards.js';
 import { renderChain } from './chain.js';
-import { renderFutures } from './futures.js';
 import { renderShares } from './shares.js';
 import { updateStickyBar } from './sticky-bar.js';
 
@@ -110,7 +109,7 @@ export function syncFromDollar() {
   const acct = parseFloat(document.getElementById('accountSize').value) || 0;
   const d = parseFloat(document.getElementById('riskDollar').value) || 0;
   if (acct > 0) {
-    // Keep cents when a small futures position is converted to % and back.
+    // Keep cents when a small position (one micro contract) is converted to % and back.
     document.getElementById('riskPct').value = +(d / acct * 100).toFixed(10);
   }
   store.set('calc_account', acct);
@@ -118,7 +117,6 @@ export function syncFromDollar() {
   updateRiskPresets();
   updateRiskStatus();
   state.flashNext = true;
-  renderFutures();
   if (state.quoteData) { renderShares(); renderChain(); }
   renderPinnedCards();
   state.flashNext = false;
@@ -129,7 +127,6 @@ export function recalcAll() {
   updateSizingControls();
   syncRiskDollar();
   state.flashNext = true;
-  renderFutures();
   if (state.quoteData) {
     renderShares();
     renderChain();

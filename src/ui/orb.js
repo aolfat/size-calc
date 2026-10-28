@@ -3,6 +3,7 @@
 import { state } from '../state.js';
 import { ORB_MINUTES, openingRange, orbLevels } from '../core/bars.js';
 import { fmt$, nyDateStr } from '../core/format.js';
+import { isFuturesQuote } from '../core/futures.js';
 import { zoneDial, zoneWords } from '../lib/zone.js';
 import { fetchFiveMinuteBars } from './chart.js';
 import { requireKey } from './settings.js';
@@ -50,7 +51,7 @@ export async function setOrb(minutes) {
 /** the chips and the line under them: shares sized on risk only, since Trade at Schwab is */
 export function renderOrb() {
   const row = document.getElementById('orbRow');
-  const show = !!state.quoteData && state.currentMode === 'shares' && state.sizingMode === 'risk';
+  const show = !!state.quoteData && !isFuturesQuote(state.quoteData) && state.currentMode === 'shares' && state.sizingMode === 'risk'; // the 9:30 range is a stock session's
   row.style.display = show ? '' : 'none';
   if (!show) return;
   const o = orbActive(), busy = state.orbBusy;

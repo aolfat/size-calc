@@ -1,8 +1,9 @@
-// Intraday chart: 5-minute timesales, aggregated intervals, canvas candles, VWAP and EMA, stop lines, touch crosshair.
+// Intraday chart: 5-minute timesales (Schwab's price history for futures), aggregated intervals, canvas candles, VWAP and EMA, stop lines, touch crosshair.
 import { state } from '../state.js';
 import { aggregateBars } from '../core/bars.js';
 import { effectivePrice, regularBar } from '../core/extended-hours.js';
 import { nyDateStr } from '../core/format.js';
+import { futuresSymbol, priceLabeler } from '../core/futures.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
@@ -10,6 +11,7 @@ import { zoneClock } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { renderChain } from './chain.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
+import { fetchFuturesBars } from './futures.js';
 import { renderLevels } from './shares.js';
 import { chartStopVal, rawStop, stopsChanged, tradeCtx } from './stops.js';
 
@@ -59,11 +61,16 @@ export async function fetchFiveMinuteBars(ticker, extended = false) {
 export async function fetchChart(ticker) {
   const requestId = ++state.chartRequestId;
   let raw = [];
-  const extended = state.extHours;
-  try { raw = await fetchFiveMinuteBars(ticker, extended); } catch(e) {}
+  // futures: the trading day from 18:00 the evening before, overnight always in (core/futures.js futuresBars), and their
+  // LOD / HOD stay Schwab's session's, so Ext changes nothing for them
+  const futures = !!futuresSymbol(ticker);
+  const extended = state.extHours && !futures;
+  try { raw = futures ? await fetchFuturesBars(ticker) : await fetchFiveMinuteBars(ticker, extended); } catch(e) {}
   if (requestId !== state.chartRequestId || ticker !== (state.quoteData?.symbol ?? ticker)) return; // only the latest request, for the loaded symbol
-  const sessions = CHART_SESSIONS[state.chartInterval] || 1;
   const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
+  // a futures session opens at 18:00 with a handful of bars: the one before stays on until the new one is two hours old
+  const young = !!futuresSymbol(ticker) && raw.filter(b => (b.t || '').startsWith(days[days.length - 1])).length < 24;
+  const sessions = (CHART_SESSIONS[state.chartInterval] || 1) + (young ? 1 : 0);
   const keep = new Set(days.slice(-sessions));
   state.chartBars = aggregateBars(raw.filter(b => keep.has((b.t || '').slice(0, 10))), state.chartInterval);
   const result = calculateAtr5(extended ? raw.filter(b => regularBar(b.t)) : raw);
@@ -133,7 +140,7 @@ export function drawChart() {
     const p = lo + (hi - lo) * i / steps;
     const yy = y(p);
     ctx.beginPath(); ctx.moveTo(g.padL, yy); ctx.lineTo(g.w - g.padR, yy); ctx.stroke();
-    ctx.fillText('$' + p.toFixed(2), g.w - g.padR + 6, yy + 3);
+    ctx.fillText(priceLabeler(state.quoteData)(p), g.w - g.padR + 6, yy + 3);
   }
 
   // extended hours (Ext on): a faint band behind each run of pre-market or after-hours bars
@@ -260,7 +267,7 @@ export function drawChart() {
     ctx.fillStyle = css.getPropertyValue('--bg4').trim();
     ctx.fillRect(g.w - g.padR + 2, state.chartHoverY - 8, g.padR - 4, 15);
     ctx.fillStyle = css.getPropertyValue('--text').trim();
-    ctx.fillText('$' + price.toFixed(2), g.w - g.padR + 6, state.chartHoverY + 3);
+    ctx.fillText(priceLabeler(state.quoteData)(price), g.w - g.padR + 6, state.chartHoverY + 3);
     ctx.restore();
   }
   if (state.chartHover >= 0 && state.chartHover < n) {

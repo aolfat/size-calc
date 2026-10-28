@@ -5,6 +5,7 @@ import { fmt$, fmtN } from '../core/format.js';
 import { adrUsage } from './daily.js';
 import { riskDollars } from './risk.js';
 import { dayRange } from './stops.js';
+import { fmtTicks, isFuturesQuote } from '../core/futures.js';
 
 export function renderStickyBar() {
   const q = state.quoteData;
@@ -17,13 +18,14 @@ export function renderStickyBar() {
     : `ADR ${(u.ctx === 'long' ? u.usedLod : u.usedHod).toFixed(0)}% used`;
   const ext = extSession(q);
   const range = dayRange(q);
+  const fut = isFuturesQuote(q);
   // the answer rides along while you scroll the chart: the shares count from the card
   const qtyEl = state.currentMode === 'shares' ? document.getElementById('sharesQty') : null;
   const sharesQty = qtyEl && +qtyEl.value > 0 ? Number(qtyEl.value).toLocaleString() : '';
   document.getElementById('stickyBar').innerHTML =
     `<span class="sb-sym">${q.symbol}</span>` +
-    `<span class="sb-px" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(price)} ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%</span>` +
-    (sharesQty ? `<span class="sb-qty" title="Shares to ${state.direction === 'long' ? 'buy' : 'short'}">${sharesQty} sh</span>` : '') +
+    `<span class="sb-px" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fut ? fmtTicks(price, q.tickSize) : fmt$(price)} ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%</span>` +
+    (sharesQty ? `<span class="sb-qty" title="${fut ? 'Contracts' : 'Shares'} to ${state.direction === 'long' ? 'buy' : 'short'}">${sharesQty} ${fut ? 'ct' : 'sh'}</span>` : '') +
     (ext ? `<span style="color:var(--text3)">${ext.label} <span style="color:${ext.chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtN(ext.price, 2)} ${ext.chg >= 0 ? '+' : ''}${fmtN(ext.chgPct, 1)}%</span></span>` : '') +
     `<span style="color:var(--red)">▼ ${fmtN(range.low, 2)}</span>` +
     `<span style="color:var(--green)">▲ ${fmtN(range.high, 2)}</span>` +

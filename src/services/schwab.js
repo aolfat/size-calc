@@ -1,5 +1,5 @@
 // Schwab Trader API through the size-calc-schwab worker, which holds the app secret, swaps codes for tokens,
-// and relays /trader/v1 calls and /marketdata/v1 reads (futures quotes). Login tokens are device-local: not in CLOUD_KEYS, so never in the account. Only the worker URL syncs.
+// and relays /trader/v1 calls and /marketdata/v1 reads (futures quotes and bars). Login tokens are device-local: not in CLOUD_KEYS, so never in the account. Only the worker URL syncs.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { assertCredentialOrigin, credentialOriginAllowed } from '../lib/credential-origin.js';
@@ -297,17 +297,39 @@ export async function schwabTransactions(from, to, hash) {
   return body;
 }
 
-/**
- * One futures root's quote ('MES' asks for /MES, which Schwab answers with the active contract), through the worker's
- * market data relay. Answers Schwab's body; a worker from before the relay answers 404, a Schwab app without market data 401 or 403.
- * @param {string} root
- */
-export async function schwabFuturesQuote(root) {
-  const q = new URLSearchParams({ symbols: '/' + root, fields: 'quote,reference' });
-  const res = await schwabApi(`/quotes?${q}`, { base: '/marketdata/v1' });
+/** a market data read through the worker's relay: Schwab's body, or its refusal as an error with the status */
+async function marketData(path) {
+  const res = await schwabApi(path, { base: '/marketdata/v1' });
   const body = await readJson(res);
   if (!res.ok) throw schwabError(body, res.status);
   return body;
+}
+
+/**
+ * One futures ticker's quote ('/MES' answers with the active contract, '/MESZ26' with that month). A worker from before
+ * the market data relay answers 404, a Schwab app without Market Data Production 401 or 403.
+ * @param {string} symbol
+ */
+export function schwabFuturesQuote(symbol) {
+  return marketData(`/quotes?${new URLSearchParams({ symbols: symbol, fields: 'quote,reference' })}`);
+}
+
+/**
+ * A futures ticker's 5-minute candles over the last `days` days, overnight included (Schwab's price history body).
+ * @param {string} symbol @param {number} [days] @param {number} [now]
+ */
+export function schwabFuturesBars(symbol, days = 8, now = Date.now()) {
+  const q = new URLSearchParams({
+    symbol, periodType: 'day', frequencyType: 'minute', frequency: '5',
+    startDate: String(now - days * 864e5), endDate: String(now), needExtendedHoursData: 'true',
+  });
+  return marketData(`/pricehistory?${q}`);
+}
+
+/** a futures ticker's daily candles over the last year (Schwab's price history body) @param {string} symbol */
+export function schwabFuturesDaily(symbol) {
+  const q = new URLSearchParams({ symbol, periodType: 'year', period: '1', frequencyType: 'daily', frequency: '1' });
+  return marketData(`/pricehistory?${q}`);
 }
 
 /** where to send the browser to log in; state ties the callback to this attempt */

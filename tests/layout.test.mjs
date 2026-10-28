@@ -60,7 +60,7 @@ test('the risk amount and its chips come first, ahead of the ticket, one tap awa
 test('the risk strip shows wherever risk sizes a trade', async () => {
   const { run, elements } = await app();
   const strip = elements.get('riskStrip');
-  for (const mode of ['shares', 'options', 'futures']) {
+  for (const mode of ['shares', 'options']) {
     await run(`setMode('${mode}')`);
     assert.ok(shown(strip), mode);
   }

@@ -36,29 +36,35 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Formula reference: https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/atr; candle timestamps: https://docs.tradier.com/docs/timesale
 - **Shares mode** (default): Shares = risk$ / |entry − stop|.
   The Long/Short toggle lives FIRST in the Entry & stops row (direction is the first decision; dirField hidden in options mode where chain side plays that role)
-- **Futures mode** (ui/futures.js, core/futures.js): contracts = risk$ / (ticks between entry and stop × tick value + round-trip fees), floored; prices must sit on the contract's tick grid.
-  FUTURES_CONTRACTS lists the CME roots with their tick size and value; Custom contract takes both typed (futures_custom_tick_size / _value).
-  The picked contract persists as futures_contract.
-  **Live prices** come from Schwab's market data (Tradier has no futures): with a Schwab login, opening Futures, changing the contract, ↻ (or r) and each Live tick read `/marketdata/v1/quotes?symbols=/MES` through the worker (schwabFuturesQuote), which Schwab answers with the active contract (/MESZ26).
-  parseFuturesQuote keeps it only when it is that root's, treats a zero price as none and a crossed bid and ask as no market.
-  The ticket shows the contract, last, change from the close, Real-time or Delayed (Schwab's realtime flag), bid, ask, LOD, HOD and the quote time.
-  An untyped entry follows the ask on a long and the bid on a short (the last when there is none), and an untyped stop follows the LOD on a long and the HOD on a short, both on the tick grid (onTick).
-  Typing a price holds it (state.futuresTyped); clearing the box follows the market again; changing the contract clears both.
-  The line under the quote says where each comes from.
-  A delayed quote, or a Schwab tick that disagrees with FUTURES_CONTRACTS, is said in amber on the ticket; sizing still uses the ticket's tick.
-  A failed read keeps the last good quote and says why: 404 means the worker predates the market data relay (redeploy it), 401 or 403 that the Schwab app lacks Market Data Production.
-  An answer for a contract no longer picked is dropped (state.futuresQuoteId).
-  Without a Schwab login, or on a Custom contract, nothing is read and typed prices work as before.
-  The ticket's ⚡ Live (#futuresLiveBtn) runs the same ladder as the ticker row's (one session, both buttons painted); a futures tick is one quote read; switching between Futures and Shares or Options ends the session.
-  Copy names the active month when a quote is in.
-  No futures chart yet: Schwab's price history has no futures bars.
+- **Futures in Stocks & futures** (the Shares mode, renamed; there is no Futures tab): a ticker starting with / loads a futures contract (ui/futures.js, core/futures.js).
+  futuresSymbol takes a root FUTURES_CONTRACTS knows (/MES, the active contract) or one month (/MESZ26); any other / ticker says which roots work.
+  Everything comes from Schwab's market data through the worker (Tradier has no futures), so it needs a Schwab login; without one the box says so and reads nothing.
+  The quote (`/marketdata/v1/quotes`, schwabFuturesQuote) becomes the app's quote form (parseFuturesQuote: type 'future', symbol as typed, contract the month Schwab answered with, the ticket's tick size and value); a zero price is none, a crossed bid and ask no market.
+  The quote bar shows the contract, prices on the tick's decimals (fmtTicks), and Real-time or Delayed from Schwab's realtime flag; there is no extended-hours price for futures.
+  The 5-minute chart reads 8 days of `/marketdata/v1/pricehistory` 5-minute candles, overnight included (schwabFuturesBars, futuresBars), and the daily chart a year of daily candles (futuresDays).
+  Bars carry their CME trading day: from 18:00 New York a bar belongs to the next day's session (futuresSessionClock), so the 5-minute view shows today's session from the evening open, and prior-day levels and ADR read whole sessions.
+  Until the new session has 24 bars (two hours, so about 20:00), the 5-minute view keeps the session before it on screen too.
+  Chart price labels for futures use the tick's decimals and no $ (priceLabeler).
+  The Ext chip changes nothing for futures: their bars always run overnight, and the default LOD / HOD stay Schwab's session's.
+  The sticky bar shows the price on the tick and the count as ct.
+  ATR reads those bars, overnight ones included.
+  Sizing is the shares card counting contracts: futuresPlan puts the entry on the nearest tick and the stop on the tick past it, away from the entry (a chart click or a buffer can land between ticks), then contracts = risk$ / (ticks × tick value + round-trip fees), floored.
+  sharesPlan answers it in the shares form (shares = contracts, riskPerShare = risk per contract), so reverse sizing, the sticky bar and Live work unchanged.
+  The card shows contracts, the month and entry, the stop and its source, risk at stop, risk per contract (ticks × tick value + fees), notional and the dollars a point.
+  Round-trip fees per contract are typed in the card and kept per root on this device (futures_fees).
+  A delayed quote, a Schwab tick that disagrees with FUTURES_CONTRACTS, or a max loss below one contract is said in amber.
+  Futures size by risk only (loading one switches allocation back); Trade at Schwab, the image card and the opening range are hidden; Options says there are no futures chains here.
+  Copy summary names the month ('Short 11 /MESZ26 contracts @ …').
+  Live polls the Schwab quote each tick and the chart every fourth.
+  A worker from before the market data relay answers 404 (redeploy it), a Schwab app without Market Data Production 401 or 403; the toast says which.
+  The last ticker reloads at boot only when its source is there (a Schwab login for futures).
 - **Allocation sizing**: Risk remains the default on load.
   Allocation uses `floor((account × allocation% − existing exposure) / unit cost)`, floored at zero.
   Long shares use planned entry (current quote if blank), long options use full mid debit × 100, and explicitly selected **Sell put** uses strike × 100.
   Target allocation % is persisted/synced as `calc_allocation`; manual existing exposure is session-only and keyed by ticker (shares at current value + short-put assignment notional + long-option debit).
   Total allocation includes existing exposure.
   Editable quantities change allocation %, leaving risk settings intact.
-  Futures and short shares switch to Risk; spreads keep defined-risk sizing.
+  Futures tickers and short shares switch to Risk; spreads keep defined-risk sizing.
   Allocation ignores chart stops.
   Switching away from Options clears sell intent.
 - **Allocation option cards**: chain detail can pin a trade; quick lookup captures the current sizing mode and buy/sell choice before fetching.
