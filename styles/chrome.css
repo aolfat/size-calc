@@ -88,9 +88,14 @@
 .trade-plan .trade-legs { margin-bottom:6px; }
 .trade-plan .trade-legs dd { align-items:stretch; width:100%; min-width:0; font-family:var(--sans); }
 .trade-plan .jr-search { width:100%; max-width:320px; flex:none; }
-.trade-chips { margin-top:6px; }
+.trade-plan .trade-chips { margin-top:6px; }
 .trade-plan .hint { margin:0; }
 .jr-plan .hint { margin:0 0 2px; }
+/* phones: each label over its chips, so the chips get the sheet's width */
+@media (max-width: 600px) {
+  .trade-plan .trade-legs > div { grid-template-columns:1fr; gap:6px; }
+  .trade-plan .jr-search { max-width:none; }
+}
 .trade-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
 .trade-confirm { background:linear-gradient(180deg, #16294a, #101f39); border-color:var(--blue-bd); color:var(--blue); font-weight:600; }
 .trade-confirm:disabled { opacity:0.5; cursor:default; }

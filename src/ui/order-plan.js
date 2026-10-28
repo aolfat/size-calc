@@ -90,8 +90,8 @@ export function tradePlanHtml(t) {
   const lib = library();
   const tactics = lib.choices('tactic').map(i => chip(i.name, t.tactics.includes(i.key), `data-action="toggleTradeTactic" data-arg="${esc(i.key)}"${picksOff(t)}`)).join('');
   return `<dl class="trade-legs trade-plan-picks">
-      <div><dt>Setup</dt><dd><input type="search" class="jr-search" id="tradeSetupSearch" placeholder="Search setups" autocomplete="off" spellcheck="false" value="${esc(state.tradeSetupQuery || '')}" data-input="tradeSetupSearch" aria-label="Search My setups" /><div class="chip-row trade-chips" id="tradeSetupPick">${setupChipsHtml(t)}</div></dd></div>
-      <div><dt>Entry tactic</dt><dd><div class="chip-row trade-chips">${tactics || '<span class="jr-none">No entry tactics yet. Add them on a journal trade.</span>'}</div></dd></div>
+      <div><dt>Setup</dt><dd><input type="search" class="jr-search" id="tradeSetupSearch" placeholder="Search setups" autocomplete="off" spellcheck="false" value="${esc(state.tradeSetupQuery || '')}" data-input="tradeSetupSearch" aria-label="Search My setups" /><div class="chip-row jr-chips trade-chips" id="tradeSetupPick">${setupChipsHtml(t)}</div></dd></div>
+      <div><dt>Entry tactic</dt><dd><div class="chip-row jr-chips trade-chips">${tactics || '<span class="jr-none">No entry tactics yet. Add them on a journal trade.</span>'}</div></dd></div>
     </dl>
     <p class="hint">Saved with the order. The journal puts them on the trade once it fills.</p>`;
 }
