@@ -221,6 +221,20 @@ test('phones: the symbol box, Filters and Select on one line, the rest behind Fi
   assert.match(out(), /aria-expanded="false">Filters <b>1<\/b>/, 'closed, the count stays');
 });
 
+test('open trades come first, though one closed since; the Open chip lists only them', async () => {
+  // the call opens on 9/30, before the stock trade closes on 10/3: newest by close would put the stock first
+  const early = { ...CALL, enteredTime: '2026-09-30T14:00:00+0000', orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 7101, executionLegs: [{ legId: 1, quantity: 3, price: 4.1, time: '2026-09-30T14:00:02+0000' }] }] };
+  const records = RECORDS.map(r => ({ ...r, account: '6789', ...(r.record_id === '601' ? { entered_at: '2026-09-30T14:00:00Z', data: early } : {}) }));
+  const { run, elements } = await app({ width: 1280, storage: connected(), supabase: fakeSupabase(records), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  const names = () => [...elements.get('journalSection').innerHTML.matchAll(/<button class="journal-name"[^>]*><b>([^<]*)<\/b>/g)].map(m => m[1]);
+  assert.deepEqual(names(), ['AAPL 12/18/26 245C', 'AAPL'], 'the open call on top');
+  assert.match(elements.get('journalSection').innerHTML, /data-arg="all">All <b>2<\/b><\/button><button class="journal-chip" aria-pressed="false" data-action="setJournalReviewFilter" data-arg="open">Open <b>1<\/b>/);
+  run("setJournalReviewFilter('open')");
+  assert.deepEqual(names(), ['AAPL 12/18/26 245C'], 'Open: only the open trade');
+});
+
 test('filters: side and symbol narrow the trades, and Fills shows the raw fills', async () => {
   const records = RECORDS.map(r => ({ ...r, account: '6789' }));
   const { run, elements } = await app({ storage: connected(), supabase: fakeSupabase(records), session: SESSION });
