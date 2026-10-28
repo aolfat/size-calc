@@ -48,11 +48,20 @@ export function planContext(isLong, stopPlanned) {
 
 // ---------- the sheet's picks ----------
 
-/** a new review: read your choices when signed in, then fill in today's focus setups and the opening range's tactic */
+/**
+ * Your setups and tactics, read once and shared by every caller. The trade button showing starts it, so the sheet opens
+ * with them in place instead of pushing its buttons down when they arrive; opening the sheet tries again after a failure.
+ */
+export function loadPlanChoices({ retry = false } = {}) {
+  if (!state.session || state.journalReview || (state.journalReviewError && !retry)) return state.planChoicesRead || Promise.resolve();
+  return state.planChoicesRead ||= loadJournalReview().finally(() => { state.planChoicesRead = null; });
+}
+
+/** a new review: your choices (read already, or now), then today's focus setups and the opening range's tactic */
 export function startTradePlan(t) {
   if (!state.session) return;
   if (state.journalReview) { prefillPicks(t); return; }
-  loadJournalReview().then(() => {
+  loadPlanChoices({ retry: true }).then(() => {
     prefillPicks(t);
     if (state.tradeTicket === t) renderTradePlan();
   });
@@ -74,11 +83,17 @@ const chip = (label, on, attrs) => `<button class="filter-btn${on ? ' active' : 
 /** picks can change until the order goes, and after it while its plan is kept */
 const picksOff = t => t.sent && !t.planId ? ' disabled' : '';
 
+/**
+ * The setup chips in one order for the whole review, set the first time they show: the ones filled in first, then the most
+ * used. Tapping one lights it where it is, so nothing moves under your finger; a search only hides the ones that don't match.
+ */
 function setupChipsHtml(t) {
   const lib = library(), side = sideOf(t), q = state.tradeSetupQuery || '';
-  const others = setupsByUse(lib, state.journalReview?.labels || {}).map(i => i.key).filter(k => !t.setups.includes(k) && matchesQuery(setupSearchNames(lib, k), q));
-  const shown = [...t.setups, ...others.slice(0, SETUP_CHIPS)];
-  if (q && !others.length && !t.setups.length) return `<p class="jr-none">No setup matches “${esc(q)}”.</p>`;
+  t.setupOrder ||= [...t.setups, ...setupsByUse(lib, state.journalReview?.labels || {}).map(i => i.key).filter(k => !t.setups.includes(k))];
+  // without a search, the first SETUP_CHIPS always (and any lit one past them); with one, the first SETUP_CHIPS that match
+  let room = SETUP_CHIPS;
+  const shown = t.setupOrder.filter((k, i) => t.setups.includes(k) || (q ? matchesQuery(setupSearchNames(lib, k), q) && room-- > 0 : i < SETUP_CHIPS));
+  if (q && !shown.length) return `<p class="jr-none">No setup matches “${esc(q)}”.</p>`;
   return shown.map(k => chip(lib.nameOf('setup', k, side), t.setups.includes(k), `data-action="toggleTradeSetup" data-arg="${esc(k)}"${picksOff(t)}`)).join('');
 }
 

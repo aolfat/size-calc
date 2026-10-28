@@ -72,6 +72,33 @@ test('the sheet offers your setups and entry tactics; today\'s focus list and th
   assert.match(s.elements.get('tradeSetupPick').innerHTML, /Base breakout/, 'one that is on stays');
 });
 
+const setupOrder = html => [...html.matchAll(/data-action="toggleTradeSetup" data-arg="([^"]+)"/g)].map(m => m[1]);
+
+test('your setups are read as soon as the trade button shows, once, so the sheet opens with them in place', async () => {
+  const s = await sheet();
+  s.run('renderShares(); renderShares()');
+  await settle();
+  assert.equal(s.supabase.reads.filter(r => r.table === 'library_items').length, 1, 'read once, before any review');
+  await s.run('openTrade()');
+  assert.doesNotMatch(s.body(), /Loading your setups/, 'nothing arrives after the sheet is up to push the buttons down');
+  assert.match(s.body(), /data-action="toggleTradeSetup"/);
+});
+
+test('tapping a setup lights it where it is: the chips never move under your finger', async () => {
+  const s = await sheet({ focus: [{ id: 'f1', symbol: 'TEST', side: 'long', setups: ['ema21_bounce'] }] });
+  await settle();
+  await s.run('openTrade()');
+  const before = setupOrder(s.body());
+  assert.equal(before[0], 'ema21_bounce', 'the focus list\'s setup leads');
+  s.run(`toggleTradeSetup('${before[3]}')`);
+  assert.deepEqual(setupOrder(s.picks()), before);
+  assert.match(s.picks(), new RegExp(`class="filter-btn active" aria-pressed="true" data-action="toggleTradeSetup" data-arg="${before[3]}"`));
+  s.run("toggleTradeSetup('ema21_bounce')");
+  assert.deepEqual(setupOrder(s.picks()), before, 'off again, it stays put too');
+  s.run("tradeSetupSearch('earn'); tradeSetupSearch('')");
+  assert.deepEqual(setupOrder(s.elements.get('tradeSetupPick').innerHTML), before, 'a search cleared gives back the same order');
+});
+
 test('once the order goes, the plan is saved: the picks, the order id, risk against the Schwab account, the stop', async () => {
   const s = await sheet();
   await s.run('openTrade()');
