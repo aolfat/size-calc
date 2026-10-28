@@ -112,4 +112,5 @@ test('every synced setting is a key the settings table accepts', async () => {
   const keys = [...allowed[1].matchAll(/'([a-z_]+)'/g)].map(m => m[1]);
   for (const k of JSON.parse(run('JSON.stringify(CLOUD_KEYS)'))) assert.ok(keys.includes(k), `${k} is allowed`);
   assert.ok(keys.includes('tradier_key_at'), 'and the key stamp the Vault functions write');
+  assert.ok(keys.includes('schwab_login_at'), 'and the shared Schwab login\'s stamp');
 });

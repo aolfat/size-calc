@@ -286,7 +286,7 @@ export const actions = {
   finishSchwab: el => { if (el.tagName === 'INPUT') el.blur(); finishSchwab(); },
   reloadSchwabAccounts: () => reloadSchwabAccounts(),
   schwabAccountChanged: () => schwabAccountChanged(),
-  disconnectSchwab: () => disconnectSchwab(),
+  disconnectSchwab: el => disconnectSchwab(el.dataset.arg),
 
   // ---------- account and risk ----------
   setSizingMode: el => setSizingMode(arg(el)),
