@@ -42,7 +42,9 @@ test('every table carries its owner and is deleted with the account', () => {
 
 // Claude access (docs/claude-access.md): these take a key in place of a sign-in, so they're the one thing anon may run;
 // each one checks the key before anything else, and the check itself is never callable
-const KEYED = ['claude_journal_read', 'claude_journal_save'];
+const KEYED = ['claude_journal_read', 'claude_journal_save', 'claude_model_books_read', 'claude_model_books_save'];
+// these check a key too, but only the service role runs them: the Edge Function that uploads a Model books screenshot
+const SERVICE_KEYED = ['claude_model_example_add'];
 const KEY_CHECK = 'claude_key_user';
 
 test('nothing is granted to the anonymous role but the functions that check a Claude key', () => {
@@ -55,12 +57,20 @@ test('nothing is granted to the anonymous role but the functions that check a Cl
 });
 
 test('a keyed function checks the key first, and the check is callable by no one', () => {
-  for (const name of KEYED) {
+  for (const name of [...KEYED, ...SERVICE_KEYED]) {
     const fn = sql.match(new RegExp(`create or replace function public\\.${name}\\(p_key text[^)]*\\)[^$]*\\$\\$\\s*declare\\s*uid uuid := public\\.${KEY_CHECK}\\(p_key\\);`, 'i'));
     assert.ok(fn, `${name} starts with the key check`);
   }
   assert.match(sql, new RegExp(`revoke execute on function public\\.${KEY_CHECK}\\(text\\) from public, anon, authenticated`, 'i'));
   assert.doesNotMatch(sql, new RegExp(`grant[^;]*public\\.${KEY_CHECK}\\(`, 'i'));
+});
+
+test('a function only the service role runs is taken from everyone else and granted to it alone', () => {
+  for (const name of SERVICE_KEYED) {
+    assert.match(sql, new RegExp(`revoke execute on function public\\.${name}\\([^)]*\\) from public, anon, authenticated`, 'i'), name);
+    const grants = [...sql.matchAll(new RegExp(`grant[^;]*public\\.${name}\\([^;]*;`, 'gi'))].map(m => m[0]);
+    assert.ok(grants.length && grants.every(g => /to service_role;$/i.test(g)), `${name}: service role only`);
+  }
 });
 
 test('functions that run with elevated rights fix their search path and are callable only by signed-in users (or with a Claude key)', () => {
@@ -69,7 +79,7 @@ test('functions that run with elevated rights fix their search path and are call
   for (const [whole, name] of definers) {
     assert.match(whole, /set search_path = ''/i, `${name}: fixed search path`);
     assert.match(sql, new RegExp(`revoke execute on function [^;]*public\\.${name}\\(`, 'i'), `${name}: revoked from public`);
-    if (name === KEY_CHECK) continue; // checked above: callable by no one
+    if (name === KEY_CHECK || SERVICE_KEYED.includes(name)) continue; // checked above: no one, or the service role alone
     assert.match(sql, new RegExp(`grant execute on function [^;]*public\\.${name}\\([^;]*to ${KEYED.includes(name) ? 'anon, ' : ''}authenticated`, 'i'), `${name}: signed-in users only`);
   }
 });
