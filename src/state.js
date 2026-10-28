@@ -91,7 +91,7 @@ export function createState() {
     shotDeleteArmed: false, // Delete was tapped once: the next tap deletes
     shotUndo: '', // the screenshot last X'd off, for the toast's Undo
     setupDraft: null, // + New setup open: { action, levels, pattern, key (the setup it put on the trade), made (the one it made, while only it uses it) }
-    setupEdit: null, // one of My setups being edited in Edit choices: { key ('' for + New setup), action, levels, pattern, name, follow (the name tracks the parts), missed ({ id, symbol }: made for that missed trade) }
+    setupEdit: null, // one of My setups being edited in Edit choices: { key ('' for + New setup), action, levels, pattern, name, follow (the name tracks the parts), missed ({ id, symbol }: made for that missed trade), why (what a save with nothing picked is missing) }
     libraryNew: null, // + New open in that builder: { kind (level, action or pattern), name, short }
     reviewLinkDraft: '', // a link being pasted under Option flow
     reviewNewKind: '', // + New is open for this kind

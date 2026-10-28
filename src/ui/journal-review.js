@@ -477,6 +477,7 @@ export function useSetupTwin(key) {
 export function cancelSetupEdit() { state.setupEdit = null; state.libraryNew = null; renderJournalLibrary(); }
 function setupEdited() {
   const d = state.setupEdit;
+  d.why = '';
   if (d.follow) d.name = setupName(library(), editParts(d)) || d.name;
   renderJournalLibrary();
 }
@@ -493,11 +494,18 @@ export function toggleEditLevel(level) {
 export function setupEditNameInput(name) { if (state.setupEdit) Object.assign(state.setupEdit, { name, follow: false }); }
 
 /** Save: the setup's new parts and name, on its library row; every trade with it groups the new way from then on */
-export function saveSetupEdit() {
-  const d = state.setupEdit, lib = library();
+export async function saveSetupEdit() {
+  const d = state.setupEdit;
   if (!d) return;
-  const parts = editParts(d), auto = setupName(lib, parts);
-  if (!auto || editTwin(lib, d)) return;
+  // a name typed in a + New box and not added yet goes in first, the way its Add would
+  if (state.libraryNew?.name.trim()) {
+    await addLibraryChoice(state.libraryNew.name);
+    if (state.setupEdit !== d || state.libraryNew) return;
+  }
+  const lib = library(), parts = editParts(d), auto = setupName(lib, parts);
+  // nothing picked: say so, rather than a button that does nothing
+  if (!auto) { d.why = 'Pick what happened and at what, or a pattern. A new one: + New in its row.'; renderJournalLibrary(); return; }
+  if (editTwin(lib, d)) return;
   state.setupEdit = null;
   state.libraryNew = null;
   const name = (d.name.trim() || auto).slice(0, 80);
@@ -552,13 +560,14 @@ function setupEditHtml(lib) {
     ? `<span class="jr-have">Already in My setups: <b>${esc(lib.nameOf('setup', twin.key, 'both'))}</b>.</span>${d.missed ? `<button class="btn primary" data-action="useSetupTwin" data-arg="${esc(twin.key)}">Use it</button>` : ''}<button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`
     : twin
     ? `<span class="jr-have">Same as <b>${esc(lib.nameOf('setup', twin.key, 'both'))}</b>.</span><button class="btn" data-action="mergeEditedSetup" data-arg="${esc(twin.key)}">Merge into it</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`
-    : `<button class="btn primary" data-action="saveSetupEdit"${auto ? '' : ' disabled'}>${d.key ? 'Save' : d.missed ? `Add to My setups and ${esc(d.missed.symbol)}` : 'Add to My setups'}</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`;
+    : `<button class="btn primary" data-action="saveSetupEdit">${d.key ? 'Save' : d.missed ? `Add to My setups and ${esc(d.missed.symbol)}` : 'Add to My setups'}</button><button class="pos-link" data-action="cancelSetupEdit">Cancel</button>`;
   return `<div class="jr-draft jl-edit">
       <div class="jr-draft-row"><span class="jr-draft-q">What happened?</span>${lib.choices('action').map(i => chip(i.name.replace(/^./, c => c.toUpperCase()), d.action === i.key, `data-action="setEditAction" data-arg="${esc(i.key)}"`)).join('')}${libraryNewBox('action')}</div>
       <div class="jr-draft-row"><span class="jr-draft-q">At what?</span>${lib.choices('level').map(i => chip(i.name, d.levels.includes(i.key), `data-action="toggleEditLevel" data-arg="${esc(i.key)}"`)).join('')}${libraryNewBox('level')}</div>
       <div class="jr-draft-row"><span class="jr-draft-q">Or a pattern</span>${lib.choices('pattern').map(i => chip(i.name, d.pattern === i.key, `data-action="setEditPattern" data-arg="${esc(i.key)}"`)).join('')}${libraryNewBox('pattern')}</div>
       <div class="jr-draft-row"><label class="jr-draft-q" for="setupEditName">Name</label><input type="text" id="setupEditName" maxlength="80" autocomplete="off" placeholder="${esc(auto || 'Pick what happened and at what')}" value="${esc(d.name)}" data-input="setupEditNameInput" data-enter="saveSetupEdit" />
         ${finish}</div>
+      ${d.why ? `<p class="hint" role="status" style="color:var(--amber)">${esc(d.why)}</p>` : ''}
       <p class="hint">${d.key ? 'Every trade with this setup counts the new way, in the filter, the stats and the reviews.' : d.missed ? `It goes on ${d.missed.focus ? `${esc(d.missed.symbol)} on your focus list` : `the missed ${esc(d.missed.symbol)}`}, and on any trade's review from then on.` : 'Then pick it on any trade\'s review.'}</p>
     </div>`;
 }
