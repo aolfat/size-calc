@@ -8,6 +8,7 @@ import { fillWords, fillsFrom } from '../src/core/journal-records.js';
 import { holdWords, journalTrades } from '../src/core/journal.js';
 import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
 import { nyParts } from '../src/core/journal-stats.js';
+import { cleanPlanRow, matchPlans, planLines } from '../src/core/order-plans.js';
 
 /** label kinds a review sets, by the word a review uses for them */
 export const LABEL_FIELDS = { sector: 'sector', setups: 'setup', tactics: 'tactic', tags: 'tag', mistakes: 'mistake' };
@@ -21,8 +22,8 @@ export const dayOf = t => t.openedAt ? nyParts(t.openedAt).day : '';
 
 /**
  * The read made into the journal: trades newest first (deleted ones flagged), the library, and each trade's review,
- * labels and day market by key.
- * @param {{ records: any[], trades: any[], reviews: any[], labels: any[], days: any[], library: any[] }} data
+ * labels, day market and order plans (the Trade at Schwab sheet's, matched as the Journal does) by key.
+ * @param {{ records: any[], trades: any[], reviews: any[], labels: any[], days: any[], library: any[], order_plans?: any[] }} data
  * @param {{ now?: number }} [opts]
  */
 export function journalFrom(data, opts = {}) {
@@ -33,7 +34,8 @@ export function journalFrom(data, opts = {}) {
   const records = data.records || [];
   const fills = fillsFrom(records);
   const trades = journalTrades(fills, records, reviews, { now: opts.now ?? Date.now(), saved: data.trades || [] });
-  return { trades, fills, reviews, labels, days, rows: data.library || [], lib: buildLibrary(data.library || []) };
+  const plans = matchPlans(trades, (data.order_plans || []).map(cleanPlanRow).filter(Boolean));
+  return { trades, fills, reviews, labels, days, plans, rows: data.library || [], lib: buildLibrary(data.library || []) };
 }
 
 /** where a trade's review stands (core reviewState) */
@@ -94,6 +96,7 @@ export function tradeDetail(j, t) {
     `  entry note: ${rv.entry_note || '—'}`,
     `  exit note: ${rv.note || '—'}`,
     `  ${st.reviewed ? 'reviewed' : `missing: ${st.missing.join(', ')}`}`,
+    ...(j.plans?.get(t.key) ? ['order plan:', ...planLines(j.plans.get(t.key), t).map(l => `  ${l}`)] : []),
   ].join('\n');
 }
 

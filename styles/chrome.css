@@ -83,6 +83,14 @@
 .trade-legs .shares-detail { font-family:inherit; }
 .trade-warn { color:var(--amber); background:var(--amber-bg); border:1px solid #594016; border-radius:var(--radius); padding:8px 10px; font-size:12.5px; line-height:1.45; margin:8px 0; }
 .trade-json { font:11px/1.45 var(--mono); color:var(--text2); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:8px; margin-top:6px; overflow:auto; max-height:220px; }
+/* the setup and entry tactic picks kept with the order (ui/order-plan.js) */
+.trade-plan { border-top:1px solid var(--border); padding-top:12px; margin-top:4px; }
+.trade-plan .trade-legs { margin-bottom:6px; }
+.trade-plan .trade-legs dd { align-items:stretch; width:100%; min-width:0; font-family:var(--sans); }
+.trade-plan .jr-search { width:100%; max-width:320px; flex:none; }
+.trade-chips { margin-top:6px; }
+.trade-plan .hint { margin:0; }
+.jr-plan .hint { margin:0 0 2px; }
 .trade-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
 .trade-confirm { background:linear-gradient(180deg, #16294a, #101f39); border-color:var(--blue-bd); color:var(--blue); font-weight:600; }
 .trade-confirm:disabled { opacity:0.5; cursor:default; }

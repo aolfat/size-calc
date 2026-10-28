@@ -229,6 +229,10 @@ export function createState() {
     tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent
     tradeBusy: false,
     tradeLast: null, // { symbol, at } of the last order placed, to flag a quick repeat
+    tradeSetupQuery: '', // what's typed in the review sheet's setup search
+    orderPlans: null, // the plans saved with orders (core/order-plans.js OrderPlan[]), once read for the journal
+    orderPlansError: '', // why they couldn't be read or applied
+    orderPlanMatch: null, // trade key → its plans, oldest first (matchPlans), for the trade page
     orb: null, // { symbol, minutes, isLong, high, low, end, entry, stop }: the opening range a chip last set on the ticket
     orbBusy: 0, // the chip whose bars are being read
     orbNote: '', // why the last chip set nothing (range not closed yet, no bars)

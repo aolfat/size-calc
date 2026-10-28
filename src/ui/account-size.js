@@ -15,6 +15,12 @@ const dollars = v => '$' + v.toLocaleString('en-US');
 /** the last update: { day, hash, value, at }, device-local like the login */
 function lastUpdate() { try { return JSON.parse(store.get('schwab_acct_size') || 'null'); } catch(e) { return null; } }
 
+/** today's daily read of this account's value, { value, at } (at as ISO), or null: none today, or another account's */
+export function todaysAccountValue(hash, now = Date.now()) {
+  const last = lastUpdate();
+  return last && last.hash === hash && last.day === nyDay(now) && last.value > 0 ? { value: last.value, at: new Date(last.at).toISOString() } : null;
+}
+
 export function accountSizeFromSchwab() { return store.get('schwab_acct_source') !== 'manual'; }
 
 /** whether this account's value still has to go in today */

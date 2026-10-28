@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
+import { fakeRecords } from './helpers/supabase.mjs';
 
 const PROXY = 'https://size-calc-schwab.test.workers.dev';
 const DAY = 24 * 60 * 60 * 1000;
@@ -1346,6 +1347,41 @@ test('a limit entry that fills before it moves stays filled, and nothing is plac
   await run('sendOrderEdit()');
   assert.deepEqual(b.sent.map(c => c.method), ['DELETE']);
   assert.match(elements.get('editBody').innerHTML, /Schwab filled the buy limit \$110\.00 before it could be changed\. Nothing more was sent\./);
+});
+
+// an order plan (docs/schwab.md): the trade sheet kept one for entry 600; signed in, so Edit can find it
+async function withPlan(b) {
+  const supabase = fakeRecords();
+  supabase.tables.order_plans.set('user-1:p1', { user_id: 'user-1', id: 'p1', account: '6789', symbol: 'NVDA', side: 'long', order_ids: ['600'],
+    sent_at: new Date().toISOString(), setups: ['base_breakout'], tactics: [], plan: { qty: 20, entry_type: 'LIMIT' }, trade_key: null });
+  const storage = connected();
+  storage.set('schwab_tokens', JSON.stringify({ ...JSON.parse(storage.get('schwab_tokens')), userId: 'user-1' }));
+  const a = await app({ fetch: b.fetch, storage, supabase, session: { user: { id: 'user-1', email: 'me@example.com' } } });
+  return { ...a, plan: () => supabase.tables.order_plans.get('user-1:p1'), supabase };
+}
+
+test('an entry moved by Edit takes its order plan along: the new id, and the size it went at', async () => {
+  const b = broker();
+  b.live.orders.push(plain(ENTRY));
+  const { run, plan } = await withPlan(b);
+  await run('refreshPositions()');
+  await run('openOrderEdit(600)');
+  run("setEditQty('15'); setEditPrice('111')");
+  await run('sendOrderEdit()');
+  assert.deepEqual(plan().order_ids, ['600', '900'], 'the journal finds the trade by either');
+  assert.deepEqual(plan().plan.edits.map(e => [e.order_id, e.qty]), [['900', 15]]);
+  assert.equal(plan().plan.qty, 20, 'the plan keeps what was planned');
+  assert.deepEqual(plan().setups, ['base_breakout']);
+});
+
+test('an edit of an order no plan has writes no plan', async () => {
+  const b = broker();
+  const { run, supabase } = await withPlan(b);
+  await run('refreshPositions()');
+  await run('openOrderEdit(102)');
+  run("setEditStop('36')");
+  await run('sendOrderEdit()');
+  assert.equal(supabase.writes.filter(w => w.table === 'order_plans').length, 0);
 });
 
 test('orders the edit can\'t rebuild are left to Schwab', async () => {

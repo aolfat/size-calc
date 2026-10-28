@@ -6,6 +6,7 @@
 import { marketEscape as esc } from '../core/format.js';
 import { buildLibrary, cleanLink, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
 import { nyParts } from '../core/journal-stats.js';
+import { planLines } from '../core/order-plans.js';
 import { store } from '../lib/store.js';
 import { addTradeLabel, deleteLibraryItem, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
 import { state } from '../state.js';
@@ -361,6 +362,13 @@ export function reviewSearchPick(t, kind) {
   return toggleReviewLabel(t, kind, key);
 }
 
+/** what the Trade at Schwab sheet kept with the order (ui/order-plan.js): risk against the Schwab account, the stop */
+function orderPlanRow(t) {
+  const plans = state.orderPlanMatch?.get(t.key);
+  if (!plans?.length) return '';
+  return `<div class="jr-row"><div class="jr-label">Order plan</div><div class="jr-plan">${planLines(plans, t).map(l => `<p class="hint">${esc(l)}</p>`).join('')}</div></div>`;
+}
+
 function row(label, body, missing, cls = '') {
   return `<div class="jr-row${missing ? ' jr-missing' : ''}${cls ? ` ${cls}` : ''}"><div class="jr-label">${label}</div><div class="chip-row jr-chips">${body}</div></div>`;
 }
@@ -409,6 +417,7 @@ export function reviewSectionHtml(t) {
     ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
     ${row('My setups', `${setupSearch}${fitNote}<div class="jr-setup-pick" id="jrSetupPick">${setupPickHtml(t)}</div>${builder}${partsLine}`, miss.has('setup'), 'jr-setup-row')}
     ${row('Entry tactic', `${searchBox('tactic', 'Search tactics', 'Search entry tactics')}<span class="jr-tactic-pick" id="jrTacticPick">${tacticPickHtml(t)}</span>${newBox('tactic')}`, miss.has('tactic'))}
+    ${orderPlanRow(t)}
     ${row('Tags', pick('tag') + newBox('tag') + linksHtml(t, lib))}
     <div class="jr-row"><label class="jr-label" for="entryNote">Entry note <span class="jr-sub">optional</span></label>
       <div><textarea id="entryNote" rows="2" maxlength="5000" placeholder="Why you're in, the plan, what proves it wrong" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="entry"${entryOff}>${esc(noteText(t, 'entry'))}</textarea>

@@ -17,6 +17,7 @@ A database without the migration says so in the section.
 Two database functions take the key in place of a sign-in, and they're the only thing the anonymous role may run (tests/rls.test.mjs allows these two alone and checks each starts with the key check).
 `claude_key_user` turns a key into its owner and stamps last_used_at; nobody can call it directly.
 `claude_journal_read` returns that owner's records (the newest 5000, as the Journal reads them), shaped trades, reviews, labels, each day's market and the library.
+It returns the order plans too (migration 20261107000000_order_plans.sql redefines it), and `show` prints a trade's under 'order plan:' the way the trade page does (docs/journal.md), for analyzing risk as a % of the account and how stops were set.
 `claude_journal_save` writes, in one transaction: your own library items, review fields (stop, setup grade, plan followed, exit note, entry note, the trade's own market, reviewed_at; nothing else, so it can't delete a trade), labels off and on, and a day's market (the notebook on that day stays).
 Every row it touches is the key owner's; the tables' own checks still apply.
 
