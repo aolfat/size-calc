@@ -263,7 +263,8 @@ function filtered(list, sideOf) {
 const reviewsRead = () => !!state.journalReview && !state.journalReviewError;
 const isReviewed = t => reviewsRead() && t.status !== 'history' && tradeReviewState(t).reviewed;
 const untagged = t => reviewsRead() && t.status !== 'history' && !setupsOf(t).length;
-const REVIEW_TESTS = { todo: toReview, done: isReviewed, untagged };
+const isOpen = t => t.status === 'open';
+const REVIEW_TESTS = { open: isOpen, todo: toReview, done: isReviewed, untagged };
 const onReviewFilter = list => REVIEW_TESTS[state.journalReviewFilter] ? list.filter(REVIEW_TESTS[state.journalReviewFilter]) : list;
 /** the setup filter: only the trades that carry that setup, that kind (any bounce) or that level (Trades, Calendar and Stats) */
 const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupMatches(t, state.journalSetupFilter)) : list;
@@ -361,12 +362,13 @@ function controls(all = [], navigationOnly = false) {
   </div>`;
 }
 
-/** All · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
+/** All · Open (while any is) · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
 function reviewChips(all, withFrom = true) {
   const base = onSetupFilter(onPickedDay(filtered(all, t => t.bias))).filter(t => !t.deleted);
   const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
   const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
-  return `<div class="journal-chips-row"><div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>${withFrom ? reviewFromHtml(all) : ''}</div>`;
+  const open = base.filter(isOpen).length;
+  return `<div class="journal-chips-row"><div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${open || state.journalReviewFilter === 'open' ? chip('open', 'Open', open) : ''}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>${withFrom ? reviewFromHtml(all) : ''}</div>`;
 }
 
 /** what's ticked, Delete beside the count (away from Merge), why it can't be one trade (or Merge), and Clear;
@@ -485,8 +487,10 @@ function watchPhone() {
   window.matchMedia(PHONE_MQ).addEventListener?.('change', () => { if (state.journalView) renderJournal(); });
 }
 
-/** the Trades tab's trades: its side, symbol, day, review and setup filters, newest first */
-const tradesTabList = all => onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias))));
+/** open trades first (the phone cards' order too), each part newest first */
+const openFirst = list => [...list.filter(isOpen), ...list.filter(t => !isOpen(t))];
+/** the Trades tab's trades: its side, symbol, day, review and setup filters, open ones first, newest first */
+const tradesTabList = all => openFirst(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias)))));
 /**
  * The trades a trade page's arrows step through: the Trades tab as it's filtered now (deleted ones only while shown), or
  * every trade when the page opened from somewhere the trade isn't in that list (the calendar, a setup's page)
