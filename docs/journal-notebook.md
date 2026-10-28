@@ -94,6 +94,13 @@ The header counts them ('2 missed').
 **In the week's review:** the week's and month's review list every trade you missed in them (periodMissed: a week is its Monday through Sunday, like the calendar), after the Trades list, counted by reason ('Hesitated 2 · Away 1'); each line is the notebook's, with its day, and tapping it opens that day with it open (openMissedOnDay).
 A week with no trades still shows them under 'No trades this week'.
 
+**The Missed tab:** every missed trade you ever logged, in its own Journal tab after Calendar (works before any import).
+Newest first, under a heading per month with its count; each line is the notebook's, with its day.
+A search box finds text in the ticker, the note, or the line's words (side, setups, tactics, why, in your names), any case.
+Filters: a setup menu (the setups your missed trades used), All / Long / Short, and a chip per reason; each counts what the other filters leave, and Clear turns them all off.
+The count says '3 missed', or '2 of 3 missed' while a filter is on.
+Tapping a line opens its day with it open, and that page's back button reads ← Missed and returns to the tab, filters kept (state.notebookBack; stepping days keeps it).
+
 **Where the charts' bars come from:** the 5 minutes are the journal's kept bars when it has them (a trade of yours in that ticker that day), else Tradier's, read when you open it and never saved, so a day older than about 40 days has no 5-minute chart.
 The daily is Tradier's last year.
 Both need a Tradier key; without one each says so.

@@ -105,3 +105,11 @@ button.jc-quiet:hover, .jc-noted { opacity: 0.9; }
 @media (max-width: 600px) {
   .jc-ev { top: 5px; right: 5px; width: 6px; height: 6px; }
 }
+
+/* the Journal's Missed tab: every missed trade, searched and filtered */
+.jm-controls #journalMissedSearch { width: 220px; }
+.jm-count { margin: 10px 0 0; }
+@media (max-width: 600px) {
+  .jm-controls #journalMissedSearch { grid-column: 1 / -1; width: 100%; min-width: 0; }
+  .jm-controls .journal-setup-filter { width: 100%; min-width: 0; max-width: none; }
+}

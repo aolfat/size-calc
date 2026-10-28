@@ -172,6 +172,23 @@ export function periodMissed(days, unit, key) {
 }
 
 /**
+ * Every missed trade you logged, newest day first (a day's in the order you logged them), each with its day, narrowed by
+ * the Missed tab's filters: a side, a setup and a reason (keys; empty or 'all' lets every one through) and text, found in
+ * the ticker, the note or the words its line says (`words`: side, setups, tactics and why in your names), any case.
+ * @param {Record<string, { missed?: MissedTrade[] }>} days the notebook rows by day
+ * @param {{ side?: string, setup?: string, why?: string, q?: string }} [filter]
+ * @param {(m: MissedTrade) => string} [words]
+ * @returns {(MissedTrade & { day: string })[]}
+ */
+export function allMissed(days, { side = 'all', setup = '', why = '', q = '' } = {}, words = () => '') {
+  const text = q.trim().toLowerCase();
+  return Object.keys(days || {}).filter(isDay).sort().reverse()
+    .flatMap(day => (days[day]?.missed || []).map(m => ({ ...m, day })))
+    .filter(m => (side === 'all' || !side || m.side === side) && (!setup || m.setups.includes(setup)) && (!why || m.why === why)
+      && (!text || [m.symbol, m.note || '', words(m)].some(s => s.toLowerCase().includes(text))));
+}
+
+/**
  * Your goals and rules from the library rows (kinds goal and rule), each list in your order (then oldest first);
  * retired ones (hidden) are kept, for the days that answered them.
  * @param {{ id: string, kind: string, name: string, hidden?: boolean, settings?: any }[]} rows
