@@ -15,7 +15,6 @@ import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
 import { refreshQuote } from './ticker.js';
 import { maybeCapture } from './schwab-capture.js';
-import { renderFuturesQuote } from './futures.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
 const mask = last4 => '••' + last4;
@@ -182,7 +181,6 @@ export function updateSchwabUi() {
   updateTradeButton();
   updateAccountSourceUi();
   updateSchwabBanner();
-  renderFuturesQuote(); // live futures prices come and go with the login
 }
 
 // ---------- the banner under the header: not connected, or the login's last day ----------

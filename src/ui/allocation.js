@@ -1,5 +1,6 @@
 // Allocation sizing: target % of account less existing exposure, for long shares, long options and sold puts.
 import { state } from '../state.js';
+import { isFuturesQuote } from '../core/futures.js';
 import { inZone } from '../lib/zone.js';
 import { expChat, fmt$, fmtN, marketEscape } from '../core/format.js';
 import { expiryCloseMs, isBull, sizeUnit, typeLabel } from '../core/options.js';
@@ -42,7 +43,7 @@ export function updateSizingControls() {
     document.getElementById(id).classList.toggle('active', active);
     document.getElementById(id).setAttribute('aria-pressed', String(active));
   }
-  document.getElementById('sizingAllocation').disabled = state.currentMode === 'futures';
+  document.getElementById('sizingAllocation').disabled = isFuturesQuote(state.quoteData) && state.currentMode === 'shares'; // futures size by risk
   const symbol = allocationSymbol();
   document.getElementById('exposureSymbol').textContent = symbol;
   document.getElementById('existingExposure').disabled = !symbol;
@@ -51,7 +52,7 @@ export function updateSizingControls() {
 }
 
 export function setSizingMode(mode) {
-  const next = mode === 'allocation' && state.currentMode !== 'futures' ? 'allocation' : 'risk';
+  const next = mode === 'allocation' && !(isFuturesQuote(state.quoteData) && state.currentMode === 'shares') ? 'allocation' : 'risk';
   if (next !== state.sizingMode) state.optionTradeSide = 'buy';
   state.sizingMode = next;
   cancelSpread();

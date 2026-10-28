@@ -450,59 +450,6 @@ test('invalid inputs cannot produce a position size', async () => {
   }
 });
 
-test('futures reverse sizing and shared risk changes update without a quote', async () => {
-  const { run, elements } = await app();
-  elements.get('futuresContract').value = 'MES';
-  run('futuresContractChanged()');
-  elements.get('futuresEntry').value = '6000';
-  elements.get('futuresStop').value = '5995';
-  run('renderFutures()');
-  assert.match(elements.get('futuresStats').innerHTML, /value="20"/);
-  run("futuresQtyChanged({ value: '3' })");
-  assert.equal(+elements.get('riskDollar').value, 75);
-  assert.match(elements.get('futuresStats').innerHTML, /value="3"/);
-  run('setRiskUsd(100)');
-  assert.match(elements.get('futuresStats').innerHTML, /value="4"/);
-  run('setRiskPct(1)');
-  assert.match(elements.get('futuresStats').innerHTML, /value="20"/);
-});
-
-test('futures view hides equity surfaces and survives Positions and Tools navigation', async () => {
-  const { run, elements } = await app();
-  run("quoteData = { symbol: 'TEST', last: 100, low: 98, high: 102 };");
-  await run("setMode('futures')");
-  assert.notEqual(elements.get('futuresSection').style.display, 'none');
-  for (const id of ['sizingControls', 'quickCard', 'quoteSection', 'chartWrap', 'pinnedSection']) {
-    assert.equal(elements.get(id).style.display, 'none', id);
-  }
-  for (const view of ['positions', 'utils']) {
-    run(`setView('${view}')`);
-    assert.equal(elements.get('futuresSection').style.display, 'none');
-    run("setView('calc')");
-    assert.notEqual(elements.get('futuresSection').style.display, 'none');
-  }
-  await run("setMode('shares')");
-  assert.equal(elements.get('futuresSection').style.display, 'none');
-  assert.notEqual(elements.get('quoteSection').style.display, 'none');
-});
-
-test('fractional-dollar futures risk survives mode switches and rehydration', async () => {
-  const { run, elements } = await app();
-  elements.get('futuresContract').value = 'MES';
-  run('futuresContractChanged()');
-  elements.get('futuresEntry').value = '6000';
-  elements.get('futuresStop').value = '5999.75';
-  run("futuresQtyChanged({ value: '3' })");
-  assert.equal(+elements.get('riskDollar').value, 3.75);
-  await run("setMode('futures')");
-  assert.equal(+elements.get('riskDollar').value, 3.75);
-  run('loadKey(); syncRiskDollar(); renderFutures();');
-  assert.equal(+elements.get('riskDollar').value, 3.75);
-  assert.match(elements.get('futuresStats').innerHTML, /value="3"/);
-  run('setRiskPct(0.125)');
-  assert.equal(+elements.get('riskDollar').value, 62.5);
-});
-
 test('allocation sizes full assignment notional and includes existing exposure', async () => {
   const { run } = await app();
   const size = extra => run(`calcAllocation({ account: 150000, pct: 10, existing: 0, unitCost: 6500, ${extra} })`);
@@ -554,9 +501,6 @@ test('allocation shares ignore stops, reverse-size allocation only, and preserve
   const risk = +elements.get('riskDollar').value;
   run("sharesQtyChanged({ value: '100' })");
   assert.equal(+elements.get('allocationPct').value, 2);
-  assert.equal(+elements.get('riskDollar').value, risk);
-  await run("setMode('futures')");
-  assert.equal(run('sizingMode'), 'risk');
   assert.equal(+elements.get('riskDollar').value, risk);
 });
 

@@ -1,4 +1,4 @@
-/* Calculator: risk strip, ticket (instrument, search, entry and stops), shares answer, quote bar, futures, setup notice. */
+/* Calculator: risk strip, ticket (instrument, search, entry and stops), shares answer (contracts for futures), quote bar, setup notice. */
 /* risk strip: the amount per trade comes first, one tap per change */
 .risk-strip { padding:14px 16px; }
 .risk-strip-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -53,25 +53,11 @@
 #stopPercent[aria-invalid="true"] { border-color: var(--red); }
 #stopBufferInfo { font: 0.6875rem var(--num); color: var(--text2); margin-top: 0.5rem; line-height: 1.6; }
 #entryPrice { border-left: 3px solid var(--amber); }
-#futuresEntry { border-left: 3px solid var(--amber); }
-#futuresStop { border-left: 3px solid var(--red); }
-.futures-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
-.futures-grid .field { min-width: 0; }
-#futuresDirSeg button { flex: 1; }
-#futuresControls input[readonly] { color: var(--text2); }
-#futuresMessage { grid-column: 1 / -1; color: var(--amber); font-size: 13px; }
-#futuresCopy:disabled { opacity: 0.4; cursor: default; }
-.futures-quote:empty { display: none; }
-.futures-quote { margin-top: 12px; }
-.futures-quote-bar { gap: 12px; margin-bottom: 2px; }
-.futures-last { font-size: 24px; font-weight: 600; font-family: var(--num); }
-.futures-quote-row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--text2); font-family: var(--num); }
-.futures-quote-error { margin-top: 6px; color: var(--amber); font-size: 13px; }
+/* a futures ticker in the shares card: Schwab's feed tag in the quote bar, the fees box, amber warnings */
 .futures-realtime { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); }
 .futures-delayed { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
-.futures-feed { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.futures-feed .hint { flex: 1; min-width: 0; margin: 0; }
-.futures-feed .btn { flex: 0 0 auto; }
+.futures-fees { margin-top: 12px; max-width: 220px; }
+.futures-warn { margin: 10px 0 0; color: var(--amber); font-size: 13px; }
 
 /* Shares and the selected stop lead; supporting metrics share a quieter row. */
 .shares-primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }

@@ -268,7 +268,7 @@ export function marketSizeTrade(ticker) {
   setQuoteVisible(false);
   document.getElementById('ticker').value = ticker;
   ['entryPrice', 'stopLong', 'stopShort'].forEach(id => { document.getElementById(id).value = ''; });
-  if (state.currentMode === 'futures') setMode('shares'); else setView('calc');
+  setView('calc');
   updateChartVisibility(); updateStickyBar();
   window.scrollTo({ top:0, behavior:'smooth' });
   if (document.getElementById('apiKey').value.trim()) fetchQuote();

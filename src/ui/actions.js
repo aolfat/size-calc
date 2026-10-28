@@ -14,7 +14,7 @@ import { copyPinned, copyShares } from './copy-text.js';
 import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
 import { effects } from './effects.js';
-import { copyFutures, futuresContractChanged, futuresPriceTyped, futuresQtyChanged, futuresSpecsChanged, refreshFuturesQuote, renderFutures, setFuturesDirection } from './futures.js';
+import { setFuturesFees } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
 import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, togglePosChartAvg, togglePositionChart } from './position-chart.js';
@@ -39,7 +39,7 @@ import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, can
 import { clearJournalPicks, clearTradeStop, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalFilters, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
-import { contractsQtyChanged, sharesQtyChanged } from './shares.js';
+import { contractsQtyChanged, renderShares, sharesQtyChanged } from './shares.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { toggleKbdHelp } from './shortcuts.js';
 import { closeSim, drawSim, simFromPinned, simPriceTyped, simSetPrice } from './sim.js';
@@ -329,14 +329,7 @@ export const actions = {
   checkTradeStatus: () => checkTradeStatus(),
 
   // ---------- futures ----------
-  futuresContractChanged: () => futuresContractChanged(),
-  futuresSpecsChanged: () => futuresSpecsChanged(),
-  setFuturesDirection: el => setFuturesDirection(arg(el)),
-  renderFutures: () => renderFutures(),
-  futuresQtyChanged: el => futuresQtyChanged(el),
-  futuresPriceTyped: el => futuresPriceTyped(el, arg(el)),
-  refreshFutures: () => refreshFuturesQuote(),
-  copyFutures: () => copyFutures(),
+  futuresFeesChanged: el => { setFuturesFees(arg(el), el.value); renderShares(); },
 
   // ---------- charts ----------
   setChartInterval: el => setChartInterval(num(el)),

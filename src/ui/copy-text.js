@@ -1,11 +1,14 @@
 // Copy as text: one-liners for the live chat.
 import { state } from '../state.js';
 import { expChat, fmt$, fmtN } from '../core/format.js';
+import { fmtTicks, isFuturesQuote } from '../core/futures.js';
 import { sizeUnit } from '../core/options.js';
 import { calcAllocation, unitsFor } from '../core/sizing.js';
 import { allocationForCard, allocationInputs, allocationSummary } from './allocation.js';
 import { showError, showToast } from './feedback.js';
 import { riskDollars } from './risk.js';
+import { sharesPlan } from './shares.js';
+import { futuresFees } from './futures.js';
 import { entryVal, stopLongVal, stopShortVal } from './stops.js';
 import { effects } from './effects.js';
 
@@ -41,6 +44,7 @@ export function copyShares() {
     effects.copyPlainText(`Buy ${r.units} $${q.symbol} shares @ ${fmtN(entryVal(), 2)} · commitment ${fmt$(r.commitment)} · total allocation ${r.actualPct.toFixed(2)}% · before fees`);
     return;
   }
+  if (isFuturesQuote(q)) { copyFuturesPlan(q); return; }
   const isLong = state.direction === 'long';
   const entry = entryVal();
   const stop = isLong ? stopLongVal() : stopShortVal();
@@ -49,6 +53,15 @@ export function copyShares() {
   const shares = unitsFor(riskDollars(), rps);
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   effects.copyPlainText(`${isLong ? 'bought' : 'shorted'} $${q.symbol} @ ${fmtN(entry, 2)} with stop at ${fmtN(stop, 2)} · risk ${(shares * rps / acct * 100).toFixed(2)}% of account${ex100(rps, 'share')}`);
+}
+
+/** a futures plan as text: contracts, the month, entry and stop on the tick, the tick math and the risk */
+function copyFuturesPlan(q) {
+  const { valid, futures: p } = sharesPlan();
+  if (!valid || p.contracts < 1) { showError(valid ? 'Max loss is below one contract\'s risk.' : p.error); return; }
+  const px = v => fmtTicks(v, p.tickSize);
+  const fees = futuresFees(q.root);
+  effects.copyPlainText(`${state.direction === 'long' ? 'Long' : 'Short'} ${p.contracts} ${q.contract} contract${p.contracts === 1 ? '' : 's'} @ ${px(p.entry)} · stop ${px(p.stop)} · ${p.ticks} ticks × ${fmt$(p.tickValue)}/tick · risk @ stop ${fmt$(p.totalRisk)}${fees > 0 ? ` incl. ${fmt$(fees)}/ct round-trip fees` : ' before fees'} · excludes slippage`);
 }
 
 export function copyPinned(cardId) {

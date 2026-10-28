@@ -1,11 +1,12 @@
-// Live mode: polls quote, chain, chart and cards (in Futures, the Schwab futures quote) on a duration ladder; pauses while the app is backgrounded.
+// Live mode: polls quote, chain, chart and cards (a futures ticker's quote and chart from Schwab) on a duration ladder; pauses while the app is backgrounded.
 import { state } from '../state.js';
+import { isFuturesQuote } from '../core/futures.js';
 import { inZone } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { refreshAllPinned } from './cards.js';
 import { fetchChain } from './chain.js';
 import { fetchChart } from './chart.js';
-import { futuresLiveError, refreshFuturesQuote } from './futures.js';
+import { fetchFuturesQuote } from './futures.js';
 import { clearError, showError } from './feedback.js';
 import { renderQuote } from './shares.js';
 import { syncSbLive } from './sticky-bar.js';
@@ -24,13 +25,10 @@ export function startLiveTimers() {
   state.liveCountdown = setInterval(updateLiveBtn, 1000);
 }
 
-/** both Live buttons (the ticker row's and the futures ticket's) show the one live session */
 function paintLive(className, html) {
-  for (const id of ['liveBtn', 'futuresLiveBtn']) {
-    const b = document.getElementById(id);
-    b.className = className;
-    b.innerHTML = html;
-  }
+  const b = document.getElementById('liveBtn');
+  b.className = className;
+  b.innerHTML = html;
   syncSbLive();
 }
 
@@ -45,9 +43,7 @@ export function toggleLive() {
     updateLiveBtn();
     return;
   }
-  const futures = state.currentMode === 'futures';
-  const notReady = futures ? futuresLiveError() : state.quoteData ? '' : 'Load a ticker first, then go live.';
-  if (notReady) { showError(notReady); return; }
+  if (!state.quoteData) { showError('Load a ticker first, then go live.'); return; }
   clearError();
   state.liveModeIdx = 0;
   state.liveEnd = Date.now() + LIVE_MODES[0].dur;
@@ -91,17 +87,22 @@ export function updateLiveBtn() {
 }
 
 export async function livePoll() {
-  if (state.currentMode === 'futures') { await liveFuturesPoll(); return; }
   // the loaded symbol, never the field: it doubles as the search box and may hold half a new ticker
   const ticker = state.quoteData?.symbol;
-  if (state.livePolling || state.currentMode === 'futures' || !ticker) return;
+  if (state.livePolling || !ticker) return;
   state.livePolling = true;
   try {
-    const qRes = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}`, { headers: headers() });
-    const qJson = await qRes.json();
+    const futures = isFuturesQuote(state.quoteData);
+    const q = futures ? await fetchFuturesQuote(ticker)
+      : (await (await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}`, { headers: headers() })).json())?.quotes?.quote;
     if (ticker !== state.quoteData?.symbol) return; // a Load landed meanwhile
-    const q = qJson?.quotes?.quote;
     if (q && q.symbol === ticker) { state.quoteData = q; renderQuote(); }
+    if (futures) { // no chain or cards: the quote each tick, the chart every 4th
+      if (state.liveTicks % 4 === 0) fetchChart(ticker);
+      state.liveTicks++;
+      document.getElementById('lastUpdated').textContent = 'Live · updated ' + inZone(Date.now());
+      return;
+    }
     if (state.currentMode === 'options' && state.selectedExp) {
       await fetchChain(ticker, state.selectedExp);
     }
@@ -115,10 +116,3 @@ export async function livePoll() {
   }
 }
 
-/** a futures tick: the picked contract's Schwab quote; a custom contract or a lost login ends the session */
-async function liveFuturesPoll() {
-  if (state.livePolling) return;
-  if (futuresLiveError()) { stopLive(); return; }
-  state.livePolling = true;
-  try { await refreshFuturesQuote(); } finally { state.livePolling = false; }
-}

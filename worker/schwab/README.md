@@ -9,7 +9,7 @@ secret, which should not live in a web page. This worker:
 - `POST /token` swaps the code from the callback for tokens (uses the secret)
 - `POST /refresh` swaps a refresh token for a fresh access token (uses the secret)
 - `/trader/v1/*` relays Trader API calls with the app's bearer token
-- `GET /marketdata/v1/*` relays market data reads the same way (the Futures ticket's live quotes)
+- `GET /marketdata/v1/*` relays market data reads the same way (a futures ticker's quotes and bars)
 
 It stores nothing. Tokens go back to the app, which keeps them in that
 browser's storage only (never in sync). Browser calls are accepted
@@ -69,11 +69,11 @@ again.
   your pick in the review sheet.
 - There is no Schwab sandbox for individual developers, so every order is real.
   Try one share first.
-- Live futures prices on the Futures ticket read `/marketdata/v1/quotes`. They
-  need this worker redeployed (`npx wrangler deploy`) after the market data
-  relay was added, and your Schwab app subscribed to **Market Data
-  Production** in the developer portal. Until then the ticket says Schwab
-  refused the quote, and typed prices still work.
+- Futures tickers (/MES) read `/marketdata/v1/quotes` and `/pricehistory`.
+  They need this worker redeployed (`npx wrangler deploy`) after the market
+  data relay was added, and your Schwab app subscribed to **Market Data
+  Production** in the developer portal. Until then loading one says what's
+  missing.
 
 ## Security
 

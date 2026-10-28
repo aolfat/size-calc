@@ -43,7 +43,7 @@ export function snapToBar(g, bar, yy, px = 6) {
  */
 // marks: [{ index, side }] fills, a buy as an up triangle under its bar's low, a sell as a down triangle over its high
 // vwap: a value per bar (core/trade-page.js sessionVwap), drawn teal and broken where the day changes
-export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks = [], vwap = null } = {}) {
+export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks = [], vwap = null, price = v => '$' + v.toFixed(2) } = {}) {
   const { w, h, padL, padR, padT, padB, plotW, plotH, start, end, slot, lo, hi, x, y } = g;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr; canvas.height = h * dpr;
@@ -66,7 +66,7 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
   for (let i = 0; i <= 4; i++) {
     const p = lo + (hi - lo) * i / 4;
     ctx.beginPath(); ctx.moveTo(padL, y(p)); ctx.lineTo(w - padR, y(p)); ctx.stroke();
-    ctx.fillText('$' + p.toFixed(2), w - padR + 5, y(p) + 3);
+    ctx.fillText(price(p), w - padR + 5, y(p) + 3);
   }
   // date ticks sit on fixed bars so they ride along with a pan instead of reshuffling
   const tickEvery = Math.max(1, Math.round((end - start) / 5));
@@ -166,7 +166,7 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
       ctx.fillStyle = '#232a36';
       ctx.fillRect(w - padR + 2, hover.y - 8, padR - 4, 15);
       ctx.fillStyle = '#e9ecf2';
-      ctx.fillText('$' + g.price(hover.y).toFixed(2), w - padR + 5, hover.y + 3);
+      ctx.fillText(price(g.price(hover.y)), w - padR + 5, hover.y + 3);
     }
     ctx.restore();
   }
