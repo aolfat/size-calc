@@ -14,7 +14,7 @@
 //
 // A review's JSON: market, marketFor ('day' | 'trade'), sector, setups, tactics, tags, mistakes (names or keys; each one
 // given replaces that kind's labels), grade (A to F), plan (yes | partly | no), entryNote, exitNote, stop; null clears.
-// A book's: name, description. An example's: book (a name or handle; a new name makes the book), title, notes, setups.
+// A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { SUPABASE_KEY, SUPABASE_URL } from '../src/services/supabase.js';
@@ -135,7 +135,8 @@ if (cmd === 'trades') {
   const added = await call(MODEL_FUNCTION, { example: p.add, image: Buffer.from(bytes).toString('base64') }, { edge: true });
   const after = await books();
   const e = exampleBy(after, added.id);
-  console.log(`Saved. ${e ? exampleLine(after, e) : shortId(added.id)} in ${bookBy(after, p.add.book_id)?.name || 'your book'}.`);
+  const book = p.add.book_id ? bookBy(after, p.add.book_id)?.name : '';
+  console.log(`Saved. ${e ? exampleLine(after, e) : shortId(added.id)}${book ? ` in ${book}` : ', no book'}.`);
 } else if (cmd === 'example') {
   const input = parsed('example');
   const m = await books();

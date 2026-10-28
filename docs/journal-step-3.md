@@ -92,13 +92,17 @@ Every table has row-level security (`user_id = auth.uid()`), nothing is granted 
 ### Model books (built)
 
 Journal → Model books is a personal screenshot study library, available without a broker connection or imported trades.
-Create a book with a name and description, then paste, drop, or choose a chart screenshot. Each example has a title,
-optional notes, and tags referencing existing My setups keys. Browsing My setups shows matching examples across books;
+Paste, drop, or choose a chart screenshot. Each example has a title,
+optional notes, tags referencing existing My setups keys, and an optional book. Browsing My setups shows matching examples across books;
 renames and merges follow the same library as trade reviews. Examples can be edited, moved to another book, viewed at
 full size, or deleted after a second tap. Books can be renamed; a book must be empty before it can be deleted.
 One screenshot per example. Examples show as a gallery grid (one column on phones): the chart cropped to 16:10, the
 title, the book only where books mix, setups, and notes clamped to three lines; the viewer shows the whole chart with
 every setup and the full note. The browse switch reads By book | By setup, and the tab is just 'Books' on phones.
+The tab opens By setup (owner request: charts are looked up by setup), and no book is needed to add one (migration 20261110000000_model_books_optional.sql makes book_id nullable).
+An example with no book shows in All examples and under its setups; the editor's Book menu starts at No book, or at the book you're in.
+Books are optional collections of your own (Worked vs. Failed, a year's leaders); + New book makes one, and an example can move out of a book to No book.
+After a save you stay where you were: a setup stays while the example carries it, and a book follows the example (to All examples when it leaves the book).
 By setup lists every one of My setups, those with no examples yet too (0), so a setup's first example starts there: + Add example tags it with the setup you're on.
 A hidden setup shows only while an example carries it.
 On phones the books or setups are a sideways chip row, and the selected one scrolls into view.

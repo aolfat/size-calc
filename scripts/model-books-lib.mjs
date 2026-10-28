@@ -1,7 +1,7 @@
 // Model books as a Claude session sees them (docs/claude-access.md), pure: what claude_model_books_read returns, books
 // and examples in words, and a book or example you describe ({ book: 'Best longs', setups: ['EMA 21 bounce'] }) turned
-// into the changes claude_model_books_save and the claude-model-example function take: books by name (a new name makes
-// the book), setups matched to My setups or added to your library, as the review's names are. Nothing here reads the
+// into the changes claude_model_books_save and the claude-model-example function take: the book is optional (by name,
+// a new name makes the book), setups matched to My setups or added to your library, as the review's names are. Nothing here reads the
 // network or a file.
 import { randomUUID } from 'node:crypto';
 import { buildLibrary } from '../src/core/journal-labels.js';
@@ -44,15 +44,18 @@ export function exampleLine(m, e) {
   return [shortId(e.id), e.title, setups.join(', '), notes && clip(notes, 80)].filter(Boolean).join(' · ');
 }
 
-/** every book (or one) with its examples, newest first */
+/** every book (or one) with its examples, newest first, then the examples in no book */
 export function booksText(m, only = null) {
   const books = only ? [only] : m.books;
-  if (!books.length) return 'No model books yet.';
-  return books.map(b => {
+  const loose = only ? [] : modelExamplesFor(m.examples.filter(e => !e.book_id), {}, m.lib);
+  if (!books.length && !loose.length) return 'No model book examples yet.';
+  const lines = books.map(b => {
     const list = modelExamplesFor(m.examples, { bookId: b.id }, m.lib);
     const head = `${shortId(b.id)} · ${b.name} (${list.length} example${list.length === 1 ? '' : 's'})${b.description ? ` · ${clip(b.description.replace(/\s+/g, ' '), 100)}` : ''}`;
     return [head, ...list.map(e => `  ${exampleLine(m, e)}`)].join('\n');
-  }).join('\n');
+  });
+  if (loose.length) lines.push([`No book (${loose.length} example${loose.length === 1 ? '' : 's'})`, ...loose.map(e => `  ${exampleLine(m, e)}`)].join('\n'));
+  return lines.join('\n');
 }
 
 const text = (input, field, max, { required = false } = {}) => {
@@ -83,8 +86,8 @@ export function planBook(m, book, input, opts = {}) {
 
 /**
  * A new example (example null: what the claude-model-example function takes, as add) or a change to one (the changes
- * claude_model_books_save takes). book: a name or handle, a new name makes the book; one book is the default for a new
- * example. setups: names or keys of My setups, each one new added as + New setup does; the list given replaces the
+ * claude_model_books_save takes). book: optional, a name or handle, a new name makes the book; null (or left out of a
+ * new example) is no book. setups: names or keys of My setups, each one new added as + New setup does; the list given replaces the
  * example's. Fields left out stay; null clears notes or setups. library is for claude_journal_save, saved first.
  * @param {ReturnType<typeof booksFrom>} m @param {any} example @param {Record<string, any>} input @param {{ newId?: () => string }} [opts]
  * @returns {{ library: any[], changes: { books: any[], examples: any[] }, add: any, said: string[] }}
@@ -94,15 +97,14 @@ export function planExample(m, example, input, opts = {}) {
   const newId = opts.newId || randomUUID;
   const names = librarian(m, { newId });
   const books = [], fields = {};
-  let bookId = example?.book_id;
-  if ('book' in input || !example) {
-    const ref = input.book === null || input.book === undefined ? '' : String(input.book).trim();
-    const hit = ref ? bookBy(m, ref) : m.books.length === 1 ? m.books[0] : null;
-    if (!hit && !ref) throw new Error(m.books.length ? `book: which one? ${m.books.map(b => b.name).join(', ')}` : 'book: name one, and it will be made');
-    const made = hit ? null : planBook(m, null, { name: ref }, { newId });
-    bookId = hit ? hit.id : made.book.id;
+  let bookId = example?.book_id || null;
+  if ('book' in input) {
+    const ref = input.book === null ? '' : String(input.book).trim();
+    const hit = ref ? bookBy(m, ref) : null;
+    const made = hit || !ref ? null : planBook(m, null, { name: ref }, { newId });
+    bookId = hit ? hit.id : made ? made.book.id : null;
     if (made) { books.push(made.book); names.said.push(...made.said); }
-    if (bookId !== example?.book_id) fields.book_id = bookId;
+    if (example && bookId !== (example.book_id || null)) fields.book_id = bookId;
   }
   if ('title' in input || !example) {
     const title = text(input, 'title', 120, { required: true });

@@ -42,7 +42,7 @@ export async function keepModelBook(uid, row) {
 export async function keepModelExample(uid, draft) {
   const c = await modelClient(uid);
   const id = draft.id || crypto.randomUUID();
-  const row = { id, book_id: draft.book_id, title: draft.title.trim(), notes: draft.notes.trim(), setup_keys: draft.setup_keys };
+  const row = { id, book_id: draft.book_id || null, title: draft.title.trim(), notes: draft.notes.trim(), setup_keys: draft.setup_keys };
   if (draft.id) {
     modelRefused(await c.from('model_examples').update(row).eq('id', id).eq('user_id', uid));
     checkModelOwner(uid);

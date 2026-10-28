@@ -56,9 +56,9 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 - `node scripts/journal.mjs show <handle or key>`: the numbers, the fills and the review in words, with what's missing.
 - `node scripts/journal.mjs choices [kind]`: your choices with their keys.
 - `node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]`: saves a review and prints the trade after; a dry run prints the changes instead.
-- `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id).
+- `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id), then the examples in no book.
 - `node scripts/journal.mjs book [book] '<json>' [--dry-run]`: makes a book (`name`, `description`), or changes the one named.
-- `node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]`: adds an example with its screenshot (`book`, `title`, `notes`, `setups`).
+- `node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]`: adds an example with its screenshot (`title`, `notes`, `setups`, and `book` if you want one).
 - `node scripts/journal.mjs example <handle> '<json>' [--dry-run]`: changes an example's `book`, `title`, `notes` or `setups`.
 
 A review's JSON takes `market`, `marketFor` ('day' or 'trade'), `sector`, `setups`, `tactics`, `tags`, `mistakes`, `grade` (A to F), `plan` (yes, partly, no), `entryNote`, `exitNote` and `stop`; fields left out stay, null clears one.
@@ -68,7 +68,8 @@ The market goes on the trade's day, unless the day already has another (then it'
 reviewed_at is stamped once everything a review needs is in, and cleared if something comes off.
 
 Model books logic is in `scripts/model-books-lib.mjs`, pure, tested in tests/claude-model-books.test.mjs with the function.
-A book is named by its name or handle; an example's `book` that isn't one of yours is made, and your one book is the default for a new example.
+A book is optional: left out, a new example goes in no book, and `"book": null` takes an example out of its book.
+A book is named by its name or handle; an example's `book` that isn't one of yours is made.
 `setups` are matched the way a review's are, a new one added to My setups (saved first, through claude_journal_save); the list given replaces the example's, and null clears it.
 An example's title is 1 to 120 characters and its notes 4000 at most, as in the app.
 The script checks the image before sending it (the function's own reader), and a screenshot over 2 MB has to be shrunk first (`sips -Z 2000 -s format jpeg in.png --out out.jpg` on a Mac).
