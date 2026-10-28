@@ -12,7 +12,7 @@ import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
 import { renderShares, sharesPlan } from './shares.js';
 import { orbEntryName } from './orb.js';
-import { planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
+import { loadPlanChoices, planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
 import { refreshQuote } from './ticker.js';
@@ -235,6 +235,7 @@ export function updateTradeButton() {
   const show = !!q && state.currentMode === 'shares' && state.sizingMode === 'risk' && schwabConnected() && (!q.type || q.type === 'stock' || q.type === 'etf');
   btn.style.display = show ? '' : 'none';
   btn.disabled = !show || state.tradeBusy || !sharesPlan().valid;
+  if (show) loadPlanChoices(); // the review's setups, read before it opens
 }
 
 // ---------- review sheet ----------
@@ -291,7 +292,7 @@ function ticketFor(p, q, now) {
     plannedRisk: qty * perShare(at), fillRisk: qty * perShare(fill),
     error, order: null, warnings: [], flags: [], sent: false, orderId: '', result: null, entryStatus: '', filled: 0,
     // the picks and what the calculator knew go with every re-plan; the saved plan's id comes once it's sent
-    setups: p.setups || [], tactics: p.tactics || [], planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
+    setups: p.setups || [], tactics: p.tactics || [], setupOrder: p.setupOrder || null, planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
   };
   if (error) return t;
   if (!limitError) t.order = sharesStopOrder({ symbol, qty, isLong, stop, stopDuration: t.stopDuration, entryType, entryStop, entryLimit: entryType === 'LIMIT' ? limitPrice : entryLimit });
