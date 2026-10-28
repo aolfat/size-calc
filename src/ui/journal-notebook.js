@@ -57,12 +57,16 @@ export function openJournalDay(day) {
   renderJournal();
   window.scrollTo?.({ top: 0 });
 }
-/** ← Calendar */
-export function closeJournalDay() { state.journalNotebookDay = ''; state.notebookEdit = ''; renderJournal(); }
+/** ← Calendar (← Missed when a line there opened the day) */
+export function closeJournalDay() {
+  if (state.notebookBack === 'missed') state.journalTab = 'missed';
+  Object.assign(state, { journalNotebookDay: '', notebookEdit: '', notebookBack: '' });
+  renderJournal();
+}
 /** ‹ or ›: the weekday before or after */
 export function stepJournalDay(by) { if (state.journalNotebookDay) openJournalDay(stepWeekday(state.journalNotebookDay, Number(by) || 0)); }
 /** today's line: today's page (Monday's on a weekend) */
-export function openTodayNotebook() { openJournalDay(notebookToday(nowIso())); }
+export function openTodayNotebook() { state.notebookBack = ''; openJournalDay(notebookToday(nowIso())); }
 
 // ---------- where a day stands ----------
 
@@ -628,7 +632,7 @@ export function dayPageHtml() {
   const today = notebookToday(nowIso());
   return `<div class="nb-page" id="journalDayPage" role="region" aria-label="${esc(dayName(day))}">
     <div class="jc-head nb-head">
-      <button class="btn jc-today" data-action="closeJournalDay">← Calendar</button>
+      <button class="btn jc-today" data-action="closeJournalDay">${state.notebookBack === 'missed' ? '← Missed' : '← Calendar'}</button>
       <button class="btn jc-nav" data-action="stepJournalDay" data-arg="-1" aria-label="The weekday before">‹</button>
       <span class="jc-title">${esc(dayName(day))}</span>
       <button class="btn jc-nav" data-action="stepJournalDay" data-arg="1" aria-label="The weekday after">›</button>

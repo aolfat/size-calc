@@ -33,6 +33,7 @@ import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { tosSectionHtml } from './journal-tos.js';
 import { dayPageHtml, todayButtonHtml, todayEconWords } from './journal-notebook.js';
+import { missedTabHtml } from './journal-missed.js';
 import { drawMissedChart } from './missed-chart.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
@@ -325,8 +326,8 @@ function controls(all = [], navigationOnly = false) {
   const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const tabs = `<div class="seg journal-tabs journal-nav" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
-  if (state.journalTab === 'books' || state.journalTab === 'features' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
+  const tabs = `<div class="seg journal-tabs journal-nav" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('missed', 'Missed')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
+  if (state.journalTab === 'books' || state.journalTab === 'features' || state.journalTab === 'missed' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   const symbol = `<input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />`;
   const dayChip = state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : '';
   if (mq(PHONE_MQ)) {
@@ -539,8 +540,9 @@ export function toggleDeletedTrades() { state.journalShowDeleted = !state.journa
 /** a day's notebook page is open, in place of the calendar (it works before any import: a plan needs no trades) */
 const notebookOpen = () => state.journalTab === 'calendar' && !!state.journalNotebookDay;
 export function setJournalTab(tab) {
-  state.journalTab = ['fills', 'calendar', 'stats', 'setups', 'books', 'features'].includes(tab) ? tab : 'trades';
+  state.journalTab = ['fills', 'calendar', 'missed', 'stats', 'setups', 'books', 'features'].includes(tab) ? tab : 'trades';
   state.journalNotebookDay = ''; // the Calendar tab goes back to the calendar
+  state.notebookBack = '';
   if (state.journalTab !== 'trades') state.journalDay = '';
   renderJournal();
   if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
@@ -636,7 +638,7 @@ export function renderJournal() {
     ${!books && state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
     ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
     ${controls(all, !fills.length || notebookOpen())}
-    ${books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : fills.length ? (state.journalTab === 'fills'
+    ${books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : state.journalTab === 'missed' ? missedTabHtml() : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))

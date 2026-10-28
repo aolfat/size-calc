@@ -217,7 +217,7 @@ test('phones: a card per trade, Open trades then Closed trades with what they to
 
 test('the Calendar tab: the month of the latest close, a day tapped opens its page, ‹ › step months', async () => {
   const { run, state, out } = await journal();
-  assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats</);
+  assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="missed">Missed<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats</);
   run("setJournalTab('calendar')");
   assert.match(out(), /class="jc-title">October 2026</);
   assert.match(out(), /<dl class="js-stats jc-stats">\s*<div><dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 trades<\/span>/, 'the month\'s own numbers');

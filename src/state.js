@@ -105,7 +105,7 @@ export function createState() {
     chartLibLoading: null, // the one in-flight library load
     journalHiddenCols: Array.isArray(journalHidden) ? journalHidden : [], // the trades table's columns you hid (journal_hidden_cols, this device only)
     journalColsOpen: false, // the trades table's Columns picker showing
-    journalTab: 'trades', // trades | calendar | stats | setups | books | features | fills
+    journalTab: 'trades', // trades | calendar | missed | stats | setups | books | features | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
       books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'setups', // By setup first: that's how charts are looked up
@@ -114,6 +114,8 @@ export function createState() {
     },
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
     journalNotebookDay: '', // the day's notebook page open in the Calendar tab ('YYYY-MM-DD', New York; docs/journal-notebook.md)
+    notebookBack: '', // where the day's page goes back to: '' the calendar, 'missed' the Missed tab (a line there opened it)
+    journalMissed: { q: '', side: 'all', setup: '', why: '' }, // the Missed tab's search and filters: text, all | long | short, a setup key, a reason
     notebookDraft: null, // { day, field, text }: a notebook box being typed, saved on blur
     notebookEdit: '', // goal | rule: that list open in place to edit
     notebookItemDraft: '', // the new goal or rule being typed

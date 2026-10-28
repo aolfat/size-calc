@@ -50,6 +50,7 @@ import { setAtrMultiplier, setDirection, setStopPercent, setStopStrategy, stopsC
 import { loadTicker, refreshQuote, submitTicker, tickerInputChanged } from './ticker.js';
 import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.js';
 import { setOrb } from './orb.js';
+import { clearMissedFilters, openMissedFromList, setMissedFilterSetup, setMissedFilterSide, setMissedFilterWhy, setMissedSearch } from './journal-missed.js';
 import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
 import { setMode, setView } from './views.js';
 
@@ -134,6 +135,13 @@ export const actions = {
   addMissedTrade: () => addMissedTrade(),
   openMissedTrade: el => openMissedTrade(arg(el)),
   openMissedOnDay: el => openMissedOnDay(arg(el), el.dataset.arg2 || ''),
+  // ---------- the Missed tab: every missed trade, searched and filtered ----------
+  setMissedSearch: el => setMissedSearch(/** @type {HTMLInputElement} */ (el).value),
+  setMissedFilterSide: el => setMissedFilterSide(arg(el)),
+  setMissedFilterSetup: el => setMissedFilterSetup(/** @type {HTMLSelectElement} */ (el).value),
+  setMissedFilterWhy: el => setMissedFilterWhy(arg(el)),
+  clearMissedFilters: () => clearMissedFilters(),
+  openMissedFromList: el => openMissedFromList(arg(el), el.dataset.arg2 || ''),
   setMissedSide: el => setMissedSide(arg(el), el.dataset.arg2 || ''),
   setMissedWhy: el => setMissedWhy(arg(el), el.dataset.arg2 || ''),
   toggleMissedSetup: el => toggleMissedSetup(arg(el), el.dataset.arg2 || ''),

@@ -476,6 +476,69 @@ test('the week and month reviews list the trades you missed, by reason, each ope
   assert.doesNotMatch(out(), /Missed trades/, 'none that week: no list');
 });
 
+test('every missed trade, newest day first, narrowed by side, setup, reason and text', async () => {
+  const { run } = await app();
+  const days = JSON.stringify({
+    '2026-09-30': { missed: [{ id: 'a', symbol: 'SPY', side: 'long', setups: ['ema8_bounce'], tactics: [], why: 'away', note: null }] },
+    '2026-10-06': { missed: [{ id: 'b', symbol: 'NVDA', side: 'short', setups: [], tactics: [], why: 'hesitated', note: 'Saw it, waited' }, { id: 'c', symbol: 'AMD', side: 'long', setups: ['ema8_bounce'], tactics: [], why: 'hesitated', note: null }] },
+    'junk': { missed: [{ id: 'z', symbol: 'X' }] },
+  });
+  const ids = code => json(run, `${code}.map(m => m.day + ' ' + m.id)`);
+  assert.deepEqual(ids(`allMissed(${days})`), ['2026-10-06 b', '2026-10-06 c', '2026-09-30 a'], 'newest day first, a day in the order logged');
+  assert.deepEqual(ids(`allMissed(${days}, { side: 'long' })`), ['2026-10-06 c', '2026-09-30 a']);
+  assert.deepEqual(ids(`allMissed(${days}, { setup: 'ema8_bounce', why: 'hesitated' })`), ['2026-10-06 c']);
+  assert.deepEqual(ids(`allMissed(${days}, { q: ' waited ' })`), ['2026-10-06 b'], 'the note, any case');
+  assert.deepEqual(ids(`allMissed(${days}, { q: 'nv' })`), ['2026-10-06 b'], 'the ticker');
+  assert.deepEqual(ids(`allMissed(${days}, { q: 'bounce' }, m => m.setups.length ? '8 EMA bounce' : '')`), ['2026-10-06 c', '2026-09-30 a'], 'the words its line says');
+});
+
+test('the Missed tab: every missed trade by month, searched and filtered, a line opens its day and ← Missed comes back', async () => {
+  const { run, out, state } = await journal({ days: [
+    { day: '2026-09-30', missed: [{ id: 'a', symbol: 'SPY', side: 'long', setups: ['ema8_bounce'], why: 'away' }] },
+    { day: '2026-10-06', missed: [{ id: 'b', symbol: 'NVDA', side: 'short', why: 'hesitated', note: 'Saw it, waited' }, { id: 'c', symbol: 'AMD', side: 'long', setups: ['ema8_bounce'], why: 'hesitated' }] }] });
+  run("setJournalTab('missed')");
+  let page = out();
+  assert.match(page, /data-arg="missed">Missed</);
+  assert.doesNotMatch(page, /id="journalSymbol"/, 'its own filters, not the trades\'');
+  assert.match(page, /3 missed/);
+  assert.match(page, /October 2026 <span class="jw-optional">2<\/span>[\s\S]*NVDA[\s\S]*AMD[\s\S]*September 2026 <span class="jw-optional">1<\/span>[\s\S]*SPY/, 'by month, newest first');
+  assert.match(page, /data-action="setMissedFilterWhy" data-arg="hesitated">Hesitated <b>2<\/b>/);
+  assert.match(page, /data-action="setMissedFilterWhy" data-arg="away">Away <b>1<\/b>/);
+  assert.match(page, /<option value="ema8_bounce">8 EMA [^<]* \(2\)<\/option>/, 'the setups used, counted');
+
+  run("setMissedFilterWhy('hesitated')");
+  page = out();
+  assert.match(page, /2 of 3 missed/);
+  assert.doesNotMatch(page, /<b>SPY<\/b>/);
+  assert.match(page, /data-action="setMissedFilterWhy" data-arg="away">Away <b>1<\/b>/, 'a reason counts what the other filters leave');
+  run("setMissedFilterSide('long')");
+  assert.match(out(), /1 of 3 missed[\s\S]*<b>AMD<\/b>/);
+  run("clearMissedFilters(); setMissedSearch('waited')");
+  page = out();
+  assert.match(page, /1 of 3 missed[\s\S]*<b>NVDA<\/b>/);
+  assert.match(page, /id="journalMissedSearch"[^>]*value="waited"/);
+  run("setMissedSearch('nothing like it')");
+  assert.match(out(), /None match\./);
+
+  run("clearMissedFilters(); openMissedFromList('2026-10-06', 'c')");
+  assert.equal(state.journalNotebookDay, '2026-10-06');
+  assert.equal(state.missedOpen, 'c', 'its day, with it open');
+  assert.match(out(), /data-action="closeJournalDay">← Missed</);
+  run('stepJournalDay(1)');
+  assert.match(out(), /← Missed</, 'stepping days keeps the way back');
+  run('closeJournalDay()');
+  assert.equal(state.journalTab, 'missed');
+  assert.match(out(), /3 missed/);
+  run("setJournalTab('calendar'); openJournalDay('2026-10-06')");
+  assert.match(out(), /← Calendar</, 'from the calendar it goes back there');
+});
+
+test('the Missed tab with nothing logged yet', async () => {
+  const { run, out } = await journal();
+  run("setJournalTab('missed')");
+  assert.match(out(), /No missed trades yet/);
+});
+
 test('a missed trade makes a new setup or entry tactic on the spot', async () => {
   const { run, out, supabase, elements, state } = await journal();
   run("openJournalDay('2026-10-06'); missedInput('nvda'); addMissedTrade()");
