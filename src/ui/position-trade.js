@@ -10,7 +10,7 @@ import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { R_CHIPS, positionStopPlaced, positionTargetPlaced } from './position-chart.js';
-import { positionRUnit, refreshPositions, rUnitWords } from './positions.js';
+import { positionOriginal, positionRUnit, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 import { openSheet } from './sheets.js';
 
@@ -76,6 +76,7 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
     const all = closePlan(row); // what blocks any close of it
     if (all.error) { t.error = all.error; return t; }
     t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, r: null, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
+    t.original = positionOriginal(row, now); // what the percent chips are of: the most held since flat, or (null) what's held
     planClose(t);
   } else if (kind === 'target') planTarget(t);
   else {
@@ -149,7 +150,7 @@ export function setCloseType(type) {
   closeChanged(true);
 }
 
-/** a portion chip: that share of what's held (All = everything, which cancels the targets) */
+/** a portion chip: that share of the original size (All = everything held, which cancels the targets) */
 export function setClosePortion(fraction) {
   const t = closeOpen();
   const n = t && portionQty(t, fraction);
@@ -297,7 +298,8 @@ export async function openPositionTrade(symbol, kind) {
     : kind === 'stop' && c && c.symbol === symbol && c.stop > 0 ? { price: c.stop, qty: 0 } : null;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
-  try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
+  // the plan is built from what Schwab shows now; a close also waits for the Journal's older fills, for its original size
+  try { await Promise.all([refreshPositions(), kind === 'close' ? readPositionJournalForClose() : null]); } finally { state.posTradeBusy = false; }
   state.posTicket = freshTicket(kind, symbol, target);
   renderPositionTradeSheet();
   openSheet('posTrade');
@@ -494,13 +496,27 @@ function targetHint(t) {
 
 const CLOSE_PORTIONS = [0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1];
 
-/** what a portion chip closes: that share of what's held, at least one; 0 when it's more than is left to close (targets hold the rest) */
+/** what the percent chips are of: the original size when it's known, else what's held */
+const portionBase = t => t.original && t.original.qty || Math.abs(t.row.qty);
+
+/** what a portion chip closes: that share of the original size, at least one; 0 when it's more than is held or left to close (targets hold the rest) */
 function portionQty(t, f) {
   const held = Math.abs(t.row.qty);
   if (f >= 1) return held;
-  const n = Math.max(1, Math.floor(held * f + 1e-9));
+  const n = Math.max(1, Math.floor(portionBase(t) * f + 1e-9));
   return n <= Math.min(held, targetRoom(t.row).free) ? n : 0;
 }
+
+/** what the chips are of, under the count: '% of your original 400 shares, the most held since you were last flat. 300 left (75%).' */
+function portionLine(t) {
+  const row = t.row, held = Math.abs(row.qty), o = t.original;
+  if (o && o.qty > held) return `% of your original ${units(row, o.qty)}, the most held since you were last flat. ${held.toLocaleString('en-US')} left (${pctOf(held, o.qty)}).`;
+  if (o && o.qty === null && o.why) return `% of what's held: the original size is unknown. ${o.why}`;
+  return '';
+}
+
+/** n as a percent of `of`: whole, or to a tenth when it isn't ('75%', '67.5%', '33.3%') */
+const pctOf = (n, of) => `${+(n / of * 100).toFixed(1)}%`;
 
 /** the close ticket, like a broker's: Market or Limit, how many, and for a limit its price and how long it lasts */
 function closeForm(t, duration) {
@@ -508,14 +524,15 @@ function closeForm(t, duration) {
   const type = (v, label) => `<button class="${c.type === v ? 'active' : ''}" aria-pressed="${c.type === v}" data-action="setCloseType" data-arg="${v}"${off}>${label}</button>`;
   const chips = CLOSE_PORTIONS.map(f => {
     const n = portionQty(t, f), ok = !t.sent && n > 0, on = ok && c.qty === n && (c.portion === f || (f >= 1 && c.portion == null));
-    const why = n ? units(row, n) : 'More than your other orders leave free';
+    const want = Math.max(1, Math.floor(portionBase(t) * f + 1e-9));
+    const why = n ? units(row, n) : want > held ? `${units(row, want)}, more than the ${held.toLocaleString('en-US')} left` : 'More than your other orders leave free';
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setClosePortion" data-arg="${f}" title="${why}"${ok ? '' : ' disabled'}>${f >= 1 ? 'All' : Math.round(f * 100) + '%'}</button>`;
   }).join('');
   const what = `${row.tradeAs === 'OPTION' ? 'Contracts' : 'Shares'} to ${row.qty > 0 ? 'sell' : 'buy back'}`;
   const price = closePriceText(t), unit = positionRUnit(row);
   const per = unit.per ? `1R is ${fmt$(unit.per)} a ${row.tradeAs === 'OPTION' ? 'contract' : 'share'}, from ${rUnitWords(unit, row)}` : unit.why || 'No risk to count R from.';
   return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div></dd></div>
-    <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="Percent of the position">${chips}</div></div></dd></div>
+    <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="${t.original && t.original.qty > held ? 'Percent of the original position' : 'Percent of the position'}">${chips}</div></div>${portionLine(t) ? `<span class="shares-detail">${esc(portionLine(t))}</span>` : ''}</dd></div>
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark</span></dd></div>
     <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span></dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>` : ''}`;
@@ -527,7 +544,15 @@ function closeEstimate(t) {
   const g = targetGain(row, at, n, positionRUnit(row).per);
   const r = g.r === null ? '' : ` · ${g.r >= 0 ? '' : '−'}${Math.abs(g.r).toFixed(1)}R`;
   const gain = g.gain === null ? '' : ` · <span class="${g.gain >= 0 ? 'pos-locked' : 'pos-loss'}">${(g.gain >= 0 ? '+' : '−') + fmt$(Math.abs(g.gain))}</span> (${g.pct >= 0 ? '+' : '−'}${Math.abs(g.pct).toFixed(1)}%) on your cost${r}`;
-  return `<div><dt>Estimate</dt><dd>${fmt$(n * at * row.mult)}<span class="shares-detail">${limit ? 'If it fills at the limit' : "At Schwab's mark, before the fill"}${gain}</span></dd></div>`;
+  return `${closeLeft(t)}<div><dt>Estimate</dt><dd>${fmt$(n * at * row.mult)}<span class="shares-detail">${limit ? 'If it fills at the limit' : "At Schwab's mark, before the fill"}${gain}</span></dd></div>`;
+}
+
+/** a trim: what stays, and both as percents of the original size (of what's held when it's unknown) */
+function closeLeft(t) {
+  const row = t.row, held = Math.abs(row.qty), n = t.close.qty, base = portionBase(t);
+  if (!(n > 0) || n >= held) return '';
+  const of = t.original && t.original.qty ? `your original ${units(row, base)}` : 'what you hold';
+  return `<div><dt>Left after</dt><dd>${units(row, held - n)}<span class="shares-detail">This closes ${pctOf(n, base)} of ${of}, leaving ${pctOf(held - n, base)}.</span></dd></div>`;
 }
 
 function closeHint(t) {

@@ -542,6 +542,38 @@ test('the R column reads the Journal when signed in, and counts from the stop no
   assert.match(stock, /Sign in to count from the Journal trade/);
 });
 
+test('a close ticket reads the Journal for the original size: older fills kept there, an order\'s newer fills from the live read', async () => {
+  const exec = (orderId, instruction, qty, price, time, status = 'FILLED') => ({ orderId, enteredTime: time, status, orderType: 'MARKET', orderStrategyType: 'SINGLE',
+    orderLegCollection: [{ legId: 1, instruction, quantity: qty, instrument: { symbol: 'TEST', assetType: 'EQUITY' } }],
+    orderActivityCollection: qty ? [{ activityType: 'EXECUTION', activityId: orderId * 10, executionLegs: [{ legId: 1, quantity: qty, price, time }] }] : [] });
+  const kept = (data, at) => ({ kind: 'order', record_id: String(data.orderId), account: '6789', entered_at: at, data });
+  // kept: 200 bought in August (older than Schwab's 59 days), and a sell of 100 that had filled 40 when it was saved
+  const supabase = fakeRecords([
+    kept(exec(811, 'BUY', 200, 45, '2026-08-03T14:00:00+0000'), '2026-08-03T14:00:00Z'),
+    kept({ ...exec(812, 'SELL', 40, 52, '2026-10-26T14:00:00+0000'), status: 'WORKING' }, '2026-10-26T14:00:00Z'),
+  ]);
+  // the live read: the same sell has since filled all 100, leaving the 100 held
+  const live = [exec(812, 'SELL', 100, 52, '2026-10-26T14:00:00+0000'),
+    { orderId: 813, orderType: 'STOP', status: 'WORKING', orderStrategyType: 'SINGLE', stopPrice: 48, quantity: 100, remainingQuantity: 100, orderLegCollection: [leg('SELL', 100, 'TEST')] }];
+  const schwab = path => path.includes('/orders?') ? json(live) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
+  const { run, elements, state } = await app({ fetch: network(schwab).fetch, storage: signedIn(), supabase, session: SESSION });
+  run("setView('positions')");
+  await settle();
+  assert.equal(state.journalRecords, null, 'no R column: nothing read yet');
+  await run("openPositionTrade('TEST', 'close')");
+  assert.equal(state.journalRecords.length, 2, 'the close waited for the Journal');
+  assert.match(elements.get('posTradeBody').innerHTML, /% of your original 200 shares, the most held since you were last flat\. 100 left \(50%\)\./);
+  run('setClosePortion(0.25)');
+  assert.match(elements.get('posTradeBody').innerHTML, /id="posCloseQty"[^>]*value="50"/);
+
+  const out = await app({ fetch: network(schwab).fetch, storage: connected() });
+  out.run("setView('positions')");
+  await settle();
+  await out.run("openPositionTrade('TEST', 'close')");
+  assert.match(out.elements.get('posTradeBody').innerHTML, /the original size is unknown\. No fills in Schwab&#39;s last 59 days of orders \(sign in for the Journal&#39;s older ones\) open this position\./,
+    'signed out, only the sell shows: nothing open to measure from');
+});
+
 test('the R column is in the Columns picker, and the Journal is read only once it is on', async () => {
   const supabase = fakeRecords([TEST_BUY]);
   const { run, elements, state } = await app({ fetch: network(schwabOk).fetch, storage: signedIn(), supabase, session: SESSION });
