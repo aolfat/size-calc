@@ -59,6 +59,7 @@ Read it before changing that area, and update it in the same PR when behavior ch
 When the owner asks to review, label or look up a trade, use `node scripts/journal.mjs` (`trades`, `show`, `choices`, `review`; docs/claude-access.md has the review JSON).
 It needs the `JOURNAL_KEY` secret and network access to the Supabase host; without them it says what's missing, so pass that on instead of guessing at the journal.
 Show the owner what you'll save (or run `--dry-run`) when a field is your judgment call, and never print or commit the key.
+Model books the same way: `books`, `book`, `add-example <image>` and `example` (docs/claude-access.md).
 
 ## Writing these notes
 One sentence per line, in CLAUDE.md and in the area docs: git merges line by line, so two branches adding sentences to the same area only collide when they touch the same sentence.
@@ -142,6 +143,7 @@ The shared Schwab worker remains in use; its operator can access tokens in trans
 Settings discloses both.
 The entry page must be `index.html` at the root; `styles/`, `src/`, `fonts/` and `data/` deploy beside it as plain files.
 The Schwab worker deploys separately with wrangler (`worker/schwab/README.md`).
+The one Edge Function, `supabase/functions/claude-model-example` (Claude adding Model books screenshots), deploys with `npx supabase functions deploy claude-model-example --no-verify-jwt`.
 Database changes are SQL files in `supabase/migrations/`, applied with `npx supabase db push` after `npx supabase link --project-ref dhohfavttsxwutanvcuj` (it asks for the database password; never commit it).
 The schema is one baseline, `20261018000000_baseline.sql` (the step 1 and 2 migrations squashed; safe to run over any older state: tables if not exists, functions and triggers replaced, policies dropped and made again, an up-to-date section for older databases); tests/rls.test.mjs keeps it one file and checks every synced setting is a key the settings table accepts.
 Later changes go in new files after it.

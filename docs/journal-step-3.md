@@ -107,6 +107,7 @@ Images use the existing shrinker (up to 2000px, WebP/JPEG, 2 MB) and the private
 `model_books` and `model_examples`, with owner rules and an owner-scoped book foreign key. Apply
 `20261024000000_model_books.sql` with `npx supabase db push`. This version uses screenshots from a charting platform;
 interactive chart snapshots, preset content, sharing, and chat are later work.
+A Claude Code session can add examples too, with your Claude key (docs/claude-access.md).
 
 ### 2. The review deck (built)
 
