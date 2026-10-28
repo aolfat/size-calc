@@ -20,6 +20,7 @@ import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearc
 import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
+import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionStopAt, setPositionStopDuration, setPositionStopPrice } from './position-trade.js';
 import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
@@ -327,6 +328,9 @@ export const actions = {
   setOrb: el => setOrb(num(el)),
   placeTrade: () => placeTrade(),
   checkTradeStatus: () => checkTradeStatus(),
+  toggleTradeSetup: el => toggleTradeSetup(arg(el)),
+  toggleTradeTactic: el => toggleTradeTactic(arg(el)),
+  tradeSetupSearch: el => tradeSetupSearch(/** @type {HTMLInputElement} */ (el).value),
 
   // ---------- futures ----------
   futuresFeesChanged: el => { setFuturesFees(arg(el), el.value); renderShares(); },

@@ -24,6 +24,7 @@ import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
+import { applyOrderPlans } from './order-plan.js';
 import { loadJournalReview, reviewFrom, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, renderDeckEnd, reviewFromHtml, syncJournalBadge } from './journal-deck.js';
@@ -716,6 +717,11 @@ export async function loadJournal() {
     else state.journalSavedError = String(saved.reason?.message || saved.reason);
     state.journalLoading = false;
     if (state.journalView) renderJournal();
+  }
+  // then the order plans: each one's setup and tactic onto the trade its order opened, and the plan on the trade page
+  if (state.journalRecords) {
+    await applyOrderPlans(currentTrades);
+    if (state.orderPlanMatch?.size && state.journalView) renderJournal();
   }
   // then the features, once the bars they read are saved (and with the trades' keys as the Journal has them)
   if (bars) bars.finally(() => maybeStampFeatures());

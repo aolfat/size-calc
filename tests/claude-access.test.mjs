@@ -107,6 +107,14 @@ test('the read made into the app\'s trades: the same key, a short handle, a line
   assert.match(detail, /missing: market, sector, setup, tactic, setup grade, plan followed, exit note/);
 });
 
+test('the whole trade includes the plan kept with its order, for analysis', () => {
+  const plan = { id: 'p1', account: '6789', symbol: 'QQQ', side: 'long', order_ids: ['901'], sent_at: '2026-10-23T17:40:00.000Z', setups: [], tactics: [], trade_key: null,
+    plan: { qty: 1, planned_risk: 169, schwab_value: 50000, stop_source: 'custom', stop: 0 } };
+  const j = journalFrom({ ...DATA, order_plans: [plan] });
+  assert.match(tradeDetail(j, j.trades[0]), /\norder plan:\n  0\.34% of Schwab ••6789 \(\$169\.00 of \$50,000\) · 1 sh · stop Custom stop at \$0\.00/);
+  assert.doesNotMatch(tradeDetail(journalFrom(DATA), journalFrom(DATA).trades[0]), /order plan/, 'none kept, none shown');
+});
+
 test('a review becomes the changes the trade page would make: names matched, new ones added, the day\'s market, reviewed_at', () => {
   ids = 0;
   const j = journalFrom(DATA);
