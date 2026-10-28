@@ -112,4 +112,5 @@ button.jc-quiet:hover, .jc-noted { opacity: 0.9; }
 @media (max-width: 600px) {
   .jm-controls #journalMissedSearch { grid-column: 1 / -1; width: 100%; min-width: 0; }
   .jm-controls .journal-setup-filter { width: 100%; min-width: 0; max-width: none; }
+  .jm-controls .pos-link { justify-self: start; }
 }
