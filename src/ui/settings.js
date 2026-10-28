@@ -222,7 +222,9 @@ export async function initCloud(href = location.href) {
       if ((next?.user?.id || null) !== (state.session?.user?.id || null)) {
         // the session this tab couldn't load (offline at boot) coming back: same account, so the Schwab login stays
         if (!state.session && next && next.user.id === store.get('cloud_user')) { setTimeout(() => resumeSession().catch(() => {})); return; }
-        schwabDisconnect();
+        // a session that just ended (a failed Google refresh) keeps the Schwab login: it stays bound to this user and comes
+        // back when they sign in again; a sign-out in another tab already cleared it there
+        if (next) schwabDisconnect();
         state.session = null;
         effects.reloadPage(); // first sign-in on reload handles the old account's local settings
       } else if (next) state.session = next;

@@ -477,6 +477,21 @@ test('a sign-in from another tab disconnects the old broker login before reloadi
   assert.equal(storage.get('cloud_user'), USER.id, 'the old owner marker prevents their settings from being uploaded on reload');
 });
 
+test('a Google session that ends on its own (a failed refresh) keeps the Schwab login for when the same user signs in again', async () => {
+  const supabase = fakeSupabase();
+  let changed;
+  supabase.auth.onAuthStateChange = fn => { changed = fn; return { data: { subscription: {} } }; };
+  const tokens = JSON.stringify({ userId: USER.id, proxy: '', connectionId: 'mine', refresh: 'dummy', refreshExp: Date.now() + 86400000 });
+  const storage = joined([['schwab_tokens', tokens]]);
+  const { run, state } = await app({ supabase, session: SESSION, storage });
+  run('reloadPage = () => { globalThis.reloaded = true }; globalThis.reloaded = false');
+  await run(`initCloud('${GOOGLE_RETURN}')`);
+  changed('SIGNED_OUT', null);
+  assert.equal(state.session, null);
+  assert.equal(storage.get('schwab_tokens'), tokens, 'the Schwab login stays, bound to this user');
+  assert.equal(run('globalThis.reloaded'), true);
+});
+
 test('a Google session that could not load at boot (offline) coming back keeps the Schwab login and reloads nothing', async () => {
   const supabase = fakeSupabase();
   let changed;

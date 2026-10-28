@@ -112,7 +112,11 @@ async function tokenCall(path, payload, proxy = schwabProxy()) {
   assertCredentialOrigin();
   const res = await fetch(proxy + path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const body = await readJson(res);
-  if (!res.ok || !body?.access_token) throw schwabError(body, res.status);
+  if (!res.ok || !body?.access_token) {
+    const err = schwabError(body, res.status);
+    if (typeof body?.error === 'string') err.code = body.error; // OAuth's reason, e.g. invalid_grant
+    throw err;
+  }
   return body;
 }
 
@@ -134,16 +138,33 @@ export async function schwabExchangeCode(code) {
   saveTokens(j, Date.now() + REFRESH_LIFE, binding);
 }
 
-async function refreshTokens(t) {
+const freshAccess = t => !!t?.access && t.accessExp - Date.now() > 120000;
+
+// one refresh at a time across this origin's tabs: two tabs spending the same refresh token at once could see one
+// refused and end a login the other just renewed
+function refreshTokens(connectionId) {
+  const run = () => refreshOnce(connectionId);
+  const locks = globalThis.navigator?.locks;
+  return locks ? locks.request('schwab-refresh', run) : run();
+}
+
+async function refreshOnce(connectionId) {
+  const t = schwabSession();
+  if (t?.connectionId !== connectionId) throw loginChanged();
+  if (freshAccess(t)) return t.access; // another tab refreshed while this one waited
   // a logout or a new login while the refresh was out wins: its answer is neither saved nor allowed to end that login
-  const same = () => schwabSession()?.connectionId === t.connectionId && readTokens()?.refresh === t.refresh;
+  const same = () => schwabSession()?.connectionId === connectionId && readTokens()?.refresh === t.refresh;
   let j;
   try {
     j = await tokenCall('/refresh', { refresh_token: t.refresh }, t.proxy);
   } catch(e) {
-    if (!same()) throw loginChanged();
+    if (!same()) {
+      const now = schwabSession(); // another tab renewed it meanwhile: its tokens stand
+      if (now?.connectionId === connectionId && freshAccess(now)) return now.access;
+      throw loginChanged();
+    }
     // a refused refresh means the login is over; a network blip leaves it in place for the next try
-    if (e.status === 400 || e.status === 401) { store.del('schwab_tokens'); throw new Error('Your Schwab login expired. Log in again in Settings.'); }
+    if (e.status === 400 || e.status === 401) { store.del('schwab_tokens'); throw new Error(`Your Schwab login expired${e.code ? ` (Schwab: ${e.code})` : ''}. Log in again in Settings.`); }
     throw e;
   }
   if (!same()) throw loginChanged();
@@ -160,8 +181,8 @@ function notSent(e) {
 export async function schwabAccessToken() {
   const t = schwabSession();
   if (!t) throw new Error('Log in to Schwab in Settings.');
-  if (t.access && t.accessExp - Date.now() > 120000) return t.access;
-  if (!state.schwabRefreshing) state.schwabRefreshing = refreshTokens(t).finally(() => { state.schwabRefreshing = null; });
+  if (freshAccess(t)) return t.access;
+  if (!state.schwabRefreshing) state.schwabRefreshing = refreshTokens(t.connectionId).finally(() => { state.schwabRefreshing = null; });
   return state.schwabRefreshing;
 }
 

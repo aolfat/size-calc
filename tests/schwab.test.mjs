@@ -291,7 +291,7 @@ test('an expired access token refreshes once before the call; a refused refresh 
   const over = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: 0, refresh: 'dead', refreshExp: Date.now() + DAY })]]);
   const refused = network(async () => json({ error: 'invalid_grant' }, 400));
   const second = await app({ fetch: refused.fetch, storage: over });
-  await assert.rejects(second.run("schwabApi('/accounts/accountNumbers')"), /login expired/);
+  await assert.rejects(second.run("schwabApi('/accounts/accountNumbers')"), /login expired \(Schwab: invalid_grant\)/);
   assert.equal(over.has('schwab_tokens'), false);
 });
 
@@ -765,9 +765,48 @@ test('a refresh that lands after a logout is not saved; a refusal after a new lo
   const second = await app({ fetch: refused.fetch, storage: over });
   const pending = second.run("schwabApi('/accounts/accountNumbers')");
   await settle();
-  const fresh = JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'new', accessExp: Date.now() + 20 * 60000, refresh: 'ref-2', refreshExp: Date.now() + 5 * DAY });
+  const fresh = JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'new-login', access: 'new', accessExp: Date.now() + 20 * 60000, refresh: 'ref-2', refreshExp: Date.now() + 5 * DAY });
   over.set('schwab_tokens', fresh); // logged in again meanwhile
   refuse();
   await assert.rejects(pending, /login changed/);
   assert.equal(over.get('schwab_tokens'), fresh, 'the new login is kept');
+});
+
+// ---------- two tabs refreshing the same login ----------
+
+test('a tab waits for another tab\'s refresh and uses its tokens instead of spending the refresh token again', async () => {
+  const stale = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const net = network(async path => path === '/refresh' ? json({ error: 'invalid_grant' }, 400) : json([]));
+  const { run } = await app({ fetch: net.fetch, storage: stale });
+  // Web Locks, held by the other tab until it has saved what Schwab gave it
+  let held = Promise.resolve();
+  globalThis.navigator.locks = { request: (name, fn) => { const p = held.then(() => fn()); held = p.catch(() => {}); return p; } };
+  let finish;
+  held = new Promise(r => { finish = r; });
+  const call = run("schwabApi('/accounts/accountNumbers')");
+  await settle();
+  const renewed = JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'theirs', accessExp: Date.now() + 30 * 60000, refresh: 'ref-2', refreshExp: Date.now() + DAY });
+  stale.set('schwab_tokens', renewed);
+  finish();
+  await call;
+  const calls = net.schwabCalls();
+  assert.equal(calls.filter(c => c.url.endsWith('/refresh')).length, 0, 'no second refresh');
+  assert.equal(calls[0].headers.Authorization, 'Bearer theirs');
+  assert.equal(stale.get('schwab_tokens'), renewed, 'the login stays');
+});
+
+test('without Web Locks, a refusal that lost the race to another tab\'s refresh keeps the renewed login', async () => {
+  let refuse;
+  const later = new Promise(r => { refuse = r; });
+  const stale = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'old', accessExp: 0, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const net = network(async path => { if (path === '/refresh') { await later; return json({ error: 'invalid_grant' }, 400); } return json([]); });
+  const { run } = await app({ fetch: net.fetch, storage: stale });
+  const call = run("schwabApi('/accounts/accountNumbers')");
+  await settle();
+  const renewed = JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'theirs', accessExp: Date.now() + 30 * 60000, refresh: 'ref-2', refreshExp: Date.now() + DAY });
+  stale.set('schwab_tokens', renewed); // the other tab spent ref-1 first and saved its answer
+  refuse();
+  await call;
+  assert.equal(net.schwabCalls().at(-1).headers.Authorization, 'Bearer theirs');
+  assert.equal(stale.get('schwab_tokens'), renewed, 'the login stays');
 });
