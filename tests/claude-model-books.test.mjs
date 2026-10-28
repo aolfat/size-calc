@@ -141,8 +141,9 @@ test('a new example: its book by name (a new name makes it), setups matched or a
   assert.deepEqual(made.changes.books, [{ id: made.add.book_id, name: 'Lotto plays', description: '' }]);
   assert.deepEqual(made.said, ['New book: Lotto plays.']);
 
-  assert.throws(() => planExample(m, null, { title: 'x' }), /book: which one\? Best longs, Failed breakouts/);
-  assert.equal(planExample(booksFrom({ ...BOOKS, books: [BOOK] }), null, { title: 'x' }).add.book_id, BOOK.id, 'your one book by default');
+  assert.equal(planExample(m, null, { title: 'x' }).add.book_id, null, 'no book given: no book');
+  assert.equal(planExample(booksFrom({ ...BOOKS, books: [BOOK] }), null, { title: 'x' }).add.book_id, null, 'even with one book');
+  assert.equal(planExample(m, null, { title: 'x', book: null }).add.book_id, null);
   assert.throws(() => planExample(m, null, { book: 'Best longs' }), /title: needs one/);
   assert.throws(() => planExample(m, null, { book: 'Best longs', title: 'x'.repeat(121) }), /120 characters/);
   assert.throws(() => planExample(m, null, { book: 'Best longs', title: 'x', tags: [] }), /not tags/);
@@ -153,6 +154,15 @@ test('an example\'s change: only the fields that differ, moved by book name, set
   assert.deepEqual(planExample(m, EX, { title: 'NVDA reclaim', setups: ['ema21_bounce'] }).changes.examples, [], 'the same changes nothing');
   assert.deepEqual(planExample(m, EX, { book: 'Failed breakouts', notes: null }).changes.examples, [{ id: EX.id, fields: { book_id: OTHER.id, notes: '' } }]);
   assert.deepEqual(planExample(m, EX, { setups: null }).changes.examples, [{ id: EX.id, fields: { setup_keys: [] } }]);
+  assert.deepEqual(planExample(m, EX, { book: null }).changes.examples, [{ id: EX.id, fields: { book_id: null } }], 'out of its book');
+  const loose = { ...EX, book_id: null };
+  assert.deepEqual(planExample(booksFrom({ ...BOOKS, examples: [loose] }), loose, { book: null, title: 'NVDA reclaim' }).changes.examples, [], 'already in no book');
+});
+
+test('books in words: examples in no book come last, under No book', () => {
+  const m = booksFrom({ books: [OTHER], examples: [{ ...EX, book_id: null }], library: [] });
+  assert.equal(booksText(m), 'b2000000 · Failed breakouts (0 examples)\nNo book (1 example)\n  e1000000 · NVDA reclaim · 21 EMA bounce / rejection · Held VWAP');
+  assert.equal(booksText(booksFrom({ books: [], examples: [], library: [] })), 'No model book examples yet.');
 });
 
 // ---------- the script ----------

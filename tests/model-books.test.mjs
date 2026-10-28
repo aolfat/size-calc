@@ -185,3 +185,44 @@ test('an invalid draft cannot upload; a missing migration gives a recoverable er
   assert.match(b.elements.get('modelBooksBody').innerHTML, /Model Books isn&#39;t available yet/);
   assert.match(b.elements.get('modelBooksBody').innerHTML, /data-action="loadModelBooks"/);
 });
+
+test('By setup comes first, and a chart saves with no book: + Add example is there before any book exists', async () => {
+  const a = await books();
+  assert.equal(a.run('modelBooks.mode'), 'setups');
+  assert.match(a.body(), /aria-pressed="true" data-action="setModelBrowse" data-arg="setups"/);
+  assert.match(a.body(), /data-action="pickModelImage"/, 'no book needed to add a chart');
+  assert.doesNotMatch(a.body(), /Build your model books|Create a book, then/);
+  a.run("selectModelSetup('ema21_bounce')");
+  await a.run("pasteModelImages([{ type: 'image/png', size: 1200 }])");
+  assert.equal(a.run('modelBooks.draft.book_id'), '');
+  assert.match(a.body(), /<option value="" selected>No book<\/option>/);
+  a.run("modelExampleField('title', 'NTRA pennant breakout')");
+  await a.run('saveModelExample()');
+  await settle();
+  const row = [...a.supabase.tables.model_examples.values()][0];
+  assert.equal(row.book_id, null);
+  assert.deepEqual([...row.setup_keys], ['ema21_bounce']);
+  assert.equal(a.run('modelBooks.setupKey'), 'ema21_bounce', 'still on the setup it was added from');
+  assert.match(a.body(), /NTRA pennant breakout/);
+  assert.doesNotMatch(a.body(), /across your books/, 'there are no books to be across');
+  a.run("setModelBrowse('books')");
+  assert.match(a.body(), /NTRA pennant breakout/, 'All examples has it');
+});
+
+test('an example moves out of its book to No book, and the book can then be deleted', async () => {
+  const a = await books();
+  const book = await addBook(a); const row = await example(a);
+  a.run(`editModelExample('${row.id}')`);
+  assert.match(a.body(), new RegExp(`<option value="${book.id}" selected>`));
+  a.run("modelExampleField('book_id', '')");
+  await a.run('saveModelExample()');
+  assert.equal([...a.supabase.tables.model_examples.values()][0].book_id, null);
+  assert.equal(a.run('modelBooks.bookId'), '', 'the book view follows it to All examples');
+  await a.run(`deleteModelBook('${book.id}')`);
+  await a.run(`deleteModelBook('${book.id}')`);
+  assert.equal(a.supabase.tables.model_books.size, 0);
+  assert.equal(a.supabase.tables.model_examples.size, 1, 'the chart stays');
+  a.run(`editModelExample('${row.id}'); modelExampleField('book_id', '${book.id}')`);
+  await a.run('saveModelExample()');
+  assert.match(a.body(), /That book is gone/);
+});

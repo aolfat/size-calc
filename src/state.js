@@ -108,7 +108,7 @@ export function createState() {
     journalTab: 'trades', // trades | calendar | stats | setups | books | features | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
-      books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'books',
+      books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'setups', // By setup first: that's how charts are looked up
       draft: null, bookDraft: null, busy: false, preparing: false, deleteKey: '',
       viewerId: '', signing: false, imageError: '',
     },
