@@ -1,10 +1,12 @@
 // Schwab Trader API through the size-calc-schwab worker, which holds the app secret, swaps codes for tokens,
-// and relays /trader/v1 calls and /marketdata/v1 reads (futures quotes and bars). Login tokens are device-local: not in CLOUD_KEYS, so never in the account. Only the worker URL syncs.
+// and relays /trader/v1 calls and /marketdata/v1 reads (futures quotes and bars). Signed in, the login is shared by your
+// devices through the account (Vault); signed out, it stays on the device. The worker URL syncs as a setting.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { assertCredentialOrigin, credentialOriginAllowed } from '../lib/credential-origin.js';
+import { supabaseClient } from './supabase.js';
 
-export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration', 'schwab_acct_size', 'schwab_acct_source', 'schwab_callback', 'schwab_capture'];
+export const SCHWAB_KEYS = ['schwab_proxy', 'schwab_tokens', 'schwab_accounts', 'schwab_account', 'schwab_oauth_state', 'schwab_stop_duration', 'schwab_acct_size', 'schwab_acct_source', 'schwab_callback', 'schwab_capture', 'schwab_share_off'];
 const REFRESH_LIFE = 7 * 24 * 60 * 60 * 1000; // Schwab ends a login seven days after it starts; refreshes don't extend it
 
 export function schwabProxy() { return (store.get('schwab_proxy') || '').trim().replace(/\/+$/, ''); }
@@ -122,9 +124,96 @@ async function tokenCall(path, payload, proxy = schwabProxy()) {
 
 function saveTokens(j, refreshExp, binding) {
   const t = { userId: binding.userId, proxy: binding.proxy, connectionId: binding.connectionId,
-    access: j.access_token, accessExp: Date.now() + (Number(j.expires_in) || 1800) * 1000, refresh: j.refresh_token, refreshExp };
+    access: j.access_token, accessExp: Date.now() + (Number(j.expires_in) || 1800) * 1000, refresh: j.refresh_token, refreshExp,
+    ...(binding.shared ? { shared: true } : {}) };
   store.set('schwab_tokens', JSON.stringify(t));
   return t;
+}
+
+// ---------- one login for every device: signed in, the account keeps it in Vault ----------
+// Schwab keeps one login per app at a time, so a phone logging in on its own ended the desktop's. `shared` on the
+// tokens marks a login the account has had, so an account with none means it was ended everywhere.
+
+const LOGIN_FIELDS = ['proxy', 'connectionId', 'access', 'accessExp', 'refresh', 'refreshExp'];
+const loginForm = t => Object.fromEntries(LOGIN_FIELDS.map(k => [k, t[k]]));
+/** a kept login this device can use: live, through this device's worker */
+const usable = s => !!s && typeof s.refresh === 'string' && typeof s.connectionId === 'string' && s.refreshExp > Date.now() && s.proxy === schwabProxy();
+/** a is the newer login: a later one, or the same one renewed later with a new refresh token */
+const newer = (a, b) => a.connectionId === b.connectionId ? a.refresh !== b.refresh && a.accessExp > b.accessExp : a.refreshExp > b.refreshExp;
+/**
+ * this device uses the account's login: signed in, not after Disconnect on this device (until it logs in again), and
+ * not while a worker URL the account changed waits for a yes here (the login would go through that worker)
+ */
+const sharing = () => !!state.session && store.get('schwab_share_off') !== '1'
+  && !(store.get('schwab_proxy_confirm') !== null && store.get('schwab_proxy_confirm') === store.get('schwab_proxy'));
+
+async function sharedRpc(name, args) {
+  const client = await supabaseClient();
+  const res = await client.rpc(name, args);
+  if (res?.error) throw new Error(res.error.message || 'Supabase error');
+  return res?.data ?? null;
+}
+
+function markShared(t) {
+  const now = readTokens();
+  if (now?.connectionId === t.connectionId && now.refresh === t.refresh && !now.shared) store.set('schwab_tokens', JSON.stringify({ ...now, shared: true }));
+}
+
+/**
+ * Keep this device's login in the account. expect: the refresh token it renewed from (the account only swaps that one);
+ * without it the account takes only a newer login. Quiet when the account can't be reached: the next sync sends it.
+ */
+async function shareLogin(t, expect = null) {
+  if (!sharing() || t.userId !== googleUser()) return;
+  try {
+    const kept = await sharedRpc('set_schwab_login', { p_login: loginForm(t), p_expect: expect });
+    if (kept?.connectionId === t.connectionId && kept.refresh === t.refresh) markShared(t);
+  } catch(e) {}
+}
+
+let sharedListener = () => {};
+/** the UI hears when the account's login replaced or ended this device's @param {() => void} fn */
+export function onSchwabShared(fn) { sharedListener = fn; }
+
+/**
+ * Line this device's login up with the account's: take the account's when it's newer or this device has none, send
+ * this device's when it's newer, and disconnect when the account's was ended on every device. True when this
+ * device's login changed.
+ */
+export async function schwabSyncShared() {
+  if (!sharing() || !credentialOriginAllowed() || !proxyOk(schwabProxy())) return false;
+  const uid = googleUser();
+  const before = store.get('schwab_tokens');
+  let kept;
+  try { kept = await sharedRpc('get_schwab_login'); } catch(e) { return false; }
+  if (googleUser() !== uid || store.get('schwab_tokens') !== before || !sharing()) return false; // the next sync looks again
+  const mine = schwabSession();
+  let changed = false;
+  if (!usable(kept)) {
+    if (mine?.shared && !kept) { schwabDisconnect(); changed = true; } // ended on every device, or refused there
+    else if (mine) await shareLogin(mine);
+  } else if (!mine || newer(kept, mine)) {
+    store.set('schwab_tokens', JSON.stringify({ userId: uid, ...loginForm(kept), shared: true }));
+    if (!schwabAccount()) await schwabFetchAccounts().catch(() => {});
+    changed = true;
+  } else if (newer(mine, kept)) await shareLogin(mine, mine.connectionId === kept.connectionId ? kept.refresh : null);
+  else markShared(mine);
+  if (changed) sharedListener();
+  return changed;
+}
+
+/** Disconnect on every device: the account's login goes, then this device's. False when the account couldn't be reached */
+export async function schwabDisconnectEverywhere() {
+  let ok = true;
+  if (state.session) { try { await sharedRpc('clear_schwab_login'); } catch(e) { ok = false; } }
+  schwabDisconnect();
+  return ok;
+}
+
+/** Disconnect on this device only: it stops using the account's login until it logs in to Schwab again */
+export function schwabDisconnectHere() {
+  schwabDisconnect();
+  if (state.session) store.set('schwab_share_off', '1');
 }
 
 /** the code Schwab put in the callback address, swapped for tokens by the worker */
@@ -134,8 +223,8 @@ export async function schwabExchangeCode(code) {
   const j = await tokenCall('/token', { code }, binding.proxy);
   if (binding.userId !== googleUser() || binding.proxy !== schwabProxy() || attempt !== store.get('schwab_oauth_state')) throw loginChanged();
   if (!j.refresh_token) throw new Error('Schwab sent no refresh token.');
-  schwabDisconnect();
-  saveTokens(j, Date.now() + REFRESH_LIFE, binding);
+  schwabDisconnect(); // and a Disconnect on this device ends: logging in here shares again
+  await shareLogin(saveTokens(j, Date.now() + REFRESH_LIFE, binding)); // the other devices pick it up
 }
 
 const freshAccess = t => !!t?.access && t.accessExp - Date.now() > 120000;
@@ -143,12 +232,12 @@ const freshAccess = t => !!t?.access && t.accessExp - Date.now() > 120000;
 // one refresh at a time across this origin's tabs: two tabs spending the same refresh token at once could see one
 // refused and end a login the other just renewed
 function refreshTokens(connectionId) {
-  const run = () => refreshOnce(connectionId);
+  const run = () => refreshOnce(connectionId, false);
   const locks = globalThis.navigator?.locks;
   return locks ? locks.request('schwab-refresh', run) : run();
 }
 
-async function refreshOnce(connectionId) {
+async function refreshOnce(connectionId, retried) {
   const t = schwabSession();
   if (t?.connectionId !== connectionId) throw loginChanged();
   if (freshAccess(t)) return t.access; // another tab refreshed while this one waited
@@ -163,12 +252,23 @@ async function refreshOnce(connectionId) {
       if (now?.connectionId === connectionId && freshAccess(now)) return now.access;
       throw loginChanged();
     }
-    // a refused refresh means the login is over; a network blip leaves it in place for the next try
-    if (e.status === 400 || e.status === 401) { store.del('schwab_tokens'); throw new Error(`Your Schwab login expired${e.code ? ` (Schwab: ${e.code})` : ''}. Log in again in Settings.`); }
-    throw e;
+    // a network blip leaves the login in place for the next try
+    if (e.status !== 400 && e.status !== 401) throw e;
+    // refused: another device may have logged in again (ending this login) or renewed it, so take the account's
+    if (!retried && await schwabSyncShared()) {
+      const now = schwabSession();
+      if (now) return freshAccess(now) ? now.access : refreshOnce(now.connectionId, true);
+    }
+    // the login is over: here, and in the account if it's still the one kept there
+    store.del('schwab_tokens');
+    if (state.session) sharedRpc('set_schwab_login', { p_login: null, p_expect: t.refresh }).catch(() => {});
+    throw new Error(`Your Schwab login expired${e.code ? ` (Schwab: ${e.code})` : ''}. Log in again in Settings.`);
   }
   if (!same()) throw loginChanged();
-  return saveTokens({ ...j, refresh_token: j.refresh_token || t.refresh }, t.refreshExp, t).access;
+  const saved = saveTokens({ ...j, refresh_token: j.refresh_token || t.refresh }, t.refreshExp, t);
+  // a new refresh token goes to the account in place of the one it came from (quietly: the call shouldn't wait)
+  if (saved.refresh !== t.refresh || !saved.shared) shareLogin(saved, saved.shared ? t.refresh : null);
+  return saved.access;
 }
 
 /** an error from before any request reached Schwab: nothing went out, so there is nothing to check there */
@@ -193,10 +293,11 @@ const READ_TIMEOUT = 15000;
  * is never sent twice; a login that fails first is tagged notSent.
  */
 export async function schwabApi(path, { method = 'GET', body, base = '/trader/v1' } = {}) {
-  const connection = schwabSession();
   let token;
   try { token = await schwabAccessToken(); } catch(e) { throw notSent(e); }
-  if (!connection || schwabSession()?.connectionId !== connection.connectionId) throw notSent(loginChanged());
+  // the login the token belongs to (the account's, when the refresh took it): anything else changed meanwhile
+  const connection = schwabSession();
+  if (!connection || connection.access !== token) throw notSent(loginChanged());
   // a read gives up after 15s so a hung call can't leave Refresh dead; an order waits, since giving up wouldn't unsend it
   const ctrl = method === 'GET' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), READ_TIMEOUT) : 0;

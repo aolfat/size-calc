@@ -6,7 +6,7 @@ import { inZone } from '../lib/zone.js';
 import { store, onStoreWrite } from '../lib/store.js';
 import { mergeFirstSignIn, pullFrom, seenAfter, unseenRows } from '../core/cloud-merge.js';
 import { hasStoredSession, supabaseClient } from './supabase.js';
-import { schwabDisconnect } from './schwab.js';
+import { schwabDisconnect, schwabSyncShared } from './schwab.js';
 
 /** settings that live in the account (the Tradier key goes to Vault) */
 export const CLOUD_KEYS = ['calc_account', 'calc_risk', 'calc_allocation', 'risk_usd_presets', 'atr_multiplier', 'stop_strategy', 'stop_percent', 'last_ticker', 'tradier_env', 'schwab_proxy', 'journal_fees', 'journal_deck_pnl', 'journal_review_from'];
@@ -203,6 +203,11 @@ export async function cloudPull() {
         const keptHere = state.cloudPending.has('tradier_key') || store.get('tradier_key') !== keyBefore;
         if (newKey !== null && !keptHere && (keyBefore || '') !== newKey) { store.set('tradier_key', newKey); changed = true; }
       } finally { state.cloudSuppress = false; }
+      // another device logged in to Schwab, renewed its login or ended it everywhere (set_schwab_login stamps this)
+      if (fresh.some(r => r.key === 'schwab_login_at')) {
+        await schwabSyncShared();
+        if (!current()) return;
+      }
       store.set('cloud_seen', JSON.stringify(seenAfter(settingRows, seen)));
       view.status('Synced ' + clock());
       if (changed) { view.applied(); view.pulled(); }

@@ -6,7 +6,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { defaultEntryLimit, entryLimitError, fmtTick, inRegularHours, limitEntryError, priceTick, sharesStopOrder, sharesTicketError, stopEntryError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
-import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnect, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration } from '../services/schwab.js';
+import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnectEverywhere, schwabDisconnectHere, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration, onSchwabShared } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
@@ -143,12 +143,26 @@ export function schwabAccountChanged() {
   dailyAccountSize();
 }
 
-export function disconnectSchwab() {
-  schwabDisconnect();
+/** @param {string} [where] 'everywhere' ends the login on every device; otherwise this device only */
+export async function disconnectSchwab(where) {
+  const shared = !!state.session;
+  let reached = true;
+  if (where === 'everywhere') reached = await schwabDisconnectEverywhere();
+  else schwabDisconnectHere();
   updateSchwabUi();
   positionsAccountChanged();
-  showToast('Schwab disconnected on this device.');
+  if (where !== 'everywhere') showToast(shared ? 'Schwab disconnected on this device. Your other devices stay logged in.' : 'Schwab disconnected on this device.');
+  else if (reached) showToast('Schwab disconnected on every device.');
+  else showError("Schwab disconnected here, but your account couldn't be reached, so your other devices stay logged in.");
 }
+
+// another device's login (or its Disconnect everywhere) reached this one through the account
+onSchwabShared(() => {
+  updateSchwabUi();
+  positionsAccountChanged();
+  dailyAccountSize();
+  maybeCapture();
+});
 
 function setSchwabNote(text) {
   const el = document.getElementById('schwabNote');
@@ -173,6 +187,7 @@ export function updateSchwabUi() {
   document.getElementById('schwabLogin').style.display = session ? 'none' : '';
   document.getElementById('schwabPaste').style.display = schwabReturnsHere() ? 'none' : '';
   document.getElementById('schwabAccountRow').style.display = session ? '' : 'none';
+  document.getElementById('schwabSharedLine').style.display = session?.shared && state.session ? '' : 'none';
   const accounts = schwabAccounts();
   document.getElementById('schwabAccount').innerHTML = accounts.length
     ? accounts.map(a => `<option value="${esc(a.hash)}"${acct && a.hash === acct.hash ? ' selected' : ''}>Account ${esc(mask(a.last4))}</option>`).join('')

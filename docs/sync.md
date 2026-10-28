@@ -20,7 +20,8 @@ Google sign-in through Supabase, which settings sync, the Tradier key in Vault, 
   One push, pull or merge runs at a time (`state.cloudBusy` holds its promise).
   Sign out waits (up to 10s) for a running sync, then sends pending edits (cloudFlush; offline: the first press warns, a second discards), signs out locally only (`scope: 'local'`, other devices stay signed in), disconnects Schwab, clears every synced key (except the worker URL kept for the next login) and the cloud bookkeeping from the device, and reloads.
   Broker tokens carry their Google owner, worker URL, and connection id; unbound legacy tokens require a new login.
-  Auth changes in other tabs disconnect the old broker session before reloading; a session this tab couldn't load at boot (offline: currentSession throws while one is still stored, 'Offline, will retry') coming back as the same user (cloud_user) just resumes, keeping the Schwab login.
+  Auth changes in other tabs disconnect the old broker session before reloading when someone else signs in; a session that ended with no one new (SIGNED_OUT from a failed refresh) reloads but keeps the Schwab login, bound to that user; a session this tab couldn't load at boot (offline: currentSession throws while one is still stored, 'Offline, will retry') coming back as the same user (cloud_user) just resumes, keeping the Schwab login.
+  The Schwab login itself is shared by your devices through Vault too (`schwab_login:<uid>`, `schwab_login_at` stamps it): docs/schwab.md, One login for every device.
   Free plan: no automatic backups, pauses after a week of low activity.
   There is no export/import file (removed by request).
   The old encrypted Cloudflare sync worker is gone from the repo Saved position cards are retired (Positions shows live Schwab positions), so leftover `saved_positions` / `deleted_positions` keys on older devices are never sent; the `saved_positions` table from the first migration is dropped by the second

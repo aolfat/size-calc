@@ -629,11 +629,12 @@
             </div>
             <div class="field" style="flex:0 0 auto;flex-direction:row;gap:8px;">
               <button class="btn" data-action="reloadSchwabAccounts" title="Reload accounts" aria-label="Reload accounts">↻</button>
-              <button class="btn" data-action="disconnectSchwab">Disconnect</button>
+              <button class="btn" data-action="disconnectSchwab" title="Disconnect on this device">Disconnect</button>
             </div>
           </div>
+          <p class="hint" id="schwabSharedLine" style="display:none;">Your other devices use this login too. <button class="link-btn" data-action="disconnectSchwab" data-arg="everywhere">Disconnect everywhere</button></p>
         </div>
-        <p class="hint">Sends shares orders from the shares card: a market entry, then your stop once it fills. Tokens stay in this browser and pass through the worker, whose operator can access them. Signing out disconnects Schwab. Schwab asks you to log in again every 7 days.</p>
+        <p class="hint">Sends shares orders from the shares card: a market entry, then your stop once it fills. Signed in, your Schwab login is saved to your account, encrypted, so your other devices use it without logging in again. The app administrator can decrypt it, and anyone who gets into your Google account could trade with it until it ends. Signed out, it stays in this browser. Tokens pass through the worker, whose operator can access them. Signing out disconnects Schwab on this device. Schwab asks you to log in again every 7 days.</p>
         <details class="hint-details"><summary>Setup</summary>Deploy the worker in <b>worker/schwab</b> with your app key, secret, and callback URL (its README has the steps), then paste its URL above. Set the callback to this app's address and Schwab sends you straight back here after you log in. With https://127.0.0.1 as the callback, the page you land on won't load: copy its whole address and paste it here within about 30 seconds.</details>
       </div>
     </div>

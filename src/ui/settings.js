@@ -5,7 +5,7 @@ import { store } from '../lib/store.js';
 import { CREDENTIAL_ORIGIN_MESSAGE, credentialOriginAllowed } from '../lib/credential-origin.js';
 import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, SESSION_KEY, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
-import { schwabDisconnect, schwabSession } from '../services/schwab.js';
+import { schwabDisconnect, schwabSession, schwabSyncShared } from '../services/schwab.js';
 import { renderClaudeAccess } from './claude-access.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
@@ -147,6 +147,7 @@ async function startSession(session) {
     await cloudPull();
     if (state.cloudPending.size) await cloudPush();
   }
+  await schwabSyncShared(); // the Schwab login your other devices use, or this one's sent for them
   updateApiStatus();
   updateSchwabUi();
   maybeCapture(); // signed in and connected to Schwab: keep the history (at most every 6 hours)
