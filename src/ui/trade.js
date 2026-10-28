@@ -1,6 +1,7 @@
 // Schwab trading: the connect section in Settings, the shares card's trade button, and the order review sheet.
 // The sheet freezes one ticket when it opens, for the account selected then; Place re-checks it against a fresh quote,
 // then sends exactly that payload once and never retries it. A limit entry still waiting moves through Positions' Edit.
+// The setup and entry tactic picks, and the plan kept once the order goes, are ui/order-plan.js.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { defaultEntryLimit, entryLimitError, fmtTick, inRegularHours, limitEntryError, priceTick, sharesStopOrder, sharesTicketError, stopEntryError, stopTick } from '../core/orders.js';
@@ -11,6 +12,7 @@ import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
 import { renderShares, sharesPlan } from './shares.js';
 import { orbEntryName } from './orb.js';
+import { planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
 import { refreshQuote } from './ticker.js';
@@ -244,6 +246,7 @@ export function buildTradeTicket(now = Date.now()) {
     symbol: q.symbol, qty, isLong, stop, entry, customEntry, entryNote: orbEntryName(), stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '', valid: plan.valid,
     entryType: breakout ? savedStopEntry() : 'MARKET', entryStop, entryLimit: entryStop > 0 ? defaultEntryLimit(entryStop, isLong) : 0,
     limitPrice: entry > 0 ? priceTick(entry) : 0,
+    setups: [], tactics: [], planCtx: planContext(isLong, plan.stop),
   }, q, now);
 }
 
@@ -272,6 +275,8 @@ function ticketFor(p, q, now) {
     entryType, entryStop, entryLimit, limitPrice, limitError,
     plannedRisk: qty * perShare(at), fillRisk: qty * perShare(fill),
     error, order: null, warnings: [], flags: [], sent: false, orderId: '', result: null, entryStatus: '', filled: 0,
+    // the picks and what the calculator knew go with every re-plan; the saved plan's id comes once it's sent
+    setups: p.setups || [], tactics: p.tactics || [], planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
   };
   if (error) return t;
   if (!limitError) t.order = sharesStopOrder({ symbol, qty, isLong, stop, stopDuration: t.stopDuration, entryType, entryStop, entryLimit: entryType === 'LIMIT' ? limitPrice : entryLimit });
@@ -308,6 +313,8 @@ export async function openTrade() {
   if (!state.quoteData || state.quoteData.symbol !== symbol) { showError('The ticker changed. Check the card, then try again.'); return; }
   if (!fresh) { showError(`Could not refresh the ${symbol} quote, so there is nothing to review yet. Try again.`); return; }
   state.tradeTicket = buildTradeTicket();
+  state.tradeSetupQuery = '';
+  startTradePlan(state.tradeTicket);
   renderTradeSheet();
   openSheet('trade');
 }
@@ -399,13 +406,18 @@ export async function placeTrade() {
     renderTradeSheet();
     const how = t.entryType === 'LIMIT' ? ` at ${fmtTick(t.limitPrice)} limit` : t.entryType === 'STOP' ? ` on a stop at ${fmtTick(t.entryStop)}` : t.entryType === 'STOP_LIMIT' ? ` on a stop at ${fmtTick(t.entryStop)}, limit ${fmtTick(t.entryLimit)}` : '';
     showToast(`Order sent: ${t.isLong ? 'buy' : 'short'} ${t.qty} ${t.symbol}${how}, stop ${fmtTick(t.stop)}.`);
+    const saving = saveTradePlan(t); // after the send, beside the status check: never in the order's way
     await updateTradeStatus(t);
+    await saving;
   } catch(e) {
     if (e.notSent) {
       // the login or the account stopped it before the order request: nothing reached Schwab, so nothing to look for there
       t.result = { ok: false, text: (e instanceof TypeError ? 'Could not reach the Schwab worker.' : e.message) + ' Nothing was sent to Schwab.' };
     } else {
-      if (e instanceof TypeError) state.tradeLast = { symbol: t.symbol, at: Date.now() }; // it may have gone through
+      if (e instanceof TypeError) {
+        state.tradeLast = { symbol: t.symbol, at: Date.now() }; // it may have gone through
+        await saveTradePlan(t); // with no id: the journal finds its trade by time, if there is one
+      }
       t.result = { ok: false, text: e instanceof TypeError ? 'No answer from Schwab. Check your Schwab orders before trying again.' : e.status ? 'Schwab rejected the order. ' + e.message : e.message };
     }
   } finally {
@@ -494,6 +506,7 @@ export function renderTradeSheet() {
       <div><dt>Entry order</dt><dd><div class="seg entry-types" role="group" aria-label="Entry order">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}${type('STOP', 'Stop')}${type('STOP_LIMIT', 'Stop limit')}</div>${limit}</dd></div>
     </dl>
     <div id="tradeDetail">${tradeDetail(t)}</div>
+    <div class="trade-plan" id="tradePlan">${tradePlanHtml(t)}</div>
     <div class="trade-actions">
       <button class="btn" data-action="closeSheet">${t.sent ? 'Close' : 'Cancel'}</button>
       ${action}

@@ -2,10 +2,12 @@
 // and sent once, after a re-read shows the same plan. A plain order is replaced; a half of a target-and-stop pair can't be, so
 // the pair is cancelled and placed again with the change, only once Schwab shows both halves cancelled, never filled.
 // A limit entry with its stop waiting on it goes the same way: cancelled, then placed again with the same stop.
+// An entry the trade sheet kept an order plan for takes it along: the plan gets the new id, so the journal still finds the trade.
 import { state } from '../state.js';
 import { inZone } from '../lib/zone.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { editPlan, fmtPositionPrice, schwabTime, workingOrders, workingWords } from '../core/positions.js';
+import { planWithOrder, updateOrderPlan } from '../services/order-plans.js';
 import { schwabAccount, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { cancelWorking, schwabList, sendsSame, shownCancelled, statusOf } from './order-cancel.js';
@@ -146,6 +148,7 @@ export async function sendOrderEdit() {
       state.tradeLast = { symbol: t.order.symbol, at: Date.now() };
       await refreshPositions(); // what Schwab shows now, not what the answers implied
       Object.assign(t, outcome(t));
+      await followPlan(t);
       state.posLast = { hash: t.hash, symbol: t.order.symbol, at: Date.now(), confirmed: t.confirmed };
     }
   } finally {
@@ -153,6 +156,26 @@ export async function sendOrderEdit() {
     if (state.editTicket === t) renderEditSheet();
   }
   if (t.confirmed) showToast(t.done);
+}
+
+/**
+ * The order's plan, if the trade sheet kept one (signed in), takes the id Schwab gave the order in its place: from the
+ * answer, else the like order Schwab shows now. Its edits note the size it went at; what was planned stays.
+ */
+async function followPlan(t) {
+  const ids = t.steps.filter(s => s.kind !== 'cancel' && s.status === 'done' && s.newId).map(s => String(s.newId));
+  const now = !ids.length && state.positions && !state.positionsError ? like(t, changed(t))(workingOrders(state.positions.orders)) : null;
+  if (now) ids.push(String(now.orderId));
+  if (!ids.length || !state.session) return;
+  try {
+    const plan = await planWithOrder(t.order.orderId);
+    const fresh = plan ? ids.filter(id => !plan.order_ids.includes(id)) : [];
+    if (!plan || !fresh.length) return;
+    const at = new Date().toISOString();
+    await updateOrderPlan(plan.id, { order_ids: [...plan.order_ids, ...fresh], plan: { ...plan.plan, edits: [...plan.plan.edits, ...fresh.map(id => ({ at, order_id: id, qty: t.qty }))] } });
+  } catch(e) {
+    showError(`The order changed, but its journal plan didn't follow: ${String(e?.message || e)}`);
+  }
 }
 
 /** a new working order like w: same symbol, instruction, type, prices, size and duration */
