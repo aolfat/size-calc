@@ -8,7 +8,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
 import { combineCandidates, fillBias, fundOf, holdWords, journalTrades, legWords, listedFund, multiplierOf, withFund, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
-import { activePeriods, exitDays, isRangeKey, periodKey, periodSpan, PERIODS, rangeKey, stepPeriod, switchPeriod } from '../core/journal-stats.js';
+import { activePeriods, exitDays, isRangeKey, nyParts, periodKey, periodSpan, PERIODS, rangeKey, stepPeriod, switchPeriod } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
@@ -275,6 +275,25 @@ const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupM
 export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v || ''); renderJournal(); }
 export function setJournalReviewFilter(v) { state.journalReviewFilter = v in REVIEW_TESTS ? v : 'all'; renderJournal(); }
 const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
+/** the Trades tab's dates (state.journalFrom / journalTo, either may be blank): a trade opened then, or with an exit then */
+const onDates = list => {
+  const from = state.journalFrom || '0000', to = state.journalTo || '9999', inside = d => d >= from && d <= to;
+  if (!state.journalFrom && !state.journalTo) return list;
+  return list.filter(t => (t.openedAt && inside(nyParts(t.openedAt).day)) || [...exitDays(t)].some(inside));
+};
+/** Trades from … to …: either end may be blank (From alone: that day on), a From after To swaps them */
+export function setJournalDates(end, value) {
+  const v = /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '';
+  if (end === 'to') state.journalTo = v; else state.journalFrom = v;
+  if (state.journalFrom && state.journalTo && state.journalFrom > state.journalTo) [state.journalFrom, state.journalTo] = [state.journalTo, state.journalFrom];
+  renderJournal();
+}
+export function clearJournalDates() { state.journalFrom = ''; state.journalTo = ''; renderJournal(); }
+/** the Trades tab's date boxes, All dates once either is set */
+function datesHtml() {
+  const today = nyParts(new Date().toISOString()).day, set = state.journalFrom || state.journalTo;
+  return `<span class="journal-dates${set ? ' active' : ''}"><label class="jr-from">Trades from <input type="date" id="journalFrom" value="${state.journalFrom}" max="${today}" data-change="setJournalDates" data-arg="from" aria-label="Show trades from this day" /></label><label class="jr-from">to <input type="date" id="journalTo" value="${state.journalTo}" data-change="setJournalDates" data-arg="to" aria-label="Show trades up to this day" /></label>${set ? '<button class="pos-link" data-action="clearJournalDates">All dates</button>' : ''}</span>`;
+}
 
 /** phones: the summary as three tiles (net, win rate, average) and a quiet line for the rest */
 function summaryTiles(trades, deleted) {
@@ -335,7 +354,7 @@ function controls(all = [], navigationOnly = false) {
   if (mq(PHONE_MQ)) {
     // phones: the symbol box, Filters (how many are on) and Select on one line; the rest opens under it
     const trades = state.journalTab === 'trades';
-    const on = (state.journalSetupFilter && setupFilter(all) ? 1 : 0) + (state.journalSide !== 'all' ? 1 : 0) + (trades && reviewFrom() ? 1 : 0);
+    const on = (state.journalSetupFilter && setupFilter(all) ? 1 : 0) + (state.journalSide !== 'all' ? 1 : 0) + (trades && reviewFrom() ? 1 : 0) + (trades && (state.journalFrom || state.journalTo) ? 1 : 0);
     const open = state.journalFiltersOpen;
     return `<div class="journal-controls">
     ${tabs}
@@ -347,6 +366,7 @@ function controls(all = [], navigationOnly = false) {
       ${setupFilter(all)}
       <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
       ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
+      ${trades ? datesHtml() : ''}
       ${trades ? reviewFromHtml(all) : ''}
     </div>` : ''}
     ${dayChip ? `<div class="journal-filters">${dayChip}</div>` : ''}
@@ -360,6 +380,7 @@ function controls(all = [], navigationOnly = false) {
       ${setupFilter(all)}
       <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
       ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
+      ${state.journalTab === 'trades' ? datesHtml() : ''}
       ${dayChip}
     </div>
     ${state.journalTab === 'trades' ? reviewChips(all) : ''}
@@ -368,7 +389,7 @@ function controls(all = [], navigationOnly = false) {
 
 /** All · Open (while any is) · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
 function reviewChips(all, withFrom = true) {
-  const base = onSetupFilter(onPickedDay(filtered(all, t => t.bias))).filter(t => !t.deleted);
+  const base = onSetupFilter(onPickedDay(onDates(filtered(all, t => t.bias)))).filter(t => !t.deleted);
   const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
   const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
   const open = base.filter(isOpen).length;
@@ -493,8 +514,8 @@ function watchPhone() {
 
 /** open trades first (the phone cards' order too), each part newest first */
 const openFirst = list => [...list.filter(isOpen), ...list.filter(t => !isOpen(t))];
-/** the Trades tab's trades: its side, symbol, day, review and setup filters, open ones first, newest first */
-const tradesTabList = all => openFirst(onSetupFilter(onReviewFilter(onPickedDay(filtered(all, t => t.bias)))));
+/** the Trades tab's trades: its side, symbol, dates, day, review and setup filters, open ones first, newest first */
+const tradesTabList = all => openFirst(onSetupFilter(onReviewFilter(onPickedDay(onDates(filtered(all, t => t.bias))))));
 /**
  * The trades a trade page's arrows step through: the Trades tab as it's filtered now (deleted ones only while shown), or
  * every trade when the page opened from somewhere the trade isn't in that list (the calendar, a setup's page)

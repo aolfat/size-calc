@@ -30,7 +30,7 @@ import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from
 import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
-import { clearJournalDay, closeJournalSetup, journalThisMonth, setCalendarDates, setCalendarRange, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setStatsDates, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
+import { clearJournalDates, clearJournalDay, closeJournalSetup, journalThisMonth, setCalendarDates, setCalendarRange, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalDates, setJournalPeriod, setStatsDates, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
@@ -172,6 +172,8 @@ export const actions = {
   undoRemoveFocus: () => undoRemoveFocus(),
   retireNotebookItem: el => retireNotebookItem(arg(el)),
   clearJournalDay: () => clearJournalDay(),
+  setJournalDates: el => setJournalDates(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  clearJournalDates: () => clearJournalDates(),
   shiftJournalMonth: el => shiftJournalMonth(arg(el)),
   journalThisMonth: () => journalThisMonth(),
   setCalendarDates: el => setCalendarDates(arg(el)),
