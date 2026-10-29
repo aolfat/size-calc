@@ -56,7 +56,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
     const oqRaw = optJson?.quotes?.quote;
 
     if (!uq) throw new Error(`Could not find underlying ${parsed.ticker}`);
-    if (!oqRaw) throw new Error(`Option not found: ${parsed.occ} — check strike/expiry`);
+    if (!oqRaw) throw new Error(`Option not found: ${parsed.occ}. Check the strike and expiry.`);
 
     const underlyingPrice = effectivePrice(uq);
     const isCall = parsed.optType === 'call';
@@ -78,7 +78,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
       const oqs = Array.isArray(oqRaw) ? oqRaw : [oqRaw];
       const legQ = occ => oqs.find(o => o.symbol === occ && o.type === 'option');
       const q1 = legQ(parsed.occ), q2 = legQ(parsed.occ2);
-      if (!q1 || !q2) throw new Error(`Spread leg not found — check strikes/expiry (${parsed.occ}, ${parsed.occ2})`);
+      if (!q1 || !q2) throw new Error(`Spread leg not found (${parsed.occ}, ${parsed.occ2}). Check the strikes and expiry.`);
       const leg = (q2x, K, side) => ({
         K, side, occ: q2x.symbol,
         mid: ((q2x.bid || 0) + (q2x.ask || 0)) / 2, bid: q2x.bid || 0, ask: q2x.ask || 0,
@@ -86,7 +86,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
       });
       const lg = leg(q1, parsed.strike, 1), sh = leg(q2, parsed.strike2, -1);
       const net = lg.mid - sh.mid; // debit paid, or credit received
-      if (!(net > 0)) throw new Error(parsed.credit ? 'No credit at current mids — check the strikes.' : 'That combination is a credit at current mids, not a debit.');
+      if (!(net > 0)) throw new Error(parsed.credit ? 'No credit at current mids. Check the strikes.' : 'That combination is a credit at current mids, not a debit.');
       d = {
         kind: 'spread', credit: !!parsed.credit, parsed, legs: [lg, sh],
         isCall, itm, underlyingPrice, stopName, stopLevel,
@@ -98,7 +98,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
       };
     } else {
       const oq = oqRaw;
-      if (oq.type !== 'option') throw new Error(`Option not found: ${parsed.occ} — check strike/expiry`);
+      if (oq.type !== 'option') throw new Error(`Option not found: ${parsed.occ}. Check the strike and expiry.`);
       const mid = ((oq.bid || 0) + (oq.ask || 0)) / 2;
       d = {
         parsed, isCall, itm, underlyingPrice, stopName, stopLevel,

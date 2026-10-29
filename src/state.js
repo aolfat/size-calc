@@ -191,7 +191,6 @@ export function createState() {
     chainRequestId: 0,
     pendingAtmScroll: false, // set on user-driven chain loads, never on live polls
     chainSide: 'both',
-    zoneMode: 'otm',
     zoneFilter: { otm: true, itm: false },
     railDetailSym: null,
     pinnedData: {},

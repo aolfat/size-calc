@@ -6,7 +6,7 @@
 // trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
-import { combineCandidates, fundOf, holdWords, journalTrades, legWords, listedFund, withFund, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
+import { combineCandidates, fillBias, fundOf, holdWords, journalTrades, legWords, listedFund, multiplierOf, withFund, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { activePeriods, exitDays, periodKey, PERIODS, stepPeriod, switchPeriod } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
@@ -85,7 +85,7 @@ function statusLine() {
 }
 
 function fillRow(f) {
-  const mult = f.assetType === 'OPTION' ? 100 : 1;
+  const mult = multiplierOf(f.assetType, f.symbol);
   return `<tr>
     <td><b>${esc(f.label || f.symbol)}</b></td>
     <td class="${f.side === 'buy' ? 'journal-buy' : 'journal-sell'}">${esc(fillWords(f))}</td>
@@ -641,7 +641,7 @@ export function renderJournal() {
     ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
     ${controls(all, !fills.length || notebookOpen())}
     ${books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : state.journalTab === 'missed' ? missedTabHtml() : fills.length ? (state.journalTab === 'fills'
-      ? fillsView(filtered(fills, f => f.side === 'buy' ? (/TO_COVER|TO_CLOSE/.test(f.instruction) ? 'short' : 'long') : (/SHORT/.test(f.instruction) ? 'short' : 'long')))
+      ? fillsView(filtered(fills, fillBias))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
       : state.journalTab === 'setups' ? setupsView(filtered(all, t => t.bias))
@@ -681,7 +681,7 @@ export function renderImportSheet() {
     </div>`;
 }
 
-/** Export: the files you can take. Schwab history now; trades as CSV once trades exist */
+/** Export: the files you can take. Schwab history now; trades as CSV later */
 export function renderExportSheet() {
   const el = document.getElementById('journalExportBody');
   if (!el) return;
@@ -692,7 +692,7 @@ export function renderExportSheet() {
   el.innerHTML = `<div class="sheet-section"><div class="sheet-label">Schwab history (JSON)</div>${history}</div>
     <div class="sheet-section journal-soon">
       <div class="sheet-label">Trades (CSV) <span class="sheet-status">Coming soon</span></div>
-      <p class="hint">Every trade with P&amp;L and R, for a spreadsheet or another journal, once trades are built from your fills.</p>
+      <p class="hint">Every trade with P&amp;L and R, for a spreadsheet or another journal.</p>
     </div>`;
 }
 

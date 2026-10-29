@@ -103,7 +103,7 @@
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn primary" data-action="submitTicker" id="fetchBtn">
+        <button class="btn primary" data-action="submitTicker">
           <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
         </button>
       </div>
@@ -211,7 +211,7 @@
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn primary" data-action="fetchQuickOption" id="quickBtn"><span id="quickBtnText">Look up</span></button>
+        <button class="btn primary" data-action="fetchQuickOption"><span id="quickBtnText">Look up</span></button>
       </div>
     </div>
     <div class="hint">Type a ticker, strike, and expiry in any order, like <b>AAPL 245 9/18</b>. Calls by default; add <b>put</b> for puts.</div>
@@ -279,7 +279,7 @@
         <div class="section-title">Expiration</div>
         <div class="exp-tabs" id="expTabs"></div>
         <div class="filter-row">
-          <div class="seg" id="sideSeg">
+          <div class="seg">
             <button id="sBoth" class="active" data-action="setSide" data-arg="both">Both</button>
             <button id="sCall" data-action="setSide" data-arg="call">Calls</button>
             <button id="sPut" data-action="setSide" data-arg="put">Puts</button>
@@ -290,8 +290,8 @@
           </div>
           <div class="seg" id="zoneSeg">
             <button id="zOtm" class="active" data-action="setZoneMode" data-arg="otm" title="OTM contracts only, |Δ| at or above the floor · key 1">OTM</button>
-            <button id="zItm" data-action="setZoneMode" data-arg="itm" title="ITM between the ATM strike and your Δ depth limit — deeper is under All. Needs a side — switches to Calls from the T-chart · key 2">ITM→ATM</button>
-            <button id="zBoth" data-action="setZoneMode" data-arg="both" title="OTM and ITM→ATM together. Needs a side — switches to Calls from the T-chart · key 3">Both</button>
+            <button id="zItm" data-action="setZoneMode" data-arg="itm" title="ITM between the ATM strike and your Δ depth limit; deeper is under All. Needs a side: switches to Calls from the T-chart · key 2">ITM→ATM</button>
+            <button id="zBoth" data-action="setZoneMode" data-arg="both" title="OTM and ITM→ATM together. Needs a side: switches to Calls from the T-chart · key 3">Both</button>
             <button id="zAll" data-action="setZoneMode" data-arg="all" title="Full chain, no filter · key 4">All</button>
           </div>
           <div class="fgroup" id="otmFloorGroup">
@@ -357,7 +357,7 @@
       <div class="chart-hint"><span id="posChartTapHint">Tap the chart to set the target</span>; near a candle's high or low it takes that exact price. Pinch or ctrl+scroll to zoom, drag to pan. Lines: <span style="color:var(--blue);">avg cost</span> · <span style="color:var(--red);">stops</span> · <span style="color:var(--green);">targets</span> · <span style="color:var(--purple);">8 EMA</span> · <span style="color:var(--teal);">VWAP</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span></div>
     </div>
     <div class="pos-target">
-      <div class="seg pos-tool" id="posToolSeg" aria-label="What a tap on the chart sets"><button id="posToolTarget" class="active" aria-pressed="true" data-action="setPosChartTool" data-arg="target">Profit target</button><button id="posToolStop" aria-pressed="false" data-action="setPosChartTool" data-arg="stop" title="Tap where you want the stop, then review it">Stop</button><button id="posToolAdd" aria-pressed="false" data-action="setPosChartTool" data-arg="add" title="Tap where you want your stop: it works out how many to add so your breakeven moves there">Move breakeven</button></div>
+      <div class="seg pos-tool" aria-label="What a tap on the chart sets"><button id="posToolTarget" class="active" aria-pressed="true" data-action="setPosChartTool" data-arg="target">Profit target</button><button id="posToolStop" aria-pressed="false" data-action="setPosChartTool" data-arg="stop" title="Tap where you want the stop, then review it">Stop</button><button id="posToolAdd" aria-pressed="false" data-action="setPosChartTool" data-arg="add" title="Tap where you want your stop: it works out how many to add so your breakeven moves there">Move breakeven</button></div>
       <div id="posTargetForm">
       <div class="pos-target-row">
         <div class="field">
@@ -494,13 +494,13 @@
         </div>
         <div class="field" style="flex:0 0 auto;">
           <label>Direction</label>
-          <div class="seg dir" id="levDirSeg">
+          <div class="seg dir">
             <button id="levDirBoth" class="active" data-action="setLevDir" data-arg="both">Both</button>
             <button id="levDirLong" class="long" data-action="setLevDir" data-arg="long">Long</button>
             <button id="levDirShort" class="short" data-action="setLevDir" data-arg="short">Short</button>
           </div>
         </div>
-        <button class="btn primary" data-action="findLevEtfs" id="levBtn"><span id="levBtnText">Find</span></button>
+        <button class="btn primary" data-action="findLevEtfs"><span id="levBtnText">Find</span></button>
       </div>
       <div id="levResults" style="margin-top:14px;"></div>
       <div class="hint">covers the big single names plus index / sector / commodity ETFs · ranked by dollars traded per day · wide spreads flagged amber · tap a row to load it in the calculator</div>
@@ -520,7 +520,7 @@
           <label>Days</label>
           <input type="number" id="levTgtDays" step="1" min="1" value="1" data-enter="levTarget" />
         </div>
-        <button class="btn primary" data-action="levTarget" id="levTgtBtn"><span id="levTgtBtnText">Estimate</span></button>
+        <button class="btn primary" data-action="levTarget"><span id="levTgtBtnText">Estimate</span></button>
       </div>
       <div id="levTgtResults" style="margin-top:14px;"></div>
       <div class="hint">daily reset estimate · past day 1, decay uses the underlying's 20-day realized vol · IV crush, fees and borrow ignored · chop costs more than this</div>
@@ -574,7 +574,7 @@
       </div>
       <div class="sheet-section">
         <div class="sheet-label">Times</div>
-        <div class="seg" id="zoneSeg" role="group" aria-label="Time zone"><button id="zoneEt" class="active" aria-pressed="true" data-action="setTimeZone" data-arg="et">New York (ET)</button><button id="zonePt" aria-pressed="false" data-action="setTimeZone" data-arg="pt">Pacific (PT)</button></div>
+        <div class="seg" role="group" aria-label="Time zone"><button id="zoneEt" class="active" aria-pressed="true" data-action="setTimeZone" data-arg="et">New York (ET)</button><button id="zonePt" aria-pressed="false" data-action="setTimeZone" data-arg="pt">Pacific (PT)</button></div>
         <p class="hint">Every clock time the app shows: charts, fills, orders, updates. Days, sessions and stats stay on the market's New York calendar. This device only.</p>
       </div>
       <div class="sheet-section" id="claudeSection" style="display:none;">
@@ -736,30 +736,28 @@
       <h2 id="riskTitle">Account and risk</h2>
       <button class="sheet-close" data-action="closeSheet" aria-label="Close account and risk">×</button>
     </div>
-    <div id="riskCard">
-      <div class="seg" style="margin-bottom:14px;" aria-label="Sizing method">
-        <button id="sizingRisk" class="active" aria-pressed="true" data-action="setSizingMode" data-arg="risk">Risk</button>
-        <button id="sizingAllocation" aria-pressed="false" data-action="setSizingMode" data-arg="allocation">Allocation</button>
-      </div>
-      <div class="row" style="align-items:flex-end;">
-        <div class="field">
-          <label for="accountSize">Account size</label>
-          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="accountSize" value="50000" min="1" step="1000" data-input="recalcAll" /></div>
-        </div>
-        <div class="field" id="riskPctField">
-          <label for="riskPct">Risk %</label>
-          <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" data-input="recalcAll" />
-        </div>
-      </div>
-      <div id="acctSourceRow" style="display:none;margin-top:12px;">
-        <div class="seg" aria-label="Account size source">
-          <button id="acctSrcSchwab" class="active" aria-pressed="true" data-action="setAccountSizeSource" data-arg="schwab">From Schwab daily</button>
-          <button id="acctSrcManual" aria-pressed="false" data-action="setAccountSizeSource" data-arg="manual">Typed in</button>
-        </div>
-        <p class="hint" id="acctSourceNote" role="status"></p>
-      </div>
-      <p class="hint">Change the amount per trade with the chips at the top of the calculator.</p>
+    <div class="seg" style="margin-bottom:14px;" aria-label="Sizing method">
+      <button id="sizingRisk" class="active" aria-pressed="true" data-action="setSizingMode" data-arg="risk">Risk</button>
+      <button id="sizingAllocation" aria-pressed="false" data-action="setSizingMode" data-arg="allocation">Allocation</button>
     </div>
+    <div class="row" style="align-items:flex-end;">
+      <div class="field">
+        <label for="accountSize">Account size</label>
+        <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="accountSize" value="50000" min="1" step="1000" data-input="recalcAll" /></div>
+      </div>
+      <div class="field" id="riskPctField">
+        <label for="riskPct">Risk %</label>
+        <input type="number" id="riskPct" value="1" min="0.1" max="20" step="0.1" data-input="recalcAll" />
+      </div>
+    </div>
+    <div id="acctSourceRow" style="display:none;margin-top:12px;">
+      <div class="seg" aria-label="Account size source">
+        <button id="acctSrcSchwab" class="active" aria-pressed="true" data-action="setAccountSizeSource" data-arg="schwab">From Schwab daily</button>
+        <button id="acctSrcManual" aria-pressed="false" data-action="setAccountSizeSource" data-arg="manual">Typed in</button>
+      </div>
+      <p class="hint" id="acctSourceNote" role="status"></p>
+    </div>
+    <p class="hint">Change the amount per trade with the chips at the top of the calculator.</p>
   </div>
 
 </div>

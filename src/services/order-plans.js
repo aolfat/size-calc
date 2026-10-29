@@ -6,7 +6,7 @@ import { state } from '../state.js';
 import { supabaseClient } from './supabase.js';
 
 const COLUMNS = 'id,account,symbol,side,order_ids,sent_at,setups,tactics,plan,trade_key';
-const notPushed = (/** @type {any} */ res) => res?.error && /schema cache|does not exist|column/i.test(res.error.message || '');
+const notPushed = (/** @type {any} */ res) => res?.error && /schema cache|does not exist/i.test(res.error.message || '');
 
 function refused(res, what) {
   if (!res?.error) return;

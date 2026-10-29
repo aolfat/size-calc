@@ -177,6 +177,14 @@ test('a plan that can\'t be saved says so; the order stands', async () => {
   assert.equal(s.state.tradeTicket.orderId, '1001');
 });
 
+test('a database error that names a column is shown as it is, not as a missing table', async () => {
+  const s = await sheet({ tweak: db => db.fail({ status: 400, message: 'null value in column "sent_at" of relation "order_plans" violates not-null constraint' }) });
+  await s.run('openTrade()');
+  await s.run('placeTrade()');
+  assert.match(s.elements.get('errorBox').textContent, /Its plan wasn't saved for the journal: null value in column "sent_at"/);
+  assert.doesNotMatch(s.elements.get('errorBox').textContent, /db push/);
+});
+
 // ---------- the journal ----------
 
 const ENTRY = {

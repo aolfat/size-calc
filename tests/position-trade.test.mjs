@@ -1308,6 +1308,19 @@ test('the wait after an unconfirmed order is per account and symbol', async () =
   assert.match(elements.get('posTradeBody').innerHTML, /Your last order on TSLA has not shown up at Schwab yet/);
 });
 
+test('cancel and edit held by an unconfirmed order list what Schwab shows, as the error asks you to check', async () => {
+  const b = broker();
+  b.live.orders.push(plain(ENTRY));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  run("posLast = { hash: 'HASH1', symbol: 'AMD', at: Date.now(), confirmed: false }");
+  await run("actions.openOrderCancel({ dataset: { arg: '501' } })");
+  assert.match(elements.get('cancelBody').innerHTML, /has not shown up at Schwab yet[^]*Schwab lists for AMD/);
+  run("posLast = { hash: 'HASH1', symbol: 'NVDA', at: Date.now(), confirmed: false }");
+  await run('openOrderEdit(600)');
+  assert.match(elements.get('editBody').innerHTML, /has not shown up at Schwab yet[^]*Schwab lists for NVDA/);
+});
+
 // ---------- keeping the other half of a pair ----------
 
 const fillTarget = status => (c, live) => {

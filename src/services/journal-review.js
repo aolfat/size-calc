@@ -10,8 +10,8 @@ import { state } from '../state.js';
 import { JOURNAL_READ_LIMIT } from './journal.js';
 import { supabaseClient } from './supabase.js';
 
-/** the review migration not pushed yet: a missing table or column */
-const notPushed = (/** @type {any} */ res) => res?.error && /schema cache|does not exist|column/i.test(res.error.message || '');
+/** the review migration not pushed yet: a missing table or column ('… in the schema cache', '… does not exist'), not any error naming a column */
+const notPushed = (/** @type {any} */ res) => res?.error && /schema cache|does not exist/i.test(res.error.message || '');
 
 function refused(res, what) {
   if (!res?.error) return;

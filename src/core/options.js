@@ -100,6 +100,13 @@ function nyParts(ms) {
 /** The New York calendar date at an instant, YYYY-MM-DD. @param {number} [ms] @returns {string} */
 export function nyDate(ms = Date.now()) { return nyDateStr(new Date(ms)); }
 
+/**
+ * Tradier's expiration dates (one date comes bare, not in a list), only the well-formed ones: they go into the chain's markup.
+ * @param {unknown} dates @returns {string[]}
+ */
+export const cleanExpirations = dates => (Array.isArray(dates) ? dates : dates == null ? [] : [dates])
+  .filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
+
 /** The 4pm New York close on expiry as epoch ms, whatever the browser's time zone; NaN when invalid. @param {string | undefined} expStr YYYY-MM-DD @returns {number} */
 export function expiryCloseMs(expStr) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(expStr || '');

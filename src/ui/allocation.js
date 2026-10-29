@@ -10,7 +10,6 @@ import { renderPinnedCard, updatePinnedBar } from './cards.js';
 import { renderChain, setSide } from './chain.js';
 import { showError, withFlash } from './feedback.js';
 import { recalcAll, riskDollars } from './risk.js';
-import { drawShareCard, shareCanvasToClipboard } from './share-image.js';
 import { cancelSpread } from './spreads.js';
 import { setDirection, updateStopVisibility } from './stops.js';
 import { effects } from './effects.js';

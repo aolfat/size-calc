@@ -110,6 +110,7 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   A refused replace or cancel stops the run, saying so when the order FILLED.
   At send, Schwab is re-read and the change re-planned; a changed order or steps sends nothing and shows the new plan.
   Confirmed when the re-read shows a new working order like the changed one (and its pair); unconfirmed blocks the symbol for 2 minutes like Cancel.
+  Opening Cancel or Edit while that block is on says so and lists what Schwab shows on the symbol, as the position trades do.
 
   **Position chart + profit targets** (ui/position-chart.js, #posChartSection, state.posChart): every tradable row gets a **Chart** button first in the pinned column (Chart, Simulate on options, Stop, BE stop, Close, wrapping two by two on phones via .pos-acts.many); it toggles that position's charts (one open at a time, aria-pressed on the button).
   Two panes, like the calculator and the Journal's trade page: **5 min** (#posCol5, #posChart5) and **Daily** (#posColD, #posChartD), each state.posChart.five / .daily with its own bars, view, Today and hover (and on the daily, a range chip).

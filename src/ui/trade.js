@@ -11,7 +11,7 @@ import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCall
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
-import { renderShares, sharesPlan } from './shares.js';
+import { sharesPlan } from './shares.js';
 import { orbEntryName } from './orb.js';
 import { loadPlanChoices, planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { onSheetChange, openSheet } from './sheets.js';

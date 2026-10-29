@@ -4,7 +4,7 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
 import { fundOf, listedFund, parseFunds } from '../core/journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { planLines } from '../core/order-plans.js';
@@ -763,14 +763,6 @@ export function labelKeys(t, kind) {
 }
 /** what a trade's review says, for the Setups tab's cuts: its grade, followed the plan, and market (its own, else the day's) */
 export const reviewOf = t => ({ grade: data().reviews[t.key]?.setup_grade || '', plan: data().reviews[t.key]?.plan_followed || '', market: state.journalReview ? tradeReviewState(t).market || '' : '' });
-
-/** a trade's labels in words, for the list and the deck later: 'Strong · 50 SMA bounce · 30-minute pivot' */
-export function labelWords(t) {
-  const lib = library();
-  return (data().labels[t.key] || []).filter(l => l.kind !== 'mistake').map(l => lib.nameOf(l.kind, l.value, tradeSide(t))).join(' · ');
-}
-
-export { parseSetup };
 
 /**
  * What a week or month review reads from your review (core/journal-week.js's context): each trade's grades and notes, its

@@ -7,8 +7,6 @@ export function expChat(expStr) { // 2026-09-18 → 9/18
   return p.length === 3 ? +p[1] + '/' + +p[2] : expStr;
 }
 
-/** @param {number | string} v */
-export function fmtFuturesPrice(v) { return Number(v).toLocaleString('en-US', { maximumFractionDigits: 10 }); }
 
 /** @param {unknown} value @returns {string} */
 export function marketEscape(value) {

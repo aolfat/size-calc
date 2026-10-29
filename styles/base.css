@@ -112,7 +112,6 @@ body {
 .s-val-input:focus { border-bottom: 1px solid var(--blue); }
 .s-val-input::-webkit-outer-spin-button, .s-val-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
 table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; font-variant-numeric: tabular-nums; }
 thead th { font-size: 10.5px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border2); background: var(--bg2); }
