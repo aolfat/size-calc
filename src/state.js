@@ -133,6 +133,7 @@ export function createState() {
     focusUndo: null, // { day, list }: the focus list before the last Remove, for the toast's Undo
     journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
     journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
+    journalCalDates: '', // the calendar over dates you pick, 'YYYY-MM-DD..YYYY-MM-DD'; empty = a month
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }
     journalExcursions: {}, // trade key → { sig, ex }: each closed trade's MFE, MAE and exit efficiency from its saved bars, for the reviews
     periodTradeSort: { by: 'pnl', dir: -1 }, // the week or month review's trade list: 'pnl' | 'pct' | 'r' | 'opened', -1 biggest (newest) first

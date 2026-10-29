@@ -554,6 +554,23 @@ export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.t
 export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
 export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); state.journalReviewPeriod = null; renderJournal(); }
 export function journalThisMonth() { state.journalMonth = thisMonth(); state.journalReviewPeriod = null; renderJournal(); }
+/** Month | Dates on the calendar: Dates start as the month shown, Month comes back to the month the dates end in */
+export function setCalendarDates(mode) {
+  const on = isRangeKey(state.journalCalDates);
+  if ((mode === 'dates') === on) return;
+  if (on) state.journalMonth = periodSpan('range', state.journalCalDates)[1].slice(0, 7);
+  state.journalCalDates = on ? '' : rangeKey(...periodSpan('month', state.journalMonth || state.journalMonthShown || thisMonth()));
+  state.journalReviewPeriod = null;
+  renderJournal();
+}
+/** the calendar's dates: a new first or last day, the other kept (swapped when they cross) */
+export function setCalendarRange(end, value) {
+  if (!isRangeKey(state.journalCalDates)) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return renderJournal(); // a cleared box gets its day back
+  const [from, to] = periodSpan('range', state.journalCalDates);
+  state.journalCalDates = end === 'to' ? rangeKey(from, value) : rangeKey(value, to);
+  renderJournal();
+}
 /** the trades the stats count from: the side, symbol and setup filters applied, as the Stats tab shows them */
 const statsTrades = () => onSetupFilter(filtered(currentTrades(), t => t.bias));
 /** All time / Month / Week / Day / Dates on the stats: a new unit keeps your place (the newest close in what's shown now; Dates start as the span shown) */
@@ -578,11 +595,12 @@ export function stepJournalPeriod(by) {
   const next = stepPeriod(activePeriods(statsTrades(), state.journalPeriod), state.journalPeriodShown, Number(by) || 0);
   if (next) { state.journalPeriodKey = next; renderJournal(); }
 }
-/** the stats for one day, week or month, from the calendar or a day's trades */
+/** the stats for one day, week or month, or the calendar's dates, from the calendar or a day's trades */
 export function openJournalStats(unit, key) {
-  const ok = PERIODS.includes(unit) && (unit === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(key || '');
+  const range = unit === 'range' && isRangeKey(key);
+  const ok = range || (PERIODS.includes(unit) && (unit === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(key || ''));
   state.journalPeriod = ok ? unit : 'all';
-  state.journalPeriodKey = ok ? periodKey(key, unit) : '';
+  state.journalPeriodKey = range ? key : ok ? periodKey(key, unit) : '';
   state.journalTab = 'stats';
   state.journalDay = '';
   state.journalNotebookDay = '';

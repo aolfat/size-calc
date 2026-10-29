@@ -371,3 +371,49 @@ test('the Stats tab over picked dates: From and To boxes, the stats between them
   run("setJournalPeriod('day')");
   assert.equal(state.journalPeriodShown, '2026-10-07', 'back to a day: the first of the empty dates');
 });
+
+test('a span of days laid out like a month: the weeks it covers, days outside blank, its own numbers', async () => {
+  const { run } = await app();
+  const daily = `dailyPnl(${JSON.stringify(TRADES)})`;
+  const cal = json(run, `calendarSpan(${daily}, '2026-10-06', '2026-10-13')`);
+  assert.deepEqual(cal.weeks.map(w => w.start), ['2026-10-05', '2026-10-12']);
+  assert.deepEqual(cal.weeks[0].days.map(d => d && d.day), [null, '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'], 'Monday 10/5 is before the dates');
+  assert.deepEqual(cal.weeks[1].days.map(d => d && d.day), ['2026-10-12', '2026-10-13', null, null, null]);
+  assert.deepEqual([cal.weeks[0].pnl, cal.weeks[0].trades], [-350, 2], 'a week adds up only its days inside');
+  assert.deepEqual([cal.pnl, cal.trades, cal.days, cal.green, cal.red], [-300, 3, 2, 1, 1]);
+  const month = json(run, `calendarMonth(${daily}, '2026-10')`);
+  assert.deepEqual([month.month, month.from, month.to, month.pnl, month.trades], ['2026-10', '2026-10-01', '2026-10-31', 0, 5], 'a month is its span');
+});
+
+test('the Calendar tab over picked dates: Month | Dates, From and To, the weeks they cover, back to a month', async () => {
+  const records = [...RECORDS, order(5, 'BUY', '2026-11-02T14:35:00+0000', 10, 50, 'PLTR'), order(6, 'SELL', '2026-11-02T15:00:00+0000', 10, 55, 'PLTR')];
+  const { run, state, out } = await journal(records);
+  run("setJournalTab('calendar')");
+  assert.match(out(), /aria-pressed="true" data-action="setCalendarDates" data-arg="month">Month</);
+  run("shiftJournalMonth('-1'); setCalendarDates('dates')");
+  assert.equal(state.journalCalDates, '2026-10-01..2026-10-31', 'starts as the month shown');
+  assert.match(out(), /aria-pressed="true" data-action="setCalendarDates" data-arg="dates">Dates</);
+  assert.match(out(), /id="journalCalFrom" value="2026-10-01" data-change="setCalendarRange" data-arg="from"/);
+  assert.doesNotMatch(out(), /shiftJournalMonth|journalThisMonth|Review the month/, 'the dates say where: no ‹ ›, This month or month review');
+  run("setCalendarRange('from', '2026-10-06')");
+  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 trade/);
+  assert.match(out(), /<tr><td class="jc-out"><\/td><td><button class="jc-day journal-sell" data-action="openJournalDay" data-arg="2026-10-06"/, 'Monday 10/5 before the dates is blank');
+  assert.match(out(), /data-arg="range" data-arg2="2026-10-06\.\.2026-10-31">All of these dates' stats</);
+  run("setCalendarRange('to', '2026-11-06')");
+  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$50\.00<span class="pos-sub">2 trades/, 'across the month end');
+  assert.match(out(), /<span class="jc-num">Oct 6<\/span>/, 'across a month end: the first day shown in each month carries it');
+  assert.match(out(), /data-arg="2026-11-02"[^>]*><span class="jc-num">Nov 2<\/span><span class="jc-pnl">\+\$50</);
+  assert.match(out(), /<span class="jc-num">7<\/span>/, 'other days keep the plain number');
+  run("setCalendarRange('from', '2026-11-20')");
+  assert.equal(state.journalCalDates, '2026-11-06..2026-11-20', 'a From after To swaps them');
+  assert.match(out(), /No exits between these dates/);
+  run("setCalendarRange('to', '')");
+  assert.equal(state.journalCalDates, '2026-11-06..2026-11-20', 'a cleared box keeps the dates');
+  run("setCalendarRange('from', '2026-10-01'); openJournalStats('range', state.journalCalDates)");
+  assert.equal(state.journalTab, 'stats');
+  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="range">Dates</);
+  assert.match(out(), /id="journalRangeFrom" value="2026-10-01"[\s\S]*id="journalRangeTo" value="2026-11-20"/, 'the stats get the calendar\'s dates');
+  run("setJournalTab('calendar'); setCalendarDates('month')");
+  assert.equal(state.journalCalDates, '');
+  assert.match(out(), /class="jc-title">November 2026</, 'back to the month the dates end in');
+});
