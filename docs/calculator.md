@@ -110,7 +110,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 - **Reverse sizing**: Shares stat and Contracts stats (detail row, pinned cards) are editable inputs; committing a quantity writes risk$ back (riskForQty) and everything re-renders from it.
   Quantity floors use unitsFor (epsilon-tolerant) so counts round-trip exactly
 - **Zone filter deltas**: filtering uses a BS-computed delta (filterDelta — Tradier greeks can print flat 1.000 across all ITM strikes, defeating any threshold); the Δ column still displays the API value
-- **Zone filter**: radio segmented control (zoneMode: otm | itm | both | all → derives zoneFilter) — OTM (|Δ| ≥ .20 floor), ITM→ATM (a DEPTH LIMIT: |Δ| ≤ setting, default .80, band runs from the ATM strike down to it; ATM strike always shows with a blue ATM badge; deeper = All view), Both (union → contiguous band around ATM), All (no filter).
+- **Zone filter**: radio segmented control (setZoneMode: otm | itm | both | all → sets zoneFilter) — OTM (|Δ| ≥ .20 floor), ITM→ATM (a DEPTH LIMIT: |Δ| ≤ setting, default .80, band runs from the ATM strike down to it; ATM strike always shows with a blue ATM badge; deeper = All view), Both (union → contiguous band around ATM), All (no filter).
   One mode at a time; each Δ floor input only visible when its zone is active.
   Keys 1/2/3/4.
   ATM strike computed from the full chain pre-filter.
@@ -130,6 +130,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 - **Vol/OI**: bold columns with blue tint, resting in muted gold (--gold #d9b968); BOTH turn full amber together when vol > OI (the signal is about the pair — they're always read together).
   This emphasis is intentional — don't tone it down
 - **Expirations**: tabs with a DTE line under each date, monthlies (third Friday, or Thursday-before only when that Friday is an NYSE holiday: Good Friday or Juneteenth) badged amber with "M" corner tag.
+  DTE counts to 4pm New York on expiry (expiryCloseMs), wherever you are; Tradier's dates go into markup, so any that isn't YYYY-MM-DD is dropped where they come in (cleanExpirations).
   Shows 12 + "+N more" expand
 - **Quick lookup**: the ticker field is ALSO the search box: submitTicker routes a single word to fetchQuote and anything with spaces to fetchQuickOption(text, fromSearch) — which pins the card, puts the loaded symbol back in the field, and scrolls the new card into view on phones. #tickerParsed under the field previews the pin ('Pin AAPL $245 call …'), says what's missing, or shows the shorthand hint.
   On phones the separate Quick lookup card is hidden (the field does it); desktop and tablet keep it.

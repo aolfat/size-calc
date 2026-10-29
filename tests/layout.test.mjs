@@ -24,6 +24,11 @@ function block(id) {
 
 const shown = el => el.style.display !== 'none';
 
+test('every id in index.html is used once: getElementById only ever finds the first', () => {
+  const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual(ids.filter((id, i) => ids.indexOf(id) !== i), []);
+});
+
 test('header carries the view nav with Positions and the settings button', async () => {
   const header = block('appHeader');
   for (const id of ['brandMarket', 'brandSize', 'brandPositions', 'brandJournal', 'brandTools', 'settingsBtn']) {

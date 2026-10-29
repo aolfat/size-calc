@@ -194,7 +194,7 @@ function modelExampleEditor(lib) {
   const url = d.preview || modelUrl(d.path);
   return `<div class="mb-editor"><h2>${d.id ? 'Edit example' : 'New example'}</h2>
     ${url ? `<img class="mb-preview" src="${esc(url)}" alt="Chart screenshot preview" />` : ''}
-    <label for="modelExampleTitle">Title</label><input id="modelExampleTitle" maxlength="120" autocomplete="off" placeholder="e.g. NVDA — higher lows into the pivot" value="${esc(d.title)}" data-input="modelExampleField" data-arg="title"${m.busy ? ' disabled' : ''} />
+    <label for="modelExampleTitle">Title</label><input id="modelExampleTitle" maxlength="120" autocomplete="off" placeholder="e.g. NVDA higher lows into the pivot" value="${esc(d.title)}" data-input="modelExampleField" data-arg="title"${m.busy ? ' disabled' : ''} />
     <label for="modelExampleBook">Book <span>optional</span></label><select id="modelExampleBook" data-change="modelExampleField" data-arg="book_id"${m.busy ? ' disabled' : ''}><option value=""${d.book_id ? '' : ' selected'}>No book</option>${m.books.map(b => `<option value="${esc(b.id)}"${d.book_id === b.id ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
     <label for="modelExampleNotes">Notes <span>optional</span></label><textarea id="modelExampleNotes" rows="4" maxlength="4000" placeholder="What makes this example worth studying?" data-input="modelExampleField" data-arg="notes"${m.busy ? ' disabled' : ''}>${esc(d.notes)}</textarea>
     ${state.journalReviewError ? '<p class="mb-error" role="status">Your setups could not load. Reopen Journal to retry before saving.</p>' : ''}

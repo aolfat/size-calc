@@ -3,6 +3,7 @@ import { state } from '../state.js';
 import { inZone } from '../lib/zone.js';
 import { marketEscape } from '../core/format.js';
 import { futuresSymbol, isFuturesQuote } from '../core/futures.js';
+import { cleanExpirations } from '../core/options.js';
 import { isShorthand, parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
@@ -93,9 +94,8 @@ export async function fetchQuote() {
       const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${encodeURIComponent(sym)}&includeAllRoots=true`, { headers: headers() });
       const expJson = await expRes.json();
       if (!current()) return;
-      const exps = expJson?.expirations?.date;
-      if (!exps) throw new Error('No options expirations found.');
-      const expList = Array.isArray(exps) ? exps : [exps];
+      const expList = cleanExpirations(expJson?.expirations?.date);
+      if (!expList.length) throw new Error('No options expirations found.');
 
       renderExpTabs(expList);
       state.selectedExp = expList[0];

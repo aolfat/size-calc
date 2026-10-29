@@ -111,7 +111,7 @@ export function renderLevTable(under, rows, note, live) {
       <thead><tr><th style="width:30%;">ETF</th><th>Lev</th><th>Price</th><th>Spread</th><th>$ / day</th></tr></thead>
       <tbody>${body}</tbody>
     </table>
-    ${live ? '' : '<div class="hint" style="margin-top:8px;">add a Tradier key on the Size side to rank these by live volume and spread</div>'}
+    ${live ? '' : '<div class="hint" style="margin-top:8px;">add a Tradier key in Settings to rank these by live volume and spread</div>'}
   `;
 }
 
@@ -141,7 +141,7 @@ export async function levTarget() {
   const target = parseFloat(document.getElementById('levTgtPrice').value);
   if (!(target > 0)) { out.innerHTML = `<div class="hint" style="margin:0;">enter a target price for ${r.under}</div>`; return; }
   if (!document.getElementById('apiKey').value.trim()) {
-    out.innerHTML = '<div class="hint" style="margin:0;">needs a Tradier key · add one in the API card on the Size side</div>';
+    out.innerHTML = '<div class="hint" style="margin:0;">needs a Tradier key · add one in Settings</div>';
     return;
   }
   const days = Math.max(1, Math.round(parseFloat(document.getElementById('levTgtDays').value) || 1));

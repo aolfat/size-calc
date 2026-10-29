@@ -1,7 +1,7 @@
 // Run with: node --test
 // One Schwab login for every device: signed in, the login is kept in the account (Vault) and each device takes the
 // newest one. The other device is played by writing the fake account directly; set_schwab_login here mirrors the
-// compare-and-swap in supabase/migrations/20261109000000_shared_schwab_login.sql.
+// compare-and-swap in supabase/migrations/20261112000000_schwab_login_renewal.sql.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -43,7 +43,7 @@ function fakeAccount(kept = null) {
       if (name === 'set_schwab_login') {
         const { p_login: next, p_expect: expect } = args;
         const k = db.kept;
-        const ok = !k || (expect != null && k.refresh === expect)
+        const ok = (!k && expect == null) || (k && expect != null && k.refresh === expect)
           || (expect == null && next && next.connectionId !== k.connectionId && next.refreshExp > (k.refreshExp || 0));
         if (!ok) return answer(k);
         db.kept = next ? { ...next } : null;
@@ -161,6 +161,17 @@ test('Disconnect everywhere clears the account, and a device that had it drops i
   other.account.stampLogin();
   await other.run('cloudPull()');
   assert.equal(other.storage.has('schwab_tokens'), false);
+});
+
+test('a device that renews after Disconnect everywhere, before its next pull, does not bring the login back', async () => {
+  const d = await device({ kept: null, local: tokens({ accessExp: 0, shared: true }),
+    refresh: () => json({ access_token: 'desk-access-2', refresh_token: 'desk-r2', expires_in: 1800 }) });
+  await d.run("schwabApi('/accounts/accountNumbers')");
+  await settle();
+  assert.ok(d.account.calls.some(([n, a]) => n === 'set_schwab_login' && a.p_expect === 'desk-r1'), 'it offers the renewal');
+  assert.equal(d.account.db.kept, null, 'the account stays empty');
+  await d.run('schwabSyncShared()');
+  assert.equal(d.storage.has('schwab_tokens'), false, 'and the next pull ends it here too');
 });
 
 test('Disconnect on this device leaves the others logged in and stops using the account\'s login until you log in here', async () => {

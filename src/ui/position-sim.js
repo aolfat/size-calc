@@ -34,7 +34,7 @@ export async function simPosition(symbol) {
   if (!(spot > 0)) { showError(`Tradier has no quote for ${row.label}.`); return; }
   const { type, strike, exp } = row.option;
   const asOf = Date.now(), T = (expiryCloseMs(exp) - asOf) / (365 * 24 * 3600 * 1000);
-  if (!(T > 0)) { showError(`${row.label} has expired — cannot simulate.`); return; }
+  if (!(T > 0)) { showError(`${row.label} has expired. Nothing to simulate.`); return; }
   const iv = impliedVolatility(type === 'C', row.price, spot, strike, T, RISK_FREE);
   if (iv === null) {
     showError(`Cannot fit a simulation to Schwab's ${fmt$(row.price)} price for ${row.label} with ${row.under} at ${fmt$(spot)}. Refresh positions and try again.`);

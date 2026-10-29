@@ -122,7 +122,7 @@ export function shareCanvasToClipboard(canvas, name) {
     a.href = canvas.toDataURL('image/png');
     a.download = name + '.png';
     a.click();
-    showToast('Clipboard unavailable — downloaded the image instead.');
+    showToast('Clipboard unavailable, so the image was downloaded instead.');
   };
   try {
     if (typeof ClipboardItem === 'undefined' || !navigator.clipboard || !navigator.clipboard.write) return fallback();
@@ -149,7 +149,7 @@ export function shareShares() {
   const entry = entryVal();
   const stop = isLong ? stopLongVal() : stopShortVal();
   const rps = isLong ? entry - stop : stop - entry;
-  if (!(rps > 0) || !Number.isFinite(stop)) { showError('Stop is on the wrong side of entry — nothing to share.'); return; }
+  if (!(rps > 0) || !Number.isFinite(stop)) { showError('Stop is on the wrong side of entry. Nothing to share.'); return; }
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
   const shares = unitsFor(risk, rps);
@@ -158,7 +158,7 @@ export function shareShares() {
     title: [{ t: q.symbol + '  ' }, { t: fmt$(price) }, { t: `  ${chg >= 0 ? '+' : ''}${fmtN(chg, 2)}%`, c: chg >= 0 ? SC.green : SC.red }],
     sub: `${isLong ? 'LONG' : 'SHORT'} · risk ${(risk / acct * 100).toFixed(2)}% of account · ${inZone(Date.now(), { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '')} ${zoneAbbr()}`,
     stats: [
-      { label: isLong ? 'Entry — long' : 'Entry — short', value: fmt$(entry), color: SC.blue, sub: rawStop('entryPrice') > 0 ? 'planned entry' : 'current price' },
+      { label: isLong ? 'Entry · long' : 'Entry · short', value: fmt$(entry), color: SC.blue, sub: rawStop('entryPrice') > 0 ? 'planned entry' : 'current price' },
       { label: 'Stop', value: fmt$(stop), color: SC.red, sub: `${(entry > 0 ? rps / entry * 100 : 0).toFixed(1)}% away · ${stopSourceName(isLong)}` },
       { label: 'Max loss', value: (shares * rps / acct * 100).toFixed(2) + '%', color: SC.red, sub: 'of account' },
       { label: 'Position', value: (shares * entry / acct * 100).toFixed(1) + '%', sub: 'of account' }
@@ -184,7 +184,7 @@ export function sharePinned(cardId) {
     sub: `underlying ${fmt$(d.underlyingPrice)} · stop ${d.stopName} ${fmt$(d.stopLevel)} (${d.lodPct}%) · as of ${d.asOf || ''} · ${new Date().toLocaleDateString()}`,
     stats: [
       { label: d.kind === 'spread' ? (d.credit ? 'Credit / spread' : 'Debit / spread') : 'Entry / ct', value: fmt$(d.mid), color: SC.blue, sub: d.credit && spreadWidth(d) > 0 ? `${(d.mid / spreadWidth(d) * 100).toFixed(0)}% of width · bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` : `bid ${fmt$(d.bid)} / ask ${fmt$(d.ask)}` },
-      { label: 'Stop — underlying', value: fmt$(d.stopLevel), color: SC.red, sub: `${d.lodPct}% away · ${d.stopName}` },
+      { label: 'Stop · underlying', value: fmt$(d.stopLevel), color: SC.red, sub: `${d.lodPct}% away · ${d.stopName}` },
       { label: 'Loss @ stop', value: d.lossOfCost.toFixed(0) + '%', color: SC.red, sub: d.kind === 'spread' ? (d.credit ? 'of max loss' : 'of debit') : 'of premium' },
       { label: 'Max loss', value: cts > 0 ? (cts * sizeUnit(d) / acct * 100).toFixed(2) + '%' : '—', color: SC.red, sub: cts > 0 ? (d.kind === 'spread' ? (d.credit ? 'of account · width − credit' : 'of account · full debit') : 'of account') : '' }
     ],

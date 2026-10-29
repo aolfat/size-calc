@@ -113,7 +113,8 @@ test('signed out, the Journal asks you to sign in', async () => {
 
 test('signed in, it shows what is kept and the fills inside your orders, newest first', async () => {
   const supabase = fakeSupabase();
-  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION });
+  // a Tuesday with no economic releases, so the head line has no 'Today: …' part
+  const { run, elements } = await app({ storage: connected(), supabase, session: SESSION, clock: true, now: Date.UTC(2026, 9, 13, 16) });
   run("setView('journal')");
   await run('loadJournal()');
   assert.ok(supabase.reads.some(r => r.cols === 'kind,record_id,account,entered_at,data'), 'the list reads the kept records');

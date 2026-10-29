@@ -69,9 +69,6 @@ export async function saveTradeReviews(rows) {
   refused(await client.from('trade_reviews').upsert(list, { onConflict: 'user_id,trade_key' }), 'Supabase refused the save.');
 }
 
-/** save one trade's review row. @param {string} key @param {{ stop?: number | null, deleted?: boolean }} review */
-export const saveTradeReview = (key, review) => saveTradeReviews({ [key]: review });
-
 /** the trades you shaped, oldest first. @returns {Promise<{ id: string, account: string, fill_ids: string[], created_at: string }[]>} */
 export async function loadSavedTrades() {
   if (!state.session) throw new Error('Sign in with Google to see your journal.');

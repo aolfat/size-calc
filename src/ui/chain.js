@@ -3,7 +3,7 @@ import { state } from '../state.js';
 import { RISK_FREE, bsPrice, normCdf } from '../core/black-scholes.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$, fmtN } from '../core/format.js';
-import { isMonthlyExp, isOccSymbol, lossClass, yearsToExp } from '../core/options.js';
+import { expiryCloseMs, isMonthlyExp, isOccSymbol, lossClass, yearsToExp } from '../core/options.js';
 import { unitsFor } from '../core/sizing.js';
 import { COMPACT_CHAIN_MQ, mq } from '../lib/media.js';
 import { baseUrl, headers } from '../services/tradier.js';
@@ -22,7 +22,7 @@ export function renderExpTabs(exps) {
   const show = state.expsExpanded ? exps : exps.slice(0, 12);
   let html = show.map(e => {
     const monthly = isMonthlyExp(e);
-    const dte = Math.max(0, Math.ceil((new Date(e + 'T16:00:00') - Date.now()) / 864e5));
+    const dte = Math.max(0, Math.ceil((expiryCloseMs(e) - Date.now()) / 864e5)); // to New York's close, wherever you are
     return `<button class="exp-tab${monthly ? ' monthly' : ''}" data-action="selectExp" data-arg="${e}" id="exp_${e.replace(/-/g,'_')}" title="${monthly ? 'Monthly expiration' : 'Weekly expiration'}">${e}<span class="dte">${dte}d</span></button>`;
   }).join('');
   if (exps.length > 12) {
@@ -81,7 +81,7 @@ export async function fetchChain(ticker, exp, scrollAtm) {
     state.pendingAtmScroll = !!scrollAtm;
     renderChain();
   } catch(e) {
-    if (requestId === state.chainRequestId) document.getElementById('chainStatus').textContent = 'Error loading chain — check key/network';
+    if (requestId === state.chainRequestId) document.getElementById('chainStatus').textContent = 'Error loading chain. Check your key and network.';
   } finally {
     if (requestId === state.chainRequestId) { state.chainLoading = false; tbody.style.opacity = '1'; }
   }
@@ -91,7 +91,6 @@ export function setZoneMode(m) {
   // zones are per-side; the T-chart shows an ATM window instead. Picking a zone
   // from Both view moves to Calls (tap Puts if that's the trade).
   if (state.chainSide === 'both') setSide('call');
-  state.zoneMode = m;
   state.zoneFilter.otm = m === 'otm' || m === 'both';
   state.zoneFilter.itm = m === 'itm' || m === 'both';
   const btns = { otm: 'zOtm', itm: 'zItm', both: 'zBoth', all: 'zAll' };
@@ -374,7 +373,7 @@ export function renderChain() {
       if (!one) return;
       const volStyle = one.vol > one.oi && one.vol > 0 ? 'color:var(--amber);font-weight:700' : 'color:var(--gold);font-weight:600';
       tr.innerHTML = `
-        <td class="strike-col">${fmtStrikeM(strike)}${strike === atmAll ? '<span class="badge-itm" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);" title="ATM boundary strike — always shown in the ITM→ATM view, exempt from the Δ floor">ATM</span>' : one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
+        <td class="strike-col">${fmtStrikeM(strike)}${strike === atmAll ? '<span class="badge-itm" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);" title="ATM boundary strike: always shown in the ITM→ATM view, exempt from the Δ floor">ATM</span>' : one.itm ? '<span class="badge-itm">ITM</span>' : ''}</td>
         <td class="m-hide">${fmt$(one.opt.bid || 0)}</td>
         <td class="m-hide">${fmt$(one.opt.ask || 0)}</td>
         <td${one.wideSpread ? ` style="color:var(--amber)" title="wide spread: ${one.spreadPct.toFixed(0)}% of mid"` : ''}>${Number.isFinite(one.mid) ? fmt$M(one.mid) : '—'}</td>

@@ -7,6 +7,7 @@ import { drawChart } from './chart.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { showError } from './feedback.js';
 import { isFuturesQuote } from '../core/futures.js';
+import { cleanExpirations } from '../core/options.js';
 import { pauseLive, resumeLive } from './live.js';
 import { openJournal } from './journal.js';
 import { closeModelImage } from './model-books.js';
@@ -106,9 +107,8 @@ export async function setMode(mode) {
         const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${encodeURIComponent(ticker)}&includeAllRoots=true`, { headers: headers() });
         const expJson = await expRes.json();
         if (ticker !== state.quoteData?.symbol || state.currentMode !== 'options') return;
-        const exps = expJson?.expirations?.date;
-        if (exps) {
-          const expList = Array.isArray(exps) ? exps : [exps];
+        const expList = cleanExpirations(expJson?.expirations?.date);
+        if (expList.length) {
           renderExpTabs(expList);
           state.selectedExp = expList[0];
           markActiveExp(state.selectedExp);

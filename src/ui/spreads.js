@@ -20,8 +20,8 @@ export function startSpread(sym, credit) {
   const dir = c.isCall ? 'higher' : 'lower';
   const leg = `${state.quoteData.symbol} $${+c.opt.strike}${c.isCall ? 'C' : 'P'} @ ${fmt$(c.mid)}`;
   b.innerHTML = (credit
-    ? `credit spread · short ${leg} — tap the strike to BUY (${dir})`
-    : `debit spread · long ${leg} — tap the strike to SELL (${dir})`)
+    ? `credit spread · short ${leg} · tap the strike to BUY (${dir})`
+    : `debit spread · long ${leg} · tap the strike to SELL (${dir})`)
     + ` <button data-action="cancelSpread" style="float:right;background:none;border:none;color:var(--blue);cursor:pointer;font-weight:700;font-size:13px;line-height:1;">✕</button>`;
 }
 
@@ -40,7 +40,7 @@ export function completeSpread(farC) {
   const okDir = L.isCall ? farC.opt.strike > L.opt.strike : farC.opt.strike < L.opt.strike;
   if (!okDir) { showError(`${credit ? 'Credit' : 'Debit'} ${L.isCall ? 'call' : 'put'} spread: ${credit ? 'buy' : 'sell'} a ${L.isCall ? 'higher' : 'lower'} strike than $${+L.opt.strike}.`); return; }
   const net = L.mid - farC.mid; // debit paid, or credit received
-  if (!(net > 0)) { showError(credit ? 'No credit there — the far leg costs more than the one you are selling.' : 'That combination is a credit, not a debit — pick a strike closer to the money.'); return; }
+  if (!(net > 0)) { showError(credit ? 'No credit there: the far leg costs more than the one you are selling.' : 'That combination is a credit, not a debit. Pick a strike closer to the money.'); return; }
   cancelSpread();
   const bull = credit ? !L.isCall : L.isCall;
   const rawS = rawStop(bull ? 'stopLong' : 'stopShort');

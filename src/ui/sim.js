@@ -28,7 +28,7 @@ export function openSim(o) {
     }
     o = { ...o, spot, iv, legs, asOf };
   }
-  if (!(o.iv > 0)) { showError('No IV on this contract — cannot simulate.'); return; }
+  if (!(o.iv > 0)) { showError('No IV on this contract, so it can\'t be simulated.'); return; }
   // a held position has no underlying stop: ±1σ chips instead of stop and R
   const em = o.em > 0, rChips = !em && o.sizing !== 'allocation';
   for (const id of ['simRChips', 'simRChips2']) document.getElementById(id).style.display = rChips ? '' : 'none';

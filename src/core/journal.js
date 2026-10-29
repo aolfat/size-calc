@@ -610,6 +610,13 @@ function legBias(t) {
 }
 
 /**
+ * A fill's side, the same bet as its trade's: the direction it opens or closes (bought, or sold to close, is long; sold
+ * short or to open, or bought to cover or close, is short), a put's flipped. @param {Fill} f @returns {'long' | 'short'}
+ */
+export const fillBias = f => legBias(/** @type {Trade} */ ({ assetType: f.assetType, symbol: f.symbol,
+  direction: (f.side === 'buy' ? /TO_COVER|TO_CLOSE/ : /SHORT|TO_OPEN/).test(f.instruction) ? 'short' : 'long' }));
+
+/**
  * A spread's bet and what it is. One type, bought and sold: by strikes, puts and calls alike: bought below what's sold
  * (size-weighted, so puts sold again and again count together) is long, above is short, the same strike over two
  * expirations is a time spread (neutral). On a vertical that's the debit / credit rule: call debit and put credit long,

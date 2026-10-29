@@ -492,21 +492,6 @@ test('refresh preserves table scroll and keyboard focus when price changes reord
   assert.equal(focusOptions.preventScroll, true);
 });
 
-test('existing v2 quotes migrate into scoped caches with their original timestamp', async () => {
-  const app = await appContext();
-  seedMarket(app);
-  app.storage.set('market_quotes_v2_production', JSON.stringify({fetchedAt:app.run('Date.now() - 60000'),quotes:{
-    A:{price:10,change:5}, XLK:{price:100,change:6,fromOpen:2}, RSP:{price:50,change:3}
-  }}));
-  app.run('marketReadCache();');
-  assert.equal(app.run('marketRows()[0].returns[0]'), 6);
-  assert.equal(app.run('Date.now() - marketCachedSnapshot().fetchedAt'), 60000);
-  app.run("marketSetCategory('equal-weight');");
-  assert.equal(app.run('marketRows()[0].returns[0]'), 3);
-  app.run("marketSetCategory('themes');");
-  assert.equal(app.run('marketRows()[1].returns[0]'), null);
-});
-
 test('authentication failure pauses auto-refresh until credentials change', async () => {
   let calls = 0;
   const app = await appContext(async () => ++calls === 1 ? {ok:false,status:401} : quoteResponse('XLK'));

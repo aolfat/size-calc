@@ -50,7 +50,7 @@ function buildWarnings(t) {
 export function buildCancelTicket(orderId, keep = true, now = Date.now()) {
   const p = state.positions;
   // hash: the account the orders were read from, and the only one its steps go to
-  const t = { orderId, hash: (p && p.hash) || '', error: '', notice: '', order: null, partner: null, children: [], keep: false, keepError: '', steps: [], warnings: [], sent: false, checking: false,
+  const t = { orderId, hash: (p && p.hash) || '', error: '', notice: '', listing: false, order: null, partner: null, children: [], keep: false, keepError: '', steps: [], warnings: [], sent: false, checking: false,
     failure: '', done: '', confirmed: false, before: [] };
   if (!p) { t.error = 'Could not read your orders from Schwab. ' + state.positionsError; return t; }
   if (p.stopsMissing) { t.error = 'Schwab did not return the orders on this account. Try again in a moment.'; return t; }
@@ -59,6 +59,7 @@ export function buildCancelTicket(orderId, keep = true, now = Date.now()) {
   const last = state.posLast;
   if (last && last.hash === t.hash && last.symbol === t.order.symbol && !last.confirmed && now - last.at < UNCONFIRMED_WAIT) {
     t.error = `Your last order on ${t.order.label} has not shown up at Schwab yet. Check Schwab's order list before sending another.`;
+    t.listing = true;
     return t;
   }
   t.before = workingOrders(p.orders).map(o => String(o.orderId));
@@ -242,7 +243,7 @@ export function renderCancelSheet() {
   const body = document.getElementById('cancelBody');
   if (!t) { body.innerHTML = ''; return; }
   if (t.error) {
-    body.innerHTML = `<p class="trade-warn" role="alert">${esc(t.error)}</p><div class="trade-actions"><button class="btn" data-action="closeSheet">Close</button></div>`;
+    body.innerHTML = `<p class="trade-warn" role="alert">${esc(t.error)}</p>${t.listing ? schwabList(t) : ''}<div class="trade-actions"><button class="btn" data-action="closeSheet">Close</button></div>`;
     return;
   }
   const o = t.order;

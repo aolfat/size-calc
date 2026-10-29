@@ -106,7 +106,7 @@ export async function refreshPinned(cardId) {
     await refreshCardData(d);
     renderPinnedCard(cardId);
   } catch(e) {
-    showError('Card refresh failed — check key/network.');
+    showError('Card refresh failed. Check your key and network.');
   }
 }
 

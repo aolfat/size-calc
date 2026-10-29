@@ -61,9 +61,6 @@ export function groupStats(trades) {
   };
 }
 
-/** the New York day a counted trade closed, 'YYYY-MM-DD'. @param {StatTrade} t */
-export const closeDay = t => nyParts(/** @type {string} */ (t.closedAt)).day;
-
 /**
  * A trade's exits as realized P&L: each one's own when the trade has them, else its whole P&L at the close. Open trades
  * count their exits so far; deleted ones and trades from before the history (no entry, so no P&L) have none.

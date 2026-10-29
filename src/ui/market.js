@@ -12,7 +12,7 @@ import { setQuoteVisible } from './shares.js';
 import { openSheet } from './sheets.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { fetchQuote } from './ticker.js';
-import { setMode, setView } from './views.js';
+import { setView } from './views.js';
 
 export const MARKET_FILE = 'data/market-universe-2026-09-16.csv';
 
@@ -173,12 +173,12 @@ export function marketReadCache() {
   state.marketState.historyRetryAt = 0; state.marketState.historyError = '';
   marketReadHistory();
   try {
-    const cached = JSON.parse(store.get(marketCacheKey()) || store.get('market_quotes_v2_' + state.marketState.environment) || 'null');
-    if (!cached || (!cached.scopes && !cached.quotes)) return;
+    const cached = JSON.parse(store.get(marketCacheKey()) || 'null');
+    if (!cached || !cached.scopes) return;
     const scopes = MARKET_CATEGORIES.map(category => [category.id, category.id === 'themes' ? state.marketState.stocks : state.marketState.etfs.filter(row => row.category === category.id)]);
     MarketData.groups(state.marketState.stocks).forEach(group => scopes.push(['group:' + group.name, group.stocks]));
     scopes.forEach(([id, rows]) => {
-      const snapshot = cached.scopes ? cached.scopes[id] : id.startsWith('group:') ? null : cached;
+      const snapshot = cached.scopes[id];
       if (!snapshot || !Number.isFinite(snapshot.fetchedAt) || snapshot.fetchedAt <= 0 || snapshot.fetchedAt > Date.now() || !snapshot.quotes) return;
       const quotes = Object.create(null);
       rows.forEach(({ticker}) => {

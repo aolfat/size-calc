@@ -30,7 +30,7 @@ const changed = t => ({ ...t.order, stop: t.stop, price: t.price, qty: t.qty, fi
 export function buildEditTicket(orderId, edit = {}, now = Date.now()) {
   const p = state.positions;
   // hash: the account the orders were read from, and the only one its steps go to
-  const t = { orderId, hash: (p && p.hash) || '', edit: { ...edit }, error: '', editError: '', notice: '', order: null, partner: null, child: null, stop: null, price: null, qty: 0, duration: '',
+  const t = { orderId, hash: (p && p.hash) || '', edit: { ...edit }, error: '', editError: '', notice: '', listing: false, order: null, partner: null, child: null, stop: null, price: null, qty: 0, duration: '',
     fills: false, risk: 0, riskWas: 0, steps: [], warnings: [], sent: false, checking: false, failure: '', done: '', confirmed: false, before: [] };
   if (!p) { t.error = 'Could not read your orders from Schwab. ' + state.positionsError; return t; }
   if (p.stopsMissing) { t.error = 'Schwab did not return the orders on this account. Try again in a moment.'; return t; }
@@ -39,6 +39,7 @@ export function buildEditTicket(orderId, edit = {}, now = Date.now()) {
   const last = state.posLast;
   if (last && last.hash === t.hash && last.symbol === t.order.symbol && !last.confirmed && now - last.at < UNCONFIRMED_WAIT) {
     t.error = `Your last order on ${t.order.label} has not shown up at Schwab yet. Check Schwab's order list before sending another.`;
+    t.listing = true;
     return t;
   }
   t.before = workingOrders(p.orders).map(o => String(o.orderId));
@@ -238,7 +239,7 @@ export function renderEditSheet(form = true) {
   const body = document.getElementById('editBody');
   if (!t) { body.innerHTML = ''; return; }
   if (t.error) {
-    body.innerHTML = `<p class="trade-warn" role="alert">${esc(t.error)}</p><div class="trade-actions"><button class="btn" data-action="closeSheet">Close</button></div>`;
+    body.innerHTML = `<p class="trade-warn" role="alert">${esc(t.error)}</p>${t.listing ? schwabList(t) : ''}<div class="trade-actions"><button class="btn" data-action="closeSheet">Close</button></div>`;
     return;
   }
   const o = t.order, q = t.partner;

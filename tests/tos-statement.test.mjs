@@ -216,3 +216,20 @@ test('Import sheet: a file that is not a statement says so; the zone can be chan
   run('clearTosStatement()');
   assert.match(body(), /Choose statement \(CSV\)/);
 });
+
+test('Fills tab: a futures fill is valued at its point value, and the side filter sides it like its trade', async () => {
+  const p = parseTosStatement(STATEMENT);
+  const records = statementRecords(p.fills, p.account, 'America/Los_Angeles');
+  const { run, elements } = await app({ supabase: fakeRecords([...SCHWAB, ...records]), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  run("setJournalTab('fills')");
+  const rows = () => [...elements.get('journalSection').innerHTML.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td>[^<]*<\/td>\s*<td>[^<]*<\/td>\s*<td>([^<]*)<\/td>/g)]
+    .map(m => `${m[1]} ${m[2]} ${m[3]}`);
+  assert.ok(rows().includes('/MNQZ26 Buy to close $59,748.00'), '1 MNQ at 29,874 is $2 a point, not $29,874: ' + rows().join(' | '));
+  run("setJournalSide('short')");
+  assert.equal(rows().filter(r => / Sell to open /.test(r)).length, 3, 'sold to open is short, as its trade is');
+  assert.equal(rows().filter(r => / Buy to close /.test(r)).length, 5, 'and so are the covers');
+  run("setJournalSide('long')");
+  assert.deepEqual(rows(), []);
+});
