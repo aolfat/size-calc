@@ -598,6 +598,8 @@ span.journal-pick { cursor: default; }
 .journal-filters-btn.active { color: var(--blue); border-color: var(--blue-bd); }
 .journal-filters-btn b { margin-left: 2px; padding: 0 6px; font-size: 11px; color: #fff; background: var(--blue); border-radius: 999px; }
 .journal-filters .jr-queue { grid-column: 1 / -1; }
+.journal-dates { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--text2); }
+.journal-dates.active input { border-color: var(--blue-bd); }
 .journal-summary-tiles { display: flex; gap: 8px; margin: 2px 0 10px; }
 .journal-summary-tiles > div { flex: 1 1 auto; min-width: 0; padding: 10px 12px; background: var(--bg3); border-radius: 16px; } /* each as wide as its figure, the rest shared: a five-figure net fits */
 .journal-summary-tiles dt { font-size: 12px; color: var(--text2); }
@@ -683,6 +685,10 @@ span.journal-pick { cursor: default; }
   .journal-filters .seg { display: flex; min-width: 0; }
   .journal-filters .seg button { flex: 1 1 0; min-width: 0; padding: 6px 4px; white-space: nowrap; }
   .journal-filters .jc-daychip { justify-self: start; }
+  .journal-filters .journal-dates { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+  .journal-dates label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .journal-dates .jr-from input { margin-left: 0; width: 100%; min-width: 0; }
+  .journal-dates .pos-link { grid-column: 1 / -1; justify-self: start; }
 }
 
 /* the Import sheet's zone picker for a thinkorswim statement */

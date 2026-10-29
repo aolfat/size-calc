@@ -417,3 +417,39 @@ test('the Calendar tab over picked dates: Month | Dates, From and To, the weeks 
   assert.equal(state.journalCalDates, '');
   assert.match(out(), /class="jc-title">November 2026</, 'back to the month the dates end in');
 });
+
+test('the Trades tab from a date: From alone is that day on, To ends it, a trade opened or with an exit then shows', async () => {
+  const records = [...RECORDS, order(5, 'BUY', '2026-10-05T14:00:00+0000', 10, 50, 'PLTR'), order(6, 'SELL', '2026-10-07T15:00:00+0000', 10, 55, 'PLTR')];
+  const { run, state, out } = await journal(records);
+  const names = () => [...out().matchAll(/<b>(AAPL|MSFT|PLTR)<\/b>/g)].map(m => m[1]).sort();
+  assert.deepEqual(names(), ['AAPL', 'MSFT', 'PLTR']);
+  assert.match(out(), /<label class="jr-from">Trades from <input type="date" id="journalFrom" value="" [^>]*data-change="setJournalDates" data-arg="from"/);
+  assert.doesNotMatch(out(), /clearJournalDates/, 'nothing to clear yet');
+  run("setJournalDates('from', '2026-10-06')");
+  assert.deepEqual(names(), ['MSFT', 'PLTR'], 'PLTR opened 10/5 but closed 10/7');
+  assert.match(out(), /data-action="clearJournalDates">All dates</);
+  run("setJournalDates('to', '2026-10-06')");
+  assert.deepEqual(names(), ['MSFT'], 'one day: opened or closed that day');
+  run("setJournalDates('from', '2026-10-07')");
+  assert.deepEqual([state.journalFrom, state.journalTo], ['2026-10-06', '2026-10-07'], 'a From after To swaps them');
+  run("setJournalDates('from', '')");
+  assert.deepEqual(names(), ['AAPL', 'MSFT', 'PLTR'], 'To alone: everything up to it');
+  run("setJournalDates('to', '2026-10-05')");
+  assert.deepEqual(names(), ['AAPL', 'PLTR']);
+  assert.match(out(), /data-action="setJournalReviewFilter" data-arg="all">All <b>2<\/b>/, 'the review chips count what the dates leave');
+  run('clearJournalDates()');
+  assert.deepEqual([state.journalFrom, state.journalTo], ['', '']);
+  assert.deepEqual(names(), ['AAPL', 'MSFT', 'PLTR']);
+});
+
+test('phones: the Trades dates sit in Filters and count as one on', async () => {
+  const a = await app({ width: 390, supabase: fakeRecords(RECORDS), session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  const out = () => a.elements.get('journalSection').innerHTML;
+  a.run("setJournalDates('from', '2026-10-06')");
+  assert.match(out(), /data-action="toggleJournalFilters" aria-expanded="false">Filters <b>1<\/b>/);
+  assert.doesNotMatch(out(), /id="journalFrom"/, 'closed: the boxes wait under Filters');
+  a.run('toggleJournalFilters()');
+  assert.match(out(), /id="journalFrom" value="2026-10-06"/);
+});
