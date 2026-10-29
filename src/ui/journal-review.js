@@ -266,6 +266,9 @@ const noteText = (t, which) => {
   return d && d.key === t.key && (d.which || 'exit') === which ? d.text : data().reviews[t.key]?.[noteField(which)] || '';
 };
 
+/** a trade's entry and exit notes as the boxes show them, for an example made from it (ui/model-books.js) */
+export const tradeNotes = t => ({ entry: noteText(t, 'entry'), exit: noteText(t, 'exit') });
+
 /** + New: a box for your own item of that kind; Enter adds it to your library and to this trade */
 export function startReviewItem(kind) { state.reviewNewKind = kind; state.reviewNewName = ''; state.reviewNewShort = ''; rerender(); }
 export function cancelReviewItem() { state.reviewNewKind = ''; rerender(); }
@@ -374,8 +377,8 @@ function row(label, body, missing, cls = '') {
   return `<div class="jr-row${missing ? ' jr-missing' : ''}${cls ? ` ${cls}` : ''}"><div class="jr-label">${label}</div><div class="chip-row jr-chips">${body}</div></div>`;
 }
 
-/** the Review section for a trade (empty for one from before your history: it has no entry to review) */
-export function reviewSectionHtml(t) {
+/** the Review section for a trade (empty for one from before your history: it has no entry to review); after: rows the trade page adds at its end */
+export function reviewSectionHtml(t, after = '') {
   if (t.status === 'history') return '';
   if (state.journalReviewError) return `<div class="section-title js-sub">Review</div><p class="hint" style="color:var(--amber)">Reviews couldn't load: ${esc(state.journalReviewError)}</p>`;
   const lib = library(), st = tradeReviewState(t), d = data(), rv = d.reviews[t.key] || {};
@@ -431,6 +434,7 @@ export function reviewSectionHtml(t) {
     <div class="jr-row${!open && miss.has('exit note') ? ' jr-missing' : ''}"><label class="jr-label" for="reviewNote">Exit note</label>
       <textarea id="reviewNote" rows="3" maxlength="5000" placeholder="What happened, how you managed it, what you'd do differently" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="exit">${esc(noteText(t, 'exit'))}</textarea></div>`}
     ${shotsRowHtml(t)}
+    ${after}
   </div>`;
 }
 

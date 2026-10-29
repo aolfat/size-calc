@@ -8,7 +8,8 @@
 // in the same place, on the same bars and framing; ours never loads the library; the
 // excursions (core/trade-page.js: MFE, MAE, exit efficiency); then two tabs: Review (your review, the fills, and the stop
 // orders over time) and Features (every stamped feature, ui/journal-features.js). Edit opens the
-// trade sheet (your stop, separate, delete).
+// trade sheet (your stop, separate, delete). The Review section ends with Model books: Add to model book keeps one of the
+// trade's screenshots as an example (ui/model-books.js), filled in from the review.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords, pnlPct } from '../core/journal.js';
@@ -23,8 +24,9 @@ import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
-import { clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal } from './journal.js';
-import { onReviewChange, reviewSectionHtml, tradeReviewState } from './journal-review.js';
+import { clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal, setJournalTab } from './journal.js';
+import { onReviewChange, reviewSectionHtml, setupsOf, tradeNotes, tradeReviewState } from './journal-review.js';
+import { dropTradeExample, modelTradeRowHtml, onModelTradeChange, openModelImage, startTradeExample } from './model-books.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
@@ -81,6 +83,7 @@ function holdDays(t) {
 export function openJournalTrade(key, nav) {
   // a fresh review: no half-picked setup, new-item box, search or note draft carried over from another trade
   Object.assign(state, { shotView: null, shotDeleteArmed: false, setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNewShort: '', reviewNoteDraft: null, reviewMarketOwn: false, fundEdit: null, reviewSearch: { setup: '', tactic: '' } });
+  dropTradeExample();
   dropCharts(state.journalTrade);
   state.journalTrade = {
     key, nav: nav?.includes(key) ? nav : journalNavKeys(key), five: [], under: [], daily: [], viewD: { count: 63, offset: 0 },
@@ -115,6 +118,7 @@ export function closeJournalTrade() {
   // reviewed while it was open: its card on the list celebrates once
   const t = pageTrade();
   if (t && state.journalTrade?.wasReviewed === false && state.journalReview && tradeReviewState(t).reviewed) state.journalJustReviewed = t.key;
+  dropTradeExample();
   dropCharts(state.journalTrade);
   state.journalTrade = null;
   state.journalDeck = null;
@@ -131,6 +135,27 @@ export function stepJournalTrade(by) {
 
 export function editJournalTrade() {
   if (state.journalTrade) openTradeReview(state.journalTrade.key);
+}
+
+/** M/D of the New York day a trade opened ('' without one) */
+const openedDay = t => { const d = t.openedAt ? nyDay(t.openedAt) : ''; return d ? `${+d.slice(5, 7)}/${+d.slice(8)}` : ''; };
+const sideWord = t => t.bias === 'neutral' ? 'Neutral' : (t.bias || t.direction) === 'long' ? 'Long' : 'Short';
+
+/** + Add to model book: the form in the Review section, filled in from the trade (its name, setups and day; its notes) */
+export function addTradeToModelBook() {
+  const t = pageTrade(); if (!t) return;
+  const setups = setupsOf(t), notes = tradeNotes(t);
+  return startTradeExample(t, {
+    title: [t.label, setups.map(s => s.name).join(', '), openedDay(t)].filter(Boolean).join(' · '),
+    notes: [notes.entry, notes.exit].map(n => n.trim()).filter(Boolean).join('\n\n'),
+    setupKeys: setups.map(s => s.key),
+  });
+}
+/** an example in the Model books row: Model books, with it open full size (this page closes, the review deck with it) */
+export function openTradeExample(id) {
+  closeJournalTrade();
+  setJournalTab('books');
+  openModelImage(id);
 }
 
 /** the list or the page (a trade, or the review deck's end): one shows at a time inside the Journal */
@@ -294,7 +319,7 @@ export function renderJournalTrade() {
     document.getElementById('jtCharts').style.display = 'none';
     return;
   }
-  const side = t.bias === 'neutral' ? 'Neutral' : (t.bias || t.direction) === 'long' ? 'Long' : 'Short';
+  const side = sideWord(t);
   const x = exitParts(t);
   head.innerHTML = `<div class="jt-head">
       ${backBtn}
@@ -321,16 +346,22 @@ export function renderJournalTrade() {
     document.getElementById(`jtClassic${which}`).style.display = tv ? 'none' : '';
     document.getElementById(`jtOhlc${which}`).style.display = tv ? 'none' : '';
   }
-  const focused = document.activeElement?.id === 'setupSearch' || document.activeElement?.id === 'tacticSearch' ? document.activeElement.id : '';
+  // a search box, or a field of the Add to model book form, keeps its focus and caret through the redraw (a chart landing)
+  const active = document.activeElement, focused = ['setupSearch', 'tacticSearch'].includes(active?.id) || active?.id?.startsWith('modelTrade') ? active.id : '';
+  const caret = focused && Number.isInteger(active.selectionStart) ? [active.selectionStart, active.selectionEnd] : null;
   body.innerHTML = `${statsHtml(t, ex)}
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
     ${tradeTabsHtml(p, t)}
-    ${p.tab === 'features' ? `<div id="jtFeatures">${tradeFeaturesHtml(t)}</div>` : `${reviewSectionHtml(t)}
+    ${p.tab === 'features' ? `<div id="jtFeatures">${tradeFeaturesHtml(t)}</div>` : `${reviewSectionHtml(t, modelTradeRowHtml(t))}
     ${fillsHtml(t, fills)}
     ${stopsHtml(t)}`}`;
-  if (focused) document.getElementById(focused)?.focus();
+  if (focused) {
+    const field = document.getElementById(focused);
+    field?.focus({ preventScroll: true });
+    if (caret) field?.setSelectionRange?.(caret[0], caret[1]);
+  }
   drawJournalTrade();
 }
 
@@ -522,4 +553,9 @@ export const journalTradeRange = which => {
 // a review change redraws the page (the section, and the status line with it)
 // a review change redraws the trade page, or the list under the choices sheet (a merge or a short word changes its names)
 onReviewChange(() => { if (state.journalTrade) renderJournalTrade(); else if (state.journalView) renderJournal(); });
+// Model books redraw the page's Model books row, and name a trade an example came from
+onModelTradeChange({
+  redraw: () => renderJournalTrade(),
+  label: key => { const t = journalTradeList().find(x => x.key === key); return t ? [t.label, sideWord(t), openedDay(t)].filter(Boolean).join(' · ') : ''; },
+});
 onShotsChange(() => { if (state.journalTrade) renderJournalTrade(); else if (state.journalNotebookDay) renderJournal(); renderShotViewer(); });

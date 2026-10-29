@@ -13,14 +13,18 @@ export function modelExamplesFor(examples, { bookId = '', setupKey = '' }, lib) 
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || a.id.localeCompare(b.id));
 }
 
-/** Validate the editor before keeping an example; the book is optional. @param {any} draft @param {any[]} books */
+/**
+ * Validate the editor before keeping an example; the book is optional. A new one needs its screenshot: a pasted image, or
+ * (from a trade page) one of the trade's screenshots, shot. @param {any} draft @param {any[]} books
+ */
 export function modelExampleProblem(draft, books) {
   if (!draft) return 'Paste or choose a chart screenshot.';
   if (draft.book_id && !books.some(b => b.id === draft.book_id)) return 'That book is gone. Choose another, or No book.';
   if (!String(draft.title || '').trim()) return 'Give this example a title.';
   if (String(draft.title).trim().length > 120) return 'Keep the title to 120 characters.';
   if (String(draft.notes || '').length > 4000) return 'Keep the notes to 4,000 characters.';
-  if (!draft.id && !draft.image) return 'Paste or choose a chart screenshot.';
+  if (!draft.id && draft.trade_key && !draft.shot) return 'Add a screenshot of this trade first: the example keeps a copy of it.';
+  if (!draft.id && !draft.trade_key && !draft.image) return 'Paste or choose a chart screenshot.';
   return '';
 }
 

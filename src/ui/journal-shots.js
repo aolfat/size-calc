@@ -37,6 +37,8 @@ const removing = new Map();
 const UNDO_MS = 10000;
 
 const shotsOf = t => (state.journalShots || []).filter(s => s.trade_key === t.key);
+/** a trade's screenshots, oldest first: what Add to model book picks from (ui/model-books.js) */
+export const tradeShots = shotsOf;
 
 /** a missed trade's or a focus ticker's screenshots are keyed by it, beside the trades' */
 export const missedShotKey = id => `missed:${id}`;

@@ -58,6 +58,14 @@ export function fakeRecords(seed = [], reviewSeed = [], tradeSeed = []) {
           files.set(`${bucket}/${path}`, blob);
           return { data: { path }, error: null };
         },
+        copy: async (from, to, opts = {}) => {
+          const dest = opts.destinationBucket || bucket;
+          if (failure || broken.has('storage')) return { data: null, error: { message: failure ? failure.message : 'Bucket not found' } };
+          if (!files.has(`${bucket}/${from}`)) return { data: null, error: { message: 'Object not found' } };
+          storageOps.push({ op: 'copy', bucket, from, to, destinationBucket: dest });
+          files.set(`${dest}/${to}`, files.get(`${bucket}/${from}`));
+          return { data: { path: to }, error: null };
+        },
         createSignedUrls: async (paths, seconds) => {
           storageOps.push({ op: 'sign', bucket, paths, seconds });
           return { data: paths.map(p => ({ path: p, signedUrl: files.has(`${bucket}/${p}`) ? `https://fake.storage.test/${bucket}/${p}?token=t&expires=${seconds}` : null, error: files.has(`${bucket}/${p}`) ? null : 'not found' })), error: null };

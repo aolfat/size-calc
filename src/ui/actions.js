@@ -3,7 +3,7 @@
 import { store } from '../lib/store.js';
 import { growBox } from '../lib/grow.js';
 import { state } from '../state.js';
-import { cancelModelDraft, closeModelImage, deleteModelBook, deleteModelExample, editModelBook, editModelExample, loadModelBooks, modelBookField, modelExampleField, openModelImage, pasteModelImages, pickModelImage, refreshModelImages, saveModelBook, saveModelExample, selectModelBook, selectModelSetup, setModelBrowse, toggleModelSetup } from './model-books.js';
+import { cancelModelDraft, closeModelImage, deleteModelBook, deleteModelExample, editModelBook, editModelExample, loadModelBooks, modelBookField, modelExampleField, openModelImage, pasteModelImages, pickModelImage, pickTradeExampleShot, refreshModelImages, saveModelBook, saveModelExample, selectModelBook, selectModelSetup, setModelBrowse, toggleModelSetup } from './model-books.js';
 import { addMissedShots, addTradeShots, closeShotViewer, deleteTradeShot, openShot, removeTradeShot, undoRemoveShot, pasteMissedShot, pasteTradeShot, pickMissedShots, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
 import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
@@ -32,7 +32,7 @@ import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './cla
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDay, closeJournalSetup, journalThisMonth, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
-import { closeJournalTrade, editJournalTrade, journalPageTrade, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
+import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
 import { addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
@@ -109,6 +109,10 @@ export const actions = {
   refreshModelImages: () => refreshModelImages(),
   openModelImage: el => openModelImage(arg(el)),
   closeModelImage: () => closeModelImage(),
+  addTradeToModelBook: () => addTradeToModelBook(),
+  pickTradeExampleShot: el => pickTradeExampleShot(arg(el)),
+  openTradeExample: el => openTradeExample(arg(el)),
+  openModelTrade: el => { closeModelImage(); openJournalTrade(arg(el)); },
   pickJournalDay: el => pickJournalDay(arg(el)),
   // ---------- the notebook: a page per trading day ----------
   openJournalDay: el => openJournalDay(arg(el)),

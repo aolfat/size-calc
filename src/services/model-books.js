@@ -1,5 +1,6 @@
 // Model Books persistence: private books and screenshot examples, with image files in their owner's folder.
 import { state } from '../state.js';
+import { SHOTS_BUCKET } from './journal-shots.js';
 import { supabaseClient } from './supabase.js';
 
 export const MODEL_BUCKET = 'model-books';
@@ -21,15 +22,21 @@ async function modelClient(uid) {
   return c;
 }
 
+const EXAMPLE_COLUMNS = 'id,book_id,title,notes,setup_keys,path,width,height,bytes,created_at';
+const readExamples = (c, uid, cols) => c.from('model_examples').select(cols).eq('user_id', uid).order('created_at', { ascending: false }).limit(10000);
+
+/** noTradeLink: the database doesn't have model_examples.trade_key yet, so examples read without it and none come from a trade */
 export async function readModelBooks(uid) {
   const c = await modelClient(uid);
-  const [books, examples] = await Promise.all([
+  let [books, examples] = await Promise.all([
     c.from('model_books').select('id,name,description,created_at').eq('user_id', uid).order('created_at', { ascending: true }).limit(1000),
-    c.from('model_examples').select('id,book_id,title,notes,setup_keys,path,width,height,bytes,created_at').eq('user_id', uid).order('created_at', { ascending: false }).limit(10000),
+    readExamples(c, uid, `${EXAMPLE_COLUMNS},trade_key`),
   ]);
+  const noTradeLink = /trade_key/.test(examples?.error?.message || '');
+  if (noTradeLink) examples = await readExamples(c, uid, EXAMPLE_COLUMNS);
   checkModelOwner(uid);
   modelRefused(books); modelRefused(examples);
-  return { books: books.data || [], examples: examples.data || [] };
+  return { books: books.data || [], examples: examples.data || [], noTradeLink };
 }
 
 export async function keepModelBook(uid, row) {
@@ -38,7 +45,11 @@ export async function keepModelBook(uid, row) {
   checkModelOwner(uid);
 }
 
-/** A failed row insert takes back its uploaded image. All writes pin the Google owner from before the upload. */
+/**
+ * A failed row insert takes back its uploaded image. All writes pin the Google owner from before the upload. A draft from
+ * a trade page carries one of the trade's screenshots (shot, a trade_shots row) instead of an image: Storage copies it
+ * from your folder of trade-shots into your folder of model-books, and the row keeps the trade's key.
+ */
 export async function keepModelExample(uid, draft) {
   const c = await modelClient(uid);
   const id = draft.id || crypto.randomUUID();
@@ -48,15 +59,19 @@ export async function keepModelExample(uid, draft) {
     checkModelOwner(uid);
     return row;
   }
-  const img = draft.image;
-  if (!img || img.blob.size > MODEL_IMAGE_BYTES) throw new Error('The screenshot must be under 2 MB after shrinking.');
-  const ext = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' }[img.type];
+  const shot = draft.shot, img = draft.image;
+  if (shot) {
+    if (!draft.trade_key || !shot.width || !shot.height || !(shot.bytes > 0 && shot.bytes <= MODEL_IMAGE_BYTES)) throw new Error("That screenshot is missing its size. Pick another, or add it again on the trade.");
+  } else if (!img || img.blob.size > MODEL_IMAGE_BYTES) throw new Error('The screenshot must be under 2 MB after shrinking.');
+  const ext = shot ? /\.(webp|jpg|png)$/.exec(shot.path)?.[1] : { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' }[img.type];
   if (!ext) throw new Error('Choose a PNG, JPEG, or WebP screenshot.');
   const path = `${uid}/${id}.${ext}`;
-  modelRefused(await c.storage.from(MODEL_BUCKET).upload(path, img.blob, { contentType: img.type, upsert: false }));
+  modelRefused(shot ? await c.storage.from(SHOTS_BUCKET).copy(shot.path, path, { destinationBucket: MODEL_BUCKET })
+    : await c.storage.from(MODEL_BUCKET).upload(path, img.blob, { contentType: img.type, upsert: false }));
   try {
     checkModelOwner(uid);
-    Object.assign(row, { path, width: img.width, height: img.height, bytes: img.blob.size, created_at: new Date().toISOString() });
+    Object.assign(row, shot ? { path, width: shot.width, height: shot.height, bytes: shot.bytes, trade_key: draft.trade_key }
+      : { path, width: img.width, height: img.height, bytes: img.blob.size }, { created_at: new Date().toISOString() });
     modelRefused(await c.from('model_examples').insert([{ ...row, user_id: uid }]));
     checkModelOwner(uid);
     return row;
