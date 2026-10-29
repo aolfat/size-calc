@@ -6,6 +6,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { defaultEntryLimit, entryLimitError, fmtTick, inRegularHours, limitEntryError, priceTick, sharesStopOrder, sharesTicketError, stopEntryError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
+import { inZone } from '../lib/zone.js';
 import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnectEverywhere, schwabDisconnectHere, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration, onSchwabShared } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
@@ -13,9 +14,9 @@ import { positionsAccountChanged } from './positions.js';
 import { renderShares, sharesPlan } from './shares.js';
 import { orbEntryName } from './orb.js';
 import { loadPlanChoices, planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
-import { openSheet } from './sheets.js';
+import { onSheetChange, openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
-import { refreshQuote } from './ticker.js';
+import { refreshQuote, tradierQuote } from './ticker.js';
 import { maybeCapture } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
@@ -333,6 +334,59 @@ export async function openTrade() {
   startTradePlan(state.tradeTicket);
   renderTradeSheet();
   openSheet('trade');
+  startTradeQuote(state.quoteData);
+}
+
+// ---------- the live quote at the top of the review ----------
+
+const TRADE_QUOTE_MS = 2000;
+
+/** last, bid and ask while the review is open, polled on their own: the frozen ticket never moves with them */
+function startTradeQuote(q) {
+  const gen = ++state.tradeQuoteGen;
+  setTradeQuote(q);
+  const tick = async () => {
+    const t = state.tradeTicket;
+    if (gen !== state.tradeQuoteGen || !t) return;
+    if (!document.hidden) {
+      const fresh = await tradierQuote(t.symbol, false).catch(() => null);
+      if (gen !== state.tradeQuoteGen) return; // closed, or another review opened, while it was out
+      if (fresh && fresh.symbol === t.symbol) setTradeQuote(fresh);
+      else if (state.tradeQuote) { state.tradeQuote.failed = true; renderTradeQuote(); }
+    }
+    state.tradeQuoteTimer = setTimeout(tick, TRADE_QUOTE_MS);
+  };
+  clearTimeout(state.tradeQuoteTimer);
+  state.tradeQuoteTimer = setTimeout(tick, TRADE_QUOTE_MS);
+}
+
+function stopTradeQuote() {
+  state.tradeQuoteGen++;
+  clearTimeout(state.tradeQuoteTimer);
+  state.tradeQuote = null;
+  renderTradeQuote();
+}
+
+onSheetChange(name => { if (name !== 'trade' && state.tradeQuote) stopTradeQuote(); });
+
+function setTradeQuote(q) {
+  if (!q) return;
+  state.tradeQuote = { symbol: q.symbol, last: Number(q.last) || 0, bid: Number(q.bid) || 0, ask: Number(q.ask) || 0, at: Date.now(), failed: false };
+  renderTradeQuote();
+}
+
+/** Last, Bid, Ask; the side a market order fills on is lit (the ask on a buy, the bid on a short) */
+export function renderTradeQuote() {
+  const el = document.getElementById('tradeQuote');
+  const q = state.tradeQuote, t = state.tradeTicket;
+  el.style.display = q ? '' : 'none';
+  if (!q) { el.innerHTML = ''; return; }
+  const px = v => v > 0 ? fmtTick(v) : '—';
+  const cell = (label, v, cls = '', tail = '') => `<div class="tq-cell${cls}"><span class="tq-label">${label}${tail}</span><span class="tq-val">${px(v)}</span></div>`;
+  const fills = t && !t.error ? (t.isLong ? 'ask' : 'bid') : '';
+  // a failed poll keeps the last numbers and says how old they are
+  const status = q.failed ? `<span class="tq-status stale">${esc(inZone(q.at))}</span>` : '<span class="tq-status"><span class="tq-dot"></span>Live</span>';
+  el.innerHTML = cell('Last', q.last, '', status) + cell('Bid', q.bid, fills === 'bid' ? ' fills' : '') + cell('Ask', q.ask, fills === 'ask' ? ' fills' : '');
 }
 
 export function setTradeStopDuration(d) {
@@ -400,6 +454,7 @@ export async function placeTrade() {
   updateTradeButton();
   let fresh = false;
   try { fresh = await freshQuote(t.symbol); } catch(e) {}
+  if (fresh && state.openSheetName === 'trade') setTradeQuote(state.quoteData);
   const { why, again } = recheck(t, fresh);
   if (why) {
     state.tradeBusy = false;
@@ -562,7 +617,7 @@ function tradeDetail(t) {
       <div><dt>Then stop</dt><dd><strong>${t.isLong ? 'Sell' : 'Buy to cover'} ${t.qty} at ${fmtTick(t.stop)}</strong><span class="shares-detail">Stop order, placed once the ${t.isLong ? 'buy' : 'short'} fills</span></dd></div>
       <div><dt>Stop lasts</dt><dd><div class="seg" role="group" aria-label="Stop lasts">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
       <div><dt>Risk at stop</dt><dd>${risk || `<span class="shares-loss">${fmt$(t.plannedRisk)}</span><span class="shares-detail">${from}${note}${worst}</span>`}</dd></div>
-      <div><dt>Market</dt><dd>${market}</dd></div>
+      <div><dt>Reviewed at</dt><dd>${market}</dd></div>
     </dl>
     ${t.limitError ? `<p class="trade-warn" role="alert">${esc(t.limitError)}</p>` : ''}
     ${t.warnings.map(w => `<p class="trade-warn">${esc(w)}</p>`).join('')}

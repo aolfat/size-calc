@@ -492,6 +492,56 @@ test('review freezes the card\'s order, and Place sends exactly that once', asyn
   assert.doesNotMatch(elements.get('tradeBody').innerHTML, /id="tradePlace"/, 'no Place button once sent');
 });
 
+test('the review shows a live last, bid and ask while it is open, and the ticket stays on the quote it was reviewed on', async () => {
+  let quote = QUOTE, down = false;
+  const quoteCalls = () => net.calls.filter(c => c.url.includes('/markets/quotes')).length;
+  const net = network(async () => json({}, 404));
+  const fetch = async (url, init) => {
+    if (url.includes('/markets/quotes') && down) { net.calls.push({ url }); throw new TypeError('Failed to fetch'); }
+    if (url.includes('/markets/quotes')) { net.calls.push({ url }); return json({ quotes: { quote } }); }
+    return net.fetch(url, init);
+  };
+  const { run, elements, state, advance } = await sharesCard({ fetch, storage: connected(), timers: 'fake' });
+  const strip = () => elements.get('tradeQuote').innerHTML;
+  assert.equal(elements.get('tradeQuote').style.display, 'none', 'no strip before a review');
+  await run('openTrade()');
+  assert.equal(elements.get('tradeQuote').style.display, '');
+  assert.match(strip(), /Last<span class="tq-status"><span class="tq-dot"><\/span>Live<\/span><\/span><span class="tq-val">\$100\.00</);
+  assert.match(strip(), /<div class="tq-cell"><span class="tq-label">Bid<\/span><span class="tq-val">\$99\.98</, 'a buy fills at the ask, not the bid');
+  assert.match(strip(), /<div class="tq-cell fills"><span class="tq-label">Ask<\/span><span class="tq-val">\$100\.02</);
+  const order = JSON.stringify(state.tradeTicket.order);
+
+  quote = { ...QUOTE, last: 100.4, bid: 100.38, ask: 100.42 };
+  const before = quoteCalls();
+  await advance(2000);
+  assert.equal(quoteCalls(), before + 1, 'one quote read every 2s');
+  assert.match(strip(), /Last[\s\S]*\$100\.40[\s\S]*Bid[\s\S]*\$100\.38[\s\S]*Ask[\s\S]*\$100\.42/);
+  assert.equal(JSON.stringify(state.tradeTicket.order), order, 'the frozen order never moves with the live quote');
+  assert.match(elements.get('tradeBody').innerHTML, /<dt>Reviewed at<\/dt><dd>Bid \$99\.98 · ask \$100\.02/);
+
+  down = true;
+  await advance(2000);
+  assert.match(strip(), /tq-status stale/, 'a failed read says how old the numbers are');
+  assert.match(strip(), /\$100\.42/, 'and keeps the last ones');
+  down = false;
+  await advance(2000);
+  assert.match(strip(), /Live/);
+
+  run('closeSheet()');
+  assert.equal(elements.get('tradeQuote').style.display, 'none');
+  const closed = quoteCalls();
+  await advance(10000);
+  assert.equal(quoteCalls(), closed, 'closing the review stops the polling');
+});
+
+test('a short review lights the bid, where a market short fills', async () => {
+  const net = network(async () => json({}, 404));
+  const { run, elements } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  run("setDirection('short')");
+  await run('openTrade()');
+  assert.match(elements.get('tradeQuote').innerHTML, /<div class="tq-cell fills"><span class="tq-label">Bid</);
+});
+
 test('the stop duration choice is remembered and rebuilds the order before sending', async () => {
   const net = network(async () => json({}, 404));
   const storage = connected();

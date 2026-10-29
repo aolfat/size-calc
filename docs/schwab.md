@@ -18,6 +18,10 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   The stop lasts Today or Until canceled (schwab_stop_duration, default GOOD_TILL_CANCEL); the entry is always DAY. sharesTicketError blocks a stop already through the bid (long) or ask (short), sub-one-share sizes, and non-stock types.
   Warnings: outside 9:30–16:00 ET weekdays (no holiday table), risk at the current ask/bid >10% over the plan, a same-symbol order in the last 2 minutes.
   The review only opens on a fresh quote for the loaded symbol (refreshQuote answers true/false; a failed refresh shows an error, no ticket).
+  **Live quote** (#tradeQuote, renderTradeQuote): the top of the review shows Last, Bid and Ask, read from Tradier every 2s while the sheet is open (state.tradeQuote, its own setTimeout chain, skipped while the app is hidden, stopped when the sheet closes).
+  The side a market order fills on is lit: the ask on a buy, the bid on a short.
+  A failed read keeps the last numbers and swaps Live for the time they're from.
+  It only shows: the ticket and its warnings stay on the quote it was reviewed on (the details' **Reviewed at** row), and Place's own refresh is what re-checks it.
   Place refreshes the quote again and re-checks the frozen order against it: a new error or warning blocks the send and shows the updated ticket, and a second Place sends it.
   Then it sends the frozen payload ONCE (ticket.sent) to the account the ticket was built for, and nothing retries it; an error before any request (token refresh, account switch) says nothing was sent and arms no repeat warning; a network failure says to check Schwab before retrying.
   After a 201 the order id comes from Location and one status read reports fill and stop status (↻ Status re-reads).

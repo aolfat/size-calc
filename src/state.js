@@ -235,6 +235,9 @@ export function createState() {
     tradeBusy: false,
     tradeLast: null, // { symbol, at } of the last order placed, to flag a quick repeat
     tradeSetupQuery: '', // what's typed in the review sheet's setup search
+    tradeQuote: null, // the review sheet's live quote: { symbol, last, bid, ask, at, failed }, polled while it's open; the ticket never moves with it
+    tradeQuoteTimer: 0,
+    tradeQuoteGen: 0, // bumped on every open and close, so a poll that answers late for an old review is dropped
     planChoicesRead: null, // the read of your setups and tactics for the review sheet, while it's out (ui/order-plan.js loadPlanChoices)
     orderPlans: null, // the plans saved with orders (core/order-plans.js OrderPlan[]), once read for the journal
     orderPlansError: '', // why they couldn't be read or applied
