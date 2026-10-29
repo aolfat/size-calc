@@ -5,6 +5,7 @@
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
 import { buildLibrary, cleanLink, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
+import { fundOf, listedFund, parseFunds } from '../core/journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { planLines } from '../core/order-plans.js';
 import { store } from '../lib/store.js';
@@ -412,9 +413,10 @@ export function reviewSectionHtml(t) {
   return `<div class="jr" id="journalReview">
     <div class="jr-head"><span class="section-title js-sub">Review</span>
       <span class="jr-status ${st.reviewed || (open && !openingMissing.length) ? 'journal-buy' : ''}" role="status">${status}</span>
-      <button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
+      ${fundLink(t)}<button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
     ${row(`Market <span class="jr-sub">${marketNote}</span>`, market + newBox('market'), miss.has('market'))}
     ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
+    ${setupOnRow(t)}
     ${row('My setups', `${setupSearch}${fitNote}<div class="jr-setup-pick" id="jrSetupPick">${setupPickHtml(t)}</div>${builder}${partsLine}`, miss.has('setup'), 'jr-setup-row')}
     ${row('Entry tactic', `${searchBox('tactic', 'Search tactics', 'Search entry tactics')}<span class="jr-tactic-pick" id="jrTacticPick">${tacticPickHtml(t)}</span>${newBox('tactic')}`, miss.has('tactic'))}
     ${orderPlanRow(t)}
@@ -431,6 +433,40 @@ export function reviewSectionHtml(t) {
     ${shotsRowHtml(t)}
   </div>`;
 }
+
+/** your funds (journal_funds, synced with your account): ticker → what it's a bet on (core/journal.js parseFunds) */
+export const myFunds = () => parseFunds(store.get('journal_funds'));
+
+/** shares can read on another ticker; options, spreads and futures stay on what was traded */
+const fundable = t => !t.legs && t.assetType !== 'OPTION' && t.assetType !== 'FUTURE' && t.status !== 'history';
+
+/** '−3x QQQ', 'QQQ inverse' (yours: only the way it moves is known) */
+const fundWords = f => f.mine ? `${esc(f.under)}${f.lev < 0 ? ' inverse' : ''}` : `${f.lev < 0 ? '−' : ''}${Math.abs(f.lev)}x ${esc(f.under)}`;
+
+/**
+ * Setup on: a leveraged or inverse ETF's trade reads its setup, side and charts on its underlying (SQQQ's on QQQ, a long
+ * there a short). The built-in list knows most funds; yours set any ticker (Change), for every trade in it.
+ */
+function setupOnRow(t) {
+  if (!fundable(t)) return '';
+  const fund = fundOf(t, myFunds()), listed = listedFund(t.symbol), ed = state.fundEdit?.symbol === t.symbol ? state.fundEdit : null;
+  if (!fund && !listed && !ed) return '';
+  const under = fund?.under || listed?.under || '';
+  const sub = fund ? `${esc(t.symbol)} is ${fundWords(fund)}${fund.mine ? ', set by you' : ''}` : `${esc(t.symbol)} on itself`;
+  const chips = under ? [under, t.symbol].map(s => chip(s, (t.setupOn || t.symbol) === s, `data-action="setFundOn" data-arg="${esc(s)}"`)).join('') : '';
+  const editor = ed ? `<div class="jr-fund-edit">
+      <input type="text" id="fundInput" placeholder="Underlying, like NVDA" value="${esc(ed.under ?? under)}" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="10" data-enter="saveFund" aria-label="The ticker ${esc(t.symbol)} is a bet on" />
+      <span class="seg" aria-label="How it moves"><button class="${ed.inverse ? '' : 'active'}" aria-pressed="${!ed.inverse}" data-action="setFundInverse" data-arg="0">Moves with it</button><button class="${ed.inverse ? 'active' : ''}" aria-pressed="${ed.inverse}" data-action="setFundInverse" data-arg="1">Inverse</button></span>
+      <button class="btn primary" data-action="saveFund">Save</button><button class="btn" data-action="cancelFundEdit">Cancel</button>
+      ${listed && fund?.mine ? `<button class="pos-link" data-action="resetFund">Use the built-in ${listed.lev < 0 ? '−' : ''}${Math.abs(listed.lev)}x ${esc(listed.under)}</button>` : ''}
+      <p class="hint jr-later">For every ${esc(t.symbol)} trade. A long on an inverse fund is a short on what it tracks.</p></div>`
+    : '<button class="pos-link" data-action="editFund">Change</button>';
+  return row(`Setup on <span class="jr-sub">${sub}</span>`, chips + editor);
+}
+
+/** the review head's way in for a ticker the built-in list doesn't know: shares only */
+const fundLink = t => fundable(t) && !fundOf(t, myFunds()) && !listedFund(t.symbol) && state.fundEdit?.symbol !== t.symbol
+  ? '<button class="pos-link" data-action="editFund" title="For a leveraged or inverse fund: read its setup on what it tracks">Setup on another ticker</button>' : '';
 
 /** + New setup: what happened, at what (or a pattern); what's picked is on the trade already, and the line says which */
 function setupDraftHtml(lib, t) {

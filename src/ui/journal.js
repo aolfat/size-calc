@@ -6,7 +6,7 @@
 // trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
-import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
+import { combineCandidates, fundOf, holdWords, journalTrades, legWords, listedFund, withFund, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { activePeriods, exitDays, periodKey, PERIODS, stepPeriod, switchPeriod } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
@@ -23,9 +23,9 @@ import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
-import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
+import { openJournalTrade, reloadJournalCharts, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { applyOrderPlans } from './order-plan.js';
-import { loadJournalReview, reviewFrom, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
+import { loadJournalReview, myFunds, reviewFrom, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, renderDeckEnd, reviewFromHtml, syncJournalBadge } from './journal-deck.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
@@ -143,8 +143,10 @@ const VIA_TITLE = {
   delivered: 'Shares an option delivered at the strike. The option was opened before your history, so it isn\'t here.',
 };
 
+/** a leveraged ETF's trade on its underlying names it: long SQQQ reads 'Short QQQ' */
+const onWords = t => t.setupOn ? ` ${esc(t.setupOn)}` : '';
 /** the side is the bet on the stock: a put bought is short, a call debit spread long, a time spread neutral */
-const sideCell = t => `<td class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${{ long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias] || ''}</td>`;
+const sideCell = t => `<td class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${{ long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias] || ''}${onWords(t)}</td>`;
 
 /** the tick box that picks a trade for Merge or Delete (not on deleted trades: an empty slot keeps their names in line) */
 const pickBox = t => t.deleted ? '<span class="journal-pick" aria-hidden="true"></span>'
@@ -406,7 +408,7 @@ function cardSub(t) {
 function cardPills(t) {
   const open = t.status === 'open';
   const out = [t.status === 'history' ? pill('jtc-warn', 'Before your history', HISTORY_TITLE) : open ? pill('jtc-open', 'Open') : ''];
-  const side = { long: pill('jtc-long', 'Long'), short: pill('jtc-short', 'Short'), neutral: pill('', 'Neutral') }[t.bias];
+  const side = { long: pill('jtc-long', `Long${onWords(t)}`), short: pill('jtc-short', `Short${onWords(t)}`), neutral: pill('', 'Neutral') }[t.bias];
   if (side) out.push(side);
   if (t.legs) out.push(pill('', esc(t.structure || `${t.spreadKind} spread`)));
   if (t.expired) out.push(pill('', 'expired', EXPIRED_TITLE));
@@ -755,7 +757,7 @@ onCaptureChange(saved => {
 export const journalTradeList = () => currentTrades();
 function currentTrades() {
   const records = state.journalRecords || [];
-  return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now(), saved: state.journalSaved });
+  return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now(), saved: state.journalSaved, funds: myFunds() });
 }
 const reviewedTrade = () => currentTrades().find(t => t.key === state.tradeReviewKey) || null;
 const reviewOf = key => (state.tradeReviews || {})[key] || { stop: null, deleted: false };
@@ -950,6 +952,66 @@ export function clearTradeStop() {
   const t = reviewedTrade();
   if (!t) return;
   return saveReview({ ...reviewOf(t.key), stop: null }, t.schwabStop !== null ? `Back to Schwab's stop, ${px(t.schwabStop, t.assetType)}.` : 'Your stop is removed.');
+}
+
+/** where the setting goes: synced with your account, so it's kept to the settings table's 2000 characters */
+const FUNDS_MAX = 2000;
+
+/** your funds changed: saved and synced, every trade in the ticker redrawn, the page's charts on the new symbols */
+function saveFunds(funds, done) {
+  const text = JSON.stringify(funds);
+  if (text.length > FUNDS_MAX) { showError('Too many tickers of yours to sync. Take one off first.'); return false; }
+  store.set('journal_funds', text); // '{}' too: a delete wouldn't sync
+  state.fundEdit = null;
+  renderJournal();
+  reloadJournalCharts();
+  showToast(done);
+  return true;
+}
+
+/** a Setup on chip: the fund's underlying (back to what the list says, or what you set) or the ticker itself */
+export function setFundOn(t, sym) {
+  const funds = myFunds(), fund = fundOf(t, funds);
+  if (sym === t.symbol) { if (fund) saveFunds(withFund(funds, t.symbol, ''), `Every ${t.symbol} trade reads on ${t.symbol}.`); return; }
+  if (fund?.under === sym) return;
+  const listed = listedFund(t.symbol);
+  if (listed?.under === sym) saveFunds(withFund(funds, t.symbol, null), `Every ${t.symbol} trade reads on ${sym}.`);
+}
+
+/** Change (or Setup on another ticker): the editor, on what the ticker reads on now */
+export function editFund(t) {
+  const fund = fundOf(t, myFunds()) || listedFund(t.symbol);
+  state.fundEdit = { symbol: t.symbol, inverse: !!fund && fund.lev < 0 };
+  renderJournalTrade();
+  document.getElementById('fundInput')?.focus();
+}
+
+/** Moves with it ('0') or Inverse ('1'); what's typed stays */
+export function setFundInverse(t, v) {
+  if (!state.fundEdit) return;
+  const box = /** @type {HTMLInputElement | null} */ (document.getElementById('fundInput'));
+  state.fundEdit = { ...state.fundEdit, inverse: v === '1', under: box?.value ?? state.fundEdit.under };
+  renderJournalTrade();
+}
+
+export function cancelFundEdit() { state.fundEdit = null; renderJournalTrade(); }
+
+/** Save: every trade in the ticker reads on what's typed (blank or the ticker itself: on itself) */
+export function saveFund(t) {
+  const ed = state.fundEdit;
+  if (!ed) return;
+  const box = /** @type {HTMLInputElement | null} */ (document.getElementById('fundInput'));
+  const under = String(box?.value ?? ed.under ?? '').trim().toUpperCase().replace(/^\$/, '');
+  if (under && !/^[A-Z][A-Z0-9.]{0,9}$/.test(under)) { showError(`${under} isn't a ticker.`); return; }
+  const on = !under || under === t.symbol;
+  saveFunds(withFund(myFunds(), t.symbol, on ? '' : under, ed.inverse), on ? `Every ${t.symbol} trade reads on ${t.symbol}.`
+    : `Every ${t.symbol} trade reads on ${under}${ed.inverse ? ', inverse' : ''}.`);
+}
+
+/** back to the built-in list's word on the ticker */
+export function resetFund(t) {
+  const listed = listedFund(t.symbol);
+  saveFunds(withFund(myFunds(), t.symbol, null), listed ? `Every ${t.symbol} trade reads on ${listed.under}.` : `Every ${t.symbol} trade reads on ${t.symbol}.`);
 }
 
 /** a row tapped anywhere but its tick box opens the trade (the stop link and the name are buttons of their own) */
