@@ -4,7 +4,7 @@
 // what it now shows, and until it shows the last result, that symbol in that account takes no new order from here.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { closingInstruction, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
+import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
 import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
@@ -32,11 +32,11 @@ function stepText(t, step) {
   }
   if (step.order.orderStrategyType === 'OCO') {
     const [limit, stop] = step.order.childOrderStrategies;
-    return `Place limit ${fmtPositionPrice(limit.price, row.tradeAs)} for ${units(row, limit.orderLegCollection[0].quantity)} paired with stop ${fmtPositionPrice(stop.stopPrice, row.tradeAs)} (one cancels the other)`;
+    return `Place limit ${fmtPositionPrice(limit.price, row.tradeAs)}${sessionTail(limit.session)} for ${units(row, limit.orderLegCollection[0].quantity)} paired with stop ${fmtPositionPrice(stop.stopPrice, row.tradeAs)} (one cancels the other)`;
   }
   const leg = step.order.orderLegCollection[0];
   if (step.order.orderType === 'MARKET') return `${cap(INSTRUCTION_WORDS[leg.instruction])} ${units(row, leg.quantity)} ${row.label} at market`;
-  if (step.order.orderType === 'LIMIT') return `Place a limit ${fmtPositionPrice(step.order.price, row.tradeAs)} for ${units(row, leg.quantity)} (${INSTRUCTION_WORDS[leg.instruction]})`;
+  if (step.order.orderType === 'LIMIT') return `Place a limit ${fmtPositionPrice(step.order.price, row.tradeAs)}${sessionTail(step.order.session)} for ${units(row, leg.quantity)} (${INSTRUCTION_WORDS[leg.instruction]})`;
   if (step.kind === 'replace' && step.was.stop === step.order.stopPrice && leg.quantity < step.was.qty) {
     return `Cut ${orderWord(row, step.was)} from ${units(row, step.was.qty)} to ${leg.quantity.toLocaleString('en-US')}`;
   }
@@ -44,6 +44,9 @@ function stepText(t, step) {
   const next = `${orderTypeWord(step.order.orderType)} ${fmtPositionPrice(step.order.stopPrice, row.tradeAs)}${limit} for ${units(row, leg.quantity)}`;
   return step.kind === 'replace' ? `Replace ${orderWord(row, step.was)} for ${units(row, step.was.qty)} with ${next}` : `Place a ${next} (${INSTRUCTION_WORDS[leg.instruction]})`;
 }
+
+/** ' (after hours)' after a limit that works outside regular hours */
+const sessionTail = s => s && s !== 'NORMAL' && SESSION_WORDS[s] ? ` (${SESSION_WORDS[s]})` : '';
 
 /** what pairing changes about a limit: it takes the stop's duration and works in regular hours */
 function pairingWarnings(t) {
@@ -60,7 +63,7 @@ function pairingWarnings(t) {
 export function buildPositionTicket(row, kind, symbol, now = Date.now(), target = null) {
   // hash: the account it was read from, and the only one its steps go to
   const t = { kind, symbol, hash: (state.positions && state.positions.hash) || '', row: row || null, error: '', notice: '', listing: false, stop: 0, steps: [], paired: [], rest: 0, bare: 0, kept: 0, locked: 0,
-    choose: false, mode: null, options: null, target, price: 0, moved: 0, stopDuration: schwabStopDuration(), warnings: [], warnFlags: [], sent: false, checking: false, failure: '', done: '', confirmed: false };
+    choose: false, mode: null, options: null, target, price: 0, moved: 0, stopDuration: schwabStopDuration(), session: 'NORMAL', warnings: [], warnFlags: [], sent: false, checking: false, failure: '', done: '', confirmed: false };
   if (!row) { t.error = `Schwab no longer shows a ${symbol} position.`; return t; }
   if (state.positions && state.positions.stopsMissing) {
     t.error = 'Schwab did not return the orders on this account, so there is no telling what already covers the position. Try again in a moment.';
@@ -130,7 +133,7 @@ export function setPositionStopAt(value) {
 
 // the close ticket's own errors (too many shares, no price) show in the sheet next to the form instead of replacing it
 function planClose(t) {
-  const plan = closePlan(t.row, { ...t.close, duration: t.stopDuration });
+  const plan = closePlan(t.row, { ...t.close, duration: t.stopDuration, session: t.session });
   Object.assign(t, plan, { error: '', planError: plan.error });
 }
 
@@ -234,7 +237,7 @@ export function toggleREdit() {
 }
 
 function planTarget(t) {
-  Object.assign(t, targetPlan(t.row, { price: t.target ? t.target.price : 0, qty: t.target ? t.target.qty : 0, duration: t.stopDuration }));
+  Object.assign(t, targetPlan(t.row, { price: t.target ? t.target.price : 0, qty: t.target ? t.target.qty : 0, duration: t.stopDuration, session: t.session }));
 }
 
 export function setPositionBeMode(mode) {
@@ -254,7 +257,12 @@ function buildWarnings(t, now) {
   // flags name the warnings, so a send can tell a new one from the same one with fresher numbers
   const warn = (flag, text) => { flags.push(flag); out.push(text); };
   const limit = t.kind === 'close' && t.close.type === 'LIMIT';
-  if (!inRegularHours(now)) {
+  const session = (limit || t.kind === 'target') && row.tradeAs !== 'OPTION' ? t.session : 'NORMAL';
+  if (session !== 'NORMAL') {
+    const what = limit ? 'limit' : 'target';
+    if (!inOrderSession(now, session)) warn('hours', session === 'SEAMLESS' ? `Outside extended and regular hours. The ${what} starts working when pre-market opens.` : `Outside ${SESSION_WORDS[session]}. The ${what} starts working at the next ${SESSION_WORDS[session]} session.`);
+    if (t.stop > 0) warn('session', `The stop paired with the ${what} only triggers in regular hours. Outside them, nothing stops ${what === 'limit' ? 'these' : 'its'} ${row.tradeAs === 'OPTION' ? 'contracts' : 'shares'}.`);
+  } else if (!inRegularHours(now)) {
     warn('hours', limit ? 'Outside regular hours. The limit starts working at the next open.'
       : t.kind === 'close' ? 'Outside regular hours. A market order waits for the next open and can fill far from here.'
       : t.kind === 'target' ? 'Outside regular hours. The target starts working at the next open.' : 'Outside regular hours. The stop starts working at the next open.');
@@ -285,7 +293,9 @@ function freshTicket(kind, symbol, target, prev = null, now = Date.now()) {
   }
   const t = buildPositionTicket(state.positions.rows.find(r => r.symbol === symbol), kind, symbol, now, target);
   if (!prev || t.error) return t;
+  t.session = prev.session || 'NORMAL';
   if (kind === 'close') { t.close = { ...prev.close }; planClose(t); }
+  else if (kind === 'target') planTarget(t);
   else if (kind === 'breakeven' || kind === 'stop') {
     if (kind === 'stop') t.stopInput = prev.stopInput;
     planStops(t);
@@ -322,6 +332,24 @@ export function setPositionStopDuration(d) {
   if (t.kind === 'close') planClose(t); else if (t.kind === 'target') planTarget(t); else planStops(t);
   t.warnings = buildWarnings(t, Date.now());
   renderPositionTradeSheet();
+}
+
+/** when a sell limit works: regular hours, pre-market, after hours or Ext (stocks and ETFs; options trade in regular hours only) */
+export function setPositionSession(s) {
+  const t = state.posTicket;
+  if (!t || t.error || t.sent || !t.row || t.row.tradeAs === 'OPTION' || !SESSION_WORDS[s]) return;
+  if (t.kind === 'close' ? t.close.type !== 'LIMIT' : t.kind !== 'target') return;
+  t.session = s;
+  if (t.kind === 'close') planClose(t); else planTarget(t);
+  t.warnings = buildWarnings(t, Date.now());
+  renderPositionTradeSheet();
+}
+
+/** the Works in row: when the limit works; nothing for an option */
+function sessionRow(t) {
+  if (t.row.tradeAs === 'OPTION') return '';
+  const b = (s, label, title) => `<button class="${t.session === s ? 'active' : ''}" aria-pressed="${t.session === s}" data-action="setPositionSession" data-arg="${s}" title="${title}"${t.sent ? ' disabled' : ''}>${label}</button>`;
+  return `<div><dt>Works in</dt><dd><div class="seg" role="group" aria-label="Works in">${b('NORMAL', 'Regular', 'Regular hours only')}${b('AM', 'Pre', 'Pre-market only')}${b('PM', 'After', 'After hours only')}${b('SEAMLESS', 'Ext', 'Pre-market, regular hours and after hours')}</div></dd></div>`;
 }
 
 /** a cancel Schwab refused: fine if the order is already on its way out (its pair took it), a stop if it filled */
@@ -490,6 +518,7 @@ function targetRows(t, duration) {
   const r = g.r === null ? '' : ` · ${g.r.toFixed(1)}R from ${unit.per ? rUnitWords(unit, row) : `the ${fmtPositionPrice(row.stop, row.tradeAs)} stop`}`;
   const left = Math.abs(row.qty) - t.target.qty;
   return `<div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
+    ${sessionRow(t)}
     <div><dt>At target</dt><dd>${g.gain === null ? '<span class="shares-detail">Schwab shows no cost basis for this position.</span>'
       : `<span class="${g.gain >= 0 ? 'pos-locked' : 'pos-loss'}">${sign(g.gain)}</span><span class="shares-detail">${g.pct >= 0 ? '+' : '−'}${Math.abs(g.pct).toFixed(1)}% over your cost${r}. ${left ? `${cap(units(row, left))} left after it fills.` : 'Nothing left after it fills.'}</span>`}</dd></div>`;
 }
@@ -544,7 +573,8 @@ function closeForm(t, duration) {
     <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="${t.original && t.original.qty > held ? 'Percent of the original position' : 'Percent of the position'}">${chips}</div></div>${portionLine(t) ? `<span class="shares-detail">${esc(portionLine(t))}</span>` : ''}</dd></div>
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark</span></dd></div>
     <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span></dd></div>
-    <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>` : ''}`;
+    <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
+    ${sessionRow(t)}` : ''}`;
 }
 
 /** what the close brings in (or costs, for a short) and what it makes over your cost */
@@ -635,8 +665,8 @@ export function renderPositionTradeSheet(form = true) {
       ? `Schwab won't take orders to ${INSTRUCTION_WORDS[row.qty > 0 ? (row.tradeAs === 'OPTION' ? 'SELL_TO_CLOSE' : 'SELL') : (row.tradeAs === 'OPTION' ? 'BUY_TO_CLOSE' : 'BUY_TO_COVER')]} more than you hold, so shares in a limit get their stop paired with it, and the rest get one stop. While ${t.paired.length === 1 ? 'the limit is' : 'the limits are'} placed again, ${units(row, pairedQty)} ${have(pairedQty)} no stop for a moment.`
       : t.steps.some(s => s.kind !== 'place') ? 'Other stops are cancelled first, then Schwab swaps the nearest one for the new stop.' : ''}${t.kept ? (t.kind === 'stop' ? ' Tighter stops stay where they are.' : ' Stops already past breakeven stay where they are.') : ''} A triggered stop becomes a market order and can fill past it.`.trim();
   const closeWords = () => `${cap(INSTRUCTION_WORDS[closingInstruction(row.tradeAs, row.qty > 0)])} ${(t.close.qty || 0).toLocaleString('en-US')} ${row.label}`
-    + (t.close.type === 'LIMIT' ? `, limit ${px(t.planError ? t.close.price : t.price)}` : ' at market');
-  const confirm = t.kind === 'close' ? closeWords() : t.kind === 'target' ? `Place target ${px(t.price)}` : t.planError ? 'Set stop' : `Set stop ${px(t.stop)}`;
+    + (t.close.type === 'LIMIT' ? `, limit ${px(t.planError ? t.close.price : t.price)}${row.tradeAs === 'OPTION' ? '' : sessionTail(t.session)}` : ' at market');
+  const confirm = t.kind === 'close' ? closeWords() : t.kind === 'target' ? `Place target ${px(t.price)}${row.tradeAs === 'OPTION' ? '' : sessionTail(t.session)}` : t.planError ? 'Set stop' : `Set stop ${px(t.stop)}`;
   const orders = t.steps.map(s => s.kind === 'cancel' ? { cancel: s.orderId } : s.kind === 'replace' ? { replace: s.orderId, with: s.order } : { place: s.order });
   const settled = t.sent && !state.posTradeBusy;
   const blocked = (t.choose && !t.mode) || !!t.planError;

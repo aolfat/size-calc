@@ -2,6 +2,7 @@
 // Schwab orders: the shares entry (market, limit, stop or stop limit) that triggers a stop, stops and market closes for held positions, price ticks, and ticket checks.
 
 /** @typedef {'DAY' | 'GOOD_TILL_CANCEL'} StopDuration */
+/** @typedef {'NORMAL' | 'AM' | 'PM' | 'SEAMLESS'} OrderSession when a limit works: regular hours, pre-market, after hours, or Ext (all three) */
 
 /**
  * Snap a stop to Schwab's tick (cents from $1 up, four decimals below), rounding toward the entry
@@ -97,11 +98,11 @@ export function closeMarketOrder(p) {
 }
 
 /**
- * A limit that closes a held position: a target.
- * @param {{ symbol: string, assetType: TradeAs, isLong: boolean, qty: number, price: number, duration: StopDuration }} p
+ * A limit that closes a held position: a target, in regular hours unless a session says otherwise (stocks and ETFs only).
+ * @param {{ symbol: string, assetType: TradeAs, isLong: boolean, qty: number, price: number, duration: StopDuration, session?: OrderSession }} p
  */
 export function closeLimitOrder(p) {
-  return { orderType: 'LIMIT', session: 'NORMAL', duration: p.duration, orderStrategyType: 'SINGLE', price: p.price, orderLegCollection: closingLeg(p) };
+  return { orderType: 'LIMIT', session: p.assetType === 'OPTION' ? 'NORMAL' : p.session || 'NORMAL', duration: p.duration, orderStrategyType: 'SINGLE', price: p.price, orderLegCollection: closingLeg(p) };
 }
 
 /** Two orders where the first to fill cancels the other: a target and its stop. @param {object} a @param {object} b */
@@ -186,4 +187,22 @@ export function inRegularHours(ms) {
   if (part('weekday') === 'Sat' || part('weekday') === 'Sun') return false;
   const mins = (Number(part('hour')) % 24) * 60 + Number(part('minute'));
   return mins >= 9 * 60 + 30 && mins < 16 * 60;
+}
+
+/** a limit's session in a few words, for the review: 'pre-market', 'after hours', 'extended hours' */
+export const SESSION_WORDS = { NORMAL: 'regular hours', AM: 'pre-market', PM: 'after hours', SEAMLESS: 'extended hours' };
+
+/**
+ * Whether a limit in that session works now: pre-market 7:00 to 9:25, after hours 16:05 to 20:00, Ext 7:00 to 20:00, regular
+ * 9:30 to 16:00, weekdays New York time (Schwab's hours). Exchange holidays are not known here.
+ * @param {number} ms @param {OrderSession} session @returns {boolean}
+ */
+export function inOrderSession(ms, session) {
+  if (session === 'NORMAL' || !SESSION_WORDS[session]) return inRegularHours(ms);
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ms));
+  const part = (/** @type {string} */ type) => parts.find(p => p.type === type)?.value || '';
+  if (part('weekday') === 'Sat' || part('weekday') === 'Sun') return false;
+  const mins = (Number(part('hour')) % 24) * 60 + Number(part('minute'));
+  const [from, to] = session === 'AM' ? [7 * 60, 9 * 60 + 25] : session === 'PM' ? [16 * 60 + 5, 20 * 60] : [7 * 60, 20 * 60];
+  return mins >= from && mins < to;
 }

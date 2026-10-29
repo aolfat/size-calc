@@ -61,6 +61,10 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   Opening Close reads the Journal first when signed in and not read yet (readPositionJournalForClose, alongside the Positions re-read), so the chips start on the right base.
   A trim's detail shows **Left after** ('200 shares · This closes 25% of your original 400 shares, leaving 50%.'), typing included.
   The spread close keeps its 25 / 50 / 75 / All of what's held.
+  **Works in** (stocks and ETFs, a limit close and a target; setPositionSession, ticket.session, not remembered): Regular (NORMAL, the default), Pre (AM, 7:00 to 9:25), After (PM, 16:05 to 20:00) or Ext (SEAMLESS, all three), New York time.
+  Only the limit takes the session: the stop paired with it stays NORMAL, since Schwab's stops trigger in regular hours only, and the review warns that nothing stops the shares outside them.
+  The steps and the send button name the session ('limit $41.10 (after hours)'), and the hours warning follows it (inOrderSession in core/orders.js).
+  Market orders and options stay in regular hours; overnight (thinkorswim's EXTO) isn't offered, since Schwab's API documents no session for it.
   **Limit in R** (#posCloseR, R chips 1R 2R 3R 5R in #posCloseRChips, close.r): the chart's Target in R on the close ticket, so 'sell half at 3R' is the 50% chip and the 3R chip; a chip sets the limit that many R from your cost (rTargetPrice, the same 1R as the chart: rUnit / positionRUnit), typing R moves the price, and typing a price clears the R and the box shows the price in R.
   The note under it says what 1R is and where it's from; no risk to count from greys the box and chips out with why.
   The Estimate counts R too, at the mark for a market close and at the limit for a limit ('· 2.0R').

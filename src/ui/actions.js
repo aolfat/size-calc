@@ -22,7 +22,7 @@ import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
-import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionStopAt, setPositionStopDuration, setPositionStopPrice, toggleREdit } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -387,6 +387,7 @@ export const actions = {
   refreshPositions: () => refreshPositions(true),
   openPositionTrade: el => openPositionTrade(arg(el), el.dataset.arg2),
   setPositionStopDuration: el => setPositionStopDuration(arg(el)),
+  setPositionSession: el => setPositionSession(arg(el)),
   setPositionBeMode: el => setPositionBeMode(arg(el)),
   placePositionTrade: () => placePositionTrade(),
   setCloseType: el => setCloseType(arg(el)),

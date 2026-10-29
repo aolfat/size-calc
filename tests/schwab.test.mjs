@@ -97,6 +97,24 @@ test('a ticket is refused when the stop is already through the market or the siz
   assert.match(err({ isLong: true, stop: 98, type: 'index', symbol: 'SPX' }), /not a stock or ETF/);
 });
 
+test('a sell limit\'s session: pre-market 7:00 to 9:25, after hours 16:05 to 20:00, Ext 7:00 to 20:00, weekdays in New York', async () => {
+  const { run } = await app();
+  // Monday 2026-10-05, New York on daylight time (UTC-4): 11:00 UTC is 7:00
+  const at = (h, m, s, day = 5) => run(`inOrderSession(Date.UTC(2026, 9, ${day}, ${h}, ${m}), '${s}')`);
+  assert.equal(at(11, 0, 'AM'), true);
+  assert.equal(at(13, 25, 'AM'), false);
+  assert.equal(at(14, 0, 'AM'), false, 'regular hours');
+  assert.equal(at(20, 4, 'PM'), false);
+  assert.equal(at(20, 5, 'PM'), true);
+  assert.equal(at(23, 59, 'PM'), true);
+  assert.equal(at(0, 0, 'PM', 6), false, '20:00');
+  assert.equal(at(10, 59, 'SEAMLESS'), false);
+  assert.equal(at(14, 0, 'SEAMLESS'), true);
+  assert.equal(at(23, 59, 'SEAMLESS'), true);
+  assert.equal(at(14, 0, 'NORMAL'), true);
+  assert.equal(at(14, 0, 'SEAMLESS', 10), false, 'Saturday');
+});
+
 test('regular hours are weekdays 9:30 to 16:00 in New York', async () => {
   const { run } = await app();
   // Monday 2026-10-05, New York on daylight time (UTC-4)
