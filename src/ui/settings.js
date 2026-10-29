@@ -93,7 +93,7 @@ export function cloudRehydrate() {
     updateSchwabUi(); // the worker URL syncs
     renderUsdPresets();
     recalcAll();
-    if (state.journalView) renderJournal(); // journal_fees, journal_deck_pnl and journal_review_from sync
+    if (state.journalView) renderJournal(); // journal_fees, journal_deck_pnl, journal_review_from and journal_funds sync
   } finally { state.cloudSuppress = false; }
 }
 

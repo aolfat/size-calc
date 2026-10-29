@@ -156,6 +156,12 @@
 .jr-status { font-size: 12.5px; color: var(--amber); }
 .jr-status.journal-buy { color: var(--green); }
 .jr-head .pos-link { margin-left: auto; font-size: 12.5px; }
+.jr-head .pos-link + .pos-link { margin-left: 0; }
+/* Setup on: what a leveraged or inverse fund is a bet on, typed in for a ticker the built-in list doesn't know */
+.jr-fund-edit { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.jr-fund-edit input { width: 140px; padding: 6px 10px; font: inherit; font-size: 13px; text-transform: uppercase; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; }
+.jr-fund-edit input:focus { outline: none; border-color: var(--blue); }
+.jr-fund-edit .hint { flex: 1 1 100%; }
 .jr-row { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; align-items: start; padding: 8px 0; border-top: 1px solid var(--border); }
 .jr-label { font-size: 12.5px; color: var(--text2); padding-top: 6px; }
 .jr-missing .jr-label { color: var(--amber); }

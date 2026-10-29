@@ -191,13 +191,18 @@ The Journal tab: imports, trades and spreads, fees, your stops and deletes, bars
   A library change redraws the Journal under the sheet, and a trade labelled with a setup merged away shows the kept one once.
   No schema change: the short words live in library_items.settings.
 
-  **Leveraged and inverse ETFs** (owner request: SQQQ to short QQQ, a setup read on QQQ): shares of a fund in LEV_REVERSE (core/lev-etfs.js, the Tools finder's map) are a bet on its underlying (levFundOf, withSetupOn in core/journal.js).
-  The trade gets setupOn (QQQ) and setupLev (−3), and an inverse fund's bias flips, so long SQQQ is Short QQQ in the list, the phone card and the page head ('Short QQQ · 100'), its setups read in short words, and the side filter and side stats count it as a short.
+  **Leveraged and inverse ETFs** (owner request: SQQQ to short QQQ, TQQQ, single-stock funds, a setup read on what they track): shares of a fund are a bet on its underlying (fundOf, withSetupOn in core/journal.js).
+  It knows a fund two ways: the built-in list (LEV_REVERSE in core/lev-etfs.js, the Tools finder's map: about 400 funds, index, sector, commodity, crypto and single-stock, each with its factor) and yours, which win.
+  Yours are `journal_funds`, a synced setting (CLOUD_KEYS; migration 20261111000000_journal_funds.sql lets the settings table take it): a JSON object of ticker → the underlying it moves with ('NVDA'), against ('-QQQ'), or '' to keep a listed fund on itself (parseFunds keeps it clean; withFund stores only what differs from the list).
+  Yours apply to every trade in the ticker, so one pick covers all your SQQQ or XYZL trades.
+  The trade gets setupOn (QQQ) and setupLev (−3, or ±1 for one of yours), and an inverse fund's bias flips, so long SQQQ is Short QQQ in the list, the phone card and the page head ('Short QQQ · 100'), its setups read in short words, and the side filter and side stats count it as a short.
   direction stays what was bought, so the P&L, stop and R math are untouched.
   The trade page charts it like an option: the fund's 5 minutes, the underlying's beside them (Underlying), the underlying's daily (where the setup is); tradeBarSymbols keeps both symbols' bars, the fund last so the features' lookback stays on it.
   tradeUnderlying names the underlying, so a QQQ focus ticker counts as traded.
-  The Review section's **Setup on** row (setupOnRow, 'SQQQ is −3x QQQ') switches one trade back to the fund: setSetupOn saves trade_reviews.setup_on (migration 20261111000000_setup_on.sql), the trade's own symbol to keep it on the fund, null for the underlying (the default, so older trades need no row), and the page's charts load again (reloadJournalCharts).
-  setup_on is read on its own query in loadTradeReviews, so before the push every fund trade reads on its underlying and the switch says the database needs the update.
+  The Review section's **Setup on** row (setupOnRow in ui/journal-review.js: 'SQQQ is −3x QQQ', 'XYZS is QQQ inverse, set by you') has the underlying and the ticker as chips (setFundOn: the ticker keeps every trade in it on itself, the underlying puts them back) and Change.
+  Change (editFund, state.fundEdit) opens a box for the underlying, Moves with it / Inverse (setFundInverse), Save (saveFund; blank or the ticker itself = on itself), Cancel, and Use the built-in … when yours overrides the list (resetFund); each save redraws the Journal and loads the page's charts again (reloadJournalCharts).
+  A share trade the list doesn't know has no row, only **Setup on another ticker** in the review head, which opens the same box.
+  The setting is kept under the settings table's 2000 characters (FUNDS_MAX: a save past it says so).
   Options on a fund, spreads and futures stay on what was traded; features still read the fund (featureSymbol's $underlying is the fund), and Stats' By underlying still groups by the symbol traded.
 
   **Calendar and Stats** (slice 4: core/journal-stats.js pure, ui/journal-stats.js; tabs Trades | Calendar | Missed | Stats | Setups | Model books | Features | Fills, the side, symbol and fee choices apply to all but Missed; countedTrades: closed, not deleted, not before your history). groupStats is the same for every group: trades, net, average, median, win rate, average win and loss, profit factor (null without losses), expectancy, average R, big losses (worse than −1.5R, BIG_LOSS_R), thin under 10 (THIN).

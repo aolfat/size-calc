@@ -7,7 +7,8 @@
 // shape are rows in Supabase's trades table, each claiming fills by id: two or more trades on one symbol become one
 // merged trade, option contracts one spread, and a row with one trade keeps it on its own (shapeTrades). Option legs
 // opened in one multi-leg order that no row claims become a spread on their own. The side is the bet on the stock (bias).
-// Shares of a leveraged or inverse ETF are a bet on its underlying (setupOn): long SQQQ is short QQQ, unless you keep it on the fund.
+// Shares of a leveraged or inverse ETF are a bet on its underlying (setupOn): long SQQQ is short QQQ. The built-in list
+// (LEV_REVERSE) knows most funds; yours (journal_funds, synced) adds any ticker, changes one, or keeps one on itself.
 import { futuresSpec } from './futures.js';
 import { LEV_REVERSE } from './lev-etfs.js';
 import { expiryCloseMs } from './options.js';
@@ -39,15 +40,14 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
  * parts = the trade keys it's made of.
  * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
- * setupOn = the symbol a leveraged or inverse ETF's trade is a bet on (SQQQ's QQQ), setupLev its daily factor (−3); bias is
- * then the bet on that symbol, so a long inverse fund is short. null when it's on the symbol traded.
+ * setupOn = the symbol a leveraged or inverse ETF's trade is a bet on (SQQQ's QQQ), setupLev its daily factor (−3; ±1 for
+ * one of yours); bias is then the bet on that symbol, so a long inverse fund is short. null when it's on the symbol traded.
  * via = an option delivered it: the option's trade closed at $0 by an assignment or exercise, or the shares' trade opened
  * or closed by one at the strike (delivered: the option is older than the history). From Schwab's transactions.
  * peakQty = the most held at once (a single or merged trade; a spread has none).
  * realized = the P&L each exit took, when it took it (a trim's profit is that day's, even while the rest stays open).
  * @typedef {{ at: string, qty: number, pnl: number }} Realized one exit: its time, the quantity it closed, its P&L (net after fees)
- * @typedef {{ stop?: number | null, deleted?: boolean, setupOn?: string | null }} TradeReview setupOn: the trade's own symbol keeps a
- *   leveraged ETF's trade on the fund (null = on its underlying)
+ * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
  * @typedef {{ id: string, account: string, fill_ids: string[], created_at?: string }} SavedTrade a trades row
  */
 
@@ -389,7 +389,8 @@ export function withFees(trade, fees, orderTotals, afterFees) {
  * flagged: their fills still group with the rest (so the trades around them add up), and the view leaves them out.
  * Imports can't bring one back, since the mark is on the trade key, not on Schwab's records.
  * @param {Fill[]} fills @param {{ kind: string, account?: string, data: any }[]} records
- * @param {Record<string, TradeReview>} [reviews] @param {{ afterFees?: boolean, now?: number, saved?: SavedTrade[] }} [opts]
+ * @param {Record<string, TradeReview>} [reviews]
+ * @param {{ afterFees?: boolean, now?: number, saved?: SavedTrade[], funds?: Record<string, string> }} [opts] funds: yours (parseFunds)
  */
 export function journalTrades(fills, records, reviews = {}, opts = {}) {
   const stops = stopOrdersFrom(records);
@@ -401,7 +402,7 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
     const rv = reviews[t.key] || {};
     return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.deleted };
   });
-  return shapeTrades(legs, opts.saved || [], reviews, stops).map(t => withSetupOn(withBias(t), reviews[t.key]?.setupOn))
+  return shapeTrades(legs, opts.saved || [], reviews, stops).map(t => withSetupOn(withBias(t), opts.funds || {}))
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
 }
 
@@ -636,18 +637,72 @@ function spreadBias(t) {
 /** @param {Trade} t @returns {Trade} */
 const withBias = t => t.legs ? { ...t, ...spreadBias(t) } : { ...t, bias: legBias(t), structure: '' };
 
-/** the leveraged or inverse ETF a stock trade is in (SQQQ: QQQ at −3), or null: options, spreads and futures aren't. @param {{ symbol: string, assetType: string, legs?: unknown }} t */
-export const levFundOf = t => !t.legs && t.assetType !== 'OPTION' && t.assetType !== 'FUTURE' ? LEV_REVERSE[t.symbol] || null : null;
+/** the longest ticker a fund of yours names; Tradier's forms ('BRK.B') included */
+const FUND_SYMBOL = /^[A-Z][A-Z0-9.]{0,9}$/;
+
+/**
+ * Your funds (journal_funds, a synced setting): ticker → the underlying it moves with ('NVDA'), against ('-QQQ'), or ''
+ * for none (it's its own: a fund the built-in list knows, kept on itself). Anything else is dropped.
+ * @param {string | null | undefined} text @returns {Record<string, string>}
+ */
+export function parseFunds(text) {
+  let raw;
+  try { raw = JSON.parse(text || '{}'); } catch(e) { return {}; }
+  /** @type {Record<string, string>} */
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [sym, v] of Object.entries(raw)) {
+    if (!FUND_SYMBOL.test(sym) || typeof v !== 'string') continue;
+    const under = v.replace(/^-/, '');
+    if (v === '' || (FUND_SYMBOL.test(under) && under !== sym)) out[sym] = v;
+  }
+  return out;
+}
+
+/**
+ * What a stock trade's symbol is a bet on: yours first, then the built-in list; null for options, spreads, futures and
+ * anything that's its own. lev: the list's daily factor (−3), or ±1 for one of yours (only its sign is known).
+ * @param {{ symbol: string, assetType: string, legs?: unknown }} t @param {Record<string, string>} [funds]
+ * @returns {{ under: string, lev: number, mine: boolean } | null}
+ */
+export function fundOf(t, funds = {}) {
+  if (t.legs || t.assetType === 'OPTION' || t.assetType === 'FUTURE') return null;
+  const v = funds[t.symbol];
+  if (v === '') return null;
+  if (v) return { under: v.replace(/^-/, ''), lev: v.startsWith('-') ? -1 : 1, mine: true };
+  const listed = LEV_REVERSE[t.symbol];
+  return listed ? { ...listed, mine: false } : null;
+}
+
+/** the built-in list's word on a symbol: what it moves with and how much, or null. @param {string} symbol */
+export const listedFund = symbol => LEV_REVERSE[symbol] || null;
+
+/**
+ * Your funds with one ticker changed: under '' = it's its own, a symbol with inverse = it moves against it, null = back to
+ * the built-in list (or nothing). @param {Record<string, string>} funds @param {string} symbol
+ * @param {string | null} under @param {boolean} [inverse] @returns {Record<string, string>}
+ */
+export function withFund(funds, symbol, under, inverse = false) {
+  const out = { ...funds };
+  delete out[symbol];
+  if (under === null) return out;
+  const v = under === '' || under === symbol ? '' : `${inverse ? '-' : ''}${under}`;
+  const listed = LEV_REVERSE[symbol];
+  // the same as the list says: nothing of yours to keep
+  if (listed ? v === `${listed.lev < 0 ? '-' : ''}${listed.under}` : v === '') return out;
+  out[symbol] = v;
+  return out;
+}
 
 /**
  * A leveraged or inverse ETF's trade is a bet on its underlying: its setup reads there (setupOn), and an inverse fund's
- * bias flips (long SQQQ is short QQQ). `own` = the trade's symbol keeps it on the fund (your review's setupOn).
- * @param {Trade} t @param {string | null} [own]
+ * bias flips (long SQQQ is short QQQ).
+ * @param {Trade} t @param {Record<string, string>} funds yours
  * @returns {Trade}
  */
-function withSetupOn(t, own) {
-  const fund = levFundOf(t);
-  if (!fund || own === t.symbol) return { ...t, setupOn: null, setupLev: null };
+function withSetupOn(t, funds) {
+  const fund = fundOf(t, funds);
+  if (!fund) return { ...t, setupOn: null, setupLev: null };
   const bias = fund.lev < 0 ? (t.bias === 'long' ? 'short' : t.bias === 'short' ? 'long' : t.bias) : t.bias;
   return { ...t, setupOn: fund.under, setupLev: fund.lev, bias };
 }

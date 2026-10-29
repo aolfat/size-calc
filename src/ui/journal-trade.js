@@ -80,7 +80,7 @@ function holdDays(t) {
  */
 export function openJournalTrade(key, nav) {
   // a fresh review: no half-picked setup, new-item box, search or note draft carried over from another trade
-  Object.assign(state, { shotView: null, shotDeleteArmed: false, setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNewShort: '', reviewNoteDraft: null, reviewMarketOwn: false, reviewSearch: { setup: '', tactic: '' } });
+  Object.assign(state, { shotView: null, shotDeleteArmed: false, setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNewShort: '', reviewNoteDraft: null, reviewMarketOwn: false, fundEdit: null, reviewSearch: { setup: '', tactic: '' } });
   dropCharts(state.journalTrade);
   state.journalTrade = {
     key, nav: nav?.includes(key) ? nav : journalNavKeys(key), five: [], under: [], daily: [], viewD: { count: 63, offset: 0 },

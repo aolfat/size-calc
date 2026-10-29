@@ -37,7 +37,7 @@ import { toggleTradeFeatures } from './journal-features.js';
 import { addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, cancelSetupEdit, editSetup, newLibrarySetup, startLibraryChoice, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, reviewSearchInput, reviewSearchPick, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
-import { clearJournalPicks, clearTradeStop, setSetupOn, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalFilters, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
+import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund, saveFund, setFundInverse, setFundOn, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalFilters, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, renderShares, sharesQtyChanged } from './shares.js';
@@ -253,7 +253,12 @@ export const actions = {
   addReviewLink: el => withPageTrade(t => addReviewLink(t, arg(el), el.tagName === 'INPUT' ? /** @type {HTMLInputElement} */ (el).value : undefined)),
   removeReviewLink: el => withPageTrade(t => removeReviewLink(t, arg(el), el.dataset.arg2 || '')),
   setSetupGrade: el => withPageTrade(t => setSetupGrade(t, arg(el))),
-  setSetupOn: el => withPageTrade(t => setSetupOn(t, arg(el))),
+  setFundOn: el => withPageTrade(t => setFundOn(t, arg(el))),
+  editFund: () => withPageTrade(t => editFund(t)),
+  setFundInverse: el => withPageTrade(t => setFundInverse(t, arg(el))),
+  saveFund: () => withPageTrade(t => saveFund(t)),
+  cancelFundEdit: () => cancelFundEdit(),
+  resetFund: () => withPageTrade(t => resetFund(t)),
   setPlanFollowed: el => withPageTrade(t => setPlanFollowed(t, arg(el))),
   reviewNoteInput: el => withPageTrade(t => reviewNoteInput(t, /** @type {HTMLTextAreaElement} */ (el).value, arg(el))),
   reviewNoteSave: el => withPageTrade(t => reviewNoteSave(t, /** @type {HTMLTextAreaElement} */ (el).value, arg(el))),

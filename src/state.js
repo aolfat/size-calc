@@ -98,6 +98,7 @@ export function createState() {
     reviewNewKind: '', // + New is open for this kind
     reviewNewName: '', // what's typed in it
     reviewNewShort: '', // and its words on a short (an action or pattern)
+    fundEdit: null, // the trade page's Setup on editor: { symbol, inverse } while you pick what a ticker is a bet on
     reviewSearch: { setup: '', tactic: '' }, // what's typed in the trade page's setup and tactic searches
     reviewNoteDraft: null, // { key, which: 'entry' | 'exit', text }: the note being typed, so a redraw never loses it
     journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
