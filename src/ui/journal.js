@@ -8,7 +8,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
 import { combineCandidates, fillBias, fundOf, holdWords, journalTrades, legWords, listedFund, multiplierOf, withFund, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
-import { activePeriods, exitDays, periodKey, PERIODS, stepPeriod, switchPeriod } from '../core/journal-stats.js';
+import { activePeriods, exitDays, isRangeKey, periodKey, periodSpan, PERIODS, rangeKey, stepPeriod, switchPeriod } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
@@ -556,12 +556,20 @@ export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by
 export function journalThisMonth() { state.journalMonth = thisMonth(); state.journalReviewPeriod = null; renderJournal(); }
 /** the trades the stats count from: the side, symbol and setup filters applied, as the Stats tab shows them */
 const statsTrades = () => onSetupFilter(filtered(currentTrades(), t => t.bias));
-/** All time / Month / Week / Day on the stats: a new unit keeps your place (the newest close in what's shown now) */
+/** All time / Month / Week / Day / Dates on the stats: a new unit keeps your place (the newest close in what's shown now; Dates start as the span shown) */
 export function setJournalPeriod(unit) {
-  const to = PERIODS.includes(unit) ? unit : 'all';
+  const to = PERIODS.includes(unit) || unit === 'range' ? unit : 'all';
   if (to === state.journalPeriod) return;
   state.journalPeriodKey = to === 'all' ? '' : switchPeriod(statsTrades(), state.journalPeriod, state.journalPeriodShown, to);
   state.journalPeriod = to;
+  renderJournal();
+}
+/** Dates: a new first or last day, the other kept (swapped when they cross) */
+export function setStatsDates(end, value) {
+  if (state.journalPeriod !== 'range') return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return renderJournal(); // a cleared box gets its day back
+  const [from, to] = isRangeKey(state.journalPeriodShown) ? periodSpan('range', state.journalPeriodShown) : [value, value];
+  state.journalPeriodKey = end === 'to' ? rangeKey(from, value) : rangeKey(value, to);
   renderJournal();
 }
 /** ‹ or ›: the nearest day, week or month with closed trades before or after the one shown */

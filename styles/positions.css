@@ -360,6 +360,7 @@ button.jc-day:hover { border-color: var(--border2); }
 .jc-stats dd { font-size: 16px; }
 .js-period { margin-bottom: 12px; }
 .js-period-nav { display: inline-flex; align-items: center; gap: 6px; }
+.js-range { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--text2); }
 .js-period .seg button { padding: 6px 12px; font-size: 12px; }
 .jc-nav:disabled { opacity: 0.4; cursor: default; }
 .jc-out { opacity: 0; }
@@ -371,6 +372,9 @@ button.jc-day:hover { border-color: var(--border2); }
   .jc-n, .jc-wide { display: none; }
   .jc-grid th { padding: 0 2px; }
   .js-period .jc-title { min-width: 0; }
+  .js-range { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .js-range label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .js-range .jr-from input { margin-left: 0; width: 100%; min-width: 0; }
 }
 /* the Journal's stats */
 .js-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 4px 0 10px; }

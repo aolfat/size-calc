@@ -140,8 +140,8 @@ export function createState() {
     periodReviewsError: '', // why they couldn't be read (the table not pushed yet): the numbers still show, nothing saves
     periodOverallError: '', // why the overall notes (went_well, work_on, note) couldn't be read (their columns not pushed yet): those boxes are off, the rest saves
     periodNoteDraft: null, // { unit, key, field, text }: a part's note, an overall note or the rule for next week being typed, saved on blur
-    journalPeriod: 'all', // the stats cover: all | day | week | month
-    journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday) or 'YYYY-MM'; empty = the newest with closed trades
+    journalPeriod: 'all', // the stats cover: all | day | week | month | range (Dates)
+    journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday), 'YYYY-MM' or 'YYYY-MM-DD..YYYY-MM-DD' (Dates); empty = the newest with closed trades
     journalPeriodShown: '', // the period the stats last showed (‹ › step from it)
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed

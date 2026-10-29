@@ -2,13 +2,13 @@
 // month of realized P&L by day (each exit on its own day, trims included; each day with its win rate and profit factor)
 // under the month's own numbers, with weekly totals; a day tapped opens its notebook page (ui/journal-notebook.js), a week's total its
 // review (ui/journal-week.js, Review the month the month's), This month comes back to today's. The stats cover all time (closed trades) or one day, week or month of exits, the
-// same ones the calendar adds up (‹ › step through the ones with exits): the headline numbers, the equity curve with its drawdown, results by month (or by day),
+// same ones the calendar adds up (‹ › step through the ones with exits), or the exits between two dates you pick: the headline numbers, the equity curve with its drawdown, results by month (or by day),
 // streaks and the breakdowns, each group with the same stats, thin under 10. The Journal's side, symbol and fee choices
 // apply here too.
 // A dot marks a day's economic releases, with a hover card of their times (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, monthlyResults, nyParts, periodKey, periodResults, PERIODS, stepPeriod, streaks, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, calendarMonth, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, stepPeriod, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
 import { SANS_FONT } from '../lib/media.js';
 import { zoneAbbr, zoneClock, zoneDial } from '../lib/zone.js';
 import { state } from '../state.js';
@@ -110,27 +110,42 @@ export function periodName(unit, key) {
 }
 const validKey = (unit, key) => unit === 'month' ? /^\d{4}-\d{2}$/.test(key) : /^\d{4}-\d{2}-\d{2}$/.test(key);
 
-/** the period the stats show (state.journalPeriod: all | day | week | month) and its trades: all time's closed ones, a period's exits */
+/** the period the stats show (state.journalPeriod: all | day | week | month | range) and its trades: all time's closed ones, a period's exits */
 export function statsScope(trades) {
-  const unit = PERIODS.includes(state.journalPeriod) ? state.journalPeriod : 'all';
+  const unit = PERIODS.includes(state.journalPeriod) || state.journalPeriod === 'range' ? state.journalPeriod : 'all';
   if (unit === 'all') return { unit, key: '', active: [], list: countedTrades(trades) };
+  const picked = state.journalPeriodKey, today = nyParts(new Date().toISOString()).day;
+  if (unit === 'range') {
+    // your dates, else the first exit to the last
+    const key = isRangeKey(picked) ? picked : switchPeriod(trades, 'all', '', 'range') || `${today}..${today}`;
+    state.journalPeriodShown = key;
+    return { unit, key, active: [], list: inPeriod(trades, unit, key) };
+  }
   const active = activePeriods(trades, unit);
-  const picked = state.journalPeriodKey;
-  const key = validKey(unit, picked) ? periodKey(picked, unit) : active[0] || periodKey(nyParts(new Date().toISOString()).day, unit);
+  const key = validKey(unit, picked) ? periodKey(picked, unit) : active[0] || periodKey(today, unit);
   state.journalPeriodShown = key; // ‹ and › step from here
   return { unit, key, active, list: inPeriod(trades, unit, key) };
+}
+
+/** a range's first and last day as date boxes; changing either keeps the other */
+function rangeInputs(key) {
+  const [from, to] = periodSpan('range', key);
+  const box = (end, value, label) => `<label class="jr-from">${label} <input type="date" id="journalRange${end === 'from' ? 'From' : 'To'}" value="${value}" data-change="setStatsDates" data-arg="${end}" aria-label="Stats ${label.toLowerCase()} this day" /></label>`;
+  return `<span class="js-range">${box('from', from, 'From')}${box('to', to, 'To')}</span>`;
 }
 
 function periodBar({ unit, key, active }) {
   const on = v => `class="${unit === v ? 'active' : ''}" aria-pressed="${unit === v}"`;
   const p = (v, label) => `<button ${on(v)} data-action="setJournalPeriod" data-arg="${v}">${label}</button>`;
   const off = by => stepPeriod(active, key, by) ? '' : ' disabled';
-  return `<div class="jc-head js-period">
-    <div class="seg" aria-label="Period">${p('all', 'All time')}${p('month', 'Month')}${p('week', 'Week')}${p('day', 'Day')}</div>
-    ${unit === 'all' ? '' : `<span class="js-period-nav"><button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="-1" aria-label="Earlier ${unit} with trades"${off(-1)}>‹</button>
+  const nav = unit === 'all' ? '' : unit === 'range' ? rangeInputs(key)
+    : `<span class="js-period-nav"><button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="-1" aria-label="Earlier ${unit} with trades"${off(-1)}>‹</button>
       <span class="jc-title">${esc(periodName(unit, key))}</span>
       <button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="1" aria-label="Later ${unit} with trades"${off(1)}>›</button></span>
-      ${unit === 'day' ? `<button class="pos-link" data-action="pickJournalDay" data-arg="${key}">The day's trades</button>` : ''}`}
+      ${unit === 'day' ? `<button class="pos-link" data-action="pickJournalDay" data-arg="${key}">The day's trades</button>` : ''}`;
+  return `<div class="jc-head js-period">
+    <div class="seg" aria-label="Period">${p('all', 'All time')}${p('month', 'Month')}${p('week', 'Week')}${p('day', 'Day')}${p('range', 'Dates')}</div>
+    ${nav}
   </div>`;
 }
 
@@ -186,18 +201,23 @@ function rBars(dist, withR) {
     <div class="js-rbars">${dist.map(d => `<div class="js-rbar"><span class="js-rlabel">${esc(d.group)}</span><span class="js-rtrack"><span class="js-rfill ${d.group.startsWith('−') || d.group.startsWith('Under') ? 'neg' : 'pos'}" style="width:${Math.round((d.count / max) * 100)}%"></span></span><span class="js-rcount">${d.count || ''}</span></div>`).join('')}</div>`;
 }
 
-/** all time: by month; a month or a week: by day; a day needs neither */
-function overTime(unit, list) {
-  if (unit === 'all') return statTable('By month', monthlyResults(list).map(m => ({ group: monthName(m.month), stats: m })), '', 'Month');
-  if (unit === 'day') return '';
+/** all time, or dates over more than one month: by month; a month, a week or dates within a month: by day; a day needs neither */
+function overTime(unit, key, list) {
+  const span = unit === 'range' ? periodSpan(unit, key) : null;
+  if (unit === 'all' || (span && span[0].slice(0, 7) !== span[1].slice(0, 7))) return statTable('By month', monthlyResults(list).map(m => ({ group: monthName(m.month), stats: m })), '', 'Month');
+  if (oneDay(unit, key)) return '';
   const dayLabel = d => `${new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { weekday: 'short', timeZone: 'UTC' })} ${+d.slice(5, 7)}/${+d.slice(8)}`;
   return statTable('By day', periodResults(list, 'day').map(({ key, ...s }) => ({ group: dayLabel(key), stats: s })), 'The day of each exit.', 'Day');
 }
+/** a day, or dates that start and end on the same day */
+const oneDay = (unit, key) => unit === 'day' || (unit === 'range' && key.slice(0, 10) === key.slice(12));
+/** 'this week', 'these dates' */
+const scopeWords = unit => unit === 'range' ? 'these dates' : `this ${unit}`;
 
 export function statsView(trades) {
   if (!countedTrades(trades).length && !activePeriods(trades, 'day').length) return '<p class="hint">No closed trades match yet.</p>';
-  const scope = statsScope(trades), { unit, list } = scope;
-  if (!list.length) return `${periodBar(scope)}<p class="hint">${unit === 'all' ? 'No closed trades yet. A trim on an open trade counts in its day, week and month.' : `No exits this ${unit}.`}</p>`;
+  const scope = statsScope(trades), { unit, key, list } = scope;
+  if (!list.length) return `${periodBar(scope)}<p class="hint">${unit === 'all' ? 'No closed trades yet. A trim on an open trade counts in its day, week and month.' : unit === 'range' ? 'No exits between these dates.' : `No exits this ${unit}.`}</p>`;
   const b = breakdowns(list);
   const hold = b.holdWinners !== null || b.holdLosers !== null
     ? `Winners held ${b.holdWinners === null ? '—' : holdWords(b.holdWinners)} on average, losers ${b.holdLosers === null ? '—' : holdWords(b.holdLosers)}.` : '';
@@ -205,16 +225,16 @@ export function statsView(trades) {
     <div class="section-title js-sub">Equity</div>
     <div class="js-equity chart-wrap"><canvas id="journalEquity" height="180"></canvas></div>
     <p class="hint">P&amp;L added up trade by trade as they closed; the red is the drawdown from the running peak.</p>
-    ${overTime(unit, list)}
+    ${overTime(unit, key, list)}
     ${statTable('By symbol', b.bySymbol, b.concentration ? `<span style="color:var(--amber)">${esc(b.concentration.group)} made ${b.concentration.share}% of your gross gains: one name is carrying the results.</span>` : 'Options and spreads count under their underlying.')}
     ${statTable('By side', b.bySide)}
     ${statTable('By instrument', b.byInstrument)}
     ${statTable('By time of day', b.byTimeOfDay.map(r => ({ ...r, group: bucketWords(r.group) })), `When the trade opened (${zoneAbbr()}).`)}
-    ${unit === 'day' ? '' : statTable('By weekday', b.byWeekday, 'The day it opened.')}
+    ${oneDay(unit, key) ? '' : statTable('By weekday', b.byWeekday, 'The day it opened.')}
     ${statTable('By hold time', b.byHold, hold)}
     ${statTable('Scaled out or all at once', b.byExits, 'Scaled out: more than one exit.')}
     ${rBars(b.rDistribution, b.withR)}
-    <p class="hint">${unit === 'all' ? 'Closed trades only, by the day they closed' : `The exits taken this ${unit}, like the calendar: a trim counts here even while the rest is still open or closes later`} (New York time). Deleted trades and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
+    <p class="hint">${unit === 'all' ? 'Closed trades only, by the day they closed' : `The exits taken ${scopeWords(unit)}, like the calendar: a trim counts here even while the rest is still open or closes later`} (New York time). Deleted trades and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
 }
 
 /** the equity curve: running total (blue), its peak (dashed), the drawdown between them in red */
@@ -223,7 +243,7 @@ export function drawJournalEquity(trades) {
   if (!canvas || !canvas.getContext) return;
   const w = canvas.clientWidth;
   if (!w) return;
-  const { unit, list } = statsScope(trades);
+  const { unit, key, list } = statsScope(trades);
   const curve = equityCurve(list).points;
   // drawn from $0 before the first trade, so the first win or loss shows as a move
   const points = curve.length ? [{ at: curve[0].at, total: 0, peak: 0, drawdown: 0 }, ...curve] : [];
@@ -261,7 +281,7 @@ export function drawJournalEquity(trades) {
   ctx.strokeStyle = col('--blue'); ctx.lineWidth = 1.75;
   ctx.beginPath(); points.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.total)) : ctx.moveTo(x(i), y(p.total)))); ctx.stroke();
   // a day's curve is labelled by time, longer ones by date (New York)
-  const md = at => { const p = nyParts(at); return unit === 'day' ? zoneClock(p.day, p.time).replace(/^0/, '') : `${+p.day.slice(5, 7)}/${+p.day.slice(8)}`; };
+  const md = at => { const p = nyParts(at); return oneDay(unit, key) ? zoneClock(p.day, p.time).replace(/^0/, '') : `${+p.day.slice(5, 7)}/${+p.day.slice(8)}`; };
   ctx.fillStyle = col('--text3');
   ctx.fillText(md(points[0].at), padL, h - 6);
   const lastLabel = md(points[points.length - 1].at);
