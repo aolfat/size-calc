@@ -170,6 +170,58 @@ test('opening the tab loads the selected account live from Schwab, no Tradier ke
   assert.equal(elements.get('posCount').textContent, '4');
 });
 
+test('phones get a card per position: P/L and R up top, a stop ladder, a tap for the figures and buttons', async () => {
+  const net = network(schwabOk);
+  const { run, elements, state } = await app({ width: 390, fetch: net.fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  const html = () => elements.get('positionsSection').innerHTML;
+  const card = sym => html().split('<article').find(c => c.includes(`data-arg="${sym}"`)) || '';
+  assert.doesNotMatch(html(), /<table class="positions-table">/, 'no sideways table');
+  assert.doesNotMatch(html(), /togglePosColumnsMenu/, 'the cards have no columns to pick');
+  assert.match(html(), /<dt>Account<\/dt><dd class="">\$100,000<\/dd>/);
+  assert.match(html(), /<dt>Invested<\/dt><dd class="">\$6,200\.00<\/dd>/);
+  assert.match(html(), /<dt>Open P\/L<\/dt><dd class="pos-locked">\+\$700\.00<\/dd>/);
+  assert.match(html(), /class="pc-legend"/);
+  assert.equal((html().match(/<article class="pc/g) || []).length, 4);
+
+  const stock = card('TEST');
+  assert.match(stock, /<b>TEST<\/b><\/span><span class="pc-pnl pos-locked">\+\$500\.00/);
+  assert.match(stock, /\$50\.00 → <b>\$55\.00<\/b> · 100 sh/);
+  assert.match(stock, /\+10\.0% · \+2\.50R/, 'R off the stop now, signed out');
+  assert.match(stock, /pc-tick pc-stop/);
+  assert.match(stock, /pc-fill pos-locked/);
+  assert.match(stock, /Stop \$48\.00/);
+  assert.doesNotMatch(stock, /pc-more/, 'closed until tapped');
+
+  assert.match(card(OPT), /<b>TEST<\/b> <span class="pc-detail">55C 12\/18\/26<\/span>/, 'the strike first, so it survives the ellipsis');
+  assert.match(card(OPT), /2 ct/);
+  assert.match(card(OPT), /Stop past breakeven · \+\$100\.00 locked/);
+  assert.match(card('SHRT'), /−50 sh/);
+  assert.match(card('SHRT'), /covers 30 of 50/);
+  assert.match(card('ACAT'), /<span class="pc-pnl ">—<\/span>/, 'no cost basis, no P/L');
+  assert.match(card('ACAT'), /No stop/);
+
+  run("togglePosCard('TEST')");
+  assert.deepEqual([...state.posCardsOpen], ['TEST']);
+  assert.match(card('TEST'), /aria-expanded="true"/);
+  assert.match(card('TEST'), /<dt>Mkt val<\/dt><dd>\$5,500\.00<\/dd>/);
+  assert.match(card('TEST'), /<dt>Risk @ stop<\/dt><dd><span class="pos-loss">−\$200\.00<\/span>/);
+  for (const a of ['togglePositionChart', 'data-arg2="stop"', 'data-arg2="breakeven"', 'pos-act-close']) assert.match(card('TEST'), new RegExp(a));
+  run("togglePosCard('TEST')");
+  assert.doesNotMatch(card('TEST'), /pc-more/);
+});
+
+test('an option bought with no stop draws its ladder from zero: the premium is the risk', async () => {
+  const { run } = await app();
+  const html = run(`(() => { const p = positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, []); return positionCard(p.rows.find(r => r.option)); })()`);
+  assert.match(html, /No stop · max loss is premium/);
+  assert.match(html, /pc-cost" style="left:(\d+\.\d)%/);
+  const left = Number(html.match(/pc-cost" style="left:([\d.]+)%/)[1]), dot = Number(html.match(/pc-dot[^"]*" style="left:([\d.]+)%/)[1]);
+  assert.ok(left < dot, 'cost $2.50 left of the price $3.00');
+  assert.ok(left > 60, 'the bar starts at zero, so $2.50 sits most of the way along');
+});
+
 test('P/L columns are off until picked from Columns; picks and hiding the account value stay on this device', async () => {
   const day = path => path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json({ securitiesAccount: WITH_DAY }) : json({}, 404);
   const storage = connected();

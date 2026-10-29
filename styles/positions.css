@@ -53,6 +53,57 @@
   .positions-table th, .positions-table td { padding: 8px; }
 }
 
+/* Phones: a card per position instead of the sideways table (renderPositionsTable checks PHONE_MQ): P/L and R up top,
+   a ladder from the stop past your cost to the price, the stop line; a tap opens Mkt val, Stop, Risk @ stop and the buttons */
+.pc-tiles { display: flex; margin: 0 0 10px; border: 1px solid var(--border2); border-radius: 16px; overflow: hidden; }
+.pc-tiles > div { flex: 1 1 auto; min-width: 0; padding: 9px 12px; } /* each as wide as its figure, the rest shared: a five-figure sum fits */
+.pc-tiles > div + div { border-left: 1px solid var(--border2); }
+.pc-tiles dt { font-size: 12px; color: var(--text2); }
+.pc-tiles dd { margin: 2px 0 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-legend { display: flex; justify-content: flex-end; gap: 14px; margin: 0 2px 8px; font-size: 12px; color: var(--text2); }
+.pc-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.pc-key { display: inline-block; width: 3px; height: 10px; border-radius: 1px; }
+.pc-key.pc-stop { background: var(--amber); }
+.pc-key.pc-cost { background: var(--text); }
+.pc-key.pc-price { width: 9px; height: 9px; border-radius: 50%; background: var(--text2); }
+.pc-list { display: grid; gap: 10px; }
+.pc { background: var(--bg2); border: 1px solid var(--border2); border-radius: 20px; overflow: hidden; }
+.pc.pc-leg { margin-left: 16px; border-radius: 16px; background: var(--bg); }
+.pc-top { display: grid; gap: 4px; padding: 14px 16px 12px; cursor: pointer; }
+.pc-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.pc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-name b { font-size: 18px; font-weight: 700; }
+.pc-leg .pc-name b { font-size: 16px; }
+.pc-detail { font-size: 14px; color: var(--text2); }
+.pc-pnl { flex: none; font-size: 18px; font-weight: 700; white-space: nowrap; }
+.pc-sub { font-size: 13.5px; color: var(--text2); }
+.pc-sub > span { white-space: nowrap; }
+.pc-sub > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pc-sub b { color: var(--text); font-weight: 600; }
+.pc-sub .pos-loss, .pc-sub .pos-locked { font-weight: 600; }
+.pc-ladder { position: relative; height: 18px; margin: 6px 6px 2px; }
+.pc-track { position: absolute; left: 0; right: 0; top: 8px; height: 2px; border-radius: 1px; background: var(--bg4); }
+.pc-fill { position: absolute; top: 7.5px; height: 3px; border-radius: 2px; }
+.pc-fill.pos-loss { background: var(--red); }
+.pc-fill.pos-locked { background: var(--green); }
+.pc-tick { position: absolute; top: 1px; width: 2px; height: 16px; margin-left: -1px; border-radius: 1px; }
+.pc-tick.pc-stop { background: var(--amber); }
+.pc-tick.pc-cost { background: var(--text2); }
+.pc-dot { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); }
+.pc-dot.pos-loss { background: var(--red); }
+.pc-dot.pos-locked { background: var(--green); }
+.pc-note { font-size: 13px; color: var(--text2); }
+.pc-note.pos-locked { color: var(--green); font-weight: 500; }
+.pc-note.pos-partial { color: var(--amber); font-weight: 500; }
+.pc-more { display: grid; gap: 12px; padding: 12px 16px 14px; border-top: 1px solid var(--border2); }
+.pc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.pc-stats > div { min-width: 0; }
+.pc-stats dt { font-size: 12px; color: var(--text2); }
+.pc-stats dd { margin: 2px 0 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.pc-more .pos-acts { margin: 0; gap: 8px; font-size: 13px; }
+.pc-more .pos-act { flex: 1 1 auto; padding: 9px 10px; font-size: 14px; border-radius: 10px; border-color: transparent; color: var(--text); } /* Chart, Stop, BE stop, Close share one row; an option's Simulate wraps */
+.pc-more .pos-act-close { color: var(--red); background: var(--red-bg); }
+
 /* Position chart: one position's 5-minute and daily charts with its cost, stops and targets, and the profit-target form.
    Under the table on phones and tablets, beside it on the desktop shell. */
 .positions-split { display: contents; }

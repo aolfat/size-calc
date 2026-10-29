@@ -141,6 +141,30 @@ test('the Positions tab shows a spread as one row, its legs a tap away', async (
   assert.match(body().split('<tr').find(r => r.includes('85/90P')), /\+\$60\.00/);
 });
 
+test('on a phone a spread is one card: net cost to mark, its max loss, the legs as cards of their own', async () => {
+  const fetch = async url => {
+    const path = url.slice(PROXY.length);
+    return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json({ securitiesAccount: ACCOUNT }) : json({}, 404);
+  };
+  const key = `${LONG},${SHORT}`;
+  const { run, elements } = await app({ width: 390, fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  const html = () => elements.get('positionsSection').innerHTML;
+  const card = () => html().split('<article').find(c => c.includes(`data-arg="${key}"`)) || '';
+  assert.match(card(), /<b>RBRK<\/b> <span class="pc-detail">105\/115C 8\/28\/26<\/span>/, 'strikes first, like a single option');
+  assert.match(card(), /\$3\.50 → <b>\$4\.00<\/b> · 3 spreads/);
+  assert.match(card(), /\+0\.14R/);
+  assert.match(card(), /Call debit · max loss \$1,050\.00/);
+  assert.match(card(), /pc-ladder/);
+  run(`togglePosCard('${key}')`);
+  assert.match(card(), /<dt>Max loss<\/dt><dd><span class="pos-loss">−\$1,050\.00/);
+  assert.match(card(), /data-action="openSpreadClose"/);
+  assert.doesNotMatch(html(), /pc pc-leg/);
+  run(`togglePosLegs('${key}')`);
+  assert.equal((html().match(/<article class="pc pc-leg"/g) || []).length, 2, 'each leg its own card, under the spread');
+});
+
 // ---------- closing a spread as one order ----------
 
 const plain = v => JSON.parse(JSON.stringify(v));

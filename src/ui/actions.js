@@ -23,7 +23,7 @@ import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopPrice, toggleREdit } from './position-trade.js';
-import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
+import { refreshPositions, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
@@ -442,6 +442,7 @@ export const actions = {
   togglePosColumn: el => togglePosColumn(arg(el)),
   togglePosHideValue: () => togglePosHideValue(),
   togglePosLegs: el => togglePosLegs(arg(el)),
+  togglePosCard: el => togglePosCard(arg(el)),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),
