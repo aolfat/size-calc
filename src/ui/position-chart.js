@@ -19,11 +19,46 @@ import { positionRUnit, renderPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 
 export const PORTIONS = [[0.1, '10%'], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [1, 'All']];
-// target chips in R: that many times the risk per share above your cost (below on a short)
-export const R_CHIPS = [1, 2, 3, 5];
+// target chips in R: that many times the risk per share above your cost (below on a short); ✎ makes them your own (r_presets)
+const R_DEFAULT = [1, 2, 3, 5];
+const R_MAX = 5;
 // range chips on the daily, in sessions (the 5-minute pane is the latest session only)
 const DAILY_CHIPS = [[21, '1M'], [63, '3M'], [126, '6M'], [252, '1Y']];
 const units = (option, n) => `${n.toLocaleString('en-US')} ${option ? (n === 1 ? 'contract' : 'contracts') : (n === 1 ? 'share' : 'shares')}`;
+
+/** your R chips, smallest first: the chart's target and the close ticket share them */
+export function rPresets() {
+  try {
+    const a = JSON.parse(store.get('r_presets') || '[]');
+    if (Array.isArray(a) && a.length && a.every(v => v > 0)) return a;
+  } catch (e) {}
+  return R_DEFAULT;
+}
+
+/** an R chip row: chip(r) for each preset, or while ✎ is on a box each (blank deletes it) and a '+' box; the ✎ / ✓ chip last */
+export function rChipRow(chip) {
+  const draft = state.rEdit;
+  const body = draft
+    ? draft.map((v, i) => `<input type="number" class="usd-edit-box r-edit-box" value="${esc(v)}"${i === draft.length - 1 ? ' placeholder="+"' : ''} min="0" step="0.1" inputmode="decimal" aria-label="R preset" data-input="setRPreset" data-arg="${i}" data-enter="toggleREdit" />`).join('')
+    : rPresets().map(chip).join('');
+  return body + `<button class="filter-btn${draft ? ' active' : ''}" aria-pressed="${!!draft}" data-action="toggleREdit" title="${draft ? 'Save the R presets' : 'Edit the R presets'}">${draft ? '✓' : '✎'}</button>`;
+}
+
+/** typing in an R preset box; the box keeps what was typed, the ✓ saves it */
+export function setRPreset(i, value) {
+  const draft = state.rEdit;
+  if (!draft || !(i >= 0 && i < draft.length)) return;
+  draft[i] = value;
+}
+
+/** ✎ turns the R chips into boxes; ✓ keeps the positive ones (deduped, smallest first, at most R_MAX) and leaves the old ones if none */
+export function rEditToggled() {
+  if (state.rEdit) {
+    const vals = [...new Set(state.rEdit.map(v => Math.round(parseFloat(v) * 100) / 100).filter(v => v > 0))].sort((a, b) => a - b).slice(0, R_MAX);
+    if (vals.length) store.set('r_presets', JSON.stringify(vals));
+    state.rEdit = null;
+  } else state.rEdit = [...rPresets().map(String), ''];
+}
 
 /** the latest session's bars: today's once the market has traded, else the last day the symbol traded */
 export function latestSession(bars) {
@@ -331,11 +366,11 @@ export function renderPositionChart() {
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosTargetPortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
   }).join('');
   const unit = unitFor(row);
-  document.getElementById('posTargetRChips').innerHTML = R_CHIPS.map(r => {
+  document.getElementById('posTargetRChips').innerHTML = rChipRow(r => {
     const at = row && unit.per ? rTargetPrice(row, r, unit.per) : 0, on = at > 0 && c.r === r;
     const title = at > 0 ? fmtPositionPrice(at, row.tradeAs) : unit.why || 'No risk to count R from.';
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosTargetR" data-arg="${r}" title="${esc(title)}"${at > 0 ? '' : ' disabled'}>${r}R</button>`;
-  }).join('');
+  });
 
   const tool = state.posChartTool, adding = tool === 'add';
   for (const [id, on] of [['posToolTarget', tool === 'target'], ['posToolStop', tool === 'stop'], ['posToolAdd', adding]]) {

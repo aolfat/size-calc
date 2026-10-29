@@ -46,6 +46,7 @@ export function createState() {
     quickOpen: false,
     flashNext: false,
     editingUsd: false,
+    rEdit: null, // the R chips while ✎ is on: one typed value per box, the last the '+' box
     stopStrategy: 'none',
     stopPercent: 0.05,
     atrMultiplier: 0,

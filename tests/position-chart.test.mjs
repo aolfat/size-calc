@@ -185,6 +185,33 @@ test('a target in R: the chips and the R box set the price from your cost and th
   assert.equal(elements.get('posTargetR').value, '2.9', 'and the R box follows it');
 });
 
+test('your own R chips: ✎ turns them into boxes, ✓ keeps the positive ones smallest first, and they set the target like any chip', async () => {
+  const { run, elements, storage } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const chips = () => elements.get('posTargetRChips').innerHTML;
+  assert.match(chips(), /data-action="toggleREdit" title="Edit the R presets">✎</);
+  run('actions.toggleREdit()');
+  assert.match(chips(), /class="usd-edit-box r-edit-box" value="5"[^>]*data-input="setRPreset" data-arg="3"/);
+  assert.match(chips(), /value="" placeholder="\+"[^>]*data-arg="4"/, 'a + box adds one');
+  assert.match(chips(), /title="Save the R presets">✓</);
+  run("actions.setRPreset({ dataset: { arg: '1' }, value: '' })"); // blank deletes the 2R
+  run("actions.setRPreset({ dataset: { arg: '3' }, value: '1.5' })");
+  run("actions.setRPreset({ dataset: { arg: '4' }, value: '3' })"); // a duplicate
+  run('actions.toggleREdit()');
+  assert.equal(storage.get('r_presets'), '[1,1.5,3]');
+  assert.match(chips(), /data-arg="1\.5" title="\$42\.25">1\.5R</, '1R is $2.70 from the $38.20 cost');
+  assert.doesNotMatch(chips(), /data-arg="2"|r-edit-box/);
+  run("actions.setPosTargetR({ dataset: { arg: '1.5' } })");
+  assert.equal(elements.get('posTargetPrice').value, '42.25');
+  assert.match(chips(), /class="filter-btn active" aria-pressed="true" data-action="setPosTargetR" data-arg="1\.5"/);
+
+  run('actions.toggleREdit()');
+  for (const i of [0, 1, 2]) run(`actions.setRPreset({ dataset: { arg: '${i}' }, value: '' })`);
+  run('actions.toggleREdit()');
+  assert.equal(storage.get('r_presets'), '[1,1.5,3]', 'all blank keeps the old ones');
+});
+
 test('a target in R needs a risk to count from: a short with no stop greys the chips out', async () => {
   const { run, elements } = await chartApp();
   run("togglePositionChart('TSLA')");

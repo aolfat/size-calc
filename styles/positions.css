@@ -105,6 +105,10 @@
 .pos-close-qty .pos-close-tens { grid-template-columns: repeat(6, 1fr); }
 .pos-close-portions .filter-btn { padding: 8px 2px; }
 .pos-close-price { width: 140px; }
+/* your R chips (✎ edits them): one row however many there are, the edit boxes as wide as the chips (width 0: an input's own width would stretch the row) */
+.r-chips .r-edit-box { flex: 1 1 0; min-width: 42px; width: 0; padding: 9px 2px; font-size: 14px; }
+.pos-close-qty .r-chips { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.pos-close-qty .r-edit-box { min-width: 0; width: 100%; padding: 8px 2px; font-size: 14px; text-align: center; }
 .pos-stop-at { padding: 9px 12px; font-size: 14px; } /* the stop ticket's Breakeven chip, beside its price */
 
 @media (min-width: 1100px) {

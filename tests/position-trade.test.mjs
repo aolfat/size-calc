@@ -518,6 +518,27 @@ test('the close ticket sets its limit in R, like the chart\'s target', async () 
   assert.match(body(), />Sell 150 HOOD, limit \$51\.70</);
 });
 
+test('the close ticket uses your own R chips and edits them in place', async () => {
+  const b = broker();
+  const storage = connected();
+  storage.set('r_presets', '[1.5,4]');
+  const { run, elements } = await app({ fetch: b.fetch, storage });
+  await run("openPositionTrade('HOOD', 'close')");
+  run("setCloseType('LIMIT')");
+  const body = () => elements.get('posTradeBody').innerHTML, chips = () => elements.get('posCloseRChips').innerHTML;
+  assert.match(body(), /data-action="setCloseR" data-arg="1\.5" title="\$42\.25">1\.5R<.*data-arg="4" title="\$49\.00">4R</);
+  assert.doesNotMatch(body(), /data-action="setCloseR" data-arg="2"/);
+  run('setCloseR(4)');
+  assert.match(body(), />Sell 300 HOOD, limit \$49\.00</);
+  run('actions.toggleREdit()');
+  assert.match(chips(), /value="1\.5"[^>]*data-arg="0".*value="4"[^>]*data-arg="1".*placeholder="\+"[^>]*data-arg="2"/);
+  run("actions.setRPreset({ dataset: { arg: '2' }, value: '2.25' })");
+  run('actions.toggleREdit()');
+  assert.equal(storage.get('r_presets'), '[1.5,2.25,4]');
+  assert.match(chips(), /data-arg="2\.25" title="\$44\.28">2\.25R</);
+  assert.match(chips(), /class="filter-btn active" aria-pressed="true" data-action="setCloseR" data-arg="4"/, 'the picked limit stays lit');
+});
+
 test('a close with no risk to count R from greys the R out', async () => {
   const b = broker();
   b.live.orders = b.live.orders.filter(o => !JSON.stringify(o).includes('"TSLA"'));

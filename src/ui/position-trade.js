@@ -9,7 +9,7 @@ import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositi
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
-import { R_CHIPS, positionStopPlaced, positionTargetPlaced } from './position-chart.js';
+import { positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { positionOriginal, positionRUnit, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 import { openSheet } from './sheets.js';
@@ -217,11 +217,20 @@ function closeRSync(t, id) {
 const closePriceText = t => t.close.price > 0 ? t.close.price.toFixed(t.row.tradeAs === 'OPTION' || t.close.price >= 1 ? 2 : 4) : '';
 
 function closeRChips(t, unit) {
-  return R_CHIPS.map(r => {
+  return rChipRow(r => {
     const at = unit.per ? rTargetPrice(t.row, r, unit.per) : 0, ok = at > 0 && !t.sent, on = ok && t.close.r === r;
     const title = at > 0 ? fmtPositionPrice(at, t.row.tradeAs) : unit.why || 'No risk to count R from.';
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setCloseR" data-arg="${r}" title="${esc(title)}"${ok ? '' : ' disabled'}>${r}R</button>`;
-  }).join('');
+  });
+}
+
+/** ✎ / ✓ on either R chip row: both rows follow, the chart's and the close ticket's */
+export function toggleREdit() {
+  rEditToggled();
+  if (state.posChart) renderPositionChart();
+  const t = state.posTicket;
+  const chips = t && t.kind === 'close' && document.getElementById('posCloseRChips');
+  if (chips) chips.innerHTML = closeRChips(t, positionRUnit(t.row));
 }
 
 function planTarget(t) {
@@ -534,7 +543,7 @@ function closeForm(t, duration) {
   return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div></dd></div>
     <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="${t.original && t.original.qty > held ? 'Percent of the original position' : 'Percent of the position'}">${chips}</div></div>${portionLine(t) ? `<span class="shares-detail">${esc(portionLine(t))}</span>` : ''}</dd></div>
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark</span></dd></div>
-    <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span></dd></div>
+    <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span></dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>` : ''}`;
 }
 

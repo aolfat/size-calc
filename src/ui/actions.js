@@ -17,12 +17,12 @@ import { effects } from './effects.js';
 import { setFuturesFees } from './futures.js';
 import { toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, togglePosChartAvg, togglePositionChart } from './position-chart.js';
+import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, setRPreset, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
-import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionStopAt, setPositionStopDuration, setPositionStopPrice } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionStopAt, setPositionStopDuration, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { refreshPositions, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -417,6 +417,8 @@ export const actions = {
   posChartStopChanged: () => posChartStopChanged(),
   setPosTargetPortion: el => setPosTargetPortion(num(el)),
   setPosTargetR: el => setPosTargetR(num(el)),
+  setRPreset: el => setRPreset(num(el), el.value),
+  toggleREdit: () => toggleREdit(),
   setPosChartTool: el => setPosChartTool(arg(el)),
   posAddChanged: () => posAddChanged(),
   simPosition: el => simPosition(arg(el)),
