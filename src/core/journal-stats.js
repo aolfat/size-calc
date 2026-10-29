@@ -214,32 +214,40 @@ export function switchPeriod(trades, fromUnit, fromKey, toUnit) {
  * @param {Map<string, Day>} daily @param {string} month 'YYYY-MM'
  */
 export function calendarMonth(daily, month) {
-  const [y, m] = month.split('-').map(Number);
-  const first = new Date(Date.UTC(y, m - 1, 1)), last = new Date(Date.UTC(y, m, 0));
-  // back to the Monday on or before the 1st
-  const start = new Date(first.getTime() - ((first.getUTCDay() + 6) % 7) * 864e5);
+  return { month, ...calendarSpan(daily, ...periodSpan('month', month)) };
+}
+
+/**
+ * Any span of days laid out like a month (calendarMonth): the weeks from the Monday on or before the first day through the
+ * last, days outside the span null, each week's total over its days inside, and the span's own numbers.
+ * @param {Map<string, Day>} daily @param {string} from 'YYYY-MM-DD' @param {string} to 'YYYY-MM-DD'
+ */
+export function calendarSpan(daily, from, to) {
+  const first = Date.parse(`${from}T00:00:00Z`), last = Date.parse(`${to}T00:00:00Z`);
+  // back to the Monday on or before the first day
+  const start = first - ((new Date(first).getUTCDay() + 6) % 7) * 864e5;
   /** @typedef {{ day: string, pnl: number | null, trades: number, winRate: number | null, profitFactor: number | null } | null} CalDay */
   /** @type {({ start: string, days: CalDay[], pnl: number } & ReturnType<typeof tally>)[]} */
   const weeks = [];
-  for (let t = start.getTime(); t <= last.getTime(); t += 7 * 864e5) {
+  for (let t = start; t <= last; t += 7 * 864e5) {
     /** @type {CalDay[]} */
     const days = [];
     /** @type {Map<string, number>} */
     const byTrade = new Map();
     let pnl = 0;
     for (let i = 0; i < 7; i++) {
-      const d = new Date(t + i * 864e5), day = d.toISOString().slice(0, 10), inMonth = d.getUTCMonth() === m - 1;
+      const day = isoDay(t + i * 864e5), inside = day >= from && day <= to;
       const c = daily.get(day);
-      if (inMonth && c) { pnl = round2(pnl + c.pnl); addUp(byTrade, c.byTrade); }
-      if (i < 5) days.push(inMonth ? { day, pnl: c ? c.pnl : null, trades: c ? c.trades : 0, winRate: c ? c.winRate : null, profitFactor: c ? c.profitFactor : null } : null);
+      if (inside && c) { pnl = round2(pnl + c.pnl); addUp(byTrade, c.byTrade); }
+      if (i < 5) days.push(inside ? { day, pnl: c ? c.pnl : null, trades: c ? c.trades : 0, winRate: c ? c.winRate : null, profitFactor: c ? c.profitFactor : null } : null);
     }
     weeks.push({ start: isoDay(t), days, pnl, ...tally(byTrade) });
   }
-  const days = [...daily].filter(([d]) => d.startsWith(month));
+  const days = [...daily].filter(([d]) => d >= from && d <= to);
   /** @type {Map<string, number>} */
   const byTrade = new Map();
   for (const [, c] of days) addUp(byTrade, c.byTrade);
-  return { month, weeks, days: days.length, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), ...tally(byTrade), green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
+  return { from, to, weeks, days: days.length, pnl: round2(days.reduce((n, [, c]) => n + c.pnl, 0)), ...tally(byTrade), green: days.filter(([, c]) => c.pnl > 0).length, red: days.filter(([, c]) => c.pnl < 0).length };
 }
 
 /** the months with exits, newest first ('YYYY-MM'). @param {Map<string, any>} daily */
