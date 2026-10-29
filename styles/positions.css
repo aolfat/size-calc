@@ -592,12 +592,12 @@ span.journal-pick { cursor: default; }
 .journal-filters-btn.active { color: var(--blue); border-color: var(--blue-bd); }
 .journal-filters-btn b { margin-left: 2px; padding: 0 6px; font-size: 11px; color: #fff; background: var(--blue); border-radius: 999px; }
 .journal-filters .jr-queue { grid-column: 1 / -1; }
-.journal-summary-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 2px 0 10px; }
-.journal-summary-tiles > div { min-width: 0; padding: 10px 12px; background: var(--bg3); border-radius: 16px; }
+.journal-summary-tiles { display: flex; gap: 8px; margin: 2px 0 10px; }
+.journal-summary-tiles > div { flex: 1 1 auto; min-width: 0; padding: 10px 12px; background: var(--bg3); border-radius: 16px; } /* each as wide as its figure, the rest shared: a five-figure net fits */
 .journal-summary-tiles dt { font-size: 12px; color: var(--text2); }
 .journal-summary-tiles dd { margin: 2px 0 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .journal-summary-tiles .pos-sub { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.journal-chips-row { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.journal-chips-row { flex-basis: 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; } /* min-width 0, or the chips in a line widen the page and iOS zooms the whole app out to fit */
 .journal-chips-row .jr-queue { margin: 0; }
 .journal-chips { flex: 0 1 auto; max-width: 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .journal-chips::-webkit-scrollbar { display: none; }
