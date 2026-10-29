@@ -6,13 +6,13 @@
 // trade page and stats come later.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
-import { combineCandidates, holdWords, journalTrades, legWords, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
+import { combineCandidates, holdWords, journalTrades, legWords, levFundOf, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
 import { activePeriods, exitDays, periodKey, PERIODS, stepPeriod, switchPeriod } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
-import { deleteSavedTrades, insertSavedTrades, loadSavedRecords, loadSavedTrades, loadTradeReviews, saveTradeReviews, updateSavedTrade } from '../services/journal.js';
+import { deleteSavedTrades, insertSavedTrades, loadSavedRecords, loadSavedTrades, loadTradeReviews, saveSetupOn, saveTradeReviews, updateSavedTrade } from '../services/journal.js';
 import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
 import { growBoxes } from '../lib/grow.js';
@@ -23,7 +23,7 @@ import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
-import { openJournalTrade, renderJournalTrade, syncJournalPage } from './journal-trade.js';
+import { openJournalTrade, reloadJournalCharts, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { applyOrderPlans } from './order-plan.js';
 import { loadJournalReview, reviewFrom, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
@@ -143,8 +143,10 @@ const VIA_TITLE = {
   delivered: 'Shares an option delivered at the strike. The option was opened before your history, so it isn\'t here.',
 };
 
+/** a leveraged ETF's trade on its underlying names it: long SQQQ reads 'Short QQQ' */
+const onWords = t => t.setupOn ? ` ${esc(t.setupOn)}` : '';
 /** the side is the bet on the stock: a put bought is short, a call debit spread long, a time spread neutral */
-const sideCell = t => `<td class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${{ long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias] || ''}</td>`;
+const sideCell = t => `<td class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${{ long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias] || ''}${onWords(t)}</td>`;
 
 /** the tick box that picks a trade for Merge or Delete (not on deleted trades: an empty slot keeps their names in line) */
 const pickBox = t => t.deleted ? '<span class="journal-pick" aria-hidden="true"></span>'
@@ -406,7 +408,7 @@ function cardSub(t) {
 function cardPills(t) {
   const open = t.status === 'open';
   const out = [t.status === 'history' ? pill('jtc-warn', 'Before your history', HISTORY_TITLE) : open ? pill('jtc-open', 'Open') : ''];
-  const side = { long: pill('jtc-long', 'Long'), short: pill('jtc-short', 'Short'), neutral: pill('', 'Neutral') }[t.bias];
+  const side = { long: pill('jtc-long', `Long${onWords(t)}`), short: pill('jtc-short', `Short${onWords(t)}`), neutral: pill('', 'Neutral') }[t.bias];
   if (side) out.push(side);
   if (t.legs) out.push(pill('', esc(t.structure || `${t.spreadKind} spread`)));
   if (t.expired) out.push(pill('', 'expired', EXPIRED_TITLE));
@@ -950,6 +952,32 @@ export function clearTradeStop() {
   const t = reviewedTrade();
   if (!t) return;
   return saveReview({ ...reviewOf(t.key), stop: null }, t.schwabStop !== null ? `Back to Schwab's stop, ${px(t.schwabStop, t.assetType)}.` : 'Your stop is removed.');
+}
+
+/**
+ * a leveraged or inverse ETF's trade: its setup, side and charts on the underlying (sym = QQQ, the default) or kept on the
+ * fund (sym = SQQQ, the trade's own); shown at once, back if Supabase refuses
+ * @param {any} t @param {string} sym
+ */
+export async function setSetupOn(t, sym) {
+  if (!levFundOf(t) || state.tradeReviewBusy || state.tradeReviewsError) return;
+  const own = sym === t.symbol ? t.symbol : null;
+  if ((reviewOf(t.key).setupOn || null) === own) return;
+  const before = state.tradeReviews || {};
+  state.tradeReviews = { ...before, [t.key]: { ...reviewOf(t.key), setupOn: own } };
+  state.tradeReviewBusy = true;
+  renderJournal();
+  reloadJournalCharts();
+  try {
+    await saveSetupOn(t.key, own);
+  } catch(e) {
+    state.tradeReviews = before;
+    showError(`Couldn't save: ${String(e?.message || e)}`);
+    reloadJournalCharts();
+  } finally {
+    state.tradeReviewBusy = false;
+  }
+  renderJournal();
 }
 
 /** a row tapped anywhere but its tick box opens the trade (the stop link and the name are buttons of their own) */

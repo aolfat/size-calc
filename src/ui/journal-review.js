@@ -5,6 +5,7 @@
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
 import { buildLibrary, cleanLink, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, parseSetup, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
+import { levFundOf } from '../core/journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { planLines } from '../core/order-plans.js';
 import { store } from '../lib/store.js';
@@ -415,6 +416,7 @@ export function reviewSectionHtml(t) {
       <button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
     ${row(`Market <span class="jr-sub">${marketNote}</span>`, market + newBox('market'), miss.has('market'))}
     ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
+    ${setupOnRow(t)}
     ${row('My setups', `${setupSearch}${fitNote}<div class="jr-setup-pick" id="jrSetupPick">${setupPickHtml(t)}</div>${builder}${partsLine}`, miss.has('setup'), 'jr-setup-row')}
     ${row('Entry tactic', `${searchBox('tactic', 'Search tactics', 'Search entry tactics')}<span class="jr-tactic-pick" id="jrTacticPick">${tacticPickHtml(t)}</span>${newBox('tactic')}`, miss.has('tactic'))}
     ${orderPlanRow(t)}
@@ -430,6 +432,18 @@ export function reviewSectionHtml(t) {
       <textarea id="reviewNote" rows="3" maxlength="5000" placeholder="What happened, how you managed it, what you'd do differently" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="exit">${esc(noteText(t, 'exit'))}</textarea></div>`}
     ${shotsRowHtml(t)}
   </div>`;
+}
+
+/**
+ * a leveraged or inverse ETF's trade: where its setup reads, the underlying (the default: SQQQ's on QQQ, a long there a
+ * short, the charts QQQ's too) or the fund itself
+ */
+function setupOnRow(t) {
+  const fund = levFundOf(t);
+  if (!fund) return '';
+  const off = state.tradeReviewsError || state.tradeReviewBusy ? ' disabled' : '';
+  const chips = [fund.under, t.symbol].map(s => chip(s, (t.setupOn || t.symbol) === s, `data-action="setSetupOn" data-arg="${esc(s)}"${off}`)).join('');
+  return row(`Setup on <span class="jr-sub">${esc(t.symbol)} is ${fund.lev < 0 ? '−' : ''}${Math.abs(fund.lev)}x ${esc(fund.under)}</span>`, chips);
 }
 
 /** + New setup: what happened, at what (or a pattern); what's picked is on the trade already, and the line says which */

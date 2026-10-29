@@ -50,10 +50,14 @@ function tradeFills(t) {
   return fillsFrom(state.journalRecords || []).filter(f => ids.has(f.id)).sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
 }
 
-/** what each chart shows: an option's own 5-minute bars, its underlying's beside them and its daily; a spread's underlying for both */
+/**
+ * what each chart shows: an option's own 5-minute bars, its underlying's beside them and its daily; a leveraged ETF's on its
+ * underlying the same way (SQQQ's, QQQ's beside them, QQQ's daily: where the setup is); a spread's underlying for both
+ */
 function chartSymbols(t) {
   const opt = t.assetType === 'OPTION' ? parseSchwabOption(t.symbol) : null;
   if (opt) return { five: t.symbol.replace(/\s+/g, ''), under: opt.root, daily: opt.root, fiveIsTrade: true };
+  if (t.setupOn) return { five: t.symbol, under: t.setupOn, daily: t.setupOn, fiveIsTrade: true };
   return { five: t.symbol, under: null, daily: t.symbol, fiveIsTrade: t.assetType !== 'SPREAD' };
 }
 
@@ -90,6 +94,19 @@ export function openJournalTrade(key, nav) {
   syncJournalPage();
   renderJournalTrade();
   window.scrollTo?.({ top: 0 });
+  loadCharts(state.journalTrade);
+}
+
+/**
+ * the page's charts loaded again: what they show changed (a leveraged ETF's trade moved on or off its underlying). A new page
+ * state, so a load still running for the old charts lands on the old one
+ */
+export function reloadJournalCharts() {
+  const p = state.journalTrade;
+  if (!p) return;
+  dropCharts(p);
+  state.journalTrade = { ...p, five: [], under: [], daily: [], status5: '', statusU: '', statusD: '', rolled: { 5: null, U: null }, charts: {}, classic: { 5: null, U: null, D: null } };
+  renderJournalTrade();
   loadCharts(state.journalTrade);
 }
 
@@ -282,7 +299,7 @@ export function renderJournalTrade() {
   head.innerHTML = `<div class="jt-head">
       ${backBtn}
       <div class="jt-id"><span class="section-title" id="jtTitle">${esc(t.label)}</span>
-        <span class="positions-meta">${side} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button></span></div>
+        <span class="positions-meta">${side}${t.setupOn ? ` ${esc(t.setupOn)} ·` : ''} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button></span></div>
       ${headStatsHtml(t)}
       ${navHtml(p)}
     </div>${deckBarHtml(t)}`;

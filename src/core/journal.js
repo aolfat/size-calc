@@ -7,7 +7,9 @@
 // shape are rows in Supabase's trades table, each claiming fills by id: two or more trades on one symbol become one
 // merged trade, option contracts one spread, and a row with one trade keeps it on its own (shapeTrades). Option legs
 // opened in one multi-leg order that no row claims become a spread on their own. The side is the bet on the stock (bias).
+// Shares of a leveraged or inverse ETF are a bet on its underlying (setupOn): long SQQQ is short QQQ, unless you keep it on the fund.
 import { futuresSpec } from './futures.js';
+import { LEV_REVERSE } from './lev-etfs.js';
 import { expiryCloseMs } from './options.js';
 import { parseSchwabOption, schwabTime } from './positions.js';
 
@@ -32,17 +34,20 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean, realized: Realized[],
  *   legs?: Trade[], group?: 'auto' | 'yours', spreadKind?: 'debit' | 'credit',
  *   kind?: 'single' | 'merged' | 'spread', id?: string, savedIds?: string[], parts?: string[],
- *   bias?: 'long' | 'short' | 'neutral', structure?: string }} Trade
+ *   bias?: 'long' | 'short' | 'neutral', structure?: string, setupOn?: string | null, setupLev?: number | null }} Trade
  * kind: single = grouped flat to flat on its own; merged = trades on one symbol you made one; spread = option legs as one
  * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
  * parts = the trade keys it's made of.
  * direction = bought or sold first (the P&L and stop math); bias = the bet on the stock, what the Side shows.
+ * setupOn = the symbol a leveraged or inverse ETF's trade is a bet on (SQQQ's QQQ), setupLev its daily factor (−3); bias is
+ * then the bet on that symbol, so a long inverse fund is short. null when it's on the symbol traded.
  * via = an option delivered it: the option's trade closed at $0 by an assignment or exercise, or the shares' trade opened
  * or closed by one at the strike (delivered: the option is older than the history). From Schwab's transactions.
  * peakQty = the most held at once (a single or merged trade; a spread has none).
  * realized = the P&L each exit took, when it took it (a trim's profit is that day's, even while the rest stays open).
  * @typedef {{ at: string, qty: number, pnl: number }} Realized one exit: its time, the quantity it closed, its P&L (net after fees)
- * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
+ * @typedef {{ stop?: number | null, deleted?: boolean, setupOn?: string | null }} TradeReview setupOn: the trade's own symbol keeps a
+ *   leveraged ETF's trade on the fund (null = on its underlying)
  * @typedef {{ id: string, account: string, fill_ids: string[], created_at?: string }} SavedTrade a trades row
  */
 
@@ -396,7 +401,7 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
     const rv = reviews[t.key] || {};
     return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.deleted };
   });
-  return shapeTrades(legs, opts.saved || [], reviews, stops).map(withBias)
+  return shapeTrades(legs, opts.saved || [], reviews, stops).map(t => withSetupOn(withBias(t), reviews[t.key]?.setupOn))
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
 }
 
@@ -481,8 +486,8 @@ function orderSpreads(legs) {
 }
 
 const OPTIONISH = new Set(['OPTION', 'SPREAD']);
-/** a trade's underlying: a stock's symbol, an option's root, a spread's symbol (already its root). @param {{ symbol: string, assetType?: string, legs?: unknown }} t */
-export const tradeUnderlying = t => t.legs ? t.symbol : (parseSchwabOption(t.symbol)?.root || t.symbol);
+/** a trade's underlying: a stock's symbol (a leveraged ETF's own underlying when the trade is on it), an option's root, a spread's symbol (already its root). @param {{ symbol: string, assetType?: string, legs?: unknown, setupOn?: string | null }} t */
+export const tradeUnderlying = t => t.setupOn || (t.legs ? t.symbol : (parseSchwabOption(t.symbol)?.root || t.symbol));
 /** a stock's symbol, or an option's (or a spread's) root. @param {{ symbol: string, assetType: string }} t */
 const underlyingOf = t => t.assetType === 'OPTION' ? (parseSchwabOption(t.symbol)?.root || t.symbol) : t.symbol;
 
@@ -630,6 +635,22 @@ function spreadBias(t) {
 
 /** @param {Trade} t @returns {Trade} */
 const withBias = t => t.legs ? { ...t, ...spreadBias(t) } : { ...t, bias: legBias(t), structure: '' };
+
+/** the leveraged or inverse ETF a stock trade is in (SQQQ: QQQ at −3), or null: options, spreads and futures aren't. @param {{ symbol: string, assetType: string, legs?: unknown }} t */
+export const levFundOf = t => !t.legs && t.assetType !== 'OPTION' && t.assetType !== 'FUTURE' ? LEV_REVERSE[t.symbol] || null : null;
+
+/**
+ * A leveraged or inverse ETF's trade is a bet on its underlying: its setup reads there (setupOn), and an inverse fund's
+ * bias flips (long SQQQ is short QQQ). `own` = the trade's symbol keeps it on the fund (your review's setupOn).
+ * @param {Trade} t @param {string | null} [own]
+ * @returns {Trade}
+ */
+function withSetupOn(t, own) {
+  const fund = levFundOf(t);
+  if (!fund || own === t.symbol) return { ...t, setupOn: null, setupLev: null };
+  const bias = fund.lev < 0 ? (t.bias === 'long' ? 'short' : t.bias === 'short' ? 'long' : t.bias) : t.bias;
+  return { ...t, setupOn: fund.under, setupLev: fund.lev, bias };
+}
 
 /** '245/255C' for a vertical, '230P/260C' for a strangle, by strike; '' when the legs don't share an expiry. @param {Trade[]} legs */
 function spreadName(legs) {

@@ -1,5 +1,5 @@
 // Journal reads and writes: the signed-in account's kept Schwab records (schwab_records, newest first), your word on
-// each trade (trade_reviews: your stop, deleted), and the trades you shaped (trades: merged trades and spreads, each row
+// each trade (trade_reviews: your stop, deleted, setup on), and the trades you shaped (trades: merged trades and spreads, each row
 // the fill ids it claims). Row-level security means only your own rows come back. Never touches the page. Futures fills from a
 // thinkorswim statement are kept in schwab_records too, as kind 'statement_fill' (saveStatementFills).
 import { state } from '../state.js';
@@ -48,17 +48,34 @@ const refused = (res, what) => {
 /** the migration not pushed yet: PostgREST says 'Could not find the table … in the schema cache', Postgres 'does not exist' */
 const missingTable = (/** @type {any} */ res) => res?.error && /schema cache|does not exist/i.test(res.error.message || '');
 
-/** your stops and deletes, by trade key. @returns {Promise<Record<string, { stop: number | null, deleted: boolean }>>} */
+/**
+ * your stops and deletes, by trade key, and a leveraged ETF's trade you keep on the fund (setupOn, trade_reviews.setup_on,
+ * its own migration: read on its own, so a database without the column yet still has every trade, each on its underlying).
+ * @returns {Promise<Record<string, { stop: number | null, deleted: boolean, setupOn?: string }>>}
+ */
 export async function loadTradeReviews() {
   if (!state.session) throw new Error('Sign in with Google to see your journal.');
   const client = await supabaseClient();
-  const res = await client.from('trade_reviews').select('trade_key,stop,deleted').limit(JOURNAL_READ_LIMIT);
+  const [res, on] = await Promise.all([
+    client.from('trade_reviews').select('trade_key,stop,deleted').limit(JOURNAL_READ_LIMIT),
+    client.from('trade_reviews').select('trade_key,setup_on').limit(JOURNAL_READ_LIMIT),
+  ]);
   if (missingTable(res)) throw new Error("the database doesn't have the trade_reviews table yet");
   refused(res, 'Supabase refused the read.');
-  /** @type {Record<string, { stop: number | null, deleted: boolean }>} */
+  /** @type {Record<string, { stop: number | null, deleted: boolean, setupOn?: string }>} */
   const out = {};
   for (const r of res.data || []) out[r.trade_key] = { stop: r.stop === null || r.stop === undefined ? null : Number(r.stop), deleted: !!r.deleted };
+  if (!on?.error) for (const r of on?.data || []) if (r.setup_on && out[r.trade_key]) out[r.trade_key].setupOn = r.setup_on;
   return out;
+}
+
+/** where a leveraged ETF's trade reads its setup: its own symbol keeps it on the fund, null puts it on the underlying. @param {string} key @param {string | null} on */
+export async function saveSetupOn(key, on) {
+  if (!state.session) throw new Error('Sign in with Google to save this.');
+  const client = await supabaseClient();
+  const res = await client.from('trade_reviews').upsert([{ trade_key: key, setup_on: on }], { onConflict: 'user_id,trade_key' });
+  if (missingTable(res)) throw new Error("the database doesn't have the setup on column yet: npx supabase db push");
+  refused(res, 'Supabase refused the save.');
 }
 
 /** save review rows whole (stop and deleted), so one field never clears the other. @param {Record<string, { stop?: number | null, deleted?: boolean }>} rows by trade key */
