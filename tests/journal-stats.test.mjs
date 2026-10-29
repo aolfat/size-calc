@@ -325,3 +325,49 @@ test('the Stats tab narrowed to a day, a week or a month: ‹ › step through t
   assert.equal(state.journalPeriodKey, '');
   assert.match(out(), /By month/);
 });
+
+test('dates: any span counts the exits between its two days, ends included; it starts as the span shown', async () => {
+  const { run } = await app();
+  const J = JSON.stringify(TRADES);
+  assert.equal(run("rangeKey('2026-10-13', '2026-10-05')"), '2026-10-05..2026-10-13', 'the earlier day first');
+  assert.equal(run("isRangeKey('2026-10-05..2026-10-13')"), true);
+  assert.equal(run("isRangeKey('2026-10')"), false);
+  assert.deepEqual(json(run, "periodSpan('month', '2026-02')"), ['2026-02-01', '2026-02-28']);
+  assert.deepEqual(json(run, "periodSpan('week', '2026-10-26')"), ['2026-10-26', '2026-11-01'], 'Monday to Sunday, the weekend folded in');
+  assert.deepEqual(json(run, `inPeriod(${J}, 'range', '2026-10-06..2026-10-13').map(t => t.key)`), ['b', 'c', 'd'], 'both ends count, the 10/13 evening close too');
+  assert.deepEqual(json(run, `inPeriod(${J}, 'range', '2026-10-07..2026-10-12')`), []);
+  assert.equal(run(`switchPeriod(${J}, 'all', '', 'range')`), '2026-10-05..2026-10-15', 'from all time: the first exit to the last');
+  assert.equal(run(`switchPeriod(${J}, 'week', '2026-10-05', 'range')`), '2026-10-05..2026-10-11');
+  assert.equal(run(`switchPeriod(${J}, 'month', '2026-10', 'range')`), '2026-10-01..2026-10-31');
+  assert.equal(run(`switchPeriod(${J}, 'range', '2026-10-01..2026-10-07', 'day')`), '2026-10-06', 'back to a day: the newest exit in the dates');
+  assert.equal(run(`switchPeriod(${J}, 'range', '2026-09-01..2026-09-07', 'week')`), '2026-08-31', 'dates without exits: their first day');
+  const trimmed = JSON.stringify([T('t', '2026-10-14T15:00:00.000Z', 700, { risk: 100, exits: 2, realized: [{ at: '2026-10-05T15:00:00.000Z', qty: 50, pnl: 200 }, { at: '2026-10-14T15:00:00.000Z', qty: 50, pnl: 500 }] })]);
+  const cut = json(run, `inPeriod(${trimmed}, 'range', '2026-10-01..2026-10-10')`);
+  assert.deepEqual([cut[0].pnl, cut[0].r, cut[0].partial], [200, 2, true], 'a trade closed after the dates counts the exits inside them');
+});
+
+test('the Stats tab over picked dates: From and To boxes, the stats between them, by day or by month', async () => {
+  const { run, state, out } = await journal();
+  run("setJournalTab('stats'); setJournalPeriod('month'); setJournalPeriod('range')");
+  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="range">Dates</);
+  assert.match(out(), /id="journalRangeFrom" value="2026-10-01" data-change="setStatsDates" data-arg="from"/, 'starts as the month shown');
+  assert.match(out(), /id="journalRangeTo" value="2026-10-31" data-change="setStatsDates" data-arg="to"/);
+  assert.doesNotMatch(out(), /stepJournalPeriod/, 'no ‹ ›: the dates say where');
+  assert.match(out(), /<dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 closed trades/);
+  assert.match(out(), /By day[\s\S]*<b>Tue 10\/6<\/b>/, 'within a month: by day');
+  run("setStatsDates('from', '2026-10-06')");
+  assert.equal(state.journalPeriodKey, '2026-10-06..2026-10-31');
+  assert.match(out(), /<dd class="journal-sell">−\$100\.00<span class="pos-sub">1 closed trade/);
+  run("setStatsDates('to', '2026-10-06')");
+  assert.doesNotMatch(out(), /By day|By weekday/, 'one day: no by-day or weekday tables');
+  run("setStatsDates('from', '2026-10-07')");
+  assert.equal(state.journalPeriodKey, '2026-10-06..2026-10-07', 'a From after To swaps them');
+  run("setStatsDates('to', '')");
+  assert.equal(state.journalPeriodKey, '2026-10-06..2026-10-07', 'a cleared box keeps the dates');
+  run("setStatsDates('from', '2026-09-01')");
+  assert.match(out(), /By month<\/div>/, 'over more than one month: by month');
+  run("setStatsDates('from', '2026-10-07'); setStatsDates('to', '2026-10-31')");
+  assert.match(out(), /No exits between these dates/);
+  run("setJournalPeriod('day')");
+  assert.equal(state.journalPeriodShown, '2026-10-07', 'back to a day: the first of the empty dates');
+});

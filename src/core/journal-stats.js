@@ -1,7 +1,7 @@
 // @ts-check
 // Journal calendar and stats, pure (docs/journal-step-2.md, slice 4): the closed trades in numbers. The calendar puts each
 // exit's P&L on the New York day it was taken (a trim counts that day, even while the rest is still open), and a day, week
-// or month of stats counts the same exits (sliceTrade); all time counts closed trades. Every group (the whole set, a symbol,
+// or month of stats, or any span of dates you pick, counts the same exits (sliceTrade); all time counts closed trades. Every group (the whole set, a symbol,
 // a weekday, a time of day...) gets the same stats, and a group under 10 trades is thin. Deleted trades and trades from
 // before the history never count.
 
@@ -131,6 +131,29 @@ export function periodKey(day, unit) {
   if (unit === 'week') { const t = Date.parse(`${day}T00:00:00Z`); return isoDay(t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5); }
   return day;
 }
+/** a span of dates you pick, its key 'YYYY-MM-DD..YYYY-MM-DD' (the earlier day first, whichever way round they come). @param {string} from @param {string} to */
+export const rangeKey = (from, to) => from <= to ? `${from}..${to}` : `${to}..${from}`;
+/** a key rangeKey made. @param {string} key */
+export const isRangeKey = key => /^\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}$/.test(key || '');
+/** the stats can cut to a day, week or month, or a span of dates ('range'). @param {string} unit */
+const cuts = unit => PERIODS.includes(unit) || unit === 'range';
+/**
+ * The first and last day a period covers: a day itself, a week Monday to Sunday (its weekend folded in), a month its
+ * first to last day, a range its two ends.
+ * @param {string} unit @param {string} key @returns {[string, string]}
+ */
+export function periodSpan(unit, key) {
+  if (unit === 'range') return /** @type {[string, string]} */ (key.split('..'));
+  if (unit === 'month') { const [y, m] = key.split('-').map(Number); return [`${key}-01`, isoDay(Date.UTC(y, m, 0))]; }
+  if (unit === 'week') return [key, isoDay(Date.parse(`${key}T00:00:00Z`) + 6 * 864e5)];
+  return [key, key];
+}
+/** does a New York day fall in the period. @param {string} day @param {string} unit @param {string} key */
+const within = (day, unit, key) => {
+  if (unit !== 'range') return periodKey(day, unit) === key;
+  const [from, to] = periodSpan(unit, key);
+  return day >= from && day <= to;
+};
 /**
  * A trade as it counts in one period: only the exits taken then, their P&L added up, closed at the last of them, R on that
  * P&L over the trade's risk (partial: true). A trim counts in its period like on the calendar, even while the rest is still
@@ -139,7 +162,7 @@ export function periodKey(day, unit) {
  * @param {StatTrade} t @param {string} unit @param {string} key @returns {StatTrade | null}
  */
 export function sliceTrade(t, unit, key) {
-  const exits = exitsOf(t), inside = exits.filter(e => periodKey(nyParts(e.at).day, unit) === key);
+  const exits = exitsOf(t), inside = exits.filter(e => within(nyParts(e.at).day, unit, key));
   if (!inside.length) return null;
   if (inside.length === exits.length && t.closedAt && t.status !== 'open') return t;
   const pnl = round2(inside.reduce((n, e) => n + e.pnl, 0));
@@ -149,8 +172,8 @@ export function sliceTrade(t, unit, key) {
     exits: inside.length, realized: /** @type {any[]} */ (inside), partial: true,
   };
 }
-/** the trades with exits in one period, as they count there (sliceTrade); all time: every counted trade. @param {StatTrade[]} trades @param {string} unit @param {string} key */
-export const inPeriod = (trades, unit, key) => PERIODS.includes(unit)
+/** the trades with exits in one period or range, as they count there (sliceTrade); all time: every counted trade. @param {StatTrade[]} trades @param {string} unit @param {string} key */
+export const inPeriod = (trades, unit, key) => cuts(unit)
   ? /** @type {StatTrade[]} */ (trades.map(t => sliceTrade(t, unit, key)).filter(Boolean)) : countedTrades(trades);
 /** the New York days of every exit. @param {StatTrade[]} trades */
 const exitDayList = trades => trades.flatMap(t => exitsOf(t).map(e => nyParts(e.at).day));
@@ -167,12 +190,19 @@ export function stepPeriod(active, key, by) {
 }
 /**
  * Switching day / week / month keeps your place: the newest exit inside what's shown now (or its first day when it has
- * none) picks the new period; from all time, the newest exit of all.
+ * none) picks the new period; from all time, the newest exit of all. Dates start as the span shown (all time: the first
+ * exit to the last).
  * @param {StatTrade[]} trades @param {string} fromUnit @param {string} fromKey @param {string} toUnit
  */
 export function switchPeriod(trades, fromUnit, fromKey, toUnit) {
-  const days = exitDayList(PERIODS.includes(fromUnit) ? inPeriod(trades, fromUnit, fromKey) : trades).sort();
-  const anchor = days[days.length - 1] || (PERIODS.includes(fromUnit) && fromKey ? (fromKey.length === 7 ? `${fromKey}-01` : fromKey) : '');
+  const cut = cuts(fromUnit) && !!fromKey;
+  if (toUnit === 'range') {
+    if (cut) return rangeKey(...periodSpan(fromUnit, fromKey));
+    const all = exitDayList(trades).sort();
+    return all.length ? rangeKey(all[0], all[all.length - 1]) : '';
+  }
+  const days = exitDayList(cut ? inPeriod(trades, fromUnit, fromKey) : trades).sort();
+  const anchor = days[days.length - 1] || (cut ? periodSpan(fromUnit, fromKey)[0] : '');
   return anchor && PERIODS.includes(toUnit) ? periodKey(anchor, toUnit) : '';
 }
 
