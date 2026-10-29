@@ -488,6 +488,39 @@ test('the close ticket picks market or limit, how many and the price, like a bro
   assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
 });
 
+test('the close ticket\'s limit works in regular hours, pre-market, after hours or Ext', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  assert.doesNotMatch(body(), /data-action="setPositionSession"/, 'a market order works in regular hours only');
+  run("setCloseType('LIMIT')");
+  assert.match(body(), /aria-pressed="true" data-action="setPositionSession" data-arg="NORMAL"/);
+  assert.match(body(), /data-arg="AM" title="Pre-market only"[^>]*>Pre<.*data-arg="PM" title="After hours only"[^>]*>After<.*data-arg="SEAMLESS"[^>]*>Ext</);
+  run("actions.setPositionSession({ dataset: { arg: 'PM' } })");
+  assert.match(body(), /aria-pressed="true" data-action="setPositionSession" data-arg="PM"/);
+  assert.match(body(), /Place limit \$41\.10 \(after hours\) for 300 shares paired with stop \$35\.50/);
+  assert.match(body(), />Sell 300 HOOD, limit \$41\.10 \(after hours\)</);
+  assert.match(body(), /The stop paired with the limit only triggers in regular hours\. Outside them, nothing stops these shares\./);
+  run("actions.setPositionSession({ dataset: { arg: 'OVERNIGHT' } })");
+  assert.match(body(), /aria-pressed="true" data-action="setPositionSession" data-arg="PM"/, 'an unknown session changes nothing');
+  run("setClosePrice('45')");
+  await run('placePositionTrade()');
+  const placed = b.sent.at(-1).body;
+  assert.equal(placed.childOrderStrategies[0].session, 'PM');
+  assert.equal(placed.childOrderStrategies[1].session, 'NORMAL');
+});
+
+test('an option\'s close has no session: options trade in regular hours only', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run(`openPositionTrade('${OPT}', 'close')`);
+  run("setCloseType('LIMIT')");
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /data-action="setPositionSession"/);
+  run("actions.setPositionSession({ dataset: { arg: 'PM' } })");
+  assert.equal(run('posTicket.session'), 'NORMAL');
+});
+
 test('the close ticket sets its limit in R, like the chart\'s target', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
@@ -715,6 +748,19 @@ test('stocks and ETFs trade as equity, options as options, cash and funds not at
 const onlyStop = [single(101, 'STOP', 'HOOD', 'SELL', 300, 35.5), single(201, 'STOP', 'TSLA', 'BUY_TO_COVER', 40, 270)];
 const targetFor = (symbol, price, qty, orders = onlyStop, duration = 'GOOD_TILL_CANCEL') => `targetPlan(${rowWith(symbol, orders)}, { price: ${price}, qty: ${qty}, duration: '${duration}' })`;
 
+test('a sell limit can work outside regular hours: the limit takes the session, its paired stop stays in regular hours', async () => {
+  const { run } = await app();
+  const target = plain(run(`targetPlan(${rowWith('HOOD', onlyStop)}, { price: 50, qty: 100, duration: 'GOOD_TILL_CANCEL', session: 'PM' })`));
+  const [limit, stop] = target.steps[1].order.childOrderStrategies;
+  assert.equal(limit.session, 'PM');
+  assert.equal(stop.session, 'NORMAL', 'Schwab\'s stops trigger in regular hours only');
+  assert.equal(target.steps[0].order.session, 'NORMAL', 'the cut stop too');
+  const close = plain(run(`closePlan(${rowWith('HOOD', onlyStop)}, { type: 'LIMIT', qty: 300, price: 45, session: 'SEAMLESS' })`));
+  assert.equal(close.steps.at(-1).order.childOrderStrategies[0].session, 'SEAMLESS');
+  assert.equal(plain(run(`closePlan(${rowWith('HOOD', onlyStop)}, { type: 'MARKET', session: 'PM' })`)).steps.at(-1).order.session, 'NORMAL', 'a market order is regular hours only');
+  assert.equal(plain(run(`closePlan(${rowWith(OPT)}, { type: 'LIMIT', price: 5, session: 'PM' })`)).steps.at(-1).order.session ?? plain(run(`closePlan(${rowWith(OPT)}, { type: 'LIMIT', price: 5, session: 'PM' })`)).steps.at(-1).order.childOrderStrategies[0].session, 'NORMAL', 'options trade in regular hours only');
+});
+
 test('limit prices snap to the nearest tick: cents from $1, four decimals under', async () => {
   const { run } = await app();
   assert.equal(run('priceTick(52.004)'), 52);
@@ -883,6 +929,23 @@ test('a target lasting today only warns that its stop ends with it; the choice i
   assert.equal(b.sent[1].body.childOrderStrategies[0].duration, 'DAY');
   assert.equal(b.sent[1].body.childOrderStrategies[1].duration, 'DAY');
   assert.equal(b.sent[0].body.duration, 'GOOD_TILL_CANCEL', 'the cut stop keeps its own');
+});
+
+test('a target can work after hours or Ext too; the session goes out on the target, not its stop', async () => {
+  const b = broker();
+  b.live.orders = plain(onlyStop);
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  setTarget(run, elements, 'HOOD', 50, 100);
+  await run("openPositionTrade('HOOD', 'target')");
+  run("setPositionSession('SEAMLESS')");
+  const body = elements.get('posTradeBody').innerHTML;
+  assert.match(body, /aria-pressed="true" data-action="setPositionSession" data-arg="SEAMLESS"/);
+  assert.match(body, />Place target \$50\.00 \(extended hours\)</);
+  assert.match(body, /The stop paired with the target only triggers in regular hours\. Outside them, nothing stops its shares\./);
+  await run('placePositionTrade()');
+  assert.equal(b.sent[1].body.childOrderStrategies[0].session, 'SEAMLESS', 'the re-read before sending keeps the session');
+  assert.equal(b.sent[1].body.childOrderStrategies[1].session, 'NORMAL');
 });
 
 test('a target Schwab doesn\'t show yet is not confirmed, keeps the form, and holds the next send', async () => {

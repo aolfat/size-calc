@@ -6,6 +6,7 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
 /**
  * @typedef {import('./orders.js').TradeAs} TradeAs
  * @typedef {import('./orders.js').StopDuration} StopDuration
+ * @typedef {import('./orders.js').OrderSession} OrderSession
  * @typedef {{ assetType?: string, type?: string, symbol?: string, underlyingSymbol?: string, optionMultiplier?: number }} Instrument
  * @typedef {{ longQuantity?: number, shortQuantity?: number, averagePrice?: number, averageLongPrice?: number, averageShortPrice?: number, marketValue?: number, currentDayProfitLoss?: number, instrument?: Instrument }} Position
  * @typedef {{ legId?: number, instruction?: string, quantity?: number, instrument?: { symbol?: string, assetType?: string } }} OrderLeg
@@ -740,9 +741,10 @@ export function targetRoom(row) {
  * the nearest stays longest, and a stop that is cut keeps its price and how long it lasts. The shares cut out of plain
  * stops (moved) have no stop until the pair is in. Stocks, ETFs and options: an option's target is on the option's own
  * price, on its grid ($0.05 under $3, $0.10 from $3), and pairs with the option's stop.
- * @param {Row} row @param {{ price: number, qty: number, duration: StopDuration }} target @returns {Plan}
+ * session: when the limit works (stocks and ETFs; the stop paired with it stays in regular hours, the only time Schwab's stops trigger).
+ * @param {Row} row @param {{ price: number, qty: number, duration: StopDuration, session?: OrderSession }} target @returns {Plan}
  */
-export function targetPlan(row, { price, qty, duration }) {
+export function targetPlan(row, { price, qty, duration, session = 'NORMAL' }) {
   const fail = (/** @type {string} */ error) => ({ error, stop: 0, steps: [], paired: [], rest: 0, bare: 0, price: 0, moved: 0 });
   const blocked = tradeError(row);
   if (blocked) return fail(blocked);
@@ -765,7 +767,7 @@ export function targetPlan(row, { price, qty, duration }) {
   const { steps, moved, error } = cutStops(row, free - qty, duration);
   if (error) return fail(error);
   const stop = row.stop; // the nearest stop of any kind
-  const target = closeLimitOrder({ symbol, assetType, isLong: long, qty, price: limit, duration });
+  const target = closeLimitOrder({ symbol, assetType, isLong: long, qty, price: limit, duration, session });
   steps.push({ kind: 'place', order: stop === null ? target : ocoOrder(target, closeStopOrder({ symbol, assetType, isLong: long, qty, stop, stopDuration: duration })) });
   return { error: unnamed(steps), stop: stop ?? 0, steps, paired: [], rest: free - qty, bare: stop === null ? qty : 0, price: limit, moved };
 }
@@ -850,10 +852,10 @@ export function positionLevels(row) {
  * plain stops are cut to the shares left. A limit goes in paired with the nearest stop for the same shares (one cancels the
  * other), so its shares keep a stop while it works. The close goes only if every step before it went through.
  * @param {Row} row
- * @param {{ type?: 'MARKET' | 'LIMIT', qty?: number, price?: number, duration?: StopDuration }} [ticket] all of it at market by default
+ * @param {{ type?: 'MARKET' | 'LIMIT', qty?: number, price?: number, duration?: StopDuration, session?: OrderSession }} [ticket] all of it at market by default; session for a limit
  * @returns {Plan}
  */
-export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DAY' } = {}) {
+export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DAY', session = 'NORMAL' } = {}) {
   const fail = (/** @type {string} */ error) => ({ error, stop: 0, steps: [], paired: [], rest: 0, bare: 0, price: 0, moved: 0 });
   const blocked = tradeError(row);
   if (blocked) return fail(blocked);
@@ -880,7 +882,7 @@ export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DA
   }
   const p = { symbol: row.symbol, assetType, isLong: long, qty: n };
   const stop = type === 'LIMIT' ? row.stop : null; // the nearest stop of any kind
-  const close = type === 'LIMIT' ? closeLimitOrder({ ...p, price: limit, duration }) : closeMarketOrder(p);
+  const close = type === 'LIMIT' ? closeLimitOrder({ ...p, price: limit, duration, session }) : closeMarketOrder(p);
   if (stop !== null && n === held) moved = held; // cancelled above, back once the pair is in
   steps.push({ kind: 'place', order: stop === null ? close : ocoOrder(close, closeStopOrder({ ...p, stop, stopDuration: duration })) });
   return { error: unnamed(steps), stop: stop ?? 0, steps, paired: [], rest: held - n, bare: 0, price: limit, moved };
