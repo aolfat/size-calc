@@ -113,6 +113,7 @@ export function createState() {
       books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'setups', // By setup first: that's how charts are looked up
       draft: null, bookDraft: null, busy: false, preparing: false, deleteKey: '',
       viewerId: '', signing: false, imageError: '',
+      noTradeLink: false, // the database has no model_examples.trade_key yet: Add to model book waits for db push
     },
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
     journalNotebookDay: '', // the day's notebook page open in the Calendar tab ('YYYY-MM-DD', New York; docs/journal-notebook.md)
