@@ -36,6 +36,7 @@ test('Workbench: the rail, the trades a day at a time, the newest to review in t
   assert.match(html, /class="card positions-card journal-card jw-bench jw-has-side"/);
   assert.match(html, /<aside class="jb-rail"[^>]*>[^]*?<nav class="jb-nav journal-nav"[^]*?<span>Trades<\/span><span class="jb-nav-n">3<\/span>/, 'the tabs in the rail, the trades counted');
   assert.match(html, /<div class="jb-filters journal-controls"[^]*?id="journalSymbol"/, 'the filters in the rail');
+  assert.match(html, /<div class="jb-acts">[^]*?<div class="jb-io"><button class="btn" id="journalImportBtn"[^]*?id="journalExportBtn"[^]*?<\/div><\/div>\s*<nav class="jb-nav/, 'Import and Export at the top of the rail, above the tabs');
   assert.ok(html.indexOf('Fri · Oct 2') < html.indexOf('Thu · Oct 1'), 'newest day first');
   assert.match(html, /<dl class="jb-band">[^]*?Net P&amp;L/);
   // nothing reviewed: the newest waiting trade is in the panel, with its checklist
