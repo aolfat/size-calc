@@ -212,6 +212,7 @@ export function createState() {
     posCols: Array.isArray(posCols) ? posCols : [], // the optional Positions columns picked (positions_cols, this device only)
     posColsOpen: false, // the Columns picker showing
     posLegsOpen: [], // the Positions spreads (SpreadRow keys) showing their legs
+    posCardsOpen: [], // the phone cards (a row's symbol or a spread's key) opened to their figures and buttons
     posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
     posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again
     posRTrades: null, // the Journal's trades as the R column last built them: { records, reviews, saved, fees, trades }

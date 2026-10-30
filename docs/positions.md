@@ -33,7 +33,16 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   A failed orders read still shows positions ('Stops unavailable'); a failed refresh keeps the last table with the error.
   Refresh: on open, ↻ Refresh button (and r), every 30s while the tab is open and the page visible (setTimeout chain, never overlapping; visibilitychange pauses and refreshes on return). positionsRequest drops late answers; login, logout and account switch (positionsAccountChanged) clear the old account's table.
   Without a login: a Connect Schwab card that opens Settings.
-  Phones scroll the table sideways with the symbol column pinned.
+
+  **Phone cards** (≤600px, PHONE_MQ, checked at each render and again when the width crosses it): a card per position instead of the sideways table, no Columns.
+  Over them, three tiles: Account (the liquidation value in whole dollars, 'Hidden' with Hide), Invested (the market values added up) and Open P/L; the head line keeps cash, Hide, the time and Refresh.
+  Each card: the symbol (an option's strike before its expiry, '335C 6/20/26', so the strike survives the ellipsis) and its P/L top right, then 'avg → price · qty sh' (ct for options) with P/L % and R beside it.
+  R is the R column's (positionR), so on a phone the Journal is read when signed in, as when the column is on; while that read is out the card leaves R off.
+  The ladder under it puts the nearest stop (amber tick), your average cost (grey tick) and the price (dot) on one line, padded at both ends, the stretch from cost to price red or green with the P/L; a long option with no stop starts the line at zero, its premium being the risk.
+  The line under the ladder: 'Stop $19.50' (+N more, covers X of Y), 'At breakeven' or 'Stops past breakeven · +$X locked' in green, 'No stop · max loss is premium' on a long option, 'No stop' in amber otherwise.
+  A tap on the card (togglePosCard, state.posCardsOpen, not kept) opens Mkt val, Stop and Risk @ stop and the row's buttons (Chart, Simulate, Stop, BE stop, Close in red).
+  A spread's card shows its net cost → net mark in spreads, its structure and max loss, a ladder from zero for a debit spread (none for a credit), and opens to Mkt val, Max loss, the legs and Legs / Close; Legs lists each leg as its own card under it.
+  Working orders stay a table that scrolls sideways.
 
   **Position trades** (ui/position-trade.js, #posTradeSheet = SHEETS.posTrade): stock, ETF/closed-end fund (COLLECTIVE_INVESTMENT) and option rows (row.tradeAs) get **Stop**, **BE stop** and **Close** buttons under the symbol, in the pinned column; a position whose every share already has a stop at or past breakeven (long: stop ≥ be; short: ≤ be) reads 'stop at breakeven' or 'stops past breakeven' instead.
   Both re-read Schwab first, then freeze a ticket from pure plans in core/positions.js. breakevenPlan NEVER loosens a stop: stops (and pairs) already at or past breakeven are kept as they are and count as covering their shares (breakevenCovered / atBreakeven); only the remaining shares get a breakeven stop at row.be (stocks stopTick toward the market, options optionStopTick: $0.05 under $3, $0.10 from $3, the grid every option class accepts, so up to a dime better than cost) without ever asking Schwab to sell more than you hold, which it refuses through the API ('may result in an oversold/overbought position').
