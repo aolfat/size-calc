@@ -8,6 +8,7 @@
 //   node scripts/journal.mjs choices [kind]
 //   node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]
 //   node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]
+//   node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]   (month <YYYY-MM> the same way)
 //   node scripts/journal.mjs books [book]
 //   node scripts/journal.mjs book [book] '<json>' [--dry-run]
 //   node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]
@@ -16,12 +17,13 @@
 // A review's JSON: market, marketFor ('day' | 'trade'), sector, setups, tactics, tags, mistakes (names or keys; each one
 // given replaces that kind's labels), grade (A to F), plan (yes | partly | no), entryNote, exitNote, stop; null clears.
 // A day's: grade (A to F), rules ({ name or key: kept | broke | null }), wentWell, workOn, note, focusNext,
-// focusKept (yes | partly | no); null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
+// focusKept (yes | partly | no); null clears. A week's or month's: parts ({ name or key: { grade (A+ to F), note } }),
+// wentWell, workOn, note, ruleNext, ruleKept (yes | partly | no); null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { SUPABASE_KEY, SUPABASE_URL } from '../src/services/supabase.js';
 import { imageInfo } from '../supabase/functions/claude-model-example/handler.js';
-import { changesAnything, choicesText, dayDetail, findTrades, journalFrom, planDay, planReview, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
+import { changesAnything, choicesText, dayDetail, findTrades, journalFrom, periodDetail, planDay, planPeriod, planReview, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
 import { bookBy, booksFrom, booksText, exampleBy, exampleLine, planBook, planExample, shortId } from './model-books-lib.mjs';
 
 // Node's fetch ignores HTTPS_PROXY unless told to (a cloud session's traffic goes through one): run again with it on
@@ -120,6 +122,17 @@ if (cmd === 'trades') {
   // a database before the day-review migration skips the notebook list and says it saved nothing
   if (!saved?.saved) fail("Nothing was saved: the database doesn't take day reviews yet: npx supabase db push");
   console.log(`Saved. ${dayDetail(await journal(), ref)}`);
+} else if (cmd === 'week' || cmd === 'month') {
+  if (!ref) fail(cmd === 'week' ? 'Which week? Give any day in it as YYYY-MM-DD: week 2026-10-26' : 'Which month? Give it as YYYY-MM: month 2026-10');
+  const j = await journal();
+  const p = plan(() => planPeriod(j, cmd, ref, json ? parsed(`${cmd} review`) : {}));
+  if (!json) { console.log(periodDetail(j, cmd, p.key)); process.exit(0); }
+  if (!changesAnything(p.changes)) { console.log('Nothing to change.'); process.exit(0); }
+  if (flag('dry-run')) { console.log(JSON.stringify(p.changes, null, 2)); process.exit(0); }
+  const saved = await call('claude_journal_save', { p_changes: p.changes });
+  // a database before the week-review migration skips the periods list and says it saved nothing
+  if (!saved?.saved) fail("Nothing was saved: the database doesn't take week and month reviews yet: npx supabase db push");
+  console.log(`Saved. ${periodDetail(await journal(), cmd, p.key)}`);
 } else if (cmd === 'books') {
   const m = await books();
   const book = ref ? bookBy(m, ref) || fail(`No book ${ref}. List them with: node scripts/journal.mjs books`) : null;
@@ -163,5 +176,5 @@ if (cmd === 'trades') {
   const after = await books();
   console.log(`Saved. ${exampleLine(after, exampleBy(after, ex.id) || ex)}`);
 } else {
-  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
+  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | week <day> [<json>] | month <YYYY-MM> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
 }
