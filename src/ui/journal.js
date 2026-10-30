@@ -25,9 +25,10 @@ import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { openJournalTrade, reloadJournalCharts, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { applyOrderPlans } from './order-plan.js';
-import { loadJournalReview, myFunds, reviewFrom, reviewedMark, savedForWeekly, setupGradeOf, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
+import { loadJournalReview, myFunds, reviewFrom, reviewedMark, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, renderDeckEnd, reviewFromHtml, syncJournalBadge } from './journal-deck.js';
+import { bindUpNext, phoneTradesHtml } from './journal-cards.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
@@ -96,13 +97,13 @@ function fillRow(f) {
   </tr>`;
 }
 
-const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
-const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
-const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
+export const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
+export const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
+export const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 /** P&L before or after Schwab's fees: your choice, synced to your account as journal_fees */
 export const journalAfterFees = () => store.get('journal_fees') === 'after';
-const feeWords = () => journalAfterFees() ? 'after fees' : 'before fees';
-const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`; // the same minus sign as money
+export const feeWords = () => journalAfterFees() ? 'after fees' : 'before fees';
+export const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`; // the same minus sign as money
 
 /** the stop cell: the price in use (tap to change it), and whether it's yours or Schwab's stop moved later */
 function stopCell(t) {
@@ -113,20 +114,16 @@ function stopCell(t) {
   return `<button class="pos-link" data-action="openTradeReview" data-arg="${key}" aria-label="Change the stop for ${esc(t.label)}">${px(t.stop, t.assetType)}</button>${sub ? `<span class="pos-sub">${sub}</span>` : ''}`;
 }
 
-/** under the P&L: 'so far' on an open trade, and after fees, the fees taken out or that they haven't come in */
-function pnlSub(t) {
-  const open = t.status === 'open';
-  const lines = [];
-  if (open && t.exits) lines.push('so far');
-  if (t.afterFees && (!open || t.exits)) {
-    if (t.feesMissing) lines.push('<span class="journal-fees-missing">fees not in yet</span>');
-    else if (t.fees) lines.push(`fees ${fmt$(t.fees)}`);
-  }
-  return lines.map(l => `<span class="pos-sub">${l}</span>`).join('');
+/** after fees, the fees taken out or that they haven't come in */
+export function feeSubs(t) {
+  if (!t.afterFees || (t.status === 'open' && !t.exits)) return '';
+  return t.feesMissing ? '<span class="pos-sub"><span class="journal-fees-missing">fees not in yet</span></span>' : t.fees ? `<span class="pos-sub">fees ${fmt$(t.fees)}</span>` : '';
 }
-const pnlTitle = t => t.afterFees ? ` title="${esc(`Before fees ${signed$(t.grossPnl)}, fees ${fmt$(t.fees)}${t.feesMissing ? `, ${t.feesMissing} order${t.feesMissing === 1 ? '' : 's'} without fees yet` : ''}`)}"` : '';
+/** under the P&L: 'so far' on an open trade, and the fees */
+const pnlSub = t => `${t.status === 'open' && t.exits ? '<span class="pos-sub">so far</span>' : ''}${feeSubs(t)}`;
+export const pnlTitle = t => t.afterFees ? ` title="${esc(`Before fees ${signed$(t.grossPnl)}, fees ${fmt$(t.fees)}${t.feesMissing ? `, ${t.feesMissing} order${t.feesMissing === 1 ? '' : 's'} without fees yet` : ''}`)}"` : '';
 
-function rTitleOf(t) {
+export function rTitleOf(t) {
   if (t.rBasis === 'debit') return `The debit paid, ${fmt$(t.risk)}, is the risk`;
   if (t.rBasis === 'width') return `The width less the credit, ${fmt$(t.risk)}, is the risk`;
   if (t.legs) return 'No defined risk for this combination yet';
@@ -135,35 +132,35 @@ function rTitleOf(t) {
   return 'No stop: set one to get R';
 }
 
-const HISTORY_TITLE = "Opened before the journal's history: Schwab's API gives 60 days of orders, so its entry and P&L aren't known. It doesn't count in the stats.";
-const EXPIRED_TITLE = "Closed at $0 at the 4pm close on expiry, assumed worthless. An assignment or exercise shows once Schwab posts it, usually the next morning.";
-const VIA_TITLE = {
+export const HISTORY_TITLE = "Opened before the journal's history: Schwab's API gives 60 days of orders, so its entry and P&L aren't known. It doesn't count in the stats.";
+export const EXPIRED_TITLE = "Closed at $0 at the 4pm close on expiry, assumed worthless. An assignment or exercise shows once Schwab posts it, usually the next morning.";
+export const VIA_TITLE = {
   assigned: 'Assigned: the option closed at $0 that day, so its premium stays its P&L, and the shares came in or went out at the strike.',
   exercised: 'Exercised: the option closed at $0 that day, and the shares came in or went out at the strike.',
   delivered: 'Shares an option delivered at the strike. The option was opened before your history, so it isn\'t here.',
 };
 
 /** a leveraged ETF's trade on its underlying names it: long SQQQ reads 'Short QQQ' */
-const onWords = t => t.setupOn ? ` ${esc(t.setupOn)}` : '';
+export const onWords = t => t.setupOn ? ` ${esc(t.setupOn)}` : '';
 /** the side is the bet on the stock: a put bought is short, a call debit spread long, a time spread neutral */
 const sideCell = t => `<td class="${{ long: 'journal-buy', short: 'journal-sell' }[t.bias] || ''}">${{ long: 'Long', short: 'Short', neutral: 'Neutral' }[t.bias] || ''}${onWords(t)}</td>`;
 
 /** the tick box that picks a trade for Merge or Delete (not on deleted trades: an empty slot keeps their names in line) */
-const pickBox = t => t.deleted ? '<span class="journal-pick" aria-hidden="true"></span>'
+export const pickBox = t => t.deleted ? '<span class="journal-pick" aria-hidden="true"></span>'
   : `<label class="journal-pick"><input type="checkbox" data-change="toggleJournalPick" data-arg="${esc(t.key)}" aria-label="Pick ${esc(t.label)}"${state.journalPicked.includes(t.key) ? ' checked' : ''} /></label>`;
 
 /** the symbol cell: the tick box in its own slot, then the name and its lines lined up after it */
 const symCell = (t, main) => `<td><div class="journal-sym">${pickBox(t)}<div class="journal-sym-main">${main}</div></div></td>`;
 
 /** the trade's name: it opens the trade sheet (a deleted one only offers Restore) */
-const nameOf = t => t.deleted ? `<b>${esc(t.label)}</b>`
+export const nameOf = t => t.deleted ? `<b>${esc(t.label)}</b>`
   : `<button class="journal-name" data-action="openTradeReview" data-arg="${esc(t.key)}" aria-label="Open the ${esc(t.label)} trade"><b>${esc(t.label)}</b></button>`;
-const restoreLink = t => t.deleted ? `<span class="pos-sub journal-row-acts"><button class="pos-link" data-action="restoreTrade" data-arg="${esc(t.key)}" aria-label="Restore the ${esc(t.label)} trade">Restore</button></span>` : '';
+export const restoreLink = t => t.deleted ? `<span class="pos-sub journal-row-acts"><button class="pos-link" data-action="restoreTrade" data-arg="${esc(t.key)}" aria-label="Restore the ${esc(t.label)} trade">Restore</button></span>` : '';
 /** a row opens its trade wherever it's tapped, except the tick box and the stop link (they have their own jobs) */
-const rowOpen = t => t.deleted ? '' : ` data-action="openTradeRow" data-arg="${esc(t.key)}"`;
+export const rowOpen = t => t.deleted ? '' : ` data-action="openTradeRow" data-arg="${esc(t.key)}"`;
 
 /** a setup's chip in its parts, the action first and the level second ('Bounce | 8 EMA'), its name in the title; a pattern is its own name */
-const setupChip = s => {
+export const setupChip = s => {
   const lvl = s.levels.map(l => l.name).join(' + ');
   const parts = s.kind || lvl ? `${s.kind ? `<span class="journal-setup-act">${esc(s.kind.name)}</span>` : ''}${lvl ? `<span class="journal-setup-lvl">${esc(lvl)}</span>` : ''}` : esc(s.name);
   return `<span class="journal-setup" title="${esc(s.name)}">${parts}</span>`;
@@ -210,9 +207,9 @@ function columnPicker() {
 /** the row's cells in the columns shown */
 const colCells = cells => shownTradeCols().map(([key]) => cells[key]).join('\n    ');
 
-const signedPct = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
+export const signedPct = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
 /** what the percent is of: what it cost, what a short took in, a spread's risk */
-function pctTitleOf(t, basis) {
+export function pctTitleOf(t, basis) {
   const open = t.status === 'open';
   if (t.legs) return `Of the ${fmt$(basis)} ${t.rBasis === 'width' ? 'at risk (the width less the credit)' : t.rBasis === 'debit' ? 'debit paid' : 'credit taken in'}`;
   return t.direction === 'short' ? `Of the ${fmt$(basis)} taken in${open ? ' for the part covered' : ''}` : `Of the ${fmt$(basis)} paid${open ? ' for the part sold' : ''}`;
@@ -264,9 +261,9 @@ function filtered(list, sideOf) {
 }
 /** the trades tab, narrowed to a day picked on the calendar (the trades with an exit that New York day) */
 /** the review chips: To review (the deck's queue), Reviewed, and No setup (nothing labelled yet); All lets every trade through */
-const reviewsRead = () => !!state.journalReview && !state.journalReviewError;
-const isReviewed = t => reviewsRead() && t.status !== 'history' && tradeReviewState(t).reviewed;
-const untagged = t => reviewsRead() && t.status !== 'history' && !setupsOf(t).length;
+export const reviewsRead = () => !!state.journalReview && !state.journalReviewError;
+export const isReviewed = t => reviewsRead() && t.status !== 'history' && tradeReviewState(t).reviewed;
+export const untagged = t => reviewsRead() && t.status !== 'history' && !setupsOf(t).length;
 const isOpen = t => t.status === 'open';
 const REVIEW_TESTS = { open: isOpen, todo: toReview, done: isReviewed, untagged };
 const onReviewFilter = list => REVIEW_TESTS[state.journalReviewFilter] ? list.filter(REVIEW_TESTS[state.journalReviewFilter]) : list;
@@ -293,27 +290,6 @@ export function clearJournalDates() { state.journalFrom = ''; state.journalTo = 
 function datesHtml() {
   const today = nyParts(new Date().toISOString()).day, set = state.journalFrom || state.journalTo;
   return `<span class="journal-dates${set ? ' active' : ''}"><label class="jr-from">Trades from <input type="date" id="journalFrom" value="${state.journalFrom}" max="${today}" data-change="setJournalDates" data-arg="from" aria-label="Show trades from this day" /></label><label class="jr-from">to <input type="date" id="journalTo" value="${state.journalTo}" data-change="setJournalDates" data-arg="to" aria-label="Show trades up to this day" /></label>${set ? '<button class="pos-link" data-action="clearJournalDates">All dates</button>' : ''}</span>`;
-}
-
-/** phones: the summary as three tiles (net, win rate, average) and a quiet line for the rest */
-function summaryTiles(trades, deleted) {
-  const s = tradesSummary(trades);
-  const deletedNote = deleted ? `${deleted} deleted <button class="pos-link" data-action="toggleDeletedTrades">${state.journalShowDeleted ? 'Hide them' : 'Show'}</button>` : '';
-  if (!s.closed && !s.open && !s.history) return `<p class="hint journal-summary">No trades match.${deletedNote ? ` ${deletedNote}` : ''}</p>`;
-  const tile = (label, value, sub, cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}</dd>${sub ? `<span class="pos-sub">${sub}</span>` : ''}</div>`;
-  const tiles = s.closed ? `<dl class="journal-summary-tiles">
-      ${tile('Net P&amp;L', signed$(s.pnl), feeWords(), pnlClass(s.pnl))}
-      ${tile('Win rate', `${s.winRate}%`, `${s.wins} of ${s.closed} won`)}
-      ${s.avgR !== null ? tile('Avg R', signedR(s.avgR), s.avgPct !== null ? `${signedPct(s.avgPct)} avg` : '', pnlClass(s.avgR)) : tile('Avg', s.avgPct !== null ? signedPct(s.avgPct) : '—', '', s.avgPct !== null ? pnlClass(s.avgPct) : '')}
-    </dl>` : '';
-  const notes = [
-    s.closed && journalAfterFees() && s.fees ? `fees ${fmt$(s.fees)}` : '',
-    s.closed && journalAfterFees() && s.feesMissing ? `<span class="journal-fees-missing">fees not in yet on ${s.feesMissing}</span>` : '',
-    s.open ? `${s.open} open` : '',
-    s.history ? `<span class="journal-fees-missing" title="${esc(HISTORY_TITLE)}">${s.history} from before your history</span>` : '',
-    deletedNote,
-  ].filter(Boolean);
-  return `${tiles}${notes.length ? `<p class="hint journal-summary">${notes.join(' · ')}</p>` : ''}`;
 }
 
 function summaryLine(trades, deleted) {
@@ -409,100 +385,7 @@ function pickBar(all) {
     <span class="journal-pickbar-acts"><button class="btn primary" data-action="mergePicked"${off}>${state.journalMerging ? 'Merging…' : 'Merge into one trade'}</button><button class="btn" data-action="clearJournalPicks">Clear</button></span></div>`;
 }
 
-// ---------- phones: a card per trade, open ones first, like the trade journals on a phone ----------
-
-const nyDay = iso => new Date(iso).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
-const unitWord = t => t.legs ? (t.entryQty === 1 ? 'spread' : 'spreads') : t.assetType === 'OPTION' || t.assetType === 'FUTURE' ? (t.entryQty === 1 ? 'ct' : 'cts') : 'shr';
-const pill = (cls, text, title = '') => `<span class="jtc-pill${cls ? ` ${cls}` : ''}"${title ? ` title="${esc(title)}"` : ''}>${text}</span>`;
-
-/** '20 shr · Oct 9 → Oct 13 · 4d 1h', or '100 shr · Opened Oct 15 · 2d 3h' while it's open */
-function cardSub(t) {
-  const qty = `${t.entryQty} ${unitWord(t)}`;
-  if (t.status === 'history') return `${qty} · closed ${nyDay(t.closedAt || t.openedAt)} · bought earlier`;
-  const parts = t.status === 'open'
-    ? [`${qty}${t.openQty !== t.entryQty ? `, ${t.openQty} open` : ''}`, `Opened ${nyDay(t.openedAt)}`, holdWords(Date.now() - Date.parse(t.openedAt))]
-    : [qty, nyDay(t.openedAt) === nyDay(t.closedAt) ? nyDay(t.openedAt) : `${nyDay(t.openedAt)} → ${nyDay(t.closedAt)}`, holdWords(t.holdMs)];
-  return parts.filter(Boolean).map(p => `<span class="jtc-nowrap">${p}</span>`).join(' · '); // breaks between the parts, never inside one
-}
-
-/** what the trade is, as pills (closed says nothing: the cards sit under Closed trades) */
-function cardPills(t) {
-  const open = t.status === 'open';
-  const out = [t.status === 'history' ? pill('jtc-warn', 'Before your history', HISTORY_TITLE) : open ? pill('jtc-open', 'Open') : ''];
-  const side = { long: pill('jtc-long', `Long${onWords(t)}`), short: pill('jtc-short', `Short${onWords(t)}`), neutral: pill('', 'Neutral') }[t.bias];
-  if (side) out.push(side);
-  if (t.legs) out.push(pill('', esc(t.structure || `${t.spreadKind} spread`)));
-  if (t.expired) out.push(pill('', 'expired', EXPIRED_TITLE));
-  if (t.via) out.push(pill('', t.via, VIA_TITLE[t.via]));
-  if (t.deleted) out.push(pill('jtc-warn', 'deleted'));
-  return out.join('');
-}
-
-const CHECK = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m7.5 12.3 3 3 6-6.3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const PENCIL = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
-/**
- * The card's foot: a reviewed trade earns a big green Reviewed badge with its grade; one waiting gets Review this trade;
- * any other (an open trade whose opening pass is done, or before the reviews are read) a quiet Open trade
- */
-function cardFoot(t) {
-  if (t.deleted) return '';
-  const label = esc(t.label);
-  if (reviewsRead() && t.status !== 'history' && isReviewed(t)) {
-    const g = setupGradeOf(t);
-    return `<div class="jtc-badge" role="status">${CHECK}<span>Reviewed</span>${g ? `<span class="jtc-grade">Grade ${g}</span>` : ''}</div>`;
-  }
-  if (reviewsRead() && t.status !== 'history' && toReview(t)) return `<button class="jtc-go" data-action="openTradeRow" data-arg="${esc(t.key)}" aria-label="Review ${label}">${PENCIL}Review this trade</button>`;
-  return `<button class="jtc-go jtc-go-quiet" data-action="openTradeRow" data-arg="${esc(t.key)}" aria-label="Open ${label}">Open trade</button>`;
-}
-
-/** the card's P&L %, under the dollars */
-function cardPct(t) {
-  const basis = pnlBasis(t), pct = pnlPct(t);
-  return pct === null || basis === null ? '' : `<span class="jtc-pct" title="${esc(pctTitleOf(t, basis))}">${signedPct(pct)}</span>`;
-}
-
-function tradeCard(t) {
-  const open = t.status === 'open', history = t.status === 'history', noPnl = history || (open && !t.exits);
-  const setups = setupsOf(t);
-  const tags = setups.length ? setups.map(setupChip).join('') : untagged(t) ? pill('jtc-warn', 'No setup') : '';
-  const weekly = reviewsRead() && savedForWeekly(t) ? pill('', 'for weekly') : '';
-  const sub = t.legs ? esc(legWords(t.legs)) : t.kind === 'merged' ? `${t.parts.length} trades merged` : '';
-  // the stop as a fact, not a control: changing it is on the trade page (Edit)
-  const stop = t.legs || history || t.stop === null ? '' : `<span class="jtc-stop">Stop <b>${px(t.stop, t.assetType)}</b>${t.stopSource === 'yours' ? ' <span class="pos-sub">yours</span>' : t.movedTo !== null ? ` <span class="pos-sub">moved to ${px(t.movedTo, t.assetType)}</span>` : ''}</span>`;
-  const reviewed = !t.deleted && !history && reviewsRead() && isReviewed(t);
-  const pop = reviewed && state.journalJustReviewed === t.key ? ' jtc-pop' : '';
-  // the P&L is the card's headline, top right; Entry, Exit and R sit in tiles under the setups; the foot says where the review stands
-  return `<article class="jtc${open ? ' jtc-is-open' : ''}${reviewed ? ' jtc-reviewed' : ''}${pop}${t.deleted ? ' journal-deleted' : ''}"${rowOpen(t)}${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
-    <div class="jtc-head">${state.journalSelecting || state.journalPicked.length ? pickBox(t) : ''}<div class="jtc-id">
-      <div class="jtc-name">${nameOf(t)}${cardPills(t)}</div>
-      <div class="jtc-sub">${cardSub(t)}</div>${sub ? `<div class="jtc-sub">${sub}</div>` : ''}
-    </div>
-    <dl class="jtc-pnl"><div${noPnl ? '' : pnlTitle(t)}><dt>P&amp;L</dt><dd class="${noPnl ? '' : pnlClass(t.pnl)}">${noPnl ? '—' : signed$(t.pnl)}${noPnl ? '' : cardPct(t) + pnlSub(t)}</dd></div></dl></div>
-    ${tags || weekly ? `<div class="jtc-tags">${tags}${weekly}</div>` : ''}
-    <dl class="jtc-stats${[t.avgEntry, t.avgExit].some(v => v !== null && px(v, t.assetType).length > 8) ? ' jtc-stats-wide' : ''}">
-      <div><dt>Entry</dt><dd>${history ? '—' : px(t.avgEntry, t.assetType)}</dd></div>
-      <div><dt>${t.exits > 1 ? 'Avg exit' : 'Exit'}</dt><dd>${t.avgExit === null ? '—' : px(t.avgExit, t.assetType)}</dd></div>
-      <div title="${esc(rTitleOf(t))}"><dt>R</dt><dd class="${t.r === null ? '' : pnlClass(t.r)}">${t.r === null ? '—' : signedR(t.r)}</dd></div>
-    </dl>
-    ${stop || restoreLink(t) ? `<div class="jtc-foot">${stop}${restoreLink(t)}</div>` : ''}
-    ${cardFoot(t)}
-  </article>`;
-}
-
-/** Open trades, then Closed trades, each with a count and what it took */
-function tradeCards(trades) {
-  const taken = list => list.filter(t => !t.deleted && t.status !== 'history' && (t.status !== 'open' || t.exits)).reduce((sum, t) => sum + t.pnl, 0);
-  const group = (title, list, word) => {
-    if (!list.length) return '';
-    const counted = list.filter(t => !t.deleted && t.status !== 'history' && (t.status !== 'open' || t.exits));
-    const total = counted.length ? `<span class="jtc-total">${word} <b class="${pnlClass(taken(list))}">${signed$(taken(list))}</b></span>` : '';
-    return `<section class="jtc-group"><div class="jtc-group-head"><h3>${title} <span>${list.length}</span></h3>${total}</div>${list.map(tradeCard).join('')}</section>`;
-  };
-  const html = `<div class="jtc-list">${group('Open trades', trades.filter(t => t.status === 'open'), 'Taken so far')}${group('Closed trades', trades.filter(t => t.status !== 'open'), 'Realized')}</div>`;
-  state.journalJustReviewed = ''; // the pop plays once
-  return html;
-}
+// ---------- phones: a card per trade (journal-cards.js) ----------
 
 /** a phone turned sideways (or a window resized) swaps cards and table */
 let phoneWatched = false;
@@ -535,13 +418,13 @@ function tradesView(all) {
   watchPhone();
   const shown = trades.slice(0, JOURNAL_SHOWN);
   const phone = mq(PHONE_MQ);
-  const list = phone ? tradeCards(shown) : `${columnPicker()}<div class="positions-wrap"><table class="positions-table journal-table">
+  const list = phone ? phoneTradesHtml(shown, counted, deleted) : `${columnPicker()}<div class="positions-wrap"><table class="positions-table journal-table">
       <thead><tr><th scope="col">Symbol</th>${shownTradeCols().map(([key, label]) => `<th scope="col">${colHead(key, label)}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(tradeRow).join('')}</tbody>
     </table></div>`;
   // phones hide the tick boxes until Select (in the bar above: bulk Merge and Delete are rare), and show the summary as tiles
   const colsBtn = `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
-  return `${phone ? summaryTiles(counted, deleted) : `<div class="journal-summary-row"><p class="hint journal-summary">${summaryLine(counted, deleted)}</p>${colsBtn}</div>`}
+  return `${phone ? '' : `<div class="journal-summary-row"><p class="hint journal-summary">${summaryLine(counted, deleted)}</p>${colsBtn}</div>`}
     ${list}${pickBar(trades)}
     ${trades.length > JOURNAL_SHOWN ? `<p class="hint">Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades.</p>` : ''}
     <details class="hint-details"><summary>How trades are built</summary><p class="hint">Trades run from flat back to flat, matched first in first out. Tap a trade for its page: the charts with your fills, how far it went for and against you, your review (labels, both grades, an entry note while it's live and an exit note after; To review lists the ones still waiting), and Edit for your stop, separate or delete. Tick trades to Merge two or more into one (a re-entry, a spread's legs), or to Delete ones that don't belong; imports won't bring them back. ${journalAfterFees()
@@ -701,6 +584,7 @@ export function renderJournal() {
   if (wrap) wrap.scrollLeft = scrolled;
   if (state.journalTab === 'stats' && fills.length) drawJournalEquity(onSetupFilter(filtered(all, t => t.bias)));
   drawMissedChart();
+  bindUpNext();
   growBoxes(el);
 }
 
