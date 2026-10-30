@@ -10,7 +10,7 @@ import { state } from '../state.js';
 import { reviewChecklist, reviewQueue, setupGradeOf, setupsOf, toReview, tradePass } from './journal-review.js';
 import {
   closeDay, closedDays, counts, dayWords, nowrap, openCard, progress, progressHtml, setupTags, sideTags, statsLine, stopNow,
-  sum, unitWord, upNextHtml, upNextOf,
+  sum, unitWord, upNextHtml,
 } from './journal-cards.js';
 import {
   HISTORY_TITLE, clockTime, isReviewed, journalAfterFees, journalTradeList, pctTitleOf, pickBox, pnlClass, pnlTitle, px, renderJournal,
@@ -285,15 +285,13 @@ function bySetupHtml(trades) {
   return `<section class="jds" aria-label="By setup"><div class="jds-head"><h3>By setup</h3><button class="pos-link" data-action="setJournalTab" data-arg="setups">Setups ›</button></div><ul>${rows}</ul></section>`;
 }
 
-/** Review desk: the cards two-up (the trade Up next shows is left out, as on phones), the queue and By setup beside them */
+/** Review desk: the cards two-up (every trade, the one Up next shows too, as on phones), the queue and By setup beside them */
 export function deskTradesHtml(trades, counted, deleted) {
   const all = journalTradeList();
   const deck = ['all', 'todo'].includes(state.journalReviewFilter) && !state.journalSelecting && !state.journalPicked.length;
   const queue = deck ? reviewQueue(all) : [];
   const p = deck ? progress(all) : null;
-  const next = upNextOf(queue);
-  const shown = next ? trades.filter(t => t.key !== next.key) : trades;
-  const open = shown.filter(t => t.status === 'open'), closed = shown.filter(t => t.status !== 'open');
+  const open = trades.filter(t => t.status === 'open'), closed = trades.filter(t => t.status !== 'open');
   const head = (title, n, word, list) => `<div class="jtc-group-head"><h3>${title} <span>${n}</span></h3>${list.some(counts) ? `<span class="jtc-total">${word} <b class="${pnlClass(sum(list))}">${signed$(sum(list))}</b></span>` : ''}</div>`;
   const main = `${statsLine(counted, deleted)}
     <div class="jtc-list jds-cards">

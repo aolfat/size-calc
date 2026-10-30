@@ -323,16 +323,14 @@ export function closedDays(list) {
 
 /**
  * The phone Trades tab: the progress card and Up next (while the list shows every trade or the ones to review, and not
- * while picking), the stats line, then Open and Closed; the trade Up next shows is left out of the list under it
+ * while picking), the stats line, then Open and Closed; every trade stays in the list, the one Up next shows too
  */
 export function phoneTradesHtml(trades, counted, deleted) {
   const all = journalTradeList();
   const deck = ['all', 'todo'].includes(state.journalReviewFilter) && !state.journalSelecting && !state.journalPicked.length;
   const queue = deck ? reviewQueue(all) : [];
   const p = deck ? progress(all) : null;
-  const next = upNextOf(queue);
-  const shown = next ? trades.filter(t => t.key !== next.key) : trades;
-  const open = shown.filter(t => t.status === 'open'), closed = shown.filter(t => t.status !== 'open');
+  const open = trades.filter(t => t.status === 'open'), closed = trades.filter(t => t.status !== 'open');
   const head = (title, n, word, list) => `<div class="jtc-group-head"><h3>${title} <span>${n}</span></h3>${list.some(counts) ? `<span class="jtc-total">${word} <b class="${pnlClass(sum(list))}">${signed$(sum(list))}</b></span>` : ''}</div>`;
   const html = `${progressHtml(p)}${upNextHtml(queue, p)}${statsLine(counted, deleted)}
     <div class="jtc-list">

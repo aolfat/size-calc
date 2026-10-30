@@ -302,7 +302,7 @@ test('phone cards: a reviewed trade turns green with a Reviewed badge and its gr
   assert.doesNotMatch(out(), /jtc-pop/, 'one already reviewed doesn\'t pop again');
 });
 
-test('phones: the progress card, Up next (Skip goes round, Start review starts the deck on it), and the list without it', async () => {
+test('phones: the progress card, Up next (Skip goes round, Start review starts the deck on it), and every trade still in the list', async () => {
   const supabase = fakeRecords(ORDERS.map(o => ({ kind: 'order', record_id: String(o.orderId), account: '6789', entered_at: o.enteredTime.replace('+0000', 'Z'), data: o })));
   reviewedElsewhere(supabase, A, '2026-10-01');
   const a = await app({ width: 390, supabase, session: SESSION, clock: true, now: Date.parse('2026-10-08T18:00:00Z') });
@@ -318,12 +318,12 @@ test('phones: the progress card, Up next (Skip goes round, Start review starts t
   assert.equal(upNext(), C, 'the newest waiting');
   assert.match(out(), /Up next · 1 of 2<\/span><button class="jun-skip" data-action="skipUpNext"/);
   assert.match(out(), /<button class="jun-go" data-action="reviewUpNext" data-arg="[^"]+">[^]*?Start review<\/button>/);
-  assert.doesNotMatch(out(), /<h3>Open /, 'Up next isn\'t in the list too');
+  assert.match(out(), /<h3>Open <span>1<\/span>/, 'Up next stays in the list too');
   a.run('skipUpNext()');
   assert.equal(upNext(), B);
   assert.match(out(), /Up next · 2 of 2/);
-  assert.match(out(), /<h3>Open <span>1<\/span>/, 'NVDA back in the list');
-  assert.doesNotMatch(out().split('jtc-list')[1], new RegExp(`data-arg="${B.replace(/[|.]/g, '\\$&')}"`), 'MSFT out of it');
+  assert.match(out(), /<h3>Open <span>1<\/span>/, 'NVDA still in the list');
+  assert.match(out().split('jtc-list')[1], new RegExp(`data-arg="${B.replace(/[|.]/g, '\\$&')}"`), 'and MSFT too');
   a.run('skipUpNext()');
   assert.equal(upNext(), C, 'round to the first after the last');
   a.run('skipUpNext()');
