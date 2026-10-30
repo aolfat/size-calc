@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { findItem, findTrades, handleOf, journalFrom, planReview, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
+import { dayDetail, findItem, findTrades, handleOf, journalFrom, planDay, planReview, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r)); };
@@ -171,6 +171,68 @@ test('a review that can\'t be: an unknown field, a grade or plan not on the list
   assert.throws(() => planReview(j, t, { stop: -1 }), /stop/);
 });
 
+// ---------- the day's review (the notebook's post-market half) ----------
+
+const RULES = [
+  { id: 'r1', kind: 'rule', name: 'Follow your stops', settings: { order: 1, since: '2026-10-20' } },
+  { id: 'r2', kind: 'rule', name: 'do not oversize', settings: { order: 2, since: '2026-10-20' } },
+  { id: 'r3', kind: 'rule', name: 'Made later', settings: { order: 3, since: '2026-10-26' } },
+  { id: 'r4', kind: 'rule', name: 'Retired', hidden: true, settings: { order: 4, since: '2026-10-20' } },
+];
+const DAY = '2026-10-23';
+const DAY_DATA = { ...DATA, library: RULES, days: [{ day: DAY, market: 'bearish' }] };
+const DAY_REVIEW = {
+  grade: 'd', rules: { 'follow your stops': 'Broke', 'mine:r2': 'kept' },
+  wentWell: 'Cut the loser at -1R.', workOn: 'Moved a stop after 3pm.', focusNext: 'Name the setup before every order.',
+};
+
+test("a day's review becomes the notebook's changes: rules by name or key, only the ones that apply, reviewed_at", () => {
+  const j = journalFrom(DAY_DATA);
+  const plan = planDay(j, DAY, DAY_REVIEW, opts);
+  assert.deepEqual(plan.changes.notebook, [{ day: DAY, fields: {
+    grade: 'D', rules: { 'mine:r1': 'broke', 'mine:r2': 'kept' }, went_well: DAY_REVIEW.wentWell, work_on: DAY_REVIEW.workOn,
+    focus_next: DAY_REVIEW.focusNext, reviewed_at: '2026-10-24T18:00:00.000Z',
+  } }], 'a grade, every rule that applies and a guided note: reviewed');
+  assert.deepEqual([plan.changes.library, plan.changes.reviews, plan.changes.labels_add, plan.changes.labels_remove, plan.changes.days], [[], [], [], [], []]);
+  assert.equal(plan.after.reviewed, true);
+  assert.equal(planDay(j, DAY, { grade: 'D' }, opts).after.reviewed, false, 'a grade alone is not a review');
+});
+
+test("a day's review again: only what changed is sent, null clears a rule and the reviewed stamp with it", () => {
+  const reviewed = { day: DAY, market: 'bearish', grade: 'D', rules: { 'mine:r1': 'broke', 'mine:r2': 'kept' }, went_well: 'Cut the loser.', reviewed_at: '2026-10-23T21:00:00.000Z' };
+  const j = journalFrom({ ...DAY_DATA, days: [reviewed] });
+  assert.deepEqual(planDay(j, DAY, { grade: 'D', rules: { 'Follow your stops': 'broke' } }, opts).changes.notebook, [], 'the same answers change nothing');
+  assert.deepEqual(planDay(j, DAY, { rules: { 'do not oversize': 'broke' }, note: 'More.' }, opts).changes.notebook,
+    [{ day: DAY, fields: { rules: { 'mine:r2': 'broke' }, note: 'More.' } }]);
+  assert.deepEqual(planDay(j, DAY, { rules: { 'Follow your stops': null } }, opts).changes.notebook,
+    [{ day: DAY, fields: { rules: { 'mine:r1': null }, reviewed_at: null } }], 'a rule unanswered: no longer reviewed');
+  assert.deepEqual(planDay(j, DAY, { wentWell: null }, opts).changes.notebook,
+    [{ day: DAY, fields: { went_well: null, reviewed_at: null } }]);
+});
+
+test("a day's review that can't be: an unknown field, a rule that isn't the day's, an answer or grade not on the list, a bad day", () => {
+  const j = journalFrom(DAY_DATA);
+  assert.throws(() => planDay(j, DAY, { plan: 'yes' }), /not plan/);
+  assert.throws(() => planDay(j, DAY, { rules: { 'Made later': 'kept' } }), /Made later isn't one of 2026-10-23's rules: Follow your stops, do not oversize/);
+  assert.throws(() => planDay(j, DAY, { rules: { Retired: 'kept' } }), /isn't one of/, 'retired before the day was answered');
+  assert.throws(() => planDay(j, DAY, { rules: { 'Follow your stops': 'mostly' } }), /kept or broke/);
+  assert.throws(() => planDay(j, DAY, { rules: ['Follow your stops'] }), /rules: an object/);
+  assert.throws(() => planDay(j, DAY, { grade: 'A+' }), /grade: A, B, C, D, F/);
+  assert.throws(() => planDay(j, DAY, { focusKept: 'mostly' }), /focusKept: yes, partly or no/);
+  assert.throws(() => planDay(j, DAY, { focusNext: 'x'.repeat(501) }), /focusNext: 500 characters at most/);
+  assert.throws(() => planDay(j, '2026-13-01', { grade: 'B' }), /a day as YYYY-MM-DD/);
+});
+
+test("the whole day: its market, P&L, trades and the review in words, with what's missing", () => {
+  const j = journalFrom({ ...DAY_DATA, days: [{ day: DAY, market: 'bearish', rules: { 'mine:r1': 'broke' } }] });
+  const text = dayDetail(j, DAY);
+  assert.match(text, /^2026-10-23 \(Fri\)\nmarket: Bearish\nP&L: \$11\.00 · 1 trade with an exit/);
+  assert.match(text, new RegExp(`\\n  ${handleOf(KEY)} · QQQ 10/23/26 706P`));
+  assert.match(text, /\n    Follow your stops: broke\n    do not oversize: —\n/);
+  assert.doesNotMatch(text, /Made later|Retired/, 'rules that never applied to the day');
+  assert.match(text, /missing: a grade, 1 rule and what went well or what to work on$/);
+});
+
 // ---------- the script ----------
 
 const SCRIPT = fileURLToPath(new URL('../scripts/journal.mjs', import.meta.url));
@@ -209,4 +271,37 @@ test('the script: lists and shows trades, saves a review, a dry run saves nothin
   assert.match(none.stderr, /No JOURNAL_KEY/);
   const unknown = script(['show', 'tnothere']);
   assert.match(unknown.stderr, /No trade tnothere/);
+});
+
+test("the script: shows a day, saves its review, a dry run saves nothing", () => {
+  const show = script(['day', DAY], { data: DAY_DATA });
+  assert.equal(show.status, 0, show.stderr);
+  assert.match(show.stdout, /^2026-10-23 \(Fri\)/);
+
+  const dry = script(['day', DAY, JSON.stringify(DAY_REVIEW), '--dry-run'], { data: DAY_DATA });
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.deepEqual(dry.saves, []);
+  assert.match(dry.stdout, /"notebook"/);
+
+  const saved = script(['day', DAY, JSON.stringify(DAY_REVIEW)], { data: DAY_DATA });
+  assert.equal(saved.status, 0, saved.stderr);
+  assert.equal(saved.saves.length, 1);
+  assert.deepEqual(saved.saves[0].notebook[0].fields.rules, { 'mine:r1': 'broke', 'mine:r2': 'kept' });
+  assert.match(saved.stdout, /^Saved\./m);
+
+  assert.match(script(['day'], { data: DAY_DATA }).stderr, /Which day\?/);
+});
+
+test('the save function takes the day review fields and nothing else of the notebook; the read returns them', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  const sql = readdirSync(dir).filter(f => f.endsWith('.sql')).sort().map(f => readFileSync(new URL(f, dir), 'utf8')).join('\n').replace(/--[^\n]*/g, '');
+  const last = name => [...sql.matchAll(new RegExp(`create or replace function public\\.${name}\\(p_key text[\\s\\S]*?end \\$\\$;`, 'gi'))].pop()?.[0] || '';
+  const save = last('claude_journal_save'), read = last('claude_journal_read');
+  assert.match(save, /p_changes->'notebook'/);
+  assert.match(save, /k not in \('grade', 'rules', 'went_well', 'work_on', 'note', 'focus_next', 'focus_kept', 'reviewed_at'\)/, 'the review half only, never the plan');
+  assert.match(save, /jsonb_strip_nulls\(coalesce\(d\.rules, '\{\}'\) \|\| \(f->'rules'\)\)/, 'rules merge one at a time, null clears one');
+  assert.match(read, /'order_plans', coalesce/, 'the read keeps the order plans');
+  assert.match(read, /'went_well', d\.went_well/);
+  assert.doesNotMatch(read, /d\.market is not null/, 'every day row, a review can come before a market');
 });

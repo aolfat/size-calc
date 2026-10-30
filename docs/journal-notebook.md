@@ -124,6 +124,8 @@ They never count in P&L, stats, the plan or the review.
 
 **Day reviewed** = the grade, every rule answered, and one of the two guided notes. `reviewed_at` is stamped while it's true.
 
+A Claude session can save this review too (`node scripts/journal.mjs day`, docs/claude-access.md), stamping `reviewed_at` the same way; it never touches the premarket plan, the focus list or the missed trades.
+
 **Which rules apply to a day:** the rules you had then (made on or before it, `settings.since`) that aren't retired, plus any rule answered that day even if it's retired since. A rule you add today doesn't ask about last week.
 
 ## Goals and rules
