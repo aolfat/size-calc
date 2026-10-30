@@ -41,7 +41,7 @@ A wrong key or a bad image never reaches Storage.
 The function runs with `--no-verify-jwt`: the Claude key stands in for a sign-in, so the gateway's JWT check is off and the handler checks the key.
 It reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, which Supabase gives every function; a `sb_secret_` key goes as the apikey alone, a legacy service_role JWT as the bearer too.
 
-Anyone holding a key can rewrite that account's reviews and labels and add to its model books, so keep it in the environment's secrets, never in a chat or a file in the repo.
+Anyone holding a key can rewrite that account's trade, day, week and month reviews and labels and add to its model books, so keep it in the environment's secrets, never in a chat or a file in the repo.
 
 ## Setting up a Claude Code environment
 
