@@ -49,7 +49,8 @@ const rowWith = (symbol, orders = ORDERS) => `positionRows(${JSON.stringify(acco
 
 // a fake Schwab account that changes as orders arrive, so the re-read after sending tells the truth.
 // Cancelling one leg of a pair cancels both, cancelling an entry cancels what waits on it, and a second cancel is refused, as Schwab does.
-function broker({ refuse = () => null, lag = false, orders = ORDERS } = {}) {
+// fillLimits: a placed limit fills at once, but the position doesn't shrink yet (Schwab lists the fill first)
+function broker({ refuse = () => null, lag = false, orders = ORDERS, fillLimits = false } = {}) {
   const live = { positions: plain(POSITIONS), orders: plain(orders), nextId: 900 };
   const sent = [];
   const all = () => live.orders.flatMap(o => [o, ...(o.childOrderStrategies || [])]);
@@ -88,7 +89,10 @@ function broker({ refuse = () => null, lag = false, orders = ORDERS } = {}) {
         const qty = (p.longQuantity || -p.shortQuantity) > 0 ? p.longQuantity - quantity : -(p.shortQuantity - quantity);
         return qty ? [{ ...p, longQuantity: Math.max(qty, 0), shortQuantity: Math.max(-qty, 0), marketValue: p.marketValue / (p.longQuantity || -p.shortQuantity) * qty }] : [];
       });
-    } else live.orders.push({ ...call.body, orderId, status: 'WORKING', childOrderStrategies: (call.body.childOrderStrategies || []).map(c => ({ ...c, orderId: live.nextId++, status: 'WORKING' })) });
+    } else {
+      const status = o => fillLimits && o.orderType === 'LIMIT' ? { status: 'FILLED', filledQuantity: o.orderLegCollection[0].quantity } : { status: 'WORKING' };
+      live.orders.push({ ...call.body, orderId, ...status(call.body), childOrderStrategies: (call.body.childOrderStrategies || []).map(c => ({ ...c, orderId: live.nextId++, ...status(c) })) });
+    }
     return new Response(null, { status: 201, headers: { Location: `${PROXY}/trader/v1/accounts/HASH1/orders/${orderId}` } });
   };
   return { fetch, sent, live };
@@ -719,6 +723,22 @@ test('when Schwab doesn\'t show the result yet, the next send on that symbol wai
   assert.equal(b.sent.length, 1);
 });
 
+test('a limit that fills before the position shrinks still counts as sent, so the next send isn\'t held', async () => {
+  const b = broker({ fillLimits: true });
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  run("setCloseType('LIMIT')");
+  run("setCloseQty('100')");
+  await run('placePositionTrade()');
+  assert.equal(b.sent.at(-1).body.orderStrategyType, 'OCO');
+  const html = elements.get('posTradeBody').innerHTML;
+  assert.match(html, /Schwab filled 100 shares HOOD\./);
+  assert.doesNotMatch(html, /Schwab lists for HOOD/);
+  await run("openPositionTrade('HOOD', 'close')");
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /has not shown up at Schwab yet/);
+  assert.match(elements.get('posTradeBody').innerHTML, /data-action="placePositionTrade"/);
+});
+
 test('no answer from Schwab mid-way says to check before trying again', async () => {
   const b = broker();
   const fetch = async (url, init = {}) => { if (init.method === 'PUT') throw new TypeError('Failed to fetch'); return b.fetch(url, init); };
@@ -961,6 +981,18 @@ test('a target Schwab doesn\'t show yet is not confirmed, keeps the form, and ho
   assert.equal(run('posChart.price'), 50);
   await run("openPositionTrade('HOOD', 'target')");
   assert.match(elements.get('posTradeBody').innerHTML, /Your last order on HOOD has not shown up at Schwab yet/);
+});
+
+test('a target that fills before Schwab re-reads is confirmed as filled', async () => {
+  const b = broker({ fillLimits: true });
+  b.live.orders = plain(onlyStop);
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  setTarget(run, elements, 'HOOD', 50, 100);
+  await run("openPositionTrade('HOOD', 'target')");
+  await run('placePositionTrade()');
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab filled the target at \$50\.00 for 100 shares\./);
+  assert.equal(run('posLast.confirmed'), true);
 });
 
 test('without a stop the target goes alone, and the sheet says the position has no stop', async () => {

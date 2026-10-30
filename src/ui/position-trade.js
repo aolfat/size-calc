@@ -442,9 +442,12 @@ function outcome(t) {
   const at = r => r.closers.filter(o => o.orderType === 'LIMIT' && o.price === t.price).reduce((n, o) => n + o.qty, 0);
   const cancelledAt = t.steps.filter(s => s.kind === 'cancel' && s.status === 'done' && s.was.orderType === 'LIMIT' && s.was.price === t.price).reduce((n, s) => n + s.was.qty, 0);
   const added = () => at(row) - Math.max(0, at(t.row) - cancelledAt);
+  const filled = filledByRun(t);
   if (t.kind === 'close') {
     const n = t.close.qty, limit = t.close.type === 'LIMIT';
     if (!t.failure && held <= Math.abs(t.row.qty) - n) return { done: (`Schwab now shows ${units(row, held)} ${row.label}.` + exposed).trim(), confirmed: true };
+    // Schwab can list the fill before the position shrinks, and a filled limit no longer works
+    if (!t.failure && filled >= n) return { done: (`Schwab filled ${units(row, filled)} ${row.label}.` + exposed).trim(), confirmed: true };
     if (!t.failure && limit && added() >= n) {
       const paired = t.stop > 0 ? `, paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)}` : '';
       return { done: (`Schwab now shows a limit ${fmtPositionPrice(t.price, row.tradeAs)} for ${units(row, n)}${paired}.` + exposed).trim(), confirmed: true };
@@ -457,6 +460,7 @@ function outcome(t) {
       const paired = t.stop > 0 ? `, paired with a stop at ${fmtPositionPrice(t.stop, row.tradeAs)}` : '';
       return { done: (`Schwab now shows a target at ${fmtPositionPrice(t.price, row.tradeAs)} for ${units(row, t.target.qty)}${paired}.` + exposed).trim(), confirmed: true };
     }
+    if (!t.failure && filled >= t.target.qty) return { done: (`Schwab filled the target at ${fmtPositionPrice(t.price, row.tradeAs)} for ${units(row, filled)}.` + exposed).trim(), confirmed: true };
     return { done: ((t.failure ? '' : 'Schwab does not show the target yet. Check Schwab.') + exposed).trim(), confirmed: false };
   }
   // a breakeven stop counts where Schwab shows stops at or past it; the ones already past stayed where they were
@@ -475,6 +479,20 @@ function outcome(t) {
     return { done: row.stopOrders.length === 1 ? `Schwab now shows a stop ${at$(row.stopOrders)} for ${units(row, held)}.` : `Schwab now shows stops ${at$(row.stopOrders)} for all ${units(row, held)}.`, confirmed: true };
   }
   return { done: ((t.failure ? '' : 'Schwab does not show the new stop yet. Check Schwab.') + exposed + lost).trim(), confirmed: false };
+}
+
+/** how much of the limits and market orders this run placed Schwab lists as filled (a pair's limit is a child of the id Schwab gave back); its stops don't count */
+function filledByRun(t) {
+  const ids = new Set(t.steps.filter(s => s.status === 'done' && s.newId).map(s => String(s.newId)));
+  let n = 0;
+  /** @param {any} o @param {boolean} mine */
+  const walk = (o, mine) => {
+    const ours = mine || ids.has(String(o.orderId));
+    if (ours && (o.orderType === 'LIMIT' || o.orderType === 'MARKET')) n += Number(o.filledQuantity) || (o.status === 'FILLED' ? Number(o.quantity) || 0 : 0);
+    (o.childOrderStrategies || []).forEach(c => walk(c, ours));
+  };
+  if (ids.size) ((state.positions && state.positions.orders) || []).forEach(o => walk(o, false));
+  return n;
 }
 
 /** every order Schwab lists on the symbol, any status: the ground truth when a result isn't confirmed */
