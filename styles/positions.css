@@ -697,8 +697,8 @@ span.journal-pick { cursor: default; }
 .jf-filter.active { border-color: var(--blue-bd); }
 .jf-head { display: flex; align-items: center; gap: 8px; }
 .jf-name { font-size: 12.5px; font-weight: 600; }
-.jf-is.seg { padding: 2px; }
-.jf-is.seg button { padding: 3px 8px; font-size: 11.5px; letter-spacing: 0; }
+.jf .jf-is.seg { flex: none; display: inline-flex; padding: 2px; }
+.jf .jf-is.seg button { flex: none; min-width: 0; padding: 3px 8px; font-size: 11.5px; letter-spacing: 0; white-space: nowrap; }
 .jf-x { margin-left: auto; padding: 0 4px; font: inherit; font-size: 16px; line-height: 1; color: var(--text3); background: none; border: 0; cursor: pointer; }
 .jf-x:hover { color: var(--text); }
 .jf-vals { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -707,8 +707,8 @@ span.journal-pick { cursor: default; }
 .jf-vals .journal-chip.active b { color: inherit; }
 .jf-none { font-size: 12px; color: var(--text3); }
 .jf-foot { display: flex; align-items: center; gap: 10px; align-self: center; }
-.jf-add { width: auto; max-width: 180px; min-width: 0; margin: 0; padding: 6px 8px; font-size: 13px; }
-.jf-foot .pos-link { font-size: 12.5px; }
+.jf-add { width: auto; max-width: 180px; min-width: 0; margin: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jf-foot .pos-link { font-size: 12.5px; white-space: nowrap; }
 /* a day's date on the Trades tab opens its notebook page; Review the day beside the day's P&L */
 .jd-date { padding: 0; font: inherit; color: inherit; background: none; border: 0; cursor: pointer; text-align: left; }
 .jd-date:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }

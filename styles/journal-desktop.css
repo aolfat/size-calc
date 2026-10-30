@@ -36,8 +36,13 @@
   .jb-filters .jr-from { display: grid; gap: 4px; font-size: 12px; }
   .jb-filters .jr-from input { margin: 0; width: 100%; min-width: 0; padding: 5px 8px; }
   .jb-filters .jr-queue { display: grid; gap: 4px; margin: 0; }
-  .jb-filters .jf { display: grid; }
-  .jb-filters .jf-add { width: 100%; max-width: none; }
+  .jb-filters .jf { display: grid; grid-template-columns: minmax(0, 1fr); }
+  /* the rail is narrow: the name and × on one line, is / is not under them */
+  .jb-filters .jf-head { flex-wrap: wrap; row-gap: 6px; }
+  .jb-filters .jf-name { flex: 1 0 calc(100% - 30px); }
+  .jb-filters .jf-x { order: 1; }
+  .jb-filters .jf .jf-is.seg { order: 2; }
+  .jb-filters .jf-add { flex: 1 1 auto; width: auto; max-width: none; }
   .jb-day-end { display: inline-flex; align-items: baseline; gap: 14px; }
   .jb-daychip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .jb-acts .jb-io { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
