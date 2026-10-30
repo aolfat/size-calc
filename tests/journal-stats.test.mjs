@@ -209,7 +209,7 @@ test('phones: a card per trade, Open then Closed by day with what they took; wid
   const out = () => a.elements.get('journalSection').innerHTML;
   assert.doesNotMatch(out(), /journal-table/, 'no table on a phone');
   assert.match(out(), /<article class="jun" id="jUpNext" data-key="[^"]*PLTR[^"]*"/, 'the newest waiting is Up next');
-  assert.doesNotMatch(out(), /<h3>Open /, 'and out of the list under it');
+  assert.match(out(), /<h3>Open <span>1<\/span>/, 'and still in the list under it');
   assert.match(out(), /<h3>Closed <span>2<\/span><\/h3><span class="jtc-total">Realized <b class="journal-buy">\+\$200\.00<\/b>/);
   assert.match(out(), /<div class="jtc-day"><span>Tue · Oct 6 · <span class="jtc-day-todo">1 to review<\/span><\/span><b class="journal-sell">−\$100\.00<\/b><\/div><article class="jtc jtc-todo"[^]*?<b>MSFT<\/b>/, 'a day: how many wait, its P&L');
   assert.match(out(), /<b>MSFT<\/b>[^]*?<span class="jtc-pill jtc-long">Long<\/span>[^]*?50 shr<\/span> · <span class="jtc-nowrap">Oct 6<\/span>[^]*?<dt>P&amp;L<\/dt><dd class="journal-sell">−\$100\.00/, 'same day: one date');

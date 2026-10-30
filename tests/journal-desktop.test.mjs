@@ -69,6 +69,8 @@ test('Review desk: one click away, the cards two-up with the progress, Up next a
   assert.match(html, /class="card positions-card journal-card jw-desk"/);
   assert.match(html, /<div class="jtc-list jds-cards">/);
   assert.match(html, /<aside class="jw-side jd-side"[^]*?id="jUpNext"/, 'Up next beside the cards');
+  const next = html.match(/id="jUpNext" data-key="([^"]+)"/)[1];
+  assert.ok(html.split('jds-cards')[1].split('jd-side')[0].includes(`data-arg="${next}"`), 'and still among the cards');
   assert.match(html, /<section class="jds" aria-label="By setup">[^]*?No setup <span class="jds-n">3<\/span>/);
   assert.equal(a.storage.get('journal_layout'), 'desk', 'this device only');
   a.run("setJournalLayout('bench')");
