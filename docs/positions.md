@@ -94,6 +94,7 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   Then a MARKET DAY close (SELL / BUY_TO_COVER / SELL_TO_CLOSE / BUY_TO_CLOSE), or a LIMIT paired with the nearest stop as OCO for the same qty (alone when there's no stop); a failed cancel means no close.
   Warned: a limit at or through the price (likely fills right away), Today with a pair.
   Confirmed when Schwab shows the position smaller by qty, or that many more shares in limits at the price.
+  Also confirmed when Schwab lists qty filled on the limit or market orders the run placed (filledByRun; a pair's limit counts, its stop doesn't): Schwab can list a fill before the position shrinks, and a filled limit no longer works, so a close that fills at once was left unconfirmed and held the symbol for 2 minutes.
   An order is in play unless FILLED / CANCELED / REJECTED / EXPIRED / REPLACED / AWAITING_PARENT_ORDER (so NEW, PENDING_*, QUEUED... count); restingOrders tags OCO legs with their pair.
   A cancel Schwab refuses is fine when a GET shows the order already gone (an OCO leg cancelled with its pair) and stops everything when it FILLED.
   No plan when the orders read failed (stopsMissing).
@@ -160,6 +161,7 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   Blocked: fractional shares, a target at or through the price, qty over what other limits leave, and the same odd orders breakeven refuses (limitsHolding, shared with breakevenPlan).
   Warnings: outside regular hours, and Today with a pair (the paired stop ends with the target at the close).
   Confirmed when Schwab's re-read shows qty more shares in LIMIT closers at the target price; then the form clears and the chart draws it from Schwab's orders.
+  A target that fills before the re-read is confirmed the same way (filledByRun).
   **Stop** (the switch's middle tool, #posStopForm: #posChartStopPrice, #posStopSummary, #posStopReview, state.posChart.stop): the tapped or typed stop is drawn solid red ('new stop'), the summary checks it with stopPlan (any of the three cover choices working is enough) and says what every share at it risks from cost with % of the account, past the max loss per trade, and when a limit means the review will ask what it covers.
   **Review stop** → openPositionTrade(symbol, 'stop') with the chart's price in the input; once Schwab shows it, positionStopPlaced clears the form.
   Each 30s read re-renders the card (lines, chips, summary) without touching the inputs; account changes close it.
