@@ -2,12 +2,14 @@
 // app's own trades (src/core, the same keys and numbers the Journal shows), each trade's review in words, and a review
 // you describe ({ setups: ['Lotto'], grade: 'D', ... }) turned into the changes claude_journal_save takes, the way the
 // trade page would make them: names matched to your choices or added to your library, a day's market or the trade's own,
-// and reviewed_at stamped once every required field is in. Nothing here reads the network or the page.
+// and reviewed_at stamped once every required field is in. A day's review ({ grade: 'D', rules: { 'Follow your stops':
+// 'broke' }, ... }) becomes the notebook's changes the same way. Nothing here reads the network or the page.
 import { createHash, randomUUID } from 'node:crypto';
 import { fillWords, fillsFrom } from '../src/core/journal-records.js';
 import { holdWords, journalTrades } from '../src/core/journal.js';
 import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
-import { nyParts } from '../src/core/journal-stats.js';
+import { cleanDayRow, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, isDay, lastFocus, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
+import { dailyPnl, nyParts } from '../src/core/journal-stats.js';
 import { cleanPlanRow, matchPlans, planLines } from '../src/core/order-plans.js';
 
 /** label kinds a review sets, by the word a review uses for them */
@@ -21,21 +23,26 @@ export const handleOf = key => 't' + createHash('sha256').update(key).digest('he
 export const dayOf = t => t.openedAt ? nyParts(t.openedAt).day : '';
 
 /**
- * The read made into the journal: trades newest first (deleted ones flagged), the library, and each trade's review,
- * labels, day market and order plans (the Trade at Schwab sheet's, matched as the Journal does) by key.
+ * The read made into the journal: trades newest first (deleted ones flagged), the library, each trade's review,
+ * labels, day market and order plans (the Trade at Schwab sheet's, matched as the Journal does) by key, and each day's
+ * notebook row and your rules.
  * @param {{ records: any[], trades: any[], reviews: any[], labels: any[], days: any[], library: any[], order_plans?: any[] }} data
  * @param {{ now?: number }} [opts]
  */
 export function journalFrom(data, opts = {}) {
-  const reviews = {}, labels = {}, days = {};
+  const reviews = {}, labels = {}, days = {}, notebook = {};
   for (const r of data.reviews || []) reviews[r.trade_key] = { ...r, stop: r.stop === null || r.stop === undefined ? null : Number(r.stop) };
   for (const l of data.labels || []) (labels[l.trade_key] ||= []).push({ kind: l.kind, value: l.value, set_by: l.set_by, links: l.links || [] });
-  for (const d of data.days || []) days[String(d.day).slice(0, 10)] = d.market;
+  for (const d of data.days || []) {
+    const day = String(d.day).slice(0, 10);
+    if (d.market) days[day] = d.market;
+    notebook[day] = cleanDayRow(d);
+  }
   const records = data.records || [];
   const fills = fillsFrom(records);
   const trades = journalTrades(fills, records, reviews, { now: opts.now ?? Date.now(), saved: data.trades || [] });
   const plans = matchPlans(trades, (data.order_plans || []).map(cleanPlanRow).filter(Boolean));
-  return { trades, fills, reviews, labels, days, plans, rows: data.library || [], lib: buildLibrary(data.library || []) };
+  return { trades, fills, reviews, labels, days, notebook, rules: notebookLists(data.library || []).rules, plans, rows: data.library || [], lib: buildLibrary(data.library || []) };
 }
 
 /** where a trade's review stands (core reviewState) */
@@ -236,6 +243,93 @@ export function planReview(j, t, input, opts = {}) {
   if (after.reviewed !== !!rv.reviewed_at) field('reviewed_at', after.reviewed ? now() : null);
   const reviews = Object.keys(fields).length ? [{ trade_key: t.key, fields }] : [];
   return { changes: { library, reviews, labels_remove, labels_add, days }, said, after };
+}
+
+/** a day's review, in the words a review uses, and the journal_days column each one goes in */
+export const DAY_FIELDS = { grade: 'grade', rules: 'rules', wentWell: 'went_well', workOn: 'work_on', note: 'note', focusNext: 'focus_next', focusKept: 'focus_kept' };
+
+const dayRow = (j, day) => j.notebook[day] || cleanDayRow(null);
+
+/**
+ * A day's review (the notebook's post-market half) turned into the changes claude_journal_save takes: the grade, each
+ * rule kept or broke (by its name or key; only the rules that apply to the day, as the page asks), the notes and
+ * tomorrow's focus. Only what changed is sent; null clears a field or a rule's answer. reviewed_at is stamped once the
+ * grade, every rule and a guided note are in, as the page does, and cleared if one comes off.
+ * @param {ReturnType<typeof journalFrom>} j @param {string} day @param {Record<string, any>} input
+ * @param {{ now?: () => string }} [opts]
+ */
+export function planDay(j, day, input, opts = {}) {
+  const now = opts.now || (() => new Date().toISOString());
+  if (!isDay(day)) throw new Error('a day as YYYY-MM-DD');
+  const unknown = Object.keys(input).filter(k => !(k in DAY_FIELDS));
+  if (unknown.length) throw new Error(`a day's review takes ${Object.keys(DAY_FIELDS).join(', ')}; not ${unknown.join(', ')}`);
+  const row = dayRow(j, day), after = { ...row, rules: { ...row.rules } }, fields = {};
+  const field = (col, v) => { if ((after[col] ?? null) !== v) { fields[col] = v; after[col] = v; } };
+
+  if ('grade' in input) {
+    const g = input.grade === null ? null : String(input.grade).trim().toUpperCase();
+    if (g !== null && !DAY_GRADES.includes(g)) throw new Error(`grade: ${DAY_GRADES.join(', ')}`);
+    field('grade', g);
+  }
+  if ('rules' in input) {
+    const raw = input.rules;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error("rules: an object, { 'Follow your stops': 'broke' }");
+    const applying = rulesForDay(j.rules, day, row);
+    const changed = {};
+    for (const [ref, answer] of Object.entries(raw)) {
+      const rule = applying.find(r => r.key === ref || norm(r.name) === norm(ref));
+      if (!rule) throw new Error(`${ref} isn't one of ${day}'s rules: ${applying.map(r => r.name).join(', ') || 'none'}`);
+      const a = answer === null ? null : norm(answer);
+      if (a !== null && !RULE_ANSWERS.some(([k]) => k === a)) throw new Error(`${rule.name}: kept or broke, or null`);
+      if ((after.rules[rule.key] ?? null) === a) continue;
+      changed[rule.key] = a;
+      if (a) after.rules[rule.key] = a; else delete after.rules[rule.key];
+    }
+    if (Object.keys(changed).length) fields.rules = changed;
+  }
+  for (const name of ['wentWell', 'workOn', 'note', 'focusNext']) {
+    if (!(name in input)) continue;
+    const col = DAY_FIELDS[name], max = DAY_TEXT[col];
+    const text = input[name] === null ? '' : String(input[name]).trim();
+    if (text.length > max) throw new Error(`${name}: ${max} characters at most`);
+    field(col, text || null);
+  }
+  if ('focusKept' in input) {
+    const k = input.focusKept === null ? null : norm(input.focusKept);
+    if (k !== null && !FOCUS_KEPT.some(([key]) => key === k)) throw new Error('focusKept: yes, partly or no');
+    field('focus_kept', k);
+  }
+
+  const st = dayReviewState(after, rulesForDay(j.rules, day, after));
+  if (st.reviewed !== !!row.reviewed_at) field('reviewed_at', st.reviewed ? now() : null);
+  const notebook = Object.keys(fields).length ? [{ day, fields }] : [];
+  return { changes: { library: [], reviews: [], labels_remove: [], labels_add: [], days: [], notebook }, after: st };
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** the whole day: its market, realized P&L, the trades it touched, and its review in words, with what's missing */
+export function dayDetail(j, day) {
+  const row = dayRow(j, day), applying = rulesForDay(j.rules, day, row), st = dayReviewState(row, applying);
+  const pnl = dailyPnl(j.trades).get(day), trades = dayTrades(j.trades, day), last = lastFocus(j.notebook, day);
+  const or = v => v || '—';
+  return [
+    `${day} (${WEEKDAYS[new Date(`${day}T12:00:00Z`).getUTCDay()]})`,
+    `market: ${row.market ? j.lib.nameOf('market', row.market) : '—'}`,
+    `P&L: ${pnl ? `${money(pnl.pnl)} · ${pnl.trades} trade${pnl.trades === 1 ? '' : 's'} with an exit` : 'no exits'}`,
+    'trades:',
+    ...(trades.length ? trades.map(t => `  ${tradeLine(j, t)}`) : ['  —']),
+    'review:',
+    `  grade: ${or(row.grade)}`,
+    '  rules:',
+    ...(applying.length ? applying.map(r => `    ${r.name}: ${or(row.rules[r.key])}`) : ['    —']),
+    ...(last ? [`  last focus (${last.day}): ${last.text} · kept: ${or(row.focus_kept)}`] : []),
+    `  went well: ${or(row.went_well)}`,
+    `  work on: ${or(row.work_on)}`,
+    `  more notes: ${or(row.note)}`,
+    `  tomorrow's focus: ${or(row.focus_next)}`,
+    `  ${st.reviewed ? 'reviewed' : `missing: ${reviewMissingWords(st)}`}`,
+  ].join('\n');
 }
 
 /** whether a plan changes anything */
