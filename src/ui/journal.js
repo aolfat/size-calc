@@ -659,10 +659,9 @@ export function renderJournal() {
   </div>` : `<div class="card positions-card journal-card jw-bench${split ? ' jw-has-side' : ''}">
     <aside class="jb-rail" data-scroll="rail" aria-label="Journal">
       <div class="jb-title">${head}</div>
-      ${books ? '' : `<div class="jb-acts">${deckButtonHtml(all)}${todayButtonHtml()}</div>`}
+      ${books ? '' : `<div class="jb-acts">${deckButtonHtml(all)}${todayButtonHtml()}<div class="jb-io">${importBtns}</div></div>`}
       ${railNav(all)}
       ${navOnly ? '' : railFilters(all)}
-      ${books ? '' : `<div class="jb-foot">${importBtns}</div>`}
     </aside>
     <div class="jw-main" data-scroll="main:${view}">
       ${errors}
