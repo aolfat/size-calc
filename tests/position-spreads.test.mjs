@@ -298,3 +298,42 @@ test('a net limit close goes on Schwab\'s list and is confirmed there; Schwab ch
   assert.equal(state.spreadTicket.confirmed, true);
   assert.equal(state.spreadTicket.done, 'Schwab now shows a net limit $5.10 to close 2 spreads RBRK 8/28/26 105/115C.');
 });
+
+test('a spread\'s net bid and ask come from its legs: bought legs at the bid and sold ones at the ask to sell it', async () => {
+  const { run } = await app();
+  const legs = [{ symbol: 'L', n: 1 }, { symbol: 'S', n: -1 }];
+  const quotes = { L: { last: 7, bid: 6.9, ask: 7.1 }, S: { last: 3, bid: 2.95, ask: 3.05 } };
+  const q = run(`netQuote(${JSON.stringify(legs)}, ${JSON.stringify(quotes)})`);
+  assert.equal(+q.bid.toFixed(2), 3.85);
+  assert.equal(+q.ask.toFixed(2), 4.15);
+  assert.equal(+q.last.toFixed(2), 4, 'the middle, since legs trade apart');
+  assert.equal(q.mid, true);
+  assert.equal(run(`netQuote(${JSON.stringify(legs)}, ${JSON.stringify({ L: quotes.L })})`), null, 'a leg missing, no quote');
+  assert.equal(run(`netQuote(${JSON.stringify(legs)}, ${JSON.stringify({ ...quotes, S: { last: 3, bid: 0, ask: 3.05 } })})`), null, 'a leg with no bid, no quote');
+  assert.equal(run(`tradierSymbol('RBRK  260828C00105000')`), 'RBRK260828C00105000');
+});
+
+test('Close on a spread shows its net bid, mid and ask, lighting the side it closes on', async () => {
+  const b = broker();
+  b.live.positions = plain(ACCOUNT.positions); // the put credit too
+  const quotes = { [LONG.replace(/\s+/g, '')]: { last: 7, bid: 6.9, ask: 7.1 }, [SHORT.replace(/\s+/g, '')]: { last: 3, bid: 2.95, ask: 3.05 },
+    [SOLD.replace(/\s+/g, '')]: { last: 2.5, bid: 2.45, ask: 2.55 }, [BOUGHT.replace(/\s+/g, '')]: { last: 1, bid: 0.95, ask: 1.05 } };
+  const fetch = async (url, init) => {
+    if (!url.includes('/markets/quotes')) return b.fetch(url, init);
+    const asked = decodeURIComponent(url.split('symbols=')[1]).split(',');
+    return json({ quotes: { quote: asked.map(s => ({ symbol: s, ...quotes[s] })) } });
+  };
+  const { run, elements } = await app({ fetch, storage: connected() });
+  run("document.getElementById('apiKey').value = 'tradier-test'");
+  const strip = () => elements.get('spreadCloseQuote').innerHTML;
+  await run('refreshPositions()');
+  await run(`openSpreadClose('${KEY}')`);
+  assert.match(strip(), /Mid<span class="tq-status"><span class="tq-dot"><\/span>Live<\/span><\/span><span class="tq-val">\$4\.00</);
+  assert.match(strip(), /<div class="tq-cell fills"><span class="tq-label">Bid<\/span><span class="tq-val">\$3\.85</, 'a debit spread closes by selling it, at the bid');
+  assert.match(strip(), /<div class="tq-cell"><span class="tq-label">Ask<\/span><span class="tq-val">\$4\.15</);
+  // the put credit: buying it back costs the sold leg's ask less the bought leg's bid
+  const credit = `${BOUGHT},${SOLD}`;
+  await run(`openSpreadClose('${credit}')`);
+  assert.match(strip(), /<div class="tq-cell"><span class="tq-label">Bid<\/span><span class="tq-val">\$1\.40</);
+  assert.match(strip(), /<div class="tq-cell fills"><span class="tq-label">Ask<\/span><span class="tq-val">\$1\.60</, 'a credit spread closes by buying it back, at the ask');
+});

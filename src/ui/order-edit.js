@@ -13,6 +13,7 @@ import { showError, showToast } from './feedback.js';
 import { cancelWorking, schwabList, sendsSame, shownCancelled, statusOf } from './order-cancel.js';
 import { failureText } from './position-trade.js';
 import { refreshPositions } from './positions.js';
+import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 
 const UNCONFIRMED_WAIT = 120000;
@@ -68,6 +69,9 @@ export async function openOrderEdit(orderId) {
   if (state.positionsError && !state.editTicket.error) state.editTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   renderEditSheet();
   openSheet('edit');
+  // the live bid and ask over it; the side the order fills on is lit (the ask on a buy, the bid on a sell)
+  const o = state.editTicket.order;
+  return watchSheetQuote({ sheet: 'edit', el: 'editQuote', legs: o ? [{ symbol: tradierSymbol(o.symbol), n: 1 }] : [], fills: () => o && /^BUY/.test(o.instruction) ? 'ask' : 'bid' });
 }
 
 const editOpen = () => { const t = state.editTicket; return t && !t.error && !t.sent ? t : null; };

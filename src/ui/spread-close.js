@@ -11,6 +11,7 @@ import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabP
 import { showError, showToast } from './feedback.js';
 import { failureText } from './position-trade.js';
 import { refreshPositions } from './positions.js';
+import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 
 const UNCONFIRMED_WAIT = 120000;
@@ -75,6 +76,10 @@ export async function openSpreadClose(key) {
   state.spreadTicket = fresh(key);
   renderSpreadCloseSheet();
   openSheet('spreadClose');
+  // the net bid and ask over it, from the legs in ratio, signed like the sheet's price; the side the close fills on is lit
+  const s = state.spreadTicket.spread, sign = s && s.kind === 'debit' ? 1 : -1;
+  return watchSheetQuote({ sheet: 'spreadClose', el: 'spreadCloseQuote', legs: s ? s.legs.map(l => ({ symbol: tradierSymbol(l.symbol), n: sign * l.qty / s.units })) : [],
+    fills: () => sign > 0 ? 'bid' : 'ask' });
 }
 
 function fresh(key, prev = null, now = Date.now()) {

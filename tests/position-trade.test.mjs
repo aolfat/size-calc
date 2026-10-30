@@ -1804,3 +1804,68 @@ test('the stop review asks what a limit in the way does, and offers breakeven wh
   assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/102', 'PUT /orders/101']);
   assert.match(elements.get('posTradeBody').innerHTML, /Schwab now shows a stop at \$37\.00 for 200 shares\. Your limit keeps 100 shares without a stop\./);
 });
+
+// ---------- the live bid and ask ----------
+
+// Tradier's quotes beside the fake broker: one quote, or several for a comma list
+const withQuotes = (b, quotes) => {
+  const calls = [];
+  const fetch = async (url, init) => {
+    if (!url.includes('/markets/quotes')) return b.fetch(url, init);
+    const asked = decodeURIComponent(url.split('symbols=')[1]).split(',');
+    calls.push(asked);
+    const q = asked.map(s => quotes[s] && { symbol: s, ...quotes[s] }).filter(Boolean);
+    return json({ quotes: { quote: q.length === 1 ? q[0] : q } });
+  };
+  return { fetch, calls };
+};
+// a Tradier key in Settings, as the review reads it
+const withKey = async opts => { const h = await app(opts); h.run("document.getElementById('apiKey').value = 'tradier-test'"); return h; };
+
+test('a position review shows the live last, bid and ask, lighting the side a close fills on', async () => {
+  const net = withQuotes(broker(), { HOOD: { last: 41.1, bid: 41.08, ask: 41.12 }, TSLA: { last: 255.3, bid: 255.25, ask: 255.35 } });
+  const { run, elements, advance } = await withKey({ fetch: net.fetch, storage: connected(), timers: 'fake' });
+  const strip = () => elements.get('posTradeQuote').innerHTML;
+  assert.equal(elements.get('posTradeQuote').style.display, 'none');
+  await run("openPositionTrade('HOOD', 'close')");
+  run("setCloseType('LIMIT')");
+  assert.equal(elements.get('posTradeQuote').style.display, '');
+  assert.match(strip(), /Last<span class="tq-status"><span class="tq-dot"><\/span>Live<\/span><\/span><span class="tq-val">\$41\.10</);
+  assert.match(strip(), /<div class="tq-cell fills"><span class="tq-label">Bid<\/span><span class="tq-val">\$41\.08</, 'selling a long fills at the bid');
+  assert.match(strip(), /<div class="tq-cell"><span class="tq-label">Ask<\/span><span class="tq-val">\$41\.12</);
+  const reads = net.calls.length;
+  await advance(2000);
+  assert.equal(net.calls.length, reads + 1, 'one read every 2s');
+
+  await run("openPositionTrade('TSLA', 'target')");
+  assert.match(strip(), /<div class="tq-cell fills"><span class="tq-label">Ask<\/span><span class="tq-val">\$255\.35</, 'buying back a short fills at the ask');
+  run('closeSheet()');
+  assert.equal(elements.get('posTradeQuote').style.display, 'none');
+  const closed = net.calls.length;
+  await advance(10000);
+  assert.equal(net.calls.length, closed, 'closing the review stops the reads');
+});
+
+test('an option position reads Tradier\'s OCC symbol, and a change to a working limit shows its bid and ask too', async () => {
+  const net = withQuotes(broker(), { AAPL261120C00230000: { last: 6.1, bid: 6.05, ask: 6.15 }, HOOD: { last: 41.1, bid: 41.08, ask: 41.12 } });
+  const { run, elements } = await withKey({ fetch: net.fetch, storage: connected() });
+  await run(`openPositionTrade('${OPT}', 'close')`);
+  assert.deepEqual(net.calls.at(-1), ['AAPL261120C00230000'], 'Schwab\'s padded symbol without its spaces');
+  assert.match(elements.get('posTradeQuote').innerHTML, /Bid<\/span><span class="tq-val">\$6\.05[^]*Ask<\/span><span class="tq-val">\$6\.15/);
+
+  await run('openOrderEdit(103)');
+  assert.equal(elements.get('posTradeQuote').style.display, 'none', 'one strip at a time');
+  assert.match(elements.get('editQuote').innerHTML, /<div class="tq-cell fills"><span class="tq-label">Bid<\/span><span class="tq-val">\$41\.08</, 'the sell limit fills at the bid');
+});
+
+test('no Tradier key, no strip; a quote that fails says so', async () => {
+  const b = broker();
+  const plainRun = await app({ fetch: b.fetch, storage: connected() });
+  await plainRun.run("openPositionTrade('HOOD', 'close')");
+  assert.equal(plainRun.elements.get('posTradeQuote').style.display, 'none');
+  const net = withQuotes(broker(), {});
+  const { run, elements } = await withKey({ fetch: net.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  assert.match(elements.get('posTradeQuote').innerHTML, /tq-status stale">No quote/);
+  assert.match(elements.get('posTradeQuote').innerHTML, /<span class="tq-val">—/);
+});

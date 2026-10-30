@@ -12,6 +12,7 @@ import { showError, showToast } from './feedback.js';
 import { positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { positionOriginal, positionRUnit, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
+import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 
 const UNCONFIRMED_WAIT = 120000;
@@ -322,6 +323,9 @@ export async function openPositionTrade(symbol, kind) {
   state.posTicket = freshTicket(kind, symbol, target);
   renderPositionTradeSheet();
   openSheet('posTrade');
+  // the live bid and ask over it; the side a close fills on is lit (the bid on a long, the ask on a short)
+  const row = state.posTicket.row;
+  return watchSheetQuote({ sheet: 'posTrade', el: 'posTradeQuote', legs: row ? [{ symbol: tradierSymbol(row.symbol), n: 1 }] : [], fills: () => row && row.qty > 0 ? 'bid' : 'ask' });
 }
 
 export function setPositionStopDuration(d) {
