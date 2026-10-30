@@ -212,6 +212,74 @@ test('phones get a card per position: P/L and R up top, a stop ladder, a tap for
   assert.doesNotMatch(card('TEST'), /pc-more/);
 });
 
+test('Settings can put a phone on the table instead: the symbol pinned, P/L first, a tap for the actions sheet', async () => {
+  const net = network(schwabOk);
+  const storage = connected();
+  const { run, elements, state } = await app({ width: 390, fetch: net.fetch, storage });
+  run("setView('positions')");
+  await settle();
+  const html = () => elements.get('positionsSection').innerHTML;
+  run("setPosLayout('table')");
+  assert.equal(storage.get('positions_layout'), 'table', 'kept on this device');
+  assert.equal(elements.get('posLayoutTable').getAttribute('aria-pressed'), 'true');
+  assert.equal(elements.get('posLayoutCards').getAttribute('aria-pressed'), 'false');
+  assert.doesNotMatch(html(), /<article class="pc/);
+  assert.match(html(), /<table class="positions-table pt-table">/);
+  const heads = [...html().split('<thead>')[1].split('</thead>')[0].matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]);
+  assert.deepEqual(heads, ['Symbol', 'Price', 'P/L', 'P/L %', 'Mkt val', 'Qty', 'Avg', 'Stop', 'Risk @ stop', 'R']);
+  assert.match(html(), /<div class="pt-value">\$100,000\.00<\/div>/);
+  const row = html().split('<tr').find(r => r.includes('data-arg="TEST"')) || '';
+  assert.match(row, /data-action="openPosActions"/);
+  assert.match(row, /<b>TEST<\/b><span class="pos-sub">100 sh<\/span>/);
+  assert.match(row, /\+\$500\.00/);
+  assert.match(row, /\+2\.50R/);
+  assert.match(html().split('<tr').find(r => r.includes(`data-arg="${OPT}"`)), /<span class="pos-sub pos-locked">stop at breakeven<\/span>/);
+  assert.match(html().split('<tfoot>')[1], /−\$260\.00/, 'the total risk');
+
+  run("openPosActions('TEST')");
+  assert.equal(state.openSheetName, 'posActions');
+  const sheet = elements.get('posActionsBody').innerHTML;
+  assert.match(elements.get('posActionsTitle').innerHTML, /<b>TEST<\/b>/);
+  assert.match(sheet, /pc-ladder/, 'the stop ladder from the cards');
+  for (const [what, label] of [['chart', 'Chart'], ['stop', 'Edit stop'], ['breakeven', 'Move stop to breakeven'], ['close', 'Close']]) assert.match(sheet, new RegExp(`data-arg2="${what}">${label}<`));
+  assert.doesNotMatch(sheet, /data-arg2="sim"/, 'Simulate is for options');
+  run("actions.posSheetAct({ dataset: { arg: 'TEST', arg2: 'chart' } })");
+  assert.equal(state.openSheetName, null, 'the chart shows on the page, so the sheet closes');
+  assert.equal(state.posChart?.symbol, 'TEST');
+  run("setPosLayout('cards')");
+  assert.match(html(), /<article class="pc/);
+});
+
+test('% only hides the dollar P/L of open positions on the cards, the phone table and the desktop columns', async () => {
+  const net = network(schwabOk);
+  const storage = connected();
+  const phone = await app({ width: 390, fetch: net.fetch, storage });
+  phone.run("setView('positions')");
+  await settle();
+  const html = () => phone.elements.get('positionsSection').innerHTML;
+  phone.run("setPosPnl('pct')");
+  assert.equal(storage.get('positions_pnl_pct'), '1');
+  assert.equal(phone.elements.get('posPnlPct').getAttribute('aria-pressed'), 'true');
+  const card = html().split('<article').find(c => c.includes('data-arg="TEST"'));
+  assert.match(card, /<span class="pc-pnl pos-locked">\+10\.0%<\/span>/, 'the percent leads');
+  assert.match(card, /<span class="pos-locked">\+2\.50R<\/span>/, 'R alone beside cost → price');
+  assert.doesNotMatch(html(), /\$500\.00|\$700\.00/, 'no P/L in dollars anywhere');
+  assert.match(html(), /<dt>Open P\/L<\/dt><dd class="pos-locked">\+/);
+  phone.run("setPosLayout('table')");
+  assert.doesNotMatch(html(), /<th scope="col">P\/L<\/th>/);
+  assert.match(html(), /<th scope="col">P\/L %<\/th>/);
+  assert.doesNotMatch(html(), /\$500\.00/);
+
+  const desk = await app({ fetch: net.fetch, storage: connected([['positions_pnl_pct', '1'], ['positions_cols', '["pnl","pnlPct","day"]']]) });
+  desk.run("setView('positions')");
+  await settle();
+  const dh = desk.elements.get('positionsSection').innerHTML;
+  assert.doesNotMatch(dh, /<th scope="col">P\/L<\/th>|<th scope="col">Today<\/th>/, 'the dollar columns drop out');
+  assert.match(dh, /<th scope="col">P\/L %<\/th>/);
+  desk.run('togglePosColumnsMenu()');
+  assert.doesNotMatch(desk.elements.get('positionsSection').innerHTML, /data-arg="pnl"|data-arg="day"/, 'and their chips');
+});
+
 test('an option bought with no stop draws its ladder from zero: the premium is the risk', async () => {
   const { run } = await app();
   const html = run(`(() => { const p = positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, []); return positionCard(p.rows.find(r => r.option)); })()`);

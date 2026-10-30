@@ -44,6 +44,16 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   A spread's card shows its net cost → net mark in spreads, its structure and max loss, a ladder from zero for a debit spread (none for a credit), and opens to Mkt val, Max loss, the legs and Legs / Close; Legs lists each leg as its own card under it.
   Working orders stay a table that scrolls sideways.
 
+  **Phone layout** (Settings → Positions: Cards | Table; setPosLayout, state.posLayout, positions_layout, this device only, Cards by default): Table is the old sideways table rebuilt for a thumb.
+  The account value sits large over it with the open P/L under it; the symbol column stays pinned with the size ('40 sh'), an option's contract ('55C 12/18/26') or 'stop at breakeven' (green) under the symbol; then Price, P/L, P/L %, Mkt val, Qty, Avg, Stop, Risk @ stop and R, a swipe away, and a Total row (P/L, P/L %, value, the loss-only risk).
+  A tap on a row (openPosActions, state.posActions) opens #posActionsSheet (SHEETS.posActions): the P/L, cost → price, the cards' stop ladder and stop line, Mkt val / Stop / Risk @ stop, and the actions two by two with Close across the bottom: Chart, Simulate on options, Set stop or Edit stop, Move stop to breakeven (gone once every share is at or past it), Close; a spread gets Show legs / Hide legs and Close spread.
+  The buttons go through posSheetAct: Chart, Simulate and the legs show on the page, so the sheet closes first; Stop, breakeven, Close and the spread close open their own review sheets.
+  The sheet redraws with each 30s read, and says so when the position is gone.
+
+  **% only** (Settings → Positions: $ and % | % only; setPosPnl, state.posPnlPct, positions_pnl_pct, this device only): hides the dollar P/L of open positions everywhere in Positions.
+  The cards and the actions sheet lead with the P/L % (R alone beside cost → price), the Open P/L tile and the table's open P/L line show the percent, the phone table drops its P/L column, and the desktop table drops the P/L and Today columns and their chips from Columns (the picks are kept for when dollars come back).
+  Market value, cash, the account value and Risk @ stop stay in dollars; the account value has its own Hide.
+
   **Position trades** (ui/position-trade.js, #posTradeSheet = SHEETS.posTrade): stock, ETF/closed-end fund (COLLECTIVE_INVESTMENT) and option rows (row.tradeAs) get **Stop**, **BE stop** and **Close** buttons under the symbol, in the pinned column; a position whose every share already has a stop at or past breakeven (long: stop ≥ be; short: ≤ be) reads 'stop at breakeven' or 'stops past breakeven' instead.
   Both re-read Schwab first, then freeze a ticket from pure plans in core/positions.js. breakevenPlan NEVER loosens a stop: stops (and pairs) already at or past breakeven are kept as they are and count as covering their shares (breakevenCovered / atBreakeven); only the remaining shares get a breakeven stop at row.be (stocks stopTick toward the market, options optionStopTick: $0.05 under $3, $0.10 from $3, the grid every option class accepts, so up to a dime better than cost) without ever asking Schwab to sell more than you hold, which it refuses through the API ('may result in an oversold/overbought position').
   The shares outside any limit target (rest) get one plain stop.
