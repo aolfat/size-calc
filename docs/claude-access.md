@@ -22,6 +22,7 @@ Four database functions take the key in place of a sign-in, and they're the only
 It returns the order plans too (migration 20261107000000_order_plans.sql redefines it), and `show` prints a trade's under 'order plan:' the way the trade page does (docs/journal.md), for analyzing risk as a % of the account and how stops were set.
 `claude_journal_save` writes, in one transaction: your own library items, review fields (stop, setup grade, plan followed, exit note, entry note, the trade's own market, reviewed_at; nothing else, so it can't delete a trade), labels off and on, and a day's market.
 Migration 20261114000000_claude_day_review.sql redefines both: the read returns every day's row with its review fields, and the save writes a day's review (the grade, each rule kept or broke, what went well, what to work on, more notes, tomorrow's focus, whether the last focus was kept, reviewed_at).
+Migration 20261115000000_claude_week_review.sql redefines them again: the read returns every week's and month's review (`periods`, the period_reviews rows), and the save writes one (each part's grade and note, what went well, what to work on, more notes, the rule for the next period, whether the last one's was kept, reviewed_at).
 The rest of the notebook (the premarket plan, the check-in, the focus list, the missed trades) stays out of reach.
 Rule answers merge one rule at a time, and a null answer clears that rule's.
 `claude_model_books_read` (migration 20261108000000_claude_model_books.sql) returns that owner's books, examples (no image links) and library.
@@ -40,7 +41,7 @@ A wrong key or a bad image never reaches Storage.
 The function runs with `--no-verify-jwt`: the Claude key stands in for a sign-in, so the gateway's JWT check is off and the handler checks the key.
 It reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, which Supabase gives every function; a `sb_secret_` key goes as the apikey alone, a legacy service_role JWT as the bearer too.
 
-Anyone holding a key can rewrite that account's reviews and labels and add to its model books, so keep it in the environment's secrets, never in a chat or a file in the repo.
+Anyone holding a key can rewrite that account's trade, day, week and month reviews and labels and add to its model books, so keep it in the environment's secrets, never in a chat or a file in the repo.
 
 ## Setting up a Claude Code environment
 
@@ -61,6 +62,7 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 - `node scripts/journal.mjs choices [kind]`: your choices with their keys.
 - `node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]`: saves a review and prints the trade after; a dry run prints the changes instead.
 - `node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day: its market, P&L, trades, and its review with what's missing; with it, saves the day's review and prints the day after.
+- `node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]` and `month <YYYY-MM> ...`: without JSON, the week (by its Monday) or month: its P&L from the exits taken in it, its trades, the last one's rule, and each part's grade and note with what's missing; with it, saves the review and prints it after.
 - `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id), then the examples in no book.
 - `node scripts/journal.mjs book [book] '<json>' [--dry-run]`: makes a book (`name`, `description`), or changes the one named.
 - `node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]`: adds an example with its screenshot (`title`, `notes`, `setups`, and `book` if you want one).
@@ -75,6 +77,9 @@ reviewed_at is stamped once everything a review needs is in, and cleared if some
 A day's JSON takes `grade` (A to F), `rules` (`{ "Follow your stops": "broke" }`, each rule by its name or key, `kept`, `broke` or null), `wentWell`, `workOn`, `note`, `focusNext` and `focusKept` (yes, partly, no); fields left out stay, null clears one.
 Only the rules that apply to the day can be answered (made on or before it and not retired, or answered already), as the day page asks; any other name is refused with the day's rules.
 The day's reviewed_at is stamped once it has a grade, every rule that applies and what went well or what to work on, and cleared if one comes off.
+
+A week's or month's JSON takes `parts` (`{ "Risk management": { "grade": "D+", "note": "..." } }`, each part by its name or key: selection, entry, exit, risk, emotion, market, prep, consistency; grades A+ to F), `wentWell`, `workOn`, `note`, `ruleNext` (500 characters at most) and `ruleKept` (yes, partly, no: whether the last period's rule was kept, saved on this period's row as the page does); fields left out stay, null clears one.
+Its reviewed_at is stamped once every part has a grade and the rule for next one is set, and cleared if one comes off.
 
 Model books logic is in `scripts/model-books-lib.mjs`, pure, tested in tests/claude-model-books.test.mjs with the function.
 A book is optional: left out, a new example goes in no book, and `"book": null` takes an example out of its book.

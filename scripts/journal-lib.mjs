@@ -3,13 +3,15 @@
 // you describe ({ setups: ['Lotto'], grade: 'D', ... }) turned into the changes claude_journal_save takes, the way the
 // trade page would make them: names matched to your choices or added to your library, a day's market or the trade's own,
 // and reviewed_at stamped once every required field is in. A day's review ({ grade: 'D', rules: { 'Follow your stops':
-// 'broke' }, ... }) becomes the notebook's changes the same way. Nothing here reads the network or the page.
+// 'broke' }, ... }) becomes the notebook's changes the same way, and a week's or month's review ({ parts: { 'Risk
+// management': { grade: 'D' } }, ruleNext: ... }) its period_reviews row. Nothing here reads the network or the page.
 import { createHash, randomUUID } from 'node:crypto';
 import { fillWords, fillsFrom } from '../src/core/journal-records.js';
 import { holdWords, journalTrades } from '../src/core/journal.js';
 import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
 import { cleanDayRow, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, isDay, lastFocus, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
-import { dailyPnl, nyParts } from '../src/core/journal-stats.js';
+import { dailyPnl, nyParts, periodKey } from '../src/core/journal-stats.js';
+import { cleanPeriodRow, gradeColumn, MAX_PERIOD_NOTE, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, periodMissingWords, periodReviewState, periodTradeRows, previousPeriod, RULE_KEPT } from '../src/core/journal-week.js';
 import { cleanPlanRow, matchPlans, planLines } from '../src/core/order-plans.js';
 
 /** label kinds a review sets, by the word a review uses for them */
@@ -24,13 +26,14 @@ export const dayOf = t => t.openedAt ? nyParts(t.openedAt).day : '';
 
 /**
  * The read made into the journal: trades newest first (deleted ones flagged), the library, each trade's review,
- * labels, day market and order plans (the Trade at Schwab sheet's, matched as the Journal does) by key, and each day's
- * notebook row and your rules.
- * @param {{ records: any[], trades: any[], reviews: any[], labels: any[], days: any[], library: any[], order_plans?: any[] }} data
+ * labels, day market and order plans (the Trade at Schwab sheet's, matched as the Journal does) by key, each day's
+ * notebook row and your rules, and each week's and month's review by 'unit|key'.
+ * @param {{ records: any[], trades: any[], reviews: any[], labels: any[], days: any[], library: any[], order_plans?: any[], periods?: any[] }} data
  * @param {{ now?: number }} [opts]
  */
 export function journalFrom(data, opts = {}) {
-  const reviews = {}, labels = {}, days = {}, notebook = {};
+  const reviews = {}, labels = {}, days = {}, notebook = {}, periods = {};
+  for (const p of data.periods || []) { const row = cleanPeriodRow(p); if (row) periods[`${row.unit}|${row.period_key}`] = row; }
   for (const r of data.reviews || []) reviews[r.trade_key] = { ...r, stop: r.stop === null || r.stop === undefined ? null : Number(r.stop) };
   for (const l of data.labels || []) (labels[l.trade_key] ||= []).push({ kind: l.kind, value: l.value, set_by: l.set_by, links: l.links || [] });
   for (const d of data.days || []) {
@@ -42,7 +45,7 @@ export function journalFrom(data, opts = {}) {
   const fills = fillsFrom(records);
   const trades = journalTrades(fills, records, reviews, { now: opts.now ?? Date.now(), saved: data.trades || [] });
   const plans = matchPlans(trades, (data.order_plans || []).map(cleanPlanRow).filter(Boolean));
-  return { trades, fills, reviews, labels, days, notebook, rules: notebookLists(data.library || []).rules, plans, rows: data.library || [], lib: buildLibrary(data.library || []) };
+  return { trades, fills, reviews, labels, days, notebook, rules: notebookLists(data.library || []).rules, periods, plans, rows: data.library || [], lib: buildLibrary(data.library || []) };
 }
 
 /** where a trade's review stands (core reviewState) */
@@ -329,6 +332,93 @@ export function dayDetail(j, day) {
     `  more notes: ${or(row.note)}`,
     `  tomorrow's focus: ${or(row.focus_next)}`,
     `  ${st.reviewed ? 'reviewed' : `missing: ${reviewMissingWords(st)}`}`,
+  ].join('\n');
+}
+
+/** a week's or month's review, in the words a review uses: parts by their name or key, each { grade, note } */
+export const PERIOD_FIELDS = { parts: '', wentWell: 'went_well', workOn: 'work_on', note: 'note', ruleNext: 'rule_next', ruleKept: 'rule_kept' };
+
+/** a period's key: a week by its Monday (from any of its days), a month as YYYY-MM. @param {string} unit @param {string} ref */
+function periodOf(unit, ref) {
+  if (unit === 'week') { if (!isDay(ref)) throw new Error('a week by any of its days, YYYY-MM-DD'); return periodKey(ref, 'week'); }
+  if (unit === 'month') { if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(ref))) throw new Error('a month as YYYY-MM'); return ref; }
+  throw new Error('week or month');
+}
+const periodRow = (j, unit, key) => j.periods[`${unit}|${key}`] || cleanPeriodRow({ unit, period_key: key });
+
+/**
+ * A week's or month's review turned into the changes claude_journal_save takes, as the review under the calendar would
+ * make them: each part's grade (A+ to F) and note, the overall notes, the rule for the next one and whether the last
+ * one's was kept. Only what changed is sent; null clears one. reviewed_at is stamped once every part has a grade and the
+ * rule is set, and cleared if one comes off.
+ * @param {ReturnType<typeof journalFrom>} j @param {string} unit week | month @param {string} ref any day of the week, or YYYY-MM
+ * @param {Record<string, any>} input @param {{ now?: () => string }} [opts]
+ */
+export function planPeriod(j, unit, ref, input, opts = {}) {
+  const now = opts.now || (() => new Date().toISOString());
+  const key = periodOf(unit, ref);
+  const unknown = Object.keys(input).filter(k => !(k in PERIOD_FIELDS));
+  if (unknown.length) throw new Error(`a ${unit}'s review takes ${Object.keys(PERIOD_FIELDS).join(', ')}; not ${unknown.join(', ')}`);
+  const row = periodRow(j, unit, key), after = { ...row }, fields = {};
+  const field = (col, v) => { if ((after[col] ?? null) !== v) { fields[col] = v; after[col] = v; } };
+  const text = (name, v, max) => {
+    const s = v === null ? '' : String(v).trim();
+    if (s.length > max) throw new Error(`${name}: ${max} characters at most`);
+    return s || null;
+  };
+
+  if ('parts' in input) {
+    const raw = input.parts;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error("parts: an object, { 'Risk management': { grade: 'D', note: '...' } }");
+    for (const [ref, v] of Object.entries(raw)) {
+      const part = PERIOD_CATEGORIES.find(([k, name]) => k === ref || norm(name) === norm(ref));
+      if (!part) throw new Error(`${ref} isn't a part: ${PERIOD_CATEGORIES.map(([, name]) => name).join(', ')}`);
+      const [k, name] = part;
+      const extra = Object.keys(v || {}).filter(x => x !== 'grade' && x !== 'note');
+      if (!v || typeof v !== 'object' || extra.length) throw new Error(`a part takes grade, note; not ${extra.join(', ') || typeof v}`);
+      if ('grade' in v) {
+        const g = v.grade === null ? null : String(v.grade).trim().toUpperCase();
+        if (g !== null && !PERIOD_GRADES.includes(g)) throw new Error(`grade: ${PERIOD_GRADES.join(', ')}`);
+        field(gradeColumn(k), g);
+      }
+      if ('note' in v) field(noteColumn(k), text(`${name} note`, v.note, MAX_PERIOD_NOTE));
+    }
+  }
+  for (const name of ['wentWell', 'workOn', 'note']) if (name in input) field(PERIOD_FIELDS[name], text(name, input[name], MAX_PERIOD_NOTE));
+  if ('ruleNext' in input) field('rule_next', text('ruleNext', input.ruleNext, MAX_RULE));
+  if ('ruleKept' in input) {
+    const k = input.ruleKept === null ? null : norm(input.ruleKept);
+    if (k !== null && !RULE_KEPT.some(([v]) => v === k)) throw new Error('ruleKept: yes, partly or no');
+    field('rule_kept', k);
+  }
+
+  const st = periodReviewState(after);
+  if (st.reviewed !== !!row.reviewed_at) field('reviewed_at', st.reviewed ? now() : null);
+  const periods = Object.keys(fields).length ? [{ unit, key, fields }] : [];
+  return { key, changes: { library: [], reviews: [], labels_remove: [], labels_add: [], days: [], notebook: [], periods }, after: st };
+}
+
+/** the whole week or month: its P&L (the exits taken in it), its trades, the last one's rule and each part's grade and note, with what's missing */
+export function periodDetail(j, unit, key) {
+  const row = periodRow(j, unit, key), st = periodReviewState(row), prev = j.periods[`${unit}|${previousPeriod(unit, key)}`];
+  const rows = periodTradeRows(j.trades, unit, key), closed = rows.filter(r => r.pnl !== null);
+  const pnl = Math.round(closed.reduce((n, r) => n + r.pnl, 0) * 100) / 100;
+  const title = unit === 'week' ? `Week of ${key}` : new Date(`${key}-01T12:00:00Z`).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const or = v => v || '—';
+  return [
+    title,
+    `P&L: ${closed.length ? `${money(pnl)} · ${closed.length} trade${closed.length === 1 ? '' : 's'} with an exit` : 'no exits'}`,
+    'trades:',
+    ...(rows.length ? rows.map(r => `  ${tradeLine(j, r.trade)}${r.partial ? ` · ${money(r.pnl)} this ${unit}` : ''}`) : ['  —']),
+    'review:',
+    ...(prev?.rule_next ? [`  last ${unit}'s rule: ${prev.rule_next} · kept: ${or(row.rule_kept)}`] : []),
+    '  parts:',
+    ...PERIOD_CATEGORIES.map(([k, name]) => `    ${name}: ${or(row[gradeColumn(k)])}${row[noteColumn(k)] ? ` · ${row[noteColumn(k)]}` : ''}`),
+    `  went well: ${or(row.went_well)}`,
+    `  work on: ${or(row.work_on)}`,
+    `  more notes: ${or(row.note)}`,
+    `  rule for next ${unit}: ${or(row.rule_next)}`,
+    `  ${st.reviewed ? 'reviewed' : `missing: ${periodMissingWords(st, unit)}`}`,
   ].join('\n');
 }
 

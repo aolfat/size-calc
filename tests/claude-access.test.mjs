@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { dayDetail, findItem, findTrades, handleOf, journalFrom, planDay, planReview, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
+import { dayDetail, findItem, findTrades, handleOf, journalFrom, periodDetail, planDay, planPeriod, planReview, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r)); };
@@ -233,6 +233,67 @@ test("the whole day: its market, P&L, trades and the review in words, with what'
   assert.match(text, /missing: a grade, 1 rule and what went well or what to work on$/);
 });
 
+// ---------- a week's or month's review (period_reviews) ----------
+
+const MONDAY = '2026-10-19';
+const PARTS = ['Trade selection', 'Entry timing', 'Exit discipline', 'Risk management', 'Emotional control', 'Market awareness', 'Preparedness', 'Execution consistency'];
+const WEEK_REVIEW = {
+  parts: Object.fromEntries(PARTS.map((p, i) => [p, { grade: i === 3 ? 'd+' : 'B' }])),
+  ruleNext: 'Name the setup and tactic before every order.', wentWell: 'Sold the swing into strength.',
+};
+WEEK_REVIEW.parts['Risk management'].note = 'Moved a stop, oversized a spread.';
+
+test("a week's review becomes period_reviews changes: parts by name or key, plus-minus grades, reviewed_at", () => {
+  const j = journalFrom(DATA);
+  const plan = planPeriod(j, 'week', '2026-10-23', WEEK_REVIEW, opts);
+  assert.equal(plan.key, MONDAY, 'any day of the week names its Monday');
+  const fields = plan.changes.periods[0].fields;
+  assert.deepEqual(plan.changes.periods.map(p => [p.unit, p.key]), [['week', MONDAY]]);
+  assert.equal(fields.risk_grade, 'D+');
+  assert.equal(fields.risk_note, 'Moved a stop, oversized a spread.');
+  assert.equal(fields.selection_grade, 'B');
+  assert.equal(fields.rule_next, WEEK_REVIEW.ruleNext);
+  assert.equal(fields.went_well, WEEK_REVIEW.wentWell);
+  assert.equal(fields.reviewed_at, '2026-10-24T18:00:00.000Z', 'every part graded and the rule set');
+  assert.deepEqual([plan.changes.library, plan.changes.reviews, plan.changes.days, plan.changes.notebook], [[], [], [], []]);
+  assert.equal(planPeriod(j, 'week', MONDAY, { parts: { risk: { grade: 'C' } } }, opts).after.reviewed, false, 'one grade is not a review');
+  assert.deepEqual(planPeriod(j, 'month', '2026-10', { workOn: 'Fewer trades.' }, opts).changes.periods, [{ unit: 'month', key: '2026-10', fields: { work_on: 'Fewer trades.' } }]);
+});
+
+test("a week's review again: only what changed, null clears and takes the stamp with it", () => {
+  const row = { unit: 'week', period_key: MONDAY, rule_next: 'Wait for the setup.', reviewed_at: '2026-10-24T00:00:00.000Z',
+    ...Object.fromEntries(['selection', 'entry', 'exit', 'risk', 'emotion', 'market', 'prep', 'consistency'].map(k => [`${k}_grade`, 'B'])) };
+  const j = journalFrom({ ...DATA, periods: [row] });
+  assert.deepEqual(planPeriod(j, 'week', MONDAY, { parts: { selection: { grade: 'B' } }, ruleNext: 'Wait for the setup.' }, opts).changes.periods, [], 'the same answers change nothing');
+  assert.deepEqual(planPeriod(j, 'week', MONDAY, { parts: { exit: { grade: null } } }, opts).changes.periods,
+    [{ unit: 'week', key: MONDAY, fields: { exit_grade: null, reviewed_at: null } }]);
+  assert.deepEqual(planPeriod(j, 'week', '2026-10-26', { ruleKept: 'Partly' }, opts).changes.periods,
+    [{ unit: 'week', key: '2026-10-26', fields: { rule_kept: 'partly' } }], "Kept it? is about last week's rule, saved on this week's row");
+});
+
+test("a period's review that can't be: an unknown field or part, a grade or answer not on the list, a bad period", () => {
+  const j = journalFrom(DATA);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { grade: 'B' }), /not grade/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { parts: { Timing: { grade: 'B' } } }), /Timing isn't a part: Trade selection, Entry timing/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { parts: { risk: { grade: 'E' } } }), /grade: A\+, A, A-/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { parts: { risk: { score: 3 } } }), /a part takes grade, note; not score/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { ruleKept: 'mostly' }), /ruleKept: yes, partly or no/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { ruleNext: 'x'.repeat(501) }), /ruleNext: 500 characters at most/);
+  assert.throws(() => planPeriod(j, 'week', '2026-10', {}), /a week by any of its days, YYYY-MM-DD/);
+  assert.throws(() => planPeriod(j, 'month', '2026-13', {}), /a month as YYYY-MM/);
+});
+
+test("the whole week: its P&L, trades, last week's rule and each part's grade, with what's missing", () => {
+  const j = journalFrom({ ...DATA, periods: [{ unit: 'week', period_key: '2026-10-12', rule_next: 'Wait for the setup.' }, { unit: 'week', period_key: MONDAY, risk_grade: 'D', risk_note: 'Oversized.' }] });
+  const text = periodDetail(j, 'week', MONDAY);
+  assert.match(text, /^Week of 2026-10-19\nP&L: \$11\.00 · 1 trade with an exit/);
+  assert.match(text, new RegExp(`\\n  ${handleOf(KEY)} · QQQ 10/23/26 706P`));
+  assert.match(text, /\n  last week's rule: Wait for the setup\. · kept: —\n/);
+  assert.match(text, /\n    Risk management: D · Oversized\.\n/);
+  assert.match(text, /\n    Trade selection: —\n/);
+  assert.match(text, /missing: grades on 7 parts and the rule for next week$/);
+});
+
 // ---------- the script ----------
 
 const SCRIPT = fileURLToPath(new URL('../scripts/journal.mjs', import.meta.url));
@@ -293,6 +354,45 @@ test("the script: shows a day, saves its review, a dry run saves nothing", () =>
   const old = script(['day', DAY, JSON.stringify(DAY_REVIEW)], { data: DAY_DATA, oldSave: true });
   assert.equal(old.status, 1, "a database before the migration saves nothing, and says so");
   assert.match(old.stderr, /npx supabase db push/);
+});
+
+test("the script: shows a week or a month, saves its review, a dry run saves nothing", () => {
+  const show = script(['week', '2026-10-23']);
+  assert.equal(show.status, 0, show.stderr);
+  assert.match(show.stdout, /^Week of 2026-10-19/);
+  assert.match(script(['month', '2026-10']).stdout, /^October 2026/);
+
+  const dry = script(['week', MONDAY, JSON.stringify(WEEK_REVIEW), '--dry-run']);
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.deepEqual(dry.saves, []);
+  assert.match(dry.stdout, /"periods"/);
+
+  const saved = script(['week', MONDAY, JSON.stringify(WEEK_REVIEW)]);
+  assert.equal(saved.status, 0, saved.stderr);
+  assert.equal(saved.saves[0].periods[0].fields.risk_grade, 'D+');
+  assert.match(saved.stdout, /^Saved\./m);
+
+  assert.match(script(['week']).stderr, /Which week\?/);
+  const old = script(['week', MONDAY, JSON.stringify(WEEK_REVIEW)], { oldSave: true });
+  assert.equal(old.status, 1);
+  assert.match(old.stderr, /npx supabase db push/);
+});
+
+test('the save function takes the week and month review fields; the read returns the rows', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  const sql = readdirSync(dir).filter(f => f.endsWith('.sql')).sort().map(f => readFileSync(new URL(f, dir), 'utf8')).join('\n').replace(/--[^\n]*/g, '');
+  const last = name => [...sql.matchAll(new RegExp(`create or replace function public\\.${name}\\(p_key text[\\s\\S]*?end \\$\\$;`, 'gi'))].pop()?.[0] || '';
+  const save = last('claude_journal_save'), read = last('claude_journal_read');
+  assert.match(save, /p_changes->'periods'/);
+  assert.match(save, /p_changes->'notebook'/, 'the day review stays');
+  for (const k of ['selection', 'entry', 'exit', 'risk', 'emotion', 'market', 'prep', 'consistency']) {
+    assert.match(save, new RegExp(`${k}_grade = case when f \\? '${k}_grade'`), k);
+    assert.match(read, new RegExp(`'${k}_note', p\\.${k}_note`), k);
+  }
+  assert.match(read, /'periods', coalesce\(\(select jsonb_agg[\s\S]*from public\.period_reviews p where p\.user_id = uid/);
+  assert.match(read, /'order_plans', coalesce/);
+  assert.match(read, /'went_well', d\.went_well/, "the day's review stays");
 });
 
 test('the save function takes the day review fields and nothing else of the notebook; the read returns them', async () => {
