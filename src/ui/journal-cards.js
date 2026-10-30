@@ -8,6 +8,7 @@ import { nyParts } from '../core/journal-stats.js';
 import { progressDay, reviewDays, reviewStreak, weekDots } from '../core/review-progress.js';
 import { state } from '../state.js';
 import { startReviewDeck } from './journal-deck.js';
+import { dayReviewLink } from './journal-notebook.js';
 import { reviewFrom, reviewQueue, savedForWeekly, setupGradeOf, setupsOf, toReview, tradePass } from './journal-review.js';
 import {
   EXPIRED_TITLE, HISTORY_TITLE, VIA_TITLE, feeSubs, feeWords, isReviewed, journalAfterFees, journalTradeList, nameOf, onWords, pctTitleOf, pickBox,
@@ -303,10 +304,13 @@ export function openCard(t) {
   </article>`;
 }
 
+/** a day's date on the Trades tab: a button that opens its notebook page, to review the day */
+export const dayButton = (day, words) => `<button class="jd-date" data-action="reviewJournalDay" data-arg="${day}" title="Open the day's notebook">${words}</button>`;
+
 /** the New York day a closed trade closed */
 export const closeDay = t => nyParts(t.closedAt || t.openedAt).day;
 
-/** Closed, a day at a time, newest first: the day, how many wait or that it's all reviewed, and its P&L */
+/** Closed, a day at a time, newest first: the day (it opens the day's notebook), how many wait or that it's all reviewed, Review the day, and its P&L */
 export function closedDays(list) {
   /** @type {Map<string, any[]>} */
   const byDay = new Map();
@@ -317,7 +321,7 @@ export function closedDays(list) {
     const waiting = reviewsRead() ? live.filter(toReview).length : 0;
     const status = waiting ? `<span class="jtc-day-todo">${waiting} to review</span>` : reviewsRead() && live.length && live.every(isReviewed) ? '<span class="jtc-day-done">All reviewed</span>' : '';
     const total = trades.some(counts) ? `<b class="${pnlClass(sum(trades))}">${signed$(sum(trades))}</b>` : '';
-    return `<div class="jtc-day"><span>${day === now ? `Today · ${dayWords(day)}` : dayWords(day, true)}${status ? ` · ${status}` : ''}</span>${total}</div>${trades.map(closedCard).join('')}`;
+    return `<div class="jtc-day"><span>${dayButton(day, day === now ? `Today · ${dayWords(day)}` : dayWords(day, true))}${status ? ` · ${status}` : ''}</span><span class="jtc-day-end">${dayReviewLink(day)}${total}</span></div>${trades.map(closedCard).join('')}`;
   }).join('');
 }
 

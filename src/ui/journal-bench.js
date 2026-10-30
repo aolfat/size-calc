@@ -10,7 +10,7 @@ import { zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { reviewChecklist, reviewQueue, setupGradeOf, setupsOf, toReview, tradePass } from './journal-review.js';
 import {
-  closeDay, closedDays, counts, dayWords, nowrap, openCard, progress, progressHtml, setupTags, sideTags, statsLine, stopNow,
+  closeDay, closedDays, counts, dayButton, dayWords, nowrap, openCard, progress, progressHtml, setupTags, sideTags, statsLine, stopNow,
   sum, unitWord, upNextHtml,
 } from './journal-cards.js';
 import {
@@ -19,6 +19,7 @@ import {
 } from './journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { openJournalTrade } from './journal-trade.js';
+import { dayReviewLink } from './journal-notebook.js';
 
 /** Workbench (the table and the trade panel) or Review desk (the cards two-up) */
 export const journalLayout = () => store.get('journal_layout') === 'desk' ? 'desk' : 'bench';
@@ -167,7 +168,8 @@ function benchGroups(list, cols) {
     const live = trades.filter(t => !t.deleted && t.status !== 'history');
     const waiting = reviewsRead() ? live.filter(toReview).length : 0;
     const status = waiting ? `<span class="jtc-day-todo">${waiting} to review</span>` : reviewsRead() && live.length && live.every(isReviewed) ? '<span class="jtc-day-done">All reviewed</span>' : '';
-    rows.push(head(`${dayLine(day)} <span class="jb-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>${status}`, trades.some(counts) ? `<b class="jb-day-total ${pnlClass(sum(trades))}">${signed$(sum(trades))}</b>` : ''), ...trades.map(t => benchRow(t, cols)));
+    const total = trades.some(counts) ? `<b class="jb-day-total ${pnlClass(sum(trades))}">${signed$(sum(trades))}</b>` : '';
+    rows.push(head(`${dayButton(day, dayLine(day))} <span class="jb-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>${status}`, `<span class="jb-day-end">${dayReviewLink(day)}${total}</span>`), ...trades.map(t => benchRow(t, cols)));
   }
   return rows.join('');
 }
@@ -243,7 +245,7 @@ function panelHtml(t) {
   const all = journalTradeList(), queue = reviewQueue(all);
   const history = t.status === 'history', none = history || (t.status === 'open' && !t.exits);
   const basis = pnlBasis(t), pct = pnlPct(t);
-  const day = t.status === 'open' ? 'Open' : dayLine(closeDay(t));
+  const day = t.status === 'open' ? 'Open' : dayButton(closeDay(t), dayLine(closeDay(t)));
   const fees = t.afterFees && t.fees ? `<span class="jb-p-fees">fees ${fmt$(t.fees)}</span>` : '';
   return `<div class="jb-panel" aria-label="${esc(t.label)}">
     <div class="jb-p-top"><span>${day}</span><span class="jb-keys" title="The trade above or below (↑ ↓), its page (Enter)"><kbd>↑</kbd><kbd>↓</kbd></span></div>

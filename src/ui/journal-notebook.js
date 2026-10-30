@@ -53,18 +53,20 @@ const focusOf = day => rowOf(day)?.focus_list || [];
 /** a day's page (a calendar cell, today's line, ‹ ›): inside the Calendar tab, the calendar on its month behind it */
 export function openJournalDay(day) {
   if (!isDay(day)) return;
-  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: '', notebookDraft: null, notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
+  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: state.notebookBack === 'trades' ? state.journalDay : '', notebookDraft: null, notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
   renderJournal();
   window.scrollTo?.({ top: 0 });
 }
-/** ← Calendar (← Missed when a line there opened the day) */
+/** ← Calendar (← Missed or ← Trades when a line there or a day on the Trades tab opened the day) */
 export function closeJournalDay() {
-  if (state.notebookBack === 'missed') state.journalTab = 'missed';
+  if (state.notebookBack === 'missed' || state.notebookBack === 'trades') state.journalTab = state.notebookBack;
   Object.assign(state, { journalNotebookDay: '', notebookEdit: '', notebookBack: '' });
   renderJournal();
 }
 /** ‹ or ›: the weekday before or after */
 export function stepJournalDay(by) { if (state.journalNotebookDay) openJournalDay(stepWeekday(state.journalNotebookDay, Number(by) || 0)); }
+/** a day on the Trades tab (its date, or Review the day): its page, ← Trades back to the list as it was filtered */
+export function reviewJournalDay(day) { if (!isDay(day)) return; state.notebookBack = 'trades'; openJournalDay(day); }
 /** today's line: today's page (Monday's on a weekend) */
 export function openTodayNotebook() { state.notebookBack = ''; openJournalDay(notebookToday(nowIso())); }
 
@@ -104,6 +106,17 @@ export function todayButtonHtml() {
   const what = reviewed ? 'Day reviewed ✓' : over ? 'Review the day' : planned ? 'Plan written ✓' : 'Write your plan';
   const when = `${isToday ? 'Today' : 'Monday'}, ${dayName(day, { weekday: 'short', month: 'short', day: 'numeric' })}`;
   return `<button class="btn nb-today${reviewed || (planned && !over) ? ' nb-today-done' : ''}" data-action="openTodayNotebook" title="${esc(when)}: open the day's notebook">${what}</button>`;
+}
+
+/**
+ * A day's link on the Trades tab, beside its date: Day reviewed ✓ (quiet) once it is, Review the day › once it's over
+ * (after 4pm New York), else The day's notebook ›; each opens the day's page
+ */
+export function dayReviewLink(day) {
+  if (!isDay(day)) return '';
+  const reviewed = !notebookOff() && reviewOf(day).reviewed, over = dayOver(day, nowIso());
+  const what = reviewed ? 'Day reviewed ✓' : over ? 'Review the day ›' : "The day's notebook ›";
+  return `<button class="pos-link jd-review${reviewed ? ' jd-review-done' : ''}" data-action="reviewJournalDay" data-arg="${day}" title="${esc(dayName(day))}: open the day's notebook">${what}</button>`;
 }
 
 /** today's high-impact releases for the Journal's head ('· Today: CPI 8:30 am'; Monday's on a weekend), or '' */
@@ -630,6 +643,7 @@ function missedSection(day) {
   </section>`;
 }
 
+const BACK_WORDS = { missed: '← Missed', trades: '← Trades' };
 /** the day's page, in place of the calendar */
 export function dayPageHtml() {
   const day = page(), trades = journalTradeList();
@@ -640,7 +654,7 @@ export function dayPageHtml() {
   const today = notebookToday(nowIso());
   return `<div class="nb-page" id="journalDayPage" role="region" aria-label="${esc(dayName(day))}">
     <div class="jc-head nb-head">
-      <button class="btn jc-today" data-action="closeJournalDay">${state.notebookBack === 'missed' ? '← Missed' : '← Calendar'}</button>
+      <button class="btn jc-today" data-action="closeJournalDay">${BACK_WORDS[state.notebookBack] || '← Calendar'}</button>
       <button class="btn jc-nav" data-action="stepJournalDay" data-arg="-1" aria-label="The weekday before">‹</button>
       <span class="jc-title">${esc(dayName(day))}</span>
       <button class="btn jc-nav" data-action="stepJournalDay" data-arg="1" aria-label="The weekday after">›</button>

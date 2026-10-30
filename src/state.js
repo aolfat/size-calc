@@ -78,6 +78,7 @@ export function createState() {
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
     journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
+    journalFilters: [], // More filters (core/journal-filters.js): [{ field, values, not }], each any of its values (none of them with not), all at once; Trades, Calendar and Stats
     journalReviewFilter: 'all', // the trades tab's review chips: all | open | todo (to review) | done (reviewed) | untagged (no setup)
     claudeKeys: null, // your Claude access keys once read (Settings): [{ id, label, created_at, last_used_at }]
     claudeKeysError: '', // they couldn't be read (the migration not pushed yet, say)
@@ -119,7 +120,7 @@ export function createState() {
     journalFrom: '', // the trades tab from this day ('YYYY-MM-DD', New York; '' = no start): opened or with an exit then
     journalTo: '', // and up to this one ('' = no end)
     journalNotebookDay: '', // the day's notebook page open in the Calendar tab ('YYYY-MM-DD', New York; docs/journal-notebook.md)
-    notebookBack: '', // where the day's page goes back to: '' the calendar, 'missed' the Missed tab (a line there opened it)
+    notebookBack: '', // where the day's page goes back to: '' the calendar, 'missed' the Missed tab (a line there opened it), 'trades' the Trades tab (a day's date or Review the day there)
     journalMissed: { q: '', side: 'all', setup: '', why: '' }, // the Missed tab's search and filters: text, all | long | short, a setup key, a reason
     notebookDraft: null, // { day, field, text }: a notebook box being typed, saved on blur
     notebookEdit: '', // goal | rule: that list open in place to edit
