@@ -51,6 +51,17 @@ New sessions in that environment pick both up.
 
 Once per project, from a checkout: `npx supabase db push` for the migrations, then `npx supabase functions deploy claude-model-example --no-verify-jwt` for the screenshot function (add `--use-api` if Docker isn't running).
 
+## Reviewing by talking
+
+A review is the owner's own assessment, so a session writes it by asking, not by drafting (owner request, after a session filled a day's notes with its own reading of the fills).
+First pull what's there (`show`, `day`, `week` or `month`) and say in a line or two what's filled and what's missing.
+Then ask the page's questions, a part or two at a time, in the page's words: for a trade its market, sector, setups, tactics, mistakes, grade, plan followed and notes; for a day the last focus, the grade, each rule kept or broke, what went well, what to work on, more notes and tomorrow's focus; for a week or month last one's rule, each part's grade and note, the notes and the rule for next one.
+Ask only for what's missing, and leave what the owner already filled in unless they want to change it.
+For choices (setups, tactics, mistakes, the market) offer the owner's own names from `choices`.
+Save their answers in their voice, tidied only for spelling and punctuation.
+Numbers or patterns from the fills go in the chat when they help the owner answer, never into the notes unless the owner asks for them there.
+Show the dry run, and save once the owner says yes.
+
 ## The script
 
 `scripts/journal.mjs` (Node, no packages) calls the Claude functions with `JOURNAL_KEY` and runs the app's own `src/core` journal code on what comes back, so trades, keys and numbers match the Journal.
