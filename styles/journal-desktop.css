@@ -12,6 +12,7 @@
   .jw-bench { display: grid; grid-template-columns: 236px minmax(0, 1fr); padding: 0; overflow: hidden; }
   .jw-bench.jw-has-side { grid-template-columns: 236px minmax(0, 1fr) 372px; }
   .jw-bench > * { min-height: 0; overflow-y: auto; }
+  .jw-bench > *, .jw-split > *, .jw-one, .jt-left, .jt-body { scrollbar-gutter: stable; scrollbar-width: thin; }
   .jw-bench > .jw-main { padding: 18px 20px 40px; }
   .jb-rail { display: flex; flex-direction: column; gap: 16px; padding: 20px 16px; border-right: 1px solid var(--border); }
   .jb-side { padding: 20px 18px 40px; border-left: 1px solid var(--border); }
@@ -122,9 +123,10 @@
   /* ---------- Review desk ---------- */
   .jw-desk { display: flex; flex-direction: column; overflow: hidden; }
   .jw-desk > .jw-split, .jw-desk > .jw-one { flex: 1 1 auto; min-height: 0; }
-  .jw-split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 22px; }
-  .jw-split > * { min-height: 0; overflow-y: auto; padding: 0 6px 40px 0; }
-  .jw-one { overflow-y: auto; padding: 0 6px 40px 0; }
+  .jw-split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 8px; }
+  /* room on the right for the scrollbar: a Mac draws it over the content, so it needs the padding; others take the gutter */
+  .jw-split > * { min-height: 0; overflow-y: auto; padding: 0 16px 40px 0; }
+  .jw-one { overflow-y: auto; padding: 0 16px 40px 0; }
   .jd-side { display: flex; flex-direction: column; gap: 14px; }
   .jd-side .jrp, .jd-side .jun-stack, .jd-side .jun-done { margin: 0; }
   .jd-side .jun-hints { display: none; } /* Skip and Start review are right there; a mouse drag still works */
