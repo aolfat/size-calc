@@ -23,7 +23,7 @@ import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopPrice, toggleREdit } from './position-trade.js';
-import { refreshPositions, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
+import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
@@ -443,6 +443,19 @@ export const actions = {
   togglePosHideValue: () => togglePosHideValue(),
   togglePosLegs: el => togglePosLegs(arg(el)),
   togglePosCard: el => togglePosCard(arg(el)),
+  openPosActions: el => openPosActions(arg(el)),
+  // the phone table's actions sheet: the chart, the simulator and the legs show on the page, so the sheet closes first; the orders open their own sheets
+  posSheetAct: el => {
+    const key = arg(el), what = el.dataset.arg2;
+    if (what === 'chart' || what === 'sim' || what === 'legs') closeSheet();
+    if (what === 'chart') togglePositionChart(key);
+    else if (what === 'sim') simPosition(key);
+    else if (what === 'legs') togglePosLegs(key);
+    else if (what === 'spreadClose') openSpreadClose(key);
+    else openPositionTrade(key, what);
+  },
+  setPosLayout: el => setPosLayout(arg(el)),
+  setPosPnl: el => setPosPnl(arg(el)),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),

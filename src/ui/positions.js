@@ -18,6 +18,7 @@ import { applyAccountValue } from './account-size.js';
 import { showToast } from './feedback.js';
 import { journalTradeList } from './journal.js';
 import { onCaptureChange } from './schwab-capture.js';
+import { openSheet } from './sheets.js';
 import { renderPositionChart } from './position-chart.js';
 
 const POLL_MS = 30000;
@@ -38,7 +39,10 @@ const EXTRA_COLS = [
   ['day', 'Today', r => pnlCell(r.day)],
   ['dayPct', 'Today %', r => pctCell(r.dayPct)],
 ];
-const shownCols = () => EXTRA_COLS.filter(([key]) => state.posCols.includes(key));
+// % only (Settings, Positions) drops the dollar P/L columns, the picker's chips with them
+const DOLLAR_COLS = ['pnl', 'day'];
+const pickable = () => EXTRA_COLS.filter(([key]) => !(state.posPnlPct && DOLLAR_COLS.includes(key)));
+const shownCols = () => pickable().filter(([key]) => state.posCols.includes(key));
 
 /** the Columns button: shows or hides the column picker */
 export function togglePosColumnsMenu() {
@@ -354,6 +358,11 @@ function stopNote(r) {
   return `<span class="pc-note">Stop ${px(r.stop)}${r.stops > 1 ? ` · +${r.stops - 1} more` : ''}${covers}</span>`;
 }
 
+const rowLadder = r => ladder({ stop: r.stop, cost: r.avg > 0 ? r.avg : null, price: r.price, floor: r.option && r.qty > 0 && r.stop === null ? 0 : null, pnl: r.pnl });
+// a debit spread is worth zero at worst; a credit's mark runs the other way, so no bar
+const spreadLadder = s => s.kind === 'debit' && s.avg > 0 ? ladder({ stop: null, cost: s.avg, price: s.price, floor: 0, pnl: s.pnl }) : '';
+const spreadNote = s => `<span class="pc-note">${esc(s.structure.charAt(0).toUpperCase() + s.structure.slice(1))}${s.maxLoss === null ? '' : ` · max loss ${fmt$(s.maxLoss)}`}</span>`;
+
 /** R on the card: the R column's, once the Journal is in when signed in */
 function cardR(r) {
   if (state.session && !state.journalRecords && (state.posJournalBusy || state.journalLoading)) return null;
@@ -367,9 +376,14 @@ function cardRisk(r) {
 }
 
 /** the part a tap toggles: the name, P/L, cost → price, the ladder and the stop line */
-function cardTop(key, open, { name, pnl, sub, figures, bar, note }) {
+/** the P/L a card or the action sheet leads with: dollars, or the percent when % only hides them */
+const headline = (pnl, pct) => state.posPnlPct ? (pct === null ? '—' : pct1(pct)) : pnl === null ? '—' : signed$(pnl);
+/** what sits beside cost → price: P/L % and R, or R alone when the percent already leads */
+const figuresOf = (pct, r) => [state.posPnlPct || pct === null ? '' : pct1(pct), r === null ? '' : rWords(r)].filter(Boolean).join(' · ');
+
+function cardTop(key, open, { name, pnl, pct, sub, figures, bar, note }) {
   return `<div class="pc-top" data-action="togglePosCard" data-arg="${esc(key)}" role="button" tabindex="0" aria-expanded="${open}">
-    <div class="pc-row"><span class="pc-name">${name}</span><span class="pc-pnl ${tone(pnl)}">${pnl === null ? '—' : signed$(pnl)}</span></div>
+    <div class="pc-row"><span class="pc-name">${name}</span><span class="pc-pnl ${tone(pnl)}">${headline(pnl, pct)}</span></div>
     <div class="pc-row pc-sub"><span>${sub}</span><span class="${tone(pnl)}">${figures}</span></div>
     ${bar}${note}
   </div>`;
@@ -383,12 +397,11 @@ export function positionCard(r, leg = false) {
   const px = v => fmtPositionPrice(v, r.tradeAs);
   const unit = r.option ? 'ct' : 'sh';
   const R = r.pnl === null ? null : cardR(r);
-  const figures = [r.pnlPct === null ? '' : pct1(r.pnlPct), R === null ? '' : rWords(R)].filter(Boolean).join(' · ');
   const top = cardTop(r.symbol, open, {
-    name: cardName(r.label), pnl: r.pnl,
+    name: cardName(r.label), pnl: r.pnl, pct: r.pnlPct,
     sub: `${r.avg > 0 ? `${px(r.avg)} → ` : ''}<b>${px(r.price)}</b> · ${count(r.qty)} ${unit}`,
-    figures,
-    bar: ladder({ stop: r.stop, cost: r.avg > 0 ? r.avg : null, price: r.price, floor: r.option && r.qty > 0 && r.stop === null ? 0 : null, pnl: r.pnl }),
+    figures: figuresOf(r.pnlPct, R),
+    bar: rowLadder(r),
     note: stopNote(r),
   });
   const more = open ? `<div class="pc-more"><dl class="pc-stats">${stat('Mkt val', money(r.value))}${stat('Stop', r.stop === null ? '—' : px(r.stop))}${stat('Risk @ stop', cardRisk(r))}</dl>${tradeButtons(r)}</div>` : '';
@@ -399,15 +412,12 @@ function spreadCard(s) {
   const open = state.posCardsOpen.includes(s.key);
   const { r } = spreadR(s);
   const units = Math.abs(s.qty) === 1 ? 'spread' : 'spreads';
-  const figures = [s.pnlPct === null ? '' : pct1(s.pnlPct), r === null ? '' : rWords(r)].filter(Boolean).join(' · ');
-  const note = `<span class="pc-note">${esc(s.structure.charAt(0).toUpperCase() + s.structure.slice(1))}${s.maxLoss === null ? '' : ` · max loss ${fmt$(s.maxLoss)}`}</span>`;
   const top = cardTop(s.key, open, {
-    name: cardName(s.label), pnl: s.pnl,
+    name: cardName(s.label), pnl: s.pnl, pct: s.pnlPct,
     sub: `${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${units}`,
-    figures,
-    // a debit spread is worth zero at worst; a credit's mark runs the other way, so no bar
-    bar: s.kind === 'debit' && s.avg > 0 ? ladder({ stop: null, cost: s.avg, price: s.price, floor: 0, pnl: s.pnl }) : '',
-    note,
+    figures: figuresOf(s.pnlPct, r),
+    bar: spreadLadder(s),
+    note: spreadNote(s),
   });
   const more = open ? `<div class="pc-more"><dl class="pc-stats">${stat('Mkt val', money(s.value))}${stat('Max loss', s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span>`)}${stat('Legs', esc(s.legWords))}</dl><span class="pos-acts">${spreadButtons(s)}</span></div>` : '';
   const legs = state.posLegsOpen.includes(s.key) ? s.legs.map(l => positionCard(l, true)).join('') : '';
@@ -425,10 +435,142 @@ export function togglePosCard(key) {
 function cardTiles(p) {
   const tile = (label, value, cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}</dd></div>`;
   const account = state.posHideValue ? 'Hidden' : '$' + Math.round(p.value).toLocaleString('en-US');
-  return `<dl class="pc-tiles">${tile('Account', account)}${tile('Invested', money(p.total))}${tile('Open P/L', p.pnl === null ? '—' : signed$(p.pnl), tone(p.pnl))}</dl>`;
+  return `<dl class="pc-tiles">${tile('Account', account)}${tile('Invested', money(p.total))}${tile('Open P/L', headline(p.pnl, p.pnlPct), tone(p.pnl))}</dl>`;
 }
 
 const CARD_LEGEND = '<div class="pc-legend" aria-hidden="true"><span><i class="pc-key pc-stop"></i>Stop</span><span><i class="pc-key pc-cost"></i>Cost</span><span><i class="pc-key pc-price"></i>Price</span></div>';
+
+// ---------- phones, the table layout: the symbol pinned, the rest a swipe away, a tap for the actions sheet ----------
+
+const ptCell = (v, cls = '') => `<td${cls ? ` class="${cls}"` : ''}>${v}</td>`;
+const pnl$ = v => v === null ? '—' : `<span class="${tone(v)}">${signed$(v)}</span>`;
+const pnlPctCell = v => v === null ? '—' : `<span class="${tone(v)}">${pct1(v)}</span>`;
+const rCellOf = v => v === null ? '—' : `<span class="${tone(v)}">${rWords(v)}</span>`;
+
+/** the pinned symbol: a button into the actions sheet, the contract or size (or 'stop at breakeven') under it */
+function ptSymbol(key, label, sub, subCls = '') {
+  const [root] = String(label).split(' ');
+  return `<td><button class="pt-sym" data-action="openPosActions" data-arg="${esc(key)}" aria-label="Actions for ${esc(label)}"><b>${esc(root)}</b><span class="pos-sub${subCls ? ` ${subCls}` : ''}">${sub}</span></button></td>`;
+}
+
+function ptRow(r, leg = false) {
+  const px = v => fmtPositionPrice(v, r.tradeAs);
+  const [, ...rest] = String(r.label).split(' ');
+  const be = atBreakeven(r);
+  const sub = be ? 'stop at breakeven' : r.option ? esc(rest.length === 2 ? `${rest[1]} ${rest[0]}` : rest.join(' ')) : `${count(r.qty)} sh`;
+  return `<tr class="pt-row${leg ? ' pos-leg' : ''}" data-action="openPosActions" data-arg="${esc(r.symbol)}">
+    ${ptSymbol(r.symbol, r.label, sub, be ? 'pos-locked' : '')}
+    ${ptCell(px(r.price))}${state.posPnlPct ? '' : ptCell(pnl$(r.pnl))}${ptCell(pnlPctCell(r.pnlPct))}${ptCell(money(r.value))}
+    ${ptCell(count(r.qty))}${ptCell(r.avg > 0 ? px(r.avg) : '—')}${ptCell(r.stop === null ? '—' : px(r.stop))}${ptCell(cardRisk(r))}${ptCell(rCellOf(r.pnl === null ? null : cardR(r)))}
+  </tr>`;
+}
+
+function ptSpreadRow(s) {
+  const legs = state.posLegsOpen.includes(s.key) ? s.legs.map(l => ptRow(l, true)).join('') : '';
+  return `<tr class="pt-row pos-spread" data-action="openPosActions" data-arg="${esc(s.key)}">
+    ${ptSymbol(s.key, s.label, esc(s.structure))}
+    ${ptCell(fmt$(s.price))}${state.posPnlPct ? '' : ptCell(pnl$(s.pnl))}${ptCell(pnlPctCell(s.pnlPct))}${ptCell(money(s.value))}
+    ${ptCell(count(s.qty))}${ptCell(s.avg > 0 ? fmt$(s.avg) : '—')}${ptCell('—')}${ptCell(s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span>`)}${ptCell(rCellOf(spreadR(s).r))}
+  </tr>${legs}`;
+}
+
+/** the account over the table: its value large, then the open P/L */
+function ptAccount(p) {
+  return `<div class="pt-acct"><div class="pt-value">${state.posHideValue ? 'Account value hidden' : fmt$(p.value)}</div><div class="pt-meta">Open P/L <span class="${tone(p.pnl)}">${headline(p.pnl, p.pnlPct)}</span></div></div>`;
+}
+
+function phoneTable(p, items) {
+  const heads = ['Price', ...(state.posPnlPct ? [] : ['P/L']), 'P/L %', 'Mkt val', 'Qty', 'Avg', 'Stop', 'Risk @ stop', 'R'];
+  const total = `<tr><th scope="row">Total</th><td></td>${state.posPnlPct ? '' : `<td>${pnl$(p.pnl)}</td>`}<td>${pnlPctCell(p.pnlPct)}</td><td>${money(p.total)}</td><td></td><td></td><td></td><td>${p.risk > 0 ? `<span class="pos-loss">−${fmt$(p.risk)}</span>` : '—'}</td><td></td></tr>`;
+  return `${ptAccount(p)}<div class="positions-wrap pt-wrap"><table class="positions-table pt-table">
+      <thead><tr><th scope="col">Symbol</th>${heads.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead>
+      <tbody>${items.map(i => i.spread ? ptSpreadRow(i.spread) : ptRow(i.row)).join('')}</tbody>
+      <tfoot>${total}</tfoot>
+    </table></div>
+    <div class="pt-foot"><span>Tap a row for actions</span><span>Swipe for Stop · Risk · R →</span></div>`;
+}
+
+/** the position or spread an actions sheet key names, in the last read */
+function positionByKey(key) {
+  const p = state.positions;
+  if (!p) return null;
+  const spread = (p.spreads || []).find(s => s.key === key);
+  if (spread) return { spread };
+  const row = p.rows.find(r => r.symbol === key);
+  return row ? { row } : null;
+}
+
+const actBtn = (key, what, label, cls = '') => `<button class="pos-act${cls ? ` ${cls}` : ''}" data-action="posSheetAct" data-arg="${esc(key)}" data-arg2="${what}">${label}</button>`;
+
+/** the actions sheet: the position's P/L, the stop ladder, its figures, and what you can do with it */
+function renderPosActions() {
+  const body = document.getElementById('posActionsBody'), title = document.getElementById('posActionsTitle');
+  const found = positionByKey(state.posActions);
+  if (!found) { title.textContent = 'Position'; body.innerHTML = '<p class="hint">No longer held in this account.</p>'; return; }
+  if (found.spread) {
+    const s = found.spread, { r } = spreadR(s);
+    title.innerHTML = cardName(s.label);
+    const open = state.posLegsOpen.includes(s.key);
+    body.innerHTML = `<div class="pa-body">
+      <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(s.pnl)}">${headline(s.pnl, s.pnlPct)}</span><span class="${tone(s.pnl)}">${figuresOf(s.pnlPct, r)}</span></div>
+      <div class="pc-sub">${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${Math.abs(s.qty) === 1 ? 'spread' : 'spreads'} · ${esc(s.legWords)}</div>
+      ${spreadLadder(s)}${spreadNote(s)}
+      <div class="pa-acts">${actBtn(s.key, 'legs', open ? 'Hide legs' : 'Show legs')}${actBtn(s.key, 'spreadClose', 'Close spread', 'pos-act-close')}</div>
+    </div>`;
+    return;
+  }
+  const row = found.row, px = v => fmtPositionPrice(v, row.tradeAs);
+  title.innerHTML = cardName(row.label);
+  const R = row.pnl === null ? null : cardR(row);
+  const acts = row.tradeAs ? [
+    actBtn(row.symbol, 'chart', 'Chart'),
+    row.option ? actBtn(row.symbol, 'sim', 'Simulate') : '',
+    actBtn(row.symbol, 'stop', row.stop === null ? 'Set stop' : 'Edit stop'),
+    atBreakeven(row) ? '' : actBtn(row.symbol, 'breakeven', 'Move stop to breakeven'),
+    actBtn(row.symbol, 'close', 'Close', 'pos-act-close'),
+  ].join('') : '';
+  body.innerHTML = `<div class="pa-body">
+    <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(row.pnl)}">${headline(row.pnl, row.pnlPct)}</span><span class="${tone(row.pnl)}">${figuresOf(row.pnlPct, R)}</span></div>
+    <div class="pc-sub">${row.avg > 0 ? `${px(row.avg)} → ` : ''}<b>${px(row.price)}</b> · ${count(row.qty)} ${row.option ? 'ct' : 'sh'}</div>
+    ${rowLadder(row)}${stopNote(row)}
+    <dl class="pc-stats">${stat('Mkt val', money(row.value))}${stat('Stop', row.stop === null ? '—' : px(row.stop))}${stat('Risk @ stop', cardRisk(row))}</dl>
+    ${acts ? `<div class="pa-acts">${acts}</div>` : '<p class="hint">Schwab trades for this kind of position aren\'t offered here.</p>'}
+  </div>`;
+}
+
+/** a tap on a row of the phone table: its actions sheet */
+export function openPosActions(key) {
+  state.posActions = key;
+  renderPosActions();
+  openSheet('posActions');
+}
+
+// ---------- Settings, Positions: the phone layout and the dollar P/L ----------
+
+/** Cards or Table, for Positions on a phone */
+export function setPosLayout(v) {
+  state.posLayout = v === 'table' ? 'table' : 'cards';
+  store.set('positions_layout', state.posLayout);
+  syncPosSettings();
+  if (state.positionsView) renderPositionsTable();
+}
+
+/** $ and %, or % only: the dollar P/L of open positions hidden on every Positions surface */
+export function setPosPnl(v) {
+  state.posPnlPct = v === 'pct';
+  store.set('positions_pnl_pct', state.posPnlPct ? '1' : '0');
+  syncPosSettings();
+  if (state.positionsView) renderPositionsTable();
+}
+
+/** the two switches show what's in use */
+export function syncPosSettings() {
+  for (const [id, on] of [['posLayoutCards', state.posLayout === 'cards'], ['posLayoutTable', state.posLayout === 'table'], ['posPnlBoth', !state.posPnlPct], ['posPnlPct', state.posPnlPct]]) {
+    const b = document.getElementById(id);
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
 
 /** a phone turned sideways (or a window resized) swaps cards and table */
 let phoneWatched = false;
@@ -465,7 +607,7 @@ function renderPositionsTable() {
   // phones show the account value in a tile over the cards
   const value = state.posHideValue ? 'Account value hidden' : phone ? `Cash ${money(p.cash)}` : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
   const hide = `<button class="pos-link" data-action="togglePosHideValue" aria-pressed="${state.posHideValue}" title="${state.posHideValue ? 'Show' : 'Hide'} the account value and cash">${state.posHideValue ? 'Show' : 'Hide'}</button>`;
-  const picker = state.posColsOpen ? `<div class="chip-row pos-cols" role="group" aria-label="Optional columns">${EXTRA_COLS.map(([key, label]) => {
+  const picker = state.posColsOpen ? `<div class="chip-row pos-cols" role="group" aria-label="Optional columns">${pickable().map(([key, label]) => {
     const on = state.posCols.includes(key);
     return `<button class="filter-btn${on ? ' active' : ''}" data-action="togglePosColumn" data-arg="${key}" aria-pressed="${on}">${label}</button>`;
   }).join('')}</div>` : '';
@@ -479,7 +621,9 @@ function renderPositionsTable() {
     ${phone ? '' : picker}
     ${state.positionsError ? `<p class="shares-error" role="status">Refresh failed: ${esc(state.positionsError)} Showing ${asOf}.</p>` : ''}
     ${p.stopsMissing ? '<p class="hint">Stops unavailable: Schwab did not return this account\'s orders.</p>' : ''}
-    ${p.rows.length && phone ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => i.spread ? spreadCard(i.spread) : positionCard(i.row)).join('')}</div>
+    ${p.rows.length && phone && state.posLayout === 'table' ? `${phoneTable(p, items)}
+    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost; a spread's is its max loss. R is open P/L over the risk at entry: the Journal trade's first stop (or a long option's premium), else the nearest stop now.</p>`
+    : p.rows.length && phone ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => i.spread ? spreadCard(i.spread) : positionCard(i.row)).join('')}</div>
     <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. R is open P/L over the risk at entry: the Journal trade's first stop (or a long option's premium), else the nearest stop now. Tap a card for its figures and buttons.</p>`
     : p.rows.length ? `<div class="positions-wrap"><table class="positions-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th>${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
@@ -490,6 +634,7 @@ function renderPositionsTable() {
   </div>
   ${ordersCard(p)}`;
   el.querySelectorAll('.positions-wrap').forEach((w, i) => { w.scrollLeft = scrolled[i] || 0; });
+  if (state.openSheetName === 'posActions') renderPosActions(); // the sheet follows each read
 }
 
 const orderPx = (o, v) => fmtPositionPrice(v, o.assetType === 'OPTION' ? 'OPTION' : null);

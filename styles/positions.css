@@ -104,6 +104,39 @@
 .pc-more .pos-act { flex: 1 1 auto; padding: 9px 10px; font-size: 14px; border-radius: 10px; border-color: transparent; color: var(--text); } /* Chart, Stop, BE stop, Close share one row; an option's Simulate wraps */
 .pc-more .pos-act-close { color: var(--red); background: var(--red-bg); }
 
+/* Phones, the table layout (Settings, Positions: Table): the account large, the symbol pinned with its size or contract under it,
+   P/L first and the rest a swipe away; a tap on a row opens #posActionsSheet */
+.pt-acct { margin: 0 2px 12px; }
+.pt-value { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.pt-meta { margin-top: 2px; font-size: 13px; color: var(--text2); }
+.pt-meta span { font-weight: 600; }
+.pt-wrap { border-radius: 14px; }
+.positions-table.pt-table { min-width: 0; width: max-content; font-size: 14px; }
+.pt-table th, .pt-table td { padding: 10px 10px; vertical-align: middle; }
+.pt-table td:last-child, .pt-table th:last-child { padding-right: 14px; }
+.pt-table th:first-child, .pt-table td:first-child { width: 112px; min-width: 112px; max-width: 112px; padding: 0; box-shadow: 6px 0 8px -6px rgb(0 0 0 / 60%); }
+.pt-table thead th:first-child, .pt-table tfoot th:first-child { padding: 10px 14px; }
+.pt-table tbody tr.pt-row { cursor: pointer; }
+.pt-table tbody tr.pt-row:active td { background: var(--bg3); }
+.pt-sym { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 10px 8px 10px 14px; background: none; border: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.pt-sym b { font-size: 15px; font-weight: 700; }
+.pt-sym .pos-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--text2); }
+.pt-sym .pos-sub.pos-locked { color: var(--green); font-weight: 500; }
+.pt-table tr.pos-leg .pt-sym { padding-left: 24px; }
+.pt-foot { display: flex; justify-content: space-between; gap: 10px; margin: 8px 2px 0; font-size: 12px; color: var(--text3); }
+
+/* the phone table's actions sheet: P/L, the stop ladder and figures, then the actions two by two, Close across the bottom */
+.pos-actions-sheet .sheet-head h2 b { font-size: inherit; }
+.pa-body { display: grid; gap: 8px; }
+.pa-pnl { font-size: 14px; font-weight: 600; }
+.pa-body .pc-stats { margin-top: 4px; }
+.pa-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.pa-acts .pos-act { min-height: 46px; padding: 8px 10px; font-size: 15px; border-radius: 12px; border-color: transparent; color: var(--text); background: var(--bg3); }
+.pa-acts .pos-act-close { grid-column: 1 / -1; color: var(--red); background: var(--red-bg); }
+.pa-acts .pos-act:nth-last-child(2):nth-child(odd) { grid-column: 1 / -1; } /* an odd one out before Close takes the row */
+.pos-pnl-seg { margin-left: 8px; }
+@media (max-width: 600px) { .pos-pnl-seg { margin: 8px 0 0; } }
+
 /* Position chart: one position's 5-minute and daily charts with its cost, stops and targets, and the profit-target form.
    Under the table on phones and tablets, beside it on the desktop shell. */
 .positions-split { display: contents; }
