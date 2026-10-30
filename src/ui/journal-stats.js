@@ -15,9 +15,7 @@ import { state } from '../state.js';
 import { periodMark, periodStatus } from './journal-week.js';
 import { dayFlags, dayMark, openJournalDay } from './journal-notebook.js';
 import { econDot, econPopHtml, econTag, econWords } from './econ-events.js';
-import { setupGradeOf, toReview, tradeReviewState } from './journal-review.js';
-import { sideTags } from './journal-cards.js';
-import { startReviewDeck } from './journal-deck.js';
+import { setupGradeOf } from './journal-review.js';
 import { renderJournal } from './journal.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -120,29 +118,13 @@ function deskDates(trades, daily, key) {
   return deskCalendar(trades, daily, cal, from, to, head, day => firsts.has(day), 'No exits between these dates.');
 }
 
-// ---------- the desktop calendar: days shaded by their size, review chips, the cumulative line, a day panel ----------
+// ---------- the desktop calendar: days shaded by their size, review chips, the cumulative line; a day clicked opens its notebook page ----------
 
 const CAL_MODES = [['pnl', 'P&amp;L'], ['r', 'R'], ['grade', 'Grade']];
 const GRADE_POINTS = { A: 4, B: 3, C: 2, D: 1, F: 0 };
 /** P&L, R or Grade in the days (journalCalMode, for the session) */
 export function setCalendarMode(v) { state.journalCalMode = CAL_MODES.some(([k]) => k === v) ? v : 'pnl'; renderJournal(); }
 const modeSwitch = () => `<div class="seg jc-mode" aria-label="Days show">${CAL_MODES.map(([k, label]) => `<button class="${state.journalCalMode === k ? 'active' : ''}" aria-pressed="${state.journalCalMode === k}" data-action="setCalendarMode" data-arg="${k}">${label}</button>`).join('')}</div>`;
-
-/** a day tapped: on the desktop it shows in the panel beside the calendar; elsewhere its notebook page opens */
-export function pickCalendarDay(day) {
-  if (!mq(DESKTOP_MQ)) return openJournalDay(day);
-  state.journalCalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
-  renderJournal();
-}
-
-/** the day panel's Review them: the review deck over that day's trades still to review */
-export function reviewCalendarDay(day) {
-  const keys = (calCtx?.waiting.get(day) || []).map(t => t.key);
-  if (keys.length) startReviewDeck(keys);
-}
-
-/** the shown calendar's trades, by key and by the day they had exits, and the ones there still to review (the panel's buttons read it) */
-let calCtx = /** @type {{ byKey: Map<string, any>, waiting: Map<string, any[]> } | null} */ (null);
 
 /** what a day says in the chosen mode: its P&L, its R (the trades that closed then), or the average grade of those reviewed */
 function dayValue(d, ctx) {
@@ -167,7 +149,7 @@ function deskDayCell(d, withMonth, ctx) {
   const num = withMonth ? shortDay(d.day) : String(+d.day.slice(8));
   const pop = econPopHtml(d.day), td = pop ? '<td class="jc-has-ev">' : '<td>', ev = econWords(d.day);
   const flags = dayFlags(d.day, d.trades > 0), mark = dayMark(d.day, d.trades > 0);
-  const now = d.day === ctx.today, sel = d.day === ctx.selected;
+  const now = d.day === ctx.today;
   const top = `<span class="jc-top"><span class="jc-num">${num}</span>${now ? '<span class="jc-now">Today</span>' : ''}${econTag(d.day)}</span>`;
   const chips = [
     flags?.reviewed ? '<span class="jc-chip jc-chip-done">✓ Reviewed</span>' : flags?.due ? '<span class="jc-chip jc-chip-due">Review</span>' : '',
@@ -175,12 +157,12 @@ function deskDayCell(d, withMonth, ctx) {
     ctx.open.get(d.day) ? `<span class="jc-chip jc-chip-open">● ${ctx.open.get(d.day)} open</span>` : '',
     flags?.planned ? '<span class="jc-chip jc-chip-quiet" title="Plan written">✎</span>' : '',
   ].filter(Boolean).join('');
-  const cls = `jc-day jc-desk${sel ? ' jc-sel' : ''}${now ? ' jc-today-cell' : ''}`;
-  if (!d.trades) return `${td}<button class="${cls} jc-quiet${mark.html ? ' jc-noted' : ''}" data-action="pickCalendarDay" data-arg="${d.day}" aria-pressed="${sel}" aria-label="${esc(`${d.day}: no exits${mark.words}${ev}`)}">${top}${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
+  const cls = `jc-day jc-desk${now ? ' jc-today-cell' : ''}`;
+  if (!d.trades) return `${td}<button class="${cls} jc-quiet${mark.html ? ' jc-noted' : ''}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}: no exits${mark.words}${ev}. Open the day`)}">${top}${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
   const v = dayValue(d, ctx), shade = ctx.max ? Math.round(10 + 34 * Math.sqrt(v.size / ctx.max)) : 12;
   const pf = d.profitFactor === null ? '' : ` · PF ${d.profitFactor.toFixed(2)}`;
   const label = `${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${d.profitFactor.toFixed(2)}` : ''}${mark.words}${ev}`;
-  return `${td}<button class="${cls} ${v.cls}" style="--jc-shade:${shade}%" data-action="pickCalendarDay" data-arg="${d.day}" aria-pressed="${sel}" aria-label="${esc(label)}">${top}<span class="jc-pnl">${v.text}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'} · ${pct(d.winRate)}${pf}</span>${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
+  return `${td}<button class="${cls} ${v.cls}" style="--jc-shade:${shade}%" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}">${top}<span class="jc-pnl">${v.text}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'} · ${pct(d.winRate)}${pf}</span>${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
 }
 
 /** the cumulative P&L through the days shown, and the day that moved it most */
@@ -217,41 +199,13 @@ function deskStats(cal, daily, from, to, empty) {
   </dl>`;
 }
 
-/** the panel: the day picked, its numbers, what waits, its trades, and its notebook page */
-function dayPanelHtml(day, daily, ctx) {
-  if (!day) return '';
-  const c = daily.get(day), date = new Date(`${day}T12:00:00Z`);
-  const weekday = date.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long' }), words = date.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
-  const flags = dayFlags(day, !!c);
-  const head = `<div class="jc-p-week">${weekday}</div><div class="jc-p-date">${words}</div>`;
-  const page = flags?.due ? `<button class="jtc-go jc-p-go" data-action="openJournalDay" data-arg="${day}">✎ Review this day</button>` : `<button class="btn jc-p-page" data-action="openJournalDay" data-arg="${day}">Open notebook page</button>`;
-  if (!c) return `<aside class="jc-side" aria-label="${esc(`${weekday}, ${words}`)}">${head}<p class="hint">No exits this day.</p>${page}</aside>`;
-  const waiting = ctx.waiting.get(day) || [];
-  const sub = [`${c.trades} trade${c.trades === 1 ? '' : 's'}`, `${pct(c.winRate)} won`, c.profitFactor === null ? '' : `PF ${c.profitFactor.toFixed(2)}`, flags?.missed ? `${flags.missed} missed` : ''].filter(Boolean).join(' · ');
-  const list = c.keys.map(k => ctx.byKey.get(k)).filter(Boolean);
-  const rows = list.slice(0, 6).map(t => {
-    const st = state.journalReview && !t.deleted && t.status !== 'history' ? (tradeReviewState(t).reviewed ? '<span class="jc-chip jc-chip-done">✓</span>' : toReview(t) ? '<span class="jc-chip jc-chip-due">Review</span>' : '') : '';
-    const p = c.byTrade[t.key] || 0;
-    return `<li><button data-action="openTradeRow" data-arg="${esc(t.key)}"><span class="jc-p-sym"><b>${esc(t.label)}</b>${sideTags(t)}${st}</span><span class="${pnlClass(p)}">${compact$(p)}</span></button></li>`;
-  }).join('');
-  return `<aside class="jc-side" aria-label="${esc(`${weekday}, ${words}`)}">${head}
-    <div class="jc-p-pnl ${pnlClass(c.pnl)}">${signed$(c.pnl)}</div>
-    <div class="jc-p-sub">${sub}</div>
-    ${waiting.length ? `<div class="jc-p-todo"><span>${waiting.length} to review</span><button class="pos-link" data-action="reviewCalendarDay" data-arg="${day}">Review them ›</button></div>` : ''}
-    <ul class="jc-p-list">${rows}</ul>
-    ${list.length > 6 ? `<button class="pos-link jc-p-more" data-action="pickJournalDay" data-arg="${day}">+ ${list.length - 6} more trade${list.length - 6 === 1 ? '' : 's'}</button>` : `<button class="pos-link jc-p-more" data-action="pickJournalDay" data-arg="${day}">The day's trades ›</button>`}
-    <div class="jc-p-acts">${page}<button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${day}">The day's stats</button></div>
-  </aside>`;
-}
-
 const LEGEND = '<p class="jc-legend"><span><span class="jc-chip jc-chip-due">Review</span> the day to review</span><span><span class="jc-chip jc-chip-done">✓ Reviewed</span></span><span><span class="jc-chip jc-chip-quiet">⊘</span> trades you missed</span><span><span class="jc-tag jc-tag-high">CPI</span> a major release</span><span><span class="jc-tag jc-tag-medium">Minutes</span> FOMC minutes, Beige Book</span><span class="jc-legend-end">Color scales with the day\'s size</span></p>';
 
-/** the desktop calendar over from..to: the band, the line, the grid with its chips, the legend, and the day panel */
+/** the desktop calendar over from..to: the band, the line, the grid with its chips, and the legend */
 function deskCalendar(trades, daily, cal, from, to, head, label, empty) {
   const today = nyParts(new Date().toISOString()).day;
-  const byKey = new Map(trades.map(t => [t.key, t]));
   /** @type {Map<string, any[]>} */
-  const closed = new Map(), waiting = new Map();
+  const closed = new Map();
   /** @type {Map<string, number>} */
   const open = new Map();
   for (const t of trades) {
@@ -259,19 +213,15 @@ function deskCalendar(trades, daily, cal, from, to, head, label, empty) {
     if (t.status === 'open' && t.openedAt) { const d = nyParts(t.openedAt).day; open.set(d, (open.get(d) || 0) + 1); }
     if (t.status !== 'open' && t.status !== 'history' && t.closedAt) { const d = nyParts(t.closedAt).day; closed.set(d, [...(closed.get(d) || []), t]); }
   }
-  for (const [d, c] of daily) if (d >= from && d <= to) waiting.set(d, state.journalReview && !state.journalReviewError ? c.keys.map(k => byKey.get(k)).filter(t => t && !t.deleted && toReview(t)) : []);
-  calCtx = { byKey, waiting };
   const shown = cal.weeks.flatMap(w => w.days).filter(Boolean);
-  const inside = d => d >= from && d <= to;
-  const selected = inside(state.journalCalDay) ? state.journalCalDay : inside(today) ? today : [...daily.keys()].filter(inside).pop() || from;
-  const ctx = { today, selected, open, closed, byKey, waiting, max: 0 };
+  const ctx = { today, open, closed, max: 0 };
   ctx.max = Math.max(0, ...shown.filter(d => d.trades).map(d => dayValue(d, ctx).size));
-  return `<div class="jc-wrap"><div class="jc-main">${head}
+  return `<div class="jc-wrap">${head}
       ${deskStats(cal, daily, from, to, empty)}
       ${cal.trades ? cumulativeHtml(daily, from, to) : ''}
       ${grid(cal, label, (d, withMonth) => deskDayCell(d, withMonth, ctx))}
       ${LEGEND}
-    </div>${dayPanelHtml(selected, daily, ctx)}</div>`;
+    </div>`;
 }
 
 export function calendarView(trades) {

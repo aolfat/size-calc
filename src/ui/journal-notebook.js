@@ -87,7 +87,7 @@ export function dayMark(day, hasExits) {
 }
 
 /**
- * Where a day stands in the notebook, for the desktop calendar's chips and day panel: its plan written, reviewed, due (a
+ * Where a day stands in the notebook, for the desktop calendar's chips and Reviewed band: its plan written, reviewed, due (a
  * day with exits that's over and not reviewed), and how many trades you missed; null while the notebook can't be read
  */
 export function dayFlags(day, hasExits) {
