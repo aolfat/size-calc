@@ -57,6 +57,7 @@ Read it before changing that area, and update it in the same PR when behavior ch
 
 ## The journal from a session
 When the owner asks to review, label or look up a trade, use `node scripts/journal.mjs` (`trades`, `show`, `choices`, `review`; docs/claude-access.md has the review JSON).
+A day's notebook review (grade, rules kept or broke, the notes, tomorrow's focus) goes through `day` the same way.
 It needs the `JOURNAL_KEY` secret and network access to the Supabase host; without them it says what's missing, so pass that on instead of guessing at the journal.
 Show the owner what you'll save (or run `--dry-run`) when a field is your judgment call, and never print or commit the key.
 Model books the same way: `books`, `book`, `add-example <image>` and `example` (docs/claude-access.md).

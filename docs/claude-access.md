@@ -2,6 +2,7 @@
 
 A Claude Code session can read your journal, save trade reviews and add to your Model books, with a key you make in the app.
 You say what happened ("mark the QQQ put a lotto, I broke my VWAP stop") and the session saves the review the way the trade page would.
+You say how the day went and it saves the day's review in the notebook the way the day page would.
 You hand it a chart ("put this in Best longs as a 21 EMA bounce") and it adds the example the way Model books would.
 It can't reach anything else: not your settings, your Tradier key, your Schwab login or another account's rows.
 
@@ -19,7 +20,10 @@ Four database functions take the key in place of a sign-in, and they're the only
 `claude_key_user` turns a key into its owner and stamps last_used_at; nobody can call it directly.
 `claude_journal_read` returns that owner's records (the newest 5000, as the Journal reads them), shaped trades, reviews, labels, each day's market and the library.
 It returns the order plans too (migration 20261107000000_order_plans.sql redefines it), and `show` prints a trade's under 'order plan:' the way the trade page does (docs/journal.md), for analyzing risk as a % of the account and how stops were set.
-`claude_journal_save` writes, in one transaction: your own library items, review fields (stop, setup grade, plan followed, exit note, entry note, the trade's own market, reviewed_at; nothing else, so it can't delete a trade), labels off and on, and a day's market (the notebook on that day stays).
+`claude_journal_save` writes, in one transaction: your own library items, review fields (stop, setup grade, plan followed, exit note, entry note, the trade's own market, reviewed_at; nothing else, so it can't delete a trade), labels off and on, and a day's market.
+Migration 20261114000000_claude_day_review.sql redefines both: the read returns every day's row with its review fields, and the save writes a day's review (the grade, each rule kept or broke, what went well, what to work on, more notes, tomorrow's focus, whether the last focus was kept, reviewed_at).
+The rest of the notebook (the premarket plan, the check-in, the focus list, the missed trades) stays out of reach.
+Rule answers merge one rule at a time, and a null answer clears that rule's.
 `claude_model_books_read` (migration 20261108000000_claude_model_books.sql) returns that owner's books, examples (no image links) and library.
 `claude_model_books_save` makes and renames books and edits an example's title, notes, setups and book; it can't delete either, and a new example only comes with its screenshot, below.
 Every row it touches is the key owner's; the tables' own checks still apply.
@@ -56,6 +60,7 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 - `node scripts/journal.mjs show <handle or key>`: the numbers, the fills and the review in words, with what's missing.
 - `node scripts/journal.mjs choices [kind]`: your choices with their keys.
 - `node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]`: saves a review and prints the trade after; a dry run prints the changes instead.
+- `node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day: its market, P&L, trades, and its review with what's missing; with it, saves the day's review and prints the day after.
 - `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id), then the examples in no book.
 - `node scripts/journal.mjs book [book] '<json>' [--dry-run]`: makes a book (`name`, `description`), or changes the one named.
 - `node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]`: adds an example with its screenshot (`title`, `notes`, `setups`, and `book` if you want one).
@@ -66,6 +71,10 @@ Names match your choices in either side's words ("N/A", "Didn't take the stop", 
 Each label kind given is set to exactly those; a name that isn't one of yours is added to your choices, and a setup that isn't one becomes a pattern of that name and the setup made of it, as + New setup does.
 The market goes on the trade's day, unless the day already has another (then it's the trade's own and the script says so), or marketFor says otherwise.
 reviewed_at is stamped once everything a review needs is in, and cleared if something comes off.
+
+A day's JSON takes `grade` (A to F), `rules` (`{ "Follow your stops": "broke" }`, each rule by its name or key, `kept`, `broke` or null), `wentWell`, `workOn`, `note`, `focusNext` and `focusKept` (yes, partly, no); fields left out stay, null clears one.
+Only the rules that apply to the day can be answered (made on or before it and not retired, or answered already), as the day page asks; any other name is refused with the day's rules.
+The day's reviewed_at is stamped once it has a grade, every rule that applies and what went well or what to work on, and cleared if one comes off.
 
 Model books logic is in `scripts/model-books-lib.mjs`, pure, tested in tests/claude-model-books.test.mjs with the function.
 A book is optional: left out, a new example goes in no book, and `"book": null` takes an example out of its book.

@@ -51,7 +51,10 @@ const MISSED_SYMBOL_RE = /^[A-Z0-9][A-Z0-9./-]{0,11}$/;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** a real calendar day 'YYYY-MM-DD'. @param {unknown} s */
-export const isDay = s => typeof s === 'string' && DAY_RE.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+export const isDay = s => {
+  const t = typeof s === 'string' && DAY_RE.test(s) ? Date.parse(`${s}T00:00:00Z`) : NaN;
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === s;
+};
 const ms = (/** @type {string} */ day) => Date.parse(`${day}T00:00:00Z`);
 const iso = (/** @type {number} */ t) => new Date(t).toISOString().slice(0, 10);
 const weekday = (/** @type {string} */ day) => new Date(ms(day)).getUTCDay();
