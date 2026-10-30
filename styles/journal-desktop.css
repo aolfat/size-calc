@@ -1,6 +1,6 @@
 /* The desktop Journal (≥1100px, mirrors DESKTOP_MQ): the page holds still and each pane scrolls on its own, like the
    calculator's shell (nothing is position:sticky). Workbench = rail | list | trade panel; Review desk = head and tabs over
-   the cards two-up | the review queue; the full review = chart | review; the calendar's day panel. */
+   the cards two-up | the review queue; the full review = chart | review; the calendar. */
 @media (min-width: 1100px) {
   .app.journal-view { height: 100vh; height: 100dvh; overflow: hidden; padding-bottom: 16px; }
   .app.journal-view .pane > #journalSection, .app.journal-view .pane > #journalTradeSection { max-width: 1680px; flex: 1 1 auto; min-height: 0; }
@@ -178,9 +178,7 @@
 }
 
 @media (min-width: 1100px) {
-  /* ---------- the calendar: days shaded by their size, chips for the review, a day panel ---------- */
-  .jc-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
-  .jc-main { min-width: 0; }
+  /* ---------- the calendar: days shaded by their size, chips for the review; a day clicked opens its notebook page ---------- */
   .jc-wrap .jc-head { gap: 8px 10px; }
   .jc-head-end { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
   .jc-mode button { padding: 6px 12px; font-size: 12px; }
@@ -209,7 +207,6 @@
   .jc-desk .jc-n { color: var(--text2); }
   .jc-desk.jc-quiet { opacity: 1; cursor: pointer; background: var(--bg); }
   .jc-desk.jc-quiet .jc-num { color: var(--text3); }
-  .jc-desk.jc-sel { outline: 2px solid var(--blue); outline-offset: 1px; }
   .jc-desk.jc-today-cell { border-color: var(--blue-bd); }
   .jc-top { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
   .jc-now { font-size: 10px; font-weight: 700; color: var(--blue); }
@@ -226,25 +223,9 @@
   .jc-wrap .jc-week .jc-rev-due { background: color-mix(in srgb, var(--amber) 16%, transparent); }
   .jc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 10px 4px 0; font-size: 11.5px; color: var(--text3); }
   .jc-legend-end { margin-left: auto; }
-  .jc-side { display: grid; gap: 10px; padding: 18px; background: var(--bg); border: 1px solid var(--border); border-radius: 16px; }
-  .jc-p-week { font-size: 12px; color: var(--text2); }
-  .jc-p-date { margin-top: -6px; font-size: 24px; font-weight: 800; }
-  .jc-p-pnl { font-size: 30px; font-weight: 800; }
-  .jc-p-sub { margin-top: -6px; font-size: 12.5px; color: var(--text2); }
-  .jc-p-todo { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; font-size: 13px; font-weight: 600; color: var(--amber); background: color-mix(in srgb, var(--amber) 8%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: 10px; }
-  .jc-p-todo .pos-link { color: var(--amber); }
-  .jc-p-list { margin: 0; padding: 0; list-style: none; }
-  .jc-p-list button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: none; border: 0; border-top: 1px solid var(--border); cursor: pointer; }
-  .jc-p-list button:hover b { color: var(--blue); }
-  .jc-p-sym { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-  .jc-p-more { justify-self: start; font-size: 12.5px; }
-  .jc-p-acts { display: grid; gap: 8px; margin-top: 4px; justify-items: center; }
-  .jc-side .jc-p-go { height: 42px; color: #1b1405; background: var(--amber); border: 0; border-radius: 999px; }
-  .jc-p-page { width: 100%; margin: 0; justify-content: center; }
 }
 
 @media (min-width: 1100px) and (max-width: 1299.98px) {
-  .jc-wrap { grid-template-columns: minmax(0, 1fr) 260px; }
   .jc-band { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .jc-band dd { font-size: 18px; }
   .jc-band > .jc-reviewed { grid-column: span 2; }

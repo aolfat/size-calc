@@ -1,7 +1,7 @@
 // Run with: node --test
 // The desktop Journal (≥1100px, docs/journal.md): the Workbench (rail, the trades a day at a time, the picked trade's panel
 // with where its review stands) and the Review desk one click away, the full review page (chart and fills on the left, the
-// review on the right, the footer with what's still missing), the calendar's day panel and modes, and panes that keep their place.
+// review on the right, the footer with what's still missing), the calendar's days and modes, and panes that keep their place.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -105,23 +105,18 @@ test('narrower screens keep one column: the stats, Review | Features, the review
   assert.doesNotMatch(a.elements.get('journalSection').innerHTML, /jw-bench|jb-rail/, 'no Workbench under 1100px');
 });
 
-test('the desktop calendar: a day picked shows in the panel with its trades; R and Grade change what the days say', async () => {
+test('the desktop calendar: a day clicked opens its notebook page; R and Grade change what the days say', async () => {
   const a = await desktop();
   a.run("setJournalTab('calendar'); state.journalMonth = '2026-10'; renderJournal()");
-  a.run("pickCalendarDay('2026-10-01')");
   const html = a.list();
   assert.match(html, /<div class="jc-wrap">/);
-  const panel = html.slice(html.indexOf('<aside class="jc-side"'));
-  assert.match(panel, /^<aside class="jc-side" aria-label="Thursday, Oct 1">[^]*?2 trades · 50% won[^]*?2 to review/);
-  assert.match(panel, /<b>AAPL<\/b>/);
-  assert.match(panel, /<b>MSFT<\/b>/);
-  assert.match(html, /class="jc-day jc-desk jc-sel journal-buy" style="--jc-shade:\d+%" data-action="pickCalendarDay" data-arg="2026-10-01"/);
+  assert.doesNotMatch(html, /jc-side|Open notebook page/, 'no side panel');
+  assert.match(html, /class="jc-day jc-desk journal-buy" style="--jc-shade:\d+%" data-action="openJournalDay" data-arg="2026-10-01"/);
   assert.match(html, /class="jc-cum"/, 'the cumulative line');
-  assert.equal(a.run('state.journalNotebookDay'), '', 'the page waits for its button');
   a.run("setCalendarMode('r')");
   assert.match(a.list(), /data-arg="r" aria-pressed="true"|aria-pressed="true" data-action="setCalendarMode" data-arg="r"/);
-  a.run("reviewCalendarDay('2026-10-01')");
-  assert.equal(a.run('state.journalDeck.keys.length'), 2, 'Review them: the deck over the day');
+  a.run("openJournalDay('2026-10-01')");
+  assert.equal(a.run('state.journalNotebookDay'), '2026-10-01', 'the day opens its notebook page');
 });
 
 test('keepScroll: a pane keeps its place through a redraw while its key matches', async () => {
