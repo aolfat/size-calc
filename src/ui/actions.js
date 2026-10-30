@@ -32,10 +32,12 @@ import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './cla
 import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { clearJournalDates, clearJournalDay, closeJournalSetup, journalThisMonth, setCalendarDates, setCalendarRange, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalDates, setJournalPeriod, setStatsDates, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
-import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeTab, toggleJournalLog } from './journal-trade.js';
+import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
 import { addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { reviewUpNext, skipUpNext } from './journal-cards.js';
+import { pickCalendarDay, reviewCalendarDay, setCalendarMode } from './journal-stats.js';
+import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, cancelSetupEdit, editSetup, newLibrarySetup, startLibraryChoice, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, reviewSearchInput, reviewSearchPick, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund, saveFund, setFundInverse, setFundOn, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalFilters, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
@@ -117,6 +119,9 @@ export const actions = {
   pickJournalDay: el => pickJournalDay(arg(el)),
   // ---------- the notebook: a page per trading day ----------
   openJournalDay: el => openJournalDay(arg(el)),
+  pickCalendarDay: el => pickCalendarDay(arg(el)),
+  reviewCalendarDay: el => reviewCalendarDay(arg(el)),
+  setCalendarMode: el => setCalendarMode(arg(el)),
   closeJournalDay: () => closeJournalDay(),
   stepJournalDay: el => stepJournalDay(arg(el)),
   openTodayNotebook: () => openTodayNotebook(),
@@ -220,6 +225,10 @@ export const actions = {
   startReviewDeck: () => startReviewDeck(),
   reviewSkipped: () => reviewSkipped(),
   skipUpNext: () => skipUpNext(),
+  setJournalLayout: el => setJournalLayout(arg(el)),
+  selectJournalTrade: (el, e) => selectJournalTrade(arg(el), e),
+  skipPanelTrade: () => skipPanelTrade(),
+  toggleBenchColumn: el => toggleBenchColumn(arg(el)),
   reviewUpNext: el => reviewUpNext(arg(el)),
   deckNext: () => deckNext(),
   deckBack: () => deckBack(),
@@ -290,6 +299,8 @@ export const actions = {
   setJournalRange: el => setJournalRange(el.dataset.arg),
   setJournalChartKind: el => setJournalChartKind(el.dataset.arg),
   setJournalTradeTab: el => setJournalTradeTab(el.dataset.arg),
+  setJournalTradeLeft: el => setJournalTradeLeft(arg(el)),
+  openNextToReview: () => openNextToReview(),
   toggleTradeFeatures: () => toggleTradeFeatures(),
   toggleJournalLog: el => toggleJournalLog(el.dataset.arg),
   deletePicked: () => deletePicked(),

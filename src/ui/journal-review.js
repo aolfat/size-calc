@@ -413,12 +413,17 @@ export function reviewSectionHtml(t, after = '') {
     : `To review: missing ${esc(missingWords(st.missing))}`;
   const later = open && !rv.plan_followed && !rv.note?.trim();
   const entryOff = d.entryNoteError ? ' disabled' : '';
+  const mistakesRow = row('Mistakes <span class="jr-sub">optional</span>', pick('mistake') + newBox('mistake'), false, 'jr-mistakes');
+  // the form's parts, numbered, each saying how many of its items are still missing (the titles show on the desktop's full review)
+  const groupTitle = (n, name, keys) => { const left = keys.filter(k => miss.has(k)).length; return `<div class="jr-group-title">${n} · ${name}${left ? ` <span class="jr-group-left">${left} missing</span>` : ''}</div>`; };
   return `<div class="jr" id="journalReview">
     <div class="jr-head"><span class="section-title js-sub">Review</span>
       <span class="jr-status ${st.reviewed || (open && !openingMissing.length) ? 'journal-buy' : ''}" role="status">${status}</span>
       ${fundLink(t)}<button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
+    ${groupTitle('1', 'Context', ['market', 'sector'])}
     ${row(`Market <span class="jr-sub">${marketNote}</span>`, market + newBox('market'), miss.has('market'))}
     ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
+    ${groupTitle('2', 'Setup', ['setup', 'tactic'])}
     ${setupOnRow(t)}
     ${row('My setups', `${setupSearch}${fitNote}<div class="jr-setup-pick" id="jrSetupPick">${setupPickHtml(t)}</div>${builder}${partsLine}`, miss.has('setup'), 'jr-setup-row')}
     ${row('Entry tactic', `${searchBox('tactic', 'Search tactics', 'Search entry tactics')}<span class="jr-tactic-pick" id="jrTacticPick">${tacticPickHtml(t)}</span>${newBox('tactic')}`, miss.has('tactic'))}
@@ -427,12 +432,14 @@ export function reviewSectionHtml(t, after = '') {
     <div class="jr-row"><label class="jr-label" for="entryNote">Entry note <span class="jr-sub">optional</span></label>
       <div><textarea id="entryNote" rows="2" maxlength="5000" placeholder="Why you're in, the plan, what proves it wrong" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="entry"${entryOff}>${esc(noteText(t, 'entry'))}</textarea>
       ${d.entryNoteError ? `<p class="hint jr-later" style="color:var(--amber)">Entry notes need a database update: ${esc(d.entryNoteError)}</p>` : ''}</div></div>
-    ${row('Mistakes', pick('mistake') + newBox('mistake'), false, 'jr-mistakes')}
+    ${groupTitle('3', 'Execution', open ? [] : ['setup grade', 'plan followed', 'exit note'])}
     ${row('Setup grade', GRADES.map(g => chip(g, rv.setup_grade === g, `data-action="setSetupGrade" data-arg="${g}"`)).join(''), !open && miss.has('setup grade'))}
-    ${later ? '<div class="jr-row"><div class="jr-label">After the close</div><p class="hint jr-later">Followed the plan and the exit note: the deck brings this trade back when it closes.</p></div>'
+    ${later ? `${mistakesRow}<div class="jr-row"><div class="jr-label">After the close</div><p class="hint jr-later">Followed the plan and the exit note: the deck brings this trade back when it closes.</p></div>`
       : `${row('Followed the plan', PLAN_FOLLOWED.map(([v, w]) => chip(w, rv.plan_followed === v, `data-action="setPlanFollowed" data-arg="${v}"`)).join(''), !open && miss.has('plan followed'))}
+    ${mistakesRow}
     <div class="jr-row${!open && miss.has('exit note') ? ' jr-missing' : ''}"><label class="jr-label" for="reviewNote">Exit note</label>
       <textarea id="reviewNote" rows="3" maxlength="5000" placeholder="What happened, how you managed it, what you'd do differently" data-input="reviewNoteInput" data-change="reviewNoteSave" data-arg="exit">${esc(noteText(t, 'exit'))}</textarea></div>`}
+    ${groupTitle('4', 'Keep', [])}
     ${shotsRowHtml(t)}
     ${after}
   </div>`;
@@ -765,6 +772,29 @@ export function labelKeys(t, kind) {
   const lib = library();
   return [...new Set((data().labels[t.key] || []).filter(l => l.kind === kind).map(l => lib.resolve(kind, l.value)))];
 }
+/**
+ * Where a trade's review stands, item by item, for the desktop trade panel and the full review's footer: the seven a review
+ * needs (reviewState's), each done or not with what it says, then Mistakes (optional). An open trade's plan, grade and exit
+ * note wait for the close (later).
+ * @returns {{ key: string, label: string, done: boolean, value: string, optional?: boolean, later?: boolean }[]}
+ */
+export function reviewChecklist(t) {
+  const lib = library(), st = tradeReviewState(t), rv = data().reviews[t.key] || {}, side = tradeSide(t), open = t.status === 'open';
+  const miss = new Set(st.missing);
+  const names = kind => labelKeys(t, kind).map(k => lib.nameOf(kind, k, side)).join(', ');
+  const plan = PLAN_FOLLOWED.find(([v]) => v === rv.plan_followed)?.[1] || '';
+  const items = [
+    ['market', 'Market', st.market ? lib.nameOf('market', st.market) : ''],
+    ['sector', 'Sector', names('sector')],
+    ['setup', 'Setup', setupsOf(t).map(s => s.name).join(', ')],
+    ['tactic', 'Entry tactic', names('tactic')],
+    ['setup grade', 'Setup grade', gradeOf(rv.setup_grade) || ''],
+    ['plan followed', 'Followed the plan', plan],
+    ['exit note', 'Exit note', rv.note?.trim() ? 'written' : ''],
+  ].map(([key, label, value]) => ({ key, label, value, done: !miss.has(key), later: open && !OPENING_PASS.includes(key) && miss.has(key) }));
+  return [...items, { key: 'mistakes', label: 'Mistakes', value: names('mistake'), done: true, optional: true }];
+}
+
 /** what a trade's review says, for the Setups tab's cuts: its grade, followed the plan, and market (its own, else the day's) */
 export const reviewOf = t => ({ grade: data().reviews[t.key]?.setup_grade || '', plan: data().reviews[t.key]?.plan_followed || '', market: state.journalReview ? tradeReviewState(t).market || '' : '' });
 

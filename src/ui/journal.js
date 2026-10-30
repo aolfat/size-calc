@@ -16,7 +16,8 @@ import { deleteSavedTrades, insertSavedTrades, loadSavedRecords, loadSavedTrades
 import { schwabConnected } from '../services/schwab.js';
 import { store } from '../lib/store.js';
 import { growBoxes } from '../lib/grow.js';
-import { mq, PHONE_MQ } from '../lib/media.js';
+import { DESKTOP_MQ, mq, PHONE_MQ } from '../lib/media.js';
+import { keepScroll } from '../lib/keep-scroll.js';
 import { inZone, zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
@@ -29,6 +30,7 @@ import { loadJournalReview, myFunds, reviewFrom, reviewedMark, setupMatches, set
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, renderDeckEnd, reviewFromHtml, syncJournalBadge } from './journal-deck.js';
 import { bindUpNext, phoneTradesHtml } from './journal-cards.js';
+import { benchTradesHtml, deskTradesHtml, journalLayout, layoutSwitchHtml } from './journal-bench.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
@@ -359,17 +361,17 @@ function controls(all = [], navigationOnly = false) {
       ${state.journalTab === 'trades' ? datesHtml() : ''}
       ${dayChip}
     </div>
-    ${state.journalTab === 'trades' ? reviewChips(all) : ''}
+    ${state.journalTab === 'trades' ? reviewChips(all, true, mq(DESKTOP_MQ) ? `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button>${layoutSwitchHtml()}` : '') : ''}
   </div>`;
 }
 
 /** All · Open (while any is) · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
-function reviewChips(all, withFrom = true) {
+function reviewChips(all, withFrom = true, end = '') {
   const base = onSetupFilter(onPickedDay(onDates(filtered(all, t => t.bias)))).filter(t => !t.deleted);
   const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
   const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
   const open = base.filter(isOpen).length;
-  return `<div class="journal-chips-row"><div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${open || state.journalReviewFilter === 'open' ? chip('open', 'Open', open) : ''}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>${withFrom ? reviewFromHtml(all) : ''}</div>`;
+  return `<div class="journal-chips-row"><div class="journal-chips" aria-label="Review">${chip('all', 'All', base.length)}${open || state.journalReviewFilter === 'open' ? chip('open', 'Open', open) : ''}${chip('todo', 'To review', base.filter(toReview).length)}${more}</div>${withFrom ? reviewFromHtml(all) : ''}${end ? `<span class="journal-chips-end">${end}</span>` : ''}</div>`;
 }
 
 /** what's ticked, Delete beside the count (away from Merge), why it can't be one trade (or Merge), and Clear;
@@ -529,6 +531,58 @@ export function journalSymbolChanged() {
   if (el && el.focus) { el.focus(); if (el.setSelectionRange) el.setSelectionRange(el.value.length, el.value.length); }
 }
 
+// ---------- the desktop: the Workbench's rail, and the Trades tab beside a panel or the review queue ----------
+
+/** the Workbench rail's tabs, one per line, the trades counted */
+function railNav(all) {
+  const n = all.filter(t => !t.deleted).length;
+  const tab = (v, label, count = '') => `<button class="${state.journalTab === v ? 'active' : ''}" aria-pressed="${state.journalTab === v}" data-action="setJournalTab" data-arg="${v}"><span>${label}</span>${count !== '' ? `<span class="jb-nav-n">${count}</span>` : ''}</button>`;
+  return `<nav class="jb-nav journal-nav" aria-label="Show">${tab('trades', 'Trades', n || '')}${tab('calendar', 'Calendar')}${tab('missed', 'Missed')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', 'Model books')}${tab('features', 'Features')}${tab('fills', 'Fills')}</nav>`;
+}
+
+/** the rail's filters: what the tab shown takes (the same as the bar over the list on narrower screens) */
+function railFilters(all) {
+  if (['books', 'features', 'missed'].includes(state.journalTab)) return '';
+  const on = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
+  const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
+  const fees = journalAfterFees() ? 'after' : 'before';
+  const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
+  const trades = state.journalTab === 'trades';
+  const dayChip = trades && state.journalDay ? `<div class="jb-daychip"><button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button></div>` : '';
+  return `<div class="jb-filters journal-controls" role="group" aria-label="Filters">
+      <div class="jb-filters-title">Filters</div>
+      <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
+      ${setupFilter(all)}
+      <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
+      ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
+      ${trades ? datesHtml() : ''}
+      ${trades ? reviewFromHtml(all) : ''}
+      ${dayChip}
+    </div>`;
+}
+
+/** the chips row's end on the Workbench: Select (tick boxes for Merge and Delete), Columns, the layout switch */
+function benchTools() {
+  return `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button><button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>${layoutSwitchHtml()}`;
+}
+
+/** the desktop Trades tab: the list (Workbench table or Review desk cards) with the pick bar, and the column beside it */
+function desktopTradesView(all) {
+  const counted = all.filter(t => !t.deleted), deleted = all.length - counted.length;
+  const trades = state.journalShowDeleted ? all : counted;
+  if (!trades.length) return { main: `<p class="hint">No trades match.${deleted ? ` ${deleted} deleted. <button class="pos-link" data-action="toggleDeletedTrades">Show</button>` : ''}</p>`, side: '' };
+  const shown = trades.slice(0, JOURNAL_SHOWN);
+  const { main, side } = journalLayout() === 'desk' ? deskTradesHtml(shown, counted, deleted) : benchTradesHtml(shown, counted, deleted);
+  return { side, main: `${main}${pickBar(trades)}${trades.length > JOURNAL_SHOWN ? `<p class="hint">Showing the newest ${JOURNAL_SHOWN} of ${trades.length} trades.</p>` : ''}` };
+}
+
+/** the Workbench's ↑ ↓ step through the trades as the table shows them */
+export const benchKeys = () => {
+  const all = tradesTabList(currentTrades()), shown = (state.journalShowDeleted ? all : all.filter(t => !t.deleted)).slice(0, JOURNAL_SHOWN);
+  return [...shown.filter(isOpen), ...shown.filter(t => !isOpen(t)).sort((a, b) => closeKey(b) < closeKey(a) ? -1 : closeKey(b) > closeKey(a) ? 1 : 0)].map(t => t.key);
+};
+const closeKey = t => nyParts(t.closedAt || t.openedAt).day;
+
 export function renderJournal() {
   const el = document.getElementById('journalSection');
   if (!el) return;
@@ -555,30 +609,69 @@ export function renderJournal() {
   const scrolled = el.querySelector?.('.positions-wrap')?.scrollLeft || 0; // a tick redraws the table: keep it where it was sideways
   // the head stays one line: the title, a quiet meta line (what's kept and the last import in full in its title and the
   // Import sheet), and the buttons; a features run shows on the meta line only while it goes or after it failed
-  el.innerHTML = `<div class="card positions-card journal-card">
-    <div class="positions-head">
-      <span class="section-title">Journal</span>
-      <span class="positions-meta journal-meta" id="journalKept" role="status"${books ? '' : ` title="${esc(metaTitle())}"`}>${books ? 'Your chart study library' : `${metaLine(all)}<span class="journal-features-line" id="journalFeaturesLine"${featuresLine() ? '' : ' hidden'}>${esc(featuresLine())}</span>`}</span>
-      ${books ? '' : `<span class="journal-actions">
-        ${todayButtonHtml()}
-        ${deckButtonHtml(all)}
-        <button class="btn" id="journalImportBtn" data-action="openJournalImport" title="Bring in trades: Schwab now, files later">${state.captureBusy ? 'Importing…' : 'Import'}</button>
-        <button class="btn" id="journalExportBtn" data-action="openJournalExport" title="Take your data with you as a file">Export</button>
-      </span>`}
-    </div>
-    ${!books && state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
+  const head = `<span class="section-title">Journal</span>
+      <span class="positions-meta journal-meta" id="journalKept" role="status"${books ? '' : ` title="${esc(metaTitle())}"`}>${books ? 'Your chart study library' : `${metaLine(all)}<span class="journal-features-line" id="journalFeaturesLine"${featuresLine() ? '' : ' hidden'}>${esc(featuresLine())}</span>`}</span>`;
+  const importBtns = `<button class="btn" id="journalImportBtn" data-action="openJournalImport" title="Bring in trades: Schwab now, files later">${state.captureBusy ? 'Importing…' : 'Import'}</button>
+        <button class="btn" id="journalExportBtn" data-action="openJournalExport" title="Take your data with you as a file">Export</button>`;
+  const errors = `${!books && state.journalError ? `<p class="shares-error" role="status">Couldn't load your journal: ${esc(state.journalError)}</p>` : ''}
     ${!books && state.tradeReviewsError ? `<p class="hint" role="status" style="color:var(--amber)">Your stops and deleted trades couldn't load (${esc(state.tradeReviewsError)}). Trades show with Schwab's stops, deleted ones included.</p>` : ''}
-    ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}
-    ${controls(all, !fills.length || notebookOpen())}
-    ${books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : state.journalTab === 'missed' ? missedTabHtml() : fills.length ? (state.journalTab === 'fills'
+    ${!books && state.journalSavedError ? `<p class="hint" role="status" style="color:var(--amber)">Merges unavailable: ${esc(state.journalSavedError)}. Trades show as the app groups them.</p>` : ''}`;
+  const navOnly = !fills.length || notebookOpen();
+  // the desktop's Trades tab: the Workbench or the Review desk, each a list and a column beside it
+  const wide = mq(DESKTOP_MQ), deskTrades = wide && !books && !notebookOpen() && fills.length && state.journalTab === 'trades';
+  const split = deskTrades ? desktopTradesView(tradesTabList(all)) : null;
+  const body = split ? split.main : books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : state.journalTab === 'missed' ? missedTabHtml() : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, fillBias))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
       : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
       : state.journalTab === 'setups' ? setupsView(filtered(all, t => t.bias))
       : state.journalTab === 'features' ? featuresView(all)
       : tradesView(tradesTabList(all)))
-    : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`}
+    : `<p class="hint">${records.length ? 'No fills in the kept orders yet.' : 'Import saves your last 60 days of Schwab orders and up to a year of trades to your account. After that, the app keeps adding to it on its own.'}</p>`;
+  // each pane keeps its place through the redraw while it shows the same thing (a new tab or day page starts at the top)
+  const view = `${state.journalTab}:${state.journalNotebookDay}:${state.journalSetupKey}`;
+  keepScroll(el, () => {
+    el.innerHTML = !wide ? `<div class="card positions-card journal-card">
+    <div class="positions-head">
+      ${head}
+      ${books ? '' : `<span class="journal-actions">
+        ${todayButtonHtml()}
+        ${deckButtonHtml(all)}
+        ${importBtns}
+      </span>`}
+    </div>
+    ${errors}
+    ${controls(all, navOnly)}
+    ${body}
+  </div>` : journalLayout() === 'desk' ? `<div class="card positions-card journal-card jw-desk">
+    <div class="positions-head">
+      ${head}
+      ${books ? '' : `<span class="journal-actions">
+        ${todayButtonHtml()}
+        ${deckButtonHtml(all)}
+        ${importBtns}
+      </span>`}
+    </div>
+    ${errors}
+    ${controls(all, navOnly)}
+    ${split ? `<div class="jw-split"><div class="jw-main" data-scroll="main:${view}">${body}</div><aside class="jw-side jd-side" data-scroll="side:trades" aria-label="Review queue">${split.side}</aside></div>`
+      : `<div class="jw-main jw-one" data-scroll="main:${view}">${body}</div>`}
+  </div>` : `<div class="card positions-card journal-card jw-bench${split ? ' jw-has-side' : ''}">
+    <aside class="jb-rail" data-scroll="rail" aria-label="Journal">
+      <div class="jb-title">${head}</div>
+      ${books ? '' : `<div class="jb-acts">${deckButtonHtml(all)}${todayButtonHtml()}</div>`}
+      ${railNav(all)}
+      ${navOnly ? '' : railFilters(all)}
+      ${books ? '' : `<div class="jb-foot">${importBtns}</div>`}
+    </aside>
+    <div class="jw-main" data-scroll="main:${view}">
+      ${errors}
+      ${split ? reviewChips(all, false, benchTools()) : ''}
+      ${body}
+    </div>
+    ${split ? `<aside class="jw-side jb-side" data-scroll="side:trades" aria-label="The trade you picked">${split.side}</aside>` : ''}
   </div>`;
+  });
   if (books) renderModelBooks();
   const wrap = scrolled && el.querySelector?.('.positions-wrap');
   if (wrap) wrap.scrollLeft = scrolled;

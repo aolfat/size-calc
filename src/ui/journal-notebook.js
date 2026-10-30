@@ -80,12 +80,20 @@ const reviewOf = day => dayReviewState(rowOf(day), applying(day));
  */
 export function dayMark(day, hasExits) {
   if (notebookOff()) return { html: '', words: '' };
-  const planned = planState(rowOf(day)).written, reviewed = reviewOf(day).reviewed;
-  const due = !reviewed && hasExits && dayOver(day, nowIso());
-  const missed = missedOff() ? 0 : missedOf(day).length;
+  const { planned, reviewed, due, missed } = /** @type {{ planned: boolean, reviewed: boolean, due: boolean, missed: number }} */ (dayFlags(day, hasExits));
   const marks = `${planned ? '<span class="jc-mk jc-mk-plan">✎</span>' : ''}${reviewed ? '<span class="jc-mk jc-mk-done">✓</span>' : due ? '<span class="jc-mk jc-mk-due">●</span>' : ''}${missed ? `<span class="jc-mk jc-mk-missed">⊘${missed}</span>` : ''}`;
   const words = [planned ? 'plan written' : '', reviewed ? 'reviewed' : due ? 'review the day' : '', missed ? `${missed} missed` : ''].filter(Boolean);
   return { html: marks ? `<span class="jc-marks" aria-hidden="true">${marks}</span>` : '', words: words.length ? `, ${words.join(', ')}` : '' };
+}
+
+/**
+ * Where a day stands in the notebook, for the desktop calendar's chips and day panel: its plan written, reviewed, due (a
+ * day with exits that's over and not reviewed), and how many trades you missed; null while the notebook can't be read
+ */
+export function dayFlags(day, hasExits) {
+  if (notebookOff()) return null;
+  const planned = planState(rowOf(day)).written, reviewed = reviewOf(day).reviewed;
+  return { planned, reviewed, due: !reviewed && hasExits && dayOver(day, nowIso()), missed: missedOff() ? 0 : missedOf(day).length };
 }
 
 /** today in the Journal's head: write the plan, then review the day after the close; done reads quiet */

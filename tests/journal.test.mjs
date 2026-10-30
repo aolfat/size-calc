@@ -229,7 +229,8 @@ test('open trades come first, though one closed since; the Open chip lists only 
   const { run, elements } = await app({ width: 1280, storage: connected(), supabase: fakeSupabase(records), session: SESSION });
   run("setView('journal')");
   await run('loadJournal()');
-  const names = () => [...elements.get('journalSection').innerHTML.matchAll(/<button class="journal-name"[^>]*><b>([^<]*)<\/b>/g)].map(m => m[1]);
+  // the desktop Workbench's table: the open group first
+  const names = () => [...elements.get('journalSection').innerHTML.matchAll(/<div class="jb-name"><b>([^<]*)<\/b>/g)].map(m => m[1]);
   assert.deepEqual(names(), ['AAPL 12/18/26 245C', 'AAPL'], 'the open call on top');
   assert.match(elements.get('journalSection').innerHTML, /data-arg="all">All <b>2<\/b><\/button><button class="journal-chip" aria-pressed="false" data-action="setJournalReviewFilter" data-arg="open">Open <b>1<\/b>/);
   run("setJournalReviewFilter('open')");

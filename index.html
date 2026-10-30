@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="styles/positions.css">
 <link rel="stylesheet" href="styles/model-books.css">
 <link rel="stylesheet" href="styles/notebook.css">
+<link rel="stylesheet" href="styles/journal-desktop.css">
 <link rel="stylesheet" href="styles/layout.css">
 </head>
 <body>
@@ -239,7 +240,7 @@
         <span><kbd>s</kbd> stocks &amp; futures</span>
         <span><kbd>o</kbd> options</span>
         <span><kbd>v</kbd> positions</span>
-        <span><kbd>j</kbd> journal · <kbd>←</kbd> <kbd>→</kbd> trade before / after · <kbd>esc</kbd> back to trades</span>
+        <span><kbd>j</kbd> journal · <kbd>↑</kbd> <kbd>↓</kbd> pick a trade (desktop) · <kbd>enter</kbd> its page · <kbd>←</kbd> <kbd>→</kbd> trade before / after · <kbd>esc</kbd> back to trades</span>
         <span><kbd>t</kbd>/<kbd>u</kbd> tools ⇄ size</span>
         <span><kbd>m</kbd> market · / to search</span>
         <span><kbd>d</kbd> long / short</span>
@@ -446,6 +447,8 @@
 
   <section class="card positions-card journal-card chart-wrap" id="journalTradeSection" style="display:none;" aria-label="Trade">
     <div id="jtHead"></div>
+    <div class="jt-cols">
+    <div class="jt-left" id="jtLeft">
     <div class="jt-charts" id="jtCharts">
       <div class="jt-kind-row"><div class="seg" id="jtKindSwitch" aria-label="Charts"></div></div>
       <div class="jt-chart">
@@ -465,7 +468,10 @@
       </div>
       <div class="chart-hint">Fills: <span style="color:var(--blue);">▲ buys</span> · <span style="color:var(--amber);">▼ sells</span>. Lines: <span style="color:var(--blue);">entry</span> · <span style="color:var(--amber);">exit</span> · <span style="color:var(--red);">stop</span> · <span style="color:var(--purple);">8 EMA</span>. Pinch or ctrl+scroll to zoom, drag to pan.</div>
     </div>
-    <div id="jtBody"></div>
+    <div id="jtAside"></div>
+    </div>
+    <div class="jt-right"><div class="jt-body" id="jtBody"></div><div class="jt-foot" id="jtFoot"></div></div>
+    </div>
   </section>
 
   <div id="utilsSection" style="display:none;">

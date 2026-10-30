@@ -9,12 +9,16 @@
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
 import { activeMonths, activePeriods, breakdowns, calendarMonth, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, stepPeriod, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
-import { SANS_FONT } from '../lib/media.js';
+import { DESKTOP_MQ, mq, SANS_FONT } from '../lib/media.js';
 import { zoneAbbr, zoneClock, zoneDial } from '../lib/zone.js';
 import { state } from '../state.js';
 import { periodMark, periodStatus } from './journal-week.js';
-import { dayMark } from './journal-notebook.js';
-import { econDot, econPopHtml, econWords } from './econ-events.js';
+import { dayFlags, dayMark, openJournalDay } from './journal-notebook.js';
+import { econDot, econPopHtml, econTag, econWords } from './econ-events.js';
+import { setupGradeOf, toReview, tradeReviewState } from './journal-review.js';
+import { sideTags } from './journal-cards.js';
+import { startReviewDeck } from './journal-deck.js';
+import { renderJournal } from './journal.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -78,7 +82,7 @@ function calendarSwitch(dates) {
   return `<div class="seg jc-span" aria-label="Calendar span">${b(!dates, 'month', 'Month')}${b(!!dates, 'dates', 'Dates')}</div>`;
 }
 
-const grid = (cal, label = () => false) => `<table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cal.weeks.map(w => `<tr>${w.days.map(d => dayCell(d, !!d && label(d.day))).join('')}${weekCell(w)}</tr>`).join('')}</tbody></table>`;
+const grid = (cal, label = () => false, cell = dayCell) => `<table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cal.weeks.map(w => `<tr>${w.days.map(d => cell(d, !!d && label(d.day))).join('')}${weekCell(w)}</tr>`).join('')}</tbody></table>`;
 
 const CAL_HINT = `<p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its notebook page (✎ plan written, ✓ reviewed, ● a day to review, ⊘ trades you missed), a week's total to review the week. A dot in a day's corner marks its economic releases, a red dot for the Fed, CPI, PPI, jobs, PCE and GDP, an amber ring for the FOMC minutes and Beige Book; point at the day, or open it, for their times.</p>`;
 
@@ -101,12 +105,193 @@ function datesCalendar(daily, key) {
     ${CAL_HINT}`;
 }
 
+/** the desktop calendar over dates you pick */
+function deskDates(trades, daily, key) {
+  const [from, to] = periodSpan('range', key);
+  const cal = calendarSpan(daily, from, to);
+  const firsts = new Set();
+  if (from.slice(0, 7) !== to.slice(0, 7)) for (const d of cal.weeks.flatMap(w => w.days)) if (d && ![...firsts].some(f => f.slice(0, 7) === d.day.slice(0, 7))) firsts.add(d.day);
+  const head = `<div class="jc-head">
+      ${calendarSwitch(true)}
+      ${rangeInputs(key, 'data-change="setCalendarRange"', 'journalCal', 'Calendar')}
+      ${modeSwitch()}
+      <span class="jc-head-end">${cal.trades ? `<button class="pos-link" data-action="openJournalStats" data-arg="range" data-arg2="${key}">All of these dates' stats ›</button>` : ''}</span>
+    </div>`;
+  return deskCalendar(trades, daily, cal, from, to, head, day => firsts.has(day), 'No exits between these dates.');
+}
+
+// ---------- the desktop calendar: days shaded by their size, review chips, the cumulative line, a day panel ----------
+
+const CAL_MODES = [['pnl', 'P&amp;L'], ['r', 'R'], ['grade', 'Grade']];
+const GRADE_POINTS = { A: 4, B: 3, C: 2, D: 1, F: 0 };
+/** P&L, R or Grade in the days (journalCalMode, for the session) */
+export function setCalendarMode(v) { state.journalCalMode = CAL_MODES.some(([k]) => k === v) ? v : 'pnl'; renderJournal(); }
+const modeSwitch = () => `<div class="seg jc-mode" aria-label="Days show">${CAL_MODES.map(([k, label]) => `<button class="${state.journalCalMode === k ? 'active' : ''}" aria-pressed="${state.journalCalMode === k}" data-action="setCalendarMode" data-arg="${k}">${label}</button>`).join('')}</div>`;
+
+/** a day tapped: on the desktop it shows in the panel beside the calendar; elsewhere its notebook page opens */
+export function pickCalendarDay(day) {
+  if (!mq(DESKTOP_MQ)) return openJournalDay(day);
+  state.journalCalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
+  renderJournal();
+}
+
+/** the day panel's Review them: the review deck over that day's trades still to review */
+export function reviewCalendarDay(day) {
+  const keys = (calCtx?.waiting.get(day) || []).map(t => t.key);
+  if (keys.length) startReviewDeck(keys);
+}
+
+/** the shown calendar's trades, by key and by the day they had exits, and the ones there still to review (the panel's buttons read it) */
+let calCtx = /** @type {{ byKey: Map<string, any>, waiting: Map<string, any[]> } | null} */ (null);
+
+/** what a day says in the chosen mode: its P&L, its R (the trades that closed then), or the average grade of those reviewed */
+function dayValue(d, ctx) {
+  if (state.journalCalMode === 'r') {
+    const rs = (ctx.closed.get(d.day) || []).filter(t => t.r !== null).map(t => t.r);
+    if (!rs.length) return { text: '—', cls: '', size: 0 };
+    const r = Math.round(rs.reduce((a, b) => a + b, 0) * 100) / 100;
+    return { text: `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(1)}R`, cls: pnlClass(r), size: Math.abs(r) };
+  }
+  if (state.journalCalMode === 'grade') {
+    const gs = (ctx.closed.get(d.day) || []).map(t => setupGradeOf(t)).filter(Boolean);
+    if (!gs.length) return { text: '—', cls: '', size: 0 };
+    const avg = gs.reduce((a, g) => a + GRADE_POINTS[g], 0) / gs.length, g = ['F', 'D', 'C', 'B', 'A'][Math.round(avg)];
+    return { text: g, cls: avg >= 2.5 ? 'journal-buy' : avg < 1.5 ? 'journal-sell' : 'jc-mid', size: Math.abs(avg - 2) };
+  }
+  return { text: compact$(d.pnl), cls: pnlClass(d.pnl), size: Math.abs(d.pnl) };
+}
+
+/** a desktop day: its number, today, the releases, the value shaded by its size against the biggest day shown, the review chips */
+function deskDayCell(d, withMonth, ctx) {
+  if (!d) return '<td class="jc-out"></td>';
+  const num = withMonth ? shortDay(d.day) : String(+d.day.slice(8));
+  const pop = econPopHtml(d.day), td = pop ? '<td class="jc-has-ev">' : '<td>', ev = econWords(d.day);
+  const flags = dayFlags(d.day, d.trades > 0), mark = dayMark(d.day, d.trades > 0);
+  const now = d.day === ctx.today, sel = d.day === ctx.selected;
+  const top = `<span class="jc-top"><span class="jc-num">${num}</span>${now ? '<span class="jc-now">Today</span>' : ''}${econTag(d.day)}</span>`;
+  const chips = [
+    flags?.reviewed ? '<span class="jc-chip jc-chip-done">✓ Reviewed</span>' : flags?.due ? '<span class="jc-chip jc-chip-due">Review</span>' : '',
+    flags?.missed ? `<span class="jc-chip jc-chip-quiet">⊘ ${flags.missed} missed</span>` : '',
+    ctx.open.get(d.day) ? `<span class="jc-chip jc-chip-open">● ${ctx.open.get(d.day)} open</span>` : '',
+    flags?.planned ? '<span class="jc-chip jc-chip-quiet" title="Plan written">✎</span>' : '',
+  ].filter(Boolean).join('');
+  const cls = `jc-day jc-desk${sel ? ' jc-sel' : ''}${now ? ' jc-today-cell' : ''}`;
+  if (!d.trades) return `${td}<button class="${cls} jc-quiet${mark.html ? ' jc-noted' : ''}" data-action="pickCalendarDay" data-arg="${d.day}" aria-pressed="${sel}" aria-label="${esc(`${d.day}: no exits${mark.words}${ev}`)}">${top}${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
+  const v = dayValue(d, ctx), shade = ctx.max ? Math.round(10 + 34 * Math.sqrt(v.size / ctx.max)) : 12;
+  const pf = d.profitFactor === null ? '' : ` · PF ${d.profitFactor.toFixed(2)}`;
+  const label = `${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${d.profitFactor.toFixed(2)}` : ''}${mark.words}${ev}`;
+  return `${td}<button class="${cls} ${v.cls}" style="--jc-shade:${shade}%" data-action="pickCalendarDay" data-arg="${d.day}" aria-pressed="${sel}" aria-label="${esc(label)}">${top}<span class="jc-pnl">${v.text}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'} · ${pct(d.winRate)}${pf}</span>${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
+}
+
+/** the cumulative P&L through the days shown, and the day that moved it most */
+function cumulativeHtml(daily, from, to) {
+  const days = [...daily].filter(([d]) => d >= from && d <= to);
+  if (days.length < 2) return '';
+  let run = 0;
+  const pts = days.map(([, c]) => (run += c.pnl));
+  const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = hi - lo || 1;
+  const xy = pts.map((v, i) => `${(i / (pts.length - 1) * 600).toFixed(1)},${(36 - (v - lo) / span * 32).toFixed(1)}`).join(' ');
+  const zero = (36 - (0 - lo) / span * 32).toFixed(1);
+  const [bigDay, big] = days.reduce((a, b) => Math.abs(b[1].pnl) > Math.abs(a[1].pnl) ? b : a);
+  const total = days.reduce((a, [, c]) => a + Math.abs(c.pnl), 0);
+  const words = `${compact$(big.pnl)} on ${+bigDay.slice(5, 7)}/${+bigDay.slice(8)} ${total && Math.abs(big.pnl) / total > 0.4 ? 'drives the month' : 'was the biggest day'}`;
+  return `<div class="jc-cum"><span class="jc-cum-label">Cumulative P&amp;L</span>
+    <svg viewBox="0 0 600 40" preserveAspectRatio="none" role="img" aria-label="${esc(`Cumulative P&L, ending ${signed$(run)}`)}"><line x1="0" x2="600" y1="${zero}" y2="${zero}" class="jc-cum-zero"/><polyline points="${xy}" class="jc-cum-line ${run < 0 ? 'jc-cum-down' : ''}"/></svg>
+    <span class="jc-cum-note ${pnlClass(big.pnl)}">${esc(words)}</span></div>`;
+}
+
+/** the band over the desktop calendar: the month's numbers and how many of its days you've reviewed */
+function deskStats(cal, daily, from, to, empty) {
+  if (!cal.trades) return `<p class="hint">${empty}</p>`;
+  const days = [...daily.keys()].filter(d => d >= from && d <= to);
+  const flags = days.map(d => [d, dayFlags(d, true)]);
+  const known = flags.filter(([, f]) => f), done = known.filter(([, f]) => f.reviewed).length, due = known.filter(([, f]) => f.due);
+  const rate = days.length ? Math.round(done / days.length * 100) : 0;
+  const reviewed = known.length ? `<div class="jc-reviewed"><dt>Reviewed <span>${done} of ${days.length} days</span></dt><dd><span class="jc-rbar"><span style="width:${rate}%"></span></span></dd>${due.length ? `<button class="pos-link" data-action="openJournalDay" data-arg="${due[0][0]}">Review ${due.length} day${due.length === 1 ? '' : 's'} ›</button>` : '<span class="pos-sub">all caught up</span>'}</div>` : '';
+  return `<dl class="js-stats jc-stats jc-band">
+    ${statCell('Net P&amp;L', signed$(cal.pnl), `${cal.trades} trade${cal.trades === 1 ? '' : 's'}`, pnlClass(cal.pnl))}
+    ${statCell('Win rate', `${cal.winRate}%`, `${cal.wins} won · ${cal.losses} lost`)}
+    ${statCell('Profit factor', cal.profitFactor === null ? '—' : cal.profitFactor.toFixed(2), cal.profitFactor === null ? 'no losses' : 'wins ÷ losses')}
+    ${statCell('Green days', `${cal.green} of ${cal.days}`, `${cal.red} red`)}
+    ${reviewed}
+  </dl>`;
+}
+
+/** the panel: the day picked, its numbers, what waits, its trades, and its notebook page */
+function dayPanelHtml(day, daily, ctx) {
+  if (!day) return '';
+  const c = daily.get(day), date = new Date(`${day}T12:00:00Z`);
+  const weekday = date.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long' }), words = date.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+  const flags = dayFlags(day, !!c);
+  const head = `<div class="jc-p-week">${weekday}</div><div class="jc-p-date">${words}</div>`;
+  const page = flags?.due ? `<button class="jtc-go jc-p-go" data-action="openJournalDay" data-arg="${day}">✎ Review this day</button>` : `<button class="btn jc-p-page" data-action="openJournalDay" data-arg="${day}">Open notebook page</button>`;
+  if (!c) return `<aside class="jc-side" aria-label="${esc(`${weekday}, ${words}`)}">${head}<p class="hint">No exits this day.</p>${page}</aside>`;
+  const waiting = ctx.waiting.get(day) || [];
+  const sub = [`${c.trades} trade${c.trades === 1 ? '' : 's'}`, `${pct(c.winRate)} won`, c.profitFactor === null ? '' : `PF ${c.profitFactor.toFixed(2)}`, flags?.missed ? `${flags.missed} missed` : ''].filter(Boolean).join(' · ');
+  const list = c.keys.map(k => ctx.byKey.get(k)).filter(Boolean);
+  const rows = list.slice(0, 6).map(t => {
+    const st = state.journalReview && !t.deleted && t.status !== 'history' ? (tradeReviewState(t).reviewed ? '<span class="jc-chip jc-chip-done">✓</span>' : toReview(t) ? '<span class="jc-chip jc-chip-due">Review</span>' : '') : '';
+    const p = c.byTrade[t.key] || 0;
+    return `<li><button data-action="openTradeRow" data-arg="${esc(t.key)}"><span class="jc-p-sym"><b>${esc(t.label)}</b>${sideTags(t)}${st}</span><span class="${pnlClass(p)}">${compact$(p)}</span></button></li>`;
+  }).join('');
+  return `<aside class="jc-side" aria-label="${esc(`${weekday}, ${words}`)}">${head}
+    <div class="jc-p-pnl ${pnlClass(c.pnl)}">${signed$(c.pnl)}</div>
+    <div class="jc-p-sub">${sub}</div>
+    ${waiting.length ? `<div class="jc-p-todo"><span>${waiting.length} to review</span><button class="pos-link" data-action="reviewCalendarDay" data-arg="${day}">Review them ›</button></div>` : ''}
+    <ul class="jc-p-list">${rows}</ul>
+    ${list.length > 6 ? `<button class="pos-link jc-p-more" data-action="pickJournalDay" data-arg="${day}">+ ${list.length - 6} more trade${list.length - 6 === 1 ? '' : 's'}</button>` : `<button class="pos-link jc-p-more" data-action="pickJournalDay" data-arg="${day}">The day's trades ›</button>`}
+    <div class="jc-p-acts">${page}<button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${day}">The day's stats</button></div>
+  </aside>`;
+}
+
+const LEGEND = '<p class="jc-legend"><span><span class="jc-chip jc-chip-due">Review</span> the day to review</span><span><span class="jc-chip jc-chip-done">✓ Reviewed</span></span><span><span class="jc-chip jc-chip-quiet">⊘</span> trades you missed</span><span><span class="jc-tag jc-tag-high">CPI</span> a major release</span><span><span class="jc-tag jc-tag-medium">Minutes</span> FOMC minutes, Beige Book</span><span class="jc-legend-end">Color scales with the day\'s size</span></p>';
+
+/** the desktop calendar over from..to: the band, the line, the grid with its chips, the legend, and the day panel */
+function deskCalendar(trades, daily, cal, from, to, head, label, empty) {
+  const today = nyParts(new Date().toISOString()).day;
+  const byKey = new Map(trades.map(t => [t.key, t]));
+  /** @type {Map<string, any[]>} */
+  const closed = new Map(), waiting = new Map();
+  /** @type {Map<string, number>} */
+  const open = new Map();
+  for (const t of trades) {
+    if (t.deleted) continue;
+    if (t.status === 'open' && t.openedAt) { const d = nyParts(t.openedAt).day; open.set(d, (open.get(d) || 0) + 1); }
+    if (t.status !== 'open' && t.status !== 'history' && t.closedAt) { const d = nyParts(t.closedAt).day; closed.set(d, [...(closed.get(d) || []), t]); }
+  }
+  for (const [d, c] of daily) if (d >= from && d <= to) waiting.set(d, state.journalReview && !state.journalReviewError ? c.keys.map(k => byKey.get(k)).filter(t => t && !t.deleted && toReview(t)) : []);
+  calCtx = { byKey, waiting };
+  const shown = cal.weeks.flatMap(w => w.days).filter(Boolean);
+  const inside = d => d >= from && d <= to;
+  const selected = inside(state.journalCalDay) ? state.journalCalDay : inside(today) ? today : [...daily.keys()].filter(inside).pop() || from;
+  const ctx = { today, selected, open, closed, byKey, waiting, max: 0 };
+  ctx.max = Math.max(0, ...shown.filter(d => d.trades).map(d => dayValue(d, ctx).size));
+  return `<div class="jc-wrap"><div class="jc-main">${head}
+      ${deskStats(cal, daily, from, to, empty)}
+      ${cal.trades ? cumulativeHtml(daily, from, to) : ''}
+      ${grid(cal, label, (d, withMonth) => deskDayCell(d, withMonth, ctx))}
+      ${LEGEND}
+    </div>${dayPanelHtml(selected, daily, ctx)}</div>`;
+}
+
 export function calendarView(trades) {
   const daily = dailyPnl(trades);
-  if (isRangeKey(state.journalCalDates)) return datesCalendar(daily, state.journalCalDates);
+  const wide = mq(DESKTOP_MQ);
+  if (isRangeKey(state.journalCalDates)) return wide ? deskDates(trades, daily, state.journalCalDates) : datesCalendar(daily, state.journalCalDates);
   const month = shownMonth(daily);
   state.journalMonthShown = month; // ‹ and › step from here
   const cal = calendarMonth(daily, month);
+  if (wide) {
+    const head = `<div class="jc-head">
+      <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
+      <span class="jc-title">${esc(monthName(month))}</span>
+      <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
+      <button class="btn jc-today" data-action="journalThisMonth"${month === thisMonth() ? ' disabled' : ''}>This month</button>
+      ${calendarSwitch(false)}${modeSwitch()}
+      <span class="jc-head-end">${cal.trades ? `<button class="btn jc-today" data-action="openPeriodReview" data-arg="month" data-arg2="${month}" aria-expanded="${state.journalReviewPeriod?.unit === 'month' && state.journalReviewPeriod.key === month}">${periodStatus('month', month)?.reviewed ? 'Month reviewed ✓' : 'Review the month'}</button><button class="pos-link" data-action="openJournalStats" data-arg="month" data-arg2="${month}">All of the month's stats ›</button>` : ''}</span>
+    </div>`;
+    return deskCalendar(trades, daily, cal, ...periodSpan('month', month), head, () => false, 'No exits this month.');
+  }
   return `<div class="jc-head">
       ${calendarSwitch(false)}
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
