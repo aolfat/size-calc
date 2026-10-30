@@ -1,5 +1,6 @@
 // The desktop Journal's Trades tab (DESKTOP_MQ, docs/journal.md): two layouts, one click apart (journal_layout, this device
-// only). Workbench: the stats band, the trades a day at a time in a table (Open first), and the trade you pick in a panel on
+// only). Workbench: the stats band, the trades a day at a time in a table (Open first, where each review stands at the
+// right), and the trade you pick in a panel on
 // the right with where its review stands (Open full review opens its page). Review desk: the phone cards two-up, the review
 // progress, Up next and By setup pinned in a column on the right. journal.js puts the rail and the chips around them.
 import { fmt$, marketEscape as esc } from '../core/format.js';
@@ -61,7 +62,7 @@ function statsBand(trades, deleted) {
 
 // ---------- the Workbench table ----------
 
-/** the table's columns after Symbol: [key, header]; the first four show until you change them (journal_bench_cols, this device) */
+/** the table's columns between Symbol and Review: [key, header]; the first four show until you change them (journal_bench_cols, this device) */
 export const BENCH_COLS = [['setups', 'Setup'], ['pnl', 'P&amp;L'], ['r', 'R'], ['stop', 'Stop'], ['qty', 'Qty'], ['entry', 'Entry'], ['exit', 'Exit'], ['hold', 'Hold'], ['opened', 'Opened']];
 const BENCH_DEFAULT = ['setups', 'pnl', 'r', 'stop'];
 function benchShown() {
@@ -97,12 +98,17 @@ function rowSub(t) {
   return nowrap([`${t.entryQty} ${unitWord(t)}`, a === b ? a : `${a} → ${b}`, holdWords(t.holdMs)]);
 }
 
-/** under R: the grade once reviewed, To review while it waits, the opening pass while it's open and waiting */
-function reviewWord(t) {
+/** where the review stands: a pill for what waits (To review, Opening pass), Reviewed with the grade once done; quiet for an
+ * open trade waiting for its close and a trade before Review from. The Review column on a wide screen, beside the name below 1500px */
+function reviewBadge(t) {
   if (t.deleted || t.status === 'history' || !reviewsRead()) return '';
-  if (isReviewed(t)) { const g = setupGradeOf(t); return g ? `<span class="jb-grade jtc-grade-${g.toLowerCase()}">Grade ${g}</span>` : '<span class="jb-grade jtc-grade-a">Reviewed</span>'; }
-  if (toReview(t)) return `<span class="jb-todo">${tradePass(t) === 'opening' ? 'Opening pass' : 'To review'}</span>`;
-  return '';
+  if (isReviewed(t)) {
+    const g = setupGradeOf(t);
+    return `<span class="jb-rv jb-rv-done">✓ Reviewed</span>${g ? `<span class="jtc-grade jb-rv-grade jtc-grade-${g.toLowerCase()}" title="Setup grade">${g}</span>` : ''}`;
+  }
+  if (toReview(t)) return `<span class="jb-rv jb-rv-todo">${tradePass(t) === 'opening' ? 'Opening pass' : 'To review'}</span>`;
+  if (t.status === 'open' && !tradePass(t)) return '<span class="jb-rv-later" title="Opening pass done">After the close</span>';
+  return '<span class="jb-rv-later" title="Before your Review from day, so it\'s not in the queue">Not reviewed</span>';
 }
 
 /** the stop now: where it moved to (from the first), yours, or Set */
@@ -129,7 +135,7 @@ function benchRow(t, cols) {
   const cells = {
     setups: `<td class="journal-setups">${list.length ? list.map(setupChip).join('') : '<span class="journal-setups-none">—</span>'}</td>`,
     pnl: pnlCell(t),
-    r: `<td class="jb-num" title="${esc(rTitleOf(t))}">${history || t.r === null ? '—' : `<span class="${pnlClass(t.r)}">${signedR(t.r)}</span>`}${reviewWord(t)}</td>`,
+    r: `<td class="jb-num" title="${esc(rTitleOf(t))}">${history || t.r === null ? '—' : `<span class="${pnlClass(t.r)}">${signedR(t.r)}</span>`}</td>`,
     stop: `<td class="jb-num">${stopCell(t)}</td>`,
     qty: `<td class="jb-num">${t.entryQty}</td>`,
     entry: `<td class="jb-num">${history ? '—' : px(t.avgEntry, t.assetType)}</td>`,
@@ -139,15 +145,17 @@ function benchRow(t, cols) {
   };
   const live = t.status === 'open' && !t.deleted ? ' <span class="jb-live">Live</span>' : '';
   const pick = state.journalSelecting || state.journalPicked.length ? pickBox(t) : '';
+  const review = reviewBadge(t);
   return `<tr class="jb-row${sel ? ' jb-sel' : ''}${t.deleted ? ' journal-deleted' : ''}" data-action="selectJournalTrade" data-arg="${esc(t.key)}" aria-selected="${sel}"${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
-    <td><div class="journal-sym">${pick}<div class="journal-sym-main"><div class="jb-name"><b>${esc(t.label)}</b>${sideTags(t)}${live}</div><div class="jb-sub">${rowSub(t)}</div>${restoreLink(t)}</div></div></td>
+    <td><div class="journal-sym">${pick}<div class="journal-sym-main"><div class="jb-name"><b>${esc(t.label)}</b>${sideTags(t)}${live}${review ? `<span class="jb-rv-inline">${review}</span>` : ''}</div><div class="jb-sub">${rowSub(t)}</div>${restoreLink(t)}</div></div></td>
     ${cols.map(([k]) => cells[k]).join('')}
+    <td class="jb-rv-cell">${review || '<span class="jb-rv-none">—</span>'}</td>
   </tr>`;
 }
 
 /** the trades a group at a time: Open, then each day they closed, newest first, with what waits and the day's P&L */
 function benchGroups(list, cols) {
-  const n = cols.length + 1;
+  const n = cols.length + 2; // Symbol and Review around them
   const head = (left, right) => `<tr class="jb-day"><td colspan="${n}"><div><span>${left}</span>${right}</div></td></tr>`;
   const open = list.filter(t => t.status === 'open'), closed = list.filter(t => t.status !== 'open');
   /** @type {Map<string, any[]>} */
@@ -256,7 +264,7 @@ export function benchTradesHtml(trades, counted, deleted) {
   if (reviewsRead()) state.journalSelected = t ? t.key : ''; // the default waits for the reviews: it's the newest still to review
   const main = `${statsBand(counted, deleted)}${benchColumnPicker()}
     <div class="positions-wrap jb-wrap"><table class="positions-table journal-table jb-table">
-      <thead><tr><th scope="col">Symbol</th>${cols.map(([k, label]) => `<th scope="col"${k === 'setups' ? '' : ' class="jb-num"'}>${k === 'opened' ? `${label} (${zoneAbbr()})` : label}</th>`).join('')}</tr></thead>
+      <thead><tr><th scope="col">Symbol</th>${cols.map(([k, label]) => `<th scope="col"${k === 'setups' ? '' : ' class="jb-num"'}>${k === 'opened' ? `${label} (${zoneAbbr()})` : label}</th>`).join('')}<th scope="col" class="jb-rv-col">Review</th></tr></thead>
       <tbody>${benchGroups(trades, cols)}</tbody>
     </table></div>`;
   return { main, side: panelHtml(t) };

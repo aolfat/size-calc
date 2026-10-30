@@ -1,6 +1,6 @@
 /* The desktop Journal (≥1100px, mirrors DESKTOP_MQ): the page holds still and each pane scrolls on its own, like the
-   calculator's shell (nothing is position:sticky). Workbench = rail | list | trade panel; Review desk = head and tabs over
-   the cards two-up | the review queue; the full review = chart | review; the calendar. */
+   calculator's shell (nothing is position:sticky). Workbench = rail | list | trade panel; Review desk = the same rail | the
+   cards two-up | the review queue; the full review = chart | review; the calendar. */
 @media (min-width: 1100px) {
   .app.journal-view { height: 100vh; height: 100dvh; overflow: hidden; padding-bottom: 16px; }
   .app.journal-view .pane > #journalSection, .app.journal-view .pane > #journalTradeSection { max-width: 1680px; flex: 1 1 auto; min-height: 0; }
@@ -12,7 +12,7 @@
   .jw-bench { display: grid; grid-template-columns: 236px minmax(0, 1fr); padding: 0; overflow: hidden; }
   .jw-bench.jw-has-side { grid-template-columns: 236px minmax(0, 1fr) 372px; }
   .jw-bench > * { min-height: 0; overflow-y: auto; }
-  .jw-bench > *, .jw-split > *, .jw-one, .jt-left, .jt-body { scrollbar-gutter: stable; scrollbar-width: thin; }
+  .jw-bench > *, .jt-left, .jt-body { scrollbar-gutter: stable; scrollbar-width: thin; }
   .jw-bench > .jw-main { padding: 18px 20px 40px; }
   .jb-rail { display: flex; flex-direction: column; gap: 16px; padding: 20px 16px; border-right: 1px solid var(--border); }
   .jb-side { padding: 20px 18px 40px; border-left: 1px solid var(--border); }
@@ -68,11 +68,17 @@
   .jb-day-n { margin: 0 8px 0 6px; font-weight: 500; color: var(--text3); }
   .jb-day-total { font-weight: 600; }
   .jb-day-total b { font-weight: 600; }
-  .jb-todo, .jb-grade { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 600; color: var(--amber); }
-  .jb-grade { color: var(--green); }
-  .jb-grade.jtc-grade-b { color: var(--blue); }
-  .jb-grade.jtc-grade-c { color: var(--amber); }
-  .jb-grade.jtc-grade-d, .jb-grade.jtc-grade-f { color: var(--red); }
+  /* the Review column: filled pills, so what waits and what's done read down the table at a glance */
+  .jb-table td.jb-rv-cell { white-space: nowrap; }
+  .jb-rv { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 999px; }
+  .jb-rv-todo { color: var(--amber); background: color-mix(in srgb, var(--amber) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+  .jb-rv-todo::before { content: '● '; }
+  .jb-rv-done { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
+  .jb-rv-grade { margin-left: 6px; padding: 1px 7px; font-size: 11.5px; }
+  .jb-rv-grade.jtc-grade-b { color: var(--blue); }
+  .jb-rv-later { font-size: 12px; color: var(--text3); }
+  .jb-rv-none { color: var(--text3); }
+  .jb-rv-inline { display: none; }
   .jb-live { font-size: 11px; font-weight: 600; color: var(--blue); }
   .jb-live::before { content: '● '; }
   .jb-stop { color: var(--blue); }
@@ -120,12 +126,6 @@
   .jb-p-links .pos-link { color: var(--text2); font-size: 12.5px; }
 
   /* ---------- Review desk ---------- */
-  .jw-desk { display: flex; flex-direction: column; overflow: hidden; }
-  .jw-desk > .jw-split, .jw-desk > .jw-one { flex: 1 1 auto; min-height: 0; }
-  .jw-split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 8px; }
-  /* room on the right for the scrollbar: a Mac draws it over the content, so it needs the padding; others take the gutter */
-  .jw-split > * { min-height: 0; overflow-y: auto; padding: 0 16px 40px 0; }
-  .jw-one { overflow-y: auto; padding: 0 16px 40px 0; }
   .jd-side { display: flex; flex-direction: column; gap: 14px; }
   .jd-side .jrp, .jd-side .jun-stack, .jd-side .jun-done { margin: 0; }
   .jd-side .jun-hints { display: none; } /* Skip and Start review are right there; a mouse drag still works */
@@ -226,6 +226,12 @@
   .jc-legend-end { margin-left: auto; }
 }
 
+/* under 1500px the Review column doesn't fit beside the rail and the panel: the same pill sits by the name instead */
+@media (min-width: 1100px) and (max-width: 1499.98px) {
+  .jb-table .jb-rv-col, .jb-table .jb-rv-cell { display: none; }
+  .jb-rv-inline { display: inline-flex; align-items: center; }
+}
+
 @media (min-width: 1100px) and (max-width: 1299.98px) {
   .jc-band { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .jc-band dd { font-size: 18px; }
@@ -234,5 +240,4 @@
   .jb-band dd { font-size: 19px; }
   .jb-band > div { padding: 10px 12px; }
   .jds-cards .jtc-group { grid-template-columns: 1fr; }
-  .jw-split { grid-template-columns: minmax(0, 1fr) 340px; }
 }

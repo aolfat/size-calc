@@ -62,14 +62,39 @@ test('Workbench: ↓ and ↑ step the panel through the table as it shows; Skip 
   assert.notEqual(a.run('state.journalSelected'), keys[0]);
 });
 
-test('Review desk: one click away, the cards two-up with the progress, Up next and By setup beside them; kept on this device', async () => {
+/** a trade reviewed in full: the day's market, the labels, both grades and an exit note */
+const reviewedElsewhere = (s, key, day, grade = 'B') => {
+  s.tables.journal_days.set(`user-1:${day}`, { user_id: 'user-1', day, market: 'bullish' });
+  for (const [kind, value] of [['sector', 'strong'], ['setup', 'sma50'], ['tactic', 'pivot15']]) s.tables.trade_labels.set(`user-1:${key}:${kind}:${value}`, { user_id: 'user-1', trade_key: key, kind, value, set_by: 'you' });
+  s.reviews.set(`user-1:${key}`, { user_id: 'user-1', trade_key: key, setup_grade: grade, plan_followed: 'yes', note: 'fine' });
+};
+
+test('Workbench: a Review column at the right (by the name under 1500px) says where each review stands; R is only R', async () => {
+  const a = await desktop();
+  reviewedElsewhere(a.supabase, a.key('AAPL'), '2026-10-01', 'A');
+  await a.run('loadJournal()');
+  await settle();
+  const html = a.list();
+  assert.match(html, /<th scope="col" class="jb-num">Stop<\/th><th scope="col" class="jb-rv-col">Review<\/th><\/tr>/, 'the last column');
+  const row = sym => html.split(`<b>${sym}</b>`)[1].split('</tr>')[0];
+  assert.match(row('AAPL'), /<td class="jb-rv-cell"><span class="jb-rv jb-rv-done">✓ Reviewed<\/span><span class="jtc-grade jb-rv-grade jtc-grade-a" title="Setup grade">A<\/span><\/td>\s*$/);
+  assert.match(row('MSFT'), /<td class="jb-rv-cell"><span class="jb-rv jb-rv-todo">To review<\/span><\/td>\s*$/);
+  assert.match(row('MSFT'), /^<span class="jtc-pill jtc-long">Long<\/span><span class="jb-rv-inline"><span class="jb-rv jb-rv-todo">To review<\/span><\/span><\/div>/, 'and by the name, for screens too narrow for the column');
+  assert.doesNotMatch(html, /jb-todo|jb-grade"/, 'nothing under R');
+  assert.match(html, /<tr class="jb-day"><td colspan="6">/, 'the day rows span Symbol, the four columns and Review');
+});
+
+test('Review desk: one click away, the Workbench rail, the cards two-up with the progress, Up next and By setup beside them; kept on this device', async () => {
   const a = await desktop();
   assert.match(a.list(), /data-action="setJournalLayout" data-arg="desk"/);
   a.run("setJournalLayout('desk')");
   const html = a.list();
-  assert.match(html, /class="card positions-card journal-card jw-desk"/);
-  assert.match(html, /<div class="jtc-list jds-cards">/);
-  assert.match(html, /<aside class="jw-side jd-side"[^]*?id="jUpNext"/, 'Up next beside the cards');
+  assert.match(html, /class="card positions-card journal-card jw-bench jw-has-side"/);
+  assert.match(html, /<aside class="jb-rail"[^>]*>[^]*?<nav class="jb-nav journal-nav"[^]*?<div class="jb-filters journal-controls"/, 'the tabs and filters in the rail, as on the Workbench');
+  assert.doesNotMatch(html, /journal-tabs|positions-head/, 'no head and tabs over the list');
+  assert.match(html, /<div class="jw-main"[^]*?data-arg="desk"[^]*?<div class="jtc-list jds-cards">/, 'the chips row with the switch over the cards');
+  assert.doesNotMatch(html, /toggleJournalColumnsMenu/, 'Columns is the table\'s');
+  assert.match(html, /<aside class="jw-side jb-side jd-side"[^]*?id="jUpNext"/, 'Up next beside the cards');
   const next = html.match(/id="jUpNext" data-key="([^"]+)"/)[1];
   assert.ok(html.split('jds-cards')[1].split('jd-side')[0].includes(`data-arg="${next}"`), 'and still among the cards');
   assert.match(html, /<section class="jds" aria-label="By setup">[^]*?No setup <span class="jds-n">3<\/span>/);

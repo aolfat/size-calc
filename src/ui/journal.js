@@ -361,7 +361,7 @@ function controls(all = [], navigationOnly = false) {
       ${state.journalTab === 'trades' ? datesHtml() : ''}
       ${dayChip}
     </div>
-    ${state.journalTab === 'trades' ? reviewChips(all, true, mq(DESKTOP_MQ) ? `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button>${layoutSwitchHtml()}` : '') : ''}
+    ${state.journalTab === 'trades' ? reviewChips(all) : ''}
   </div>`;
 }
 
@@ -561,9 +561,10 @@ function railFilters(all) {
     </div>`;
 }
 
-/** the chips row's end on the Workbench: Select (tick boxes for Merge and Delete), Columns, the layout switch */
+/** the chips row's end on the desktop: Select (tick boxes for Merge and Delete), Columns (the Workbench's table), the layout switch */
 function benchTools() {
-  return `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button><button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>${layoutSwitchHtml()}`;
+  const columns = journalLayout() === 'desk' ? '' : `<button class="btn journal-cols-btn" data-action="toggleJournalColumnsMenu" aria-expanded="${state.journalColsOpen}" title="Show or hide the table's columns">Columns</button>`;
+  return `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button>${columns}${layoutSwitchHtml()}`;
 }
 
 /** the desktop Trades tab: the list (Workbench table or Review desk cards) with the pick bar, and the column beside it */
@@ -620,6 +621,7 @@ export function renderJournal() {
   // the desktop's Trades tab: the Workbench or the Review desk, each a list and a column beside it
   const wide = mq(DESKTOP_MQ), deskTrades = wide && !books && !notebookOpen() && fills.length && state.journalTab === 'trades';
   const split = deskTrades ? desktopTradesView(tradesTabList(all)) : null;
+  const desk = journalLayout() === 'desk';
   const body = split ? split.main : books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : state.journalTab === 'missed' ? missedTabHtml() : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, fillBias))
       : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
@@ -643,19 +645,6 @@ export function renderJournal() {
     ${errors}
     ${controls(all, navOnly)}
     ${body}
-  </div>` : journalLayout() === 'desk' ? `<div class="card positions-card journal-card jw-desk">
-    <div class="positions-head">
-      ${head}
-      ${books ? '' : `<span class="journal-actions">
-        ${todayButtonHtml()}
-        ${deckButtonHtml(all)}
-        ${importBtns}
-      </span>`}
-    </div>
-    ${errors}
-    ${controls(all, navOnly)}
-    ${split ? `<div class="jw-split"><div class="jw-main" data-scroll="main:${view}">${body}</div><aside class="jw-side jd-side" data-scroll="side:trades" aria-label="Review queue">${split.side}</aside></div>`
-      : `<div class="jw-main jw-one" data-scroll="main:${view}">${body}</div>`}
   </div>` : `<div class="card positions-card journal-card jw-bench${split ? ' jw-has-side' : ''}">
     <aside class="jb-rail" data-scroll="rail" aria-label="Journal">
       <div class="jb-title">${head}</div>
@@ -668,7 +657,7 @@ export function renderJournal() {
       ${split ? reviewChips(all, false, benchTools()) : ''}
       ${body}
     </div>
-    ${split ? `<aside class="jw-side jb-side" data-scroll="side:trades" aria-label="The trade you picked">${split.side}</aside>` : ''}
+    ${split ? `<aside class="jw-side jb-side${desk ? ' jd-side' : ''}" data-scroll="side:trades" aria-label="${desk ? 'Review queue' : 'The trade you picked'}">${split.side}</aside>` : ''}
   </div>`;
   });
   if (books) renderModelBooks();
