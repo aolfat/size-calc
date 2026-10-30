@@ -175,6 +175,8 @@ export function renderDeckEnd() {
   const parts = [`${done} done`, `${skipped.length} skipped`, weekly ? `${weekly} saved for the weekly review` : ''].filter(Boolean).join(', ');
   head.innerHTML = `<div class="jt-head"><button class="pos-link" data-action="endReviewDeck">← Trades</button><span class="section-title" id="jtTitle">Review deck</span></div>`;
   document.getElementById('jtCharts').style.display = 'none';
+  for (const id of ['jtAside', 'jtFoot']) { const el = document.getElementById(id); if (el) el.innerHTML = ''; }
+  document.getElementById('journalTradeSection')?.classList.add('jt-ended');
   body.innerHTML = `<div class="jt-deck-end">
       <p class="setup-title" role="status">${skipped.length ? 'End of the deck' : 'All caught up'}: ${esc(parts)}.</p>
       <div class="row" style="gap:8px;flex-wrap:wrap">

@@ -12,6 +12,14 @@ export function econDot(day) {
   return impact ? `<span class="jc-ev jc-ev-${impact}" aria-hidden="true"></span>` : '';
 }
 
+/** the desktop calendar's tag in a cell's corner: the releases' short names ('CPI', 'FOMC · Minutes'), red for high impact */
+export function econTag(day) {
+  const list = econEvents(day).filter(e => e.kind !== 'presser');
+  if (!list.length) return '';
+  const names = [...new Set(list.map(e => e.short))];
+  return `<span class="jc-tag jc-tag-${econImpact(list)}" aria-hidden="true">${esc(names.slice(0, 2).join(' · '))}</span>`;
+}
+
 /** the hover card beside a cell's button: the day, each release's time, impact and name, how many */
 export function econPopHtml(day) {
   const list = econEvents(day);

@@ -19,13 +19,14 @@ import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
 import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
 import { store } from '../lib/store.js';
+import { DESKTOP_MQ, mq } from '../lib/media.js';
 import { zoneAbbr } from '../lib/zone.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
 import { clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal, setJournalTab } from './journal.js';
-import { onReviewChange, reviewSectionHtml, setupsOf, tradeNotes, tradeReviewState } from './journal-review.js';
+import { onReviewChange, reviewChecklist, reviewSectionHtml, setupsOf, toReview, tradeNotes, tradeReviewState } from './journal-review.js';
 import { dropTradeExample, modelTradeRowHtml, onModelTradeChange, openModelImage, startTradeExample } from './model-books.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
@@ -89,6 +90,7 @@ export function openJournalTrade(key, nav) {
     key, nav: nav?.includes(key) ? nav : journalNavKeys(key), five: [], under: [], daily: [], viewD: { count: 63, offset: 0 },
     loading5: false, loadingU: false, loadingD: false, status5: '', statusU: '', statusD: '',
     tab: 'review', featuresOpen: false, // the tab under the stats (review | features), and every feature expanded
+    left: 'fills', // the desktop's tab under the chart: fills | stops | features
     iv: savedInterval(), rangeD: 'trade', log: { 5: false, U: false, D: false }, rolled: { 5: null, U: null }, charts: {}, libWait: false, libError: '',
     kind: savedKind(), classic: { 5: null, U: null, D: null }, // ours: per chart { bars, key, view, levels, hover: { index, y } }
   };
@@ -97,6 +99,7 @@ export function openJournalTrade(key, nav) {
   syncJournalPage();
   renderJournalTrade();
   window.scrollTo?.({ top: 0 });
+  for (const id of ['jtLeft', 'jtBody']) { const el = document.getElementById(id); if (el) el.scrollTop = 0; } // the desktop's panes scroll on their own
   loadCharts(state.journalTrade);
 }
 
@@ -311,11 +314,13 @@ export function renderJournalTrade() {
   const list = journalTradeList();
   syncJournalBadge(list);
   const t = list.find(x => x.key === p.key) || null;
-  document.getElementById('journalTradeSection').classList.toggle('jt-decking', !!state.journalDeck);
+  const section = document.getElementById('journalTradeSection');
+  section.classList.toggle('jt-decking', !!state.journalDeck);
   if (!t) {
     dropCharts(p);
     head.innerHTML = `<div class="jt-head">${backBtn}${navHtml(p)}</div>${state.journalDeck ? '<div class="jt-deck" id="jtDeckBar"><span class="jt-deck-acts"><button class="btn primary" data-action="deckNext">Next ›</button><button class="btn" data-action="endReviewDeck">Done</button></span></div>' : ''}`;
     body.innerHTML = '<p class="hint">This trade isn\'t in the journal any more.</p>';
+    document.getElementById('jtAside').innerHTML = document.getElementById('jtFoot').innerHTML = '';
     document.getElementById('jtCharts').style.display = 'none';
     return;
   }
@@ -349,14 +354,21 @@ export function renderJournalTrade() {
   // a search box, or a field of the Add to model book form, keeps its focus and caret through the redraw (a chart landing)
   const active = document.activeElement, focused = ['setupSearch', 'tacticSearch'].includes(active?.id) || active?.id?.startsWith('modelTrade') ? active.id : '';
   const caret = focused && Number.isInteger(active.selectionStart) ? [active.selectionStart, active.selectionEnd] : null;
-  body.innerHTML = `${statsHtml(t, ex)}
+  const stats = `${statsHtml(t, ex)}
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
-      : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
+      : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}`;
+  // the desktop's full review: the chart, the numbers and Fills | Stop orders | Features on the left, the review on the
+  // right with what's still missing under it; narrower screens keep one column, the review between the stats and the fills
+  const wide = mq(DESKTOP_MQ);
+  section.classList.remove('jt-ended');
+  document.getElementById('jtAside').innerHTML = wide ? `${stats}${leftTabsHtml(p, t, fills)}` : '';
+  body.innerHTML = wide ? reviewSectionHtml(t, modelTradeRowHtml(t)) || `<p class="hint">${esc(t.status === 'history' ? 'Bought before your history: there\'s no entry to review.' : '')}</p>` : `${stats}
     ${tradeTabsHtml(p, t)}
     ${p.tab === 'features' ? `<div id="jtFeatures">${tradeFeaturesHtml(t)}</div>` : `${reviewSectionHtml(t, modelTradeRowHtml(t))}
     ${fillsHtml(t, fills)}
     ${stopsHtml(t)}`}`;
+  document.getElementById('jtFoot').innerHTML = wide && !state.journalDeck ? reviewFootHtml(p, t) : '';
   if (focused) {
     const field = document.getElementById(focused);
     field?.focus({ preventScroll: true });
@@ -370,6 +382,48 @@ function tradeTabsHtml(p, t) {
   const tab = (v, label) => `<button class="${p.tab === v ? 'active' : ''}" aria-pressed="${p.tab === v}" data-action="setJournalTradeTab" data-arg="${v}">${label}</button>`;
   const n = tradeFeatureCount(t);
   return `<div class="seg journal-tabs jt-tabs" aria-label="Show">${tab('review', 'Review')}${tab('features', `Features${n ? ` <span class="jt-tab-n">${n}</span>` : ''}`)}</div>`;
+}
+
+/** the desktop's tabs under the chart: the fills, the stop orders over time, the features stamped at the entry */
+function leftTabsHtml(p, t, fills) {
+  const n = tradeFeatureCount(t), stops = t.stopTrail?.length || 0;
+  const tab = (v, label, count) => `<button class="${p.left === v ? 'active' : ''}" aria-pressed="${p.left === v}" data-action="setJournalTradeLeft" data-arg="${v}">${label}${count ? ` <span class="jt-tab-n">${count}</span>` : ''}</button>`;
+  const shown = p.left === 'features' ? `<div id="jtFeatures">${tradeFeaturesHtml(t)}</div>`
+    : p.left === 'stops' ? stopsHtml(t) || '<p class="hint">No stop orders for this trade.</p>' : fillsHtml(t, fills) || '<p class="hint">No fills.</p>';
+  return `<div class="seg journal-tabs jt-tabs jt-left-tabs" aria-label="Show">${tab('fills', 'Fills', fills.length)}${tab('stops', 'Stop orders', stops)}${tab('features', 'Features', n)}</div>${shown}`;
+}
+
+export function setJournalTradeLeft(tab) {
+  const p = state.journalTrade;
+  if (!p || !['fills', 'stops', 'features'].includes(tab) || p.left === tab) return;
+  p.left = tab;
+  renderJournalTrade();
+}
+
+/** the next trade still to review after this one in the list the page opened from, or '' */
+function nextToReview(p) {
+  const list = journalTradeList(), at = p.nav.indexOf(p.key);
+  const waiting = key => { const t = list.find(x => x.key === key); return !!t && !t.deleted && toReview(t); };
+  return [...p.nav.slice(at + 1), ...p.nav.slice(0, Math.max(0, at))].find(waiting) || '';
+}
+export function openNextToReview() {
+  const p = state.journalTrade;
+  const key = p && nextToReview(p);
+  if (key) openJournalTrade(key, p.nav);
+}
+
+/** under the review: how many items are still to finish and which, Skip (the next trade) and Next to review */
+function reviewFootHtml(p, t) {
+  if (t.status === 'history' || !state.journalReview || state.journalReviewError) return '';
+  const left = reviewChecklist(t).filter(i => !i.optional && !i.done && !i.later);
+  const reviewed = tradeReviewState(t).reviewed;
+  const status = reviewed ? '<b class="journal-buy">✓ Reviewed</b>'
+    : left.length ? `<b>${left.length} to finish</b><span>${esc(left.map(i => i.label).join(' · '))}</span>`
+    : '<b class="journal-buy">Opening pass done</b><span>The rest after the close</span>';
+  const next = nextToReview(p), after = p.nav[p.nav.indexOf(p.key) + 1];
+  return `<div class="jt-foot-row${reviewed || !left.length ? ' jt-foot-done' : ''}"><div class="jt-foot-status" role="status">${status}</div>
+    ${after ? '<button class="pos-link jt-foot-skip" data-action="stepJournalTrade" data-arg="1" title="The next trade (→)">Skip ›</button>' : ''}
+    ${next ? '<button class="jtc-go jt-foot-next" data-action="openNextToReview">Next to review ›</button>' : '<button class="btn jt-foot-back" data-action="closeJournalTrade">Back to the list</button>'}</div>`;
 }
 
 export function setJournalTradeTab(tab) {

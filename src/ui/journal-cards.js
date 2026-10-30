@@ -16,23 +16,23 @@ import {
 
 const nyDay = iso => new Date(iso).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
 /** 'YYYY-MM-DD' in words: 'Oct 28', or 'Tue · Oct 28' with the weekday */
-const dayWords = (day, weekday = false) => new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', ...(weekday ? { weekday: 'short' } : {}) }).replace(', ', ' · ');
+export const dayWords = (day, weekday = false) => new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', ...(weekday ? { weekday: 'short' } : {}) }).replace(', ', ' · ');
 const today = () => nyParts(new Date().toISOString()).day;
-const unitWord = t => t.legs ? (t.entryQty === 1 ? 'spread' : 'spreads') : t.assetType === 'OPTION' || t.assetType === 'FUTURE' ? (t.entryQty === 1 ? 'ct' : 'cts') : 'shr';
-const tag = (cls, text, title = '') => `<span class="jtc-pill${cls ? ` ${cls}` : ''}"${title ? ` title="${esc(title)}"` : ''}>${text}</span>`;
-const nowrap = parts => parts.filter(Boolean).map(p => `<span class="jtc-nowrap">${p}</span>`).join(' · '); // breaks between the parts, never inside one
+export const unitWord = t => t.legs ? (t.entryQty === 1 ? 'spread' : 'spreads') : t.assetType === 'OPTION' || t.assetType === 'FUTURE' ? (t.entryQty === 1 ? 'ct' : 'cts') : 'shr';
+export const tag = (cls, text, title = '') => `<span class="jtc-pill${cls ? ` ${cls}` : ''}"${title ? ` title="${esc(title)}"` : ''}>${text}</span>`;
+export const nowrap = parts => parts.filter(Boolean).map(p => `<span class="jtc-nowrap">${p}</span>`).join(' · '); // breaks between the parts, never inside one
 /** whole dollars for the stats line: '−$56,764' */
 const signedWhole$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${Math.round(Math.abs(v)).toLocaleString('en-US')}`;
 /** what's counted in a P&L total: not deleted, not from before your history, and an open trade only once it has exits */
-const counts = t => !t.deleted && t.status !== 'history' && (t.status !== 'open' || !!t.exits);
-const sum = list => list.filter(counts).reduce((s, t) => s + t.pnl, 0);
+export const counts = t => !t.deleted && t.status !== 'history' && (t.status !== 'open' || !!t.exits);
+export const sum = list => list.filter(counts).reduce((s, t) => s + t.pnl, 0);
 
-const PENCIL = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+export const PENCIL = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // ---------- the review progress card: the day's trades, how many are done, the streak and the week ----------
 
 /** the trades the deck counts (from the Review from day), by day; the day the card is about */
-function progress(list) {
+export function progress(list) {
   if (!reviewsRead()) return null;
   const from = reviewFrom(), now = today();
   const days = reviewDays(list.filter(t => fromReviewDay(t, from)), t => !!tradePass(t));
@@ -43,7 +43,7 @@ function progress(list) {
 }
 
 const DOT_WORDS = { done: 'reviewed', due: 'still to review', future: 'to come', none: 'no trades' };
-function progressHtml(p) {
+export function progressHtml(p) {
   if (!p) return '';
   const done = p.total - p.left;
   const title = p.done ? 'Day reviewed' : p.day === p.now ? "Review today's trades" : `Review ${dayWords(p.day)}'s trades`;
@@ -59,12 +59,12 @@ function progressHtml(p) {
 // ---------- Up next: the deck's next trade, one card on a stack ----------
 
 /** the trade Up next shows: the one picked (Skip moves it on) while it still waits, else the newest waiting */
-function upNextOf(queue) {
+export function upNextOf(queue) {
   return queue.find(t => t.key === state.journalUpNext) || queue[0] || null;
 }
 
 /** the current stop as a fact: where it is now (Schwab's stop moved, or yours) and an arrow when it moved your way */
-function stopNow(t) {
+export function stopNow(t) {
   if (t.legs || t.stop === null || t.status === 'history') return { text: '—', up: false };
   const moved = t.movedTo !== null && t.stopSource !== 'yours';
   const now = moved ? t.movedTo : t.stop;
@@ -77,7 +77,7 @@ const fig = (label, value, cls = '', title = '') => `<div${title ? ` title="${es
 const wideFigs = t => [t.avgEntry, t.avgExit, t.stop].some(v => v !== null && v !== undefined && px(v, t.assetType).length > 8) ? ' jtc-stats-wide' : '';
 
 /** what the trade is: its side, a spread's structure, expired, assigned, deleted, before your history */
-function sideTags(t) {
+export function sideTags(t) {
   const out = [];
   if (t.status === 'history') out.push(tag('jtc-warn', 'Before your history', HISTORY_TITLE));
   const side = { long: tag('jtc-long', `Long${onWords(t)}`), short: tag('jtc-short', `Short${onWords(t)}`), neutral: tag('', 'Neutral') }[t.bias];
@@ -90,7 +90,7 @@ function sideTags(t) {
 }
 
 /** the setups as chips, an amber prompt when there's none, and the weekly mark */
-function setupTags(t) {
+export function setupTags(t) {
   const setups = setupsOf(t);
   const tags = setups.length ? setups.map(setupChip).join('') : untagged(t) ? tag('jtc-tagit', 'No setup: tag it') : '';
   const weekly = reviewsRead() && savedForWeekly(t) ? tag('', 'for weekly') : '';
@@ -116,7 +116,7 @@ function deckSub(t) {
   return nowrap([`${t.entryQty} ${unitWord(t)}`, nyDay(open ? t.openedAt : t.closedAt || t.openedAt), holdWords(open ? Date.now() - Date.parse(t.openedAt) : t.holdMs)]);
 }
 
-function upNextHtml(queue, p) {
+export function upNextHtml(queue, p) {
   if (!queue.length) {
     if (!p?.done) return '';
     const when = p.day === p.now ? 'today' : `on ${dayWords(p.day)}`;
@@ -221,7 +221,7 @@ export function bindUpNext() {
 
 // ---------- the stats line ----------
 
-function statsLine(trades, deleted) {
+export function statsLine(trades, deleted) {
   const s = tradesSummary(trades);
   const deletedNote = deleted ? `${deleted} deleted <button class="pos-link" data-action="toggleDeletedTrades">${state.journalShowDeleted ? 'Hide them' : 'Show'}</button>` : '';
   if (!s.closed && !s.open && !s.history) return `<p class="hint journal-summary">No trades match.${deletedNote ? ` ${deletedNote}` : ''}</p>`;
@@ -259,7 +259,7 @@ function stopLine(t) {
   return `<span class="jtc-stop">Stop <b>${px(t.stop, t.assetType)}${moved}</b>${t.stopSource === 'yours' ? ' <span class="pos-sub">yours</span>' : ''}</span>`;
 }
 
-function closedCard(t) {
+export function closedCard(t) {
   const history = t.status === 'history';
   const reviewed = !t.deleted && !history && isReviewed(t);
   const todo = !t.deleted && !history && reviewsRead() && toReview(t);
@@ -282,7 +282,7 @@ function closedCard(t) {
   </article>`;
 }
 
-function openCard(t) {
+export function openCard(t) {
   const sold = t.openQty !== t.entryQty;
   const stop = stopNow(t);
   const under = t.exits ? `<span class="jtc-pct-note">${pctOf(t) ? `${pctOf(t)} · ` : ''}so far</span>${feeSubs(t)}` : '<span class="jtc-pct-note">no exits yet</span>';
@@ -304,10 +304,10 @@ function openCard(t) {
 }
 
 /** the New York day a closed trade closed */
-const closeDay = t => nyParts(t.closedAt || t.openedAt).day;
+export const closeDay = t => nyParts(t.closedAt || t.openedAt).day;
 
 /** Closed, a day at a time, newest first: the day, how many wait or that it's all reviewed, and its P&L */
-function closedDays(list) {
+export function closedDays(list) {
   /** @type {Map<string, any[]>} */
   const byDay = new Map();
   for (const t of list) byDay.set(closeDay(t), [...(byDay.get(closeDay(t)) || []), t]);

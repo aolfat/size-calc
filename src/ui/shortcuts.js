@@ -8,7 +8,10 @@ import { refreshPositions } from './positions.js';
 import { toggleQuick } from './quick-lookup.js';
 import { stepRisk } from './risk.js';
 import { deckBack, deckNext, deckOpen, endReviewDeck } from './journal-deck.js';
-import { closeJournalTrade, stepJournalTrade } from './journal-trade.js';
+import { closeJournalTrade, openJournalTrade, stepJournalTrade } from './journal-trade.js';
+import { journalLayout, stepJournalSelection } from './journal-bench.js';
+import { benchKeys } from './journal.js';
+import { DESKTOP_MQ, mq } from '../lib/media.js';
 import { closeSheet } from './sheets.js';
 import { closeSim } from './sim.js';
 import { cancelSpread } from './spreads.js';
@@ -43,6 +46,12 @@ export function initShortcuts() {
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };
     if (deckOpen() && !state.shotView && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); if (e.key === 'ArrowRight') deckNext(); else deckBack(); return; }
     if (state.journalView && state.journalTrade && !state.shotView && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); stepJournalTrade(e.key === 'ArrowRight' ? 1 : -1); return; }
+    // the desktop Workbench: ↑ ↓ pick the trade above or below, Enter opens its page
+    if (state.journalView && !state.journalTrade && !deckOpen() && state.journalTab === 'trades' && mq(DESKTOP_MQ) && journalLayout() === 'bench' && ['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key) && !e.target.closest?.('button, a, [role="button"]')) {
+      e.preventDefault();
+      if (e.key === 'Enter') { if (state.journalSelected) openJournalTrade(state.journalSelected); } else stepJournalSelection(e.key === 'ArrowDown' ? 1 : -1, benchKeys);
+      return;
+    }
     if (state.marketView && !['/', 'm', 's', 'o', 'v', 'j', 't', 'u', 'r', '?'].includes(e.key)) return;
     switch (e.key) {
       case '/': {
