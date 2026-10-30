@@ -35,8 +35,9 @@ import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-book
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { tosSectionHtml } from './journal-tos.js';
-import { dayPageHtml, todayButtonHtml, todayEconWords } from './journal-notebook.js';
+import { dayPageHtml, dayReviewLink, todayButtonHtml, todayEconWords } from './journal-notebook.js';
 import { missedTabHtml } from './journal-missed.js';
+import { moreFiltersHtml, moreFiltersOn, onMoreFilters } from './journal-filters.js';
 import { drawMissedChart } from './missed-chart.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
@@ -271,6 +272,10 @@ const REVIEW_TESTS = { open: isOpen, todo: toReview, done: isReviewed, untagged 
 const onReviewFilter = list => REVIEW_TESTS[state.journalReviewFilter] ? list.filter(REVIEW_TESTS[state.journalReviewFilter]) : list;
 /** the setup filter: only the trades that carry that setup, that kind (any bounce) or that level (Trades, Calendar and Stats) */
 const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupMatches(t, state.journalSetupFilter)) : list;
+/** the setup filter and More filters (journal-filters.js), wherever the setup filter applies */
+const onTradeFilters = list => onMoreFilters(onSetupFilter(list));
+/** the trades More filters count over: the tab's other filters applied (the Trades tab's dates and day too), deleted ones left out */
+const filterBase = all => (state.journalTab === 'trades' ? onSetupFilter(onPickedDay(onDates(filtered(all, t => t.bias)))) : onSetupFilter(filtered(all, t => t.bias))).filter(t => !t.deleted);
 export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v || ''); renderJournal(); }
 export function setJournalReviewFilter(v) { state.journalReviewFilter = v in REVIEW_TESTS ? v : 'all'; renderJournal(); }
 const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
@@ -328,11 +333,11 @@ function controls(all = [], navigationOnly = false) {
   const tabs = `<div class="seg journal-tabs journal-nav" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('missed', 'Missed')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
   if (state.journalTab === 'books' || state.journalTab === 'features' || state.journalTab === 'missed' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
   const symbol = `<input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />`;
-  const dayChip = state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>` : '';
+  const dayChip = state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>${dayReviewLink(state.journalDay)}` : '';
   if (mq(PHONE_MQ)) {
     // phones: the symbol box, Filters (how many are on) and Select on one line; the rest opens under it
     const trades = state.journalTab === 'trades';
-    const on = (state.journalSetupFilter && setupFilter(all) ? 1 : 0) + (state.journalSide !== 'all' ? 1 : 0) + (trades && reviewFrom() ? 1 : 0) + (trades && (state.journalFrom || state.journalTo) ? 1 : 0);
+    const on = (state.journalSetupFilter && setupFilter(all) ? 1 : 0) + (state.journalSide !== 'all' ? 1 : 0) + (trades && reviewFrom() ? 1 : 0) + (trades && (state.journalFrom || state.journalTo) ? 1 : 0) + moreFiltersOn();
     const open = state.journalFiltersOpen;
     return `<div class="journal-controls">
     ${tabs}
@@ -346,6 +351,7 @@ function controls(all = [], navigationOnly = false) {
       ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
       ${trades ? datesHtml() : ''}
       ${trades ? reviewFromHtml(all) : ''}
+      ${moreFiltersHtml(filterBase(all))}
     </div>` : ''}
     ${dayChip ? `<div class="journal-filters">${dayChip}</div>` : ''}
     ${trades ? reviewChips(all, false) : ''}
@@ -361,13 +367,14 @@ function controls(all = [], navigationOnly = false) {
       ${state.journalTab === 'trades' ? datesHtml() : ''}
       ${dayChip}
     </div>
+    ${moreFiltersHtml(filterBase(all))}
     ${state.journalTab === 'trades' ? reviewChips(all) : ''}
   </div>`;
 }
 
 /** All · Open (while any is) · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
 function reviewChips(all, withFrom = true, end = '') {
-  const base = onSetupFilter(onPickedDay(onDates(filtered(all, t => t.bias)))).filter(t => !t.deleted);
+  const base = onTradeFilters(onPickedDay(onDates(filtered(all, t => t.bias)))).filter(t => !t.deleted);
   const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
   const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
   const open = base.filter(isOpen).length;
@@ -400,7 +407,7 @@ function watchPhone() {
 /** open trades first (the phone cards' order too), each part newest first */
 const openFirst = list => [...list.filter(isOpen), ...list.filter(t => !isOpen(t))];
 /** the Trades tab's trades: its side, symbol, dates, day, review and setup filters, open ones first, newest first */
-const tradesTabList = all => openFirst(onSetupFilter(onReviewFilter(onPickedDay(onDates(filtered(all, t => t.bias))))));
+const tradesTabList = all => openFirst(onTradeFilters(onReviewFilter(onPickedDay(onDates(filtered(all, t => t.bias))))));
 /**
  * The trades a trade page's arrows step through: the Trades tab as it's filtered now (deleted ones only while shown), or
  * every trade when the page opened from somewhere the trade isn't in that list (the calendar, a setup's page)
@@ -477,8 +484,8 @@ export function setCalendarRange(end, value) {
   state.journalCalDates = end === 'to' ? rangeKey(from, value) : rangeKey(value, to);
   renderJournal();
 }
-/** the trades the stats count from: the side, symbol and setup filters applied, as the Stats tab shows them */
-const statsTrades = () => onSetupFilter(filtered(currentTrades(), t => t.bias));
+/** the trades the stats count from: the side, symbol, setup and More filters applied, as the Stats tab shows them */
+const statsTrades = () => onTradeFilters(filtered(currentTrades(), t => t.bias));
 /** All time / Month / Week / Day / Dates on the stats: a new unit keeps your place (the newest close in what's shown now; Dates start as the span shown) */
 export function setJournalPeriod(unit) {
   const to = PERIODS.includes(unit) || unit === 'range' ? unit : 'all';
@@ -548,7 +555,7 @@ function railFilters(all) {
   const fees = journalAfterFees() ? 'after' : 'before';
   const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
   const trades = state.journalTab === 'trades';
-  const dayChip = trades && state.journalDay ? `<div class="jb-daychip"><button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button></div>` : '';
+  const dayChip = trades && state.journalDay ? `<div class="jb-daychip"><button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>${dayReviewLink(state.journalDay)}</div>` : '';
   return `<div class="jb-filters journal-controls" role="group" aria-label="Filters">
       <div class="jb-filters-title">Filters</div>
       <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
@@ -556,6 +563,7 @@ function railFilters(all) {
       <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
       ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
       ${trades ? datesHtml() : ''}
+      ${moreFiltersHtml(filterBase(all))}
       ${trades ? reviewFromHtml(all) : ''}
       ${dayChip}
     </div>`;
@@ -624,8 +632,8 @@ export function renderJournal() {
   const desk = journalLayout() === 'desk';
   const body = split ? split.main : books ? '<div id="modelBooksBody"></div>' : notebookOpen() ? dayPageHtml() : state.journalTab === 'missed' ? missedTabHtml() : fills.length ? (state.journalTab === 'fills'
       ? fillsView(filtered(fills, fillBias))
-      : state.journalTab === 'calendar' ? calendarView(onSetupFilter(filtered(all, t => t.bias))) + periodReviewHtml(all)
-      : state.journalTab === 'stats' ? statsView(onSetupFilter(filtered(all, t => t.bias)))
+      : state.journalTab === 'calendar' ? calendarView(onTradeFilters(filtered(all, t => t.bias))) + periodReviewHtml(all)
+      : state.journalTab === 'stats' ? statsView(onTradeFilters(filtered(all, t => t.bias)))
       : state.journalTab === 'setups' ? setupsView(filtered(all, t => t.bias))
       : state.journalTab === 'features' ? featuresView(all)
       : tradesView(tradesTabList(all)))
@@ -663,7 +671,7 @@ export function renderJournal() {
   if (books) renderModelBooks();
   const wrap = scrolled && el.querySelector?.('.positions-wrap');
   if (wrap) wrap.scrollLeft = scrolled;
-  if (state.journalTab === 'stats' && fills.length) drawJournalEquity(onSetupFilter(filtered(all, t => t.bias)));
+  if (state.journalTab === 'stats' && fills.length) drawJournalEquity(onTradeFilters(filtered(all, t => t.bias)));
   drawMissedChart();
   bindUpNext();
   growBoxes(el);

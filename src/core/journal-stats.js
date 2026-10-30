@@ -299,12 +299,12 @@ export const timeBucket = time => (TIME_BUCKETS.find(([a, b]) => time >= a && ti
 const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 /** @param {number | null} ms */
 export const holdBucket = ms => ms === null ? 'Unknown' : ms < 15 * MIN ? 'Under 15m' : ms < HOUR ? '15m–1h' : ms < 4 * HOUR ? '1–4h' : ms < DAY ? 'Same day, 4h+' : ms < 5 * DAY ? '1–5 days' : 'Over 5 days';
-const HOLD_ORDER = ['Under 15m', '15m–1h', '1–4h', 'Same day, 4h+', '1–5 days', 'Over 5 days', 'Unknown'];
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+export const HOLD_ORDER = ['Under 15m', '15m–1h', '1–4h', 'Same day, 4h+', '1–5 days', 'Over 5 days', 'Unknown'];
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const R_BINS = [[-Infinity, -2, 'Under −2R'], [-2, -1.5, '−2 to −1.5R'], [-1.5, -1, '−1.5 to −1R'], [-1, -0.5, '−1 to −0.5R'], [-0.5, 0, '−0.5 to 0R'], [0, 0.5, '0 to 0.5R'], [0.5, 1, '0.5 to 1R'], [1, 2, '1 to 2R'], [2, 3, '2 to 3R'], [3, Infinity, '3R and up']];
 
 /** @param {StatTrade} t */
-const instrumentOf = t => t.legs ? 'Spreads' : t.assetType === 'OPTION' ? 'Options' : t.assetType === 'FUTURE' ? 'Futures' : 'Stocks';
+export const instrumentOf = t => t.legs ? 'Spreads' : t.assetType === 'OPTION' ? 'Options' : t.assetType === 'FUTURE' ? 'Futures' : 'Stocks';
 /** @param {StatTrade} t */
 const sideOf = t => (t.bias || t.direction) === 'neutral' ? 'Neutral' : (t.bias || t.direction) === 'short' ? 'Short' : 'Long';
 /** an option's or a spread's underlying, a stock's own symbol. @param {StatTrade} t */

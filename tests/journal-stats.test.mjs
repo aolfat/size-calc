@@ -211,9 +211,9 @@ test('phones: a card per trade, Open then Closed by day with what they took; wid
   assert.match(out(), /<article class="jun" id="jUpNext" data-key="[^"]*PLTR[^"]*"/, 'the newest waiting is Up next');
   assert.match(out(), /<h3>Open <span>1<\/span>/, 'and still in the list under it');
   assert.match(out(), /<h3>Closed <span>2<\/span><\/h3><span class="jtc-total">Realized <b class="journal-buy">\+\$200\.00<\/b>/);
-  assert.match(out(), /<div class="jtc-day"><span>Tue · Oct 6 · <span class="jtc-day-todo">1 to review<\/span><\/span><b class="journal-sell">−\$100\.00<\/b><\/div><article class="jtc jtc-todo"[^]*?<b>MSFT<\/b>/, 'a day: how many wait, its P&L');
+  assert.match(out(), /<div class="jtc-day"><span><button class="jd-date" data-action="reviewJournalDay" data-arg="2026-10-06"[^>]*>Tue · Oct 6<\/button> · <span class="jtc-day-todo">1 to review<\/span><\/span><span class="jtc-day-end"><button class="pos-link jd-review" data-action="reviewJournalDay" data-arg="2026-10-06"[^>]*>Review the day ›<\/button><b class="journal-sell">−\$100\.00<\/b><\/span><\/div><article class="jtc jtc-todo"[^]*?<b>MSFT<\/b>/, 'a day: its date and Review the day open its notebook, how many wait, its P&L');
   assert.match(out(), /<b>MSFT<\/b>[^]*?<span class="jtc-pill jtc-long">Long<\/span>[^]*?50 shr<\/span> · <span class="jtc-nowrap">Oct 6<\/span>[^]*?<dt>P&amp;L<\/dt><dd class="journal-sell">−\$100\.00/, 'same day: one date');
-  assert.ok(out().indexOf('<span>Tue · Oct 6') < out().indexOf('<span>Mon · Oct 5'), 'newest day first');
+  assert.ok(out().indexOf('>Tue · Oct 6<') < out().indexOf('>Mon · Oct 5<'), 'newest day first');
   a.run("setJournalReviewFilter('open')");
   assert.doesNotMatch(out(), /jUpNext|class="jrp"/, 'no deck or progress outside All and To review');
   assert.match(out(), /<h3>Open <span>1<\/span><\/h3><\/div><article class="jtc jtc-is-open" data-action="openTradeRow"[^]*?<b>PLTR<\/b>[^]*?<span class="jtc-nowrap">10 shr<\/span>/);

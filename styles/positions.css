@@ -691,6 +691,30 @@ span.journal-pick { cursor: default; }
 .journal-chip { flex: none; padding: 5px 12px; font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; color: var(--text); background: none; border: 1px solid var(--border2); border-radius: 999px; cursor: pointer; }
 .journal-chip b { font-weight: 700; margin-left: 4px; }
 .journal-chip.active { color: var(--blue); background: var(--blue-bg); border-color: var(--blue); }
+/* More filters (journal-filters.js): each a box with its name, is / is not and its values as chips; + Add filter after them */
+.jf { flex-basis: 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.jf-filter { min-width: 0; max-width: 100%; display: grid; gap: 6px; padding: 7px 9px; border: 1px solid var(--border2); border-radius: 10px; }
+.jf-filter.active { border-color: var(--blue-bd); }
+.jf-head { display: flex; align-items: center; gap: 8px; }
+.jf-name { font-size: 12.5px; font-weight: 600; }
+.jf-is.seg { padding: 2px; }
+.jf-is.seg button { padding: 3px 8px; font-size: 11.5px; letter-spacing: 0; }
+.jf-x { margin-left: auto; padding: 0 4px; font: inherit; font-size: 16px; line-height: 1; color: var(--text3); background: none; border: 0; cursor: pointer; }
+.jf-x:hover { color: var(--text); }
+.jf-vals { display: flex; flex-wrap: wrap; gap: 5px; }
+.jf-vals .journal-chip { padding: 3px 9px; font-size: 12px; }
+.jf-vals .journal-chip b { font-weight: 600; color: var(--text3); }
+.jf-vals .journal-chip.active b { color: inherit; }
+.jf-none { font-size: 12px; color: var(--text3); }
+.jf-foot { display: flex; align-items: center; gap: 10px; align-self: center; }
+.jf-add { width: auto; max-width: 180px; min-width: 0; margin: 0; padding: 6px 8px; font-size: 13px; }
+.jf-foot .pos-link { font-size: 12.5px; }
+/* a day's date on the Trades tab opens its notebook page; Review the day beside the day's P&L */
+.jd-date { padding: 0; font: inherit; color: inherit; background: none; border: 0; cursor: pointer; text-align: left; }
+.jd-date:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+.jd-review { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.jd-review-done { color: var(--green); font-weight: 500; }
+.jtc-day-end { display: inline-flex; align-items: baseline; gap: 10px; flex: none; }
 /* phones' Trades tab (journal-cards.js): the review progress card, Up next, the stats line, then Open and Closed cards */
 .jrp { display: grid; gap: 8px; margin: 4px 0 14px; padding: 13px 14px; background: color-mix(in srgb, var(--amber) 4%, var(--bg)); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); border-radius: 16px; transition: background .3s, border-color .3s; }
 .jrp.jrp-done { background: color-mix(in srgb, var(--green) 5%, var(--bg)); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
@@ -825,6 +849,8 @@ span.journal-pick { cursor: default; }
   .journal-dates label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .journal-dates .jr-from input { margin-left: 0; width: 100%; min-width: 0; }
   .journal-dates .pos-link { grid-column: 1 / -1; justify-self: start; }
+  .journal-filters .jf { grid-column: 1 / -1; }
+  .jf-filter { flex: 1 1 100%; }
 }
 
 /* the Import sheet's zone picker for a thinkorswim statement */

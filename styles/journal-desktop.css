@@ -36,6 +36,9 @@
   .jb-filters .jr-from { display: grid; gap: 4px; font-size: 12px; }
   .jb-filters .jr-from input { margin: 0; width: 100%; min-width: 0; padding: 5px 8px; }
   .jb-filters .jr-queue { display: grid; gap: 4px; margin: 0; }
+  .jb-filters .jf { display: grid; }
+  .jb-filters .jf-add { width: 100%; max-width: none; }
+  .jb-day-end { display: inline-flex; align-items: baseline; gap: 14px; }
   .jb-daychip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .jb-acts .jb-io { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
