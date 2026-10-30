@@ -274,11 +274,12 @@ test('phone cards: a reviewed trade turns green with a Reviewed badge and its gr
   const out = () => a.elements.get('journalSection').innerHTML;
   const card = key => out().split('<article ').find(c => c.includes(`data-arg="${key}"`)) || '';
   assert.match(card(A), /^class="jtc jtc-reviewed"/);
-  assert.match(card(A), /<div class="jtc-badge" role="status"><svg[^]*?<\/svg><span>Reviewed<\/span><span class="jtc-grade">Grade B<\/span><\/div>/, 'the reward: Reviewed, with the grade given');
+  assert.match(card(B), /^class="jtc jtc-todo"/, 'amber while it waits');
+  assert.match(card(A), /<div class="jtc-foot jtc-foot-done"><span class="jtc-done" role="status">✓ Reviewed<\/span><span class="jtc-foot-end"><span class="jtc-grade jtc-grade-b">Grade B<\/span><button class="jtc-edit" data-action="openTradeRow" data-arg="[^"]+" aria-label="Edit the review of AAPL">Edit<\/button>/, 'the reward: Reviewed, with the grade given and Edit');
   assert.doesNotMatch(card(A), /Review this trade/);
   assert.match(card(B), /<button class="jtc-go" data-action="openTradeRow" data-arg="[^"]+" aria-label="Review MSFT">[^]*?Review this trade<\/button>/);
   assert.match(card(B), /<dl class="jtc-pnl"><div[^>]*><dt>P&amp;L<\/dt><dd class="journal-sell">−\$400\.00/, 'the P&L heads the card');
-  assert.doesNotMatch(out(), /jtc-pill">Closed</, 'no Closed pill: the cards sit under Closed trades');
+  assert.doesNotMatch(out(), /jtc-pill">Closed</, 'no Closed pill: the cards sit under Closed');
   assert.doesNotMatch(out(), /toggleJournalPick/, 'no tick boxes until Select');
   a.run('toggleJournalSelect()');
   assert.match(out(), /data-action="toggleJournalSelect" aria-pressed="true">Done</);
@@ -299,6 +300,56 @@ test('phone cards: a reviewed trade turns green with a Reviewed badge and its gr
   assert.match(card(B), /^class="jtc jtc-reviewed"/, 'once');
   a.run(`openJournalTrade('${A}'); closeJournalTrade()`);
   assert.doesNotMatch(out(), /jtc-pop/, 'one already reviewed doesn\'t pop again');
+});
+
+test('phones: the progress card, Up next (Skip goes round, Start review starts the deck on it), and the list without it', async () => {
+  const supabase = fakeRecords(ORDERS.map(o => ({ kind: 'order', record_id: String(o.orderId), account: '6789', entered_at: o.enteredTime.replace('+0000', 'Z'), data: o })));
+  reviewedElsewhere(supabase, A, '2026-10-01');
+  const a = await app({ width: 390, supabase, session: SESSION, clock: true, now: Date.parse('2026-10-08T18:00:00Z') });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  const out = () => a.elements.get('journalSection').innerHTML;
+  const upNext = () => out().match(/<article class="jun" id="jUpNext" data-key="([^"]+)"/)?.[1] || null;
+  assert.match(out(), /<h3>Review today's trades<\/h3><span class="jrp-count">0\/1<\/span>/, 'today: NVDA, opened this morning');
+  assert.match(out(), /aria-valuenow="0" aria-label="0 of 1 reviewed"><span style="width:0%">/);
+  assert.match(out(), /<span class="jrp-sub">1 left · finish to start a streak<\/span>/, 'Oct 5 still waits: no streak behind today');
+  assert.deepEqual([...out().matchAll(/<span class="jrp-dot ([^"]+)"/g)].map(m => m[1]), ['jrp-due', 'jrp-none', 'jrp-none', 'jrp-due jrp-focus', 'jrp-future']);
+  assert.equal(upNext(), C, 'the newest waiting');
+  assert.match(out(), /Up next · 1 of 2<\/span><button class="jun-skip" data-action="skipUpNext"/);
+  assert.match(out(), /<button class="jun-go" data-action="reviewUpNext" data-arg="[^"]+">[^]*?Start review<\/button>/);
+  assert.doesNotMatch(out(), /<h3>Open /, 'Up next isn\'t in the list too');
+  a.run('skipUpNext()');
+  assert.equal(upNext(), B);
+  assert.match(out(), /Up next · 2 of 2/);
+  assert.match(out(), /<h3>Open <span>1<\/span>/, 'NVDA back in the list');
+  assert.doesNotMatch(out().split('jtc-list')[1], new RegExp(`data-arg="${B.replace(/[|.]/g, '\\$&')}"`), 'MSFT out of it');
+  a.run('skipUpNext()');
+  assert.equal(upNext(), C, 'round to the first after the last');
+  a.run('skipUpNext()');
+  a.run(`reviewUpNext('${B}')`);
+  assert.deepEqual(json(a.run, 'journalDeck.keys'), [B, C], 'the deck starts on it and goes round the rest');
+  assert.equal(a.run('journalPageTrade()?.key'), B);
+  a.run('endReviewDeck()');
+  a.run('toggleJournalSelect()');
+  assert.doesNotMatch(out(), /jUpNext|class="jrp"/, 'not while picking trades');
+});
+
+test('phones: every trade reviewed: the day and its streak, and Day reviewed in place of Up next', async () => {
+  const supabase = fakeRecords(ORDERS.map(o => ({ kind: 'order', record_id: String(o.orderId), account: '6789', entered_at: o.enteredTime.replace('+0000', 'Z'), data: o })));
+  reviewedElsewhere(supabase, A, '2026-10-01');
+  reviewedElsewhere(supabase, B, '2026-10-05');
+  reviewedElsewhere(supabase, C, '2026-10-08');
+  const a = await app({ width: 390, supabase, session: SESSION, clock: true, now: Date.parse('2026-10-09T18:00:00Z') });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  const out = a.elements.get('journalSection').innerHTML;
+  assert.match(out, /<section class="jrp jrp-done" aria-label="Review progress">\s*<div class="jrp-row"><h3>Day reviewed<\/h3><span class="jrp-count">1\/1<\/span>/, 'no trades today: the latest day');
+  assert.match(out, /4-day streak · nice work/, 'Oct 1, 2, 5 and 8');
+  assert.match(out, /<section class="jun-done" role="status"><h3>✓ Day reviewed<\/h3><p>4-day streak · 1 trade reviewed on Oct 8<\/p><\/section>/);
+  assert.doesNotMatch(out, /jUpNext/);
+  assert.match(out, /<span class="jtc-day-done">All reviewed<\/span>/);
 });
 
 test('nothing to review: no button, the line says so, the count is blank; the review tables missing hide the deck', async () => {

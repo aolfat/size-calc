@@ -205,7 +205,7 @@ test('phones: each card shows the P&L % under the dollars', async () => {
   assert.doesNotMatch(out, /toggleJournalColumnsMenu/, 'no Columns button: phones show cards');
 });
 
-test('phones: the symbol box, Filters and Select on one line, the rest behind Filters; the summary as three tiles', async () => {
+test('phones: the symbol box, Filters and Select on one line, the rest behind Filters; the summary as one line', async () => {
   const records = RECORDS.map(r => ({ ...r, account: '6789' }));
   const { run, elements } = await app({ width: 390, storage: connected(), supabase: fakeSupabase(records), session: SESSION });
   run("setView('journal')");
@@ -213,7 +213,7 @@ test('phones: the symbol box, Filters and Select on one line, the rest behind Fi
   const out = () => elements.get('journalSection').innerHTML;
   assert.match(out(), /<div class="journal-phone-bar"><input type="search" id="journalSymbol"[^>]*\/>\s*<button class="btn journal-filters-btn" data-action="toggleJournalFilters" aria-expanded="false">Filters<\/button>\s*<button class="btn journal-cols-btn" data-action="toggleJournalSelect"/);
   assert.doesNotMatch(out(), /aria-label="Side"/, 'side and fees wait behind Filters');
-  assert.match(out(), /<dl class="journal-summary-tiles">\s*<div><dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$504\.00<\/dd><span class="pos-sub">before fees<\/span><\/div>\s*<div><dt>Win rate<\/dt><dd class="">0%<\/dd><span class="pos-sub">0 of 1 won<\/span>/);
+  assert.match(out(), /<p class="jtc-statline"><span title="−\$504\.00 before fees">Net <b class="journal-sell">−\$504<\/b><\/span><span title="0 of 1 won">Win <b>0%<\/b><\/span><span title="−5\.04% average">Avg <b class="journal-sell">−1\.00R<\/b><\/span><\/p>/, 'net in whole dollars, the cents in its title');
   assert.doesNotMatch(out(), /journal-summary-row/, 'no long summary line');
   run("toggleJournalFilters(); setJournalSide('short')");
   assert.match(out(), /aria-expanded="true">Filters <b>1<\/b><\/button>/, 'how many filters are on');

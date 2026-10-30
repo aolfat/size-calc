@@ -201,16 +201,26 @@ async function journal(records = RECORDS) {
   return { ...a, out: () => a.elements.get('journalSection').innerHTML };
 }
 
-test('phones: a card per trade, Open trades then Closed trades with what they took; wider screens keep the table', async () => {
+test('phones: a card per trade, Open then Closed by day with what they took; wider screens keep the table', async () => {
   const records = [...RECORDS, order(5, 'BUY', '2026-10-07T13:40:00+0000', 10, 50, 'PLTR')];
   const a = await app({ width: 390, supabase: fakeRecords(records), session: SESSION });
   a.run("setView('journal')");
   await a.run('loadJournal()');
-  const out = a.elements.get('journalSection').innerHTML;
-  assert.doesNotMatch(out, /journal-table/, 'no table on a phone');
-  assert.match(out, /<h3>Open trades <span>1<\/span><\/h3><\/div><article class="jtc jtc-is-open" data-action="openTradeRow"[^]*?<b>PLTR<\/b>[^]*?>Open<\/span>/);
-  assert.match(out, /<h3>Closed trades <span>2<\/span><\/h3><span class="jtc-total">Realized <b class="journal-buy">\+\$200\.00<\/b>/);
-  assert.match(out, /<b>MSFT<\/b>[^]*?<span class="jtc-pill jtc-long">Long<\/span>[^]*?50 shr<\/span> · <span class="jtc-nowrap">Oct 6<\/span>[^]*?<dt>P&amp;L<\/dt><dd class="journal-sell">−\$100\.00/, 'same day: one date');
+  const out = () => a.elements.get('journalSection').innerHTML;
+  assert.doesNotMatch(out(), /journal-table/, 'no table on a phone');
+  assert.match(out(), /<article class="jun" id="jUpNext" data-key="[^"]*PLTR[^"]*"/, 'the newest waiting is Up next');
+  assert.doesNotMatch(out(), /<h3>Open /, 'and out of the list under it');
+  assert.match(out(), /<h3>Closed <span>2<\/span><\/h3><span class="jtc-total">Realized <b class="journal-buy">\+\$200\.00<\/b>/);
+  assert.match(out(), /<div class="jtc-day"><span>Tue · Oct 6 · <span class="jtc-day-todo">1 to review<\/span><\/span><b class="journal-sell">−\$100\.00<\/b><\/div><article class="jtc jtc-todo"[^]*?<b>MSFT<\/b>/, 'a day: how many wait, its P&L');
+  assert.match(out(), /<b>MSFT<\/b>[^]*?<span class="jtc-pill jtc-long">Long<\/span>[^]*?50 shr<\/span> · <span class="jtc-nowrap">Oct 6<\/span>[^]*?<dt>P&amp;L<\/dt><dd class="journal-sell">−\$100\.00/, 'same day: one date');
+  assert.ok(out().indexOf('<span>Tue · Oct 6') < out().indexOf('<span>Mon · Oct 5'), 'newest day first');
+  a.run("setJournalReviewFilter('open')");
+  assert.doesNotMatch(out(), /jUpNext|class="jrp"/, 'no deck or progress outside All and To review');
+  assert.match(out(), /<h3>Open <span>1<\/span><\/h3><\/div><article class="jtc jtc-is-open" data-action="openTradeRow"[^]*?<b>PLTR<\/b>[^]*?<span class="jtc-nowrap">10 shr<\/span>/);
+  assert.match(out(), /<dd class="jtc-none">—<span class="jtc-pct-note">no exits yet<\/span>/, 'no exits: a quiet dash');
+  assert.match(out(), /<div><dt>Avg exit<\/dt><dd>—<\/dd><\/div>/);
+  assert.match(out(), /<span class="jtc-live">Live<\/span><button class="jtc-link jtc-link-todo" data-action="openTradeRow" data-arg="[^"]+" aria-label="Review PLTR">Opening pass ›<\/button>/, 'Live, and the opening pass still to do');
+  assert.doesNotMatch(out(), />Open<\/span>/, 'no Open pill: the heading says it');
   const wide = await journal(records);
   assert.match(wide.out(), /journal-table/, 'the table stays on wider screens');
 });

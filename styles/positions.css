@@ -232,7 +232,7 @@
 .journal-summary-row .journal-summary { flex: 1; min-width: 0; }
 .journal-cols-btn { flex: none; font-size: 12px; padding: 5px 12px; }
 .journal-cols { margin: 0 0 10px; }
-.jtc-pct { display: block; font-size: 13px; font-weight: 600; }
+.jtc-pct { display: block; font-size: 12px; font-weight: 600; }
 /* the Journal's review: labels, grades and the entry and exit notes on the trade page; the review choices sheet */
 .jr { margin-top: 18px; padding-top: 4px; }
 .jr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; }
@@ -490,7 +490,7 @@ button.jc-day:hover { border-color: var(--border2); }
 /* the row under the pointer lights up, so you see which trade a click opens (over the open-trade tint too) */
 .journal-table tbody tr[data-action]:hover td { background: color-mix(in srgb, var(--blue) 10%, var(--bg2)); }
 .journal-table tbody tr[data-action]:hover td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
-.jtc:not(.jtc-reviewed):hover { border-color: var(--blue-bd); }
+.jtc:not(.jtc-reviewed):not(.jtc-todo):hover { border-color: var(--blue-bd); }
 .journal-name { background: none; border: none; padding: 0; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
 .journal-name:hover b, .journal-name:focus-visible b, .journal-table tr[data-action]:hover .journal-name b { color: var(--blue); }
 .journal-name:hover b, .journal-name:focus-visible b { text-decoration: underline; text-underline-offset: 3px; }
@@ -684,11 +684,6 @@ span.journal-pick { cursor: default; }
 .journal-filters .jr-queue { grid-column: 1 / -1; }
 .journal-dates { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--text2); }
 .journal-dates.active input { border-color: var(--blue-bd); }
-.journal-summary-tiles { display: flex; gap: 8px; margin: 2px 0 10px; }
-.journal-summary-tiles > div { flex: 1 1 auto; min-width: 0; padding: 10px 12px; background: var(--bg3); border-radius: 16px; } /* each as wide as its figure, the rest shared: a five-figure net fits */
-.journal-summary-tiles dt { font-size: 12px; color: var(--text2); }
-.journal-summary-tiles dd { margin: 2px 0 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.journal-summary-tiles .pos-sub { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .journal-chips-row { flex-basis: 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; } /* min-width 0, or the chips in a line widen the page and iOS zooms the whole app out to fit */
 .journal-chips-row .jr-queue { margin: 0; }
 .journal-chips { flex: 0 1 auto; max-width: 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
@@ -696,63 +691,120 @@ span.journal-pick { cursor: default; }
 .journal-chip { flex: none; padding: 5px 12px; font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; color: var(--text); background: none; border: 1px solid var(--border2); border-radius: 999px; cursor: pointer; }
 .journal-chip b { font-weight: 700; margin-left: 4px; }
 .journal-chip.active { color: var(--blue); background: var(--blue-bg); border-color: var(--blue); }
-/* phones: a card per trade (tradeCards), Open trades then Closed trades */
-.jtc-list { display: grid; gap: 22px; margin-top: 6px; }
-.jtc-group { display: grid; gap: 12px; }
-.jtc-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.jtc-group-head h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
-.jtc-group-head h3 span { font-size: 14px; font-weight: 500; color: var(--text2); margin-left: 4px; }
-.jtc-total { font-size: 13.5px; color: var(--text2); }
+/* phones' Trades tab (journal-cards.js): the review progress card, Up next, the stats line, then Open and Closed cards */
+.jrp { display: grid; gap: 8px; margin: 4px 0 14px; padding: 13px 14px; background: color-mix(in srgb, var(--amber) 4%, var(--bg)); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); border-radius: 16px; transition: background .3s, border-color .3s; }
+.jrp.jrp-done { background: color-mix(in srgb, var(--green) 5%, var(--bg)); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+.jrp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.jrp h3 { font-size: 15px; font-weight: 700; }
+.jrp-count { font-size: 15px; font-weight: 700; color: var(--amber); }
+.jrp-done .jrp-count { color: var(--green); }
+.jrp-bar { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
+.jrp-bar span { display: block; height: 100%; background: var(--amber); border-radius: 3px; transition: width .4s; }
+.jrp-done .jrp-bar span { background: var(--green); }
+.jrp-sub { min-width: 0; font-size: 12px; font-weight: 500; color: var(--text2); }
+.jrp-week { flex: none; display: flex; gap: 4px; }
+.jrp-dot { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; font-size: 9.5px; font-weight: 700; color: var(--text3); border: 1.5px solid var(--border2); border-radius: 50%; }
+.jrp-dot.jrp-done { color: var(--bg); background: var(--green); border-color: var(--green); }
+.jrp-dot.jrp-due { color: var(--amber); border-color: var(--amber); }
+.jrp-dot.jrp-none:not(.jrp-focus) { opacity: .7; }
+/* Up next: one card on a stack, swiped or tapped */
+.jun-stack { position: relative; margin-bottom: 26px; }
+.jun-peek { position: absolute; left: 7px; right: 7px; bottom: -6px; height: 30px; background: color-mix(in srgb, var(--blue) 3%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--amber) 22%, transparent); border-radius: 18px; }
+.jun-peek-2 { left: 14px; right: 14px; bottom: -12px; background: var(--bg2); border-color: color-mix(in srgb, var(--amber) 15%, transparent); }
+.jun { position: relative; display: grid; gap: 12px; padding: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 7%, var(--bg2)), var(--bg2) 60%); border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent); border-radius: 20px; touch-action: pan-y; user-select: none; -webkit-user-select: none; transition: transform .25s ease; }
+.jun.jun-dragging { transition: none; }
+.jun-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.jun-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--amber); }
+.jun-skip { padding: 2px 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--text2); background: none; border: 0; cursor: pointer; }
+.jun .jtc-name > b { font-size: 24px; font-weight: 800; }
+.jun .jtc-sub { font-size: 13px; }
+.jun .jtc-pnl dd { font-size: 22px; }
+.jun-go { display: flex; align-items: center; justify-content: center; gap: 8px; height: 52px; font: inherit; font-size: 16px; font-weight: 700; color: var(--bg); background: var(--amber); border: 0; border-radius: 999px; cursor: pointer; }
+.jun-go:active { transform: scale(.98); }
+.jun-hints { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.jun-hints span { opacity: .45; transition: opacity .15s; }
+.jun-hint-left { color: var(--text2); }
+.jun-hint-right { color: var(--amber); }
+.jun-done { margin-bottom: 20px; padding: 22px; text-align: center; background: color-mix(in srgb, var(--green) 5%, var(--bg)); border: 1px solid color-mix(in srgb, var(--green) 40%, transparent); border-radius: 20px; }
+.jun-done h3 { font-size: 20px; font-weight: 800; color: var(--green); }
+.jun-done p { margin-top: 6px; font-size: 13px; font-weight: 500; color: var(--text2); }
+.jtc-statline { display: flex; gap: 14px; padding: 0 4px; font-size: 12px; font-weight: 500; color: var(--text2); white-space: nowrap; }
+.jtc-statline b { font-weight: 600; color: var(--text); }
+.jtc-statline b.journal-buy { color: var(--green); }
+.jtc-statline b.journal-sell { color: var(--red); }
+.jtc-statline + .journal-summary { margin: 4px 4px 0; font-size: 12px; }
+.jtc-list { display: grid; gap: 22px; margin-top: 14px; }
+.jtc-group { display: grid; gap: 10px; }
+.jtc-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 0 4px; white-space: nowrap; }
+.jtc-group-head h3 { font-size: 17px; font-weight: 700; }
+.jtc-group-head h3 span { font-weight: 500; color: var(--text3); margin-left: 2px; }
+.jtc-total { font-size: 12px; font-weight: 500; color: var(--text2); }
 .jtc-total b { font-weight: 600; }
-.jtc { display: grid; gap: 14px; padding: 18px 18px 16px; background: var(--bg3); border: 1.5px solid transparent; border-radius: 24px; cursor: pointer; transition: border-color .15s, background .15s; }
-.jtc.jtc-is-open { box-shadow: inset 3px 0 0 var(--blue); }
+.jtc-day { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 4px; padding: 0 4px; font-size: 12px; font-weight: 600; color: var(--text2); }
+.jtc-day b { font-weight: 600; }
+.jtc-day-todo { color: var(--amber); }
+.jtc-day-done { color: var(--green); }
+.jtc { display: grid; gap: 10px; padding: 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 18px; cursor: pointer; transition: background .3s, border-color .3s; }
+.jtc.jtc-is-open { border-color: color-mix(in srgb, var(--blue) 22%, var(--border)); }
+.jtc.jtc-todo { border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
 .jtc.journal-deleted { opacity: .55; }
 /* reviewed: the card turns green, the reward for finishing it */
-.jtc.jtc-reviewed { background: color-mix(in srgb, var(--green) 9%, var(--bg3)); border-color: color-mix(in srgb, var(--green) 45%, transparent); }
+.jtc.jtc-reviewed { background: color-mix(in srgb, var(--green) 5%, var(--bg)); border-color: color-mix(in srgb, var(--green) 28%, transparent); }
 .jtc-head { display: flex; align-items: flex-start; gap: 6px; }
 .jtc-head .journal-pick { margin-top: 3px; }
 .jtc-id { flex: 1 1 auto; min-width: 0; }
 .jtc-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.jtc-name .journal-name, .jtc-name > b { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin-right: 2px; }
+.jtc-name .journal-name, .jtc-name > b { font-size: 17px; font-weight: 700; margin-right: 2px; }
 @media (hover: none) { .jtc-name .journal-name::after { content: none; } } /* the whole card opens */
-.jtc-sub { margin-top: 4px; font-size: 13.5px; color: var(--text2); }
+.jtc-sub { margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--text2); }
 .jtc-nowrap { white-space: nowrap; }
-.jtc-pill { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; color: var(--text); background: var(--bg4); border-radius: 999px; }
-.jtc-pill.jtc-open { color: var(--blue); background: var(--blue-bg); }
-.jtc-pill.jtc-long { color: var(--green); background: var(--green-bg); }
-.jtc-pill.jtc-short { color: var(--red); background: var(--red-bg); }
+.jtc-pill { display: inline-block; padding: 2px 7px; font-size: 11px; font-weight: 600; line-height: 1.4; white-space: nowrap; color: var(--text); background: var(--bg4); border-radius: 6px; }
+.jtc-pill.jtc-long { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
+.jtc-pill.jtc-short { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
 .jtc-pill.jtc-warn { color: var(--amber); background: var(--amber-bg); }
-/* the P&L: the headline, top right, the % under it */
+/* the P&L: the headline, top right, the % (or R) under it */
 .jtc-pnl { flex: none; margin: 0; text-align: right; }
 .jtc-pnl dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read out, not shown */
-.jtc-pnl dd { margin: 0; font-size: 21px; font-weight: 700; white-space: nowrap; }
-.jtc-pnl .jtc-pct { margin-top: 1px; font-size: 13px; font-weight: 600; }
+.jtc-pnl dd { margin: 0; font-size: 18px; font-weight: 700; white-space: nowrap; }
+.jtc-pnl dd.jtc-none { color: var(--text3); }
+.jtc-pnl .jtc-pct { margin-top: 1px; font-size: 12px; font-weight: 600; }
+.jtc-pct-note { display: block; margin-top: 1px; font-size: 11px; font-weight: 500; color: var(--text3); }
+.jtc-pct-note .jtc-pct { display: inline; font: inherit; }
 .jtc-pnl .pos-sub { font-size: 11px; font-weight: 400; }
 .jtc-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.jtc-tags .journal-setup { margin: 0; padding: 3px 10px; font-size: 12px; border-radius: 999px; }
-/* Entry, Exit and R in soft tiles */
-.jtc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
-.jtc-stats-wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.jtc-stats > div { min-width: 0; padding: 9px 12px; background: var(--bg2); border-radius: 14px; }
-.jtc-reviewed .jtc-stats > div { background: color-mix(in srgb, var(--bg2) 75%, transparent); }
-.jtc-stats dt { font-size: 12px; font-weight: 500; color: var(--text2); }
-.jtc-stats dd { margin: 2px 0 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.jtc-foot { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
-.jtc-stop { font-size: 13.5px; color: var(--text2); }
-.jtc-stop b { font-size: 15px; font-weight: 600; color: var(--text); margin-left: 4px; }
+.jtc-tags .journal-setup { margin: 0; padding: 3px 9px; font-size: 12px; font-weight: 500; color: color-mix(in srgb, var(--blue) 25%, var(--text)); background: none; border-color: color-mix(in srgb, var(--blue) 30%, var(--border)); border-radius: 12px; }
+.jtc-tags .jtc-pill { padding: 3px 9px; font-size: 12px; font-weight: 500; border-radius: 12px; }
+.jtc-pill.jtc-tagit { color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); }
+/* Entry, Exit and R (or Stop) in one inset strip */
+.jtc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 9px 11px; background: var(--bg); border-radius: 12px; }
+.jtc-stats-wide { gap: 4px; }
+.jtc-stats > div { min-width: 0; }
+.jtc-stats dt { font-size: 11px; font-weight: 500; color: var(--text2); }
+.jtc-stats dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jtc-stop { font-size: 12px; font-weight: 500; color: var(--text2); }
+.jtc-stop b { font-weight: 600; color: var(--text); margin-left: 3px; }
 .jtc-stop .pos-sub { display: inline; margin-left: 6px; }
+/* the foot: Live and Open trade on open ones; Review this trade (amber, still to do) or Reviewed with the grade (green, done) */
+.jtc-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
 .jtc-foot .journal-row-acts { margin: 0; }
-/* the foot: Review this trade (amber, still to do), the Reviewed badge (green, done), or a quiet Open trade */
-.jtc-go { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px 16px; font: inherit; font-size: 15px; font-weight: 700; color: var(--amber); background: var(--amber-bg); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: 999px; cursor: pointer; }
+.jtc-live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: color-mix(in srgb, var(--blue) 70%, var(--text2)); }
+.jtc-live::before { content: ''; width: 6px; height: 6px; background: var(--blue); border-radius: 50%; }
+.jtc-link { padding: 2px 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--blue); background: none; border: 0; cursor: pointer; }
+.jtc-link.jtc-link-todo { color: var(--amber); }
+.jtc-go { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 46px; font: inherit; font-size: 15px; font-weight: 700; color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent); border-radius: 999px; cursor: pointer; }
 .jtc-go:active { transform: scale(.98); }
-.jtc-go.jtc-go-quiet { color: var(--text); background: var(--bg4); border-color: var(--border2); }
-.jtc-badge { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 11px 16px; font-size: 16px; font-weight: 700; color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--bg2)); border-radius: 999px; }
-.jtc-grade { padding: 2px 11px; font-size: 13px; font-weight: 700; border: 1.5px solid currentColor; border-radius: 999px; }
+.jtc-done { font-size: 13px; font-weight: 600; color: var(--green); }
+.jtc-foot-end { display: inline-flex; align-items: center; gap: 12px; }
+.jtc-grade { padding: 2px 9px; font-size: 12px; font-weight: 700; color: var(--green); border: 1.5px solid currentColor; border-radius: 10px; }
+.jtc-grade.jtc-grade-c { color: var(--amber); }
+.jtc-grade.jtc-grade-d, .jtc-grade.jtc-grade-f { color: var(--red); }
+.jtc-edit { padding: 2px 0; font: inherit; font-size: 12px; font-weight: 500; color: var(--text2); background: none; border: 0; cursor: pointer; }
 /* reviewed just now on its page: the card pops once on the way back */
 @media (prefers-reduced-motion: no-preference) {
   .jtc-pop { animation: jtc-pop .6s cubic-bezier(.3, 1.6, .5, 1); }
-  .jtc-pop .jtc-badge svg { animation: jtc-check .7s .15s cubic-bezier(.3, 1.8, .5, 1) both; }
+  .jtc-pop .jtc-done { animation: jtc-check .7s .15s cubic-bezier(.3, 1.8, .5, 1) both; }
 }
+@media (prefers-reduced-motion: reduce) { .jun { transition: none; } .jrp-bar span { transition: none; } }
 @keyframes jtc-pop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: none; } }
 @keyframes jtc-check { 0% { transform: scale(0) rotate(-30deg); } 100% { transform: none; } }
 @media (max-width: 600px) {

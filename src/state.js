@@ -156,6 +156,7 @@ export function createState() {
     journalSelecting: false, // phones: Select shows the cards' tick boxes
     journalFiltersOpen: false, // phones: Filters opens the setup, side, fees and Review from row
     journalJustReviewed: '', // a trade reviewed on its page just now: its card pops once on the way back
+    journalUpNext: '', // the phone Trades tab's Up next card: the trade it shows ('' = the newest waiting); Skip moves it on
     journalMerging: false, // a merge or separate is being saved
     tradeReviewsError: '', // the reviews couldn't be read (the trades still show, with Schwab's stops)
     journalShowDeleted: false, // deleted trades shown, dimmed, to restore one
