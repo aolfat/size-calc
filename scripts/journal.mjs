@@ -116,7 +116,9 @@ if (cmd === 'trades') {
   const p = plan(() => planDay(j, ref, parsed('day review')));
   if (!changesAnything(p.changes)) { console.log('Nothing to change.'); process.exit(0); }
   if (flag('dry-run')) { console.log(JSON.stringify(p.changes, null, 2)); process.exit(0); }
-  await call('claude_journal_save', { p_changes: p.changes });
+  const saved = await call('claude_journal_save', { p_changes: p.changes });
+  // a database before the day-review migration skips the notebook list and says it saved nothing
+  if (!saved?.saved) fail("Nothing was saved: the database doesn't take day reviews yet: npx supabase db push");
   console.log(`Saved. ${dayDetail(await journal(), ref)}`);
 } else if (cmd === 'books') {
   const m = await books();

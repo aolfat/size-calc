@@ -237,9 +237,9 @@ test("the whole day: its market, P&L, trades and the review in words, with what'
 
 const SCRIPT = fileURLToPath(new URL('../scripts/journal.mjs', import.meta.url));
 const PRELOAD = fileURLToPath(new URL('./helpers/journal-fetch.mjs', import.meta.url));
-function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA } = {}) {
+function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA, oldSave = false } = {}) {
   const file = join(mkdtempSync(join(tmpdir(), 'journal-')), 'fake.json');
-  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data }));
+  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data, oldSave }));
   const env = { ...process.env, FAKE_JOURNAL: file, JOURNAL_KEY: key };
   for (const k of ['HTTPS_PROXY', 'https_proxy', 'NODE_USE_ENV_PROXY']) delete env[k];
   const r = spawnSync(process.execPath, ['--import', PRELOAD, SCRIPT, ...args], { env, encoding: 'utf8' });
@@ -290,6 +290,9 @@ test("the script: shows a day, saves its review, a dry run saves nothing", () =>
   assert.match(saved.stdout, /^Saved\./m);
 
   assert.match(script(['day'], { data: DAY_DATA }).stderr, /Which day\?/);
+  const old = script(['day', DAY, JSON.stringify(DAY_REVIEW)], { data: DAY_DATA, oldSave: true });
+  assert.equal(old.status, 1, "a database before the migration saves nothing, and says so");
+  assert.match(old.stderr, /npx supabase db push/);
 });
 
 test('the save function takes the day review fields and nothing else of the notebook; the read returns them', async () => {

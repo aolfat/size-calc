@@ -31,7 +31,8 @@ globalThis.fetch = async (url, init) => {
       for (const e of body.p_changes.examples || []) Object.assign(fake.books.examples.find(x => x.id === e.id), e.fields);
     }
     keep();
-    return answer(200, { saved: 1 });
+    // oldSave: a database before 20261114000000_claude_day_review, whose save skips the day's review
+    return answer(200, { saved: fake.oldSave && body.p_changes.notebook ? 0 : 1 });
   }
   return answer(404, { message: 'Could not find the function' });
 };
