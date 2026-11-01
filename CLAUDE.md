@@ -118,8 +118,10 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   GitHub Pages ignores `_headers`, so main.js refuses to boot inside another site's frame (framedCrossOrigin: it empties the page).
   Tradier's answers reach markup unescaped in places, so they're checked where they come in: a quote's symbol must pass isSymbol (else the requested ticker), a chain keeps only contracts with an OCC symbol (isOccSymbol) and a numeric strike.
   Saved tag links pass cleanLink again when drawn
-- PWA: manifest.json + icon-180/512.png + sw.js (network-first with cache: 'no-cache', so every open revalidates past the browser's HTTP cache, which GitHub Pages lets keep files 10 minutes; same-origin GETs only — API calls pass through; cached fallback offline).
+- PWA: manifest.json + icon-180/512.png + icon.svg + sw.js (network-first with cache: 'no-cache', so every open revalidates past the browser's HTTP cache, which GitHub Pages lets keep files 10 minutes; same-origin GETs only — API calls pass through; cached fallback offline).
   Registered only on https.
+  The icon: a green candle, a red stop under it and a line measuring entry to stop, on graphite.
+  icon.svg is the tab icon (rounded tile); the PNGs are the same artwork as full-bleed squares, since iOS rounds them itself, so redraw all three together.
   Fixes iOS home-screen staleness — fresh version on every online open
 - Durability: navigator.storage.persist() requested at init.
   The Export/Import backup file was removed by request; signing in is the way to carry settings across devices.
