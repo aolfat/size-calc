@@ -4,6 +4,10 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 
 - **Tradier API**: `api.tradier.com/v1` (or sandbox), Bearer auth.
   Endpoints used: `/markets/quotes` (greeks=true), `/markets/options/expirations`, `/markets/options/chains`, `/markets/timesales` (5min interval, for the chart)
+- **This week's rules** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip (same phone `order` as the strip, after it in the markup; under it in the desktop rail) listing the rules last week's review set (docs/journal.md, Rules for next week).
+  Shown in Stocks & futures and Options while signed in and the week has rules; a weekend shows the coming week's (notebookToday).
+  The week reviews are read at boot once the Google session is back and again when the app comes to the front, at most every 5 minutes (loadWeekRules); saving the rules in the week's review redraws the card at once.
+  Settings, This week's rules: Show in Size (the default) or Hide (setWeekRulesShown, `week_rules_calc`, this device only).
 - **Stops**: ONE global stop pair in the ticker card, used everywhere.
   Long stop (shares-long + calls, blank = LOD) and short stop (shares-short + puts, blank = HOD).
   Only the stop matching tradeCtx() is shown/drawn (shares follow the Long/Short toggle, options follow chain side; Both view shows both).

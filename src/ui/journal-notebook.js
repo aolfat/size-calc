@@ -1,7 +1,8 @@
 // Journal notebook (docs/journal-notebook.md, slice 1): a page per trading day, opened from the calendar (every weekday)
 // or today's line under the Journal's status (state.journalNotebookDay; it replaces the calendar inside the Calendar
-// tab). Premarket: your last focus, a mental check-in, your goals and rules, the day's market, the plan. The day: its
-// trades and realized P&L, worked out, nothing to type. Post-market: a grade, each rule kept or broken, whether you kept
+// tab). Premarket: your last focus, this week's rules, a mental check-in, your goals and rules, the day's market, the plan.
+// The day: its trades and realized P&L, worked out, nothing to type. Post-market: a grade, each rule kept or broken, each
+// of this week's rules (the ones last week's review set, journal_days.week_rules) kept or broken, whether you kept
 // your last focus, what went well, what to work on, more notes, the day's exit notes, and tomorrow's focus. Saved on the
 // day's journal_days row field by field (core/journal-notebook.js has the rules), shown at once and put back with a toast
 // if Supabase refuses; text is a draft while you type and saves when the box loses focus. Goals and rules are
@@ -17,6 +18,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
 import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
 import { tradeUnderlying } from '../core/journal.js';
+import { LEGACY_RULE_ID, weekRulesFor } from '../core/journal-week.js';
 import { dailyPnl, nyParts } from '../core/journal-stats.js';
 import { saveJournalDay, saveLibraryItem } from '../services/journal-review.js';
 import { state } from '../state.js';
@@ -45,6 +47,12 @@ const notebookOff = () => !data() || !!state.journalReviewError || !!data().note
 const missedOff = () => notebookOff() || !!data().missedError;
 /** woke up before the open can't be saved: the notebook can't, or the database doesn't have its column yet */
 const wokeOff = () => notebookOff() || !!data().wokeError;
+/** this week's rules can't be checked: the notebook can't, or the database doesn't have their column yet */
+const weekRulesOff = () => notebookOff() || !!data().weekRulesError;
+/** the rules a day's week holds you to (the week before's review set them); none until the week reviews are read */
+const weekRulesOf = day => state.periodReviews && !state.periodReviewsError ? weekRulesFor(state.periodReviews, day).rules : [];
+/** the ones its review asks about: none while they can't be checked */
+const weekAsked = day => weekRulesOff() ? [] : weekRulesOf(day);
 const missedOf = day => rowOf(day)?.missed || [];
 const focusOf = day => rowOf(day)?.focus_list || [];
 
@@ -74,7 +82,7 @@ export function openTodayNotebook() { state.notebookBack = ''; openJournalDay(no
 
 /** the rules a day asks about */
 const applying = day => rulesForDay(lists().rules, day, rowOf(day));
-const reviewOf = day => dayReviewState(rowOf(day), applying(day));
+const reviewOf = day => dayReviewState(rowOf(day), applying(day), weekAsked(day));
 
 /**
  * A calendar cell's marks: ✎ the plan written, ✓ reviewed, an amber dot once a day with exits is over and isn't
@@ -141,7 +149,7 @@ async function saveDay(day, fields) {
   if (notebookOff() || !isDay(day)) return;
   const before = rowOf(day);
   const next = cleanDayRow({ ...before, ...fields });
-  const planned = planState(next).written, reviewed = dayReviewState(next, rulesForDay(lists().rules, day, next)).reviewed;
+  const planned = planState(next).written, reviewed = dayReviewState(next, rulesForDay(lists().rules, day, next), weekAsked(day)).reviewed;
   if (planned !== !!next.planned_at) fields = { ...fields, planned_at: next.planned_at = planned ? nowIso() : null };
   if (reviewed !== !!next.reviewed_at) fields = { ...fields, reviewed_at: next.reviewed_at = reviewed ? nowIso() : null };
   data().days[day] = next;
@@ -179,6 +187,13 @@ export function setDayRule(key, answer) {
   if (!applying(day).some(r => r.key === key) || !RULE_ANSWERS.some(([v]) => v === answer)) return;
   if (now[key] === answer) delete now[key]; else now[key] = answer;
   return saveDay(day, { rules: now });
+}
+/** one of this week's rules kept or broken that day (tapping the lit one clears it) */
+export function setDayWeekRule(id, answer) {
+  const day = page(), now = { ...(rowOf(day)?.week_rules || {}) };
+  if (weekRulesOff() || !weekRulesOf(day).some(r => r.id === id) || !RULE_ANSWERS.some(([v]) => v === answer)) return;
+  if (now[id] === answer) delete now[id]; else now[id] = answer;
+  return saveDay(day, { week_rules: now });
 }
 /** hours slept: blank clears it */
 export function daySleepSave(value) {
@@ -531,6 +546,24 @@ function wokeChip(r) {
   return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="toggleWokeEarly"${wokeOff() ? ' disabled' : ''}${why ? ` title="${esc(`Needs a database update: ${why}`)}"` : ''}>${on ? '✓ ' : ''}Woke up before the open</button>`;
 }
 
+/** premarket: this week's rules, to read before the open (checked after the close) */
+function weekRulesNote(day) {
+  const rules = weekRulesOf(day);
+  if (!rules.length) return '';
+  return `<div class="nb-focus nb-week-rules"><span class="nb-focus-label">This week's rules</span><ol class="nb-list">${rules.map(r => `<li>${esc(r.text)}</li>`).join('')}</ol></div>`;
+}
+
+/** post-market: each of this week's rules kept or broken; before their column is pushed it says so */
+function weekRulesRow(day, off) {
+  const rules = weekRulesOf(day), r = rowOf(day), st = reviewOf(day);
+  if (!rules.length) return '';
+  const why = !notebookOff() && data().weekRulesError ? `<p class="hint jw-db">Checking them needs a database update: ${esc(data().weekRulesError)}</p>` : '';
+  const dis = off || (weekRulesOff() ? ' disabled' : '');
+  const started = !!(r?.grade || r?.went_well || r?.work_on || Object.keys(r?.rules || {}).length || Object.keys(r?.week_rules || {}).length) && !st.reviewed;
+  const items = rules.map(x => `<li><span class="nb-rule-name">${esc(x.text)}${x.id === LEGACY_RULE_ID ? ' <span class="jr-sub">optional</span>' : ''}</span><span class="chip-row jr-chips">${RULE_ANSWERS.map(([v, w]) => chip(w, r?.week_rules?.[x.id] === v, `data-action="setDayWeekRule" data-arg="${esc(x.id)}" data-arg2="${v}"`, dis)).join('')}</span></li>`).join('');
+  return `<div class="jr-row${started && !st.week ? ' jr-missing' : ''}"><div class="jr-label">This week's rules <span class="jr-sub">from last week's review</span></div><div>${why}<ul class="nb-rules nb-week-check">${items}</ul></div></div>`;
+}
+
 function premarket(day, trades, off) {
   const r = rowOf(day), st = planState(r), started = Object.values(st).some(Boolean) && !st.written;
   const lib = buildLibrary(data()?.library || []);
@@ -541,6 +574,7 @@ function premarket(day, trades, off) {
     <div class="jr-head"><span class="section-title js-sub">Premarket</span>${status}</div>
     ${econDayRow(day)}
     ${focus ? `<p class="nb-focus"><span class="nb-focus-label">Your last focus (${esc(dayName(focus.day, { weekday: 'short', month: 'short', day: 'numeric' }))})</span> ${esc(focus.text)}</p>` : ''}
+    ${weekRulesNote(day)}
     <div class="nb-group">Mental check-in</div>
     ${row('How you feel', FEELINGS.map(([v, w]) => chip(w, !!r?.feelings.includes(v), `data-action="toggleDayFeeling" data-arg="${v}"`, off)).join(''), started && !st.feeling)}
     ${row('Sleep and energy', ENERGY.map(([v, w]) => chip(w, r?.energy === v, `data-action="setDayEnergy" data-arg="${v}"`, off)).join('')
@@ -579,7 +613,7 @@ function theDay(day, trades) {
 }
 
 function postmarket(day, trades, off) {
-  const r = rowOf(day), rules = applying(day), st = dayReviewState(r, rules);
+  const r = rowOf(day), rules = applying(day), st = reviewOf(day);
   const started = !!(r?.grade || r?.went_well || r?.work_on || Object.keys(r?.rules || {}).length) && !st.reviewed;
   const focus = lastFocus(days(), day);
   const status = st.reviewed ? '<span class="jr-status journal-buy" role="status">Reviewed</span>' : `<span class="jr-status" role="status">To review: ${esc(reviewMissingWords(st))}</span>`;
@@ -595,6 +629,7 @@ function postmarket(day, trades, off) {
     ${dayOver(day, nowIso()) ? '' : '<p class="hint nb-later">For after the close.</p>'}
     ${row('Day grade', DAY_GRADES.map(g => chip(g, r?.grade === g, `data-action="setDayGrade" data-arg="${g}"`, off)).join(''), started && !st.grade)}
     <div class="jr-row${started && !st.rules ? ' jr-missing' : ''}"><div class="jr-label">Your rules</div><div>${ruleRows}</div></div>
+    ${weekRulesRow(day, off)}
     ${focusReviewRow(day, trades, off)}
     ${focus ? row(`Kept your last focus? <span class="jr-sub">${esc(focus.text)}</span>`, FOCUS_KEPT.map(([v, w]) => chip(w, r?.focus_kept === v, `data-action="setDayFocusKept" data-arg="${v}"`, off)).join('')) : ''}
     ${textRow('What went well', 'went_well', day, 'What you did right, what worked', off, started && !st.note, 2)}
@@ -665,6 +700,6 @@ export function dayPageHtml() {
     ${theDay(day, trades)}
     ${missedSection(day)}
     ${postmarket(day, trades, off)}
-    <p class="hint">Saved as you go; notes save when you leave the box. The plan is written once it has how you feel, sleep and energy, where you're trading, the market and the plan. The day is reviewed once it has a grade, every rule answered, and what went well or what to work on.</p>
+    <p class="hint">Saved as you go; notes save when you leave the box. The plan is written once it has how you feel, sleep and energy, where you're trading, the market and the plan. The day is reviewed once it has a grade, every rule and each of this week's rules answered, and what went well or what to work on.</p>
   </div>`;
 }

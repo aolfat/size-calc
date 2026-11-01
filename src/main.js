@@ -28,6 +28,7 @@ import { schwabSession } from './services/schwab.js';
 import { fetchQuote, renderRecentTickers } from './ui/ticker.js';
 import { initSchwab, stripSchwabCallback } from './ui/trade.js';
 import { setView, startView } from './ui/views.js';
+import { loadWeekRules, paintWeekRulesSetting } from './ui/week-rules.js';
 
 // framed by another site: nothing to click (GitHub Pages can't send frame-ancestors, so this is the clickjacking guard)
 if (framedCrossOrigin()) { document.documentElement.replaceChildren(); throw new Error('Size Calc does not run inside another site.'); }
@@ -75,15 +76,16 @@ window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), 
 document.addEventListener('visibilitychange', () => {
   marketScheduleRefresh();
   positionsVisibilityChanged();
-  if (document.hidden) { pauseLive(); } else { resumeLive(); cloudPull(); dailyAccountSize(); }
+  if (document.hidden) { pauseLive(); } else { resumeLive(); cloudPull(); dailyAccountSize(); loadWeekRules(); }
 });
 window.addEventListener('online', marketScheduleRefresh);
 window.addEventListener('offline', marketScheduleRefresh);
 
 renderRecentTickers();
 paintLiveDefault();
+paintWeekRulesSetting();
 // Restore the Google owner before finishing or using a brokerage connection on this page.
-initCloud(bootHref).then(() => initSchwab(bootHref));
+initCloud(bootHref).then(() => { initSchwab(bootHref); loadWeekRules(); });
 
 // scrolling over a focused number input should scroll the page, not spin the value
 document.addEventListener('wheel', () => {

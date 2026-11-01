@@ -239,7 +239,7 @@ const MONDAY = '2026-10-19';
 const PARTS = ['Trade selection', 'Entry timing', 'Exit discipline', 'Risk management', 'Emotional control', 'Market awareness', 'Preparedness', 'Execution consistency'];
 const WEEK_REVIEW = {
   parts: Object.fromEntries(PARTS.map((p, i) => [p, { grade: i === 3 ? 'd+' : 'B' }])),
-  ruleNext: 'Name the setup and tactic before every order.', wentWell: 'Sold the swing into strength.',
+  rulesNext: ['Name the setup and tactic before every order.'], wentWell: 'Sold the swing into strength.',
 };
 WEEK_REVIEW.parts['Risk management'].note = 'Moved a stop, oversized a spread.';
 
@@ -252,23 +252,33 @@ test("a week's review becomes period_reviews changes: parts by name or key, plus
   assert.equal(fields.risk_grade, 'D+');
   assert.equal(fields.risk_note, 'Moved a stop, oversized a spread.');
   assert.equal(fields.selection_grade, 'B');
-  assert.equal(fields.rule_next, WEEK_REVIEW.ruleNext);
+  assert.deepEqual(fields.rules_next.map(r => r.text), WEEK_REVIEW.rulesNext);
+  assert.ok(fields.rules_next[0].id, 'each rule gets an id');
+  assert.equal(fields.rule_next, WEEK_REVIEW.rulesNext[0], 'the old column keeps the first one');
   assert.equal(fields.went_well, WEEK_REVIEW.wentWell);
-  assert.equal(fields.reviewed_at, '2026-10-24T18:00:00.000Z', 'every part graded and the rule set');
+  assert.equal(fields.reviewed_at, '2026-10-24T18:00:00.000Z', 'every part graded and the rules set');
   assert.deepEqual([plan.changes.library, plan.changes.reviews, plan.changes.days, plan.changes.notebook], [[], [], [], []]);
   assert.equal(planPeriod(j, 'week', MONDAY, { parts: { risk: { grade: 'C' } } }, opts).after.reviewed, false, 'one grade is not a review');
   assert.deepEqual(planPeriod(j, 'month', '2026-10', { workOn: 'Fewer trades.' }, opts).changes.periods, [{ unit: 'month', key: '2026-10', fields: { work_on: 'Fewer trades.' } }]);
 });
 
 test("a week's review again: only what changed, null clears and takes the stamp with it", () => {
-  const row = { unit: 'week', period_key: MONDAY, rule_next: 'Wait for the setup.', reviewed_at: '2026-10-24T00:00:00.000Z',
+  const row = { unit: 'week', period_key: MONDAY, rules_next: [{ id: 'r1', text: 'Wait for the setup.' }], rule_next: 'Wait for the setup.', reviewed_at: '2026-10-24T00:00:00.000Z',
     ...Object.fromEntries(['selection', 'entry', 'exit', 'risk', 'emotion', 'market', 'prep', 'consistency'].map(k => [`${k}_grade`, 'B'])) };
   const j = journalFrom({ ...DATA, periods: [row] });
-  assert.deepEqual(planPeriod(j, 'week', MONDAY, { parts: { selection: { grade: 'B' } }, ruleNext: 'Wait for the setup.' }, opts).changes.periods, [], 'the same answers change nothing');
+  assert.deepEqual(planPeriod(j, 'week', MONDAY, { parts: { selection: { grade: 'B' } }, rulesNext: ['Wait for the setup.'] }, opts).changes.periods, [], 'the same answers change nothing');
+  const more = planPeriod(j, 'week', MONDAY, { rulesNext: ['Wait for the setup.', 'Size down after a loss.'] }, opts).changes.periods[0].fields;
+  assert.equal(more.rules_next[0].id, 'r1', 'a rule already on the list keeps its id');
+  assert.equal(more.rules_next[1].text, 'Size down after a loss.');
+  assert.equal('rule_next' in more, false, 'the first rule is the same');
   assert.deepEqual(planPeriod(j, 'week', MONDAY, { parts: { exit: { grade: null } } }, opts).changes.periods,
     [{ unit: 'week', key: MONDAY, fields: { exit_grade: null, reviewed_at: null } }]);
-  assert.deepEqual(planPeriod(j, 'week', '2026-10-26', { ruleKept: 'Partly' }, opts).changes.periods,
-    [{ unit: 'week', key: '2026-10-26', fields: { rule_kept: 'partly' } }], "Kept it? is about last week's rule, saved on this week's row");
+  assert.deepEqual(planPeriod(j, 'week', '2026-10-26', { rulesKept: { 'wait for the setup.': 'Partly' } }, opts).changes.periods,
+    [{ unit: 'week', key: '2026-10-26', fields: { rules_kept: { r1: 'partly' } } }], "Kept it? is about the rules last week set, saved on this week's row");
+  assert.deepEqual(planPeriod(j, 'week', '2026-10-26', { rulesKept: { 1: 'no' }, rulesNote: 'Waited, mostly.' }, opts).changes.periods[0].fields,
+    { rules_kept: { r1: 'no' }, rules_note: 'Waited, mostly.' }, 'by number too');
+  const old = journalFrom({ ...DATA, periods: [{ unit: 'week', period_key: MONDAY, rule_next: 'Wait for the setup.' }] });
+  assert.deepEqual(planPeriod(old, 'week', '2026-10-26', { rulesKept: { 1: 'yes' } }, opts).changes.periods[0].fields, { rule_kept: 'yes' }, 'a rule from before the list answers in rule_kept');
 });
 
 test("a period's review that can't be: an unknown field or part, a grade or answer not on the list, a bad period", () => {
@@ -277,8 +287,13 @@ test("a period's review that can't be: an unknown field or part, a grade or answ
   assert.throws(() => planPeriod(j, 'week', MONDAY, { parts: { Timing: { grade: 'B' } } }), /Timing isn't a part: Trade selection, Entry timing/);
   assert.throws(() => planPeriod(j, 'week', MONDAY, { parts: { risk: { grade: 'E' } } }), /grade: A\+, A, A-/);
   assert.throws(() => planPeriod(j, 'week', MONDAY, { parts: { risk: { score: 3 } } }), /a part takes grade, note; not score/);
-  assert.throws(() => planPeriod(j, 'week', MONDAY, { ruleKept: 'mostly' }), /ruleKept: yes, partly or no/);
-  assert.throws(() => planPeriod(j, 'week', MONDAY, { ruleNext: 'x'.repeat(501) }), /ruleNext: 500 characters at most/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { ruleNext: 'x' }), /not ruleNext/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { rulesKept: { 1: 'yes' } }), /1 isn't one of the rules last week set: none/);
+  const k = journalFrom({ ...DATA, periods: [{ unit: 'week', period_key: '2026-10-12', rules_next: [{ id: 'r1', text: 'Wait.' }] }] });
+  assert.throws(() => planPeriod(k, 'week', MONDAY, { rulesKept: { 'Wait.': 'mostly' } }), /Wait\.: yes, partly or no, or null/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { rulesNext: ['x'.repeat(501)] }), /rulesNext 1: 500 characters at most/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { rulesNext: ['a', 'b', 'c', 'd', 'e', 'f'] }), /rulesNext: 5 rules at most/);
+  assert.throws(() => planPeriod(j, 'week', MONDAY, { rulesNext: 'one' }), /rulesNext: a list/);
   assert.throws(() => planPeriod(j, 'week', '2026-10', {}), /a week by any of its days, YYYY-MM-DD/);
   assert.throws(() => planPeriod(j, 'month', '2026-13', {}), /a month as YYYY-MM/);
 });
@@ -288,10 +303,34 @@ test("the whole week: its P&L, trades, last week's rule and each part's grade, w
   const text = periodDetail(j, 'week', MONDAY);
   assert.match(text, /^Week of 2026-10-19\nP&L: \$11\.00 · 1 trade with an exit/);
   assert.match(text, new RegExp(`\\n  ${handleOf(KEY)} · QQQ 10/23/26 706P`));
-  assert.match(text, /\n  last week's rule: Wait for the setup\. · kept: —\n/);
+  assert.match(text, /\n  this week's rules \(set last week\):\n    1\. Wait for the setup\. · kept: —\n  how they went: —\n/);
   assert.match(text, /\n    Risk management: D · Oversized\.\n/);
   assert.match(text, /\n    Trade selection: —\n/);
-  assert.match(text, /missing: grades on 7 parts and the rule for next week$/);
+  assert.match(text, /\n  rules for next week: —\n/);
+  assert.match(text, /missing: grades on 7 parts and the rules for next week$/, 'Kept it? on a rule from before the list is never needed');
+});
+
+test("this week's rules: each day checks them, the week's review shows how the days went and asks Kept it? and how they went", () => {
+  const RULES = [{ id: 'r1', text: 'No trades before 9:45.' }, { id: 'r2', text: 'Size down after a loss.' }];
+  const j = journalFrom({ ...DATA, periods: [{ unit: 'week', period_key: '2026-10-12', rules_next: RULES }],
+    days: [...DATA.days, { day: '2026-10-20', week_rules: { r1: 'kept', r2: 'broke' } }, { day: '2026-10-21', week_rules: { r1: 'kept', gone: 'kept' } }] });
+  const day = planDay(j, '2026-10-22', { weekRules: { 'no trades before 9:45.': 'Kept', 2: 'broke' } }, opts);
+  assert.deepEqual(day.changes.notebook, [{ day: '2026-10-22', fields: { week_rules: { r1: 'kept', r2: 'broke' } } }]);
+  assert.deepEqual(planDay(j, '2026-10-21', { weekRules: { 1: 'kept' } }, opts).changes.notebook, [], 'the same answer changes nothing');
+  assert.deepEqual(planDay(j, '2026-10-21', { weekRules: { 1: null } }, opts).changes.notebook[0].fields.week_rules, { r1: null }, 'null clears one');
+  assert.throws(() => planDay(j, '2026-10-22', { weekRules: { 'Trade less': 'kept' } }), /Trade less isn't one of this week's rules: 1\. No trades before 9:45\. 2\. Size down after a loss\./);
+  assert.throws(() => planDay(j, '2026-10-12', { weekRules: { 1: 'kept' } }), /none \(last week's review set none\)/);
+  assert.match(dayDetail(j, '2026-10-20'), /\n  this week's rules \(from last week's review\):\n    1\. No trades before 9:45\.: kept\n    2\. Size down after a loss\.: broke\n/);
+  assert.match(dayDetail(j, '2026-10-22'), /missing: a grade, 2 of this week's rules and what went well or what to work on$/);
+
+  const text = periodDetail(j, 'week', MONDAY);
+  assert.match(text, /\n    1\. No trades before 9:45\. · days: kept 2, broke 0, 3 not checked · kept: —\n    2\. Size down after a loss\. · days: kept 0, broke 1, 4 not checked · kept: —\n/);
+  assert.match(text, /missing: Kept it\? on this week's rules, how this week's rules went, grades on 8 parts and the rules for next week$/);
+  const graded = { parts: Object.fromEntries(PARTS.map(p => [p, { grade: 'B' }])), rulesNext: ['Wait for the setup.'] };
+  assert.equal(planPeriod(j, 'week', MONDAY, graded, opts).after.reviewed, false, 'still owes the rules it held');
+  const done = planPeriod(j, 'week', MONDAY, { ...graded, rulesKept: { 1: 'yes', 2: 'partly' }, rulesNote: 'Held the open, not the size.' }, opts);
+  assert.equal(done.after.reviewed, true);
+  assert.deepEqual(done.changes.periods[0].fields.rules_kept, { r1: 'yes', r2: 'partly' });
 });
 
 // ---------- the script ----------
@@ -402,7 +441,12 @@ test('the save function takes the day review fields and nothing else of the note
   const last = name => [...sql.matchAll(new RegExp(`create or replace function public\\.${name}\\(p_key text[\\s\\S]*?end \\$\\$;`, 'gi'))].pop()?.[0] || '';
   const save = last('claude_journal_save'), read = last('claude_journal_read');
   assert.match(save, /p_changes->'notebook'/);
-  assert.match(save, /k not in \('grade', 'rules', 'went_well', 'work_on', 'note', 'focus_next', 'focus_kept', 'reviewed_at'\)/, 'the review half only, never the plan');
+  assert.match(save, /k not in \('grade', 'rules', 'week_rules', 'went_well', 'work_on', 'note', 'focus_next', 'focus_kept', 'reviewed_at'\)/, 'the review half only, never the plan');
+  assert.match(save, /jsonb_strip_nulls\(coalesce\(d\.week_rules, '\{\}'\) \|\| \(f->'week_rules'\)\)/, 'week rules merge one at a time too');
+  assert.match(save, /jsonb_strip_nulls\(coalesce\(p\.rules_kept, '\{\}'\) \|\| \(f->'rules_kept'\)\)/, 'Kept it? merges one rule at a time');
+  assert.match(save, /rules_next = case when f \? 'rules_next' then coalesce\(f->'rules_next', '\[\]'\)/, 'the list is replaced whole');
+  assert.match(read, /'week_rules', d\.week_rules/);
+  assert.match(read, /'rules_next', p\.rules_next, 'rules_kept', p\.rules_kept, 'rules_note', p\.rules_note/);
   assert.match(save, /jsonb_strip_nulls\(coalesce\(d\.rules, '\{\}'\) \|\| \(f->'rules'\)\)/, 'rules merge one at a time, null clears one');
   assert.match(read, /'order_plans', coalesce/, 'the read keeps the order plans');
   assert.match(read, /'went_well', d\.went_well/);

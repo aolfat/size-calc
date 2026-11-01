@@ -98,8 +98,9 @@ const RULES = [
 ];
 
 // Tuesday Oct 6, 5pm New York: Monday's and Tuesday's sessions are over
-async function journal({ records = RECORDS, library = [], days = [], reviews = [], broken = false, now = Date.parse('2026-10-06T21:00:00Z') } = {}) {
+async function journal({ records = RECORDS, library = [], days = [], reviews = [], periods = [], broken = false, now = Date.parse('2026-10-06T21:00:00Z') } = {}) {
   const supabase = fakeRecords(records, reviews);
+  for (const r of periods) supabase.tables.period_reviews.set(`user-1:${r.unit}:${r.period_key}`, { user_id: 'user-1', ...r });
   for (const r of library) supabase.tables.library_items.set(`user-1:${r.id}`, { user_id: 'user-1', ...r });
   for (const d of days) supabase.tables.journal_days.set(`user-1:${d.day}`, { user_id: 'user-1', ...d });
   if (broken) supabase.failColumn('journal_days', 'plan');
@@ -706,4 +707,67 @@ test('the text boxes grow with their text: as tall as what you typed, never shor
   assert.deepEqual(seen, [['auto', '120px']], 'measured at its rows, its holder keeping the page\'s height');
   assert.equal(box.style.height, '202px', 'the text plus the borders');
   assert.equal(holder.style.minHeight, '', 'the holder let go after');
+});
+
+// ---------- this week's rules (the ones last week's review set) ----------
+
+const WEEK_RULES = [{ id: 'w1', text: 'No trades before 9:45' }, { id: 'w2', text: 'Size down after a loss' }];
+
+test("this week's rules: read before the open, each kept or broke after the close, needed for the day to be reviewed", async () => {
+  const { run, out, writes, supabase } = await journal({ library: RULES, periods: [{ unit: 'week', period_key: '2026-09-28', rules_next: WEEK_RULES }] });
+  run("openJournalDay('2026-10-06')");
+  assert.match(out(), /aria-label="Premarket"[\s\S]*<div class="nb-focus nb-week-rules"><span class="nb-focus-label">This week's rules<\/span><ol class="nb-list"><li>No trades before 9:45<\/li><li>Size down after a loss<\/li><\/ol><\/div>[\s\S]*Mental check-in/);
+  assert.match(out(), /aria-label="Post-market"[\s\S]*Your rules[\s\S]*<div class="jr-label">This week's rules <span class="jr-sub">from last week's review<\/span><\/div>[\s\S]*No trades before 9:45<\/span><span class="chip-row jr-chips"><button class="filter-btn" aria-pressed="false" data-action="setDayWeekRule" data-arg="w1" data-arg2="kept">Kept<\/button>/);
+  run("setDayGrade('B'); setDayRule('mine:r1', 'kept'); setDayRule('mine:r2', 'kept'); dayTextSave('went_well', 'Waited')");
+  await settle();
+  assert.match(out(), /To review: 2 of this week&#39;s rules/);
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').reviewed_at, undefined, 'not reviewed without them');
+  run("setDayWeekRule('w1', 'kept')");
+  await settle();
+  assert.deepEqual(writes('journal_days').at(-1).week_rules, { w1: 'kept' }, 'its own column, the day\'s answers');
+  assert.match(out(), /To review: 1 of this week&#39;s rules/);
+  run("setDayWeekRule('w2', 'broke')");
+  await settle();
+  const saved = supabase.tables.journal_days.get('user-1:2026-10-06');
+  assert.deepEqual(saved.week_rules, { w1: 'kept', w2: 'broke' });
+  assert.ok(saved.reviewed_at, 'reviewed with the save that finished it');
+  assert.match(out(), /aria-pressed="true" data-action="setDayWeekRule" data-arg="w2" data-arg2="broke"/);
+  run("setDayWeekRule('w2', 'broke')");
+  await settle();
+  assert.deepEqual(supabase.tables.journal_days.get('user-1:2026-10-06').week_rules, { w1: 'kept' }, 'tapping the lit one clears it');
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').reviewed_at, null);
+  run("setDayWeekRule('nope', 'kept')");
+  await settle();
+  assert.deepEqual(supabase.tables.journal_days.get('user-1:2026-10-06').week_rules, { w1: 'kept' }, 'a rule this week doesn\'t have is ignored');
+  run("openJournalDay('2026-09-28')");
+  assert.doesNotMatch(out(), /This week's rules/, 'the week that set them was held to the week before\'s (none)');
+});
+
+test("a week's one rule from before the list shows on its days, checked or not, never needed", async () => {
+  const { run, out } = await journal({ periods: [{ unit: 'week', period_key: '2026-09-28', rule_next: 'Wait for the pivot' }] });
+  run("openJournalDay('2026-10-06')");
+  assert.match(out(), /<li>Wait for the pivot<\/li>/);
+  assert.match(out(), /Wait for the pivot <span class="jr-sub">optional<\/span>/);
+  run("setDayGrade('B'); dayTextSave('went_well', 'Waited')");
+  await settle();
+  assert.match(out(), /<span class="jr-status journal-buy" role="status">Reviewed<\/span>/);
+});
+
+test("before the week rules column is pushed this week's rules show, their chips are off and say so, and the day can be reviewed", async () => {
+  const supabase = fakeRecords(RECORDS, []);
+  supabase.failColumn('journal_days', 'week_rules');
+  supabase.tables.period_reviews.set('user-1:week:2026-09-28', { user_id: 'user-1', unit: 'week', period_key: '2026-09-28', rules_next: WEEK_RULES });
+  const a = await app({ supabase, session: SESSION, clock: true, now: Date.parse('2026-10-06T21:00:00Z') });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  const out = () => a.elements.get('journalSection').innerHTML;
+  assert.match(a.state.journalReview.weekRulesError, /npx supabase db push/);
+  a.run("openJournalDay('2026-10-06')");
+  assert.match(out(), /Checking them needs a database update: the database doesn&#39;t have the week rules columns yet: npx supabase db push/);
+  assert.match(out(), /data-action="setDayWeekRule" data-arg="w1" data-arg2="kept" disabled>/);
+  a.run("setDayWeekRule('w1', 'kept'); setDayGrade('B'); dayTextSave('went_well', 'Waited')");
+  await settle();
+  assert.equal(supabase.writes.filter(w => w.table === 'journal_days' && 'week_rules' in w).length, 0);
+  assert.match(out(), /role="status">Reviewed<\/span>/, 'what it can\'t ask never holds the day up');
 });

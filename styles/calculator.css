@@ -9,6 +9,9 @@
 .risk-strip .chip-row { margin-top:10px; }
 .risk-strip .chip-row + .chip-row { margin-top:6px; }
 .risk-strip .filter-btn.active { background:var(--red-bg); border-color:var(--red-bd); color:var(--text); }
+.week-rules { padding:10px 16px 12px; }
+.week-rules-title { color:var(--text2); }
+.week-rules-list { margin:6px 0 0; padding-left:20px; font-size:13.5px; line-height:1.5; }
 #allocationControls .row { margin-top:2px; }
 
 /* Risk $ is the number that matters: the money you're willing to lose */

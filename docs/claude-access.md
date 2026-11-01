@@ -23,6 +23,7 @@ It returns the order plans too (migration 20261107000000_order_plans.sql redefin
 `claude_journal_save` writes, in one transaction: your own library items, review fields (stop, setup grade, plan followed, exit note, entry note, the trade's own market, reviewed_at; nothing else, so it can't delete a trade), labels off and on, and a day's market.
 Migration 20261114000000_claude_day_review.sql redefines both: the read returns every day's row with its review fields, and the save writes a day's review (the grade, each rule kept or broke, what went well, what to work on, more notes, tomorrow's focus, whether the last focus was kept, reviewed_at).
 Migration 20261115000000_claude_week_review.sql redefines them again: the read returns every week's and month's review (`periods`, the period_reviews rows), and the save writes one (each part's grade and note, what went well, what to work on, more notes, the rule for the next period, whether the last one's was kept, reviewed_at).
+Migration 20261116000000_week_rules.sql redefines them once more: the read returns each day's check-ins on its week's rules (`week_rules`) and each review's rules list, Kept it? on each and how they went (`rules_next`, `rules_kept`, `rules_note`), and the save writes them (week_rules and rules_kept merge one rule at a time, a null clears one; rules_next is replaced whole).
 The rest of the notebook (the premarket plan, the check-in, the focus list, the missed trades) stays out of reach.
 Rule answers merge one rule at a time, and a null answer clears that rule's.
 `claude_model_books_read` (migration 20261108000000_claude_model_books.sql) returns that owner's books, examples (no image links) and library.
@@ -55,7 +56,7 @@ Once per project, from a checkout: `npx supabase db push` for the migrations, th
 
 A review is the owner's own assessment, so a session writes it by asking, not by drafting (owner request, after a session filled a day's notes with its own reading of the fills).
 First pull what's there (`show`, `day`, `week` or `month`) and say in a line or two what's filled and what's missing.
-Then ask the page's questions, a part or two at a time, in the page's words: for a trade its market, sector, setups, tactics, mistakes, grade, plan followed and notes; for a day the last focus, the grade, each rule kept or broke, what went well, what to work on, more notes and tomorrow's focus; for a week or month last one's rule, each part's grade and note, the notes and the rule for next one.
+Then ask the page's questions, a part or two at a time, in the page's words: for a trade its market, sector, setups, tactics, mistakes, grade, plan followed and notes; for a day the last focus, the grade, each rule kept or broke, each of this week's rules kept or broke, what went well, what to work on, more notes and tomorrow's focus; for a week or month the rules last one set (how the days went with each, Kept it? on each, then how they went, in the owner's words), each part's grade and note, the notes and the rules for next one.
 Ask only for what's missing, and leave what the owner already filled in unless they want to change it.
 For choices (setups, tactics, mistakes, the market) offer the owner's own names from `choices`.
 Save their answers in their voice, tidied only for spelling and punctuation.
@@ -72,8 +73,8 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 - `node scripts/journal.mjs show <handle or key>`: the numbers, the fills and the review in words, with what's missing.
 - `node scripts/journal.mjs choices [kind]`: your choices with their keys.
 - `node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]`: saves a review and prints the trade after; a dry run prints the changes instead.
-- `node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day: its market, P&L, trades, and its review with what's missing; with it, saves the day's review and prints the day after.
-- `node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]` and `month <YYYY-MM> ...`: without JSON, the week (by its Monday) or month: its P&L from the exits taken in it, its trades, the last one's rule, and each part's grade and note with what's missing; with it, saves the review and prints it after.
+- `node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day: its market, P&L, trades, and its review (this week's rules numbered) with what's missing; with it, saves the day's review and prints the day after.
+- `node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]` and `month <YYYY-MM> ...`: without JSON, the week (by its Monday) or month: its P&L from the exits taken in it, its trades, the rules the last one set (numbered, how the days checked each, Kept it?, how they went), each part's grade and note and the rules for next one with what's missing; with it, saves the review and prints it after.
 - `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id), then the examples in no book.
 - `node scripts/journal.mjs book [book] '<json>' [--dry-run]`: makes a book (`name`, `description`), or changes the one named.
 - `node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]`: adds an example with its screenshot (`title`, `notes`, `setups`, and `book` if you want one).
@@ -85,12 +86,12 @@ Each label kind given is set to exactly those; a name that isn't one of yours is
 The market goes on the trade's day, unless the day already has another (then it's the trade's own and the script says so), or marketFor says otherwise.
 reviewed_at is stamped once everything a review needs is in, and cleared if something comes off.
 
-A day's JSON takes `grade` (A to F), `rules` (`{ "Follow your stops": "broke" }`, each rule by its name or key, `kept`, `broke` or null), `wentWell`, `workOn`, `note`, `focusNext` and `focusKept` (yes, partly, no); fields left out stay, null clears one.
+A day's JSON takes `grade` (A to F), `rules` (`{ "Follow your stops": "broke" }`, each rule by its name or key, `kept`, `broke` or null), `weekRules` (`{ "No trades before 9:45": "kept" }`, each of this week's rules by its text or number, `kept`, `broke` or null), `wentWell`, `workOn`, `note`, `focusNext` and `focusKept` (yes, partly, no); fields left out stay, null clears one.
 Only the rules that apply to the day can be answered (made on or before it and not retired, or answered already), as the day page asks; any other name is refused with the day's rules.
-The day's reviewed_at is stamped once it has a grade, every rule that applies and what went well or what to work on, and cleared if one comes off.
+The day's reviewed_at is stamped once it has a grade, every rule that applies, each of this week's rules and what went well or what to work on, and cleared if one comes off.
 
-A week's or month's JSON takes `parts` (`{ "Risk management": { "grade": "D+", "note": "..." } }`, each part by its name or key: selection, entry, exit, risk, emotion, market, prep, consistency; grades A+ to F), `wentWell`, `workOn`, `note`, `ruleNext` (500 characters at most) and `ruleKept` (yes, partly, no: whether the last period's rule was kept, saved on this period's row as the page does); fields left out stay, null clears one.
-Its reviewed_at is stamped once every part has a grade and the rule for next one is set, and cleared if one comes off.
+A week's or month's JSON takes `parts` (`{ "Risk management": { "grade": "D+", "note": "..." } }`, each part by its name or key: selection, entry, exit, risk, emotion, market, prep, consistency; grades A+ to F), `wentWell`, `workOn`, `note`, `rulesNext` (the whole list, up to 5 rules of 500 characters; a rule already on it keeps its id), `rulesKept` (`{ "1": "partly" }`, each of the rules the last period set by its text or number: yes, partly, no or null, saved on this period's row as the page does) and `rulesNote` (how they went); fields left out stay, null clears one.
+Its reviewed_at is stamped once every part has a grade, the rules for next one are set and, when the last period set a list, each has its Kept it? and how they went is said; cleared if one comes off.
 
 Model books logic is in `scripts/model-books-lib.mjs`, pure, tested in tests/claude-model-books.test.mjs with the function.
 A book is optional: left out, a new example goes in no book, and `"book": null` takes an example out of its book.

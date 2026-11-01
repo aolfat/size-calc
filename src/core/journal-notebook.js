@@ -1,10 +1,11 @@
 // @ts-check
 // Journal notebook, pure (docs/journal-notebook.md): a page per New York trading day. The premarket plan (a mental
 // check-in, the market, the plan) and the post-market review (a grade, each rule kept or broken, two guided notes,
-// tomorrow's focus), the focus list (the tickers you're watching, each with its setups, and how each played) and the trades you missed kept on the day's journal_days row; your goals and rules as standing lists (library_items rows of
+// tomorrow's focus, each of this week's rules kept or broken), the focus list (the tickers you're watching, each with its setups, and how each played) and the trades you missed kept on the day's journal_days row; your goals and rules as standing lists (library_items rows of
 // kind goal and rule); when a day's plan is written and when it's reviewed; the trades a day touched; stepping weekdays.
 import { GRADES } from './journal-labels.js';
 import { exitDays, nyParts } from './journal-stats.js';
+import { LEGACY_RULE_ID } from './journal-week.js';
 
 /** @typedef {{ key: string, id: string, kind: 'goal' | 'rule', name: string, hidden: boolean, order: number, since: string }} ListItem
  * @typedef {{ id: string, symbol: string, side: string | null, setups: string[], tactics: string[], why: string | null, note: string | null }} MissedTrade
@@ -12,7 +13,7 @@ import { exitDays, nyParts } from './journal-stats.js';
  * @typedef {{ market: string | null, note: string | null, feelings: string[], energy: string | null, sleep_hours: number | null,
  *   woke_early: boolean, place: string | null, plan: string | null, focus_list: FocusItem[], grade: string | null, rules: Record<string, string>,
  *   went_well: string | null, work_on: string | null, focus_next: string | null, focus_kept: string | null,
- *   planned_at: string | null, reviewed_at: string | null, missed: MissedTrade[] }} DayRow */
+ *   week_rules: Record<string, string>, planned_at: string | null, reviewed_at: string | null, missed: MissedTrade[] }} DayRow */
 
 export const FEELINGS = /** @type {[string, string][]} */ ([['calm', 'Calm'], ['focused', 'Focused'], ['confident', 'Confident'], ['anxious', 'Anxious'], ['frustrated', 'Frustrated'], ['impatient', 'Impatient'], ['fomo', 'FOMO']]);
 export const ENERGY = /** @type {[string, string][]} */ ([['rested', 'Rested'], ['ok', 'OK'], ['tired', 'Tired']]);
@@ -36,6 +37,8 @@ export const FOCUS_LOOKBACK_DAYS = 7;
 export const MISSED_COLUMNS = ['missed'];
 /** woke up before the open: the column its own migration adds (read on its own query too) */
 export const WOKE_COLUMNS = ['woke_early'];
+/** this week's rules kept or broken: the column the week rules' migration adds (read on its own query too) */
+export const WEEK_RULE_COLUMNS = ['week_rules'];
 /** why a trade was missed */
 export const MISSED_WHY = /** @type {[string, string][]} */ ([['hesitated', 'Hesitated'], ['not_seen', "Didn't see it"], ['away', 'Away'], ['late', 'Too late'], ['no_trust', "Didn't trust it"], ['at_limit', 'At my limit']]);
 export const MISSED_SIDES = /** @type {[string, string][]} */ ([['long', 'Long'], ['short', 'Short']]);
@@ -88,9 +91,14 @@ export function dayOver(day, nowIso) {
  */
 export function cleanDayRow(raw) {
   const r = raw || {};
-  /** @type {Record<string, string>} */
-  const rules = {};
-  if (r.rules && typeof r.rules === 'object' && !Array.isArray(r.rules)) for (const [k, v] of Object.entries(r.rules)) if (pick(RULE_ANSWERS, v)) rules[k] = v;
+  /** @param {unknown} obj @returns {Record<string, string>} */
+  const answers = obj => {
+    /** @type {Record<string, string>} */
+    const out = {};
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) for (const [k, v] of Object.entries(obj)) if (pick(RULE_ANSWERS, v)) out[k] = v;
+    return out;
+  };
+  const rules = answers(r.rules);
   const hours = r.sleep_hours === null || r.sleep_hours === undefined || r.sleep_hours === '' ? NaN : Number(r.sleep_hours);
   return {
     market: typeof r.market === 'string' && r.market ? r.market : null,
@@ -101,7 +109,7 @@ export function cleanDayRow(raw) {
     plan: text(r.plan, MAX_DAY_NOTE), focus_list: cleanFocusList(r.focus_list),
     grade: GRADES.includes(r.grade) ? r.grade : null, rules,
     went_well: text(r.went_well, MAX_DAY_NOTE), work_on: text(r.work_on, MAX_DAY_NOTE),
-    focus_next: text(r.focus_next, MAX_FOCUS), focus_kept: pick(FOCUS_KEPT, r.focus_kept),
+    focus_next: text(r.focus_next, MAX_FOCUS), focus_kept: pick(FOCUS_KEPT, r.focus_kept), week_rules: answers(r.week_rules),
     planned_at: r.planned_at || null, reviewed_at: r.reviewed_at || null,
     missed: cleanMissed(r.missed),
   };
@@ -227,18 +235,22 @@ export function planState(row) {
 export const planMissingWords = st => listWords([[st.feeling, 'how you feel'], [st.energy, 'sleep and energy'], [st.place, "where you're trading"], [st.market, 'the market'], [st.plan, 'the plan']]);
 
 /**
- * What a day's review has; reviewed once it has a grade, every rule that applies answered, and what went well or
- * what to work on. More notes, the last focus and tomorrow's focus never count.
+ * What a day's review has; reviewed once it has a grade, every rule that applies answered, each of this week's rules
+ * answered, and what went well or what to work on. More notes, the last focus and tomorrow's focus never count; neither
+ * does the one rule a week kept before the list.
  * @param {DayRow | null | undefined} row @param {ListItem[]} applying the rules that apply (rulesForDay)
+ * @param {{ id: string, text: string }[]} [weekRules] this week's rules (weekRulesFor)
  */
-export function dayReviewState(row, applying) {
+export function dayReviewState(row, applying, weekRules = []) {
   const unanswered = applying.filter(r => !row?.rules?.[r.key]).length;
-  const st = { grade: !!row?.grade, rules: !unanswered, unanswered, note: !!(row?.went_well || row?.work_on) };
-  return { ...st, reviewed: st.grade && st.rules && st.note };
+  const weekOpen = weekRules.filter(r => r.id !== LEGACY_RULE_ID && !row?.week_rules?.[r.id]).length;
+  const st = { grade: !!row?.grade, rules: !unanswered, unanswered, week: !weekOpen, weekOpen, note: !!(row?.went_well || row?.work_on) };
+  return { ...st, reviewed: st.grade && st.rules && st.week && st.note };
 }
 
 /** what a review still needs, in words. @param {ReturnType<typeof dayReviewState>} st */
-export const reviewMissingWords = st => listWords([[st.grade, 'a grade'], [st.rules, st.unanswered === 1 ? '1 rule' : `${st.unanswered} rules`], [st.note, 'what went well or what to work on']]);
+export const reviewMissingWords = st => listWords([[st.grade, 'a grade'], [st.rules, st.unanswered === 1 ? '1 rule' : `${st.unanswered} rules`],
+  [st.week, `${st.weekOpen} of this week's rules`], [st.note, 'what went well or what to work on']]);
 
 /** @param {[boolean, string][]} parts */
 function listWords(parts) {

@@ -29,13 +29,14 @@ import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
 import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
-import { closePeriodReview, openPeriodReview, periodTextInput, periodTextSave, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
+import { addPeriodRule, carryPeriodRule, closePeriodReview, openPeriodReview, periodRuleDraftInput, periodRuleInput, periodRuleSave, periodTextInput, periodTextSave, removePeriodRule, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
+import { setWeekRulesShown } from './week-rules.js';
 import { clearJournalDates, clearJournalDay, closeJournalSetup, journalThisMonth, setCalendarDates, setCalendarRange, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalDates, setJournalPeriod, setStatsDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
 import { addJournalFilter, clearJournalFilters, removeJournalFilter, setJournalFilterNot, toggleJournalFilterValue } from './journal-filters.js';
-import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
+import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { reviewUpNext, skipUpNext } from './journal-cards.js';
 import { setCalendarMode } from './journal-stats.js';
 import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
@@ -131,6 +132,7 @@ export const actions = {
   setDayMarket: el => setDayMarket(arg(el)),
   setDayGrade: el => setDayGrade(arg(el)),
   setDayRule: el => setDayRule(arg(el), el.dataset.arg2 || ''),
+  setDayWeekRule: el => setDayWeekRule(arg(el), el.dataset.arg2 || ''),
   setDayFocusKept: el => setDayFocusKept(arg(el)),
   toggleWokeEarly: () => toggleWokeEarly(),
   daySleepSave: el => daySleepSave(/** @type {HTMLInputElement} */ (el).value),
@@ -195,7 +197,14 @@ export const actions = {
   closePeriodReview: () => closePeriodReview(),
   stepPeriodReview: el => stepPeriodReview(arg(el)),
   setPeriodGrade: el => setPeriodGrade(arg(el), /** @type {HTMLSelectElement} */ (el).value),
-  setRuleKept: el => setRuleKept(arg(el)),
+  setRuleKept: el => setRuleKept(arg(el), el.dataset.arg2 || ''),
+  periodRuleDraftInput: el => periodRuleDraftInput(/** @type {HTMLInputElement} */ (el).value),
+  addPeriodRule: () => addPeriodRule(),
+  periodRuleInput: el => periodRuleInput(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  periodRuleSave: el => periodRuleSave(arg(el), /** @type {HTMLInputElement} */ (el).value),
+  removePeriodRule: el => removePeriodRule(arg(el)),
+  carryPeriodRule: el => carryPeriodRule(arg(el)),
+  setWeekRulesShown: el => setWeekRulesShown(arg(el)),
   setPeriodTradeSort: el => setPeriodTradeSort(arg(el)),
   periodTextInput: el => periodTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
   periodTextSave: el => periodTextSave(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
