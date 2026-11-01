@@ -60,10 +60,11 @@ test('the sheet offers your setups and entry tactics; today\'s focus list and th
   await settle();
   const t = s.state.tradeTicket;
   assert.deepEqual([t.setups, t.tactics], [['ema21_bounce'], ['pivot15']]);
-  assert.match(s.picks(), /<dt>Setup<\/dt>/);
-  assert.match(s.picks(), /class="filter-btn active" aria-pressed="true" data-action="toggleTradeSetup" data-arg="ema21_bounce">21 EMA bounce</);
-  assert.match(s.picks(), /class="filter-btn active" aria-pressed="true" data-action="toggleTradeTactic" data-arg="pivot15">15-minute pivot</);
-  assert.match(s.picks(), /data-action="toggleTradeTactic" data-arg="six20">6\/20/);
+  // read before the sheet opened (the trade button starts it), so the picks are drawn with the sheet
+  assert.match(s.body(), /<dt>Setup<\/dt>/);
+  assert.match(s.body(), /class="filter-btn active" aria-pressed="true" data-action="toggleTradeSetup" data-arg="ema21_bounce">21 EMA bounce</);
+  assert.match(s.body(), /class="filter-btn active" aria-pressed="true" data-action="toggleTradeTactic" data-arg="pivot15">15-minute pivot</);
+  assert.match(s.body(), /data-action="toggleTradeTactic" data-arg="six20">6\/20/);
   s.run("toggleTradeSetup('ema21_bounce'); toggleTradeSetup('base_breakout'); toggleTradeTactic('pivot15'); toggleTradeTactic('six20')");
   assert.deepEqual([s.state.tradeTicket.setups, s.state.tradeTicket.tactics], [['base_breakout'], ['six20']]);
   s.run("tradeSetupSearch('earn')");
