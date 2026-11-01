@@ -117,6 +117,7 @@ export function updateStopAdjustment() {
   document.getElementById('stopStrategy').value = state.stopStrategy;
   document.getElementById('atrPresets').style.display = state.stopStrategy === 'atr' ? 'flex' : 'none';
   document.getElementById('percentControls').style.display = state.stopStrategy === 'percent' ? 'flex' : 'none';
+  document.getElementById('stopAdjOff').style.display = state.stopStrategy === 'none' ? 'none' : ''; // one tap back to None
   document.getElementById('stopPercent').setAttribute('aria-invalid', String(!Number.isFinite(state.stopPercent)));
   document.querySelectorAll('#atrPresets button').forEach(b => {
     const active = Number(b.dataset.atr) === state.atrMultiplier;

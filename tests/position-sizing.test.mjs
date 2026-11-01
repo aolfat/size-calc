@@ -672,3 +672,16 @@ test('quick lookup captures sell intent before fetching and spreads retain risk 
   assert.equal(run("Object.values(pinnedData).find(d => d.kind === 'spread').sizing"), undefined);
   assert.equal(run("sizeUnit(Object.values(pinnedData).find(d => d.kind === 'spread'))"), 100);
 });
+
+test('the Off button beside the stop adjustment shows while one is on and turns it back to None in one tap', async () => {
+  const { run, elements, storage } = await app();
+  assert.equal(elements.get('stopAdjOff').style.display, 'none', 'hidden with no adjustment');
+  run('setAtrMultiplier(1)');
+  assert.equal(elements.get('stopAdjOff').style.display, '');
+  run('actions.stopAdjustmentOff()');
+  assert.equal(run('stopStrategy'), 'none');
+  assert.equal(storage.get('stop_strategy'), 'none', 'saved');
+  assert.equal(elements.get('stopAdjOff').style.display, 'none');
+  run('setStopPercent(0.1)');
+  assert.equal(elements.get('stopAdjOff').style.display, '', 'percentage too');
+});

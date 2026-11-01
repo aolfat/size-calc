@@ -353,6 +353,7 @@ export const actions = {
   stopsChanged: () => stopsChanged(),
   setStopStrategy: el => setStopStrategy(/** @type {HTMLSelectElement} */ (el).value),
   setAtrMultiplier: el => setAtrMultiplier(num(el)),
+  stopAdjustmentOff: () => setStopStrategy('none'),
   setStopPercent: el => setStopPercent(num(el)),
   setTimeZone: el => setTimeZone(arg(el)),
   stopPercentTyped: el => setStopPercent(/** @type {HTMLInputElement} */ (el).value, true),
