@@ -46,7 +46,7 @@
 .stop-buffer-label { font-size: 0.75rem; color: var(--text2); }
 .stop-presets { display: flex; gap: 0.25rem; flex-wrap: wrap; }
 .stop-buffer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-#stopStrategy { width: auto; font-size: 0.75rem; padding: 0.375rem 0.5rem; }
+.seg.stop-strategy button { font-size: 12px; padding: 5px 12px; }
 #percentControls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
 #percentControls label { font-size: 0.6875rem; color: var(--text2); }
 #stopPercent { width: 5.5rem; padding: 0.375rem 0.5rem; font-size: 0.75rem; }

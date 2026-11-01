@@ -12,8 +12,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Inputs clear on symbol change.
   Only an explicit Load (fetchQuote) reads the ticker field, which doubles as the search box; every refresh (refreshQuote, live ticks, mode switch, expiry, chart interval) keys off `state.quoteData.symbol`, so typed-but-unloaded text never swaps the quote under the old stops.
   Symbols must match isSymbol (ticker.js) before they're fetched or saved, and are URL-encoded and escaped everywhere
-- **Stop adjustment strategies**: selector below the stop inputs offers None (default), 5m ATR, and Percentage.
-  While an adjustment is on, an **Off** button beside the selector (stopAdjustmentOff) sets it back to None in one tap.
+- **Stop adjustment strategies**: a segmented control below the stop inputs (#stopStrategy, setStopStrategy) offers None (default), 5m ATR, and Percent.
+  Every choice is in view, so turning an adjustment off is one tap on None.
   ATR keeps its 0.25× / 0.5× / 1× / 1.5× / 2× chips.
   Percentage offers 0.025 / 0.05 / 0.1 / 0.25 / 0.5% presets plus a custom input (0 ≤ percent < 100).
   The percentage is of the LOD/HOD price, not entry-to-stop distance: long stop = LOD × (1 − percent / 100), short stop = HOD × (1 + percent / 100).

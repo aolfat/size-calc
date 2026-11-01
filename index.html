@@ -156,13 +156,12 @@
     </div>
     <div class="stop-buffer" id="stopAdjustment">
       <div class="stop-buffer-controls">
-        <label class="stop-buffer-label" for="stopStrategy">Stop adjustment</label>
-        <select id="stopStrategy" data-change="setStopStrategy" aria-describedby="stopBufferInfo">
-          <option value="none">None</option>
-          <option value="atr">5m ATR</option>
-          <option value="percent">Percentage</option>
-        </select>
-        <button type="button" class="filter-btn stop-adj-off" id="stopAdjOff" data-action="stopAdjustmentOff" title="Turn the stop adjustment off" style="display:none;">Off</button>
+        <span class="stop-buffer-label" id="stopStrategyLabel">Stop adjustment</span>
+        <div class="seg stop-strategy" id="stopStrategy" role="group" aria-labelledby="stopStrategyLabel" aria-describedby="stopBufferInfo">
+          <button type="button" data-strategy="none" aria-pressed="true" class="active" data-action="setStopStrategy" data-arg="none">None</button>
+          <button type="button" data-strategy="atr" aria-pressed="false" data-action="setStopStrategy" data-arg="atr">5m ATR</button>
+          <button type="button" data-strategy="percent" aria-pressed="false" data-action="setStopStrategy" data-arg="percent">Percent</button>
+        </div>
         <div id="atrPresets" class="stop-presets" role="group" aria-label="ATR multiplier" style="display:none;">
           <button type="button" class="filter-btn" data-atr="0.25" aria-pressed="false" data-action="setAtrMultiplier" data-arg="0.25">0.25×</button>
           <button type="button" class="filter-btn" data-atr="0.5" aria-pressed="false" data-action="setAtrMultiplier" data-arg="0.5">0.5×</button>
