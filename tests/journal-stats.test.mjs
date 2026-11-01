@@ -463,3 +463,18 @@ test('phones: the Trades dates sit in Filters and count as one on', async () => 
   a.run('toggleJournalFilters()');
   assert.match(out(), /id="journalFrom" value="2026-10-06"/);
 });
+
+test('a touch screen applies a date box once its picker closes: the redraw no longer pulls the box from under it', async () => {
+  const a = await app({ width: 390, supabase: fakeRecords(RECORDS), session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  a.run(`var box = { dataset: { arg: 'from' }, value: '2026-10-06', listeners: 0, addEventListener(type, fn) { this.listeners++; this.done = fn; } }; document.activeElement = box;`);
+  a.run('actions.setJournalDates(box)');
+  assert.equal(a.state.journalFrom, '', 'waits while the picker is open');
+  a.run("box.value = '2026-10-07'; actions.setJournalDates(box)");
+  assert.equal(a.run('box.listeners'), 1, 'one wait for the latest value');
+  a.run('document.activeElement = null; box.done()');
+  assert.equal(a.state.journalFrom, '2026-10-07', 'closing the picker applies the day picked');
+  a.run("box.value = '2026-10-08'; actions.setJournalDates(box)");
+  assert.equal(a.state.journalFrom, '2026-10-08', 'a change with the box not focused applies at once');
+});

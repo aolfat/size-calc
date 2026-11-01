@@ -460,7 +460,7 @@ button.jc-day:hover { border-color: var(--border2); }
   .jc-span button { flex: 1 1 0; }
   .js-range { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
   .js-range label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .js-range .jr-from input { margin-left: 0; width: 100%; min-width: 0; }
+  .js-range .jr-from input { margin-left: 0; width: 100%; min-width: 0; min-height: 40px; }
 }
 /* the Journal's stats */
 .js-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 4px 0 10px; }
@@ -655,6 +655,9 @@ span.journal-pick { cursor: default; }
 .jr-from { white-space: nowrap; }
 .jr-from input { margin-left: 4px; padding: 2px 6px; font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); outline: none; color-scheme: dark; vertical-align: baseline; }
 .jr-from input:focus { border-color: var(--blue); }
+/* iOS draws an empty date box with no text, and it collapsed to a sliver too small to tap; its value centers by default */
+.jr-from input:where([type="date"]) { min-height: 30px; min-width: 120px; }
+.jr-from input:where([type="date"])::-webkit-date-and-time-value { text-align: left; }
 .jt-deck-end { padding: 8px 0 4px; }
 .jt-deck-end .setup-title { margin: 0 0 12px; }
 @media (max-width: 600px) {
@@ -847,7 +850,7 @@ span.journal-pick { cursor: default; }
   .journal-filters .jc-daychip { justify-self: start; }
   .journal-filters .journal-dates { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
   .journal-dates label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .journal-dates .jr-from input { margin-left: 0; width: 100%; min-width: 0; }
+  .journal-dates .jr-from input { margin-left: 0; width: 100%; min-width: 0; min-height: 40px; }
   .journal-dates .pos-link { grid-column: 1 / -1; justify-self: start; }
   .journal-filters .jf { grid-column: 1 / -1; }
   .jf-filter { flex: 1 1 100%; }

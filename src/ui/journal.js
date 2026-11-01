@@ -286,6 +286,19 @@ const onDates = list => {
   return list.filter(t => (t.openedAt && inside(nyParts(t.openedAt).day)) || [...exitDays(t)].some(inside));
 };
 /** Trades from … to …: either end may be blank (From alone: that day on), a From after To swaps them */
+/**
+ * A Journal date box's change, applied once you're done picking. On a touch screen the picker fires change while it's
+ * still open, and the redraw replaced the box under it (an iPhone's picker closed after the first spin or tap), so there
+ * the change waits for the box to lose focus, which closing the picker does; elsewhere it applies at once.
+ * @param {HTMLElement} el @param {() => void} apply reads the box's value when it runs
+ */
+export function whenPicked(el, apply) {
+  if (!mq('(pointer: coarse)') || document.activeElement !== el || !el.addEventListener) { apply(); return; }
+  if (el.dataset.pickPending) return; // one blur applies the latest value
+  el.dataset.pickPending = '1';
+  el.addEventListener('blur', () => { delete el.dataset.pickPending; apply(); }, { once: true });
+}
+
 export function setJournalDates(end, value) {
   const v = /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '';
   if (end === 'to') state.journalTo = v; else state.journalFrom = v;
