@@ -22,3 +22,11 @@ export async function dailyHistory(symbol) {
   const days = (await res.json())?.history?.day;
   return days ? (Array.isArray(days) ? days : [days]) : [];
 }
+
+/** a session id for the streaming socket (good for 5 minutes until the socket uses it); throws without one */
+export async function streamSession() {
+  const res = await fetch(`${baseUrl()}/markets/events/session`, { method: 'POST', headers: headers() });
+  const id = (await res.json())?.stream?.sessionid;
+  if (!res.ok || typeof id !== 'string' || !id) throw new Error('No stream session');
+  return id;
+}

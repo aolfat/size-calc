@@ -15,7 +15,7 @@ import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
 import { effects } from './effects.js';
 import { setFuturesFees } from './futures.js';
-import { toggleLive } from './live.js';
+import { setLiveDefault, toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
 import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, setRPreset, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
@@ -348,6 +348,7 @@ export const actions = {
   tickerInputChanged: () => tickerInputChanged(),
   refreshQuote: () => refreshQuote(),
   toggleLive: () => toggleLive(),
+  setLiveDefault: el => setLiveDefault(arg(el)),
   loadTicker: el => loadTicker(arg(el)),
   setDirection: el => setDirection(arg(el)),
   stopsChanged: () => stopsChanged(),

@@ -192,6 +192,15 @@ export function createState() {
     livePolling: false,
     liveModeIdx: 0,
     livePausedRemaining: 0,
+    liveAlways: false, // Live with no countdown (phones and tablets start it on every Load): runs while the app is open
+    liveOptOut: '', // the symbol whose Live you stopped: a Load of it doesn't start Live again
+    liveSocket: null, // the streaming socket (core/stream.js) while Live is on
+    liveStreamSymbol: '', // the symbol the socket was last told to watch
+    liveStreamOk: false, // events are arriving: the quote stops polling
+    liveStreamRetry: 0, // no new socket before this time (ms) after one failed
+    liveRenderAt: 0, // the last quote render a stream event drew (ms)
+    liveRenderTimer: null, // the trailing render for events that landed inside the throttle
+    liveChainBusy: false,
     allExps: [],
     expsExpanded: false,
     chainLoading: false,

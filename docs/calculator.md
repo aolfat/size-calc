@@ -105,7 +105,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Chart draws PDH/PDL/PDC gray dashed lines when inside the visible range
 - **Recent tickers**: last 5 symbols as chips under the symbol row (recent_tickers, MRU, current excluded).
   Chain auto-scrolls to the ATM row on user-driven loads only (pendingAtmScroll — never on live polls).
-  Live mode is a duration ladder: tap ⚡ for 1m @ 5s ticks, tap again to extend 5m @ 10s, again 30m @ 20s, again stops (LIVE_MODES).
+  On desktop, Live mode is a duration ladder: tap ⚡ for 1m @ 5s ticks, tap again to extend 5m @ 10s, again 30m @ 20s, again stops (LIVE_MODES).
   Refreshes pinned cards every 4th tick offset from the chart.
   Backgrounding PAUSES the session (remaining time kept) and returning resumes it
 - **Reverse sizing**: Shares stat and Contracts stats (detail row, pinned cards) are editable inputs; committing a quantity writes risk$ back (riskForQty) and everything re-renders from it.
@@ -172,6 +172,17 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 - **Keyboard shortcuts**: single keydown listener, ? shows the map.
   Keys ignored while typing in fields or while a sheet is open; Esc closes an open sheet first
 - **Live mode**: ⚡ button polls quote + current chain each tick, chart every 4th tick, with countdown and overlap guards (duration ladder — see Recent tickers bullet)
+  The price streams (ui/live.js, core/stream.js): while Live is on, a stock's quote comes from Tradier's WebSocket (`wss://ws.tradier.com/v1/markets/events`, a session id from POST /markets/events/session first, streamSession), trade by trade, and the REST quote stops polling.
+  Trade events move last, volume and the change, and widen the day's low and high only when they print in regular hours; quote events move bid and ask; summary events set open, high, low and the prior close (applyStreamEvent folds each into the REST quote's shape, so everything downstream reads it unchanged).
+  Events redraw the quote at most every 250ms, and not while you're typing in the share count.
+  A Load while live tells the open socket the new symbol (subscribeMessage) and ignores the old one's events.
+  No stream with a sandbox key or for futures (Schwab's quote polls); a refused session or a dropped socket polls the quote every 2s and tries the stream again after 15s; backgrounding closes the socket and returning opens a fresh one.
+  Sockets open through effects.openSocket, so tests use a fake.
+- **Live by default on phones and tablets** (below DESKTOP_MQ): every Load starts Live with no countdown (autoLive, startAlwaysLive, state.liveAlways): a 1s tick polls the quote every 2nd second only while the stream is down (and for futures), the chain every 5s in Options, the chart and pinned cards every 20s.
+  The button reads 'Live · tap: stop'; a tap stops it and a Load of the same ticker leaves it off (state.liveOptOut) until another ticker loads.
+  It rests (paused) in the other tabs and while backgrounded, and picks up on return.
+  Settings > Live switches it to 'Tap to start' (`live_mobile` '0', this device only, not synced); a tap then starts the desktop ladder.
+  Desktop stays tap-to-start, though its ladder streams the price too.
 - **Extended hours**: extSession(q) is null unless NOW (New York) is inside a PRE or AH window, and only counts prints and quotes from that same window today; it picks the fresher of two signals inside the PRE (4:00–9:30 ET, vs prevclose) / AH (≥16:00, vs close) windows — the last trade print, or the extended NBBO mid (bid/ask with their own timestamps; Tradier often freezes `last` at the 15:59 closing print).
   Spreads >5% of mid rejected as overnight junk; null during RTH or when nothing is from today (ET).
   Shown as a dim secondary figure in the quote bar (qExt) and sticky bar

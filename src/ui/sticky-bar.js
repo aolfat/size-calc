@@ -49,7 +49,10 @@ export function jumpTo(id) {
 export function syncSbLive() {
   const el = document.getElementById('sbLive');
   if (!el) return;
-  if (state.liveInterval) {
+  if (state.liveInterval && state.liveAlways) {
+    el.className = 'sb-live on';
+    el.innerHTML = '<span class="pulse"></span>live';
+  } else if (state.liveInterval) {
     const remain = Math.max(0, Math.ceil((state.liveEnd - Date.now()) / 1000));
     const mmss = remain >= 60 ? `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, '0')}` : `${remain}s`;
     el.className = 'sb-live on';

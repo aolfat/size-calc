@@ -81,6 +81,7 @@ export function setView(v) {
   marketScheduleRefresh();
   if (state.marketView) { pauseLive(); loadMarket(); }
   else if (calc && !document.hidden) resumeLive();
+  else if (!calc && state.liveAlways) pauseLive(); // always-on Live rests outside the calculator
   if (state.utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
   if (state.positionsView) refreshPositions(); else stopPositions();
   if (state.journalView) openJournal();

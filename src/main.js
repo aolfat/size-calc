@@ -11,7 +11,7 @@ import { updateSizingControls } from './ui/allocation.js';
 import { updateChainControls } from './ui/chain.js';
 import { initChartEvents, updateIntervalChips } from './ui/chart.js';
 import { initDailyChartEvents } from './ui/daily.js';
-import { pauseLive, resumeLive } from './ui/live.js';
+import { paintLiveDefault, pauseLive, resumeLive } from './ui/live.js';
 import { initMarketEvents, marketScheduleRefresh } from './ui/market.js';
 import { initModelBookEvents } from './ui/model-books.js';
 import { initPositionChartEvents } from './ui/position-chart.js';
@@ -81,6 +81,7 @@ window.addEventListener('online', marketScheduleRefresh);
 window.addEventListener('offline', marketScheduleRefresh);
 
 renderRecentTickers();
+paintLiveDefault();
 // Restore the Google owner before finishing or using a brokerage connection on this page.
 initCloud(bootHref).then(() => initSchwab(bootHref));
 

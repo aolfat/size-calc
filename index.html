@@ -116,7 +116,7 @@
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: tap for 1m (5s ticks), tap again for 5m (10s), again for 30m (20s), again to stop. Pauses while backgrounded (l)">⚡ Live</button>
+        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Phones and tablets go live on every Load (tap to stop); desktop taps for 1m, again for 5m, again for 30m, again to stop. Pauses while backgrounded (l)">⚡ Live</button>
       </div>
     </div>
     <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
@@ -582,6 +582,11 @@
         <div class="sheet-label">Times</div>
         <div class="seg" role="group" aria-label="Time zone"><button id="zoneEt" class="active" aria-pressed="true" data-action="setTimeZone" data-arg="et">New York (ET)</button><button id="zonePt" aria-pressed="false" data-action="setTimeZone" data-arg="pt">Pacific (PT)</button></div>
         <p class="hint">Every clock time the app shows: charts, fills, orders, updates. Days, sessions and stats stay on the market's New York calendar. This device only.</p>
+      </div>
+      <div class="sheet-section">
+        <div class="sheet-label">Live</div>
+        <div class="seg" role="group" aria-label="Live on phones and tablets"><button id="liveDefaultOn" class="active" aria-pressed="true" data-action="setLiveDefault" data-arg="on">On when a ticker loads</button><button id="liveDefaultOff" aria-pressed="false" data-action="setLiveDefault" data-arg="off">Tap to start</button></div>
+        <p class="hint">On phones and tablets, Live starts on every Load and stays on while the app is open: the price streams trade by trade, the chain refreshes every 5s. Tap Live to stop it for that ticker. Desktop always starts with a tap. This device only.</p>
       </div>
       <div class="sheet-section">
         <div class="sheet-label">Positions</div>

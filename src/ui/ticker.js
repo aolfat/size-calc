@@ -1,4 +1,5 @@
 // Ticker: load a symbol (or send shorthand to quick lookup), fetch the quote (a futures ticker's from Schwab), recent ticker chips.
+import { autoLive } from './live.js';
 import { state } from '../state.js';
 import { inZone } from '../lib/zone.js';
 import { marketEscape } from '../core/format.js';
@@ -103,6 +104,7 @@ export async function fetchQuote() {
       await fetchChain(sym, state.selectedExp, true);
     }
     if (current()) document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
+    if (current()) autoLive(); // phones and tablets go live on every Load
   } catch(e) {
     if (current()) showError('Error: ' + e.message);
   } finally {
