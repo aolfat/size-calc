@@ -11,7 +11,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { originalSize } from '../core/journal.js';
-import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, editable, firstRiskKey, firstRisks, fmtPositionPrice, orderTypeWord, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
@@ -75,9 +75,26 @@ function positionTrades() {
 
 const rShown = () => state.posCols.includes('r');
 
+// ---------- the first stop each position had, kept on this device (positions_first_stops) so a breakeven stop keeps R ----------
+
+function keptFirstRisks() {
+  try { const v = JSON.parse(store.get('positions_first_stops') || '{}'); return v && typeof v === 'object' ? v : {}; } catch(e) { return {}; }
+}
+
+/** after a read with its stops: remember new positions' first loss-side stops, forget positions no longer held */
+function rememberFirstRisks(p) {
+  if (!p || p.stopsMissing) return;
+  store.set('positions_first_stops', JSON.stringify(firstRisks(keptFirstRisks(), p.rows, p.last4 || '')));
+}
+
+const firstRiskOf = row => keptFirstRisks()[firstRiskKey(row, state.positions?.last4 || '')] || null;
+
+/** a position's R, counted like the R column everywhere: the Journal trade, else the first stop this device saw, else the stop now */
+const rOf = row => positionR(row, positionTrades(), state.positions?.last4 || '', firstRiskOf(row));
+
 /** 1R in a position's own price for the chart's targets, counted like the R column (the Journal trade's first stop when it's read) */
 export function positionRUnit(row) {
-  return rUnit(row, positionTrades(), state.positions?.last4 || '');
+  return rUnit(row, positionTrades(), state.positions?.last4 || '', firstRiskOf(row));
 }
 
 /** what 1R counts from, in a few words: 'the first stop $35.50', 'the stop $35.50', 'the premium' */
@@ -85,6 +102,7 @@ export function rUnitWords(unit, row) {
   const px = v => fmtPositionPrice(v, row.tradeAs);
   if (unit.basis === 'premium') return 'the premium';
   if (unit.source === 'journal') return unit.basis === 'stop' ? `the first stop ${px(unit.stop)}` : 'your Journal risk';
+  if (unit.source === 'first') return `the first stop ${px(unit.stop)}`;
   return `the stop ${px(unit.stop)}`;
 }
 
@@ -145,15 +163,17 @@ onCaptureChange(saved => { if (saved && state.positionsView && !state.journalVie
 
 function rCell(row) {
   if (state.session && !state.journalRecords && (state.posJournalBusy || state.journalLoading)) return '<span class="pos-sub">…</span>';
-  const p = positionR(row, positionTrades(), state.positions?.last4 || '');
+  const p = rOf(row);
   if (p.r === null) return `<span title="${esc(p.why)}">—</span>`;
   const px = v => fmtPositionPrice(v, row.tradeAs);
   const from = p.source === 'journal'
     ? (p.basis === 'premium' ? 'premium' : p.basis === 'stop' ? `first stop ${px(p.stop)}` : 'journal risk')
-    : p.source === 'premium' ? 'premium' : `stop now ${px(p.stop)}`;
+    : p.source === 'premium' ? 'premium' : p.source === 'first' ? `first stop ${px(p.stop)}` : `stop now ${px(p.stop)}`;
   const behind = p.journalQty !== null ? ` The Journal shows ${p.journalQty.toLocaleString('en-US')} open, Schwab ${Math.abs(row.qty).toLocaleString('en-US')}: import to catch up.` : '';
   const title = p.source === 'journal'
     ? `Open P/L over the trade's risk at entry, ${fmt$(p.risk)} (${p.basis === 'premium' ? 'the premium paid' : `stop ${px(p.stop)}`}), from your Journal.`
+    : p.source === 'first'
+    ? `Open P/L over the risk to the first stop this device saw, ${px(p.stop)}, ${fmt$(p.risk)}, so moving the stop doesn't change it. ${state.session ? 'Not matched to an open Journal trade.' : 'Sign in to count from the Journal trade.'}${behind}`
     : `Open P/L over the risk to ${p.source === 'premium' ? 'zero (the premium)' : `the nearest stop now, ${px(p.stop)}`}, ${fmt$(p.risk)}. ${state.session ? 'Not matched to an open Journal trade.' : 'Sign in to count from the Journal trade\'s first stop.'}${behind}`;
   const trims = p.withTrims !== null ? `<span class="pos-sub">${rWords(p.withTrims)} with trims</span>` : '';
   return `<span title="${esc(title)}">${signed(p.r, Math.abs(p.r).toFixed(2) + 'R')}<span class="pos-sub">${esc(from)}</span>${trims}</span>`;
@@ -207,6 +227,7 @@ async function readPositions(id, acct, asked) {
     if (id !== state.positionsRequest) return newest();
     state.positions = { ...positionRows(account, orders || []), orders: orders || [], hash: acct.hash, last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
     state.positionsError = '';
+    rememberFirstRisks(state.positions);
     applyAccountValue(account, acct.hash); // the first read of the day sets the account size
     if (asked) showToast(`Positions refreshed at ${inZone(state.positions.asOf)}.`);
   } catch(e) {
@@ -366,7 +387,7 @@ const spreadNote = s => `<span class="pc-note">${esc(s.structure.charAt(0).toUpp
 /** R on the card: the R column's, once the Journal is in when signed in */
 function cardR(r) {
   if (state.session && !state.journalRecords && (state.posJournalBusy || state.journalLoading)) return null;
-  return positionR(r, positionTrades(), state.positions?.last4 || '').r;
+  return rOf(r).r;
 }
 
 function cardRisk(r) {

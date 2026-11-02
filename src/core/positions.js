@@ -458,7 +458,36 @@ const journalTrade = (/** @type {Row} */ row, /** @type {import('./journal.js').
     && x.symbol === row.symbol && x.direction === (row.qty > 0 ? 'long' : 'short')) || null;
 
 /**
- * @typedef {{ r: number | null, withTrims: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
+ * The first loss-side stop this device saw on a position, as 1R per share or contract: kept so moving the stop to breakeven
+ * (or trailing it) doesn't take R away when the Journal can't say. @typedef {{ per: number, stop: number }} FirstRisk
+ */
+
+/** where a position's first stop is kept: account, contract and direction. @param {Row} row @param {string} last4 */
+export const firstRiskKey = (row, last4) => `${last4} ${row.symbol} ${row.qty > 0 ? 'long' : 'short'}`;
+
+/**
+ * The kept first stops after a read of an account: each held position keeps the one it has, a position without one takes
+ * its nearest stop while that stop is still a loss, and positions no longer held in that account are dropped (other
+ * accounts' are left alone). @param {Record<string, FirstRisk>} kept @param {Row[]} rows @param {string} last4
+ * @returns {Record<string, FirstRisk>}
+ */
+export function firstRisks(kept, rows, last4) {
+  /** @type {Record<string, FirstRisk>} */
+  const out = {};
+  for (const [k, v] of Object.entries(kept || {})) if (!k.startsWith(last4 + ' ')) out[k] = v;
+  for (const row of rows) {
+    const k = firstRiskKey(row, last4), was = kept?.[k];
+    if (was && was.per > 0) { out[k] = was; continue; }
+    const near = row.stopOrders[0];
+    if (!near || !(row.avg > 0)) continue;
+    const dist = row.qty > 0 ? row.avg - Number(near.stop) : Number(near.stop) - row.avg;
+    if (dist > 0) out[k] = { per: dist, stop: Number(near.stop) };
+  }
+  return out;
+}
+
+/**
+ * @typedef {{ r: number | null, withTrims: number | null, risk: number | null, source: 'journal' | 'first' | 'stop' | 'premium' | null,
  *   basis: string | null, stop: number | null, why: string, journalQty: number | null }} PositionR
  */
 
@@ -466,13 +495,14 @@ const journalTrade = (/** @type {Row} */ row, /** @type {import('./journal.js').
  * How many R a position is up or down: open P/L ÷ the initial risk. The risk is the Journal's open trade on it (same account,
  * contract and direction, holding the same quantity): its first stop, your own stop, or a long option's premium, so a stop
  * trailed up later doesn't shrink it. Without one (signed out, not imported yet, the Journal holding another quantity, or the
- * contract inside a spread), it's the nearest working stop's distance from your average cost, or a long option's premium
- * with no stop. withTrims adds what the trade's exits already took (before fees, like Schwab's P/L), when it had some.
+ * contract inside a spread), it's the first stop this device saw on it (first, firstRisks), so a stop moved to breakeven
+ * still counts from the risk you took; else the nearest working stop's distance from your average cost, or a long
+ * option's premium with no stop. withTrims adds what the trade's exits already took (before fees, like Schwab's P/L), when it had some.
  * journalQty = the Journal's open quantity when it didn't match the position's.
  * @param {Row} row @param {import('./journal.js').Trade[] | null} trades the Journal's trades, null when they aren't read
- * @param {string} last4 @returns {PositionR}
+ * @param {string} last4 @param {FirstRisk | null} [first] @returns {PositionR}
  */
-export function positionR(row, trades, last4) {
+export function positionR(row, trades, last4, first = null) {
   const out = /** @type {PositionR} */ ({ r: null, withTrims: null, risk: null, source: null, basis: null, stop: null, why: '', journalQty: null });
   if (row.pnl === null) return { ...out, why: 'No average cost from Schwab.' };
   const long = row.qty > 0, held = Math.abs(row.qty), t = journalTrade(row, trades, last4);
@@ -482,6 +512,11 @@ export function positionR(row, trades, last4) {
   }
   const journalQty = t ? t.openQty : null;
   const near = row.stopOrders[0];
+  // the first stop counts once the stop has moved off it; while it's still the one working, it's simply the stop now
+  if (first && first.per > 0 && !(near && Number(near.stop) === first.stop)) {
+    const risk = first.per * held * row.mult;
+    return { ...out, r: row.pnl / risk, risk, source: 'first', basis: 'stop', stop: first.stop, journalQty };
+  }
   if (near) {
     const dist = long ? row.avg - Number(near.stop) : Number(near.stop) - row.avg;
     if (dist <= 0) return { ...out, stop: near.stop, journalQty, why: 'The stop is at or past breakeven: no risk left to count R from.' };
@@ -785,12 +820,12 @@ export function targetGain(row, price, qty, unit = null) {
 
 /**
  * 1R in the position's own price, so a target can be set in R: the risk positionR counts from (the Journal trade's risk at
- * entry over its entry size, so trims don't change it; else the nearest stop's distance from your cost, or a long option's
+ * entry over its entry size, so trims don't change it; else the first stop this device saw; else the nearest stop's distance from your cost, or a long option's
  * premium), per share or contract. null with why when there's none.
- * @param {Row} row @param {import('./journal.js').Trade[] | null} trades @param {string} last4
+ * @param {Row} row @param {import('./journal.js').Trade[] | null} trades @param {string} last4 @param {FirstRisk | null} [first]
  */
-export function rUnit(row, trades, last4) {
-  const p = positionR(row, trades, last4);
+export function rUnit(row, trades, last4, first = null) {
+  const p = positionR(row, trades, last4, first);
   if (p.risk === null) return { per: null, source: p.source, basis: p.basis, stop: p.stop, why: p.why };
   const t = p.source === 'journal' ? journalTrade(row, trades, last4) : null;
   const size = t ? t.entryQty : Math.abs(row.qty);

@@ -592,6 +592,25 @@ test('R without a Journal trade: the nearest stop, a long option\'s premium, not
   assert.match(noStop.why, /No stop/);
 });
 
+test('R keeps the first stop this device saw: a stop moved to breakeven still counts from the risk taken', async () => {
+  const { run } = await app();
+  const rows = [...run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(ORDERS)}).rows`)];
+  const shrt = rows[1], key = run(`firstRiskKey(${JSON.stringify(shrt)}, '6789')`);
+  const kept = run(`firstRisks({ 'other 1 X long': { per: 1, stop: 9 } }, ${JSON.stringify(rows)}, '6789')`);
+  assert.deepEqual({ ...kept[key] }, { per: 2, stop: 22 }, 'the short\'s $22 stop, $2 over its cost');
+  assert.ok(kept['other 1 X long'], 'another account\'s are left alone');
+  assert.ok(!Object.keys(kept).some(k => k.endsWith(`${rows[3].symbol} long`)), 'a stop past breakeven is no first risk');
+  // the stop moved to the $20 cost: the stop alone has no risk left, the kept first stop still does
+  const be = { ...shrt, stop: 20, stopOrders: [{ ...shrt.stopOrders[0], stop: 20 }] };
+  assert.equal(run(`positionR(${JSON.stringify(be)}, null, '6789')`).r, null);
+  const r = run(`positionR(${JSON.stringify(be)}, null, '6789', ${JSON.stringify(kept[key])})`);
+  assert.equal(r.r, 1);
+  assert.equal(r.source, 'first');
+  assert.equal(run(`rUnit(${JSON.stringify(be)}, null, '6789', ${JSON.stringify(kept[key])})`).per, 2, '1R for the close ticket\'s R chips');
+  assert.equal(run(`firstRisks(${JSON.stringify(kept)}, ${JSON.stringify([be])}, '6789')`)[key].stop, 22, 'kept through the move');
+  assert.deepEqual(Object.keys(run(`firstRisks(${JSON.stringify(kept)}, [], '6789')`)), ['other 1 X long'], 'dropped once closed');
+});
+
 test('1R in the position\'s price sets a target in R: the Journal trade\'s risk per share at entry, else the nearest stop or the premium', async () => {
   const { run } = await app();
   const rows = orders => [...run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(orders)}).rows`)];
