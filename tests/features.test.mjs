@@ -214,6 +214,62 @@ test('volume run rate: so far against the same time of day over the 20 sessions 
   assert.deepEqual([old.state, old.note], ['unknown', 'fewer than 10 of the 20 sessions before'], 'four kept sessions are too few');
 });
 
+test('the other volume features: the median run rate, at the exit, the 15 minutes before, the day so far, and the daily ones', () => {
+  const data = world();
+  const regular = (bars, from, to) => bars.filter(b => b.time >= from && b.time < to).reduce((n, b) => n + b.volume, 0);
+  const today = data.intraday.get('AAPL').get(D), prior = data.intraday.get('AAPL').get(weekdaysBefore(D, 1)[0]);
+  // median: the same as the average while every day before is alike; one heavy day moves only the average
+  const med = byKey('rvol_median_at_entry');
+  near(result(med, stock('10:02'), data).value, result(byKey('rvol_at_entry'), stock('10:02'), data).value, 'alike days: median = average');
+  const spiky = world();
+  for (const b of spiky.intraday.get('AAPL').get(weekdaysBefore(D, 20)[5])) b.volume *= 30;
+  near(result(med, stock('10:02'), spiky).value, result(med, stock('10:02'), data).value, 'one heavy day leaves the median');
+  assert.ok(result(byKey('rvol_at_entry'), stock('10:02'), spiky).value < 1.5, 'and drags the average');
+  assert.equal(result(med, stock('09:31'), data).note, 'entered in the first 5 minutes');
+  // at the exit (15:00): the same run rate, to the exit
+  near(result(byKey('rvol_at_exit'), stock('10:02'), data).value, Math.round(regular(today, '09:30', '15:00') / regular(prior, '09:30', '15:00') * 1e4) / 1e4, 'to 15:00, both days');
+  // the 15 minutes before the entry: 09:45, 09:50, 09:55 at 10:02
+  const recent = byKey('rvol_recent_at_entry');
+  near(result(recent, stock('10:02'), data).value, Math.round(regular(today, '09:45', '10:00') / regular(prior, '09:45', '10:00') * 1e4) / 1e4, 'the last three bars, both days');
+  assert.equal(result(recent, stock('09:41'), data).note, 'entered before 15 minutes of bars');
+  // the day so far at the exit against a whole normal session
+  near(result(byKey('day_volume_at_exit'), stock('10:02'), data).value, Math.round(regular(today, '09:30', '15:00') / regular(prior, '09:30', '16:00') * 1e4) / 1e4, 'to 15:00 over 09:30 to 16:00');
+  // daily: a flat million a day
+  const daily = data.daily.get('AAPL').filter(b => b.date < D);
+  near(result(byKey('rvol_prior_day'), stock('10:02'), data).value, 1, 'a normal day before');
+  const heavy = world();
+  heavy.daily.get('AAPL').filter(b => b.date < D).at(-1).volume = 3e6;
+  near(result(byKey('rvol_prior_day'), stock('10:02'), heavy).value, 3, 'three times the day before');
+  near(result(byKey('volume_trend_5_20'), stock('10:02'), heavy).value, (1 + 2 / 5) / (1 + 2 / 20), 'the heavy day weighs more in 5 days than 20');
+  near(result(byKey('avg_dollar_volume_20d'), stock('10:02'), data).value, Math.round(daily.slice(-20).reduce((n, b) => n + b.close, 0) / 20 * 1e4) / 1e4, 'average close × a million, in millions');
+  const short = { ...data, daily: new Map([...data.daily].map(([s, b]) => [s, s === 'AAPL' ? b.slice(-12) : b])) };
+  assert.equal(result(byKey('rvol_prior_day'), stock('10:02'), short).note, 'only 9 sessions of daily history');
+});
+
+test('volume in the session at the entry: the last bar against the average bar, volume over the entry, VWAP bands, on-balance volume', () => {
+  const data = world();
+  const bars = data.intraday.get('AAPL').get(D).filter(b => b.time >= '09:30' && b.time < '10:00'); // ended by 10:02
+  const avg = bars.reduce((n, b) => n + b.volume, 0) / bars.length;
+  near(result(byKey('last_bar_vol_vs_session'), stock('10:02'), data).value, Math.round(bars.at(-1).volume / avg * 1e4) / 1e4, "the 09:55 bar over the session's average bar");
+  assert.equal(result(byKey('last_bar_vol_vs_session'), stock('09:36'), data).note, 'entered before two bars had ended');
+  const above = byKey('volume_above_entry');
+  assert.equal(result(above, stock('10:02'), data, 1).value, 100, 'under every low: all of it above');
+  assert.equal(result(above, stock('10:02'), data, 1000).value, 0, 'over every high: none');
+  const mid = result(above, stock('10:02'), data, (bars[0].low + bars.at(-1).high) / 2).value;
+  assert.ok(mid > 0 && mid < 100, 'in the range: some');
+  const tp = b => (b.high + b.low + b.close) / 3, v = bars.reduce((n, b) => n + b.volume, 0);
+  const vwap = bars.reduce((n, b) => n + tp(b) * b.volume, 0) / v;
+  const sd = Math.sqrt(bars.reduce((n, b) => n + b.volume * (tp(b) - vwap) ** 2, 0) / v);
+  near(result(byKey('vwap_sd_at_entry'), stock('10:02'), data, 101.37).value, Math.round((101.37 - vwap) / sd * 1e4) / 1e4, 'the fill in standard deviations from VWAP');
+  near(result(byKey('vwap_sd_at_entry'), call('10:02'), data).value, Math.round((bars.at(-1).close - vwap) / sd * 1e4) / 1e4, "an option: the underlying's last close");
+  const obv = byKey('obv_30m_at_entry');
+  assert.equal(result(obv, stock('10:02'), data).value, 100, 'every bar closed higher');
+  const falling = world();
+  falling.intraday.get('AAPL').get(D).forEach((b, i) => { b.close = 200 - i; });
+  assert.equal(result(obv, stock('10:07'), falling).value, -100, 'every bar closed lower than the one before');
+  assert.equal(result(obv, stock('09:47'), data).note, 'entered before 30 minutes of bars');
+});
+
 test('entry vs VWAP: a stock\'s fill against the session VWAP so far; an option uses its underlying\'s price', () => {
   const data = world();
   const f = byKey('entry_vs_vwap');
@@ -380,11 +436,11 @@ test('the Journal stamps every trade after it loads, shows the Features tab, and
   a.run(`openJournalTrade('${KEY}')`);
   await settle();
   const body = () => a.elements.get('jtBody').innerHTML;
-  assert.match(body(), /data-action="setJournalTradeTab" data-arg="features">Features <span class="jt-tab-n">6<\/span>/, 'a Features tab with how many have a value');
+  assert.match(body(), new RegExp(`data-action="setJournalTradeTab" data-arg="features">Features <span class="jt-tab-n">${FEATURES.length}</span>`), 'a Features tab with how many have a value');
   assert.doesNotMatch(body(), /id="jtFeatures"/, 'the review shows first');
   assert.match(body(), /class="journal-review|Review/);
   a.run("setJournalTradeTab('features')");
-  assert.match(body(), /6 features at the entry: 6 with a value\. Tap one for what it measures/);
+  assert.match(body(), new RegExp(`${FEATURES.length} features at the entry and exit: ${FEATURES.length} with a value\\. Tap one for what it measures`));
   assert.match(body(), /<div class="jf-fam">Market<\/div>/, 'by family');
   assert.match(body(), /<span class="jf-name">Volume run rate at entry<\/span><span class="jf-val">\d\.\d\d×<\/span>/);
   assert.match(body(), /<span class="jf-name">Distance from the all-time high<\/span><span class="jf-val">−[\d.]+%<\/span><span class="jf-how">high [\d.]+ on/);
@@ -414,7 +470,7 @@ test('a feature waiting for its data is tried again later, not stamped; a new ve
   await settle();
   a.run("setJournalTradeTab('features')");
   assert.match(a.elements.get('jtBody').innerHTML, /<details class="jf-item jf-quiet">\s*<summary><span class="jf-name">SPY vs daily 8 EMA<\/span><span class="jf-val">—<\/span><span class="jf-how">waiting for SPY 5-minute bars on 10\/14/);
-  assert.match(a.elements.get('jtBody').innerHTML, /5 with a value, 1 still to come/);
+  assert.match(a.elements.get('jtBody').innerHTML, new RegExp(`${FEATURES.length - 1} with a value, 1 still to come`));
   a.run('closeJournalTrade()');
   // SPY's day saved: the next run waits out the retry gap, then stamps it
   j.supabase.bars.set(`user-1:SPY:${D}`, { user_id: 'user-1', symbol: 'SPY', day: D, bars: pack(j.w.intraday.get('SPY').get(D)) });

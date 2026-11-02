@@ -3,7 +3,7 @@
 // cut off there, so no feature can look ahead. Intraday bars are the saved 5-minute ones: a bar counts once it has ended
 // (it starts 09:40 and the moment is 09:45 or later); the bar the moment falls in shows only its open, which was known
 // when it started. Daily bars are the days before the moment's day, plus that day's open once it's 9:30. The shared
-// helpers (VWAP, volume so far, the volume by the same time on earlier days, EMAs, highs) are worked out once per trade
+// helpers (VWAP, volume so far, the volume by the same time on earlier days (average or median), EMAs, highs) are worked out once per trade
 // and moment, whichever feature asks first. Every read notes what was missing: data that could still come (a day the
 // bar saver hasn't got to, today's bars, daily bars not read yet) makes the feature wait; data gone for good makes it
 // unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare.
@@ -25,6 +25,8 @@ const DAY_MS = 86400000;
 /** the regular session, by the bars' start times */
 const OPEN = '09:30', CLOSE = '16:00';
 const minutes = (/** @type {string} */ hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+/** the middle value (the mean of the middle two for an even count) @param {number[]} xs */
+const median = xs => { const a = [...xs].sort((x, y) => x - y), m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
 
 /** `$self` (the traded symbol; a spread has none), `$underlying` (the stock; an option's underlying), or a symbol by name. @param {string} token @param {FeatureTrade} trade */
 export function featureSymbol(token, trade) {
@@ -95,24 +97,49 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
        * than half of them kept; a day the saver will still fetch makes the feature wait
        * @param {number} n
        */
-      avgVolumeByTime: n => {
-        cur.reads.push({ kind: 'intraday', symbol: s, session, lookback: n });
-        const r = once(`avgvol|${s}|${session}|${n}`, () => {
-          const g = { waits: /** @type {string[]} */ ([]), gones: /** @type {string[]} */ ([]) };
-          const totals = [];
-          for (const d of weekdaysBefore(day, n)) {
-            const rows = dayBars(s, d);
-            if (rows === undefined) { if (couldCome(d)) g.waits.push(`${s} 5-minute bars on ${md(d)}`); continue; }
-            if (!rows.length) continue; // a holiday
-            totals.push(rows.filter(b => inSession(b) && minutes(b.time || '00:00') + 5 <= clockMin).reduce((t, b) => t + (b.volume || 0), 0));
-          }
-          if (totals.length < Math.ceil(n / 2)) g.gones.push(`fewer than ${Math.ceil(n / 2)} of the ${n} sessions before`);
-          return { gaps: g, value: totals.length >= Math.ceil(n / 2) ? totals.reduce((a, b) => a + b, 0) / totals.length : null };
-        });
-        note(r.gaps);
-        return r.value;
+      avgVolumeByTime: n => { const t = priorTotals(n, 'open'); return t && t.reduce((a, b) => a + b, 0) / t.length; },
+      /** the same, the median of those days instead of their average, so one heavy day doesn't move it @param {number} n */
+      medianVolumeByTime: n => { const t = priorTotals(n, 'open'); return t && median(t); },
+      /**
+       * the volume of the last `k` ended bars (the 15 minutes before the moment, for 3), and its average over the same
+       * clock slots on the `n` weekdays before; null before `k` bars have ended
+       * @param {number} k @param {number} n
+       */
+      recentVolumeByTime: (k, n) => {
+        const from = Math.floor(clockMin / 5) * 5 - 5 * k;
+        if (from < minutes(OPEN) && regular) return null;
+        const t = priorTotals(n, from);
+        if (!t) return null;
+        const now = bars.filter(b => minutes(b.time || '00:00') >= from).reduce((a, b) => a + (b.volume || 0), 0);
+        return { now, avg: t.reduce((a, b) => a + b, 0) / t.length };
       },
+      /** the average volume of a whole regular session (09:30 to 16:00) over the `n` weekdays before @param {number} n */
+      avgSessionVolume: n => { const t = priorTotals(n, 'open', minutes(CLOSE)); return t && t.reduce((a, b) => a + b, 0) / t.length; },
     };
+    /**
+     * each of the `n` weekdays before's volume over the bars from `from` (minutes; 'open' = the session's first) that
+     * end by `to` (default: the moment's clock), or null with fewer than half of them kept
+     * @param {number} n @param {number | 'open'} from @param {number} [to]
+     * @returns {number[] | null}
+     */
+    function priorTotals(n, from, to = clockMin) {
+      cur.reads.push({ kind: 'intraday', symbol: s, session, lookback: n });
+      const r = once(`prior|${s}|${session}|${n}|${from}|${to}`, () => {
+        const g = { waits: /** @type {string[]} */ ([]), gones: /** @type {string[]} */ ([]) };
+        const totals = [];
+        for (const d of weekdaysBefore(day, n)) {
+          const rows = dayBars(s, d);
+          if (rows === undefined) { if (couldCome(d)) g.waits.push(`${s} 5-minute bars on ${md(d)}`); continue; }
+          if (!rows.length) continue; // a holiday
+          totals.push(rows.filter(b => { const m = minutes(b.time || '00:00'); return inSession(b) && (from === 'open' || m >= from) && m + 5 <= to; }).reduce((t, b) => t + (b.volume || 0), 0));
+        }
+        const enough = totals.length >= Math.ceil(n / 2);
+        if (!enough) g.gones.push(`fewer than ${Math.ceil(n / 2)} of the ${n} sessions before`);
+        return { gaps: g, value: enough ? totals : null };
+      });
+      note(r.gaps);
+      return r.value;
+    }
     return { series, gaps };
   }
 
