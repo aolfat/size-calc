@@ -453,38 +453,44 @@ export function spreadR(s) {
 }
 
 /** the Journal's open trade on a position: same account, contract and direction, not deleted, not inside a spread */
-const journalTrade = (/** @type {Row} */ row, /** @type {import('./journal.js').Trade[] | null} */ trades, /** @type {string} */ last4) =>
+export const positionJournalTrade = (/** @type {Row} */ row, /** @type {import('./journal.js').Trade[] | null} */ trades, /** @type {string} */ last4) =>
   (trades || []).find(x => x.status === 'open' && !x.deleted && x.kind !== 'spread' && x.account === last4
     && x.symbol === row.symbol && x.direction === (row.qty > 0 ? 'long' : 'short')) || null;
 
 /**
  * @typedef {{ r: number | null, withTrims: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
- *   basis: string | null, stop: number | null, why: string, journalQty: number | null }} PositionR
+ *   basis: string | null, stop: number | null, own: boolean, why: string, journalQty: number | null }} PositionR
  */
 
 /**
  * How many R a position is up or down: open P/L ÷ the initial risk. The risk is the Journal's open trade on it (same account,
- * contract and direction, holding the same quantity): its first stop, your own stop, or a long option's premium, so a stop
- * trailed up later doesn't shrink it. Without one (signed out, not imported yet, the Journal holding another quantity, or the
- * contract inside a spread), it's the nearest working stop's distance from your average cost, or a long option's premium
- * with no stop. withTrims adds what the trade's exits already took (before fees, like Schwab's P/L), when it had some.
+ * contract and direction, holding the same quantity; built over the kept records and the last read's orders, so it's there
+ * before any import): your original stop, else Schwab's first stop on the loss side, else a long option's premium, so a stop
+ * moved to breakeven or trailed later doesn't shrink it. Without one (opened before the history, the Journal holding
+ * another quantity, the contract inside a spread, or no loss-side stop ever), it's the nearest working stop's distance from
+ * your average cost, or a long option's premium with no stop; a stop at or past breakeven then asks for your original stop. withTrims adds what the trade's exits already took (before fees, like Schwab's P/L), when it had some.
  * journalQty = the Journal's open quantity when it didn't match the position's.
  * @param {Row} row @param {import('./journal.js').Trade[] | null} trades the Journal's trades, null when they aren't read
  * @param {string} last4 @returns {PositionR}
  */
 export function positionR(row, trades, last4) {
-  const out = /** @type {PositionR} */ ({ r: null, withTrims: null, risk: null, source: null, basis: null, stop: null, why: '', journalQty: null });
+  const out = /** @type {PositionR} */ ({ r: null, withTrims: null, risk: null, source: null, basis: null, stop: null, own: false, why: '', journalQty: null });
   if (row.pnl === null) return { ...out, why: 'No average cost from Schwab.' };
-  const long = row.qty > 0, held = Math.abs(row.qty), t = journalTrade(row, trades, last4);
+  const long = row.qty > 0, held = Math.abs(row.qty), t = positionJournalTrade(row, trades, last4);
   if (t && t.risk && t.risk > 0.005 && Math.abs(t.openQty - held) < 1e-6) {
     const r = row.pnl / t.risk;
-    return { ...out, r, withTrims: t.exits ? r + t.grossPnl / t.risk : null, risk: t.risk, source: 'journal', basis: t.rBasis, stop: t.stop };
+    return { ...out, r, withTrims: t.exits ? r + t.grossPnl / t.risk : null, risk: t.risk, source: 'journal', basis: t.rBasis, stop: t.stop, own: t.stopSource === 'yours' };
   }
-  const journalQty = t ? t.openQty : null;
+  const journalQty = t && Math.abs(t.openQty - held) > 1e-6 ? t.openQty : null;
   const near = row.stopOrders[0];
   if (near) {
     const dist = long ? row.avg - Number(near.stop) : Number(near.stop) - row.avg;
-    if (dist <= 0) return { ...out, stop: near.stop, journalQty, why: 'The stop is at or past breakeven: no risk left to count R from.' };
+    if (dist <= 0) {
+      const why = !t ? 'The stop is at or past breakeven and no Journal trade matches this position, so there is no original stop to count R from.'
+        : journalQty !== null ? `The stop is at or past breakeven and the Journal trade holds ${journalQty.toLocaleString('en-US')}, not ${held.toLocaleString('en-US')}: import to catch up.`
+        : 'The stop is at or past breakeven and Schwab shows no stop under your cost for this trade. Set your original stop.';
+      return { ...out, stop: near.stop, journalQty, why };
+    }
     const risk = dist * held * row.mult;
     return { ...out, r: row.pnl / risk, risk, source: 'stop', basis: 'stop', stop: near.stop, journalQty };
   }
@@ -791,10 +797,10 @@ export function targetGain(row, price, qty, unit = null) {
  */
 export function rUnit(row, trades, last4) {
   const p = positionR(row, trades, last4);
-  if (p.risk === null) return { per: null, source: p.source, basis: p.basis, stop: p.stop, why: p.why };
-  const t = p.source === 'journal' ? journalTrade(row, trades, last4) : null;
+  if (p.risk === null) return { per: null, source: p.source, basis: p.basis, stop: p.stop, own: false, why: p.why };
+  const t = p.source === 'journal' ? positionJournalTrade(row, trades, last4) : null;
   const size = t ? t.entryQty : Math.abs(row.qty);
-  return { per: p.risk / (size * row.mult), source: p.source, basis: p.basis, stop: p.stop, why: '' };
+  return { per: p.risk / (size * row.mult), source: p.source, basis: p.basis, stop: p.stop, own: p.own, why: '' };
 }
 
 /** The price r R from your cost (above on a long, below on a short), on the order grid; 0 when it can't be. @param {Row} row @param {number} r @param {number} per */
