@@ -1901,3 +1901,25 @@ test('no Tradier key, no strip; a quote that fails says so', async () => {
   assert.match(elements.get('posTradeQuote').innerHTML, /tq-status stale">No quote/);
   assert.match(elements.get('posTradeQuote').innerHTML, /<span class="tq-val">—/);
 });
+
+test('back to the original stop cancels every limit, pair and extra stop, then one stop covers the whole position, looser or not', async () => {
+  const { run } = await app();
+  const plan = plain(run(`originalStopPlan(${rowWith('HOOD')}, { stop: 35, duration: 'GOOD_TILL_CANCEL' })`));
+  assert.equal(plan.error, '');
+  assert.deepEqual(plan.steps.map(s => [s.kind, s.orderId]), [['cancel', 103], ['cancel', 102], ['replace', 101]], 'the limit, the far stop, then the near stop takes everything');
+  assert.equal(plan.steps[2].order.stopPrice, 35);
+  assert.equal(plan.steps[2].order.orderLegCollection[0].quantity, 300);
+  assert.equal(Math.round(plan.locked * 100) / 100, -960, '300 shares from $38.20 to $35');
+  const looser = plain(run(`originalStopPlan(${rowWith('QQQ')}, { stop: 380, duration: 'DAY' })`));
+  assert.deepEqual(looser.steps.map(s => [s.kind, s.orderId]), [['replace', 401]], 'a stop moved up comes back down');
+  assert.equal(looser.steps[0].order.stopPrice, 380);
+  const pair = plain(run(`originalStopPlan(${rowWith('AMD')}, { stop: 140, duration: 'DAY' })`));
+  assert.deepEqual(pair.steps.map(s => [s.kind, s.orderId ?? null]), [['cancel', 501], ['cancel', 502], ['place', null]]);
+  assert.equal(pair.steps[2].order.orderLegCollection[0].quantity, 50);
+  const short = plain(run(`originalStopPlan(${rowWith('TSLA')}, { stop: 275, duration: 'DAY' })`));
+  assert.equal(short.steps[0].order.orderLegCollection[0].instruction, 'BUY_TO_COVER');
+  assert.equal(short.steps[0].order.stopPrice, 275);
+  assert.match(run(`originalStopPlan(${rowWith('QQQ')}, { stop: 400, duration: 'DAY' }).error`), /already has your original stop, \$400\.00/);
+  assert.match(run(`originalStopPlan(${rowWith('NVDA')}, { stop: 113, duration: 'DAY' }).error`), /original stop \$113\.00 is at or above the price \$112\.00/);
+  assert.match(run(`originalStopPlan(${rowWith('NVDA')}, { stop: 0, duration: 'DAY' }).error`), /No original stop/);
+});
