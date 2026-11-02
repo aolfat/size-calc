@@ -159,7 +159,7 @@ export function featuresView(trades) {
       <colgroup><col class="jf-c-name"><col class="jf-c-needs"><col class="jf-c-v"><col class="jf-c-done"></colgroup>
       <thead><tr><th scope="col">Feature</th><th scope="col">Reads</th><th scope="col">Version</th><th scope="col">Stamped</th></tr></thead>
       <tbody>${groups}</tbody></table></div>`;
-  return `<p class="hint">What the data says about each trade at its entry, worked out by the app from the saved bars and the daily history, never typed. A new or changed feature stamps itself onto every trade. ${counted.length} trade${counted.length === 1 ? '' : 's'} get features (not deleted ones, nor closes from before your history).</p>
+  return `<p class="hint">What the data says about each trade at its entry and exit, worked out by the app from the saved bars and the daily history, never typed. A new or changed feature stamps itself onto every trade. ${counted.length} trade${counted.length === 1 ? '' : 's'} get features (not deleted ones, nor closes from before your history).</p>
     ${status}${table}
     <details class="hint-details"><summary>How features are stamped</summary><p class="hint">Each feature sees the data up to its moment and nothing after: a 5-minute bar counts once it has ended, the bar your entry falls in only by its open. Unknown means the data is gone (Tradier keeps about 40 days of 5-minute bars, so older trades miss the intraday ones) and it isn't tried again; waiting means the data can still come (today's bars save after ${inZone(nyWallMs(nyDateStr(new Date()), '20:00'), { hour: 'numeric' })} ${zoneAbbr()}, daily bars need the Tradier key) and it's tried on the next load. Numbers are kept as numbers, not ranges, so how they're grouped can change later without restamping.</p></details>`;
 }
@@ -196,7 +196,7 @@ export function tradeFeaturesHtml(t) {
     return list.length ? `<div class="jf-fam">${esc(fam.name)}</div>${list.map(item).join('')}` : '';
   }).join('');
   const parts = [`${value} with a value`, unknown ? `${unknown} unknown` : '', pending ? `${pending} still to come` : ''].filter(Boolean);
-  return `<div class="jf-head"><p class="hint">${FEATURES.length} features at the entry: ${parts.join(', ')}. Tap one for what it measures.</p>
+  return `<div class="jf-head"><p class="hint">${FEATURES.length} features at the entry and exit: ${parts.join(', ')}. Tap one for what it measures.</p>
       <button class="pos-link" data-action="toggleTradeFeatures">${open ? 'Collapse all' : 'Expand all'}</button></div>
     <div class="jf-list">${groups}</div>`;
 }
