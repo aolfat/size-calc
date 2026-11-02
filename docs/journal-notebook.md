@@ -17,9 +17,9 @@ A notebook for each trading day: write a plan before the open, then a short revi
 
 - **The calendar is the index.** Every weekday cell opens that day's page: a day with trades, a quiet day, today before the open, tomorrow (to write Monday's plan on Sunday). It used to narrow the Trades list to the day; that's the page's "The day's trades" link now.
 - **The day page** replaces the calendar inside the Calendar tab: ← Calendar goes back, ‹ › step one weekday. Tapping the Calendar tab goes back too.
-- **Today's button** in the Journal's head (todayButtonHtml) opens today's page (Monday's on a weekend; the day is its title): "Write your plan" until it's written, then "Review the day" after 4pm New York, then "Day reviewed ✓" in a quieter color.
+- **Today's button** in the Journal's head (todayButtonHtml) opens today's page (Monday's on a weekend; the day is its title): "Write your plan" until the premarket is done, then "Plan written ✓" (or "Premarket done ✓" with no plan), then "Review the day" after 4pm New York, then "Day reviewed ✓" in a quieter color.
 - **The Trades tab** opens it too: each day's date in the list and Review the day › beside it (Day reviewed ✓ once it is); the page's back button reads ← Trades and keeps the list's filters.
-- **Calendar marks:** ✎ plan written, ✓ day reviewed, and an amber dot once a day with trades is over and isn't reviewed.
+- **Calendar marks:** ✎ plan written (a day with no plan has none), ✓ day reviewed, and an amber dot once a day with trades is over and isn't reviewed.
 - **Missed trades on the calendar:** ⊘ and how many you logged that day (⊘2), on any weekday.
 
 ## The page
@@ -38,9 +38,18 @@ Four sections, always in this order.
 | Rules | Your standing rules | Nothing to fill in; they're checked after the close |
 | Market | The day's market chips, the same `journal_days.market` the trade review sets, so every trade that day inherits it | Yes |
 | Focus list | The tickers you're watching, each with its setups (below) | No |
-| Plan | Free text: catalysts, levels, limits for the day | Yes |
+| Plan | ✓ No plan, lit by default; Write a plan opens the box: free text, catalysts, levels, limits for the day | No |
 
-**Plan written** = a feeling, energy, where, the market, and the plan. `planned_at` is stamped while it's true.
+**Premarket done** = a feeling, energy, where, and the market; the status reads 'Premarket done · no plan' without a plan.
+**Plan written** = premarket done and words in the plan box. `planned_at` is stamped while it's true.
+
+**No plan is the default** (owner request: some days have no plan, and Stats should show how you trade with one and without).
+The Plan row shows a lit ✓ No plan and Write a plan (toggleDayPlan), which opens the box (state.notebookPlanOpen); ✓ No plan stays under an empty box and closes it.
+A box with words stays open with 'Empty the box for no plan.'; emptying it (saved on blur) is no plan again.
+Nothing new is stored: a day had a plan when `journal_days.plan` has words (hadPlan).
+
+**In Stats**, 'With a plan or without' (byPlan in core/journal-stats.js) splits the closed trades in scope by the New York day each opened: With a plan when that day's plan box has words, No plan otherwise.
+It counts from your first notebook day (the earliest day with a feeling, energy, where, or a plan), so trades from before you used the notebook stay out; with no notebook days it doesn't show.
 
 ### Focus list
 
