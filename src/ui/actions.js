@@ -22,6 +22,7 @@ import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
+import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
 import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
@@ -435,6 +436,11 @@ export const actions = {
   setClosePrice: el => setClosePrice(el.value),
   setCloseR: el => setCloseR(num(el)),
   setCloseRText: el => setCloseRText(el.value),
+  openOriginalStop: el => openOriginalStop(arg(el), el.dataset.arg2),
+  setOriginalStopText: el => setOriginalStopText(el.value),
+  saveOriginalStop: () => saveOriginalStop(),
+  clearOriginalStop: () => clearOriginalStop(),
+  cancelOriginalStop: () => cancelOriginalStop(),
   setPositionStopPrice: el => setPositionStopPrice(el.value),
   setPositionStopAt: el => setPositionStopAt(arg(el)),
   openSpreadClose: el => openSpreadClose(arg(el)),

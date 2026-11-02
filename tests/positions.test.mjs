@@ -659,7 +659,65 @@ test('the R column reads the Journal when signed in, and counts from the stop no
   await settle();
   const stock = out.elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
   assert.match(stock, /\+2\.50R[\s\S]*stop now \$48\.00/);
-  assert.match(stock, /Sign in to count from the Journal trade/);
+  assert.match(stock, /No Journal trade matches this position/);
+});
+
+// TEST's stop moved from the first $47 up to its $50 cost, in the live read only: nothing imported
+const MOVED_TO_BE = [TEST_BUY.data,
+  { orderId: 803, enteredTime: '2026-10-06T14:00:00+0000', orderType: 'STOP', status: 'WORKING', orderStrategyType: 'SINGLE', stopPrice: 50, quantity: 100, remainingQuantity: 100, orderLegCollection: [leg('SELL', 100, 'TEST')] }];
+const movedSchwab = path => path.includes('/orders?') ? json(MOVED_TO_BE) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
+
+test('a stop moved to breakeven keeps R: the first stop comes from Schwab\'s own orders, before any import and signed out', async () => {
+  const { run, elements } = await app({ fetch: network(movedSchwab).fetch, storage: connected([['positions_cols', JSON.stringify(['r'])]]) });
+  run("setView('positions')");
+  await settle();
+  const stock = elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
+  assert.match(stock, /\+1\.67R[\s\S]*first stop \$47\.00/, '$500 over the $300 risked to the first stop, not a dash at the $50 stop now');
+  await run("openPositionTrade('TEST', 'close')");
+  run("setCloseType('LIMIT')");
+  run('setCloseR(3)');
+  const body = elements.get('posTradeBody').innerHTML;
+  assert.match(body, /id="posClosePrice"[^>]*value="59.00"/, '3R = $50 + 3 × $3');
+  assert.match(body, /1R is \$3\.00 a share, from the first stop \$47\.00/);
+  assert.match(body, /data-action="openOriginalStop" data-arg="TEST" data-arg2="close"[^>]*>Set original stop/);
+  await run("openOriginalStop('TEST', 'close')");
+  assert.match(elements.get('posTradeBody').innerHTML, /Sign in to set your original stop/);
+});
+
+test('your original stop: set from the close ticket, kept with the Journal trade, and every R counts from it', async () => {
+  const supabase = fakeRecords([]);
+  const { run, elements, state } = await app({ fetch: network(movedSchwab).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase, session: SESSION });
+  run("setView('positions')");
+  await settle();
+  await run("openPositionTrade('TEST', 'close')");
+  run("setCloseType('LIMIT')");
+  await run("openOriginalStop('TEST', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  assert.match(body(), /Schwab&#39;s first stop on this trade was \$47\.00/);
+  run("setOriginalStopText('51')");
+  assert.match(elements.get('posOrigNote').textContent, /loss side|below|under/i, 'over a long\'s cost is no original stop');
+  run("setOriginalStopText('46')");
+  assert.match(elements.get('posOrigNote').textContent, /1R would be \$4\.00 a share/);
+  await run('saveOriginalStop()');
+  const [saved] = [...supabase.reviews.values()];
+  assert.equal(saved.stop, 46);
+  assert.match(saved.trade_key, /^6789\|TEST\|long\|/, 'the trade key every device builds from the same fills');
+  assert.equal(state.posOrig, null);
+  assert.match(body(), /1R is \$4\.00 a share, from your original stop \$46\.00/);
+  assert.match(body(), />Change original stop</);
+  const stock = elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
+  assert.match(stock, /\+1\.25R[\s\S]*your stop \$46\.00/);
+
+  await run("openOriginalStop('TEST', 'close')");
+  await run('clearOriginalStop()');
+  assert.equal([...supabase.reviews.values()][0].stop, null);
+  assert.match(body(), /from the first stop \$47\.00/, 'back to Schwab\'s first');
+
+  // another device: the same orders and the saved stop give the same 1R
+  const other = await app({ fetch: network(movedSchwab).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase: fakeRecords([], [{ trade_key: saved.trade_key, stop: 46, deleted: false }]), session: SESSION });
+  other.run("setView('positions')");
+  await settle();
+  assert.match(other.elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>')), /\+1\.25R[\s\S]*your stop \$46\.00/);
 });
 
 test('a close ticket reads the Journal for the original size: older fills kept there, an order\'s newer fills from the live read', async () => {

@@ -15,6 +15,7 @@ import { schwabStopDuration } from '../services/schwab.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles, snapToBar } from './candles.js';
 import { fetchFiveMinuteBars } from './chart.js';
+import { originalEditingIn, originalStopBlock } from './position-original.js';
 import { positionRUnit, renderPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 
@@ -371,6 +372,8 @@ export function renderPositionChart() {
     const title = at > 0 ? fmtPositionPrice(at, row.tradeAs) : unit.why || 'No risk to count R from.';
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosTargetR" data-arg="${r}" title="${esc(title)}"${at > 0 ? '' : ' disabled'}>${r}R</button>`;
   });
+  // a read every 30s redraws the form; the original stop editor stays as typed while it's open here
+  if (!originalEditingIn('chart')) document.getElementById('posTargetOrig').innerHTML = originalStopBlock(row, 'chart');
 
   const tool = state.posChartTool, adding = tool === 'add';
   for (const [id, on] of [['posToolTarget', tool === 'target'], ['posToolStop', tool === 'stop'], ['posToolAdd', adding]]) {

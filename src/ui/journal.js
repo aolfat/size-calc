@@ -788,9 +788,12 @@ onCaptureChange(saved => {
 
 /** the trades as the Journal has them now (your stops and deletes applied) */
 export const journalTradeList = () => currentTrades();
+/** the Journal's trades over other records (Positions adds the orders its last read got), with your stops, merges and fee choice */
+export function journalTradesFrom(records) {
+  return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now(), saved: state.journalSaved || [], funds: myFunds() });
+}
 function currentTrades() {
-  const records = state.journalRecords || [];
-  return journalTrades(fillsFrom(records), records, state.tradeReviews || {}, { afterFees: journalAfterFees(), now: Date.now(), saved: state.journalSaved, funds: myFunds() });
+  return journalTradesFrom(state.journalRecords || []);
 }
 const reviewedTrade = () => currentTrades().find(t => t.key === state.tradeReviewKey) || null;
 const reviewOf = key => (state.tradeReviews || {})[key] || { stop: null, deleted: false };

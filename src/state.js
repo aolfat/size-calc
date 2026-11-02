@@ -234,8 +234,10 @@ export function createState() {
     posActions: '', // the position (a row's symbol or a spread's key) the phone table's action sheet is for
     posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
     posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again
-    posRTrades: null, // the Journal's trades as the R column last built them: { records, reviews, saved, fees, trades }
-    posFills: null, // the fills the close ticket's original size reads, as last built: { records, orders, fills }
+    posRTrades: null, // the Journal's trades R counts from, over posRecords: { records, reviews, saved, fees, trades }
+    posRecords: null, // the kept records plus the last read's orders, as last joined: { kept, orders, records }
+    posFills: null, // the fills the close ticket's original size reads, as last built: { records, fills }
+    posOrig: null, // the original stop editor while open: { symbol, host: 'actions' | 'close' | 'chart', text, busy, error }
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
     posChart: null, // the open position chart: { symbol, option, label, five, daily, error, price, qty, addStop, addPrice } (five and daily: a pane each, { kind, bars, vwap, view, range, loading, error, hover, hoverY }, range in sessions; price and qty = the target form, addStop and addPrice = Move breakeven's)

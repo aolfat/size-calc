@@ -867,3 +867,11 @@ span.journal-pick { cursor: default; }
 /* the Import sheet's zone picker for a thinkorswim statement */
 .tos-zone { padding: 6px 8px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); }
 .tos-zone option { background: var(--bg3); }
+
+/* the original stop R counts from: a link under the 1R line, or its editor (position-original.js) */
+.pos-orig-link { display: inline-block; margin-top: 4px; font-size: 12.5px; }
+.pos-orig { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.pos-orig-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pos-orig-edit label { font-size: 12.5px; color: var(--text2); }
+.pos-orig-edit .prefix-wrap { flex: 1 1 110px; min-width: 0; max-width: 160px; }
+.pa-orig { display: flex; flex-direction: column; margin: 6px 0; }
