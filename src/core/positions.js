@@ -620,6 +620,39 @@ export function stopPlan(row, { stop, duration, limits = 'pair' }) {
 }
 
 /**
+ * Back to the original stop: every other order that would close the position is cancelled (limit targets, both halves of a
+ * pair, anything else waiting, the extra stops, farthest first), and the nearest plain stop that isn't trailing is replaced
+ * with one stop at the price for every share (placed new when there's none). Unlike stopPlan it may loosen a stop: that's the point.
+ * A stop limit moved keeps its limit as far from the stop as it was. Risk at the stop counts every share at the price.
+ * @param {Row} row @param {{ stop: number, duration: StopDuration }} opts @returns {Plan}
+ */
+export function originalStopPlan(row, { stop, duration }) {
+  const as = row.tradeAs || 'EQUITY', long = row.qty > 0, held = Math.abs(row.qty), symbol = row.symbol;
+  const tick = as === 'OPTION' ? optionPriceTick : priceTick, px = (/** @type {number} */ p) => fmtPositionPrice(p, as);
+  const at = Number(stop) > 0 ? tick(Number(stop)) : 0;
+  const fail = (/** @type {string} */ error) => stopFail(error, at);
+  const blocked = tradeError(row);
+  if (blocked) return fail(blocked);
+  if (!(at > 0)) return fail('No original stop to go back to.');
+  if (long ? !(at < row.price) : !(at > row.price)) {
+    return fail(`The original stop ${px(at)} is at or ${long ? 'above' : 'below'} the price ${px(row.price)}. It would ${INSTRUCTION_WORDS[closingInstruction(as, long)]} right away.`);
+  }
+  const plain = row.stopOrders.filter(o => o.oco === null); // nearest first
+  const others = [...closersInTheWay(row), ...row.stopOrders.filter(o => o.oco !== null)];
+  if (!others.length && plain.length === 1 && Number(plain[0].stop) === at && plain[0].qty === held) return fail(`Every share already has your original stop, ${px(at)}, and nothing else is waiting to close it.`);
+  const mover = plain.find(s => !/TRAILING/.test(s.orderType));
+  const stopFor = closeStopOrder({ symbol, assetType: as, isLong: long, qty: held, stop: at, stopDuration: duration });
+  const limit = mover && mover.orderType === 'STOP_LIMIT' && mover.price !== null ? tick(at + mover.price - Number(mover.stop)) : 0;
+  const order = limit > 0 ? { ...stopFor, orderType: 'STOP_LIMIT', price: limit } : stopFor;
+  // the limits and pairs first, then the extra stops farthest first, so the last step never asks for more than you hold
+  /** @type {Step[]} */
+  const steps = [...cancels(others), ...cancels(plain.filter(s => s !== mover).reverse()),
+    mover ? { kind: 'replace', orderId: mover.orderId, was: mover, order } : { kind: 'place', order }];
+  const locked = (long ? at - row.avg : row.avg - at) * row.mult * held;
+  return { error: unnamed(steps), stop: at, steps, paired: [], rest: held, bare: 0, kept: 0, locked: row.avg > 0 ? locked : 0 };
+}
+
+/**
  * What a position locks over your cost (negative: what it risks) once every share stops at a price: the stops already at or
  * tighter than it at their own prices, the rest at it, less bare shares that keep no stop.
  * @param {Row} row @param {number} at @param {number} [bare]

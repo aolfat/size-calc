@@ -78,6 +78,11 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   Typing re-plans and redraws only #posTradeDetail (the cover question sits there too, since its choices change with the price); no price, a stop at or through the mark, or every share already at or tighter than it shows inline and disables the send (moving a stop looser is Edit under Working orders).
   Risk at stop: what the stops leave from your average cost afterwards, the kept ones at their own prices (red with % of the account value, green 'locked' past cost).
   It works without a cost basis (no breakeven, so no chip and no risk figure).
+  **Reset to original** (stopChoice, setPositionStopOriginal / setPositionStopPick, t.reset, originalStopPlan in core/positions.js, pure): the Stop sheet opens on a two-way choice, **Stop at a price** (the default: the price box and Breakeven as described above) or **Reset to original $47.00**, the Journal trade's stop on the position (your original stop, else Schwab's first on the loss side; the sheet reads the Journal on open, like the close).
+  The reset is greyed out with why when there's no Journal trade with a stop, or the stop is through the price.
+  It goes back to that stop, looser or not (the one way the Stop sheet loosens): every other order that closes the position is cancelled (limit targets, both halves of a pair, anything else waiting, the extra stops farthest first), then the nearest plain stop that isn't trailing is replaced with one stop at it for every share (placed new when there's none; a stop limit keeps its limit offset).
+  No price box and no cover question; the hint says the targets go, the risk counts every share at the original stop, and the button reads 'Back to original stop $47.00'.
+  Stop at a price brings back the price you had.
   The send, the re-read and the confirmation are the breakeven stop's.
   A stop that loses more than the risk strip's max loss per trade is warned ('At the stop this loses $360.00, more than your max loss per trade, $300.00'; maxLossPerTrade in ui/risk.js, none in allocation sizing), measured like Risk at stop (stopLocked in core/positions.js).
 

@@ -781,3 +781,35 @@ test('a reload on Positions while signed in reads the account once the stored se
   assert.match(html, /••6789/);
   assert.match(html.split('<tr>').find(r => r.includes('<b>TEST</b>')), /\+1\.67R[\s\S]*first stop \$47\.00/);
 });
+
+test('Stop asks first: a stop at a price, or reset to the original stop, which cancels every limit and other stop for one stop on every share', async () => {
+  const withTarget = [...MOVED_TO_BE,
+    { orderId: 804, enteredTime: '2026-10-06T15:00:00+0000', orderType: 'LIMIT', status: 'WORKING', orderStrategyType: 'SINGLE', price: 60, quantity: 50, remainingQuantity: 50, duration: 'DAY', orderLegCollection: [leg('SELL', 50, 'TEST')] }];
+  const schwab = path => path.includes('/orders?') ? json(withTarget) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
+  const { run, elements } = await app({ fetch: network(schwab).fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  await run("openPositionTrade('TEST', 'stop')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  assert.match(body(), /aria-pressed="true" data-action="setPositionStopPick"><strong>Stop at a price</, 'a price first, as before');
+  assert.match(body(), /data-action="setPositionStopOriginal"><strong>Reset to original \$47\.00<\/strong><span>Cancels your targets and other stops, then one stop at Schwab&#39;s first stop for all 100 shares/, 'Schwab\'s first stop, though $50 is working now');
+  assert.match(body(), /id="posStopPrice"/);
+  run("setPositionStopPrice('47')");
+  assert.match(elements.get('posTradeDetail').innerHTML, /Every share already has a stop at or above \$47\.00\. To move one lower, edit it under Working orders\./, 'a typed stop never loosens');
+  run('setPositionStopOriginal()');
+  assert.match(body(), /aria-pressed="true" data-action="setPositionStopOriginal"/);
+  assert.doesNotMatch(body(), /id="posStopPrice"/, 'no price to type');
+  assert.match(body(), /Cancel limit \$60\.00 for 50 shares[\s\S]*Replace stop \$50\.00 for 100 shares with stop \$47\.00 for 100 shares/);
+  assert.match(body(), /−\$300\.00/, 'every share at the original stop, from the $50 cost');
+  assert.match(body(), /You lose any targets/);
+  assert.match(body(), /data-action="placePositionTrade">Back to original stop \$47\.00</);
+  run('setPositionStopPick()');
+  assert.match(body(), /id="posStopPrice"[^>]*value="47.00"/, 'back to the price you had');
+
+  // no Journal trade to read an original stop from: the reset is there, greyed out with why
+  const bare = await app({ fetch: network(schwabOk).fetch, storage: connected() });
+  bare.run("setView('positions')");
+  await settle();
+  await bare.run("openPositionTrade('SHRT', 'stop')");
+  assert.match(bare.elements.get('posTradeBody').innerHTML, /data-action="setPositionStopOriginal" disabled><strong>Reset to original<\/strong><span>No Journal trade on this position/);
+});

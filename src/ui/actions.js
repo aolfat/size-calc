@@ -23,7 +23,7 @@ import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
-import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopPrice, toggleREdit } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -444,6 +444,8 @@ export const actions = {
   cancelOriginalStop: () => cancelOriginalStop(),
   setPositionStopPrice: el => setPositionStopPrice(el.value),
   setPositionStopAt: el => setPositionStopAt(arg(el)),
+  setPositionStopOriginal: () => setPositionStopOriginal(),
+  setPositionStopPick: () => setPositionStopPick(),
   openSpreadClose: el => openSpreadClose(arg(el)),
   setSpreadCloseType: el => setSpreadCloseType(arg(el)),
   setSpreadClosePortion: el => setSpreadClosePortion(num(el)),

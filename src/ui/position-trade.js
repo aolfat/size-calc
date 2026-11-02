@@ -5,13 +5,13 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
-import { INSTRUCTION_WORDS, breakevenPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
+import { INSTRUCTION_WORDS, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { originalStopBlock } from './position-original.js';
-import { positionOriginal, positionRUnit, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
+import { positionOriginal, positionRUnit, positionTrade, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
@@ -87,7 +87,7 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
   else {
     // a stop at your price starts at the nearest stop when some shares have none, else empty
     // the chart's stop when it has one
-    if (kind === 'stop') { t.stopInput = target && target.price > 0 ? target.price : row.stop !== null && row.covered < Math.abs(row.qty) ? row.stop : 0; t.target = null; }
+    if (kind === 'stop') { t.stopInput = target && target.price > 0 ? target.price : row.stop !== null && row.covered < Math.abs(row.qty) ? row.stop : 0; t.target = null; t.reset = false; t.origStop = originalStop(row); }
     planStops(t);
   }
   if (t.error) return t;
@@ -99,6 +99,12 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
 // and send nothing until answered; an option that can't work is shown greyed out with its reason.
 // A stop at your price shows its errors (no price, through the market) next to the price input, like the close ticket
 function planStops(t) {
+  if (t.kind === 'stop' && t.reset) {
+    // back to the original stop: everything else that closes it goes, so there's nothing to ask
+    Object.assign(t, originalStopPlan(t.row, { stop: t.origStop ? t.origStop.price : 0, duration: t.stopDuration }), { choose: false, options: null, mode: null });
+    t.planError = t.error; t.error = '';
+    return;
+  }
   const plan = limits => t.kind === 'stop' ? stopPlan(t.row, { stop: t.stopInput, duration: t.stopDuration, limits }) : breakevenPlan(t.row, t.stopDuration, { limits });
   const options = { keep: plan('keep'), pair: plan('pair'), cancel: plan('cancel') };
   t.choose = closersInTheWay(t.row).length > 0 && Object.values(options).some(p => !p.error);
@@ -122,6 +128,7 @@ export function setPositionStopPrice(value) {
   const t = stopOpen();
   if (!t) return;
   t.stopInput = parseFloat(value) || 0;
+  t.reset = false;
   stopChanged(false);
 }
 
@@ -130,6 +137,29 @@ export function setPositionStopAt(value) {
   const t = stopOpen();
   if (!t || !(Number(value) > 0)) return;
   t.stopInput = Number(value);
+  t.reset = false;
+  stopChanged(true);
+}
+
+/** the trade's original stop (yours, else Schwab's first on the loss side), from the Journal trade on it; null without one */
+function originalStop(row) {
+  const tr = positionTrade(row);
+  return tr && tr.stop > 0 && tr.stopSource ? { price: tr.stop, own: tr.stopSource === 'yours' } : null;
+}
+
+/** the Original chip: back to the original stop, cancelling every limit and the other stops */
+export function setPositionStopOriginal() {
+  const t = stopOpen();
+  if (!t || !t.origStop) return;
+  t.reset = true;
+  stopChanged(true);
+}
+
+/** back to a stop at a price you pick, from the reset */
+export function setPositionStopPick() {
+  const t = stopOpen();
+  if (!t || !t.reset) return;
+  t.reset = false;
   stopChanged(true);
 }
 
@@ -299,7 +329,7 @@ function freshTicket(kind, symbol, target, prev = null, now = Date.now()) {
   if (kind === 'close') { t.close = { ...prev.close }; planClose(t); }
   else if (kind === 'target') planTarget(t);
   else if (kind === 'breakeven' || kind === 'stop') {
-    if (kind === 'stop') t.stopInput = prev.stopInput;
+    if (kind === 'stop') { t.stopInput = prev.stopInput; t.reset = !!prev.reset && !!t.origStop; }
     planStops(t);
     if (prev.mode && t.choose && !t.options[prev.mode].error) { t.mode = prev.mode; planStops(t); }
   }
@@ -320,7 +350,7 @@ export async function openPositionTrade(symbol, kind) {
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
   // the plan is built from what Schwab shows now; a close also waits for the Journal's older fills, for its original size
-  try { await Promise.all([refreshPositions(), kind === 'close' ? readPositionJournalForClose() : null]); } finally { state.posTradeBusy = false; }
+  try { await Promise.all([refreshPositions(), kind === 'close' || kind === 'stop' ? readPositionJournalForClose() : null]); } finally { state.posTradeBusy = false; }
   state.posTicket = freshTicket(kind, symbol, target);
   renderPositionTradeSheet();
   openSheet('posTrade');
@@ -629,6 +659,18 @@ function closeHint(t) {
   return [room, pair, limit ? 'A limit fills at your price or better, and only if the price gets there.' : ''].filter(Boolean).join(' ');
 }
 
+/** the first question on Stop: a stop at a price you pick, or back to the original stop (greyed out with why when there's none to go back to) */
+function stopChoice(t) {
+  const row = t.row, long = row.qty > 0, px = p => fmtPositionPrice(p, row.tradeAs), o = t.origStop;
+  const why = !o ? 'No Journal trade on this position has a stop to go back to. Import your history in the Journal.'
+    : (long ? o.price >= row.price : o.price <= row.price) ? `Your original stop ${px(o.price)} is through the price ${px(row.price)}.` : '';
+  const opt = (reset, title, sub, off) => `<button class="pos-choice-opt${!!t.reset === reset ? ' active' : ''}" aria-pressed="${!!t.reset === reset}" data-action="${reset ? 'setPositionStopOriginal' : 'setPositionStopPick'}"${off || t.sent ? ' disabled' : ''}><strong>${esc(title)}</strong><span>${esc(sub)}</span></button>`;
+  return `<div><dt>Stop</dt><dd><div class="pos-choice" role="group" aria-label="What the stop does">
+    ${opt(false, 'Stop at a price', 'Type it or tap Breakeven. Only ever tightens; your targets can stay.', false)}
+    ${opt(true, o && !why ? `Reset to original ${px(o.price)}` : 'Reset to original', why || `Cancels your targets and other stops, then one stop at ${o.own ? 'your original stop' : "Schwab's first stop"} for all ${units(row, Math.abs(row.qty))}.`, !!why)}
+  </div></dd></div>`;
+}
+
 /** the stop ticket's price, with breakeven a tap away when the price is past it */
 function stopForm(t) {
   const row = t.row, long = row.qty > 0, off = t.sent ? ' disabled' : '';
@@ -637,7 +679,9 @@ function stopForm(t) {
   const on = beOk && t.stop === row.be && !t.planError;
   const chip = beOk ? `<button class="filter-btn pos-stop-at${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPositionStopAt" data-arg="${row.be}" title="Your average cost, on the tick"${off}>Breakeven ${fmtPositionPrice(row.be, row.tradeAs)}</button>` : '';
   const now = row.stop !== null ? ` · nearest stop ${fmtPositionPrice(row.stop, row.tradeAs)}${row.covered < Math.abs(row.qty) ? ` for ${units(row, row.covered)}` : ''}` : ' · no stop now';
-  return `<div><dt><label for="posStopPrice">Stop price</label></dt><dd><div class="pos-close-qty"><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posStopPrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${value}" data-input="setPositionStopPrice"${off} /></div>${chip}</div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark${now}</span></dd></div>`;
+  const choice = stopChoice(t);
+  if (t.reset) return choice;
+  return `${choice}<div><dt><label for="posStopPrice">Stop price</label></dt><dd><div class="pos-close-qty"><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posStopPrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${value}" data-input="setPositionStopPrice"${off} /></div>${chip}</div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark${now}</span></dd></div>`;
 }
 
 /** a stop at your price: how long it lasts, and what the position risks (or locks) at its stops afterwards */
@@ -684,12 +728,13 @@ export function renderPositionTradeSheet(form = true) {
   const hint = t.kind === 'close' ? closeHint(t)
     : t.kind === 'target' ? targetHint(t)
     : t.kind === 'stop' && t.planError ? ''
+    : t.kind === 'stop' && t.reset ? `Back to ${t.origStop.own ? 'your original stop' : "Schwab's first stop on this trade"}: every limit and other stop on it is cancelled first, then one stop covers all ${units(row, held)}. You lose any targets. A triggered stop becomes a market order and can fill past it.`
     : `${pairedQty
       ? `Schwab won't take orders to ${INSTRUCTION_WORDS[row.qty > 0 ? (row.tradeAs === 'OPTION' ? 'SELL_TO_CLOSE' : 'SELL') : (row.tradeAs === 'OPTION' ? 'BUY_TO_CLOSE' : 'BUY_TO_COVER')]} more than you hold, so shares in a limit get their stop paired with it, and the rest get one stop. While ${t.paired.length === 1 ? 'the limit is' : 'the limits are'} placed again, ${units(row, pairedQty)} ${have(pairedQty)} no stop for a moment.`
       : t.steps.some(s => s.kind !== 'place') ? 'Other stops are cancelled first, then Schwab swaps the nearest one for the new stop.' : ''}${t.kept ? (t.kind === 'stop' ? ' Tighter stops stay where they are.' : ' Stops already past breakeven stay where they are.') : ''} A triggered stop becomes a market order and can fill past it.`.trim();
   const closeWords = () => `${cap(INSTRUCTION_WORDS[closingInstruction(row.tradeAs, row.qty > 0)])} ${(t.close.qty || 0).toLocaleString('en-US')} ${row.label}`
     + (t.close.type === 'LIMIT' ? `, limit ${px(t.planError ? t.close.price : t.price)}${row.tradeAs === 'OPTION' ? '' : sessionTail(t.session)}` : ' at market');
-  const confirm = t.kind === 'close' ? closeWords() : t.kind === 'target' ? `Place target ${px(t.price)}${row.tradeAs === 'OPTION' ? '' : sessionTail(t.session)}` : t.planError ? 'Set stop' : `Set stop ${px(t.stop)}`;
+  const confirm = t.kind === 'close' ? closeWords() : t.kind === 'target' ? `Place target ${px(t.price)}${row.tradeAs === 'OPTION' ? '' : sessionTail(t.session)}` : t.planError ? 'Set stop' : t.reset ? `Back to original stop ${px(t.stop)}` : `Set stop ${px(t.stop)}`;
   const orders = t.steps.map(s => s.kind === 'cancel' ? { cancel: s.orderId } : s.kind === 'replace' ? { replace: s.orderId, with: s.order } : { place: s.order });
   const settled = t.sent && !state.posTradeBusy;
   const blocked = (t.choose && !t.mode) || !!t.planError;
