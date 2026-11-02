@@ -3,9 +3,9 @@
 // (journal_days, which also holds each day's notebook page), your library (library_items, your goals and rules too), and
 // the week and month reviews (period_reviews). Row-level security
 // returns only your rows. Never touches the page.
-import { cleanPeriodRow, PERIOD_COLUMNS, PERIOD_OVERALL_COLUMNS } from '../core/journal-week.js';
+import { cleanPeriodRow, PERIOD_COLUMNS, PERIOD_OVERALL_COLUMNS, PERIOD_RULE_COLUMNS } from '../core/journal-week.js';
 import { gradeOf } from '../core/journal-labels.js';
-import { cleanDayRow, DAY_COLUMNS, MISSED_COLUMNS, WOKE_COLUMNS } from '../core/journal-notebook.js';
+import { cleanDayRow, DAY_COLUMNS, MISSED_COLUMNS, WEEK_RULE_COLUMNS, WOKE_COLUMNS } from '../core/journal-notebook.js';
 import { state } from '../state.js';
 import { JOURNAL_READ_LIMIT } from './journal.js';
 import { supabaseClient } from './supabase.js';
@@ -29,7 +29,7 @@ async function client() {
  * Everything a review reads, in one go: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note,
  * market, reviewed_at }, labels: key → [{ kind, value, set_by, links }], days: 'YYYY-MM-DD' → its notebook row (cleanDayRow:
  * market, note, the plan, the review and the missed trades), library: rows, weekly: key → when, weeklyError, entryNoteError,
- * notebookError, missedError, wokeError }.
+ * notebookError, missedError, wokeError, weekRulesError }.
  */
 export async function loadReviewData() {
   const c = await client();
@@ -49,10 +49,17 @@ export async function loadReviewData() {
   /** @type {Record<string, any>} */
   const days = {};
   for (const r of dy.data || []) days[String(r.day).slice(0, 10)] = cleanDayRow(r);
-  const [weekly, entry, notebook, missed, woke] = await Promise.all([loadWeekly(c), loadEntryNotes(c), loadNotebook(c), loadMissed(c), loadWoke(c)]);
+  const [weekly, entry, notebook, missed, woke, weekRules] = await Promise.all([loadWeekly(c), loadEntryNotes(c), loadNotebook(c), loadMissed(c), loadWoke(c), loadWeekRuleDays(c)]);
   for (const [key, text] of Object.entries(entry.entryNotes)) reviews[key] = { ...(reviews[key] || {}), entry_note: text };
-  for (const r of [...notebook.rows, ...missed.rows, ...woke.rows]) { const day = String(r.day).slice(0, 10); days[day] = cleanDayRow({ ...days[day], ...r }); }
-  return { reviews, labels, days, library: li.data || [], ...weekly, entryNoteError: entry.entryNoteError, notebookError: notebook.notebookError, missedError: missed.missedError, wokeError: woke.wokeError };
+  for (const r of [...notebook.rows, ...missed.rows, ...woke.rows, ...weekRules.rows]) { const day = String(r.day).slice(0, 10); days[day] = cleanDayRow({ ...days[day], ...r }); }
+  return { reviews, labels, days, library: li.data || [], ...weekly, entryNoteError: entry.entryNoteError, notebookError: notebook.notebookError, missedError: missed.missedError, wokeError: woke.wokeError, weekRulesError: weekRules.weekRulesError };
+}
+
+/** Each day's check-ins on this week's rules (journal_days.week_rules, the week rules' migration): read on their own like the missed trades. */
+async function loadWeekRuleDays(c) {
+  const res = await c.from('journal_days').select(['day', ...WEEK_RULE_COLUMNS].join(',')).limit(5000);
+  if (res?.error) return { rows: [], weekRulesError: notPushed(res) ? "the database doesn't have the week rules columns yet: npx supabase db push" : res.error.message || 'Supabase refused the read.' };
+  return { rows: res.data || [], weekRulesError: '' };
 }
 
 /** Whether you woke up before the open each day (journal_days.woke_early, its own migration): read on its own like the missed trades. */
@@ -151,12 +158,16 @@ export async function saveLabelLinks(key, kind, value, links) {
   refused(await c.from('trade_labels').upsert([{ trade_key: key, kind, value, links }], { onConflict: 'user_id,trade_key,kind,value' }), 'Supabase refused the save.');
 }
 
-/** the week and month reviews' grades and notes (period_reviews, slice 6 part 2's migration): { rows, overallError (why the overall notes couldn't be read) } */
+/**
+ * the week and month reviews' grades and notes (period_reviews, slice 6 part 2's migration): { rows, overallError (why the
+ * overall notes couldn't be read), rulesError (why the rules list, Kept it? on each and how they went couldn't be) }
+ */
 export async function loadPeriodReviews() {
   const c = await client();
-  const [res, overall] = await Promise.all([
+  const [res, overall, rules] = await Promise.all([
     c.from('period_reviews').select(['unit', 'period_key', ...PERIOD_COLUMNS].join(',')).limit(2000),
     c.from('period_reviews').select(['unit', 'period_key', ...PERIOD_OVERALL_COLUMNS].join(',')).limit(2000),
+    c.from('period_reviews').select(['unit', 'period_key', ...PERIOD_RULE_COLUMNS].join(',')).limit(2000),
   ]);
   if (res?.error) {
     const err = new Error(notPushed(res) ? "the database doesn't have the period_reviews table yet: npx supabase db push" : res.error.message || 'Supabase refused the read.');
@@ -166,7 +177,10 @@ export async function loadPeriodReviews() {
   // the overall notes (their own migration) read on their own, so a database without them keeps the grades working
   const notes = new Map(overall?.error ? [] : (overall.data || []).map(r => [`${r.unit}|${r.period_key}`, r]));
   const overallError = !overall?.error ? '' : notPushed(overall) ? "the database doesn't have the overall note columns yet: npx supabase db push" : overall.error.message || 'Supabase refused the read.';
-  return { rows: (res.data || []).map(r => cleanPeriodRow({ ...notes.get(`${r.unit}|${r.period_key}`), ...r })).filter(Boolean), overallError };
+  // the rules list (the week rules' migration) the same way: before it, each review keeps its one rule
+  const lists = new Map(rules?.error ? [] : (rules.data || []).map(r => [`${r.unit}|${r.period_key}`, r]));
+  const rulesError = !rules?.error ? '' : notPushed(rules) ? "the database doesn't have the week rules columns yet: npx supabase db push" : rules.error.message || 'Supabase refused the read.';
+  return { rows: (res.data || []).map(r => cleanPeriodRow({ ...notes.get(`${r.unit}|${r.period_key}`), ...lists.get(`${r.unit}|${r.period_key}`), ...r })).filter(Boolean), overallError, rulesError };
 }
 
 /** a week's or month's review fields (only these columns: the other parts' grades and notes stay as they are) */

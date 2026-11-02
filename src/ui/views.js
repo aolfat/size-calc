@@ -20,6 +20,7 @@ import { cancelSpread } from './spreads.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { updateStopVisibility } from './stops.js';
 import { renderGain } from './tools.js';
+import { renderWeekRulesCard } from './week-rules.js';
 
 // the open tab rides in the address, so a reload opens it again (Size has none)
 const VIEW_HASH = { market: '#market', positions: '#positions', journal: '#journal', utils: '#tools' };
@@ -62,6 +63,7 @@ export function setView(v) {
   document.getElementById('lastUpdated').style.display = state.marketView || state.utilsView || state.journalView ? 'none' : '';
   document.getElementById('modeCard').style.display = calc ? '' : 'none';
   document.getElementById('riskStrip').style.display = calc ? '' : 'none';
+  renderWeekRulesCard();
   updateSetupNotice();
   const hide = calc ? '' : 'none';
   document.getElementById('sizingControls').style.display = hide;

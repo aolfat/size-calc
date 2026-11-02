@@ -228,16 +228,26 @@ test('‹ › step to the nearest week with trades, the calendar follows, and th
 
 const GRADED = Object.fromEntries(['selection', 'entry', 'exit', 'risk', 'emotion', 'market', 'prep', 'consistency'].map(k => [`${k}_grade`, 'B']));
 
-test('a week is reviewed once every part has a grade and the rule is set; notes and Kept it? never count', async () => {
+test('a week is reviewed once every part has a grade and the rules are set; notes never count', async () => {
   const { run } = await app();
-  const st = row => json(run, `periodReviewState(${JSON.stringify(row)})`);
-  assert.deepEqual(st(null), { reviewed: false, ungraded: ['selection', 'entry', 'exit', 'risk', 'emotion', 'market', 'prep', 'consistency'], graded: 0, rule: false });
+  const st = (row, prev = null) => json(run, `periodReviewState(${JSON.stringify(row)}, ${JSON.stringify(prev)})`);
+  assert.deepEqual(st(null), { reviewed: false, ungraded: ['selection', 'entry', 'exit', 'risk', 'emotion', 'market', 'prep', 'consistency'], graded: 0, rule: false, asked: 0, unkept: 0, talk: true });
   assert.equal(st({ ...GRADED }).reviewed, false, 'no rule yet');
   assert.equal(st({ ...GRADED, rule_next: '   ' }).reviewed, false, 'a blank rule is no rule');
-  assert.equal(st({ ...GRADED, rule_next: 'No trades before 9:45' }).reviewed, true);
+  assert.equal(st({ ...GRADED, rule_next: 'No trades before 9:45' }).reviewed, true, 'the one rule from before the list');
+  assert.equal(st({ ...GRADED, rules_next: [{ id: 'a', text: 'No trades before 9:45' }] }).reviewed, true, 'a list');
+  assert.equal(st({ ...GRADED, rules_next: [{ id: 'a', text: '  ' }] }).reviewed, false, 'a blank rule is no rule');
+  const prev = { rules_next: [{ id: 'a', text: 'Wait' }, { id: 'b', text: 'Size down' }] };
+  const done = { ...GRADED, rule_next: 'x' };
+  assert.deepEqual(st(done, prev), { reviewed: false, ungraded: [], graded: 8, rule: true, asked: 2, unkept: 2, talk: false }, 'last week set rules: each wants Kept it?, and how they went');
+  assert.equal(st({ ...done, rules_kept: { a: 'yes', b: 'maybe' }, rules_note: 'ok' }, prev).unkept, 1, 'only an answer on the list counts');
+  assert.equal(st({ ...done, rules_kept: { a: 'yes', b: 'no' }, rules_note: 'Held the first, not the second' }, prev).reviewed, true);
+  assert.equal(st(done, { rule_next: 'Wait' }).reviewed, true, 'Kept it? on a rule from before the list never counts');
+  assert.equal(run(`periodMissingWords(periodReviewState(${JSON.stringify(done)}, ${JSON.stringify(prev)}), 'week')`), "Kept it? on this week's rules and how this week's rules went");
+  assert.equal(run(`periodMissingWords(periodReviewState({ rules_kept: { a: 'no' } }, ${JSON.stringify(prev)}), 'month')`), "Kept it? on 1 of this month's rules, how this month's rules went, grades on 8 parts and the rules for next month");
   assert.deepEqual(st({ ...GRADED, exit_grade: 'A++', rule_next: 'x' }).ungraded, ['exit'], 'only the period grades count');
-  assert.equal(run(`periodMissingWords(periodReviewState(null), 'week')`), 'grades on 8 parts and the rule for next week');
-  assert.equal(run(`periodMissingWords(periodReviewState({ ...${JSON.stringify(GRADED)}, risk_grade: null }), 'month')`), 'a grade on risk management and the rule for next month');
+  assert.equal(run(`periodMissingWords(periodReviewState(null), 'week')`), 'grades on 8 parts and the rules for next week');
+  assert.equal(run(`periodMissingWords(periodReviewState({ ...${JSON.stringify(GRADED)}, risk_grade: null }), 'month')`), 'a grade on risk management and the rules for next month');
   assert.deepEqual(json(run, 'PERIOD_GRADES'), ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F']);
   assert.equal(json(run, 'PERIOD_COLUMNS').length, 19);
 });
@@ -259,10 +269,10 @@ test('grades and notes save as you go: one column per save, a note on blur, the 
   const writes = () => supabase.writes.filter(w => w.table === 'period_reviews');
   assert.match(out(), /data-arg2="2026-10-05"[^>]*>[\s\S]*?<span class="jc-rev jc-rev-due">review week<\/span><\/button>/, 'a week that is over and not reviewed asks for it');
   run("openPeriodReview('week', '2026-10-05')");
-  assert.match(out(), /class="jw-status jw-status-open">To finish: grades on 8 parts and the rule for next week\./);
+  assert.match(out(), /class="jw-status jw-status-open">To finish: grades on 8 parts and the rules for next week\./);
   assert.match(out(), /<select class="jw-grade jw-grade-empty" id="jwGrade-exit" data-change="setPeriodGrade" data-arg="exit" aria-label="Exit discipline grade">/);
-  assert.match(out(), /<label class="jw-rule-label" for="jwRuleNext">Rule for next week<\/label>/);
-  assert.doesNotMatch(out(), /Last week's rule/, 'no rule the week before');
+  assert.match(out(), /<div class="jw-rule-label">Rules for next week <span class="jw-optional">up to 5<\/span><\/div>/);
+  assert.doesNotMatch(out(), /This week's rule/, 'no rules the week before');
 
   run("setPeriodGrade('exit', 'B+')");
   await settle();
@@ -286,12 +296,14 @@ test('grades and notes save as you go: one column per save, a note on blur, the 
   for (const k of ['selection', 'entry', 'risk', 'emotion', 'market', 'prep', 'consistency']) run(`setPeriodGrade('${k}', 'B')`);
   await settle();
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').reviewed_at, undefined, 'still no rule');
-  run("periodTextSave('rule', 'No entries before 9:45')");
+  run("periodRuleDraftInput('No entries before 9:45')");
+  run('addPeriodRule()');
   await settle();
   const saved = supabase.tables.period_reviews.get('user-1:week:2026-10-05');
-  assert.equal(saved.rule_next, 'No entries before 9:45');
+  assert.deepEqual(saved.rules_next.map(r => r.text), ['No entries before 9:45']);
+  assert.equal(saved.rule_next, 'No entries before 9:45', 'the old column keeps the first');
   assert.ok(saved.reviewed_at, 'reviewed_at stamped with the save that finished it');
-  assert.match(out(), /<span class="journal-tag journal-tag-done">reviewed<\/span> Every part graded and the rule for next week set\./);
+  assert.match(out(), /<span class="journal-tag journal-tag-done">reviewed<\/span> Every part graded and the rules for next week set\./);
   assert.match(out(), /data-arg2="2026-10-05"[^>]*aria-label="[^"]*, reviewed\. Review the week"[\s\S]*?<span class="jc-rev jc-rev-done">✓ reviewed<\/span>/);
   run("setPeriodGrade('risk', '')");
   await settle();
@@ -329,7 +341,7 @@ test('the week overall: what went well, what to work on, more notes, each its ow
   assert.match(out(), /<section class="jw-overall" aria-label="The week overall"><div class="jw-cat-name">The week overall <span class="jw-optional">optional<\/span><\/div>/);
   for (const [col, label] of [['went_well', 'What went well'], ['work_on', 'What to work on'], ['note', 'More notes']])
     assert.match(out(), new RegExp(`<label class="jw-overall-label" for="jwOverall-${col}">${label}</label>\\s*<textarea class="jw-note" id="jwOverall-${col}"[^>]*data-arg="${col}">`));
-  assert.ok(out().indexOf('jw-overall') > out().indexOf('jw-cats') && out().indexOf('jw-overall') < out().indexOf('jwRuleNext'), 'after the parts, before the rule');
+  assert.ok(out().indexOf('jw-overall') > out().indexOf('jw-cats') && out().indexOf('jw-overall') < out().indexOf('jwRuleNew'), 'after the parts, before the rules');
   run("periodTextInput('went_well', 'Waited for the 9:45 pivot')");
   run('renderJournal()');
   assert.match(out(), /id="jwOverall-went_well"[^>]*>Waited for the 9:45 pivot<\/textarea>/, 'a redraw keeps the draft');
@@ -340,7 +352,7 @@ test('the week overall: what went well, what to work on, more notes, each its ow
   run("periodTextSave('note', 'Slept badly Wednesday')");
   await settle();
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').note, 'Slept badly Wednesday');
-  assert.match(out(), /To finish: grades on 8 parts and the rule for next week\./, 'notes don\'t count toward reviewed');
+  assert.match(out(), /To finish: grades on 8 parts and the rules for next week\./, 'notes don\'t count toward reviewed');
   run("closePeriodReview()");
   run("openPeriodReview('month', '2026-10')");
   assert.match(out(), /aria-label="The month overall"/);
@@ -369,15 +381,17 @@ test('before the overall notes\' columns are pushed their boxes are off and say 
   assert.deepEqual(sb.writes.filter(w => w.table === 'period_reviews').map(w => w.exit_grade), ['B'], 'only the grade went out');
 });
 
-test('last week\'s rule shows on top with Kept it?, saved on this week', async () => {
+test('last week\'s one rule (from before the list) shows on top with Kept it?, saved on this week', async () => {
   const { run, out, supabase } = await journal({ periods: [{ unit: 'week', period_key: '2026-09-28', rule_next: 'Size down after a loss' }] });
   run("openPeriodReview('week', '2026-10-05')");
-  assert.match(out(), /<div class="jw-rule-label">Last week's rule<\/div><p class="jw-rule-text">Size down after a loss<\/p>[\s\S]*?Kept it\?<\/span><button class="filter-btn" aria-pressed="false" data-action="setRuleKept" data-arg="yes">Yes<\/button>/);
-  run("setRuleKept('partly')");
+  assert.match(out(), /<div class="jw-rule-label">This week's rule <span class="jw-optional">set last week<\/span><\/div>[\s\S]*?<p class="jw-rule-text">Size down after a loss<\/p>[\s\S]*?Kept it\?<\/span><button class="filter-btn" aria-pressed="false" data-action="setRuleKept" data-arg="rule" data-arg2="yes">Yes<\/button>/);
+  assert.doesNotMatch(out(), /jw-tally/, 'its days were never asked');
+  assert.match(out(), /To finish: grades on 8 parts and the rules for next week\./, 'Kept it? on it is never needed');
+  run("setRuleKept('rule', 'partly')");
   await settle();
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').rule_kept, 'partly');
-  assert.match(out(), /aria-pressed="true" data-action="setRuleKept" data-arg="partly"/);
-  run("setRuleKept('partly')");
+  assert.match(out(), /aria-pressed="true" data-action="setRuleKept" data-arg="rule" data-arg2="partly"/);
+  run("setRuleKept('rule', 'partly')");
   await settle();
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').rule_kept, null, 'tapping the lit one clears it');
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-09-28').rule_next, 'Size down after a loss', 'last week\'s row is left alone');
@@ -405,9 +419,124 @@ test('before the migration is pushed the numbers still show and the grades say t
   assert.match(out(), /Grades and notes need a database update: the database doesn&#39;t have the period_reviews table yet: npx supabase db push\. The numbers still work\./);
   assert.match(out(), /Kept 43% of the best move on 1 winner/, 'the numbers');
   assert.match(out(), /id="jwGrade-exit"[^>]*disabled>/);
-  assert.match(out(), /id="jwRuleNext"[^>]*disabled \/>/);
+  assert.match(out(), /id="jwRuleNew"[^>]*disabled \/>/);
   run("setPeriodGrade('exit', 'A')");
   await settle();
   assert.equal(supabase.writes.filter(w => w.table === 'period_reviews').length, 0, 'nothing written');
   assert.ok(state.tradeReviews && !state.journalError, 'the rest of the journal loaded');
+});
+
+test('the rules for next week are a list: + Add or Enter, reword in place, emptied comes off, five at most', async () => {
+  const { run, out, state, supabase } = await journal();
+  const row = () => supabase.tables.period_reviews.get('user-1:week:2026-10-05');
+  run("openPeriodReview('week', '2026-10-05')");
+  assert.match(out(), /id="jwRuleNew"[^>]*placeholder="One rule to hold yourself to"[^>]*data-input="periodRuleDraftInput" data-enter="addPeriodRule"/);
+  assert.match(out(), /Each day next week asks whether you kept them, and Size can show them under your max loss \(Settings\)\./);
+  run("periodRuleDraftInput('No trades before 9:45')");
+  run('renderJournal()');
+  assert.match(out(), /id="jwRuleNew"[^>]*value="No trades before 9:45"/, 'a redraw keeps the draft');
+  run('addPeriodRule()');
+  run("periodRuleDraftInput('  Size down after a loss ')");
+  run('addPeriodRule()');
+  await settle();
+  assert.deepEqual(row().rules_next.map(r => r.text), ['No trades before 9:45', 'Size down after a loss']);
+  assert.equal(row().rule_next, 'No trades before 9:45');
+  assert.equal(state.periodRuleDraft, '');
+  assert.match(out(), /<ol class="jw-rules-next">[\s\S]*aria-label="Rule 2 for next week"[^>]*value="Size down after a loss"/);
+  assert.match(out(), /id="jwRuleNew"[^>]*placeholder="Another rule"/);
+
+  const [a, b] = row().rules_next;
+  run(`periodRuleInput('${a.id}', 'No trades before 10')`);
+  run('renderJournal()');
+  assert.match(out(), new RegExp(`id="jwRule-${a.id}"[^>]*value="No trades before 10"`), 'a reword survives a redraw');
+  run(`periodRuleSave('${a.id}', 'No trades before 10')`);
+  await settle();
+  assert.deepEqual(row().rules_next, [{ id: a.id, text: 'No trades before 10' }, b], 'the same id, new words');
+  assert.equal(row().rule_next, 'No trades before 10');
+  run(`periodRuleSave('${a.id}', '  ')`);
+  await settle();
+  assert.deepEqual(row().rules_next, [b], 'emptied, it comes off');
+  run(`removePeriodRule('${b.id}')`);
+  await settle();
+  assert.deepEqual([row().rules_next, row().rule_next], [[], null]);
+  assert.match(out(), /To finish: grades on 8 parts and the rules for next week\./);
+
+  for (const t of ['1', '2', '3', '4', '5']) { run(`periodRuleDraftInput('Rule ${t}')`); run('addPeriodRule()'); }
+  await settle();
+  assert.equal(row().rules_next.length, 5);
+  assert.match(out(), /<p class="hint">5 rules at most\.<\/p>/);
+  assert.doesNotMatch(out(), /id="jwRuleNew"/);
+  run("periodRuleDraftInput('Rule 6')");
+  run('addPeriodRule()');
+  assert.match(run("document.getElementById('errorBox').textContent"), /5 rules at most: remove one first\./);
+});
+
+test("this week's rules on top: how the days checked each, Kept it? on each, how they went, and Keep it next week", async () => {
+  const RULES = [{ id: 'r1', text: 'No trades before 9:45' }, { id: 'r2', text: 'Size down after a loss' }];
+  const a = await journal({ periods: [{ unit: 'week', period_key: '2026-09-28', rules_next: RULES }], opts: { clock: true, now: Date.parse('2026-10-08T21:00:00Z') } });
+  const { run, out, supabase } = a;
+  // the days of the week of Oct 5 checked them: Monday both, Tuesday one, Wednesday none, Thursday (today) not yet
+  supabase.tables.journal_days.set('user-1:2026-10-05', { user_id: 'user-1', day: '2026-10-05', week_rules: { r1: 'kept', r2: 'broke' } });
+  supabase.tables.journal_days.set('user-1:2026-10-06', { user_id: 'user-1', day: '2026-10-06', week_rules: { r1: 'kept' } });
+  await run('loadJournalReview()');
+  run("openPeriodReview('week', '2026-10-05')");
+  assert.match(out(), /<section class="jw-rule jw-rule-last" aria-label="this week&#39;s rules"><div class="jw-rule-label">This week's rules <span class="jw-optional">set last week<\/span><\/div>/);
+  assert.match(out(), /<p class="jw-rule-text">No trades before 9:45<\/p><span class="jw-tally">Kept 2 · Broke 0 · 2 days not checked<\/span>/, 'Mon to Thu asked, Friday still to come');
+  assert.match(out(), /<p class="jw-rule-text">Size down after a loss<\/p><span class="jw-tally">Kept 0 · Broke 1 · 3 days not checked<\/span>/);
+  assert.match(out(), /<label class="jw-overall-label" for="jwRulesNote">How did this week's rules go\?<\/label>/);
+  assert.match(out(), /To finish: Kept it\? on this week&#39;s rules, how this week&#39;s rules went, grades on 8 parts and the rules for next week\./);
+
+  run("setRuleKept('r1', 'yes')");
+  await settle();
+  const row = () => supabase.tables.period_reviews.get('user-1:week:2026-10-05');
+  assert.deepEqual(row().rules_kept, { r1: 'yes' });
+  assert.match(out(), /aria-pressed="true" data-action="setRuleKept" data-arg="r1" data-arg2="yes"/);
+  assert.match(out(), /To finish: Kept it\? on 1 of this week&#39;s rules, how/);
+  run("setRuleKept('r2', 'no')");
+  run("setRuleKept('nope', 'no')");
+  await settle();
+  assert.deepEqual(row().rules_kept, { r1: 'yes', r2: 'no' }, 'a rule last week never set is ignored');
+  run("periodTextSave('rules_note', ' Held the open; sized up after the AMD loss. ')");
+  await settle();
+  assert.equal(row().rules_note, 'Held the open; sized up after the AMD loss.');
+  assert.match(out(), /To finish: grades on 8 parts and the rules for next week\./);
+
+  run("carryPeriodRule('r2')");
+  await settle();
+  assert.deepEqual(row().rules_next.map(r => r.text), ['Size down after a loss'], 'onto next week\'s list, an id of its own');
+  assert.notEqual(row().rules_next[0].id, 'r2');
+  assert.match(out(), /<span class="jw-carried">On next week's list<\/span>/);
+  run("carryPeriodRule('r2')");
+  await settle();
+  assert.equal(row().rules_next.length, 1, 'never twice');
+  for (const k of ['selection', 'entry', 'exit', 'risk', 'emotion', 'market', 'prep', 'consistency']) run(`setPeriodGrade('${k}', 'B')`);
+  await settle();
+  assert.ok(row().reviewed_at, 'every part, the rules for next week, Kept it? on each and how they went');
+  run("setRuleKept('r2', 'no')");
+  await settle();
+  assert.equal(row().reviewed_at, null, 'an answer taken back takes the mark with it');
+});
+
+test('before the week rules\' columns are pushed: the one rule box, a hint, and the rest saves', async () => {
+  const sb = fakeRecords(RECORDS);
+  sb.failColumn('period_reviews', 'rules_next');
+  sb.tables.period_reviews.set('user-1:week:2026-09-28', { user_id: 'user-1', unit: 'week', period_key: '2026-09-28', rule_next: 'Size down after a loss' });
+  const a = await app({ supabase: sb, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  a.run("setJournalTab('calendar')");
+  const out = () => a.elements.get('journalSection').innerHTML;
+  assert.match(a.state.periodRulesError, /week rules columns yet: npx supabase db push/);
+  a.run("openPeriodReview('week', '2026-10-05')");
+  assert.match(out(), /<label class="jw-rule-label" for="jwRuleNext">Rule for next week<\/label>/);
+  assert.doesNotMatch(out(), /jwRuleNew|carryPeriodRule/);
+  assert.match(out(), /The rules list needs a database update: the database doesn&#39;t have the week rules columns yet: npx supabase db push\. Your one rule still saves\./);
+  assert.match(out(), /id="jwRulesNote"[^>]*disabled>/);
+  a.run("periodTextSave('rule', 'Wait for the pivot')");
+  a.run("setRuleKept('rule', 'yes')");
+  await settle();
+  const row = sb.tables.period_reviews.get('user-1:week:2026-10-05');
+  assert.deepEqual([row.rule_next, row.rule_kept], ['Wait for the pivot', 'yes']);
+  assert.equal(sb.writes.filter(w => w.table === 'period_reviews' && 'rules_next' in w).length, 0, 'never the columns it lacks');
 });

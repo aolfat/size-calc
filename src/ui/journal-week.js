@@ -2,20 +2,21 @@
 // month, opens the period's review under the grid (state.journalReviewPeriod): the headline against the period before, the
 // best and worst trade, the trades saved for the weekly review, every trade in a list you sort (by P&L, P&L %, R or when
 // it opened), and each part of a self-assessment with its numbers
-// (core/journal-week.js), its grade and its note; last week's rule with Kept it? on top, the week overall (what went well,
-// what to work on, more notes) and the rule for next week at the bottom. The whole period, no filters. Exit efficiency and heat come from the trades' saved 5-minute bars, read once per
+// (core/journal-week.js), its grade and its note; this week's rules (the ones last week's review set) on top, each with how
+// the days checked it and Kept it?, and how they went; the week overall (what went well, what to work on, more notes) and
+// the rules for next week (a list, up to five) at the bottom. The whole period, no filters. Exit efficiency and heat come from the trades' saved 5-minute bars, read once per
 // trade (state.journalExcursions). Grades and notes are period_reviews rows (state.periodReviews), shown at once and put
 // back with a toast if Supabase refuses; a note is a draft while you type and saves when the box loses focus.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary } from '../core/journal-labels.js';
 import { MISSED_WHY, periodMissed } from '../core/journal-notebook.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
-import { gradeColumn, MAX_PERIOD_NOTE, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, sortPeriodTrades } from '../core/journal-week.js';
+import { gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodRules, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, ruleKeptOf, sortPeriodTrades, weekRuleTally } from '../core/journal-week.js';
 import { excursions, unpackBars } from '../core/trade-page.js';
 import { nyDay, weekdaysBetween } from '../core/bars.js';
 import { parseSchwabOption } from '../core/positions.js';
 import { loadTradeBars } from '../services/bars.js';
-import { loadPeriodReviews, savePeriodFields } from '../services/journal-review.js';
+import { savePeriodFields } from '../services/journal-review.js';
 import { zoneWords } from '../lib/zone.js';
 import { state } from '../state.js';
 import { showError } from './feedback.js';
@@ -23,6 +24,7 @@ import { periodReviewContext, reviewedMark } from './journal-review.js';
 import { missedWords } from './journal-notebook.js';
 import { periodName } from './journal-stats.js';
 import { journalTradeList, renderJournal } from './journal.js';
+import { loadPeriodReviewRows, renderWeekRulesCard } from './week-rules.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -163,24 +165,18 @@ function missedList(p) {
 const CATEGORY_KEYS = new Set(PERIOD_CATEGORIES.map(([k]) => k));
 const rowId = (unit, key) => `${unit}|${key}`;
 const rowOf = (unit, key) => state.periodReviews?.[rowId(unit, key)] || null;
+/** the period before's row: the rules it set are the ones this period answers for */
+const prevOf = (unit, key) => rowOf(unit, previousPeriod(unit, key));
+const stateOf = (unit, key) => periodReviewState(rowOf(unit, key), prevOf(unit, key));
 const unitWord = unit => unit === 'month' ? 'month' : 'week';
 
-/** read every period's grades and notes; a failure (the table not pushed yet) keeps the numbers working and says why */
-export async function loadPeriodReviewRows() {
-  try {
-    const { rows, overallError } = await loadPeriodReviews();
-    state.periodReviews = Object.fromEntries(rows.map(r => [rowId(r.unit, r.period_key), r]));
-    state.periodReviewsError = '';
-    state.periodOverallError = overallError;
-  } catch(e) {
-    state.periodReviewsError = String(e?.message || e);
-  }
-}
+/** read every period's grades, notes and rules (ui/week-rules.js reads them, and redraws the calculator's card) */
+export { loadPeriodReviewRows };
 
 /** where a week's or month's review stands, or null before the rows are read (or when they can't be) */
 export function periodStatus(unit, key) {
   if (!state.periodReviews || state.periodReviewsError) return null;
-  return periodReviewState(rowOf(unit, key));
+  return stateOf(unit, key);
 }
 
 /** the calendar's mark on a week or month: reviewed, or (once it's over) still to review */
@@ -205,16 +201,18 @@ async function savePeriod(fields) {
   if (!p || !state.periodReviews || state.periodReviewsError) return;
   const id = rowId(p.unit, p.key), before = rowOf(p.unit, p.key);
   const next = { unit: p.unit, period_key: p.key, ...(before || {}), ...fields };
-  const reviewed = periodReviewState(next).reviewed;
+  const reviewed = periodReviewState(next, prevOf(p.unit, p.key)).reviewed;
   if (reviewed !== !!next.reviewed_at) fields = { ...fields, reviewed_at: next.reviewed_at = reviewed ? new Date(Date.now()).toISOString() : null };
   state.periodReviews[id] = next;
   redraw();
+  renderWeekRulesCard();
   try { await savePeriodFields(p.unit, p.key, fields); }
   catch(e) {
     const now = state.periodReviews?.[id];
     if (now) for (const [f, v] of Object.entries(fields)) if (now[f] === v) now[f] = before?.[f] ?? null;
     showError(`Couldn't save the review: ${String(e?.message || e)}`);
     redraw();
+    renderWeekRulesCard();
   }
 }
 
@@ -223,18 +221,75 @@ export function setPeriodGrade(cat, grade) {
   if (!CATEGORY_KEYS.has(cat)) return;
   return savePeriod({ [gradeColumn(cat)]: PERIOD_GRADES.includes(grade) ? grade : null });
 }
-/** Kept it? on the period before's rule (tapping the lit one clears it) */
-export function setRuleKept(value) {
+/** Kept it? on one of the period before's rules (tapping the lit one clears it); a rule from before the list answers in rule_kept */
+export function setRuleKept(id, value) {
   const p = state.journalReviewPeriod;
-  if (!p) return;
-  const now = rowOf(p.unit, p.key)?.rule_kept || null;
-  return savePeriod({ rule_kept: RULE_KEPT.some(([v]) => v === value) && value !== now ? value : null });
+  if (!p || !periodRules(prevOf(p.unit, p.key)).some(r => r.id === id)) return;
+  const row = rowOf(p.unit, p.key), now = ruleKeptOf(row, id);
+  const next = RULE_KEPT.some(([v]) => v === value) && value !== now ? value : null;
+  if (id === LEGACY_RULE_ID) return savePeriod({ rule_kept: next });
+  if (state.periodRulesError) return;
+  const kept = { ...(row?.rules_kept || {}) };
+  if (next) kept[id] = next; else delete kept[id];
+  return savePeriod({ rules_kept: kept });
+}
+
+// ---------- the rules for next week (rules_next: a list, up to five) ----------
+
+const newRuleId = () => globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+/** the whole list saved; rule_next keeps the first one's text for anything still reading it. A rule from before the list gets an id of its own. */
+function saveRules(list) {
+  const rules = list.map(r => r.id === LEGACY_RULE_ID ? { ...r, id: newRuleId() } : r).slice(0, MAX_PERIOD_RULES);
+  return savePeriod({ rules_next: rules, rule_next: rules[0]?.text || null });
+}
+const listNow = () => { const p = state.journalReviewPeriod; return p ? periodRules(rowOf(p.unit, p.key)) : []; };
+const listOff = () => !state.journalReviewPeriod || !state.periodReviews || !!state.periodReviewsError || !!state.periodRulesError;
+
+/** typing a new rule: a draft (a redraw never loses it) */
+export function periodRuleDraftInput(text) { state.periodRuleDraft = String(text || ''); }
+/** + Add (or Enter): the rule typed, at the end of the list */
+export function addPeriodRule() {
+  if (listOff()) return;
+  const text = state.periodRuleDraft.trim().slice(0, MAX_RULE), list = listNow();
+  if (!text) return;
+  if (list.length >= MAX_PERIOD_RULES) { showError(`${MAX_PERIOD_RULES} rules at most: remove one first.`); return; }
+  state.periodRuleDraft = '';
+  return saveRules([...list, { id: newRuleId(), text }]);
+}
+/** rewording a rule: a draft while you type, saved when the box loses focus; emptied, it comes off */
+export function periodRuleInput(id, text) {
+  const p = state.journalReviewPeriod;
+  if (p) state.periodNoteDraft = { unit: p.unit, key: p.key, field: `rule:${id}`, text };
+}
+export function periodRuleSave(id, text) {
+  state.periodNoteDraft = null;
+  const list = listNow(), had = list.find(r => r.id === id);
+  if (listOff() || !had) return;
+  const value = String(text || '').trim().slice(0, MAX_RULE);
+  if (value === had.text) return;
+  return saveRules(value ? list.map(r => r.id === id ? { ...r, text: value } : r) : list.filter(r => r.id !== id));
+}
+export function removePeriodRule(id) {
+  const list = listNow();
+  if (!listOff() && list.some(r => r.id === id)) return saveRules(list.filter(r => r.id !== id));
+}
+/** Keep it next week: one of this week's rules onto the list for next week */
+export function carryPeriodRule(id) {
+  const p = state.journalReviewPeriod, list = listNow();
+  const r = p && periodRules(prevOf(p.unit, p.key)).find(x => x.id === id);
+  if (listOff() || !r || list.some(x => x.text.toLowerCase() === r.text.toLowerCase())) return;
+  if (list.length >= MAX_PERIOD_RULES) { showError(`${MAX_PERIOD_RULES} rules at most: remove one first.`); return; }
+  return saveRules([...list, { id: newRuleId(), text: r.text }]);
 }
 
 const OVERALL_KEYS = new Set(PERIOD_OVERALL_COLUMNS);
-/** a part's note ('selection' … 'consistency'), an overall note ('went_well', 'work_on', 'note') or the rule for next week ('rule'): its column and longest text */
+/**
+ * a part's note ('selection' … 'consistency'), an overall note ('went_well', 'work_on', 'note'), how this week's rules
+ * went ('rules_note') or the one rule for next week before the list's columns are pushed ('rule'): its column and longest text
+ */
 const textField = field => field === 'rule' ? { col: 'rule_next', max: MAX_RULE } : CATEGORY_KEYS.has(field) ? { col: noteColumn(field), max: MAX_PERIOD_NOTE }
-  : OVERALL_KEYS.has(field) && !state.periodOverallError ? { col: field, max: MAX_PERIOD_NOTE } : null;
+  : OVERALL_KEYS.has(field) && !state.periodOverallError ? { col: field, max: MAX_PERIOD_NOTE }
+  : field === 'rules_note' && !state.periodRulesError ? { col: 'rules_note', max: MAX_PERIOD_NOTE } : null;
 /** typing: a draft (a redraw never loses it) */
 export function periodTextInput(field, text) {
   const p = state.journalReviewPeriod;
@@ -293,18 +348,41 @@ function category(c, p, off) {
 
 const chip = (label, on, attrs) => `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" ${attrs}>${esc(label)}</button>`;
 
-/** over the parts: where the review stands (or why it can't be saved), and the period before's rule with Kept it? */
+/** how the week's days checked a rule: 'Kept 3 · Broke 1 · 1 day not checked'; '' for a month or before the notebook loads */
+function tallyWords(p, id) {
+  const d = state.journalReview;
+  if (p.unit !== 'week' || !d || d.notebookError || d.weekRulesError || id === LEGACY_RULE_ID) return '';
+  const t = weekRuleTally(d.days, p.key, id, nyDay(Date.now()));
+  if (!t.kept && !t.broke && !t.open) return '';
+  return [`Kept ${t.kept}`, `Broke ${t.broke}`, t.open ? `${t.open} day${t.open === 1 ? '' : 's'} not checked` : ''].filter(Boolean).join(' · ');
+}
+
+/** over the parts: where the review stands (or why it can't be saved), and the rules the period before set, each with how the days checked it, Kept it? and Keep it, then how they went */
 function reviewTop(p, off) {
   const word = unitWord(p.unit);
   if (state.periodReviewsError) return `<p class="hint jw-db">Grades and notes need a database update: ${esc(state.periodReviewsError)}. The numbers still work.</p>`;
   if (!state.periodReviews) return '<p class="hint jw-status">Loading your grades and notes…</p>';
-  const st = periodReviewState(rowOf(p.unit, p.key));
-  const status = st.reviewed ? `<p class="jw-status"><span class="journal-tag journal-tag-done">reviewed</span> Every part graded and the rule for next ${word} set.</p>`
+  const st = stateOf(p.unit, p.key);
+  const status = st.reviewed ? `<p class="jw-status"><span class="journal-tag journal-tag-done">reviewed</span> Every part graded and the rules for next ${word} set.</p>`
     : `<p class="jw-status jw-status-open">To finish: ${esc(periodMissingWords(st, p.unit))}.</p>`;
-  const before = rowOf(p.unit, previousPeriod(p.unit, p.key)), kept = rowOf(p.unit, p.key)?.rule_kept || '';
-  const rule = before?.rule_next ? `<div class="jw-rule jw-rule-last"><div class="jw-rule-label">Last ${word}'s rule</div><p class="jw-rule-text">${esc(before.rule_next)}</p>
-      <div class="jw-kept" role="group" aria-label="Kept last ${word}'s rule?"><span class="jw-kept-q">Kept it?</span>${RULE_KEPT.map(([v, w]) => chip(w, kept === v, `data-action="setRuleKept" data-arg="${v}"${off}`)).join('')}</div></div>` : '';
-  return status + rule;
+  const rules = periodRules(prevOf(p.unit, p.key)), row = rowOf(p.unit, p.key), next = periodRules(row);
+  if (!rules.length) return status;
+  const listOffNow = off || state.periodRulesError ? ' disabled' : '';
+  const item = r => {
+    const kept = ruleKeptOf(row, r.id) || '', tally = tallyWords(p, r.id), asked = r.id !== LEGACY_RULE_ID;
+    const open = !off && asked && !kept ? ' jw-cat-open' : '';
+    const carried = next.some(x => x.text.toLowerCase() === r.text.toLowerCase());
+    const carry = state.periodRulesError ? '' : carried ? `<span class="jw-carried">On next ${word}'s list</span>`
+      : `<button class="pos-link" data-action="carryPeriodRule" data-arg="${esc(r.id)}"${off}>Keep it next ${word}</button>`;
+    return `<li class="jw-rule-item${open}"><p class="jw-rule-text">${esc(r.text)}</p>${tally ? `<span class="jw-tally">${esc(tally)}</span>` : ''}
+      <div class="jw-kept" role="group" aria-label="${esc(`Kept it? ${r.text}`)}"><span class="jw-kept-q">Kept it?</span>${RULE_KEPT.map(([v, w]) => chip(w, kept === v, `data-action="setRuleKept" data-arg="${esc(r.id)}" data-arg2="${v}"${off}`)).join('')}${carry}</div></li>`;
+  };
+  const these = `this ${word}'s rule${rules.length === 1 ? '' : 's'}`;
+  const talk = `<div class="jw-overall-field${!off && !st.talk ? ' jw-cat-open' : ''}"><label class="jw-overall-label" for="jwRulesNote">How did ${these} go?</label>
+      <textarea class="jw-note" id="jwRulesNote" rows="2" maxlength="${MAX_PERIOD_NOTE}" placeholder="Where you held them, where you broke them, what got in the way" data-input="periodTextInput" data-change="periodTextSave" data-arg="rules_note"${listOffNow}>${esc(textOf(p.unit, p.key, 'rules_note'))}</textarea></div>`;
+  const why = state.periodRulesError && !off ? `<p class="hint jw-db">The rules list needs a database update: ${esc(state.periodRulesError)}. Your one rule still saves.</p>` : '';
+  return `${status}<section class="jw-rule jw-rule-last" aria-label="${esc(these)}"><div class="jw-rule-label">${these.replace(/^./, c => c.toUpperCase())} <span class="jw-optional">set last ${word}</span></div>${why}
+    <ul class="jw-rules-last">${rules.map(item).join('')}</ul>${talk}</section>`;
 }
 
 const OVERALL_HINTS = { went_well: 'What you did right, what worked', work_on: "What to fix, what you'd do differently", note: 'Anything else about the week' };
@@ -319,11 +397,19 @@ function overall(p, off) {
     <div class="jw-overall-grid">${PERIOD_OVERALL.map(box).join('')}</div></section>`;
 }
 
-/** under the parts: the one rule for next week (or month) */
+/** under the parts: the rules for next week (or month), a box each to reword (emptied, it comes off) and + Add; before the list's columns are pushed, the one rule */
 function ruleNext(p, off) {
-  const word = unitWord(p.unit), missing = !off && !periodReviewState(rowOf(p.unit, p.key)).rule;
-  return `<div class="jw-rule${missing ? ' jw-cat-open' : ''}"><label class="jw-rule-label" for="jwRuleNext">Rule for next ${word}</label>
+  const word = unitWord(p.unit), missing = !off && !stateOf(p.unit, p.key).rule;
+  if (state.periodRulesError) return `<div class="jw-rule${missing ? ' jw-cat-open' : ''}"><label class="jw-rule-label" for="jwRuleNext">Rule for next ${word}</label>
     <input type="text" class="jw-rule-input" id="jwRuleNext" maxlength="${MAX_RULE}" autocomplete="off" placeholder="One rule to hold yourself to" data-input="periodTextInput" data-change="periodTextSave" data-arg="rule" value="${esc(textOf(p.unit, p.key, 'rule'))}"${off} /></div>`;
+  const list = periodRules(rowOf(p.unit, p.key)), d = state.periodNoteDraft;
+  const valueOf = r => d && d.unit === p.unit && d.key === p.key && d.field === `rule:${r.id}` ? d.text : r.text;
+  const line = (r, n) => `<li class="nb-item jw-rule-line"><input type="text" class="jw-rule-input" id="jwRule-${esc(r.id)}" maxlength="${MAX_RULE}" autocomplete="off" aria-label="Rule ${n + 1} for next ${word}" data-input="periodRuleInput" data-change="periodRuleSave" data-arg="${esc(r.id)}" value="${esc(valueOf(r))}"${off} /><button class="pos-link" data-action="removePeriodRule" data-arg="${esc(r.id)}" aria-label="${esc(`Remove ${r.text}`)}"${off}>Remove</button></li>`;
+  const add = list.length >= MAX_PERIOD_RULES ? `<p class="hint">${MAX_PERIOD_RULES} rules at most.</p>`
+    : `<div class="nb-item jw-rule-line"><input type="text" class="jw-rule-input" id="jwRuleNew" maxlength="${MAX_RULE}" autocomplete="off" placeholder="${list.length ? 'Another rule' : 'One rule to hold yourself to'}" aria-label="New rule for next ${word}" data-input="periodRuleDraftInput" data-enter="addPeriodRule" value="${esc(state.periodRuleDraft)}"${off} /><button class="btn" data-action="addPeriodRule"${off}>+ Add</button></div>`;
+  const where = p.unit === 'week' ? 'Each day next week asks whether you kept them, and Size can show them under your max loss (Settings).' : `Next ${word}'s review asks whether you kept them.`;
+  return `<div class="jw-rule${missing ? ' jw-cat-open' : ''}"><div class="jw-rule-label">Rules for next ${word} <span class="jw-optional">up to ${MAX_PERIOD_RULES}</span></div>
+    ${list.length ? `<ol class="jw-rules-next">${list.map(line).join('')}</ol>` : ''}${add}<p class="hint">${where}</p></div>`;
 }
 
 /** the review open under the calendar, or nothing */
@@ -359,7 +445,7 @@ export function periodReviewHtml(trades) {
       <div class="jw-cats">${r.categories.map(c => category(c, p, lock)).join('')}</div>
       ${overall(p, lock)}
       ${ruleNext(p, lock)}
-      <p class="hint">The whole ${word}: the side, symbol and setup filters don't apply. Results count the exits taken this ${word}, like the calendar (a trade partly closed shows that part's P&amp;L, % and R); entries, notes and trades per day count the trades opened in it. The best move and heat come from each trade's saved 5-minute bars. Green reads well, amber is worth a look. A ${word} is reviewed once every part has a grade and the rule for next ${word} is set; notes, the ${word} overall too, save when you leave the box.</p>`
+      <p class="hint">The whole ${word}: the side, symbol and setup filters don't apply. Results count the exits taken this ${word}, like the calendar (a trade partly closed shows that part's P&amp;L, % and R); entries, notes and trades per day count the trades opened in it. The best move and heat come from each trade's saved 5-minute bars. Green reads well, amber is worth a look. A ${word} is reviewed once every part has a grade, the rules for next ${word} are set and, when last ${word} set rules, each has its Kept it? and how they went is said; notes, the ${word} overall too, save when you leave the box.</p>`
     : `<p class="hint">No trades this ${word}.</p>${missedList(p)}`}
   </div>`;
 }

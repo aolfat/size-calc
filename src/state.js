@@ -144,7 +144,10 @@ export function createState() {
     periodReviews: null, // 'week|2026-10-12' or 'month|2026-10' → its period_reviews row (grades, notes, the rules); null until read
     periodReviewsError: '', // why they couldn't be read (the table not pushed yet): the numbers still show, nothing saves
     periodOverallError: '', // why the overall notes (went_well, work_on, note) couldn't be read (their columns not pushed yet): those boxes are off, the rest saves
-    periodNoteDraft: null, // { unit, key, field, text }: a part's note, an overall note or the rule for next week being typed, saved on blur
+    periodNoteDraft: null, // { unit, key, field, text }: a part's note, an overall note, how the rules went or a rule for next week ('rule:<id>') being typed, saved on blur
+    periodRulesError: '', // why the rules list (rules_next, rules_kept, rules_note) couldn't be read (its columns not pushed yet): the one rule box stands in
+    periodRuleDraft: '', // the new rule for next week being typed, added with + Add or Enter
+    weekRulesAt: 0, // when the calculator last read the week reviews for this week's rules (Date.now()), so focusing the app reads them at most every few minutes
     journalPeriod: 'all', // the stats cover: all | day | week | month | range (Dates)
     journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday), 'YYYY-MM' or 'YYYY-MM-DD..YYYY-MM-DD' (Dates); empty = the newest with closed trades
     journalPeriodShown: '', // the period the stats last showed (‹ › step from it)

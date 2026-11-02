@@ -32,6 +32,7 @@ Four sections, always in this order.
 |---|---|---|
 | Economic events | The day's US releases with their New York times and impact (docs/journal.md, Economic events), 'No major releases.' on a quiet day | Nothing to fill in |
 | Last focus | The focus you wrote in your last review (up to a week back), at the top | Shown only when there is one |
+| This week's rules | The rules last week's review set (docs/journal.md, Rules for next week), to read before the open | Nothing to fill in; they're checked after the close |
 | Mental check-in | How you feel (Calm, Focused, Confident, Anxious, Frustrated, Impatient, FOMO; any number), sleep and energy (Rested, OK, Tired), hours slept, Woke up before the open (a checkmark), where you're trading (At my desk, On my phone) | Feeling, energy and where; hours and the checkmark are optional |
 | Goals | Your standing goals | Nothing to fill in |
 | Rules | Your standing rules | Nothing to fill in; they're checked after the close |
@@ -116,6 +117,7 @@ They never count in P&L, stats, the plan or the review.
 |---|---|---|
 | Day grade | A, B, C, D, F (the trade's setup grade scale) | Yes |
 | Your rules | Kept or Broke for each rule that applies to the day | Every one |
+| This week's rules | Kept or Broke for each rule last week's review set | Every one (a week's one rule from before the list is optional) |
 | Kept your last focus? | Yes, partly, no | Shown only when there's a last focus; never required |
 | What went well | Note | This or What to work on |
 | What to work on | Note | This or What went well |
@@ -123,9 +125,14 @@ They never count in P&L, stats, the plan or the review.
 | From today's trades | The exit notes on the day's trades, to read; a trade without one links to its review | Nothing to fill in |
 | Tomorrow's focus | One line (it wraps as you type), shown at the top of the next plan | No |
 
-**Day reviewed** = the grade, every rule answered, and one of the two guided notes. `reviewed_at` is stamped while it's true.
+**Day reviewed** = the grade, every rule answered, each of this week's rules answered, and one of the two guided notes. `reviewed_at` is stamped while it's true.
 
 A Claude session can save this review too (`node scripts/journal.mjs day`, docs/claude-access.md), stamping `reviewed_at` the same way; it never touches the premarket plan, the focus list or the missed trades.
+
+**This week's rules on a day** (weekRulesFor in core/journal-week.js): the list the week before's review set (`period_reviews` row of the Monday a week earlier); a weekend day's are its week's.
+They're read with the week reviews (state.periodReviews), so a page shows them once those are in.
+The answers are `journal_days.week_rules`, rule id → kept | broke (setDayWeekRule; tapping the lit one clears it), and the week's review counts them per rule.
+Before the week rules migration is pushed (`weekRulesError`, read on its own query) the rules still show, their chips are off and say so, and they never hold the day up.
 
 **Which rules apply to a day:** the rules you had then (made on or before it, `settings.since`) that aren't retired, plus any rule answered that day even if it's retired since. A rule you add today doesn't ask about last week.
 

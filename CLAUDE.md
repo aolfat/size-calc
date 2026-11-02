@@ -40,6 +40,7 @@ Its summary link (#riskStatus, '1% of $50,000'; allocation mode retitles the str
 The strip shows in Stocks & futures and Options, hidden in Positions, Tools and Market.
 Keys - and = (or +) step risk through one ladder of every preset (riskLadder: % chips at this account size ∪ your $ chips; stepRisk, no-op in allocation).
 There is no header risk pill (it was removed: two extra taps per change). risk_open is an orphan key from the old collapsible card.
+This week's rules (#weekRulesCard, the list last week's review set) sit right under the strip while signed in; Settings can hide them (docs/calculator.md).
 
 ## Where the details live
 Each area's behavior is written down in its own file under `docs/`.

@@ -409,6 +409,14 @@ button.jc-day:hover { border-color: var(--border2); }
 .jw-rule-label { display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 6px; }
 .jw-rule-text { margin: 0 0 8px; font-size: 13.5px; }
 .jw-rule-input { width: 100%; }
+.jw-rules-last, .jw-rules-next { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.jw-rules-next { margin-bottom: 6px; }
+.jw-rule-item { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.jw-rule-item .jw-rule-text { margin-bottom: 4px; }
+.jw-tally { display: block; font-size: 12.5px; color: var(--text2); margin-bottom: 6px; }
+.jw-kept .pos-link { margin-left: auto; }
+.jw-carried { margin-left: auto; font-size: 12px; color: var(--text3); }
+.jw-rule-line .jw-rule-input { flex: 1 1 auto; min-width: 0; }
 .jw-trades { margin: 4px 0 10px; }
 .jw-trades-table { min-width: 0; }
 .jw-trades-table th.jw-sort { padding: 0; }

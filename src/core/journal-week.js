@@ -65,11 +65,17 @@ export function previousPeriod(unit, key) {
 
 /** a part's grade, best first */
 export const PERIOD_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'];
-/** Kept it? for the period before's rule */
+/** Kept it? for each of the period before's rules */
 export const RULE_KEPT = /** @type {[string, string][]} */ ([['yes', 'Yes'], ['partly', 'Partly'], ['no', 'No']]);
-/** the longest rule for next week, and the longest note */
+/** a rule for next week's longest text, and the longest note */
 export const MAX_RULE = 500;
 export const MAX_PERIOD_NOTE = 5000;
+/** the most rules a week (or month) sets for the next one */
+export const MAX_PERIOD_RULES = 5;
+/** the one rule a review kept before the list (rule_next): read as a list of one with this id, never needed in a check-in */
+export const LEGACY_RULE_ID = 'rule';
+/** the columns the week rules' migration adds: the list, Kept it? on each of the last one's, how they went (read on their own query) */
+export const PERIOD_RULE_COLUMNS = ['rules_next', 'rules_kept', 'rules_note'];
 /** a part's grade and note columns on its period_reviews row: 'exit_grade', 'exit_note'. @param {string} k */
 export const gradeColumn = k => `${k}_grade`;
 export const noteColumn = (/** @type {string} */ k) => `${k}_note`;
@@ -79,23 +85,97 @@ export const PERIOD_COLUMNS = [...PERIOD_CATEGORIES.flatMap(([k]) => [gradeColum
 export const PERIOD_OVERALL = /** @type {[string, string][]} */ ([['went_well', 'What went well'], ['work_on', 'What to work on'], ['note', 'More notes']]);
 export const PERIOD_OVERALL_COLUMNS = PERIOD_OVERALL.map(([c]) => c);
 
+/** @typedef {{ id: string, text: string }} PeriodRule */
+
 /**
- * Where a period's review stands: reviewed once every part has a grade and the rule for the next one is set (notes and
- * Kept it? never count). ungraded = the parts without a grade, in order.
- * @param {Record<string, any> | null | undefined} row
+ * A list of rules as the app keeps it: each with an id and its text trimmed to MAX_RULE, blanks and repeated ids dropped,
+ * MAX_PERIOD_RULES at most.
+ * @param {unknown} raw @returns {PeriodRule[]}
  */
-export function periodReviewState(row) {
-  const ungraded = PERIOD_CATEGORIES.filter(([k]) => !PERIOD_GRADES.includes(row?.[gradeColumn(k)])).map(([k]) => k);
-  const rule = !!String(row?.rule_next || '').trim();
-  return { reviewed: !ungraded.length && rule, ungraded, graded: PERIOD_CATEGORIES.length - ungraded.length, rule };
+export function cleanRuleList(raw) {
+  if (!Array.isArray(raw)) return [];
+  /** @type {PeriodRule[]} */
+  const out = [];
+  for (const r of raw) {
+    const id = typeof r?.id === 'string' && r.id && r.id.length <= 64 ? r.id : '';
+    const text = typeof r?.text === 'string' ? r.text.trim().slice(0, MAX_RULE) : '';
+    if (!id || !text || out.some(x => x.id === id)) continue;
+    out.push({ id, text });
+    if (out.length >= MAX_PERIOD_RULES) break;
+  }
+  return out;
 }
 
-/** what's left, in words: 'grades on 3 parts and the rule for next week'. @param {ReturnType<typeof periodReviewState>} st @param {string} unit */
+/**
+ * The rules a period set for the next one: its list, or the one rule it kept before the list came (rule_next) as a list of
+ * one; none for no row.
+ * @param {Record<string, any> | null | undefined} row @returns {PeriodRule[]}
+ */
+export function periodRules(row) {
+  const list = cleanRuleList(row?.rules_next);
+  if (list.length) return list;
+  const one = String(row?.rule_next || '').trim();
+  return one ? [{ id: LEGACY_RULE_ID, text: one.slice(0, MAX_RULE) }] : [];
+}
+
+/** Kept it? on one of the period before's rules, on this period's row (the old single rule's answer in rule_kept). @param {Record<string, any> | null | undefined} row @param {string} id */
+export function ruleKeptOf(row, id) {
+  const v = row?.rules_kept?.[id] ?? (id === LEGACY_RULE_ID ? row?.rule_kept : null);
+  return RULE_KEPT.some(([k]) => k === v) ? v : null;
+}
+
+/**
+ * Where a period's review stands: reviewed once every part has a grade, the rules for the next one are set and, when the
+ * period before set rules (as a list), each has its Kept it? and how they went is said. Notes never count; neither does
+ * Kept it? on a rule from before the list. ungraded = the parts without a grade, in order.
+ * @param {Record<string, any> | null | undefined} row
+ * @param {Record<string, any> | null | undefined} [prev] the period before's row
+ */
+export function periodReviewState(row, prev = null) {
+  const ungraded = PERIOD_CATEGORIES.filter(([k]) => !PERIOD_GRADES.includes(row?.[gradeColumn(k)])).map(([k]) => k);
+  const rule = periodRules(row).length > 0;
+  const asked = periodRules(prev).filter(r => r.id !== LEGACY_RULE_ID);
+  const unkept = asked.filter(r => !ruleKeptOf(row, r.id)).length;
+  const talk = !asked.length || !!String(row?.rules_note || '').trim();
+  return { reviewed: !ungraded.length && rule && !unkept && talk, ungraded, graded: PERIOD_CATEGORIES.length - ungraded.length, rule, asked: asked.length, unkept, talk };
+}
+
+/** what's left, in words: 'grades on 3 parts and the rules for next week'. @param {ReturnType<typeof periodReviewState>} st @param {string} unit */
 export function periodMissingWords(st, unit) {
-  const n = st.ungraded.length;
+  const word = unit === 'month' ? 'month' : 'week', n = st.ungraded.length;
+  const these = `this ${word}'s rule${st.asked === 1 ? '' : 's'}`;
+  const kept = !st.unkept ? '' : st.unkept === st.asked ? `Kept it? on ${these}` : `Kept it? on ${st.unkept} of ${these}`;
+  const talk = st.talk ? '' : `how ${these} went`;
   const grades = !n ? '' : n === 1 ? `a grade on ${(PERIOD_CATEGORIES.find(([k]) => k === st.ungraded[0]) || ['', ''])[1].replace(/^./, c => c.toLowerCase())}` : `grades on ${n} parts`;
-  const rule = st.rule ? '' : `the rule for next ${unit === 'month' ? 'month' : 'week'}`;
-  return [grades, rule].filter(Boolean).join(' and ');
+  const rule = st.rule ? '' : `the rules for next ${word}`;
+  const parts = [kept, talk, grades, rule].filter(Boolean);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] || '';
+}
+
+/**
+ * The rules a trading day holds you to: the ones the week before's review set for its week (a weekend day's are its
+ * week's). key = the week that set them.
+ * @param {Record<string, Record<string, any>> | null | undefined} periods 'week|<Monday>' → its row @param {string} day
+ */
+export function weekRulesFor(periods, day) {
+  const key = previousPeriod('week', periodKey(day, 'week'));
+  return { key, rules: periodRules(periods?.[`week|${key}`]) };
+}
+
+/**
+ * How a week's days checked one of its rules: kept and broke counted over its weekdays, and the weekdays so far (up to
+ * `through`, a New York day) with no answer.
+ * @param {Record<string, { week_rules?: Record<string, string> }>} days the notebook rows by day @param {string} week its Monday
+ * @param {string} id the rule's id @param {string} through the last day that counts as asked
+ */
+export function weekRuleTally(days, week, id, through) {
+  let kept = 0, broke = 0, open = 0;
+  for (let i = 0; i < 5; i++) {
+    const day = new Date(Date.parse(`${week}T00:00:00Z`) + i * 864e5).toISOString().slice(0, 10);
+    const a = days?.[day]?.week_rules?.[id];
+    if (a === 'kept') kept++; else if (a === 'broke') broke++; else if (day <= through) open++;
+  }
+  return { kept, broke, open };
 }
 
 /**
@@ -125,6 +205,12 @@ export function cleanPeriodRow(raw) {
   for (const c of PERIOD_OVERALL_COLUMNS) row[c] = typeof raw[c] === 'string' && raw[c] ? raw[c].slice(0, MAX_PERIOD_NOTE) : null;
   row.rule_next = typeof raw.rule_next === 'string' && raw.rule_next.trim() ? raw.rule_next.slice(0, MAX_RULE) : null;
   row.rule_kept = RULE_KEPT.some(([v]) => v === raw.rule_kept) ? raw.rule_kept : null;
+  row.rules_next = periodRules({ rules_next: raw.rules_next, rule_next: row.rule_next });
+  /** @type {Record<string, string>} */
+  const kept = {};
+  if (raw.rules_kept && typeof raw.rules_kept === 'object' && !Array.isArray(raw.rules_kept)) for (const [k, v] of Object.entries(raw.rules_kept)) if (RULE_KEPT.some(([x]) => x === v)) kept[k] = v;
+  row.rules_kept = kept;
+  row.rules_note = typeof raw.rules_note === 'string' && raw.rules_note.trim() ? raw.rules_note.slice(0, MAX_PERIOD_NOTE) : null;
   row.reviewed_at = raw.reviewed_at || null;
   return row;
 }

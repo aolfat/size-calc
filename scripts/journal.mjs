@@ -16,9 +16,10 @@
 //
 // A review's JSON: market, marketFor ('day' | 'trade'), sector, setups, tactics, tags, mistakes (names or keys; each one
 // given replaces that kind's labels), grade (A to F), plan (yes | partly | no), entryNote, exitNote, stop; null clears.
-// A day's: grade (A to F), rules ({ name or key: kept | broke | null }), wentWell, workOn, note, focusNext,
-// focusKept (yes | partly | no); null clears. A week's or month's: parts ({ name or key: { grade (A+ to F), note } }),
-// wentWell, workOn, note, ruleNext, ruleKept (yes | partly | no); null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
+// A day's: grade (A to F), rules ({ name or key: kept | broke | null }), weekRules ({ this week's rule by its text or
+// number: kept | broke | null }), wentWell, workOn, note, focusNext, focusKept (yes | partly | no); null clears. A week's
+// or month's: parts ({ name or key: { grade (A+ to F), note } }), wentWell, workOn, note, rulesNext (the whole list, up to
+// 5), rulesKept ({ last one's rule by its text or number: yes | partly | no | null }), rulesNote; null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { SUPABASE_KEY, SUPABASE_URL } from '../src/services/supabase.js';
