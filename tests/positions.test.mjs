@@ -540,7 +540,7 @@ test('a refresh overtaken by a newer one resolves once the newer read is in', as
 const openTrade = (extra = {}) => ({ key: '6789|TEST|long|t', account: '6789', symbol: 'TEST', direction: 'long', status: 'open', deleted: false, kind: 'single',
   openQty: 100, entryQty: 100, avgEntry: 50, multiplier: 1, risk: 300, rBasis: 'stop', stop: 47, stopSource: 'schwab', exits: 0, pnl: 0, grossPnl: 0, ...extra });
 
-test('R counts from the Journal trade\'s first stop, not the stop working now; trims add on', async () => {
+test('R is the move from your cost in the Journal trade\'s 1R: its first stop, not the stop working now; trims don\'t dilute it', async () => {
   const { run } = await app();
   const rows = run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(ORDERS)}).rows`);
   const stock = [...rows].find(r => r.label === 'TEST');
@@ -550,11 +550,10 @@ test('R counts from the Journal trade\'s first stop, not the stop working now; t
   assert.equal(first.source, 'journal');
   assert.equal(first.stop, 47, 'the first stop, though $48 is working now');
   assert.equal(Math.round(first.r * 100) / 100, 1.67, '$500 open P/L over $300 risk');
-  assert.equal(first.withTrims, null);
 
   const trimmed = r([openTrade({ entryQty: 200, risk: 600, exits: 1, grossPnl: 400, pnl: 390 })]);
-  assert.equal(Math.round(trimmed.r * 100) / 100, 0.83, 'the open shares over the whole trade\'s risk');
-  assert.equal(Math.round(trimmed.withTrims * 100) / 100, 1.5, 'with the $400 the trim took, before fees like Schwab\'s P/L');
+  assert.equal(Math.round(trimmed.r * 100) / 100, 1.67, 'the move in R: $5 over 1R of $3 a share, the trim doesn\'t dilute it');
+  assert.equal(trimmed.risk, 300, '1R a share × the 100 held');
 
   const premium = r([openTrade({ rBasis: 'premium', stop: null, risk: 1000 })]);
   assert.equal(premium.basis, 'premium');
