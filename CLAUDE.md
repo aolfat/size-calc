@@ -54,7 +54,7 @@ Read it before changing that area, and update it in the same PR when behavior ch
 - `docs/tools.md`: the top-level tabs and the Tools view
 - `docs/time-zone.md`: the Times switch (ET or PT for every clock time shown; the market's logic stays New York's)
 - `docs/claude-access.md`: Claude access keys in Settings, the two key-gated database functions, and `scripts/journal.mjs`
-- Design notes and plans: `docs/journal-plan.md`, `docs/journal-step-1-supabase.md`, `docs/journal-step-2.md`, `docs/journal-step-3.md`, `docs/journal-features.md`, `docs/journal-notebook.md`; market data sources in `data/README.md`
+- Design notes and plans: `docs/journal-plan.md`, `docs/journal-step-1-supabase.md`, `docs/journal-step-2.md`, `docs/journal-step-3.md`, `docs/journal-features.md`, `docs/journal-notebook.md`, `docs/alerts-plan.md` (trade alerts to subscribers by text, not built); market data sources in `data/README.md`
 
 ## The journal from a session
 When the owner asks to review, label or look up a trade, use `node scripts/journal.mjs` (`trades`, `show`, `choices`, `review`; docs/claude-access.md has the review JSON).
