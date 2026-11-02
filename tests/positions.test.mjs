@@ -791,7 +791,7 @@ test('the stop review goes back to the original stop: every limit and other stop
   await settle();
   await run("openPositionTrade('TEST', 'stop')");
   const body = () => elements.get('posTradeBody').innerHTML;
-  assert.match(body(), /data-action="setPositionStopOriginal"[^>]*>Original \$47\.00</, 'Schwab\'s first stop, though $50 is working now');
+  assert.match(body(), /data-action="setPositionStopOriginal"[^>]*>Reset to original \$47\.00</, 'Schwab\'s first stop, though $50 is working now');
   run("setPositionStopPrice('47')");
   assert.match(elements.get('posTradeDetail').innerHTML, /Every share already has a stop at or above \$47\.00\. To move one lower, edit it under Working orders\./, 'a typed stop never loosens');
   run('setPositionStopOriginal()');
