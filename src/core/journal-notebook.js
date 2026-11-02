@@ -225,14 +225,22 @@ export const activeItems = items => items.filter(i => !i.hidden);
  */
 export const rulesForDay = (rules, day, row) => rules.filter(r => row?.rules?.[r.key] || (!r.hidden && (!r.since || r.since <= day)));
 
-/** what a plan has; written once it has a feeling, energy, where you're trading, the market and the plan. @param {DayRow | null | undefined} row */
+/**
+ * What a premarket has: ready once it has a feeling, energy, where you're trading and the market. The plan is optional (no
+ * plan is the default, so days with one can be told from days without); written = ready with a plan.
+ * @param {DayRow | null | undefined} row
+ */
 export function planState(row) {
-  const st = { feeling: !!row?.feelings?.length, energy: !!row?.energy, place: !!row?.place, market: !!row?.market, plan: !!row?.plan };
-  return { ...st, written: Object.values(st).every(Boolean) };
+  const st = { feeling: !!row?.feelings?.length, energy: !!row?.energy, place: !!row?.place, market: !!row?.market };
+  const ready = Object.values(st).every(Boolean), plan = !!row?.plan;
+  return { ...st, plan, ready, written: ready && plan };
 }
 
-/** what a plan still needs, in words: 'how you feel, the market and the plan'. @param {ReturnType<typeof planState>} st */
-export const planMissingWords = st => listWords([[st.feeling, 'how you feel'], [st.energy, 'sleep and energy'], [st.place, "where you're trading"], [st.market, 'the market'], [st.plan, 'the plan']]);
+/** what a premarket still needs, in words: 'how you feel and the market'. @param {ReturnType<typeof planState>} st */
+export const planMissingWords = st => listWords([[st.feeling, 'how you feel'], [st.energy, 'sleep and energy'], [st.place, "where you're trading"], [st.market, 'the market']]);
+
+/** a day had a plan: its notebook's plan box has words. @param {DayRow | null | undefined} row */
+export const hadPlan = row => !!row?.plan;
 
 /**
  * What a day's review has; reviewed once it has a grade, every rule that applies answered, each of this week's rules

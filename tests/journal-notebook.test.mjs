@@ -54,11 +54,13 @@ test('goals and rules: in your order, retired ones kept; a day asks about the ru
   assert.deepEqual(json(run, `rulesForDay(notebookLists(${rows}).rules, '2026-10-06', { rules: { 'mine:d': 'broke' } }).map(r => r.name)`), ['Max loss 5%', 'Follow your stop', 'Old one'], 'a retired rule that day answered stays');
 });
 
-test('a plan is written with a feeling, energy, where, the market and the plan; a day reviewed with a grade, every rule and a note', async () => {
+test('a premarket is done with a feeling, energy, where and the market, the plan optional; a day reviewed with a grade, every rule and a note', async () => {
   const { run } = await app();
-  assert.equal(run("planMissingWords(planState(null))"), "how you feel, sleep and energy, where you're trading, the market and the plan");
+  assert.equal(run("planMissingWords(planState(null))"), "how you feel, sleep and energy, where you're trading and the market");
   assert.equal(run("planState({ feelings: ['calm'], energy: 'ok', place: 'desk', market: 'choppy', plan: 'x' }).written"), true);
-  assert.equal(run("planMissingWords(planState({ feelings: ['calm'], energy: 'ok', place: 'desk', market: 'choppy' }))"), 'the plan');
+  const noPlan = json(run, "planState({ feelings: ['calm'], energy: 'ok', place: 'desk', market: 'choppy' })");
+  assert.deepEqual([noPlan.ready, noPlan.written, noPlan.plan], [true, false, false], 'no plan is a done premarket, not a written plan');
+  assert.equal(run("planMissingWords(planState({ plan: 'x' }))"), "how you feel, sleep and energy, where you're trading and the market", 'a plan alone never finishes it');
   const rules = "[{ key: 'mine:a' }, { key: 'mine:b' }]";
   assert.equal(run(`reviewMissingWords(dayReviewState({ grade: 'B', rules: { 'mine:a': 'kept' } }, ${rules}))`), '1 rule and what went well or what to work on');
   assert.equal(run(`dayReviewState({ grade: 'B', rules: { 'mine:a': 'kept', 'mine:b': 'broke' }, work_on: 'sizing' }, ${rules}).reviewed`), true);
@@ -125,7 +127,9 @@ test('a calendar day opens its page: premarket, the day\'s trades, post-market; 
   assert.doesNotMatch(page, /id="journalSymbol"/, 'no filters: the whole day');
   assert.match(page, /aria-label="Premarket"[\s\S]*aria-label="The day"[\s\S]*aria-label="Post-market"/, 'the plan above the review');
   assert.match(page, /Mental check-in[\s\S]*How you feel[\s\S]*data-action="toggleDayFeeling" data-arg="calm">Calm<\/button>/);
-  assert.match(page, /To write: how you feel, sleep and energy, where you&#39;re trading, the market and the plan/);
+  assert.match(page, /To write: how you feel, sleep and energy, where you&#39;re trading and the market/);
+  assert.match(page, /<button class="filter-btn active" aria-pressed="true" data-action="toggleDayPlan">✓ No plan<\/button><button class="pos-link" data-action="toggleDayPlan">Write a plan<\/button>/, 'no plan is the default');
+  assert.doesNotMatch(page, /id="nb-plan"/, 'the box opens on Write a plan');
   assert.match(page, /<ol class="nb-list"><li>Max loss = 5%<\/li><li>Follow your stop!!<\/li><\/ol>/);
   assert.match(page, /No goals yet/);
   assert.match(page, /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 with an exit/);
@@ -175,7 +179,13 @@ test('the check-in and plan save field by field; the plan is stamped written; th
   await settle();
   const saved = supabase.tables.journal_days.get('user-1:2026-10-06');
   assert.deepEqual([saved.feelings, saved.energy, saved.place, saved.market, saved.sleep_hours, saved.planned_at], [['focused'], 'ok', 'desk', 'choppy', 6.5, undefined]);
-  assert.match(out(), /class="jr-row jr-missing"><label class="jr-label" for="nb-plan">Plan/, 'started: what\'s missing turns amber');
+  assert.match(out(), /<span class="jr-status journal-buy" role="status">Premarket done · no plan<\/span>/, 'no plan is allowed');
+  assert.match(out(), /title="Today, Tue, Oct 6: [^"]*">Review the day</);
+  run('toggleDayPlan()');
+  assert.match(out(), /<textarea class="grow" id="nb-plan"[^>]*><\/textarea>[\s\S]*✓ No plan/, 'Write a plan opens the box, still no plan while it\'s empty');
+  run('toggleDayPlan()');
+  assert.doesNotMatch(out(), /id="nb-plan"/, '✓ No plan closes an empty box');
+  run('toggleDayPlan()');
   run("dayTextInput('plan', 'No trades before 9:45')");
   run('renderJournal()');
   assert.match(out(), /id="nb-plan"[^>]*>No trades before 9:45<\/textarea>/, 'a redraw keeps the draft');
@@ -184,10 +194,28 @@ test('the check-in and plan save field by field; the plan is stamped written; th
   assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').plan, 'No trades before 9:45');
   assert.ok(supabase.tables.journal_days.get('user-1:2026-10-06').planned_at, 'stamped with the save that finished it');
   assert.match(out(), /<span class="jr-status journal-buy" role="status">Plan written<\/span>/);
+  assert.match(out(), /Empty the box for no plan\./);
+  assert.doesNotMatch(out(), /✓ No plan/, 'a plan with words is a plan');
   assert.equal(state.journalReview.days['2026-10-06'].market, 'choppy', 'the day\'s market, the one each trade\'s review reads');
   run("setDayEnergy('ok')");
   await settle();
   assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').planned_at, null, 'tapping the lit one clears it, and the stamp');
+});
+
+test('Stats compares trades on days with a plan against days without, from the first notebook day', async () => {
+  const { run, out } = await journal({ days: [{ day: '2026-10-05', feelings: ['calm'], plan: 'Only AAPL over 100' }, { day: '2026-10-06', energy: 'ok' }] });
+  run("setJournalTab('stats')");
+  const table = out().match(/With a plan or without[\s\S]*?<\/table>/)?.[0] || '';
+  assert.match(table, /from your first notebook day \(Oct 5\)/);
+  assert.match(table, /<b>With a plan<\/b>[^\n]*<\/td>\s*<td>1<\/td><td class="journal-buy">\+\$300\.00/);
+  assert.match(table, /<b>No plan<\/b>[^\n]*<\/td>\s*<td>1<\/td><td class="journal-sell">−\$100\.00/, 'a day without words in its plan box is no plan');
+  const late = await journal({ days: [{ day: '2026-10-06', place: 'desk' }] });
+  late.run("setJournalTab('stats')");
+  assert.match(late.out(), /With a plan or without[\s\S]*<b>No plan<\/b>[^\n]*<\/td>\s*<td>1<\/td>/, 'trades before the first notebook day don\'t count');
+  assert.doesNotMatch(late.out(), /<b>With a plan<\/b>/);
+  const none = await journal();
+  none.run("setJournalTab('stats')");
+  assert.doesNotMatch(none.out(), /With a plan or without/, 'nothing until the notebook is used');
 });
 
 test('woke up before the open: a checkmark in the check-in, tapped on and off, never needed for the plan', async () => {
@@ -327,7 +355,7 @@ test('before the migration is pushed the page says so, nothing saves, and the re
   run("openJournalDay('2026-10-06')");
   assert.match(out(), /The notebook needs a database update: the database doesn&#39;t have the notebook columns yet: npx supabase db push/);
   assert.match(out(), /data-action="setDayGrade" data-arg="A" disabled>/);
-  assert.match(out(), /id="nb-plan"[^>]*disabled>/);
+  assert.match(out(), /data-action="toggleDayPlan" disabled>✓ No plan/);
   assert.doesNotMatch(out(), /data-action="editNotebookList"/, 'no editing goals or rules either');
   run("setDayGrade('A'); toggleDayFeeling('calm')");
   await settle();
@@ -357,7 +385,7 @@ test('a focus list is cleaned on the way in: an id and a ticker each, each ticke
 test('a focus list: tickers added before the open with their setups, reviewed after the close, traded or not, removed with Undo', async () => {
   const { run, out, supabase, elements, state } = await journal();
   run("openJournalDay('2026-10-06')");
-  assert.match(out(), /aria-label="Premarket"[\s\S]*Market[\s\S]*<div class="nb-group">Focus list<\/div>[\s\S]*The tickers you're watching today[\s\S]*id="nb-plan"/, 'in the premarket, after the market, before the plan');
+  assert.match(out(), /aria-label="Premarket"[\s\S]*Market[\s\S]*<div class="nb-group">Focus list<\/div>[\s\S]*The tickers you're watching today[\s\S]*data-action="toggleDayPlan"/, 'in the premarket, after the market, before the plan');
   run("focusInput('?!'); addFocusTicker()");
   assert.match(elements.get('errorBox').textContent, /Type the ticker you're watching/);
   run("focusInput('qcom'); addFocusTicker()");

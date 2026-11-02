@@ -8,7 +8,7 @@
 // A dot marks a day's economic releases, with a hover card of their times (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, activePeriods, breakdowns, calendarMonth, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, stepPeriod, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, byPlan, calendarMonth, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, stepPeriod, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
 import { DESKTOP_MQ, mq, SANS_FONT } from '../lib/media.js';
 import { zoneAbbr, zoneClock, zoneDial } from '../lib/zone.js';
 import { state } from '../state.js';
@@ -381,6 +381,17 @@ const oneDay = (unit, key) => unit === 'day' || (unit === 'range' && key.slice(0
 /** 'this week', 'these dates' */
 const scopeWords = unit => unit === 'range' ? 'these dates' : `this ${unit}`;
 
+/** with a plan or without, from the first day the notebook's premarket was done (docs/journal-notebook.md) */
+function planTable(list) {
+  const days = state.journalReview?.days;
+  if (!days || state.journalReviewError || state.journalReview?.notebookError) return '';
+  const filled = Object.keys(days).filter(d => days[d].planned_at || days[d].plan || days[d].feelings?.length || days[d].energy || days[d].place).sort();
+  const planDays = new Set(Object.keys(days).filter(d => days[d].plan));
+  const since = filled[0] || '';
+  const rows = byPlan(list, planDays, since);
+  return rows.length ? statTable('With a plan or without', rows, `By the day it opened, from your first notebook day (${shortDay(since)}). No plan unless the day's plan box has words.`) : '';
+}
+
 export function statsView(trades) {
   if (!countedTrades(trades).length && !activePeriods(trades, 'day').length) return '<p class="hint">No closed trades match yet.</p>';
   const scope = statsScope(trades), { unit, key, list } = scope;
@@ -398,6 +409,7 @@ export function statsView(trades) {
     ${statTable('By instrument', b.byInstrument)}
     ${statTable('By time of day', b.byTimeOfDay.map(r => ({ ...r, group: bucketWords(r.group) })), `When the trade opened (${zoneAbbr()}).`)}
     ${oneDay(unit, key) ? '' : statTable('By weekday', b.byWeekday, 'The day it opened.')}
+    ${planTable(list)}
     ${statTable('By hold time', b.byHold, hold)}
     ${statTable('Scaled out or all at once', b.byExits, 'Scaled out: more than one exit.')}
     ${rBars(b.rDistribution, b.withR)}

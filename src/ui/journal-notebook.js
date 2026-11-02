@@ -61,7 +61,7 @@ const focusOf = day => rowOf(day)?.focus_list || [];
 /** a day's page (a calendar cell, today's line, ‹ ›): inside the Calendar tab, the calendar on its month behind it */
 export function openJournalDay(day) {
   if (!isDay(day)) return;
-  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: state.notebookBack === 'trades' ? state.journalDay : '', notebookDraft: null, notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
+  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: state.notebookBack === 'trades' ? state.journalDay : '', notebookDraft: null, notebookPlanOpen: '', notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
   renderJournal();
   window.scrollTo?.({ top: 0 });
 }
@@ -110,8 +110,8 @@ export function dayFlags(day, hasExits) {
 export function todayButtonHtml() {
   if (!state.session || !data() || state.journalReviewError) return '';
   const now = nowIso(), day = notebookToday(now), isToday = day === nyParts(now).day;
-  const planned = planState(rowOf(day)).written, over = dayOver(day, now), reviewed = reviewOf(day).reviewed;
-  const what = reviewed ? 'Day reviewed ✓' : over ? 'Review the day' : planned ? 'Plan written ✓' : 'Write your plan';
+  const st = planState(rowOf(day)), planned = st.ready, over = dayOver(day, now), reviewed = reviewOf(day).reviewed;
+  const what = reviewed ? 'Day reviewed ✓' : over ? 'Review the day' : st.written ? 'Plan written ✓' : planned ? 'Premarket done ✓' : 'Write your plan';
   const when = `${isToday ? 'Today' : 'Monday'}, ${dayName(day, { weekday: 'short', month: 'short', day: 'numeric' })}`;
   return `<button class="btn nb-today${reviewed || (planned && !over) ? ' nb-today-done' : ''}" data-action="openTodayNotebook" title="${esc(when)}: open the day's notebook">${what}</button>`;
 }
@@ -564,11 +564,35 @@ function weekRulesRow(day, off) {
   return `<div class="jr-row${started && !st.week ? ' jr-missing' : ''}"><div class="jr-label">This week's rules <span class="jr-sub">from last week's review</span></div><div>${why}<ul class="nb-rules nb-week-check">${items}</ul></div></div>`;
 }
 
+/**
+ * The plan: no plan is the default (a lit checkmark), Write a plan opens the box. A box with words stays open; emptied, the
+ * checkmark comes back. Days with a plan and days without are compared in Stats.
+ */
+function planRow(day, off) {
+  const text = textOf(day, 'plan'), open = !!text || state.notebookPlanOpen === day;
+  const none = `<button class="filter-btn active" aria-pressed="true" data-action="toggleDayPlan"${off}>✓ No plan</button>`;
+  if (!open) return `<div class="jr-row"><div class="jr-label">Plan</div><div class="chip-row jr-chips">${none}<button class="pos-link" data-action="toggleDayPlan"${off}>Write a plan</button></div></div>`;
+  return `<div class="jr-row"><label class="jr-label" for="nb-plan">Plan</label><div>
+    <textarea class="grow" id="nb-plan" rows="4" maxlength="${DAY_TEXT.plan}" placeholder="${esc('Catalysts, levels, what you will and won\'t do today')}" data-input="dayTextInput" data-change="dayTextSave" data-arg="plan"${off}>${esc(text)}</textarea>
+    ${text ? '<p class="hint">Empty the box for no plan.</p>' : `<div class="chip-row jr-chips">${none}</div>`}</div></div>`;
+}
+/** Write a plan opens the box; ✓ No plan closes an empty one */
+export function toggleDayPlan() {
+  const day = page();
+  if (!day || notebookOff()) return;
+  const opening = state.notebookPlanOpen !== day;
+  state.notebookPlanOpen = opening ? day : '';
+  renderJournal();
+  if (opening) document.getElementById('nb-plan')?.focus?.();
+}
+
 function premarket(day, trades, off) {
-  const r = rowOf(day), st = planState(r), started = Object.values(st).some(Boolean) && !st.written;
+  const r = rowOf(day), st = planState(r), started = [st.feeling, st.energy, st.place, st.market, st.plan].some(Boolean) && !st.ready;
   const lib = buildLibrary(data()?.library || []);
   const focus = lastFocus(days(), day);
-  const status = st.written ? '<span class="jr-status journal-buy" role="status">Plan written</span>' : `<span class="jr-status" role="status">To write: ${esc(planMissingWords(st))}</span>`;
+  const status = st.written ? '<span class="jr-status journal-buy" role="status">Plan written</span>'
+    : st.ready ? '<span class="jr-status journal-buy" role="status">Premarket done · no plan</span>'
+    : `<span class="jr-status" role="status">To write: ${esc(planMissingWords(st))}</span>`;
   const hours = r?.sleep_hours ?? '';
   return `<section class="jr nb-sec" aria-label="Premarket">
     <div class="jr-head"><span class="section-title js-sub">Premarket</span>${status}</div>
@@ -585,7 +609,7 @@ function premarket(day, trades, off) {
     ${listRow('rule', 'Rules', 'No rules yet. Add the ones you trade by: each gets checked after the close.', off)}
     ${row('Market <span class="jr-sub">For every trade this day</span>', lib.choices('market').map(i => chip(i.name, r?.market === i.key, `data-action="setDayMarket" data-arg="${esc(i.key)}"`, off)).join(''), started && !st.market)}
     ${focusSection(day, trades, off)}
-    ${textRow('Plan', 'plan', day, 'Catalysts, levels, what you will and won\'t do today', off, started && !st.plan, 4)}
+    ${planRow(day, off)}
   </section>`;
 }
 
@@ -700,6 +724,6 @@ export function dayPageHtml() {
     ${theDay(day, trades)}
     ${missedSection(day)}
     ${postmarket(day, trades, off)}
-    <p class="hint">Saved as you go; notes save when you leave the box. The plan is written once it has how you feel, sleep and energy, where you're trading, the market and the plan. The day is reviewed once it has a grade, every rule and each of this week's rules answered, and what went well or what to work on.</p>
+    <p class="hint">Saved as you go; notes save when you leave the box. The premarket is done once it has how you feel, sleep and energy, where you're trading and the market; the plan is optional, and Stats compares days with one against days without. The day is reviewed once it has a grade, every rule and each of this week's rules answered, and what went well or what to work on.</p>
   </div>`;
 }

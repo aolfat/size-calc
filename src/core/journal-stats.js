@@ -351,6 +351,17 @@ export function statsByLabel(trades, keysOf, order = []) {
  * R distribution over the trades with an initial stop.
  * @param {StatTrade[]} trades
  */
+/**
+ * With a plan or without: each closed trade by the day it opened (New York), from the first day the notebook has a
+ * premarket for (since); no plan is the default, so a day without words in its plan box counts as No plan.
+ * @param {StatTrade[]} trades @param {Set<string>} planDays @param {string} since
+ */
+export function byPlan(trades, planDays, since) {
+  if (!since) return [];
+  const list = countedTrades(trades).filter(t => nyParts(t.openedAt).day >= since);
+  return groupBy(list, t => planDays.has(nyParts(t.openedAt).day) ? 'With a plan' : 'No plan', ['With a plan', 'No plan']);
+}
+
 export function breakdowns(trades) {
   const list = countedTrades(trades);
   const symbols = groupBy(list, underlyingOf).sort((a, b) => b.stats.trades - a.stats.trades || b.stats.net - a.stats.net);
