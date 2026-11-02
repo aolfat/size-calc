@@ -37,7 +37,7 @@ import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosS
 import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
 import { addJournalFilter, clearJournalFilters, removeJournalFilter, setJournalFilterNot, toggleJournalFilterValue } from './journal-filters.js';
-import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, toggleDayPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
+import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { reviewUpNext, skipUpNext } from './journal-cards.js';
 import { setCalendarMode } from './journal-stats.js';
 import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
@@ -136,7 +136,8 @@ export const actions = {
   setDayWeekRule: el => setDayWeekRule(arg(el), el.dataset.arg2 || ''),
   setDayFocusKept: el => setDayFocusKept(arg(el)),
   toggleWokeEarly: () => toggleWokeEarly(),
-  toggleDayPlan: () => toggleDayPlan(),
+  setDayPlan: el => setDayPlan(arg(el)),
+  undoClearPlan: () => undoClearPlan(),
   daySleepSave: el => daySleepSave(/** @type {HTMLInputElement} */ (el).value),
   dayTextInput: el => { growBox(/** @type {HTMLTextAreaElement} */ (el)); dayTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value); },
   dayTextSave: el => dayTextSave(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),

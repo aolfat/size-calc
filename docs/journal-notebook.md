@@ -38,14 +38,15 @@ Four sections, always in this order.
 | Rules | Your standing rules | Nothing to fill in; they're checked after the close |
 | Market | The day's market chips, the same `journal_days.market` the trade review sets, so every trade that day inherits it | Yes |
 | Focus list | The tickers you're watching, each with its setups (below) | No |
-| Plan | ✓ No plan, lit by default; Write a plan opens the box: free text, catalysts, levels, limits for the day | No |
+| Plan | A No plan / Plan switch, No plan by default; Plan opens the box under it: free text, catalysts, levels, limits for the day | No |
 
 **Premarket done** = a feeling, energy, where, and the market; the status reads 'Premarket done · no plan' without a plan.
 **Plan written** = premarket done and words in the plan box. `planned_at` is stamped while it's true.
 
 **No plan is the default** (owner request: some days have no plan, and Stats should show how you trade with one and without).
-The Plan row shows a lit ✓ No plan and Write a plan (toggleDayPlan), which opens the box (state.notebookPlanOpen); ✓ No plan stays under an empty box and closes it.
-A box with words stays open with 'Empty the box for no plan.'; emptying it (saved on blur) is no plan again.
+The Plan row is a two-way switch like Long / Short (setDayPlan): Plan opens the box right under it with the cursor in it (state.notebookPlanOpen).
+No plan closes an empty box; on a written plan it clears it, with Undo on the toast (state.planUndo, undoClearPlan).
+Emptying the box (saved on blur) is no plan too.
 Nothing new is stored: a day had a plan when `journal_days.plan` has words (hadPlan).
 
 **In Stats**, 'With a plan or without' (byPlan in core/journal-stats.js) splits the closed trades in scope by the New York day each opened: With a plan when that day's plan box has words, No plan otherwise.

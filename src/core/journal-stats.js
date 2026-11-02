@@ -346,12 +346,6 @@ export function statsByLabel(trades, keysOf, order = []) {
 }
 
 /**
- * Every breakdown the stats page shows. By symbol: the top 40 by trades, then net (the rest summed as 'Others'), and a
- * concentration warning when one underlying made more than half the gross gains. Winners' and losers' average hold.
- * R distribution over the trades with an initial stop.
- * @param {StatTrade[]} trades
- */
-/**
  * With a plan or without: each closed trade by the day it opened (New York), from the first day the notebook has a
  * premarket for (since); no plan is the default, so a day without words in its plan box counts as No plan.
  * @param {StatTrade[]} trades @param {Set<string>} planDays @param {string} since
@@ -362,6 +356,12 @@ export function byPlan(trades, planDays, since) {
   return groupBy(list, t => planDays.has(nyParts(t.openedAt).day) ? 'With a plan' : 'No plan', ['With a plan', 'No plan']);
 }
 
+/**
+ * Every breakdown the stats page shows. By symbol: the top 40 by trades, then net (the rest summed as 'Others'), and a
+ * concentration warning when one underlying made more than half the gross gains. Winners' and losers' average hold.
+ * R distribution over the trades with an initial stop.
+ * @param {StatTrade[]} trades
+ */
 export function breakdowns(trades) {
   const list = countedTrades(trades);
   const symbols = groupBy(list, underlyingOf).sort((a, b) => b.stats.trades - a.stats.trades || b.stats.net - a.stats.net);

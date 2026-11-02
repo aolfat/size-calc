@@ -113,3 +113,6 @@ button.jc-quiet:hover, .jc-noted { opacity: 0.9; }
   .jm-controls .journal-setup-filter { width: 100%; min-width: 0; max-width: none; }
   .jm-controls .pos-link { justify-self: start; }
 }
+/* the plan: No plan | Plan, the box opening right under the switch */
+.nb-plan-seg { display: flex; width: max-content; }
+.nb-plan-box { display: block; width: 100%; margin-top: 8px; }

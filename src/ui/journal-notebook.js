@@ -565,25 +565,38 @@ function weekRulesRow(day, off) {
 }
 
 /**
- * The plan: no plan is the default (a lit checkmark), Write a plan opens the box. A box with words stays open; emptied, the
- * checkmark comes back. Days with a plan and days without are compared in Stats.
+ * The plan: a No plan | Plan switch, No plan by default. Plan opens the box under it; No plan clears a written one (Undo on
+ * the toast) or closes an empty one. Days with a plan and days without are compared in Stats.
  */
 function planRow(day, off) {
   const text = textOf(day, 'plan'), open = !!text || state.notebookPlanOpen === day;
-  const none = `<button class="filter-btn active" aria-pressed="true" data-action="toggleDayPlan"${off}>✓ No plan</button>`;
-  if (!open) return `<div class="jr-row"><div class="jr-label">Plan</div><div class="chip-row jr-chips">${none}<button class="pos-link" data-action="toggleDayPlan"${off}>Write a plan</button></div></div>`;
-  return `<div class="jr-row"><label class="jr-label" for="nb-plan">Plan</label><div>
-    <textarea class="grow" id="nb-plan" rows="4" maxlength="${DAY_TEXT.plan}" placeholder="${esc('Catalysts, levels, what you will and won\'t do today')}" data-input="dayTextInput" data-change="dayTextSave" data-arg="plan"${off}>${esc(text)}</textarea>
-    ${text ? '<p class="hint">Empty the box for no plan.</p>' : `<div class="chip-row jr-chips">${none}</div>`}</div></div>`;
+  const b = (v, label, on) => `<button class="${on ? 'active' : ''}" aria-pressed="${on}" data-action="setDayPlan" data-arg="${v}"${off}>${label}</button>`;
+  const box = open ? `<textarea class="grow nb-plan-box" id="nb-plan" rows="4" maxlength="${DAY_TEXT.plan}" placeholder="${esc('Catalysts, levels, what you will and won\'t do today')}" aria-label="Your plan" data-input="dayTextInput" data-change="dayTextSave" data-arg="plan"${off}>${esc(text)}</textarea>` : '';
+  return `<div class="jr-row"><div class="jr-label">Plan</div><div><div class="seg nb-plan-seg" aria-label="Plan">${b('none', 'No plan', !open)}${b('plan', 'Plan', open)}</div>${box}</div></div>`;
 }
-/** Write a plan opens the box; ✓ No plan closes an empty one */
-export function toggleDayPlan() {
+/** No plan or Plan: Plan opens the box (the cursor in it); No plan closes it, clearing what it had, with Undo */
+export function setDayPlan(v) {
   const day = page();
-  if (!day || notebookOff()) return;
-  const opening = state.notebookPlanOpen !== day;
-  state.notebookPlanOpen = opening ? day : '';
-  renderJournal();
-  if (opening) document.getElementById('nb-plan')?.focus?.();
+  if (!day || notebookOff() || (v !== 'none' && v !== 'plan')) return;
+  if (v === 'plan') {
+    state.notebookPlanOpen = day;
+    renderJournal();
+    document.getElementById('nb-plan')?.focus?.();
+    return;
+  }
+  const text = textOf(day, 'plan');
+  state.notebookPlanOpen = '';
+  if (state.notebookDraft?.field === 'plan') state.notebookDraft = null;
+  if (!rowOf(day)?.plan) { renderJournal(); return; }
+  state.planUndo = { day, text: rowOf(day)?.plan || text };
+  showToast('Plan cleared.', '<button class="pos-link toast-act" data-action="undoClearPlan">Undo</button>');
+  return saveDay(day, { plan: null });
+}
+/** Undo on the toast: the plan back as it was */
+export function undoClearPlan() {
+  const u = state.planUndo;
+  state.planUndo = null;
+  if (u && u.day === page()) return saveDay(u.day, { plan: u.text });
 }
 
 function premarket(day, trades, off) {

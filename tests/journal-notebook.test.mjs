@@ -128,8 +128,8 @@ test('a calendar day opens its page: premarket, the day\'s trades, post-market; 
   assert.match(page, /aria-label="Premarket"[\s\S]*aria-label="The day"[\s\S]*aria-label="Post-market"/, 'the plan above the review');
   assert.match(page, /Mental check-in[\s\S]*How you feel[\s\S]*data-action="toggleDayFeeling" data-arg="calm">Calm<\/button>/);
   assert.match(page, /To write: how you feel, sleep and energy, where you&#39;re trading and the market/);
-  assert.match(page, /<button class="filter-btn active" aria-pressed="true" data-action="toggleDayPlan">✓ No plan<\/button><button class="pos-link" data-action="toggleDayPlan">Write a plan<\/button>/, 'no plan is the default');
-  assert.doesNotMatch(page, /id="nb-plan"/, 'the box opens on Write a plan');
+  assert.match(page, /<div class="seg nb-plan-seg" aria-label="Plan"><button class="active" aria-pressed="true" data-action="setDayPlan" data-arg="none">No plan<\/button><button class="" aria-pressed="false" data-action="setDayPlan" data-arg="plan">Plan<\/button><\/div>/, 'No plan is the default');
+  assert.doesNotMatch(page, /id="nb-plan"/, 'the box opens on Plan');
   assert.match(page, /<ol class="nb-list"><li>Max loss = 5%<\/li><li>Follow your stop!!<\/li><\/ol>/);
   assert.match(page, /No goals yet/);
   assert.match(page, /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 with an exit/);
@@ -168,7 +168,7 @@ test('economic releases: a dot and a hover card on the calendar, a row on the da
 });
 
 test('the check-in and plan save field by field; the plan is stamped written; the market is the trades\' market too', async () => {
-  const { run, out, writes, supabase, state } = await journal();
+  const { run, out, writes, supabase, state, elements } = await journal();
   run("openJournalDay('2026-10-06')");
   run("toggleDayFeeling('calm'); toggleDayFeeling('focused')");
   await settle();
@@ -181,11 +181,12 @@ test('the check-in and plan save field by field; the plan is stamped written; th
   assert.deepEqual([saved.feelings, saved.energy, saved.place, saved.market, saved.sleep_hours, saved.planned_at], [['focused'], 'ok', 'desk', 'choppy', 6.5, undefined]);
   assert.match(out(), /<span class="jr-status journal-buy" role="status">Premarket done · no plan<\/span>/, 'no plan is allowed');
   assert.match(out(), /title="Today, Tue, Oct 6: [^"]*">Review the day</);
-  run('toggleDayPlan()');
-  assert.match(out(), /<textarea class="grow" id="nb-plan"[^>]*><\/textarea>[\s\S]*✓ No plan/, 'Write a plan opens the box, still no plan while it\'s empty');
-  run('toggleDayPlan()');
-  assert.doesNotMatch(out(), /id="nb-plan"/, '✓ No plan closes an empty box');
-  run('toggleDayPlan()');
+  run("setDayPlan('plan')");
+  assert.match(out(), /aria-pressed="true" data-action="setDayPlan" data-arg="plan">Plan<\/button><\/div><textarea class="grow nb-plan-box" id="nb-plan"[^>]*><\/textarea>/, 'Plan opens the box under the switch');
+  run("setDayPlan('none')");
+  assert.doesNotMatch(out(), /id="nb-plan"/, 'No plan closes an empty box');
+  assert.equal(writes('journal_days').filter(w => 'plan' in w).length, 0, 'nothing to clear, nothing saved');
+  run("setDayPlan('plan')");
   run("dayTextInput('plan', 'No trades before 9:45')");
   run('renderJournal()');
   assert.match(out(), /id="nb-plan"[^>]*>No trades before 9:45<\/textarea>/, 'a redraw keeps the draft');
@@ -194,8 +195,16 @@ test('the check-in and plan save field by field; the plan is stamped written; th
   assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').plan, 'No trades before 9:45');
   assert.ok(supabase.tables.journal_days.get('user-1:2026-10-06').planned_at, 'stamped with the save that finished it');
   assert.match(out(), /<span class="jr-status journal-buy" role="status">Plan written<\/span>/);
-  assert.match(out(), /Empty the box for no plan\./);
-  assert.doesNotMatch(out(), /✓ No plan/, 'a plan with words is a plan');
+  assert.match(out(), /aria-pressed="true" data-action="setDayPlan" data-arg="plan">Plan</, 'a plan with words is a plan');
+  run("setDayPlan('none')");
+  await settle();
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').plan, null, 'No plan clears it');
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').planned_at, null);
+  assert.match(elements.get('errorBox').innerHTML, /Plan cleared\. <button class="pos-link toast-act" data-action="undoClearPlan">Undo<\/button>/);
+  run('undoClearPlan()');
+  await settle();
+  assert.equal(supabase.tables.journal_days.get('user-1:2026-10-06').plan, 'No trades before 9:45', 'Undo brings it back');
+  assert.ok(supabase.tables.journal_days.get('user-1:2026-10-06').planned_at);
   assert.equal(state.journalReview.days['2026-10-06'].market, 'choppy', 'the day\'s market, the one each trade\'s review reads');
   run("setDayEnergy('ok')");
   await settle();
@@ -355,7 +364,7 @@ test('before the migration is pushed the page says so, nothing saves, and the re
   run("openJournalDay('2026-10-06')");
   assert.match(out(), /The notebook needs a database update: the database doesn&#39;t have the notebook columns yet: npx supabase db push/);
   assert.match(out(), /data-action="setDayGrade" data-arg="A" disabled>/);
-  assert.match(out(), /data-action="toggleDayPlan" disabled>✓ No plan/);
+  assert.match(out(), /data-action="setDayPlan" data-arg="none" disabled>No plan/);
   assert.doesNotMatch(out(), /data-action="editNotebookList"/, 'no editing goals or rules either');
   run("setDayGrade('A'); toggleDayFeeling('calm')");
   await settle();
@@ -385,7 +394,7 @@ test('a focus list is cleaned on the way in: an id and a ticker each, each ticke
 test('a focus list: tickers added before the open with their setups, reviewed after the close, traded or not, removed with Undo', async () => {
   const { run, out, supabase, elements, state } = await journal();
   run("openJournalDay('2026-10-06')");
-  assert.match(out(), /aria-label="Premarket"[\s\S]*Market[\s\S]*<div class="nb-group">Focus list<\/div>[\s\S]*The tickers you're watching today[\s\S]*data-action="toggleDayPlan"/, 'in the premarket, after the market, before the plan');
+  assert.match(out(), /aria-label="Premarket"[\s\S]*Market[\s\S]*<div class="nb-group">Focus list<\/div>[\s\S]*The tickers you're watching today[\s\S]*data-action="setDayPlan"/, 'in the premarket, after the market, before the plan');
   run("focusInput('?!'); addFocusTicker()");
   assert.match(elements.get('errorBox').textContent, /Type the ticker you're watching/);
   run("focusInput('qcom'); addFocusTicker()");

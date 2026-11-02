@@ -123,7 +123,8 @@ export function createState() {
     notebookBack: '', // where the day's page goes back to: '' the calendar, 'missed' the Missed tab (a line there opened it), 'trades' the Trades tab (a day's date or Review the day there)
     journalMissed: { q: '', side: 'all', setup: '', why: '' }, // the Missed tab's search and filters: text, all | long | short, a setup key, a reason
     notebookDraft: null, // { day, field, text }: a notebook box being typed, saved on blur
-    notebookPlanOpen: '', // the day whose plan box Write a plan opened (no plan is the default)
+    notebookPlanOpen: '', // the day whose plan box the Plan switch opened (No plan is the default)
+    planUndo: null, // { day, text }: the plan No plan just cleared, for Undo
     notebookEdit: '', // goal | rule: that list open in place to edit
     notebookItemDraft: '', // the new goal or rule being typed
     missedDraft: '', // the ticker of a missed trade being typed
