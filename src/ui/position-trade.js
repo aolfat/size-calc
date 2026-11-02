@@ -152,7 +152,14 @@ export function setPositionStopOriginal() {
   const t = stopOpen();
   if (!t || !t.origStop) return;
   t.reset = true;
-  t.stopInput = t.origStop.price;
+  stopChanged(true);
+}
+
+/** back to a stop at a price you pick, from the reset */
+export function setPositionStopPick() {
+  const t = stopOpen();
+  if (!t || !t.reset) return;
+  t.reset = false;
   stopChanged(true);
 }
 
@@ -652,17 +659,29 @@ function closeHint(t) {
   return [room, pair, limit ? 'A limit fills at your price or better, and only if the price gets there.' : ''].filter(Boolean).join(' ');
 }
 
+/** the first question on Stop: a stop at a price you pick, or back to the original stop (greyed out with why when there's none to go back to) */
+function stopChoice(t) {
+  const row = t.row, long = row.qty > 0, px = p => fmtPositionPrice(p, row.tradeAs), o = t.origStop;
+  const why = !o ? 'No Journal trade on this position has a stop to go back to. Import your history in the Journal.'
+    : (long ? o.price >= row.price : o.price <= row.price) ? `Your original stop ${px(o.price)} is through the price ${px(row.price)}.` : '';
+  const opt = (reset, title, sub, off) => `<button class="pos-choice-opt${!!t.reset === reset ? ' active' : ''}" aria-pressed="${!!t.reset === reset}" data-action="${reset ? 'setPositionStopOriginal' : 'setPositionStopPick'}"${off || t.sent ? ' disabled' : ''}><strong>${esc(title)}</strong><span>${esc(sub)}</span></button>`;
+  return `<div><dt>Stop</dt><dd><div class="pos-choice" role="group" aria-label="What the stop does">
+    ${opt(false, 'Stop at a price', 'Type it or tap Breakeven. Only ever tightens; your targets can stay.', false)}
+    ${opt(true, o && !why ? `Reset to original ${px(o.price)}` : 'Reset to original', why || `Cancels your targets and other stops, then one stop at ${o.own ? 'your original stop' : "Schwab's first stop"} for all ${units(row, Math.abs(row.qty))}.`, !!why)}
+  </div></dd></div>`;
+}
+
 /** the stop ticket's price, with breakeven a tap away when the price is past it */
 function stopForm(t) {
   const row = t.row, long = row.qty > 0, off = t.sent ? ' disabled' : '';
   const v = t.stopInput, value = v > 0 ? v.toFixed(row.tradeAs === 'OPTION' || v >= 1 ? 2 : 4) : '';
   const beOk = row.be !== null && (long ? row.price > row.be : row.price < row.be);
   const on = beOk && t.stop === row.be && !t.planError;
-  const o = t.origStop, origOk = !!o && (long ? o.price < row.price : o.price > row.price);
-  const chip = (beOk ? `<button class="filter-btn pos-stop-at${on && !t.reset ? ' active' : ''}" aria-pressed="${on && !t.reset}" data-action="setPositionStopAt" data-arg="${row.be}" title="Your average cost, on the tick"${off}>Breakeven ${fmtPositionPrice(row.be, row.tradeAs)}</button>` : '')
-    + (origOk ? `<button class="filter-btn pos-stop-at${t.reset ? ' active' : ''}" aria-pressed="${!!t.reset}" data-action="setPositionStopOriginal" title="Cancel every limit and stop on it, then one stop at ${o.own ? 'your original stop' : "Schwab's first stop"} for every share"${off}>Reset to original ${fmtPositionPrice(o.price, row.tradeAs)}</button>` : '');
+  const chip = beOk ? `<button class="filter-btn pos-stop-at${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPositionStopAt" data-arg="${row.be}" title="Your average cost, on the tick"${off}>Breakeven ${fmtPositionPrice(row.be, row.tradeAs)}</button>` : '';
   const now = row.stop !== null ? ` · nearest stop ${fmtPositionPrice(row.stop, row.tradeAs)}${row.covered < Math.abs(row.qty) ? ` for ${units(row, row.covered)}` : ''}` : ' · no stop now';
-  return `<div><dt><label for="posStopPrice">Stop price</label></dt><dd><div class="pos-close-qty"><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posStopPrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${value}" data-input="setPositionStopPrice"${off} /></div>${chip}</div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark${now}</span></dd></div>`;
+  const choice = stopChoice(t);
+  if (t.reset) return choice;
+  return `${choice}<div><dt><label for="posStopPrice">Stop price</label></dt><dd><div class="pos-close-qty"><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posStopPrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${value}" data-input="setPositionStopPrice"${off} /></div>${chip}</div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark${now}</span></dd></div>`;
 }
 
 /** a stop at your price: how long it lasts, and what the position risks (or locks) at its stops afterwards */
