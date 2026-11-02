@@ -173,11 +173,11 @@ function rCell(row) {
     ? (p.basis === 'premium' ? 'premium' : p.basis === 'stop' ? `${p.own ? 'your stop' : 'first stop'} ${px(p.stop)}` : 'journal risk')
     : p.source === 'premium' ? 'premium' : `stop now ${px(p.stop)}`;
   const behind = p.journalQty !== null ? ` The Journal shows ${p.journalQty.toLocaleString('en-US')} open, Schwab ${Math.abs(row.qty).toLocaleString('en-US')}: import to catch up.` : '';
+  const per = fmt$(p.risk / (Math.abs(row.qty) * row.mult)), a = row.tradeAs === 'OPTION' ? 'a contract' : 'a share';
   const title = p.source === 'journal'
-    ? `Open P/L over the trade's risk at entry, ${fmt$(p.risk)} (${p.basis === 'premium' ? 'the premium paid' : p.own ? `your original stop ${px(p.stop)}` : `Schwab's first stop ${px(p.stop)}`}), so moving the stop doesn't change it.`
-    : `Open P/L over the risk to ${p.source === 'premium' ? 'zero (the premium)' : `the nearest stop now, ${px(p.stop)}`}, ${fmt$(p.risk)}. No Journal trade matches this position, so the first stop isn't known.${behind}`;
-  const trims = p.withTrims !== null ? `<span class="pos-sub">${rWords(p.withTrims)} with trims</span>` : '';
-  return `<span title="${esc(title)}">${signed(p.r, Math.abs(p.r).toFixed(2) + 'R')}<span class="pos-sub">${esc(from)}</span>${trims}</span>`;
+    ? `How far the price has moved from your cost, in R. 1R is ${per} ${a}, to ${p.basis === 'premium' ? 'zero (the premium paid)' : p.own ? `your original stop ${px(p.stop)}` : `Schwab's first stop ${px(p.stop)}`}, so moving the stop or trimming doesn't change it.`
+    : `How far the price has moved from your cost, in R. 1R is ${per} ${a}, to ${p.source === 'premium' ? 'zero (the premium)' : `the nearest stop now, ${px(p.stop)}`}. No Journal trade matches this position, so the first stop isn't known.${behind}`;
+  return `<span title="${esc(title)}">${signed(p.r, Math.abs(p.r).toFixed(2) + 'R')}<span class="pos-sub">${esc(from)}</span></span>`;
 }
 
 function spreadRCell(s) {
@@ -651,9 +651,9 @@ function renderPositionsTable() {
     ${state.positionsError ? `<p class="shares-error" role="status">Refresh failed: ${esc(state.positionsError)} Showing ${asOf}.</p>` : ''}
     ${p.stopsMissing ? '<p class="hint">Stops unavailable: Schwab did not return this account\'s orders.</p>' : ''}
     ${p.rows.length && phone && state.posLayout === 'table' ? `${phoneTable(p, items)}
-    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost; a spread's is its max loss. R is open P/L over the risk at entry: your original stop or the trade's first stop (or a long option's premium), else the nearest stop now.</p>`
+    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost; a spread's is its max loss. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now.</p>`
     : p.rows.length && phone ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => i.spread ? spreadCard(i.spread) : positionCard(i.row)).join('')}</div>
-    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. R is open P/L over the risk at entry: your original stop or the trade's first stop (or a long option's premium), else the nearest stop now. Tap a card for its figures and buttons.</p>`
+    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now. Tap a card for its figures and buttons.</p>`
     : p.rows.length ? `<div class="positions-wrap"><table class="positions-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th>${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
       <tbody>${items.map(i => i.spread ? spreadRow(i.spread) : positionRow(i.row)).join('')}</tbody>

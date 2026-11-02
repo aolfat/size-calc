@@ -458,28 +458,30 @@ export const positionJournalTrade = (/** @type {Row} */ row, /** @type {import('
     && x.symbol === row.symbol && x.direction === (row.qty > 0 ? 'long' : 'short')) || null;
 
 /**
- * @typedef {{ r: number | null, withTrims: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
+ * @typedef {{ r: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
  *   basis: string | null, stop: number | null, own: boolean, why: string, journalQty: number | null }} PositionR
  */
 
 /**
- * How many R a position is up or down: open P/L ÷ the initial risk. The risk is the Journal's open trade on it (same account,
+ * How many R the price has moved from your average cost: open P/L ÷ the risk on the shares held, so (price − cost) ÷ 1R a
+ * share, the same R the close ticket's and chart's R chips set prices by; trims don't dilute it. 1R comes from the Journal's open trade on it (same account,
  * contract and direction, holding the same quantity; built over the kept records and the last read's orders, so it's there
  * before any import): your original stop, else Schwab's first stop on the loss side, else a long option's premium, so a stop
  * moved to breakeven or trailed later doesn't shrink it. Without one (opened before the history, the Journal holding
  * another quantity, the contract inside a spread, or no loss-side stop ever), it's the nearest working stop's distance from
- * your average cost, or a long option's premium with no stop; a stop at or past breakeven then asks for your original stop. withTrims adds what the trade's exits already took (before fees, like Schwab's P/L), when it had some.
+ * your average cost, or a long option's premium with no stop; a stop at or past breakeven then asks for your original stop. risk = 1R a share × the shares held.
  * journalQty = the Journal's open quantity when it didn't match the position's.
  * @param {Row} row @param {import('./journal.js').Trade[] | null} trades the Journal's trades, null when they aren't read
  * @param {string} last4 @returns {PositionR}
  */
 export function positionR(row, trades, last4) {
-  const out = /** @type {PositionR} */ ({ r: null, withTrims: null, risk: null, source: null, basis: null, stop: null, own: false, why: '', journalQty: null });
+  const out = /** @type {PositionR} */ ({ r: null, risk: null, source: null, basis: null, stop: null, own: false, why: '', journalQty: null });
   if (row.pnl === null) return { ...out, why: 'No average cost from Schwab.' };
   const long = row.qty > 0, held = Math.abs(row.qty), t = positionJournalTrade(row, trades, last4);
   if (t && t.risk && t.risk > 0.005 && Math.abs(t.openQty - held) < 1e-6) {
-    const r = row.pnl / t.risk;
-    return { ...out, r, withTrims: t.exits ? r + t.grossPnl / t.risk : null, risk: t.risk, source: 'journal', basis: t.rBasis, stop: t.stop, own: t.stopSource === 'yours' };
+    // 1R a share is the whole entry's risk over the shares entered, so a trim doesn't change it
+    const risk = t.risk * held / t.entryQty;
+    return { ...out, r: row.pnl / risk, risk, source: 'journal', basis: t.rBasis, stop: t.stop, own: t.stopSource === 'yours' };
   }
   const journalQty = t && Math.abs(t.openQty - held) > 1e-6 ? t.openQty : null;
   const near = row.stopOrders[0];
@@ -798,9 +800,7 @@ export function targetGain(row, price, qty, unit = null) {
 export function rUnit(row, trades, last4) {
   const p = positionR(row, trades, last4);
   if (p.risk === null) return { per: null, source: p.source, basis: p.basis, stop: p.stop, own: false, why: p.why };
-  const t = p.source === 'journal' ? positionJournalTrade(row, trades, last4) : null;
-  const size = t ? t.entryQty : Math.abs(row.qty);
-  return { per: p.risk / (size * row.mult), source: p.source, basis: p.basis, stop: p.stop, own: p.own, why: '' };
+  return { per: p.risk / (Math.abs(row.qty) * row.mult), source: p.source, basis: p.basis, stop: p.stop, own: p.own, why: '' };
 }
 
 /** The price r R from your cost (above on a long, below on a short), on the order grid; 0 when it can't be. @param {Row} row @param {number} r @param {number} per */
