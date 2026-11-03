@@ -1,6 +1,7 @@
 // @ts-check
 // Schwab history, pure: masks account numbers, summarizes what a read returned (the spike's export), and turns raw
 // orders and transactions into the rows raw capture keeps in Supabase. No network, no storage.
+import { wallToMs } from './tos-statement.js';
 
 const ACCOUNT_KEY = /^(accountNumber|accountId|hashValue|accountHash)$/i;
 
@@ -137,3 +138,25 @@ export function importWords(r) {
   const kept = `${r.kept || 0} already kept`;
   return parts.length ? `${parts.join(', ')}, ${kept}` : `Nothing new, ${kept}`;
 }
+
+/** when the day's import runs: just after the regular session closes, New York time */
+export const CLOSE_IMPORT = '16:05:00';
+const NY_YMD = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/** CLOSE_IMPORT on the weekdays from `back` days before now's New York day, newest first (holidays count: an extra import is harmless) @param {number} now @param {number} back @param {number} ahead */
+function closesAround(now, back, ahead) {
+  const out = [];
+  const noon = Date.parse(NY_YMD.format(new Date(now)) + 'T12:00:00Z');
+  for (let d = ahead; d >= -back; d--) {
+    const day = new Date(noon + d * 86400000);
+    if (day.getUTCDay() % 6 === 0) continue;
+    out.push(wallToMs(day.toISOString().slice(0, 10) + 'T' + CLOSE_IMPORT, 'America/New_York'));
+  }
+  return out;
+}
+
+/** the latest weekday close import at or before now @param {number} now */
+export const lastClose = now => /** @type {number} */ (closesAround(now, 4, 0).find(t => t <= now));
+
+/** the next weekday close import after now @param {number} now */
+export const nextClose = now => /** @type {number} */ (closesAround(now, 0, 4).filter(t => t > now).pop());

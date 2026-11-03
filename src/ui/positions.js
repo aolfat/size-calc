@@ -707,10 +707,12 @@ function orderRow(o, list) {
 
 /** every order still working in the account, entries included; a pair's legs sit together and name each other */
 function ordersCard(p) {
-  const head = n => `<div class="positions-head"><span class="section-title">Working orders</span>${n === null ? '' : `<span class="positions-meta">${n ? n.toLocaleString('en-US') : 'None'}</span>`}</div>`;
+  const head = (n, act = '') => `<div class="positions-head"><span class="section-title">Working orders</span>${n === null ? '' : `<span class="positions-meta">${n ? n.toLocaleString('en-US') : 'None'}</span>`}${act}</div>`;
   if (p.stopsMissing) return `<div class="card positions-card orders-card">${head(null)}<p class="hint">Orders unavailable: Schwab did not return this account's orders.</p></div>`;
   const list = workingOrders(p.orders);
-  return `<div class="card positions-card orders-card">${head(list.length)}
+  const all = list.some(o => o.orderId !== null && o.status !== 'AWAITING_PARENT_ORDER')
+    ? `<button class="btn" data-action="openCancelAll" title="Review cancelling every working order">Cancel all</button>` : '';
+  return `<div class="card positions-card orders-card">${head(list.length, all)}
     ${list.length ? `<div class="positions-wrap"><table class="positions-table orders-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">Order</th><th scope="col">Price</th><th scope="col">Qty</th><th scope="col">Lasts</th><th scope="col">Status</th><th scope="col">Placed</th></tr></thead>
       <tbody>${list.map(o => orderRow(o, list)).join('')}</tbody>

@@ -17,7 +17,7 @@ import { showSheetQuote, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
 import { refreshQuote } from './ticker.js';
-import { maybeCapture } from './schwab-capture.js';
+import { maybeCapture, scheduleCloseCapture } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
 const mask = last4 => '••' + last4;
@@ -589,7 +589,8 @@ export async function initSchwab(href = location.href) {
   refreshSchwabCallback(); // a worker whose callback is this app hides the paste box
   // a login finished in another tab shows up here, and a new day's account size comes in
   window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); maybeCapture(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) updateSchwabBanner(); }); // the home-screen app comes back without a focus event
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { updateSchwabBanner(); maybeCapture(); } }); // the home-screen app comes back without a focus event
+  scheduleCloseCapture(); // the day's import just after the close, while the app is open
   const url = new URL(href);
   // Google's return through Supabase carries a code too: not ours
   if (url.searchParams.get('login') !== 'google' && url.searchParams.get('code')) {

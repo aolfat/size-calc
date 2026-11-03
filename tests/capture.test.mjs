@@ -1,6 +1,6 @@
 // Run with: node --test
 // Raw capture: Schwab's orders and TRADE transactions kept whole in Supabase's schwab_records, account numbers masked,
-// a year of transactions the first time (59 days if Schwab refuses), a week of overlap after that, at most every 6 hours.
+// a year of transactions the first time (59 days if Schwab refuses), a week of overlap after that, at most every 6 hours and once after each close.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -186,4 +186,21 @@ test('a broker account switch while an import is in flight cancels it without mi
   release();
   await assert.rejects(importing, /changed/);
   assert.equal(w.saved.length, 0);
+});
+
+test('the close import: due once after each weekday 4:05 PM New York, whatever the 6 hours say', async () => {
+  const { run } = await app();
+  const at = iso => Date.parse(iso);
+  assert.equal(run(`lastClose(${at('2026-10-14T20:10:00Z')})`), at('2026-10-14T20:05:00Z'), 'Wednesday, daylight time');
+  assert.equal(run(`lastClose(${at('2026-10-14T19:00:00Z')})`), at('2026-10-13T20:05:00Z'), 'before the close: the day before');
+  assert.equal(run(`lastClose(${at('2026-11-09T15:00:00Z')})`), at('2026-11-06T21:05:00Z'), 'Monday morning: Friday, standard time');
+  assert.equal(run(`nextClose(${at('2026-11-06T21:05:00Z')})`), at('2026-11-09T21:05:00Z'), 'Friday at the close: Monday next');
+  assert.equal(run(`nextClose(${at('2026-11-03T15:00:00Z')})`), at('2026-11-03T21:05:00Z'));
+
+  const capturedAt = at('2026-10-14T18:30:00Z'); // 2:30 PM New York
+  const { run: r2 } = await app({ storage: connected([['schwab_capture', JSON.stringify({ at: capturedAt, user: 'user-1', account: '6789' })]]), session: SESSION });
+  assert.equal(r2(`captureDue(${at('2026-10-14T20:00:00Z')})`), false, 'before the close, inside 6 hours');
+  assert.equal(r2(`captureDue(${at('2026-10-14T20:06:00Z')})`), true, 'after the close, though only 1.5 hours later');
+  const { run: r3 } = await app({ storage: connected([['schwab_capture', JSON.stringify({ at: at('2026-10-14T20:07:00Z'), user: 'user-1', account: '6789' })]]), session: SESSION });
+  assert.equal(r3(`captureDue(${at('2026-10-14T23:00:00Z')})`), false, 'imported after the close already');
 });

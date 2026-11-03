@@ -48,7 +48,7 @@ Read it before changing that area, and update it in the same PR when behavior ch
 - `docs/calculator.md`: the Size tab (Tradier, stops and stop strategies, ATR, shares and allocation sizing, the options chain and loss model, the simulator, quick lookup, verticals, the daily and intraday charts, live mode, extended hours)
 - `docs/sync.md`: Google sign-in, settings sync, the Tradier key in Vault
 - `docs/schwab.md`: the Schwab login and worker, Trade at Schwab, the banner, account size from Schwab, raw capture, the history download
-- `docs/positions.md`: the Positions tab (rows, spreads, columns and R, position trades, the spread close, working orders, cancel, edit, the position chart and targets)
+- `docs/positions.md`: the Positions tab (rows, spreads, columns and R, position trades, the spread close, working orders, cancel, cancel all, edit, the position chart and targets)
 - `docs/journal.md`: the Journal tab (imports, trades, spreads, fees, reviews, bars, features, the trade page, the review deck, calendar and stats, the notebook)
 - `docs/market.md`: the Market tab
 - `docs/tools.md`: the top-level tabs and the Tools view

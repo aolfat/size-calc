@@ -1138,6 +1138,78 @@ test('an entry cancel names the stop waiting on it; a stale order can\'t be canc
   assert.doesNotMatch(elements.get('cancelBody').innerHTML, /sendOrderCancel/);
 });
 
+// ---------- cancelling every working order ----------
+
+test('cancel all plans one cancel per order, a pair once, an entry with its waiting stop; only entries keeps stops and targets', async () => {
+  const { run } = await app();
+  const orders = JSON.stringify([...ORDERS, ENTRY]);
+  const rows = `positionRows(${JSON.stringify(account())}, ${orders}).rows`;
+  const all = plain(run(`cancelAllPlan(${orders}, ${rows})`));
+  assert.equal(all.error, '');
+  assert.deepEqual(all.steps.map(s => s.orderId).sort(), [101, 102, 103, 201, 401, 501, 600], 'the pair is one cancel, the waiting stop none');
+  assert.deepEqual(all.gone.map(o => o.orderId).sort(), [101, 102, 103, 201, 401, 501, 502, 600, 601]);
+  assert.deepEqual(all.kept, []);
+  const entries = plain(run(`cancelAllPlan(${orders}, ${rows}, { only: 'entries' })`));
+  assert.deepEqual(entries.steps.map(s => s.orderId), [600]);
+  assert.deepEqual(entries.gone.map(o => o.orderId), [600, 601]);
+  assert.deepEqual(entries.kept.map(o => o.orderId).sort(), [101, 102, 103, 201, 401, 501, 502]);
+  assert.match(run(`cancelAllPlan(${JSON.stringify(ORDERS)}, ${rows}, { only: 'entries' }).error`), /Every working order closes something you hold/);
+  assert.match(run('cancelAllPlan([], []).error'), /Nothing working to cancel/);
+});
+
+test('cancel all reviews every order, warns about stops, sends each cancel once and confirms from Schwab', async () => {
+  const b = broker();
+  b.live.orders.push(plain(ENTRY));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  const html = elements.get('positionsSection').innerHTML;
+  assert.match(html.slice(html.indexOf('orders-card')), /data-action="openCancelAll"[^>]*>Cancel all</);
+  await run('actions.openCancelAll()');
+  assert.equal(elements.get('cancelAllSheet').style.display, '');
+  const review = elements.get('cancelAllBody').innerHTML;
+  assert.match(review, /aria-pressed="true" data-action="setCancelAllOnly" data-arg="all"/);
+  assert.match(review, /Cancel sell limit \$170\.00 for 50 shares AMD, and with it the paired sell stop \$140\.00/);
+  assert.match(review, /Cancel buy limit \$110\.00 for 20 shares NVDA, and with it its sell stop \$104\.00 waiting on it/);
+  assert.match(review, /After this, your 300 HOOD have no stop\./);
+  assert.match(review, />Cancel all 9 orders</);
+  assert.equal(b.sent.length, 0, 'nothing is sent from the review');
+
+  await run('sendCancelAll()');
+  assert.deepEqual(b.sent.map(c => c.method), Array(7).fill('DELETE'));
+  assert.match(elements.get('cancelAllBody').innerHTML, /trade-result ok[\s\S]*Schwab no longer shows any of the 9 orders working\./);
+  await run('sendCancelAll()');
+  assert.equal(b.sent.length, 7, 'a sent ticket never goes again');
+});
+
+test('cancel all with only entries leaves the stops; a refused cancel doesn\'t stop the rest', async () => {
+  const b = broker({ refuse: c => c.path === '/orders/600' ? json({ message: 'nope' }, 400) : null });
+  b.live.orders.push(plain(ENTRY), single(700, 'LIMIT', 'MSFT', 'BUY', 10, 400));
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openCancelAll()');
+  run("actions.setCancelAllOnly({ dataset: { arg: 'entries' } })");
+  const review = elements.get('cancelAllBody').innerHTML;
+  assert.match(review, /aria-pressed="true" data-action="setCancelAllOnly" data-arg="entries"/);
+  assert.doesNotMatch(review, /have no stop/);
+  assert.match(review, />Cancel all 3 orders</);
+  await run('sendCancelAll()');
+  assert.deepEqual(b.sent.map(c => c.path).sort(), ['/orders/600', '/orders/700']);
+  const html = elements.get('cancelAllBody').innerHTML;
+  assert.match(html, /Schwab refused 1 cancel\. Schwab still shows 2 orders working: buy limit \$110\.00 NVDA, sell stop \$104\.00 NVDA\. Check Schwab\./);
+  assert.equal(b.live.orders.find(o => o.orderId === 102).status, 'WORKING', 'stops on what you hold stay');
+});
+
+test('cancel all sends nothing when Schwab changed since the review', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openCancelAll()');
+  b.live.orders.push(single(700, 'LIMIT', 'MSFT', 'BUY', 10, 400));
+  await run('sendCancelAll()');
+  assert.equal(b.sent.length, 0);
+  assert.match(elements.get('cancelAllBody').innerHTML, /Schwab changed since you opened this, so nothing was sent/);
+});
+
 // ---------- a breakeven stop never loosens a stop ----------
 
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };

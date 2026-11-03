@@ -1,7 +1,8 @@
-// Raw capture's triggers: the quiet automatic save (at most every 6 hours, once both the Google and Schwab logins are
-// in place), Save now from the Journal, and a hook the Journal listens on to redraw when a save starts or finishes.
+// Raw capture's triggers: the quiet automatic save (at most every 6 hours and once after each weekday's close, once both
+// the Google and Schwab logins are in place; a timer for the close while the app is open), Save now from the Journal,
+// and a hook the Journal listens on to redraw when a save starts or finishes.
 import { captureDue, captureReady, captureSchwab } from '../services/capture.js';
-import { importWords } from '../core/schwab-history.js';
+import { importWords, nextClose } from '../core/schwab-history.js';
 import { state } from '../state.js';
 import { showError, showToast } from './feedback.js';
 
@@ -42,4 +43,11 @@ export function captureNow() {
 /** the automatic save: only when due, and quietly (a failure shows on the Journal's status line, not as a toast) */
 export function maybeCapture() {
   return captureReady() && captureDue() ? run(true) : null;
+}
+
+let closeTimer = null;
+/** while the app is open, import just after each weekday's close (a sleeping device catches up on its next focus) */
+export function scheduleCloseCapture(now = Date.now()) {
+  clearTimeout(closeTimer);
+  closeTimer = setTimeout(() => { maybeCapture(); scheduleCloseCapture(); }, nextClose(now) - now + 1000);
 }

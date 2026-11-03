@@ -1,6 +1,6 @@
 # Positions
 
-The Positions tab: rows, spreads, optional columns and R, position trades (stop, breakeven stop, close, spread close), working orders, cancel, edit, and the position chart with profit targets.
+The Positions tab: rows, spreads, optional columns and R, position trades (stop, breakeven stop, close, spread close), working orders, cancel, cancel all, edit, and the position chart with profit targets.
 
 - **Positions** (Schwab, read-only): a top-level header tab (Positions, count badge #posCount = rows in the last read, key v), not part of the instrument switcher. positionsView is a display state, NOT a mode — currentMode stays shares/options underneath (tradeCtx etc. unaffected); selecting it hides all sizing surfaces (including the ticket card) and shows #positionsSection only: a live table of the account picked in Settings → Schwab trading, straight from Schwab (no Tradier key needed).
   Two reads per refresh: `GET /accounts/{hash}?fields=positions` (schwabPositions) and the last 59 days of orders (schwabRecentOrders; Schwab's window is 60).
@@ -132,6 +132,14 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   Warnings: what a held position's stops still cover afterwards ('After this, stops cover 250 of your 300 HOOD' / 'have no stop'), shares without a stop until a kept stop is back, partial fills staying filled, an entry's waiting stop going with it.
   Sent once, nothing retries; a refused cancel is fine when a GET shows the order already gone and stops everything when it FILLED (the other half is never placed over a filled target).
   Confirmed when the re-read no longer lists it working and, when kept, shows a new order like the other half; unconfirmed lists what Schwab shows on the symbol and blocks the next send there for 2 minutes (state.posLast, shared with the position trades).
+
+  **Cancel all** (ui/order-cancel-all.js, #cancelAllSheet = SHEETS.cancelAll, state.cancelAllTicket; owner request): a button in the Working orders head, shown while any order can be cancelled.
+  It re-reads Schwab, then freezes cancelAllPlan (core/positions.js, pure): one DELETE per order, a one-cancels-other pair once (Schwab cancels the two together), an order waiting on its entry not alone (it goes with the entry).
+  Two choices: **Everything** (the default) or **Only entries** (orders that close nothing you hold; stops and targets on held positions stay, and a pair stays when either half closes something held).
+  The review lists each cancel with the pair or waiting stop that goes with it, what stays, what each held position's stops still cover afterwards, and partial fills staying filled.
+  At send, Schwab is re-read and re-planned; a changed list sends nothing and shows the new plan.
+  Each order is its own cancel: a refused one (or one that filled first) is marked and the rest still go.
+  Confirmed when the re-read no longer shows any of them working; otherwise it names the ones Schwab still shows.
 
   **Edit** (ui/order-edit.js, #editSheet = SHEETS.edit, state.editTicket): beside Cancel on rows editable() allows (single-leg STOP, LIMIT, STOP_LIMIT, not waiting on an entry).
   It re-reads Schwab, then plans with editPlan (core/positions.js, pure): a form with the stop and/or limit (priceTick, options optionPriceTick), the size (the open quantity) and Today / Until canceled; typing re-plans from the same read and redraws only #editDetail.
