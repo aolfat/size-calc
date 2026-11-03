@@ -3,7 +3,7 @@
 // fingerprints every record, reads what's kept for those ids, and sends only what's new or changed. Never touches the page.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
-import { captureRows, planDelta, stableJson, transactionStart, FALLBACK_DAYS } from '../core/schwab-history.js';
+import { captureRows, lastClose, planDelta, stableJson, transactionStart, FALLBACK_DAYS } from '../core/schwab-history.js';
 import { schwabAccount, schwabConnected, schwabRecentOrders, schwabSession, schwabTransactions } from './schwab.js';
 import { supabaseClient } from './supabase.js';
 
@@ -56,10 +56,10 @@ function lastHere() {
   return last && last.user === state.session?.user?.id && last.account === schwabAccount()?.last4 ? last : null;
 }
 
-/** an automatic capture is due: never ran for this user and account, or the last one is older than CAPTURE_EVERY */
+/** an automatic capture is due: never ran for this user and account, the last one is older than CAPTURE_EVERY, or it ran before the latest weekday close (lastClose: the day's trades go in after the close) */
 export function captureDue(now = Date.now()) {
   const last = lastHere();
-  return !last || now - last.at >= CAPTURE_EVERY;
+  return !last || now - last.at >= CAPTURE_EVERY || last.at < lastClose(now);
 }
 
 /**
