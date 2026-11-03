@@ -751,6 +751,7 @@ test('Place checks the quote again: a stop now through the bid sends nothing', a
   const net = quotes([QUOTE, { ...QUOTE, bid: 97.9, ask: 98.1, last: 98 }], created);
   const { run, elements } = await sharesCard({ fetch: net.fetch, storage: connected() });
   await run('openTrade()');
+  run('sheetQuote.at -= 5000'); // the review's live quote is older than LIVE_FRESH, so Place reads again
   await run('placeTrade()');
   assert.equal(net.posts().length, 0);
   assert.match(elements.get('tradeBody').innerHTML, /The stop \$98\.00 is at or above the bid \$97\.90\. It would sell as soon as the buy fills\. Nothing was sent\./);
@@ -762,6 +763,7 @@ test('a quote that moves past the plan shows the new warning and waits for a sec
   const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });
   await run('openTrade()');
   const reviewed = state.tradeTicket;
+  run('sheetQuote.at -= 5000');
   await run('placeTrade()');
   assert.equal(net.posts().length, 0, 'a new warning means a new review');
   assert.notEqual(state.tradeTicket, reviewed);
@@ -780,9 +782,62 @@ test('a new trade goes only to the account it was reviewed for', async () => {
   assert.equal(state.tradeTicket.hash, 'HASH1');
   storage.set('schwab_account', 'HASH2');
   await run('placeTrade()');
-  assert.equal(net.calls.filter(c => c.url.startsWith(PROXY)).length, 0);
+  assert.equal(net.calls.filter(c => c.url.startsWith(PROXY) && c.method !== 'GET').length, 0, 'only the review\'s warm-up read');
   assert.match(state.tradeTicket.result.text, /You switched Schwab accounts since this was reviewed\. Nothing was sent\./);
   assert.equal(state.tradeTicket.sent, false);
+});
+
+test('Place uses the review\'s live quote when it is seconds old, and says how long the send took', async () => {
+  const net = quotes([QUOTE], created);
+  const { run, elements } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  const reads = () => net.calls.filter(c => c.url.includes('/markets/quotes')).length;
+  const before = reads();
+  await run('placeTrade()');
+  assert.equal(reads(), before, 'no quote read between Place and the order');
+  assert.equal(net.posts().length, 1);
+  assert.match(elements.get('tradeBody').innerHTML, /class="hint trade-timing">Sent in \d+\.\ds: live quote, Schwab \d+\.\ds\.</);
+});
+
+test('a stale live quote is read again before the order, and the timing names it', async () => {
+  const net = quotes([QUOTE], created);
+  const { run, elements } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  run('sheetQuote.at -= 5000');
+  const before = net.calls.filter(c => c.url.includes('/markets/quotes')).length;
+  await run('placeTrade()');
+  assert.equal(net.calls.filter(c => c.url.includes('/markets/quotes')).length, before + 1);
+  assert.match(elements.get('tradeBody').innerHTML, /Sent in \d+\.\ds: quote \d+\.\ds, Schwab \d+\.\ds\./);
+  assert.equal(run("timingWords({ quote: 210, login: 340, schwab: 480, total: 1030 })"), 'Sent in 1.0s: quote 0.2s, login 0.3s, Schwab 0.5s.');
+  assert.equal(run("timingWords({ quote: null, login: 3, schwab: 480, total: 483 })"), 'Sent in 0.5s: live quote, Schwab 0.5s.', 'a login under 50ms goes unsaid');
+});
+
+test('opening the review warms the send: a GET of the account\'s /orders, once, and never an order', async () => {
+  const net = quotes([QUOTE], created);
+  const { run } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  await new Promise(r => setImmediate(r));
+  const warm = () => net.calls.filter(c => c.url === PROXY + '/trader/v1/accounts/HASH1/orders');
+  assert.deepEqual(warm().map(c => c.method), ['GET']);
+  run('closeSheet()');
+  await run('openTrade()');
+  await new Promise(r => setImmediate(r));
+  assert.equal(warm().length, 1, 'the browser still holds the answer: not warmed again');
+  assert.equal(net.posts().length, 0);
+});
+
+test('a warm-up renews a login with under 10 minutes left; a call with more than 2 does not', async () => {
+  const soon = connected([['schwab_tokens', JSON.stringify({ userId: null, proxy: PROXY, connectionId: 'test-connection', access: 'acc-1', accessExp: Date.now() + 5 * 60000, refresh: 'ref-1', refreshExp: Date.now() + DAY })]]);
+  const net = network(async path => path === '/refresh' ? json({ access_token: 'fresh', expires_in: 1800 }) : json([]));
+  const { run } = await app({ fetch: net.fetch, storage: soon });
+  await run('schwabAccessToken()');
+  assert.equal(net.calls.filter(c => c.url.endsWith('/refresh')).length, 0, 'five minutes is enough for a call');
+  await run("schwabWarm('HASH1', { orderIds: [42, 42, null] })");
+  assert.equal(net.calls.filter(c => c.url.endsWith('/refresh')).length, 1);
+  assert.equal(run('schwabSession().access'), 'fresh');
+  assert.deepEqual(net.schwabCalls().filter(c => !c.url.endsWith('/refresh')).map(c => `${c.method} ${c.url.slice(PROXY.length)}`), ['GET /trader/v1/accounts/HASH1/orders/42']);
+  await run("schwabWarm('HASH2', { post: true })");
+  assert.equal(net.schwabCalls().length, 2, 'another account than the selected one: nothing');
 });
 
 // ---------- after it goes ----------

@@ -22,9 +22,17 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   The same strip tops the Positions order sheets (docs/positions.md); without a Tradier key it stays hidden.
   The side a market order fills on is lit: the ask on a buy, the bid on a short.
   A failed read keeps the last numbers and swaps Live for the time they're from.
-  It only shows: the ticket and its warnings stay on the quote it was reviewed on (the details' **Reviewed at** row), and Place's own refresh is what re-checks it.
-  Place refreshes the quote again and re-checks the frozen order against it: a new error or warning blocks the send and shows the updated ticket, and a second Place sends it.
+  It only shows: the ticket and its warnings stay on the quote it was reviewed on (the details' **Reviewed at** row), and Place's own re-check is what moves it.
+  Place re-checks the frozen order against the quote: a new error or warning blocks the send and shows the updated ticket, and a second Place sends it.
+  The quote it re-checks against is the strip's when that was read for this symbol in the last 3 seconds (liveQuote, LIVE_FRESH; owner request, for speed), else one read (refreshQuote(false)), whose card, chain and chart redraw waits until the order is out (drawQuote).
+  A sent order says how long it took under the result (timingWords: 'Sent in 0.7s: live quote, login 0.3s, Schwab 0.4s'; a login under 50ms goes unsaid).
   Then it sends the frozen payload ONCE (ticket.sent) to the account the ticket was built for, and nothing retries it; an error before any request (token refresh, account switch) says nothing was sent and arms no repeat warning; a network failure says to check Schwab before retrying.
+  **Warm-up** (schwabWarm in services/schwab.js; owner request, for speed): opening an order review (Trade at Schwab, and every Positions order sheet) readies its send in the background.
+  It renews a login with under 10 minutes left (schwabAccessToken(minLeft); a call alone renews under 2), so Place never waits on a renewal.
+  An order call carries Authorization, so the browser asks the worker's CORS preflight (OPTIONS) first unless it holds an answer for that exact URL (the worker allows 10 minutes, Access-Control-Max-Age 600).
+  A GET of the same URL gets that answer, and it covers the POST, PUT and DELETE the worker allows, so the warm-up reads each URL the send will use: the account's /orders for a new order (Schwab refuses the bare read, harmlessly) and /orders/{id} for each order a cancel or replace may touch.
+  Checked in Chromium (the later POST, PUT and DELETE went without an OPTIONS); not yet on Safari.
+  A URL warmed in the last 8 minutes isn't read again (state.schwabWarmed), another account than the selected one is never touched, and a warm-up never throws or sends an order.
   After a 201 the order id comes from Location and one status read reports fill and stop status (↻ Status re-reads).
 
   **Order plans** (ui/order-plan.js, core/order-plans.js pure, services/order-plans.js, table order_plans, migration 20261107000000_order_plans.sql): the sheet's #tradePlan rows pick **Setup** (My setups: the ones filled in first, then the most used; the first 12 until you search #tradeSetupSearch, plus any lit one) and **Entry tactic** (every tactic), the same library items a journal review uses, read with the review data (loadJournalReview).

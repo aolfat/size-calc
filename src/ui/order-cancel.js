@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { inZone } from '../lib/zone.js';
 import { marketEscape as esc } from '../core/format.js';
 import { cancelPlan, orderGone, ordersFor, schwabTime, workingOrders, workingWords } from '../core/positions.js';
-import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder } from '../services/schwab.js';
+import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabWarm } from '../services/schwab.js';
 import { effects } from './effects.js';
 import { showError, showToast } from './feedback.js';
 import { failureText } from './position-trade.js';
@@ -76,6 +76,8 @@ export async function openOrderCancel(orderId) {
   if (state.positionsError && !state.cancelTicket.error) state.cancelTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   renderCancelSheet();
   openSheet('cancel');
+  const c = state.cancelTicket; // ready the send while you review: the cancel, and the other half placed again
+  if (!c.error) schwabWarm(c.hash, { post: !!c.partner, orderIds: [c.orderId] });
 }
 
 /** keep the other half of a pair (placed again on its own), or cancel both */

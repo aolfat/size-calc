@@ -1079,6 +1079,19 @@ test('cancelling a target keeps its stop: the pair goes, the stop goes back alon
   assert.equal(b.sent.length, 2, 'a sent ticket never goes again');
 });
 
+test('opening a cancel review warms its order\'s URL with a read, and the send still goes once', async () => {
+  const b = broker();
+  const gets = [];
+  const fetch = (url, init = {}) => { if (!init.method || init.method === 'GET') gets.push(url.replace(PROXY + '/trader/v1/accounts/HASH1', '')); return b.fetch(url, init); };
+  const { run } = await app({ fetch, storage: connected() });
+  await run('refreshPositions()');
+  await run('openOrderCancel(501)');
+  await new Promise(r => setImmediate(r));
+  assert.ok(gets.includes('/orders/501'), 'the DELETE\'s URL, read');
+  assert.ok(gets.includes('/orders'), 'the pair\'s other half goes back in: the POST\'s URL too');
+  assert.equal(b.sent.length, 0);
+});
+
 test('cancelling both halves says the shares lose their stop, and sends only the cancel', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });

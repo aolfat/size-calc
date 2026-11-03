@@ -6,7 +6,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { defaultEntryLimit, entryLimitError, fmtTick, inRegularHours, limitEntryError, priceTick, sharesStopOrder, sharesTicketError, stopEntryError, stopTick } from '../core/orders.js';
 import { store } from '../lib/store.js';
-import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnectEverywhere, schwabDisconnectHere, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration, onSchwabShared } from '../services/schwab.js';
+import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnectEverywhere, schwabDisconnectHere, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabAccessToken, schwabOrder, schwabPlaceOrder, schwabWarm, schwabProxy, schwabSession, schwabStanding, schwabStopDuration, onSchwabShared } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
@@ -16,7 +16,7 @@ import { loadPlanChoices, planContext, saveTradePlan, startTradePlan, tradePlanH
 import { showSheetQuote, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
-import { refreshQuote } from './ticker.js';
+import { drawQuote, refreshQuote } from './ticker.js';
 import { maybeCapture, scheduleCloseCapture } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
@@ -306,11 +306,26 @@ function ticketFor(p, q, now) {
   return t;
 }
 
-/** The quote again for the symbol under review; true only when a fresh one came in. */
-async function freshQuote(symbol) {
+/** The quote again for the symbol under review; true only when a fresh one came in. draw false holds the card, chain and chart redraw. */
+async function freshQuote(symbol, draw = true) {
   let ok = false;
-  try { ok = await refreshQuote(); } catch(e) {}
+  try { ok = await refreshQuote(draw); } catch(e) {}
   return ok === true && state.quoteData?.symbol === symbol;
+}
+
+/** the review's live bid and ask, when it was read for this symbol within LIVE_FRESH: good enough to recheck against without another read */
+const LIVE_FRESH = 3000;
+function liveQuote(symbol, now) {
+  const s = state.sheetQuote;
+  if (!s || s.sheet !== 'trade' || s.failed || !s.at || now - s.at > LIVE_FRESH || s.legs.length !== 1 || s.legs[0].symbol !== symbol || state.quoteData?.symbol !== symbol) return null;
+  return { ...state.quoteData, bid: s.bid, ask: s.ask, last: s.last };
+}
+
+const secs = ms => (ms / 1000).toFixed(1) + 's';
+/** 'Sent in 0.7s: live quote, login 0.3s, Schwab 0.4s' */
+export function timingWords(m) {
+  const parts = [m.quote === null ? 'live quote' : 'quote ' + secs(m.quote), ...(m.login >= 50 ? ['login ' + secs(m.login)] : []), 'Schwab ' + secs(m.schwab)];
+  return `Sent in ${secs(m.total)}: ${parts.join(', ')}.`;
 }
 
 export async function openTrade() {
@@ -334,6 +349,7 @@ export async function openTrade() {
   startTradePlan(state.tradeTicket);
   renderTradeSheet();
   openSheet('trade');
+  schwabWarm(state.tradeTicket.hash, { post: true }); // the login, the connection and the browser's permission to post, while you review
   // the live bid and ask over it, from the quote just read; the side a market order fills on is lit (the ask on a buy, the bid on a short)
   watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol, n: 1 }], first: state.quoteData,
     fills: () => { const t = state.tradeTicket; return t && !t.error ? (t.isLong ? 'ask' : 'bid') : ''; } });
@@ -382,11 +398,11 @@ export function setTradeLimit(value) {
 }
 
 /** why the reviewed ticket can't go as it is, from a fresh quote; '' when it still can */
-function recheck(t, fresh) {
+function recheck(t, fresh, q) {
   const acct = schwabAccount();
   if (!acct || acct.hash !== t.hash) return { why: 'You switched Schwab accounts since this was reviewed. Nothing was sent. Open the review again.', again: null };
   if (!fresh) return { why: `Could not refresh the ${t.symbol} quote, so nothing was sent. Try again.`, again: null };
-  const again = ticketFor(t, state.quoteData, Date.now());
+  const again = ticketFor(t, q, Date.now());
   if (again.error) return { why: again.error + ' Nothing was sent.', again };
   if (!again.order) return { why: again.limitError + ' Nothing was sent.', again: null };
   if (JSON.stringify(again.order) !== JSON.stringify(t.order)) return { why: 'The order changed since you reviewed it. Nothing was sent. Review it, then place again.', again };
@@ -402,11 +418,18 @@ export async function placeTrade() {
   t.result = { ok: null, text: 'Checking the quote…' };
   renderTradeSheet();
   updateTradeButton();
-  let fresh = false;
-  try { fresh = await freshQuote(t.symbol); } catch(e) {}
-  if (fresh) showSheetQuote('trade', state.quoteData);
-  const { why, again } = recheck(t, fresh);
+  const t0 = Date.now();
+  // the review's live quote when it's seconds old; else one read, with the card, chain and chart redrawn after the order is out
+  let q = liveQuote(t.symbol, t0), fresh = !!q, drawn = !q;
+  if (!q) {
+    try { fresh = await freshQuote(t.symbol, false); } catch(e) {}
+    q = state.quoteData;
+    if (fresh) showSheetQuote('trade', q);
+  }
+  const timing = { quote: drawn ? Date.now() - t0 : null, login: 0, schwab: 0, total: 0 };
+  const { why, again } = recheck(t, fresh, q);
   if (why) {
+    if (drawn) drawQuote();
     state.tradeBusy = false;
     const next = again || t;
     if (next.error) next.error = why; // a ticket that can't go shows only its reason
@@ -420,7 +443,14 @@ export async function placeTrade() {
   t.result = { ok: null, text: 'Sending…' };
   renderTradeSheet();
   try {
+    const t1 = Date.now();
+    await schwabAccessToken().catch(() => {}); // timed on its own; a failure surfaces in the send, tagged nothing sent
+    const t2 = Date.now();
     const { orderId } = await schwabPlaceOrder(t.order, t.hash);
+    const t3 = Date.now();
+    Object.assign(timing, { login: t2 - t1, schwab: t3 - t2, total: t3 - t0 });
+    t.timing = timingWords(timing);
+    if (drawn) drawQuote();
     t.orderId = orderId;
     state.tradeLast = { symbol: t.symbol, at: Date.now() };
     t.result = { ok: null, text: `Sent${orderId ? ', order ' + orderId : ''}. Checking status…` };
@@ -441,6 +471,7 @@ export async function placeTrade() {
       }
       t.result = { ok: false, text: e instanceof TypeError ? 'No answer from Schwab. Check your Schwab orders before trying again.' : e.status ? 'Schwab rejected the order. ' + e.message : e.message };
     }
+    if (drawn && !t.timing) drawQuote();
   } finally {
     state.tradeBusy = false;
     if (state.tradeTicket === t) renderTradeSheet();
@@ -532,7 +563,8 @@ export function renderTradeSheet() {
       <button class="btn" data-action="closeSheet">${t.sent ? 'Close' : 'Cancel'}</button>
       ${action}
     </div>
-    <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>`;
+    <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>
+    ${t.timing ? `<p class="hint trade-timing">${esc(t.timing)}</p>` : ''}`;
 }
 
 /** everything under the entry order switch: what goes to Schwab, the risk, the warnings and the payload */

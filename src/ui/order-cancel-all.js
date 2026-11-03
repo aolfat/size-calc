@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { marketEscape as esc } from '../core/format.js';
 import { cancelAllPlan, workingOrders, workingWords } from '../core/positions.js';
-import { schwabAccount, schwabConnected } from '../services/schwab.js';
+import { schwabAccount, schwabConnected, schwabWarm } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { cancelWorking, sendsSame } from './order-cancel.js';
 import { failureText } from './position-trade.js';
@@ -52,6 +52,8 @@ export async function openCancelAll() {
   if (state.positionsError && !state.cancelAllTicket.error) state.cancelAllTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   renderCancelAllSheet();
   openSheet('cancelAll');
+  const c = state.cancelAllTicket; // ready the cancels while you review
+  if (!c.error) schwabWarm(c.hash, { orderIds: c.steps.map(s => s.orderId) });
 }
 
 /** everything, or only the entries (stops and targets on what you hold stay) */

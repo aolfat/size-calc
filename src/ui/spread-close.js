@@ -7,7 +7,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { inRegularHours, optionPriceTick } from '../core/orders.js';
 import { orderGone, spreadClosePlan, spreadClosers } from '../core/positions.js';
 import { store } from '../lib/store.js';
-import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabStopDuration } from '../services/schwab.js';
+import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { failureText } from './position-trade.js';
 import { refreshPositions } from './positions.js';
@@ -76,6 +76,8 @@ export async function openSpreadClose(key) {
   state.spreadTicket = fresh(key);
   renderSpreadCloseSheet();
   openSheet('spreadClose');
+  const sc = state.spreadTicket; // ready the send while you review: the closers it may cancel, and the close
+  if (!sc.error) schwabWarm(sc.hash, { post: true, orderIds: sc.closers.map(o => o.orderId) });
   // the net bid and ask over it, from the legs in ratio, signed like the sheet's price; the side the close fills on is lit
   const s = state.spreadTicket.spread, sign = s && s.kind === 'debit' ? 1 : -1;
   return watchSheetQuote({ sheet: 'spreadClose', el: 'spreadCloseQuote', legs: s ? s.legs.map(l => ({ symbol: tradierSymbol(l.symbol), n: sign * l.qty / s.units })) : [],

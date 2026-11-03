@@ -204,6 +204,7 @@ test('a break through the entry between review and Place sends nothing', async (
   await run('setOrb(15)');
   await run('openTrade()');
   assert.equal(state.tradeTicket.entryType, 'STOP_LIMIT');
+  run('sheetQuote.at -= 5000'); // the review's live quote is stale, so Place reads again
   await run('placeTrade()');
   assert.equal(posts.length, 0);
   assert.match(state.tradeTicket.result.text, /The buy stop \$100\.51 is at or under the ask \$100\.62, so it would buy right away\. Use Market, or a higher entry\. Nothing was sent\./);

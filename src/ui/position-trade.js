@@ -7,7 +7,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
 import { INSTRUCTION_WORDS, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
-import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
+import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { originalStopBlock } from './position-original.js';
@@ -354,6 +354,8 @@ export async function openPositionTrade(symbol, kind) {
   state.posTicket = freshTicket(kind, symbol, target);
   renderPositionTradeSheet();
   openSheet('posTrade');
+  // ready the send while you review: whichever of the orders closing it the plan cancels or replaces, and a new order
+  if (state.posTicket.row) schwabWarm(state.posTicket.hash, { post: true, orderIds: state.posTicket.row.closers.map(o => o.orderId) });
   // the live bid and ask over it; the side a close fills on is lit (the bid on a long, the ask on a short)
   const row = state.posTicket.row;
   return watchSheetQuote({ sheet: 'posTrade', el: 'posTradeQuote', legs: row ? [{ symbol: tradierSymbol(row.symbol), n: 1 }] : [], fills: () => row && row.qty > 0 ? 'bid' : 'ask' });
