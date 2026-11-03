@@ -86,13 +86,13 @@ export function setCancelKeep(keep) {
   renderCancelSheet();
 }
 
-/** a cancel Schwab refused: fine when the order is already on its way out, a stop when it filled (verb: what the run was doing to it) */
-export async function cancelWorking(w, hash, step, verb = 'cancelled') {
+/** a cancel Schwab refused: fine when the order is already on its way out, a stop when it filled (verb: what the run was doing to it; then: what that means for the rest) */
+export async function cancelWorking(w, hash, step, verb = 'cancelled', then = ' Nothing more was sent.') {
   try { await schwabCancelOrder(w.orderId, hash); }
   catch(e) {
     if (e instanceof TypeError || !e.status) throw e;
     const o = await schwabOrder(w.orderId, hash).catch(() => null);
-    if (o && o.status === 'FILLED') throw new Error(`Schwab filled the ${workingWords(w)} before it could be ${verb}. Nothing more was sent.`);
+    if (o && o.status === 'FILLED') throw new Error(`Schwab filled the ${workingWords(w)} before it could be ${verb}.${then}`);
     if (!o || !orderGone(o.status || '')) throw e;
     step.note = 'already cancelled';
   }

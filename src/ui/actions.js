@@ -19,6 +19,7 @@ import { setLiveDefault, toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
 import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, setRPreset, togglePosChartAvg, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
+import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
@@ -457,6 +458,9 @@ export const actions = {
   openOrderCancel: el => openOrderCancel(arg(el)),
   setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
   sendOrderCancel: () => sendOrderCancel(),
+  openCancelAll: () => openCancelAll(),
+  setCancelAllOnly: el => setCancelAllOnly(arg(el)),
+  sendCancelAll: () => sendCancelAll(),
   openOrderEdit: el => openOrderEdit(arg(el)),
   setEditStop: el => setEditStop(el.value),
   setEditPrice: el => setEditPrice(el.value),

@@ -176,6 +176,37 @@ export function cancelPlan(orders, orderId, { keep = true } = {}) {
   return { error: '', order, partner, children, keep: keeping, keepError, steps };
 }
 
+/**
+ * Cancel every working order at once (only 'entries': just the ones that close nothing you hold, so stops and targets stay).
+ * One DELETE per order: a one-cancels-other pair is one cancel (Schwab cancels the two together), and an order waiting on its
+ * entry isn't sent alone (it goes with the entry). A pair stays in 'entries' when either half closes something held.
+ * gone: every order the run takes out, pairs' other halves and waiting children included; kept: what stays working.
+ * @param {Order[]} orders @param {Row[]} rows @param {{ only?: 'all' | 'entries' }} [opts]
+ * @returns {{ error: string, only: 'all' | 'entries', steps: Step[], gone: Working[], kept: Working[] }}
+ */
+export function cancelAllPlan(orders, rows = [], { only = 'all' } = {}) {
+  const list = workingOrders(orders);
+  const closes = (/** @type {Working} */ w) => {
+    const side = CLOSES[w.instruction];
+    return !!side && rows.some(r => r.symbol === w.symbol && (r.qty > 0 ? 'long' : 'short') === side);
+  };
+  const group = (/** @type {Working} */ w) => w.oco !== null ? list.filter(o => o.oco === w.oco) : [w];
+  const stays = (/** @type {Working} */ w) => only === 'entries' && group(w).some(closes);
+  /** @type {Step[]} */
+  const steps = [];
+  const sent = new Set(), gone = new Set();
+  for (const w of list) {
+    if (w.orderId === null || w.status === 'AWAITING_PARENT_ORDER' || stays(w)) continue;
+    if (w.oco !== null && sent.has('oco:' + w.oco)) continue;
+    if (w.oco !== null) sent.add('oco:' + w.oco);
+    steps.push({ kind: 'cancel', orderId: w.orderId });
+    for (const o of group(w)) gone.add(o);
+    for (const o of list) if (o.parentId !== null && o.parentId === w.orderId) gone.add(o);
+  }
+  const error = steps.length ? '' : only === 'entries' && list.length ? 'Every working order closes something you hold. Nothing to cancel here.' : 'Nothing working to cancel.';
+  return { error, only, steps, gone: list.filter(o => gone.has(o)), kept: list.filter(o => !gone.has(o)) };
+}
+
 /** The order types an edit can rebuild: a single-leg stop, limit or stop limit. @param {Working} w */
 export const editable = w => w.legs === 1 && ['STOP', 'LIMIT', 'STOP_LIMIT'].includes(w.orderType);
 

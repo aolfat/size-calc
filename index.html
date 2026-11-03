@@ -716,6 +716,15 @@
     <div id="cancelBody" aria-live="polite"></div>
   </div>
 
+  <div class="sheet trade-sheet" id="cancelAllSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cancelAllTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="cancelAllTitle">Cancel all orders</h2>
+      <span class="sheet-status" id="cancelAllAccount"></span>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close cancel all review">×</button>
+    </div>
+    <div id="cancelAllBody" aria-live="polite"></div>
+  </div>
+
   <div class="sheet trade-sheet" id="editSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="editTitle" tabindex="-1">
     <div class="sheet-head">
       <h2 id="editTitle">Change order</h2>
