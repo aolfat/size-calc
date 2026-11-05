@@ -48,11 +48,17 @@ function daily(base, intra) {
   dd.high = Math.max(...intra.get(D).filter(b => b.time >= '09:30' && b.time < '16:00').map(b => b.high));
   return out;
 }
+/** VIX: an index, so no volume, and bars only from 9:30 to 16:15 */
+function vixIntraday() {
+  const m = intraday(18);
+  for (const [d, bars] of m) m.set(d, bars.filter(b => b.time >= '09:30' && b.time < '16:15').map(b => ({ ...b, volume: 0 })));
+  return m;
+}
 function world() {
-  const aapl = intraday(100), spy = intraday(500, 3000), qqq = intraday(400);
+  const aapl = intraday(100), spy = intraday(500, 3000), qqq = intraday(400), vix = vixIntraday();
   return {
-    intraday: new Map([['AAPL', aapl], ['SPY', spy], ['QQQ', qqq]]),
-    daily: new Map([['AAPL', daily(100, aapl)], ['SPY', daily(500, spy)], ['QQQ', daily(400, qqq)]]),
+    intraday: new Map([['AAPL', aapl], ['SPY', spy], ['QQQ', qqq], ['VIX', vix]]),
+    daily: new Map([['AAPL', daily(100, aapl)], ['SPY', daily(500, spy)], ['QQQ', daily(400, qqq)], ['VIX', daily(18, vix)]]),
   };
 }
 const stock = (hhmm = '10:02') => ({ key: `6789|AAPL|long|${hhmm}`, symbol: 'AAPL', assetType: 'EQUITY', status: 'win', openedAt: new Date(at(hhmm)).toISOString(), closedAt: new Date(at('15:00')).toISOString() });
@@ -194,6 +200,35 @@ test('SPY and QQQ vs the daily 8 EMA: the price at the entry against the EMA mov
   // a split since: the daily history is half the day's prices, so the day's are halved to match
   const halved = { ...data, daily: new Map([...data.daily].map(([s, bars]) => [s, s === 'SPY' ? bars.map(b => ({ ...b, open: b.open / 2, high: b.high / 2, low: b.low / 2, close: b.close / 2 })) : bars])) };
   near(result(spy, stock('10:02'), halved).value, r.value, 'the same answer on split-adjusted history');
+});
+
+test('VIX at entry and its change on the day: the last 5-minute value; without the day\'s bars, the open or the close before', () => {
+  const data = world();
+  const level = byKey('vix_at_entry'), change = byKey('vix_change_at_entry');
+  const bars = data.intraday.get('VIX').get(D), prior = data.daily.get('VIX').filter(b => b.date < D).at(-1);
+  const price = bars.find(b => b.time === '09:55').close; // the last bar ended by 10:02
+  assert.deepEqual(result(level, stock('10:02'), data), { state: 'value', value: price, note: '' });
+  near(result(change, stock('10:02'), data).value, (price / prior.close - 1) * 100, 'against the close the day before');
+  assert.equal(result(level, call('10:02'), data).value, price, 'the same for an option: the market, not the trade');
+  assert.equal(result(level, spread('10:02'), data).value, price, 'and a spread');
+  // before 9:30 VIX has no bars that day: the close before, and no change yet
+  assert.deepEqual(result(level, stock('08:10'), data), { state: 'value', value: prior.close, note: 'prior close' });
+  assert.deepEqual(result(change, stock('08:10'), data), { state: 'unknown', value: null, note: 'entered before any VIX that day' });
+  // at 9:31 only the 9:30 bar's open is known
+  assert.equal(result(level, stock('09:31'), data).value, bars.find(b => b.time === '09:30').open);
+  // the day's VIX bars not kept: inside the window it waits; older, the day's open from the daily bars
+  const noVix = { ...data, intraday: new Map([...data.intraday].map(([s, m]) => [s, s === 'VIX' ? new Map([...m].filter(([d]) => d !== D)) : m])) };
+  const waiting = result(level, stock('10:02'), noVix);
+  assert.equal(waiting.state, 'waiting');
+  assert.match(waiting.note, /VIX 5-minute bars on 10\/14/);
+  const later = (f, hhmm) => { const r = computeFeature(f, featureContext(stock(hhmm), at(hhmm), noVix, { now: NOW + 60 * 864e5 })); return { state: r.state, value: r.value, note: r.note }; };
+  const open = data.daily.get('VIX').find(b => b.date === D).open;
+  assert.deepEqual(later(level, '10:02'), { state: 'value', value: open, note: 'the open' });
+  near(later(change, '10:02').value, (open / prior.close - 1) * 100, 'the open against the close before');
+  assert.deepEqual(later(level, '09:10'), { state: 'value', value: prior.close, note: 'prior close' });
+  // no daily history read yet: waits
+  assert.equal(result(level, stock('10:02'), { ...data, daily: new Map([...data.daily].filter(([s]) => s !== 'VIX')) }).state, 'waiting');
+  assert.equal(featureValueWords(change, 4.5), '+4.50%');
 });
 
 test('volume run rate: so far against the same time of day over the 20 sessions before; none in the first 5 minutes', () => {
@@ -357,12 +392,14 @@ test('stamping: missing or outdated features are due, three states, unknown stam
 
 test('what a run reads: the moment\'s day and its lookback per symbol; daily bars from far enough back', () => {
   const needs = featureDataNeeds([{ trade: call('10:02'), features: FEATURES }]);
-  assert.deepEqual([...needs.intraday.keys()].sort(), ['AAPL', 'QQQ', 'SPY'], "the option's underlying, never the contract, for these");
+  assert.deepEqual([...needs.intraday.keys()].sort(), ['AAPL', 'QQQ', 'SPY', 'VIX'], "the option's underlying, never the contract, for these");
   assert.equal(needs.intraday.get('AAPL').length, 21, 'the day and the 20 weekdays before');
   assert.deepEqual(needs.intraday.get('SPY'), [D]);
   assert.equal(needs.daily.get('AAPL'), '1960-01-01', 'the all-time high wants every day');
   assert.ok(needs.daily.get('SPY') < '2026-07-20' && needs.daily.get('SPY') > '2026-06-01', 'the EMA, 60 sessions and room for holidays');
-  assert.deepEqual(featureBarNeeds(), { market: ['SPY', 'QQQ'], lookback: 20 }, 'the bar saver keeps what features name');
+  assert.deepEqual(needs.intraday.get('VIX'), [D]);
+  assert.ok(needs.daily.get('VIX') > '2026-09-01', 'VIX: the few sessions before');
+  assert.deepEqual(featureBarNeeds(), { market: ['SPY', 'QQQ', 'VIX'], lookback: 20 }, 'the bar saver keeps what features name');
 });
 
 // ---------- the Journal ----------
@@ -417,7 +454,7 @@ test('the Journal stamps every trade after it loads, shows the Features tab, and
   assert.deepEqual(Object.keys(row.stamps).sort(), FEATURES.map(f => f.key).sort(), 'every feature');
   assert.ok(row.stamps.rvol_at_entry.value > 1.9, 'from the saved bars');
   assert.ok(row.stamps.dist_from_ath.value < 0);
-  assert.equal(j.calls.filter(c => c.startsWith('/v1/markets/history')).length, 3, 'one daily read per symbol: AAPL, SPY, QQQ');
+  assert.equal(j.calls.filter(c => c.startsWith('/v1/markets/history')).length, 4, 'one daily read per symbol: AAPL, SPY, QQQ, VIX');
   assert.equal(a.state.featuresBusy, false);
   assert.equal(a.state.featuresLast.value, FEATURES.length);
   // nothing due: the next load reads, stamps nothing
@@ -511,6 +548,7 @@ test('the bar saver keeps what the features name, on top of the market basket', 
   const { run } = await app();
   const keep = JSON.parse(run('JSON.stringify(barsToKeep())'));
   assert.ok(keep.market.includes('SPY') && keep.market.includes('XLK'));
+  assert.ok(keep.market.includes('VIX'), 'VIX, for the VIX features');
   assert.equal(new Set(keep.market).size, keep.market.length);
   assert.equal(keep.lookback, 20);
 });

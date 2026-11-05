@@ -1,6 +1,6 @@
 // @ts-check
 // Market features: where the market stood when you took the trade. One generator per kind, so SPY / QQQ / IWM over their
-// daily EMAs are one line each.
+// daily EMAs are one line each. The VIX reading at the entry, and its move on the day.
 import { family, feature } from './define.js';
 
 export const MARKET_FAMILY = family({ key: 'market', name: 'Market', version: 1 });
@@ -33,4 +33,49 @@ const vsDailyEma = (symbol, n) => feature(MARKET_FAMILY, {
   },
 });
 
-export const MARKET_FEATURES = [vsDailyEma('SPY', 8), vsDailyEma('QQQ', 8)];
+/** the CBOE volatility index, as Tradier names it */
+const VIX = 'VIX';
+
+/**
+ * VIX at the moment: the last 5-minute value (extended hours too, where the provider has them). Without that day's bars,
+ * or before any that day: the day's open once it's 9:30, else the close before, said in the note (`from`).
+ * @param {import('./context.js').FeatureContext} ctx
+ * @returns {{ value: number, prev: number | null, from: string } | null}
+ */
+function vixNow(ctx) {
+  const d = ctx.daily(VIX, 5), s = ctx.intraday(VIX, { session: 'all' });
+  if (!d || !s) return null;
+  if (s.price !== null) return { value: s.price, prev: d.prevClose, from: '' };
+  if (d.todayOpen) return { value: d.todayOpen, prev: d.prevClose, from: 'the open' };
+  return d.prevClose ? { value: d.prevClose, prev: null, from: 'prior close' } : null;
+}
+
+const VIX_NEEDS = { intraday: [VIX], daily: [VIX], dailySessions: 5, session: /** @type {'all'} */ ('all') };
+
+export const MARKET_FEATURES = [
+  vsDailyEma('SPY', 8), vsDailyEma('QQQ', 8),
+  feature(MARKET_FAMILY, {
+    key: 'vix_at_entry',
+    name: 'VIX at entry',
+    desc: "The VIX at your entry: its last 5-minute value. Without that day's VIX bars, the day's open (from 9:30) or the close before.",
+    version: 1, at: 'entry', unit: '', bins: [15, 20, 25, 30],
+    needs: VIX_NEEDS,
+    compute: ctx => {
+      const v = vixNow(ctx);
+      return v && { value: Math.round(v.value * 100) / 100, note: v.from };
+    },
+  }),
+  feature(MARKET_FAMILY, {
+    key: 'vix_change_at_entry',
+    name: 'VIX change at entry',
+    desc: "The VIX at your entry against its close the day before, as a %. Above 0 = fear rising that day.",
+    version: 1, at: 'entry', unit: '%', bins: [-5, 0, 5],
+    needs: VIX_NEEDS,
+    compute: ctx => {
+      const v = vixNow(ctx);
+      if (!v) return null;
+      if (v.prev === null) return { value: null, note: v.from === 'prior close' ? 'entered before any VIX that day' : 'no VIX close the day before' };
+      return { value: (v.value / v.prev - 1) * 100, note: v.from };
+    },
+  }),
+];
