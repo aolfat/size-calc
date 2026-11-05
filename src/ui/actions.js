@@ -11,6 +11,7 @@ import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from
 import { renderChain, selectExp, setSide, setZoneMode, toggleExps } from './chain.js';
 import { setChartInterval, toggleExtHours } from './chart.js';
 import { copyPinned, copyShares } from './copy-text.js';
+import { pinShares, shareOrderEntryChanged, shareOrderStopChanged } from './share-orders.js';
 import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
 import { effects } from './effects.js';
@@ -59,7 +60,7 @@ import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.
 import { setOrb } from './orb.js';
 import { clearMissedFilters, openMissedFromList, setMissedFilterSetup, setMissedFilterSide, setMissedFilterWhy, setMissedSearch } from './journal-missed.js';
 import { checkOptionTradeStatus, openOptionTrade, placeOptionTrade, setOptionEntry, setOptionLimit, setOptionStopDuration } from './option-trade.js';
-import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
+import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openCardOrder, openCardTrade, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
 import { setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
@@ -379,6 +380,9 @@ export const actions = {
 
   // ---------- Schwab order review ----------
   openTrade: () => openTrade(),
+  openCardTrade: el => openCardTrade(arg(el)),
+  openCardOrder: el => openCardOrder(arg(el)),
+  pinShares: () => pinShares(),
   setTradeStopDuration: el => setTradeStopDuration(arg(el)),
   setTradeEntryType: el => setTradeEntryType(arg(el)),
   setTradeEntryLimit: el => setTradeEntryLimit(el.value),
@@ -431,6 +435,8 @@ export const actions = {
   refreshPinned: el => refreshPinned(arg(el)),
   removePinned: el => removePinned(arg(el)),
   pinnedStopChanged: el => pinnedStopChanged(arg(el), el),
+  shareOrderStopChanged: el => shareOrderStopChanged(arg(el), el),
+  shareOrderEntryChanged: el => shareOrderEntryChanged(arg(el), el),
   refreshAllPinned: () => refreshAllPinned(),
 
   // ---------- positions ----------

@@ -3,6 +3,7 @@
 // The sheet freezes one ticket when it opens, for the account selected then; Place re-checks it against a fresh quote,
 // then sends exactly that payload once and never retries it. A limit entry still waiting moves through Positions' Edit.
 // The setup and entry tactic picks, and the plan kept once the order goes, are ui/order-plan.js.
+// A share order card (ui/share-orders.js) opens the same review for its own ticker, quote and stop.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { defaultEntryLimit, entryLimitError, fmtTick, inRegularHours, limitEntryError, priceTick, sharesStopOrder, sharesTicketError, stopEntryError, stopTick } from '../core/orders.js';
@@ -14,11 +15,13 @@ import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
 import { sharesPlan } from './shares.js';
 import { orbEntryName } from './orb.js';
-import { loadPlanChoices, planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
+import { loadPlanChoices, planContext, riskContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
+import { cardPlan, refreshShareOrderQuote, renderShareOrderCard, renderShareOrderCards, updatePinSharesButton } from './share-orders.js';
+import { inZone } from '../lib/zone.js';
 import { showSheetQuote, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
-import { refreshQuote } from './ticker.js';
+import { refreshQuote, tradierQuote } from './ticker.js';
 import { maybeCapture, scheduleCloseCapture } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
@@ -199,6 +202,7 @@ export function updateSchwabUi() {
     ? `<span style="color:var(--green)">●</span> ${acct ? 'Connected · ' + esc(mask(acct.last4)) : 'Logged in, no account'} · ${loginLeft(session.refreshExp - Date.now())}`
     : store.get('schwab_tokens') ? '<span style="color:var(--amber)">●</span> Login expired' : '○ Not connected';
   updateTradeButton();
+  renderShareOrderCards(); // their Trade at Schwab follows the login
   updateAccountSourceUi();
   updateSchwabBanner();
 }
@@ -238,7 +242,8 @@ export function updateTradeButton() {
   const show = !!q && state.currentMode === 'shares' && state.sizingMode === 'risk' && schwabConnected() && (!q.type || q.type === 'stock' || q.type === 'etf');
   btn.style.display = show ? '' : 'none';
   btn.disabled = !show || state.tradeBusy || !sharesPlan().valid;
-  if (show) loadPlanChoices(); // the review's setups, read before it opens
+  updatePinSharesButton();
+  if (show || Object.values(state.pinnedData).some(d => d.kind === 'shares')) loadPlanChoices(); // the review's setups, read before it opens
 }
 
 // ---------- review sheet ----------
@@ -254,18 +259,33 @@ const savedStopEntry = () => store.get('schwab_entry_type') === 'STOP' ? 'STOP' 
  * A limit is never where a review starts; picked, it starts at the planned entry.
  */
 export function buildTradeTicket(now = Date.now()) {
-  const q = state.quoteData;
   const plan = sharesPlan();
+  return ticketFromPlan(plan, state.quoteData, { customEntry: rawStop('entryPrice') > 0, entryNote: orbEntryName(), planCtx: planContext(plan.isLong, plan.stop) }, now);
+}
+
+/**
+ * A share order card's order, sized as the card shows it now against its own fresh quote. What the calculator knew comes from
+ * when it was pinned, and the max loss and account from now, since the card sizes from them.
+ */
+export function buildCardTicket(cardId, now = Date.now()) {
+  const d = state.pinnedData[cardId];
+  const plan = cardPlan(d);
+  const planCtx = { ...d.planCtx, ...riskContext(), stop_planned: Number.isFinite(plan.stop) ? plan.stop : null };
+  return ticketFromPlan(plan, d.quote, { customEntry: !!d.customEntry, entryNote: d.entryNote, planCtx, cardId }, now);
+}
+
+/** a ticket for a plan in sharesPlan's shape, on quote q; a breakout entry starts on the stop entry you picked last */
+function ticketFromPlan(plan, q, { customEntry, entryNote, planCtx, cardId = '' }, now) {
   const { isLong, entry, shares: qty } = plan;
   const stop = plan.valid ? stopTick(plan.stop, isLong) : NaN;
   const acct = schwabAccount();
-  const customEntry = rawStop('entryPrice') > 0, entryStop = entry > 0 ? priceTick(entry) : 0;
+  const entryStop = entry > 0 ? priceTick(entry) : 0;
   const breakout = customEntry && !stopEntryError({ isLong, entryStop, bid: q.bid, ask: q.ask, last: q.last });
   return ticketFor({
-    symbol: q.symbol, qty, isLong, stop, entry, customEntry, entryNote: orbEntryName(), stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '', valid: plan.valid,
+    symbol: q.symbol, qty, isLong, stop, entry, customEntry, entryNote, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '', valid: plan.valid,
     entryType: breakout ? savedStopEntry() : 'MARKET', entryStop, entryLimit: entryStop > 0 ? defaultEntryLimit(entryStop, isLong) : 0,
     limitPrice: entry > 0 ? priceTick(entry) : 0,
-    setups: [], tactics: [], planCtx: planContext(isLong, plan.stop),
+    setups: [], tactics: [], planCtx, cardId,
   }, q, now);
 }
 
@@ -296,6 +316,7 @@ function ticketFor(p, q, now) {
     error, order: null, warnings: [], flags: [], sent: false, orderId: '', result: null, entryStatus: '', filled: 0,
     // the picks and what the calculator knew go with every re-plan; the saved plan's id comes once it's sent
     setups: p.setups || [], tactics: p.tactics || [], setupOrder: p.setupOrder || null, planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
+    cardId: p.cardId || '', // the share order card it came from; '' for the shares card
   };
   if (error) return t;
   if (!limitError) t.order = sharesStopOrder({ symbol, qty, isLong, stop, stopDuration: t.stopDuration, entryType, entryStop, entryLimit: entryType === 'LIMIT' ? limitPrice : entryLimit });
@@ -308,11 +329,26 @@ function ticketFor(p, q, now) {
   return t;
 }
 
-/** The quote again for the symbol under review; true only when a fresh one came in. */
-async function freshQuote(symbol) {
+/**
+ * The quote again for the symbol under review, or null when no fresh one came in: the loaded ticker's (the calculator
+ * re-renders with it), or a share order card's own (the card redraws with it).
+ */
+async function freshQuote(symbol, cardId = '') {
+  if (cardId) {
+    // a card removed while its review is open still gets its re-check, from the ticker's own quote
+    const q = state.pinnedData[cardId] ? await refreshShareOrderQuote(cardId).catch(() => null) : await tradierQuote(symbol, false).catch(() => null);
+    if (q) renderShareOrderCard(cardId);
+    return q && q.symbol === symbol ? q : null;
+  }
   let ok = false;
   try { ok = await refreshQuote(); } catch(e) {}
-  return ok === true && state.quoteData?.symbol === symbol;
+  return ok === true && state.quoteData?.symbol === symbol ? state.quoteData : null;
+}
+
+/** busy starts or ends: the shares card's button and every order card's follow */
+function busyChanged() {
+  updateTradeButton();
+  renderShareOrderCards();
 }
 
 export async function openTrade() {
@@ -323,21 +359,59 @@ export async function openTrade() {
   state.tradeBusy = true;
   btn.disabled = true;
   btn.textContent = 'Checking quote…';
-  let fresh = false;
+  renderShareOrderCards();
+  let fresh = null;
   try { fresh = await freshQuote(symbol); } finally {
     state.tradeBusy = false;
     btn.textContent = TRADE_LABEL;
-    updateTradeButton();
+    busyChanged();
   }
   if (!state.quoteData || state.quoteData.symbol !== symbol) { showError('The ticker changed. Check the card, then try again.'); return; }
   if (!fresh) { showError(`Could not refresh the ${symbol} quote, so there is nothing to review yet. Try again.`); return; }
-  state.tradeTicket = buildTradeTicket();
-  state.tradeSetupQuery = '';
-  startTradePlan(state.tradeTicket);
+  showReview(buildTradeTicket(), fresh);
+}
+
+/** a share order card's Trade at Schwab: the same review, for the card's ticker on a quote read for it now */
+export async function openCardTrade(cardId) {
+  const d = state.pinnedData[cardId];
+  if (state.tradeBusy || !d || d.kind !== 'shares') return;
+  if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
+  state.tradeBusy = true;
+  d.checking = true;
+  busyChanged();
+  let fresh = null;
+  try { fresh = await freshQuote(d.symbol, cardId); } finally {
+    state.tradeBusy = false;
+    d.checking = false;
+    busyChanged();
+  }
+  if (state.pinnedData[cardId] !== d) return; // removed while the quote came
+  if (!fresh) { showError(`Could not refresh the ${d.symbol} quote, so there is nothing to review yet. Try again.`); return; }
+  showReview(buildCardTicket(cardId), fresh);
+}
+
+/** a card's sent order: its review again, with ↻ Status */
+export function openCardOrder(cardId) {
+  const t = state.pinnedData[cardId]?.lastOrder?.ticket;
+  if (!t) return;
+  state.tradeTicket = t;
   renderTradeSheet();
   openSheet('trade');
+  watchTradeQuote(t, state.pinnedData[cardId].quote);
+}
+
+function showReview(t, q) {
+  state.tradeTicket = t;
+  state.tradeSetupQuery = '';
+  startTradePlan(t);
+  renderTradeSheet();
+  openSheet('trade');
+  watchTradeQuote(t, q);
+}
+
+function watchTradeQuote(t, q) {
   // the live bid and ask over it, from the quote just read; the side a market order fills on is lit (the ask on a buy, the bid on a short)
-  watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol, n: 1 }], first: state.quoteData,
+  watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol: t.symbol, n: 1 }], first: q,
     fills: () => { const t = state.tradeTicket; return t && !t.error ? (t.isLong ? 'ask' : 'bid') : ''; } });
 }
 
@@ -383,12 +457,12 @@ export function setTradeLimit(value) {
   if (place) { place.disabled = !next.order || state.tradeBusy; place.textContent = placeLabel(next); }
 }
 
-/** why the reviewed ticket can't go as it is, from a fresh quote; '' when it still can */
+/** why the reviewed ticket can't go as it is, from a fresh quote (null when none came); '' when it still can */
 function recheck(t, fresh) {
   const acct = schwabAccount();
   if (!acct || acct.hash !== t.hash) return { why: 'You switched Schwab accounts since this was reviewed. Nothing was sent. Open the review again.', again: null };
   if (!fresh) return { why: `Could not refresh the ${t.symbol} quote, so nothing was sent. Try again.`, again: null };
-  const again = ticketFor(t, state.quoteData, Date.now());
+  const again = ticketFor(t, fresh, Date.now());
   if (again.error) return { why: again.error + ' Nothing was sent.', again };
   if (!again.order) return { why: again.limitError + ' Nothing was sent.', again: null };
   if (JSON.stringify(again.order) !== JSON.stringify(t.order)) return { why: 'The order changed since you reviewed it. Nothing was sent. Review it, then place again.', again };
@@ -402,7 +476,7 @@ export async function placeTrade() {
   const how = t.entryType === 'LIMIT' ? ` at ${fmtTick(t.limitPrice)} limit` : t.entryType === 'STOP' ? ` on a stop at ${fmtTick(t.entryStop)}` : t.entryType === 'STOP_LIMIT' ? ` on a stop at ${fmtTick(t.entryStop)}, limit ${fmtTick(t.entryLimit)}` : '';
   return sendReviewed(t, {
     // the quote again right before sending: the frozen order goes only while the market still allows it as reviewed
-    reread: async () => { const fresh = await freshQuote(t.symbol); if (fresh) showSheetQuote('trade', state.quoteData); return fresh; },
+    reread: async () => { const fresh = await freshQuote(t.symbol, t.cardId); if (fresh) showSheetQuote('trade', fresh); return fresh; },
     recheck, render: renderTradeSheet,
     sentText: `Order sent: ${t.isLong ? 'buy' : 'short'} ${t.qty} ${t.symbol}${how}, stop ${fmtTick(t.stop)}.`,
   });
@@ -418,7 +492,7 @@ export async function sendReviewed(t, { reread, recheck: check, render, sentText
   state.tradeBusy = true;
   t.result = { ok: null, text: 'Checking the quote…' };
   render();
-  updateTradeButton();
+  busyChanged();
   let read = null;
   try { read = await reread(); } catch(e) {}
   const { why, again } = check(t, read);
@@ -429,7 +503,7 @@ export async function sendReviewed(t, { reread, recheck: check, render, sentText
     next.result = { ok: false, text: why };
     if (state.tradeTicket === t) state.tradeTicket = next;
     render();
-    updateTradeButton();
+    busyChanged();
     return;
   }
   t.sent = true; // one review, one order: this ticket can't be sent again, and nothing retries it
@@ -440,6 +514,7 @@ export async function sendReviewed(t, { reread, recheck: check, render, sentText
     t.orderId = orderId;
     state.tradeLast = { symbol: t.symbol, at: Date.now() };
     t.result = { ok: null, text: `Sent${orderId ? ', order ' + orderId : ''}. Checking status…` };
+    cardSent(t); // a share order card's ticket: its card says so (an option ticket has none)
     render();
     showToast(sentText);
     const saving = saveTradePlan(t); // after the send, beside the status check: never in the order's way
@@ -452,6 +527,7 @@ export async function sendReviewed(t, { reread, recheck: check, render, sentText
     } else {
       if (e instanceof TypeError) {
         state.tradeLast = { symbol: t.symbol, at: Date.now() }; // it may have gone through
+        cardSent(t, { lost: true });
         await saveTradePlan(t); // with no id: the journal finds its trade by time, if there is one
       }
       t.result = { ok: false, text: e instanceof TypeError ? 'No answer from Schwab. Check your Schwab orders before trying again.' : e.status ? 'Schwab rejected the order. ' + e.message : e.message };
@@ -459,8 +535,16 @@ export async function sendReviewed(t, { reread, recheck: check, render, sentText
   } finally {
     state.tradeBusy = false;
     if (state.tradeTicket === t) render();
-    updateTradeButton();
+    busyChanged();
   }
+}
+
+/** the order card a sent ticket came from says so, and keeps the ticket for its status */
+function cardSent(t, { lost = false } = {}) {
+  const d = t.cardId && state.pinnedData[t.cardId];
+  if (!d) return;
+  d.lastOrder = { ticket: t, qty: t.qty, isLong: t.isLong, orderId: t.orderId || '', lost, time: inZone(Date.now(), { hour: 'numeric', minute: '2-digit' }) };
+  renderShareOrderCard(t.cardId, { force: true });
 }
 
 export async function checkTradeStatus() {

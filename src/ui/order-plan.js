@@ -37,13 +37,18 @@ export function planContext(isLong, stopPlanned) {
   const source = !custom ? 'auto' : orbStopName(isLong) ? 'orb' : 'custom';
   const strategy = source === 'auto' ? state.stopStrategy : null;
   return {
-    max_loss: round2(riskDollars()), account_size: num('accountSize'), account_source: accountSizeFromSchwab() ? 'schwab' : 'typed', risk_pct: num('riskPct'),
+    ...riskContext(),
     stop_source: source, stop_strategy: strategy,
     stop_amount: strategy === 'atr' ? state.atrMultiplier : strategy === 'percent' && Number.isFinite(state.stopPercent) ? state.stopPercent : null,
     stop_level: (isLong ? range.low : range.high) || null, stop_level_name: isLong ? 'LOD' : 'HOD', ext_hours: !!range.ext,
     atr5: atr && Number.isFinite(atr.value) ? atr.value : null, stop_planned: Number.isFinite(stopPlanned) ? stopPlanned : null,
     orb_minutes: orb ? orb.minutes : null,
   };
+}
+
+/** the max loss and the account it comes from, as they stand now (a share order card's review reads them fresh) */
+export function riskContext() {
+  return { max_loss: round2(riskDollars()), account_size: num('accountSize'), account_source: accountSizeFromSchwab() ? 'schwab' : 'typed', risk_pct: num('riskPct') };
 }
 
 // ---------- the sheet's picks ----------
