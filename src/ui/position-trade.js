@@ -4,7 +4,7 @@
 // what it now shows, and until it shows the last result, that symbol in that account takes no new order from here.
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
+import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick, quoteLimit } from '../core/orders.js';
 import { INSTRUCTION_WORDS, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
@@ -80,7 +80,7 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
   if (kind === 'close') {
     const all = closePlan(row); // what blocks any close of it
     if (all.error) { t.error = all.error; return t; }
-    t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, r: null, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
+    t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, r: null, at: null, step: 0, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
     t.original = positionOriginal(row, now); // what the percent chips are of: the most held since flat, or (null) what's held
     planClose(t);
   } else if (kind === 'target') planTarget(t);
@@ -209,6 +209,7 @@ export function setClosePrice(value) {
   if (!t) return;
   t.close.price = parseFloat(value) || 0;
   t.close.r = null; // a typed price is a price; the R box follows it
+  quotePickOff(t);
   closeRSync(t, 'posCloseR');
   closeChanged(false);
 }
@@ -219,7 +220,7 @@ export function setCloseRText(value) {
   if (!t) return;
   const r = parseFloat(value), per = positionRUnit(t.row).per;
   t.close.r = r > 0 ? r : null;
-  if (t.close.r && per) t.close.price = rTargetPrice(t.row, t.close.r, per);
+  if (t.close.r && per) { t.close.price = rTargetPrice(t.row, t.close.r, per); quotePickOff(t); }
   closeRSync(t, 'posClosePrice');
   closeChanged(false);
 }
@@ -229,8 +230,42 @@ export function setCloseR(r) {
   const t = closeOpen(), per = t && positionRUnit(t.row).per;
   const price = per && r > 0 ? rTargetPrice(t.row, r, per) : 0;
   if (!price) return;
-  Object.assign(t.close, { type: 'LIMIT', r, price });
+  Object.assign(t.close, { type: 'LIMIT', r, price, at: null, step: 0 });
   closeChanged(true);
+}
+
+/** a typed price or R is no longer the quote's: its chip goes dark, and the option grid is the standard one again */
+function quotePickOff(t) {
+  t.close.at = null;
+  t.close.step = 0;
+  const chips = document.getElementById('posCloseAt');
+  if (chips) chips.innerHTML = closeAtChips(t);
+}
+
+/** the live quote the sheet shows, when it has read one for this position */
+const closeQuote = t => { const q = state.sheetQuote; return q && q.sheet === 'posTrade' && q.legs[0]?.symbol === tradierSymbol(t.row.symbol) && q.at > 0 && !q.failed ? q : null; };
+
+/**
+ * Bid, Mid or Ask: one tap sets a limit there from the live quote (the mid rounded toward a fill: down on a sell, up on a buy),
+ * frozen like any price you type; the quote moving on doesn't move it.
+ */
+export function setCloseAt(at) {
+  const t = closeOpen();
+  if (!t || !['bid', 'mid', 'ask'].includes(at)) return;
+  const q = closeQuote(t);
+  const { price, step } = q ? quoteLimit(at, q, { buy: t.row.qty < 0, option: t.row.tradeAs === 'OPTION' }) : { price: 0, step: 0 };
+  if (!(price > 0)) { showError(q ? `No ${at === 'mid' ? 'bid and ask' : at} to price at right now.` : 'No live quote yet. Try again in a moment.'); return; }
+  Object.assign(t.close, { type: 'LIMIT', price, step, at, r: null, quote: { bid: q.bid, ask: q.ask } });
+  closeChanged(true);
+}
+
+function closeAtChips(t) {
+  const c = t.close, off = t.sent ? ' disabled' : '';
+  const chip = (at, label, title) => { const on = c.type === 'LIMIT' && c.at === at; return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setCloseAt" data-arg="${at}" title="${title}"${off}>${label}</button>`; };
+  const sells = t.row.qty > 0;
+  return chip('bid', 'Bid', sells ? 'A limit at the bid: likely fills now' : 'A limit at the bid: waits for a seller')
+    + chip('mid', 'Mid', `A limit at the mid, rounded ${sells ? 'down' : 'up'} toward a fill`)
+    + chip('ask', 'Ask', sells ? 'A limit at the ask: waits for a buyer' : 'A limit at the ask: likely fills now');
 }
 
 /** the close limit's R: what was typed or picked, else the limit counted in R */
@@ -299,7 +334,8 @@ function buildWarnings(t, now) {
       : t.kind === 'close' ? 'Outside regular hours. A market order waits for the next open and can fill far from here.'
       : t.kind === 'target' ? 'Outside regular hours. The target starts working at the next open.' : 'Outside regular hours. The stop starts working at the next open.');
   }
-  if (limit && !t.planError && (row.qty > 0 ? t.price <= row.price : t.price >= row.price)) {
+  const atFillSide = limit && t.close.at === (row.qty > 0 ? 'bid' : 'ask'); // picked to fill now: nothing to warn about
+  if (limit && !t.planError && !atFillSide && (row.qty > 0 ? t.price <= row.price : t.price >= row.price)) {
     warn('fills', `The limit ${fmtPositionPrice(t.price, row.tradeAs)} is at or ${row.qty > 0 ? 'below' : 'above'} the price ${fmtPositionPrice(row.price, row.tradeAs)}, so it likely fills right away.`);
   }
   if ((t.kind === 'target' || limit) && t.stop > 0 && t.stopDuration === 'DAY') {
@@ -624,12 +660,24 @@ function closeForm(t, duration) {
   const what = `${row.tradeAs === 'OPTION' ? 'Contracts' : 'Shares'} to ${row.qty > 0 ? 'sell' : 'buy back'}`;
   const price = closePriceText(t), unit = positionRUnit(row);
   const per = unit.per ? `1R is ${fmt$(unit.per)} a ${row.tradeAs === 'OPTION' ? 'contract' : 'share'}, from ${rUnitWords(unit, row)}` : unit.why || 'No risk to count R from.';
-  return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div></dd></div>
+  // with a Tradier key the sheet reads a live quote, so a limit can go at its bid, mid or ask in one tap
+  const atChips = document.getElementById('apiKey').value.trim()
+    ? `<div class="chip-row pos-portions pos-close-portions pos-close-at" id="posCloseAt" role="group" aria-label="Limit at the quote">${closeAtChips(t)}</div>` : '';
+  return `<div><dt>Order</dt><dd><div class="pos-close-qty"><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div>${atChips}</div></dd></div>
     <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="${t.original && t.original.qty > held ? 'Percent of the original position' : 'Percent of the position'}">${chips}</div></div>${portionLine(t) ? `<span class="shares-detail">${esc(portionLine(t))}</span>` : ''}</dd></div>
-    ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">Now ${fmtPositionPrice(row.price, row.tradeAs)} at Schwab's mark</span></dd></div>
+    ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">${esc(limitSource(t))}</span></dd></div>
     <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span>${t.sent ? '' : originalStopBlock(row, 'close')}</dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
     ${sessionRow(t)}` : ''}`;
+}
+
+/** where the limit came from: the quote it was picked at ('At the mid of $41.08 × $41.12, rounded down toward a fill'), else the mark now */
+function limitSource(t) {
+  const c = t.close, px = p => fmtPositionPrice(p, t.row.tradeAs), q = c.quote;
+  if (!c.at || !q) return `Now ${px(t.row.price)} at Schwab's mark`;
+  const from = `${px(q.bid)} × ${px(q.ask)}`;
+  return c.at === 'mid' ? `At the mid of ${from}, rounded ${t.row.qty > 0 ? 'down' : 'up'} toward a fill. It stays here as the quote moves.`
+    : `At the ${c.at} of ${from}. It stays here as the quote moves.`;
 }
 
 /** what the close brings in (or costs, for a short) and what it makes over your cost */

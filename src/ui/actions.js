@@ -11,6 +11,7 @@ import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from
 import { renderChain, selectExp, setSide, setZoneMode, toggleExps } from './chain.js';
 import { setChartInterval, toggleExtHours } from './chart.js';
 import { copyPinned, copyShares } from './copy-text.js';
+import { pinShares, shareOrderEntryChanged, shareOrderStopChanged } from './share-orders.js';
 import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
 import { closeDetails } from './detail.js';
 import { effects } from './effects.js';
@@ -24,7 +25,7 @@ import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
-import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -58,7 +59,8 @@ import { loadTicker, refreshQuote, submitTicker, tickerInputChanged } from './ti
 import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.js';
 import { setOrb } from './orb.js';
 import { clearMissedFilters, openMissedFromList, setMissedFilterSetup, setMissedFilterSide, setMissedFilterWhy, setMissedSearch } from './journal-missed.js';
-import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
+import { checkOptionTradeStatus, openOptionTrade, placeOptionTrade, setOptionEntry, setOptionLimit, setOptionStopDuration } from './option-trade.js';
+import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openCardOrder, openCardTrade, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
 import { setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
@@ -378,12 +380,21 @@ export const actions = {
 
   // ---------- Schwab order review ----------
   openTrade: () => openTrade(),
+  openCardTrade: el => openCardTrade(arg(el)),
+  openCardOrder: el => openCardOrder(arg(el)),
+  pinShares: () => pinShares(),
   setTradeStopDuration: el => setTradeStopDuration(arg(el)),
   setTradeEntryType: el => setTradeEntryType(arg(el)),
   setTradeEntryLimit: el => setTradeEntryLimit(el.value),
   setTradeLimit: el => setTradeLimit(el.value),
   setOrb: el => setOrb(num(el)),
   placeTrade: () => placeTrade(),
+  openOptionTrade: el => openOptionTrade(arg(el)),
+  setOptionEntry: el => setOptionEntry(arg(el)),
+  setOptionLimit: el => setOptionLimit(el.value),
+  setOptionStopDuration: el => setOptionStopDuration(arg(el)),
+  placeOptionTrade: () => placeOptionTrade(),
+  checkOptionTradeStatus: () => checkOptionTradeStatus(),
   checkTradeStatus: () => checkTradeStatus(),
   toggleTradeSetup: el => toggleTradeSetup(arg(el)),
   toggleTradeTactic: el => toggleTradeTactic(arg(el)),
@@ -424,6 +435,8 @@ export const actions = {
   refreshPinned: el => refreshPinned(arg(el)),
   removePinned: el => removePinned(arg(el)),
   pinnedStopChanged: el => pinnedStopChanged(arg(el), el),
+  shareOrderStopChanged: el => shareOrderStopChanged(arg(el), el),
+  shareOrderEntryChanged: el => shareOrderEntryChanged(arg(el), el),
   refreshAllPinned: () => refreshAllPinned(),
 
   // ---------- positions ----------
@@ -438,6 +451,7 @@ export const actions = {
   setCloseQty: el => setCloseQty(el.value),
   setClosePrice: el => setClosePrice(el.value),
   setCloseR: el => setCloseR(num(el)),
+  setCloseAt: el => setCloseAt(arg(el)),
   setCloseRText: el => setCloseRText(el.value),
   openOriginalStop: el => openOriginalStop(arg(el), el.dataset.arg2),
   setOriginalStopText: el => setOriginalStopText(el.value),

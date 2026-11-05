@@ -10,6 +10,7 @@ import { renderAllocationCard } from './allocation.js';
 import { showError, withFlash } from './feedback.js';
 import { riskDollars } from './risk.js';
 import { requireKey } from './settings.js';
+import { refreshShareOrderQuote, renderShareOrderCard } from './share-orders.js';
 import { dayRange } from './stops.js';
 
 export function removePinned(cardId) {
@@ -103,7 +104,9 @@ export async function refreshPinned(cardId) {
   if (!d) return;
   if (!requireKey()) return;
   try {
-    await refreshCardData(d);
+    if (d.kind === 'shares') {
+      if (!await refreshShareOrderQuote(cardId)) throw new Error('no quote');
+    } else await refreshCardData(d);
     renderPinnedCard(cardId);
   } catch(e) {
     showError('Card refresh failed. Check your key and network.');
@@ -139,6 +142,7 @@ export function renderPinnedCard(cardId) {
   const d = state.pinnedData[cardId];
   const el = document.getElementById(cardId);
   if (!d || !el) return;
+  if (d.kind === 'shares') { renderShareOrderCard(cardId); return; }
   if (d.sizing === 'allocation') { renderAllocationCard(cardId, d); return; }
   const risk = riskDollars();
   const acct = parseFloat(document.getElementById('accountSize').value) || 1;
