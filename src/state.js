@@ -216,7 +216,7 @@ export function createState() {
     zoneFilter: { otm: true, itm: false },
     railDetailSym: null,
     pinnedData: {},
-    positions: null, // the last Schwab read: positionRows() plus { hash, orders, last4, asOf, stopsMissing }
+    positions: null, // the last Schwab read: positionRows() plus { account (Schwab's answer, for the rows again once the Journal is read), costTrades (the Journal's trades the rows' costs were last counted from), hash, orders, last4, asOf, stopsMissing }
     positionsError: '',
     positionsBusy: false, // the read in flight (a promise resolving to the newest read), or false
     positionsRequest: 0, // bumped per read, so a late answer for an old account is dropped
@@ -238,7 +238,7 @@ export function createState() {
     posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
     posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again
     posRTrades: null, // the Journal's trades R counts from, over posRecords: { records, reviews, saved, fees, trades }
-    posRecords: null, // the kept records plus the last read's orders, as last joined: { kept, orders, records }
+    posRecords: null, // the kept records plus the last read's orders, as last joined: { kept, orders, key (the orders as JSON, so a read with the same orders keeps them), records }
     posFills: null, // the fills the close ticket's original size reads, as last built: { records, fills }
     posOrig: null, // the original stop editor while open: { symbol, host: 'actions' | 'close' | 'chart', text, busy, error }
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
