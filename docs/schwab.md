@@ -44,6 +44,13 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   Empty or unanswered keeps the box, since that's where setup starts.
   Tokens (`schwab_tokens`, bound to the Google user or signed-out session, worker URL and a unique connection id: access ~30 min, refreshed with a 2-min margin through one shared in-flight refresh; refresh ends 7 days after login), accounts (hash + last 4 only), and the chosen account live on the device; none of them is a CLOUD_KEY.
 
+  **From a share order card** (docs/calculator.md, Share order cards): each pinned card's Trade at Schwab (openCardTrade) opens the same review for the card's ticker, with a quote read for it then (freshQuote with the card's id; the card redraws with it, the loaded ticker stays put).
+  buildCardTicket sizes it as the card shows it (cardPlan), and the plan takes the card's pinned context with the max loss and account as they are now (riskContext).
+  Place re-checks it against the card's own fresh quote (ticket.cardId), with the same one-send rule; one review is open at a time, so every card's button waits while one is checking or sending.
+  A sent order is noted on its card (cardSent: time, size, order id; **Status** reopens that ticket with ↻ Status), and the button becomes Trade at Schwab again, with the repeat warning on a second order.
+  A send that got no answer says so on the card, in amber, and to check Schwab's orders before trading it again.
+  A card removed while its review is open still re-checks at Place, from a quote read for its ticker.
+
   **One login for every device** (signed in): Schwab keeps one login per app at a time, so a phone logging in on its own ended the desktop's login at its next refresh.
   Signed in, the login (proxy, connectionId, access, accessExp, refresh, refreshExp; never the Google user) is also kept in the account as one Vault secret per user, `schwab_login:<uid>`, through three functions in `20261109000000_shared_schwab_login.sql`: get_schwab_login, set_schwab_login(p_login, p_expect) and clear_schwab_login.
   set_schwab_login is a compare-and-swap under a per-user advisory lock: it writes when nothing is kept and there's no p_expect, when the kept refresh token is p_expect (a renewal, or clearing a refused login), or, with no p_expect, when p_login is a different login that ends later; it answers with the login kept afterwards.
