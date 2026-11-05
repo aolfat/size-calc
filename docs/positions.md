@@ -148,6 +148,7 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   Confirmed when the re-read no longer shows any of them working; otherwise it names the ones Schwab still shows.
 
   **Edit** (ui/order-edit.js, #editSheet = SHEETS.edit, state.editTicket): beside Cancel on rows editable() allows (single-leg STOP, LIMIT, STOP_LIMIT, not waiting on an entry).
+  A price or stop you don't change stays exactly as Schwab has it (a penny option limit isn't moved to the $0.05 grid); a typed option limit takes the step the working order's own price proves its class trades in (optionQuoteStep), else the standard grid.
   It re-reads Schwab, then plans with editPlan (core/positions.js, pure): a form with the stop and/or limit (priceTick, options optionPriceTick), the size (the open quantity) and Today / Until canceled; typing re-plans from the same read and redraws only #editDetail.
   A plain order is one replace (PUT), keeping its session.
   A half of a pair can't be replaced alone, so the pair is cancelled and placed again as a new OCO with the change, the other half unchanged, both the same size and duration, and only once Schwab shows BOTH halves CANCELED with no new fills (shownCancelled, shared with Cancel; 'the changed pair was not placed' otherwise).

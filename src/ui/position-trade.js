@@ -243,7 +243,7 @@ function quotePickOff(t) {
 }
 
 /** the live quote the sheet shows, when it has read one for this position */
-const closeQuote = t => { const q = state.sheetQuote; return q && q.sheet === 'posTrade' && q.at > 0 && !q.failed ? q : null; };
+const closeQuote = t => { const q = state.sheetQuote; return q && q.sheet === 'posTrade' && q.legs[0]?.symbol === tradierSymbol(t.row.symbol) && q.at > 0 && !q.failed ? q : null; };
 
 /**
  * Bid, Mid or Ask: one tap sets a limit there from the live quote (the mid rounded toward a fill: down on a sell, up on a buy),

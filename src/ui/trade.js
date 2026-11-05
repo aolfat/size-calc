@@ -6,6 +6,7 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { defaultEntryLimit, entryLimitError, fmtTick, inRegularHours, limitEntryError, priceTick, sharesStopOrder, sharesTicketError, stopEntryError, stopTick } from '../core/orders.js';
+import { fmtPositionPrice } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { callbackIsHere, parseSchwabRedirect, proxyOk, schwabAccount, schwabCallbackCached, schwabAccounts, schwabConnected, schwabDisconnectEverywhere, schwabDisconnectHere, schwabExchangeCode, schwabFetchAccounts, schwabFetchCallback, schwabLoginUrl, schwabOrder, schwabPlaceOrder, schwabProxy, schwabSession, schwabStanding, schwabStopDuration, onSchwabShared } from '../services/schwab.js';
 import { dailyAccountSize, updateAccountSourceUi } from './account-size.js';
@@ -21,7 +22,7 @@ import { refreshQuote } from './ticker.js';
 import { maybeCapture, scheduleCloseCapture } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
-const mask = last4 => '••' + last4;
+export const mask = last4 => '••' + last4;
 const unreachable = 'Could not reach the Schwab worker. Check its URL in Settings.';
 
 // ---------- Settings: worker URL, login, account ----------
@@ -398,36 +399,49 @@ function recheck(t, fresh) {
 export async function placeTrade() {
   const t = state.tradeTicket;
   if (!t || t.option || !t.order || t.sent || state.tradeBusy) return; // an option entry is ui/option-trade.js's
+  const how = t.entryType === 'LIMIT' ? ` at ${fmtTick(t.limitPrice)} limit` : t.entryType === 'STOP' ? ` on a stop at ${fmtTick(t.entryStop)}` : t.entryType === 'STOP_LIMIT' ? ` on a stop at ${fmtTick(t.entryStop)}, limit ${fmtTick(t.entryLimit)}` : '';
+  return sendReviewed(t, {
+    // the quote again right before sending: the frozen order goes only while the market still allows it as reviewed
+    reread: async () => { const fresh = await freshQuote(t.symbol); if (fresh) showSheetQuote('trade', state.quoteData); return fresh; },
+    recheck, render: renderTradeSheet,
+    sentText: `Order sent: ${t.isLong ? 'buy' : 'short'} ${t.qty} ${t.symbol}${how}, stop ${fmtTick(t.stop)}.`,
+  });
+}
+
+/**
+ * The review sheet's one send, for a shares or an option ticket: read the market again (reread), re-check the frozen order
+ * against it (recheck answers why it can't go, and the ticket rebuilt on the new read), then send exactly that payload ONCE to
+ * the account it was reviewed for. Nothing retries it; the plan is kept after the send, never in its way.
+ * @param {any} t @param {{ reread: () => Promise<any>, recheck: (t: any, read: any) => { why: string, again: any }, render: () => void, sentText: string }} how
+ */
+export async function sendReviewed(t, { reread, recheck: check, render, sentText }) {
   state.tradeBusy = true;
-  // the quote again right before sending: the frozen order goes only while the market still allows it as reviewed
   t.result = { ok: null, text: 'Checking the quote…' };
-  renderTradeSheet();
+  render();
   updateTradeButton();
-  let fresh = false;
-  try { fresh = await freshQuote(t.symbol); } catch(e) {}
-  if (fresh) showSheetQuote('trade', state.quoteData);
-  const { why, again } = recheck(t, fresh);
+  let read = null;
+  try { read = await reread(); } catch(e) {}
+  const { why, again } = check(t, read);
   if (why) {
     state.tradeBusy = false;
     const next = again || t;
     if (next.error) next.error = why; // a ticket that can't go shows only its reason
     next.result = { ok: false, text: why };
     if (state.tradeTicket === t) state.tradeTicket = next;
-    renderTradeSheet();
+    render();
     updateTradeButton();
     return;
   }
   t.sent = true; // one review, one order: this ticket can't be sent again, and nothing retries it
   t.result = { ok: null, text: 'Sending…' };
-  renderTradeSheet();
+  render();
   try {
     const { orderId } = await schwabPlaceOrder(t.order, t.hash);
     t.orderId = orderId;
     state.tradeLast = { symbol: t.symbol, at: Date.now() };
     t.result = { ok: null, text: `Sent${orderId ? ', order ' + orderId : ''}. Checking status…` };
-    renderTradeSheet();
-    const how = t.entryType === 'LIMIT' ? ` at ${fmtTick(t.limitPrice)} limit` : t.entryType === 'STOP' ? ` on a stop at ${fmtTick(t.entryStop)}` : t.entryType === 'STOP_LIMIT' ? ` on a stop at ${fmtTick(t.entryStop)}, limit ${fmtTick(t.entryLimit)}` : '';
-    showToast(`Order sent: ${t.isLong ? 'buy' : 'short'} ${t.qty} ${t.symbol}${how}, stop ${fmtTick(t.stop)}.`);
+    render();
+    showToast(sentText);
     const saving = saveTradePlan(t); // after the send, beside the status check: never in the order's way
     await updateTradeStatus(t);
     await saving;
@@ -444,7 +458,7 @@ export async function placeTrade() {
     }
   } finally {
     state.tradeBusy = false;
-    if (state.tradeTicket === t) renderTradeSheet();
+    if (state.tradeTicket === t) render();
     updateTradeButton();
   }
 }
@@ -452,11 +466,16 @@ export async function placeTrade() {
 export async function checkTradeStatus() {
   const t = state.tradeTicket;
   if (!t || t.option || !t.orderId || state.tradeBusy) return;
+  return refreshTradeStatus(t, renderTradeSheet);
+}
+
+/** ↻ Status: one more read of the sent order, for a shares or an option ticket */
+export async function refreshTradeStatus(t, render) {
   state.tradeBusy = true;
-  renderTradeSheet();
+  render();
   try { await updateTradeStatus(t); } finally {
     state.tradeBusy = false;
-    if (state.tradeTicket === t) renderTradeSheet();
+    if (state.tradeTicket === t) render();
   }
 }
 
@@ -484,7 +503,7 @@ export function orderStatusLine(t, o) {
   const legs = (o.orderActivityCollection || []).flatMap(a => a.executionLegs || []);
   const qty = legs.reduce((n, l) => n + (Number(l.quantity) || 0), 0);
   const avg = qty ? legs.reduce((n, l) => n + (Number(l.quantity) || 0) * (Number(l.price) || 0), 0) / qty : 0;
-  const px = t.option ? v => '$' + v.toFixed(2) : fmtTick; // option prices in dollars and cents, whatever their size
+  const px = v => fmtPositionPrice(v, t.option ? 'OPTION' : 'EQUITY'); // option prices in dollars and cents, whatever their size
   let text = `Order ${t.orderId}: ${word(o.status)}`;
   if (avg > 0) text += ` ${qty} at ${px(avg)}`;
   const child = o.childOrderStrategies && o.childOrderStrategies[0];

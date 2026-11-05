@@ -199,3 +199,55 @@ test('no quote, no review', async () => {
   await run(`openOptionTrade('${OCC}')`);
   assert.equal(elements.get('tradeSheet').style.display, 'none');
 });
+
+// ---------- found in review ----------
+
+test('a side quoted across $3 keeps its own step, so snapping never moves it off the fill', async () => {
+  const { run } = await app();
+  const at = (side, q, o) => plain(run(`quoteLimit('${side}', ${JSON.stringify(q)}, ${JSON.stringify(o)})`));
+  assert.deepEqual(at('ask', { bid: 2.95, ask: 3.05 }, { buy: true, option: true }), { price: 3.05, step: 0.05 });
+  assert.equal(run('onOptionStep(3.05, 0.05)'), 3.05);
+  assert.equal(run('onOptionStep(3.05, 0.1)'), 3.1, '3.05 / 0.1 is 30.4999…, still a tie that rounds up, not down to $3.00');
+  assert.deepEqual(at('mid', { bid: 1.02, ask: 1.03 }, { buy: true, option: true }), { price: 1.03, step: 0.01 }, 'a mid clamped to the ask takes the ask\'s step');
+});
+
+test('Change limit keeps a penny limit as Schwab has it, and a typed one takes the step the working order proves', async () => {
+  const { run } = await app();
+  const sym = 'TEST  261218C00100000';
+  const leg = (instruction, quantity) => ({ instruction, quantity, instrument: { symbol: sym, assetType: 'OPTION' } });
+  const entry = price => [{ orderId: 7, orderType: 'LIMIT', status: 'WORKING', orderStrategyType: 'TRIGGER', session: 'NORMAL', duration: 'DAY', price, quantity: 3, remainingQuantity: 3,
+    orderLegCollection: [leg('BUY_TO_OPEN', 3)],
+    childOrderStrategies: [{ orderId: 8, orderType: 'STOP', status: 'AWAITING_PARENT_ORDER', orderStrategyType: 'SINGLE', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', stopPrice: 0.6, quantity: 3, orderLegCollection: [leg('SELL_TO_CLOSE', 3)] }] }];
+  const edit = (price, e) => plain(run(`editPlan(${JSON.stringify(entry(price))}, 7, ${JSON.stringify(e)})`));
+  const untouched = edit(1.13, { qty: 2 });
+  assert.equal(untouched.editError, '');
+  assert.equal(untouched.steps[1].order.price, 1.13, 'not moved to the $0.05 grid');
+  assert.equal(edit(1.13, { price: 1.12 }).steps[1].order.price, 1.12, 'a penny class takes a penny');
+  assert.equal(edit(1.15, { price: 1.12 }).steps[1].order.price, 1.1, 'nothing proves pennies: the standard grid');
+});
+
+test('the option stop\'s duration is remembered for the next review', async () => {
+  const net = network();
+  const { run } = await chain({ fetch: net.fetch, storage: connected() });
+  await run(`openOptionTrade('${OCC}')`);
+  run("setOptionStopDuration('DAY')");
+  assert.equal(run("store.get('schwab_stop_duration')"), 'DAY');
+});
+
+test('a ticker changed while the contract quote was out opens no review', async () => {
+  const net = network();
+  const { run, elements } = await chain({ fetch: net.fetch, storage: connected() });
+  await run(`(() => { const p = openOptionTrade('${OCC}'); quoteData = { ...quoteData, symbol: 'OTHER' }; return p; })()`);
+  assert.equal(elements.get('tradeSheet').style.display, 'none');
+});
+
+test('ETF options get until 16:15 before the hours warning', async () => {
+  const at = Date.UTC(2026, 10, 5, 21, 5); // 16:05 New York, a Thursday
+  for (const [type, want] of [['etf', /After 16:00\. Options on SPY, QQQ, IWM/], ['stock', /Outside regular hours/]]) {
+    const net = network();
+    const { run, state } = await chain({ fetch: net.fetch, storage: connected(), clock: true, now: at });
+    run(`quoteData = { ...quoteData, type: '${type}' }`);
+    await run(`openOptionTrade('${OCC}')`);
+    assert.match(state.tradeTicket.warnings.join(' '), want, type);
+  }
+});

@@ -6,20 +6,22 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { inRegularHours, onOptionStep, optionEntryOrder, optionLimitError, optionQuoteStep, optionStopTick, optionTicketError, quoteLimit } from '../core/orders.js';
-import { positionLabel, schwabOptionSymbol } from '../core/positions.js';
-import { schwabAccount, schwabAccounts, schwabConnected, schwabPlaceOrder, schwabStopDuration } from '../services/schwab.js';
-import { showError, showToast } from './feedback.js';
-import { planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
+import { fmtPositionPrice, positionLabel, schwabOptionSymbol } from '../core/positions.js';
+import { store } from '../lib/store.js';
+import { schwabAccount, schwabAccounts, schwabConnected, schwabStopDuration } from '../services/schwab.js';
+import { showError } from './feedback.js';
+import { planContext, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { readLegQuotes, showSheetQuote, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
-import { limitWaiting, updateTradeStatus } from './trade.js';
+import { limitWaiting, mask, refreshTradeStatus, sendReviewed } from './trade.js';
 
 /** a market this wide (ask − bid over the mid) is called out, as the chain does */
 export const WIDE_SPREAD_PCT = 10;
 const ENTRIES = ['mid', 'ask', 'bid', 'limit'];
 const REPEAT_MS = 120000;
-const px = v => v > 0 ? '$' + v.toFixed(2) : '—';
-const mask = last4 => '••' + last4;
+const px = v => v > 0 ? fmtPositionPrice(v, 'OPTION') : '—';
+/** options on SPY, QQQ, IWM and a few other ETFs trade to 16:15; most stop at 16:00 */
+const LATE_CLOSE = 16 * 60 + 15;
 
 /**
  * Why a chain contract can't go to Schwab from here, or '' when it can: Schwab connected, risk sizing, a stock or ETF
@@ -41,7 +43,7 @@ export function optionTradeBlock(c) {
 export function optionTradeButton(c) {
   if (!schwabConnected() || state.sizingMode !== 'risk' || c.allocation) return '';
   const why = optionTradeBlock(c) || (c.contracts < 1 ? 'Your max loss buys less than one contract at this stop.' : '');
-  return `<button class="btn trade-btn option-trade-btn" data-action="openOptionTrade" data-arg="${esc(c.opt.symbol)}" title="${esc(why || 'Review a limit buy with a stop on the option, then send it to Schwab')}"${why || state.tradeBusy ? ' disabled' : ''}>Trade at Schwab</button>`;
+  return `<button class="btn trade-btn option-trade-btn" data-action="openOptionTrade" data-arg="${esc(c.opt.symbol)}" title="${esc(why || 'Review a limit buy with a stop on the option, then send it to Schwab')}"${why ? ' disabled' : ''}>Trade at Schwab</button>`;
 }
 
 /** where a limit at the quote sits, from that quote: { price, step } (the step the class trades in there) */
@@ -70,7 +72,8 @@ function optionTicketFor(p, q, now) {
   if (error || limitError) return t;
   t.order = optionEntryOrder({ symbol: p.symbol, qty, limit, stop, stopDuration: p.stopDuration });
   const warn = (flag, text) => { t.flags.push(flag); t.warnings.push(text); };
-  if (!inRegularHours(now)) warn('hours', 'Outside regular hours. Options trade 9:30 to 16:00, so the limit waits for the next open.');
+  if (!inRegularHours(now, p.etf ? LATE_CLOSE : undefined)) warn('hours', 'Outside regular hours. Options trade 9:30 to 16:00, so the limit waits for the next open.');
+  else if (!inRegularHours(now)) warn('late', 'After 16:00. Options on SPY, QQQ, IWM and a few other ETFs trade until 16:15; on the rest the limit waits for the next open.');
   if (spreadPct > WIDE_SPREAD_PCT) warn('wide', `Wide market: ${px(q.bid)} × ${px(q.ask)} is ${spreadPct.toFixed(0)}% of the mid. A fill and a stop-out can both cost more than they look.`);
   if (t.fillRisk > p.plannedRisk * 1.1 + 0.01) warn('risk', `At the limit ${px(limit)}, risk is ${fmt$(t.fillRisk)}, over your ${fmt$(p.plannedRisk)} plan.`);
   if (p.customEntry) warn('planned', `Sized for your planned ${p.underlying} entry ${fmt$(p.entryU)}. This limit buys now, at today's price.`);
@@ -97,14 +100,17 @@ export async function openOptionTrade(occ) {
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   const why = optionTradeBlock(c);
   if (why) { showError(why); return; }
+  const underlying = state.quoteData.symbol;
   state.tradeBusy = true;
   let q = null;
   try { q = await contractQuote(occ); } finally { state.tradeBusy = false; }
+  // the card it was sized on must still be the one showing: a new ticker or a new chain read while the quote was out
+  if (state.quoteData?.symbol !== underlying || state.detailReg[occ] !== c) { showError('The ticker or the chain changed. Check the contract, then try again.'); return; }
   if (!q) { showError('Could not read the contract\'s quote from Tradier, so there is nothing to review yet. Try again.'); return; }
   const symbol = schwabOptionSymbol(occ), acct = schwabAccount();
   const { price, step } = limitAt('mid', q);
   state.tradeTicket = optionTicketFor({
-    occ, symbol, label: positionLabel({ assetType: 'OPTION', symbol }), underlying: state.quoteData.symbol, isCall: c.isCall,
+    occ, symbol, label: positionLabel({ assetType: 'OPTION', symbol }), underlying, etf: state.quoteData.type === 'etf', isCall: c.isCall,
     qty: c.contracts, stop: c.atStop > 0 ? optionStopTick(c.atStop, true) : 0, atStop: c.atStop, underStop: c.stop, model: c.model,
     planPrem: c.entryPrem, plannedRisk: c.contracts * c.lossPerContract, customEntry: !!c.customEntry, entryU: c.entryU,
     entryAt: 'mid', limitPrice: price, step, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '',
@@ -146,6 +152,7 @@ export function setOptionLimit(value) {
 export function setOptionStopDuration(d) {
   const t = openTicket();
   if (!t || t.error || (d !== 'DAY' && d !== 'GOOD_TILL_CANCEL')) return;
+  store.set('schwab_stop_duration', d); // the next review, shares or option, starts here
   state.tradeTicket = optionTicketFor({ ...t, stopDuration: d }, reviewed(t), Date.now());
   renderOptionTradeSheet();
 }
@@ -166,59 +173,17 @@ function recheck(t, q) {
 export async function placeOptionTrade() {
   const t = state.tradeTicket;
   if (!t || !t.option || !t.order || t.sent || state.tradeBusy) return;
-  state.tradeBusy = true;
-  t.result = { ok: null, text: 'Checking the quote…' };
-  renderOptionTradeSheet();
-  const q = await contractQuote(t.occ);
-  if (q) showSheetQuote('trade', q);
-  const { why, again } = recheck(t, q);
-  if (why) {
-    state.tradeBusy = false;
-    const next = again || t;
-    if (next.error) next.error = why;
-    next.result = { ok: false, text: why };
-    if (state.tradeTicket === t) state.tradeTicket = next;
-    renderOptionTradeSheet();
-    return;
-  }
-  t.sent = true; // one review, one order: never sent again, and nothing retries it
-  t.result = { ok: null, text: 'Sending…' };
-  renderOptionTradeSheet();
-  try {
-    const { orderId } = await schwabPlaceOrder(t.order, t.hash);
-    t.orderId = orderId;
-    state.tradeLast = { symbol: t.symbol, at: Date.now() };
-    t.result = { ok: null, text: `Sent${orderId ? ', order ' + orderId : ''}. Checking status…` };
-    renderOptionTradeSheet();
-    showToast(`Order sent: buy ${t.qty} ${t.label} at ${px(t.limitPrice)} limit, stop ${px(t.stop)}.`);
-    const saving = saveTradePlan(t);
-    await updateTradeStatus(t);
-    await saving;
-  } catch(e) {
-    if (e.notSent) {
-      t.result = { ok: false, text: (e instanceof TypeError ? 'Could not reach the Schwab worker.' : e.message) + ' Nothing was sent to Schwab.' };
-    } else {
-      if (e instanceof TypeError) {
-        state.tradeLast = { symbol: t.symbol, at: Date.now() }; // it may have gone through
-        await saveTradePlan(t);
-      }
-      t.result = { ok: false, text: e instanceof TypeError ? 'No answer from Schwab. Check your Schwab orders before trying again.' : e.status ? 'Schwab rejected the order. ' + e.message : e.message };
-    }
-  } finally {
-    state.tradeBusy = false;
-    if (state.tradeTicket === t) renderOptionTradeSheet();
-  }
+  return sendReviewed(t, {
+    reread: async () => { const q = await contractQuote(t.occ); if (q) showSheetQuote('trade', q); return q; },
+    recheck, render: renderOptionTradeSheet,
+    sentText: `Order sent: buy ${t.qty} ${t.label} at ${px(t.limitPrice)} limit, stop ${px(t.stop)}.`,
+  });
 }
 
 export async function checkOptionTradeStatus() {
   const t = state.tradeTicket;
   if (!t || !t.option || !t.orderId || state.tradeBusy) return;
-  state.tradeBusy = true;
-  renderOptionTradeSheet();
-  try { await updateTradeStatus(t); } finally {
-    state.tradeBusy = false;
-    if (state.tradeTicket === t) renderOptionTradeSheet();
-  }
+  return refreshTradeStatus(t, renderOptionTradeSheet);
 }
 
 /** what Place says: "Buy 3 AAPL 11/20/26 230C at $6.15" */

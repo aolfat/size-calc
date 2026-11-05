@@ -1,7 +1,7 @@
 // @ts-check
 // Schwab positions as table rows (price, share of the account, stop and risk from working stop orders), the account's
 // working orders, the levels a position chart draws, and the order plans for a breakeven stop, a stop at your price, a profit target, a close, or cancelling or changing a working order.
-import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, onOptionStep, optionPriceTick, optionStopTick, priceTick, stopTick } from './orders.js';
+import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, onOptionStep, optionPriceTick, optionQuoteStep, optionStopTick, priceTick, stopTick } from './orders.js';
 
 /**
  * @typedef {import('./orders.js').TradeAs} TradeAs
@@ -248,8 +248,11 @@ export function editPlan(orders, orderId, edit, rows = []) {
   const option = order.assetType === 'OPTION', assetType = option ? 'OPTION' : 'EQUITY';
   const tick = option ? optionPriceTick : priceTick, px = (/** @type {number} */ p) => fmtPositionPrice(p, assetType);
   const open = order.qty - order.filled, unit = option ? 'contracts' : 'shares';
-  const stop = /STOP/.test(order.orderType) ? tick(Number(edit.stop ?? order.stop)) : null;
-  const price = order.orderType !== 'STOP' ? tick(Number(edit.price ?? order.price)) : null;
+  // what you didn't change stays exactly as Schwab has it (a penny limit off the $0.05 grid included); a typed option limit takes
+  // the finer step the working order's own price proves its class trades in on that side of $3 (optionQuoteStep), else the standard grid
+  const limitTick = (/** @type {number} */ p) => option && Number(order.price) > 0 ? onOptionStep(p, optionQuoteStep(p, Number(order.price), Number(order.price))) : tick(p);
+  const stop = /STOP/.test(order.orderType) ? (edit.stop == null ? Number(order.stop) : tick(Number(edit.stop))) : null;
+  const price = order.orderType !== 'STOP' ? (edit.price == null ? Number(order.price) : limitTick(Number(edit.price))) : null;
   const qty = edit.qty ?? open, duration = edit.duration || order.duration;
   Object.assign(result, { partner, stop, price, qty, duration });
   const bad = (/** @type {string} */ editError) => ({ ...result, editError });

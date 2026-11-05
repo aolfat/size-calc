@@ -89,10 +89,13 @@ export function optionQuoteStep(p, bid, ask) {
   return std === 0.1 && onGrid(bid, 0.05) && onGrid(ask, 0.05) ? 0.05 : 0.01;
 }
 
+/** the step a quoted (so legal) option price sits on: the standard one when it's on it, else the finer step it proves the class trades in. @param {number} p */
+export const optionPriceStep = (/** @type {number} */ p) => optionQuoteStep(p, p, p);
+
 /** An option price on a step: to the nearest, or toward a fill (up on a buy, down on a sell). @param {number} p @param {number} step @param {'near' | 'up' | 'down'} [way] */
 export function onOptionStep(p, step, way = 'near') {
   const n = p / step;
-  return cents((way === 'up' ? Math.ceil(n - 1e-6) : way === 'down' ? Math.floor(n + 1e-6) : Math.round(n)) * step);
+  return cents((way === 'up' ? Math.ceil(n - 1e-6) : way === 'down' ? Math.floor(n + 1e-6) : Math.round(n + 1e-9)) * step); // 3.05 / 0.1 is 30.4999…
 }
 
 /**
@@ -107,13 +110,16 @@ export function quoteLimit(at, { bid, ask }, { buy, option }) {
   if (at === 'bid' || at === 'ask') {
     const p = at === 'bid' ? bid : ask;
     if (!(p > 0)) return none;
-    return option ? { price: cents(p), step: optionQuoteStep(p, bid, ask) } : { price: priceTick(p), step: 0 };
+    // a side as quoted is a price the class takes: its own step, so snapping to it never moves it (a quote across $3 included)
+    return option ? { price: cents(p), step: optionPriceStep(cents(p)) } : { price: priceTick(p), step: 0 };
   }
   if (at !== 'mid' || !(bid > 0) || !(ask > 0) || ask < bid) return none;
   const m = (bid + ask) / 2;
   if (option) {
     const step = optionQuoteStep(m, bid, ask), price = onOptionStep(m, step, buy ? 'up' : 'down');
-    return { price: buy ? Math.min(price, cents(ask)) : Math.max(price, cents(bid)), step };
+    const far = cents(buy ? ask : bid);
+    if (buy ? price >= far : price <= far) return { price: far, step: optionPriceStep(far) }; // clamped to the far side: that side's own step
+    return { price, step };
   }
   const f = m >= 1 ? 100 : 10000, n = m * f;
   return { price: (buy ? Math.ceil(n - 1e-6) : Math.floor(n + 1e-6)) / f, step: 0 };
@@ -259,15 +265,15 @@ export function defaultEntryLimit(entryStop, isLong) {
 }
 
 /**
- * Regular session: weekdays 9:30 to 16:00 New York time. Exchange holidays are not known here.
- * @param {number} ms @returns {boolean}
+ * Regular session: weekdays 9:30 to 16:00 New York time (closeMins moves the close, minutes after midnight). Exchange holidays are not known here.
+ * @param {number} ms @param {number} [closeMins] @returns {boolean}
  */
-export function inRegularHours(ms) {
+export function inRegularHours(ms, closeMins = 16 * 60) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ms));
   const part = (/** @type {string} */ type) => parts.find(p => p.type === type)?.value || '';
   if (part('weekday') === 'Sat' || part('weekday') === 'Sun') return false;
   const mins = (Number(part('hour')) % 24) * 60 + Number(part('minute'));
-  return mins >= 9 * 60 + 30 && mins < 16 * 60;
+  return mins >= 9 * 60 + 30 && mins < closeMins;
 }
 
 /** a limit's session in a few words, for the review: 'pre-market', 'after hours', 'extended hours' */

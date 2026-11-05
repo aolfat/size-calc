@@ -72,7 +72,7 @@ function prefillPicks(t) {
   if (t.picksTouched || t.prefilled || !state.journalReview) return;
   t.prefilled = true;
   const lib = library(), side = sideOf(t);
-  const focus = (state.journalReview.days?.[nyDateStr(new Date())]?.focus_list || []).find(f => f.symbol === t.symbol && (!f.side || f.side === side));
+  const focus = (state.journalReview.days?.[nyDateStr(new Date())]?.focus_list || []).find(f => f.symbol === (t.underlying || t.symbol) && (!f.side || f.side === side)); // an option's focus is its underlying's
   const setups = lib.choices('setup').map(i => i.key);
   t.setups = [...new Set((focus?.setups || []).map(k => lib.resolve('setup', k)).filter(k => setups.includes(k)))];
   const tactic = ORB_TACTICS[t.planCtx?.orb_minutes];
