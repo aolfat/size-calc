@@ -336,12 +336,23 @@ const isStop = o => /STOP/.test(o.orderType) && o.stop !== null;
  * The average cost is the whole position's when the Journal's open trade matches the position (journal: its trades and the
  * account's last 4; journalCost): every add averages in and a trim leaves it, so a breakeven stop after an add and a trim
  * stays at what the whole position cost. Otherwise it's Schwab's, which drops the oldest shares first on a trim (FIFO).
- * schwabAvg keeps Schwab's either way.
+ * schwabAvg keeps Schwab's either way. A leg of a spread keeps Schwab's: the spread is the position.
  * @param {{ positions?: Position[], currentBalances?: { liquidationValue?: number, cashBalance?: number } }} account
  * @param {Order[]} orders
  * @param {{ trades: import('./journal.js').Trade[] | null, last4: string } | null} [journal]
  */
 export function positionRows(account, orders, journal = null) {
+  if (!journal) return rowsOf(account, orders, null, new Set());
+  // the spreads first, on Schwab's figures: grouping legs doesn't depend on their cost
+  const legs = new Set(rowsOf(account, orders, null, new Set()).spreads.flatMap(s => s.legs.map(l => l.symbol)));
+  return rowsOf(account, orders, journal, legs);
+}
+
+/**
+ * @param {Parameters<typeof positionRows>[0]} account @param {Order[]} orders
+ * @param {{ trades: import('./journal.js').Trade[] | null, last4: string } | null} journal @param {Set<string>} legs spread legs, which keep Schwab's cost
+ */
+function rowsOf(account, orders, journal, legs) {
   const value = Number(account.currentBalances?.liquidationValue) || 0;
   const cash = Number(account.currentBalances?.cashBalance) || 0;
   const pct = (/** @type {number} */ v) => value > 0 ? v * 100 / value : 0;
@@ -356,7 +367,7 @@ export function positionRows(account, orders, journal = null) {
     const option = instrument.assetType === 'OPTION' ? parseSchwabOption(instrument.symbol || '') : null;
     const mult = instrument.assetType === 'OPTION' ? Number(instrument.optionMultiplier) || 100 : 1;
     const schwabAvg = Number(long ? p.averageLongPrice ?? p.averagePrice : p.averageShortPrice ?? p.averagePrice) || 0;
-    const journalBasis = journal ? journalCost(positionJournalTrade({ symbol: instrument.symbol || '', qty }, journal.trades, journal.last4), Math.abs(qty)) : null;
+    const journalBasis = journal && !legs.has(instrument.symbol || '') ? journalCost(positionJournalTrade({ symbol: instrument.symbol || '', qty }, journal.trades, journal.last4), Math.abs(qty)) : null;
     const avg = journalBasis ? journalBasis.avg : schwabAvg;
     const mv = Number(p.marketValue) || 0;
     const as = tradeAs(instrument);
@@ -541,6 +552,22 @@ export function breakevenChoices(row) {
     out.push({ key, price, raw, trade: side * (price - c.net) * held * row.mult });
   }
   return out.length > 1 ? out : [];
+}
+
+/**
+ * Why a breakeven can't take the stop ('' when it can): the price is already through it, or every share's stop is already at or past it.
+ * @param {Row} row @param {number} price
+ */
+export function breakevenBlocked(row, price) {
+  const long = row.qty > 0, px = (/** @type {number} */ p) => fmtPositionPrice(p, row.tradeAs);
+  if (long ? !(row.price > price) : !(row.price < price)) return `The price ${px(row.price)} is already through it.`;
+  return atBreakeven({ ...row, be: price }) ? 'Every share already has a stop at or past it.' : '';
+}
+
+/** Nothing for a breakeven stop to do: every breakeven (after a trim, each of breakevenChoices) already has a stop at or past it for every share. @param {Row} row */
+export function breakevenDone(row) {
+  const c = breakevenChoices(row);
+  return c.length ? c.every(x => atBreakeven({ ...row, be: x.price })) : atBreakeven(row);
 }
 
 /**

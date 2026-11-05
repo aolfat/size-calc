@@ -27,11 +27,16 @@ const FILLS = [exec(1, 'BUY', 100, 10, ago(5)), exec(2, 'BUY', 100, 12, ago(4)),
 const ACCOUNT = { securitiesAccount: { currentBalances: { liquidationValue: 100000, cashBalance: 5000 },
   positions: [{ longQuantity: 100, shortQuantity: 0, averagePrice: 12, averageLongPrice: 12, marketValue: 1400, instrument: { assetType: 'EQUITY', symbol: 'TEST' } }] } };
 
-function broker(orders = FILLS) {
+const held = (mark, schwabAvg = 12) => ({ securitiesAccount: { currentBalances: { liquidationValue: 100000, cashBalance: 5000 },
+  positions: [{ longQuantity: 100, shortQuantity: 0, averagePrice: schwabAvg, averageLongPrice: schwabAvg, marketValue: 100 * mark, instrument: { assetType: 'EQUITY', symbol: 'TEST' } }] } });
+const stopAt = (orderId, px) => ({ orderId, orderType: 'STOP', status: 'WORKING', orderStrategyType: 'SINGLE', session: 'NORMAL', duration: 'GOOD_TILL_CANCEL', stopPrice: px,
+  quantity: 100, remainingQuantity: 100, orderLegCollection: [{ instruction: 'SELL', quantity: 100, instrument: { symbol: 'TEST', assetType: 'EQUITY' } }] });
+
+function broker(orders = FILLS, acct = ACCOUNT) {
   const sent = [];
   const fetch = async (url, init = {}) => {
     const path = url.slice(PROXY.length), method = init.method || 'GET';
-    if (method === 'GET') return path.includes('/orders?') ? json(orders) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
+    if (method === 'GET') return path.includes('/orders?') ? json(orders) : path.endsWith('?fields=positions') ? json(acct) : json({}, 404);
     sent.push({ method, path, body: init.body ? JSON.parse(init.body) : null });
     return new Response(null, { status: 201, headers: { Location: `${PROXY}/trader/v1/accounts/HASH1/orders/900` } });
   };
@@ -118,4 +123,46 @@ test('the Stop sheet offers a chip for each breakeven after a trim', async () =>
   assert.match(html, /data-arg="11"[^>]*>Breakeven \$11\.00/);
   assert.match(html, /data-arg="12"[^>]*>Last lots \$12\.00/);
   assert.match(html, /data-arg="9"[^>]*>Scratch \$9\.00/);
+});
+
+test('with the price under the average, the breakeven stop starts on the one that can still work', async () => {
+  const { run, elements, state } = await app({ fetch: broker(FILLS, held(10.5)).fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  await run("openPositionTrade('TEST', 'breakeven')");
+  assert.equal(state.posTicket.error, '');
+  assert.equal(state.posTicket.beAt, 'net');
+  assert.equal(state.posTicket.stop, 9);
+  const html = elements.get('posTradeBody').innerHTML;
+  assert.match(html, /data-arg="avg" disabled><strong>Average cost \$11\.00<\/strong><span>The price \$10\.50 is already through it\.</);
+  assert.match(html, /aria-pressed="true" data-action="setPositionBeAt" data-arg="net">/);
+});
+
+test('a stop at the average leaves the BE stop button while Last lots is tighter', async () => {
+  const { run, elements } = await app({ fetch: broker([...FILLS, stopAt(9, 11.2)], held(14)).fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  const row = elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
+  assert.match(row, /data-arg2="breakeven"/);
+  await run("openPositionTrade('TEST', 'breakeven')");
+  assert.equal(run('posTicket.beAt'), 'lots', 'the average and the scratch are already covered');
+  assert.equal(run('posTicket.stop'), 12);
+  // a stop at the last lots covers every breakeven: nothing left to move
+  const done = await app({ fetch: broker([...FILLS, stopAt(9, 12)], held(14)).fetch, storage: connected() });
+  done.run("setView('positions')");
+  await settle();
+  assert.doesNotMatch(done.elements.get('positionsSection').innerHTML, /data-arg2="breakeven"/);
+});
+
+test('a spread\'s legs keep Schwab\'s cost', async () => {
+  const { run } = await app();
+  const C = 'TEST  261218C00050000', P = 'TEST  261218C00060000';
+  const leg = (symbol, instruction, price, time, id) => ({ id: String(id), orderId: String(id), account: '6789', time, symbol, label: symbol, assetType: 'OPTION', instruction, side: /BUY/.test(instruction) ? 'buy' : 'sell', qty: 1, price });
+  const trades = run(`buildTrades(${JSON.stringify([leg(C, 'BUY_TO_OPEN', 3, '2026-10-01T14:00:00Z', 1), leg(P, 'SELL_TO_OPEN', 1, '2026-10-02T14:00:00Z', 2)])})`);
+  const acct = { currentBalances: { liquidationValue: 100000 }, positions: [
+    { longQuantity: 1, shortQuantity: 0, averageLongPrice: 2.5, marketValue: 400, instrument: { assetType: 'OPTION', symbol: C, putCall: 'CALL', underlyingSymbol: 'TEST' } },
+    { longQuantity: 0, shortQuantity: 1, averageShortPrice: 0.8, marketValue: -150, instrument: { assetType: 'OPTION', symbol: P, putCall: 'CALL', underlyingSymbol: 'TEST' } }] };
+  const out = run(`positionRows(${JSON.stringify(acct)}, [], { trades: ${JSON.stringify(trades)}, last4: '6789' })`);
+  assert.equal(out.spreads.length, 1);
+  assert.deepEqual(out.rows.map(r => [r.avg, r.cost]), [[2.5, null], [0.8, null]]);
 });

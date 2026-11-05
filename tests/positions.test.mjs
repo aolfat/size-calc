@@ -748,6 +748,14 @@ test('a close ticket reads the Journal for the original size: older fills kept t
   await out.run("openPositionTrade('TEST', 'close')");
   assert.match(out.elements.get('posTradeBody').innerHTML, /the original size is unknown\. No fills in Schwab&#39;s last 59 days of orders \(sign in for the Journal&#39;s older ones\) open this position\./,
     'signed out, only the sell shows: nothing open to measure from');
+
+  // a ticket opened before anything read the Journal waits for it
+  const early = await app({ fetch: network(schwab).fetch, storage: signedIn(), supabase, session: SESSION });
+  early.run('positionsAccountChanged()');
+  await settle();
+  assert.equal(early.state.journalRecords, null, 'Positions isn\'t open: nothing read');
+  await early.run("openPositionTrade('TEST', 'close')");
+  assert.equal(early.state.journalRecords.length, 2, 'the close waited for the Journal');
 });
 
 test('the R column is in the Columns picker; signed in, the Journal is read on opening Positions', async () => {

@@ -154,7 +154,7 @@ export function buildTrades(fills, opts = {}) {
         t.lots.push({ qty, price: f.price });
         t.entryQty += qty;
         t.entryNotional += qty * f.price;
-        t.peakQty = Math.max(t.peakQty, t.lots.reduce((/** @type {number} */ n, /** @type {{ qty: number }} */ l) => n + l.qty, 0));
+        t.peakQty = Math.max(t.peakQty, held + qty);
         if (!t.entryOrderIds.includes(f.orderId)) t.entryOrderIds.push(f.orderId);
         continue;
       }

@@ -11,7 +11,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { originalSize } from '../core/journal.js';
-import { INSTRUCTION_WORDS, atBreakeven, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, breakevenDone, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
@@ -107,12 +107,18 @@ export function rUnitWords(unit, row) {
 function applyJournalCost() {
   const p = state.positions;
   if (!p || !p.account) return;
-  Object.assign(p, positionRows(p.account, p.orders, { trades: positionTrades(), last4: p.last4 }));
+  // the trades are built again only when the records, this read's orders, your stops or merges change, so this is a no-op otherwise
+  const trades = positionTrades();
+  if (p.costTrades === trades) return;
+  Object.assign(p, positionRows(p.account, p.orders, { trades, last4: p.last4 }), { costTrades: trades });
 }
 
-/** the records, your stops and merges (signed in, nothing has read them yet): the average cost, R, an open chart's targets and a close's original size read them */
-function readPositionJournal(force = false) {
-  if (!state.session || state.journalLoading) return;
+/**
+ * the records, your stops and merges (signed in, nothing has read them yet): the average cost, R, an open chart's targets and a close's
+ * original size read them. Only while Positions is open, or for a ticket that needs them (need).
+ */
+function readPositionJournal(force = false, need = false) {
+  if (!state.session || state.journalLoading || !(state.positionsView || need)) return;
   if (state.posJournalBusy) return state.posJournalBusy;
   if (!force && (state.journalRecords || state.posJournalError)) return;
   state.posJournalBusy = Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades()]).then(([records, reviews, saved]) => {
@@ -129,19 +135,24 @@ function readPositionJournal(force = false) {
 }
 
 /** a close ticket waits for the Journal's records (signed in, not read yet), so its percents of the original start right */
-export async function readPositionJournalForClose() { await readPositionJournal(); }
+export async function readPositionJournalForClose() { await readPositionJournal(false, true); }
+
+const NO_RECORDS = []; // one empty list, so the memo below holds while nothing is kept
 
 /** the kept records and this read's orders: an order in both is taken from the read, the newer of the two */
 function positionRecords() {
-  const p = state.positions, kept = state.journalRecords || [];
+  const p = state.positions, kept = state.journalRecords || NO_RECORDS;
   const memo = state.posRecords;
   if (memo && memo.kept === kept && memo.orders === p.orders) return memo.records;
+  // a new read with the same orders keeps the records (and so the trades built over them): each 30s read is a new array
+  const key = JSON.stringify(p.orders);
+  if (memo && memo.kept === kept && memo.key === key) { memo.orders = p.orders; return memo.records; }
   const live = new Set(p.orders.map(o => String(o?.orderId ?? '')));
   const records = [
     ...kept.filter(r => !(r.kind === 'order' && live.has(String(r.record_id)))),
     ...p.orders.map(o => ({ kind: 'order', record_id: String(o?.orderId ?? ''), account: p.last4, data: o })),
   ];
-  state.posRecords = { kept, orders: p.orders, records };
+  state.posRecords = { kept, orders: p.orders, key, records };
   return records;
 }
 
@@ -237,7 +248,8 @@ async function readPositions(id, acct, asked) {
     // stops are extra: positions still show when the orders read fails
     const [account, orders] = await Promise.all([schwabPositions(acct.hash), schwabRecentOrders(Date.now(), acct.hash).catch(() => null)]);
     if (id !== state.positionsRequest) return newest();
-    state.positions = { ...positionRows(account, orders || []), account, orders: orders || [], hash: acct.hash, last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
+    // the rows once, over the Journal's trades (built from this read's orders, so the read comes first)
+    state.positions = { account, orders: orders || [], hash: acct.hash, last4: acct.last4, asOf: Date.now(), stopsMissing: !orders, costTrades: null };
     applyJournalCost();
     state.positionsError = '';
     applyAccountValue(account, acct.hash); // the first read of the day sets the account size
@@ -297,8 +309,8 @@ function riskCell(r) {
 // Chart (and Simulate for options), Stop, BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
 function tradeButtons(r) {
   if (!r.tradeAs) return '';
-  // every share already has a stop at or past breakeven: nothing to move, and moving it would loosen it
-  const atBe = atBreakeven(r) ? (r.stopOrders.every(s => s.stop === r.be) ? 'stop at breakeven' : `stop${r.stops > 1 ? 's' : ''} past breakeven`) : '';
+  // every share already has a stop at or past breakeven (after a trim, every one of them): nothing to move, and moving it would loosen it
+  const atBe = breakevenDone(r) ? (r.stopOrders.every(s => s.stop === r.be) ? 'stop at breakeven' : `stop${r.stops > 1 ? 's' : ''} past breakeven`) : '';
   const arg = esc(r.symbol);
   const charted = !!state.posChart && state.posChart.symbol === r.symbol;
   const chart = `<button class="pos-act${charted ? ' active' : ''}" aria-pressed="${charted}" data-action="togglePositionChart" data-arg="${arg}" title="${r.tradeAs === 'OPTION' ? 'The contract\'s 5-minute chart' : 'Daily chart'} with your cost, stops and targets: set a profit target on it">Chart</button>`
@@ -567,7 +579,7 @@ function renderPosActions() {
     actBtn(row.symbol, 'chart', 'Chart'),
     row.option ? actBtn(row.symbol, 'sim', 'Simulate') : '',
     actBtn(row.symbol, 'stop', row.stop === null ? 'Set stop' : 'Edit stop'),
-    atBreakeven(row) ? '' : actBtn(row.symbol, 'breakeven', 'Move stop to breakeven'),
+    breakevenDone(row) ? '' : actBtn(row.symbol, 'breakeven', 'Move stop to breakeven'),
     actBtn(row.symbol, 'close', 'Close', 'pos-act-close'),
   ].join('') : '';
   body.innerHTML = `<div class="pa-body">
@@ -632,6 +644,7 @@ function watchPhone() {
 
 export function renderPositions() {
   readPositionJournal();
+  applyJournalCost(); // the Journal tab may have read the records, or a merge or your stop changed its trades
   renderPositionsTable();
   renderPositionChart(); // its lines, sizes and target checks follow each read
 }

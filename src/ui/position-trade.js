@@ -5,7 +5,7 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick, quoteLimit } from '../core/orders.js';
-import { INSTRUCTION_WORDS, atBreakeven, breakevenChoices, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
+import { INSTRUCTION_WORDS, breakevenBlocked, breakevenChoices, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
@@ -89,6 +89,8 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
     // the chart's stop when it has one
     if (kind === 'stop') { t.stopInput = target && target.price > 0 ? target.price : row.stop !== null && row.covered < Math.abs(row.qty) ? row.stop : 0; t.target = null; t.reset = false; t.origStop = originalStop(row); }
     t.beChoices = breakevenChoices(row); // after a trim: the average, the shares left by lot, or the whole trade even
+    // the first that can take the stop: the average unless the price is through it or its stops are already there
+    t.beAt = (t.beChoices.find(c => !breakevenBlocked(row, c.price)) || { key: 'avg' }).key;
     planStops(t);
   }
   if (t.error) return t;
@@ -407,7 +409,8 @@ export async function openPositionTrade(symbol, kind) {
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
   // the plan is built from what Schwab shows now; a close also waits for the Journal's older fills, for its original size
-  try { await Promise.all([refreshPositions(), kind === 'close' || kind === 'stop' ? readPositionJournalForClose() : null]); } finally { state.posTradeBusy = false; }
+  // every kind waits for the Journal too: the average cost and the breakevens come from its trades
+  try { await Promise.all([refreshPositions(), readPositionJournalForClose()]); } finally { state.posTradeBusy = false; }
   state.posTicket = freshTicket(kind, symbol, target);
   renderPositionTradeSheet();
   openSheet('posTrade');
@@ -632,8 +635,7 @@ function beChoicePrompt(t) {
   const row = t.row, px = p => fmtPositionPrice(p, row.tradeAs);
   const opt = c => {
     const [title, sub] = BE_WORDS[c.key], on = t.beAt === c.key;
-    const off = (row.qty > 0 ? !(row.price > c.price) : !(row.price < c.price)) ? `The price ${px(row.price)} is already through it.`
-      : atBreakeven({ ...row, be: c.price }) ? 'Every share already has a stop at or past it.' : '';
+    const off = breakevenBlocked(row, c.price);
     const trade = Math.abs(c.trade) < 0.005 ? '$0.00' : (c.trade > 0 ? '+' : '−') + fmt$(Math.abs(c.trade));
     return `<button class="pos-choice-opt${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPositionBeAt" data-arg="${c.key}"${off || t.sent ? ' disabled' : ''}><strong>${esc(`${title} ${px(c.price)}`)}</strong><span>${esc(off || `${sub} The whole trade ${trade} if it stops here.`)}</span></button>`;
   };
