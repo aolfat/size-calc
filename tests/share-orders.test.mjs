@@ -149,3 +149,36 @@ test('without a Schwab login the card has no trade button, and removing it drops
   run(`removePinned('${a}')`);
   assert.equal(state.pinnedData[a], undefined);
 });
+
+test('a redraw waits while you type in a card, and committing the box redraws it', async () => {
+  const { run, elements, state } = await loaded('AAA');
+  const a = run('pinShares()');
+  const card = elements.get(a);
+  const box = { id: '' };
+  card.contains = el => el === box;
+  run('document').activeElement = box;
+  const before = card.innerHTML;
+  run("document.getElementById('riskDollar').value = '1000'; renderPinnedCards()");
+  assert.equal(card.innerHTML, before, 'the live refresh leaves the box you are in alone');
+  run(`shareOrderStopChanged('${a}', { value: '99' })`);
+  assert.match(card.innerHTML, /Shares to buy<\/div><div class="s-val">1000</, 'Enter or leaving the box redraws it');
+  assert.equal(state.pinnedData[a].stopLevel, 99);
+});
+
+test('a card removed during its review still re-checks and sends; a lost answer says so on the card', async () => {
+  const net = network();
+  const lost = async (url, init = {}) => init.method === 'POST' ? (() => { net.calls.push({ url, method: 'POST', body: init.body }); throw new TypeError('Failed to fetch'); })() : net.fetch(url, init);
+  const h = await loaded('AAA', { fetch: net.fetch, storage: connected() });
+  const a = h.run('pinShares()');
+  await h.run(`openCardTrade('${a}')`);
+  h.run(`removePinned('${a}')`);
+  await h.run('placeTrade()');
+  assert.equal(net.posts().length, 1, 'the review went, from a quote read for its ticker');
+  assert.equal(net.posts()[0].orderLegCollection[0].instrument.symbol, 'AAA');
+
+  const h2 = await loaded('AAA', { fetch: lost, storage: connected() });
+  const b = h2.run('pinShares()');
+  await h2.run(`openCardTrade('${b}')`);
+  await h2.run('placeTrade()');
+  assert.match(h2.elements.get(b).innerHTML, /<p class="share-order-sent lost" role="status">No answer from Schwab [^:]+:\d\d[^:]*: buy 250\. Check your Schwab orders before trading it again\./);
+});

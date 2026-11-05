@@ -94,7 +94,7 @@ export function shareOrderStopChanged(cardId, el) {
     d.planCtx = { ...d.planCtx, stop_source: 'custom', stop_strategy: null, stop_amount: null };
   }
   state.flashNext = true;
-  renderShareOrderCard(cardId);
+  renderShareOrderCard(cardId, { force: true });
   state.flashNext = false;
 }
 
@@ -107,7 +107,7 @@ export function shareOrderEntryChanged(cardId, el) {
   d.entry = v > 0 ? v : 0;
   if (d.entry !== was) d.entryNote = ''; // an opening-range entry typed over is your own plan now
   state.flashNext = true;
-  renderShareOrderCard(cardId);
+  renderShareOrderCard(cardId, { force: true });
   state.flashNext = false;
 }
 
@@ -118,10 +118,16 @@ export function renderShareOrderCards() {
 
 const tradeLabel = d => d.checking ? 'Checking quote…' : d.lastOrder ? 'Trade at Schwab again' : 'Trade at Schwab';
 
-export function renderShareOrderCard(cardId) {
+/**
+ * Draws one card. A redraw that isn't yours (the live refresh, a login change, a review starting) waits while you're typing
+ * in the card's Entry or Stop, so it can't throw your typing away; committing the box redraws it (force).
+ */
+export function renderShareOrderCard(cardId, { force = false } = {}) {
   const d = state.pinnedData[cardId];
   const el = document.getElementById(cardId);
   if (!d || !el) return;
+  const typing = document.activeElement;
+  if (!force && typing && typing !== el && el.contains(typing)) return;
   const q = d.quote || {};
   const plan = cardPlan(d);
   const acct = parseFloat(/** @type {HTMLInputElement} */ (document.getElementById('accountSize')).value) || 1;
@@ -132,7 +138,7 @@ export function renderShareOrderCard(cardId) {
     ? `<button type="button" class="btn trade-btn" data-action="openCardTrade" data-arg="${arg}"${!plan.valid || state.tradeBusy ? ' disabled' : ''} title="Review this order, then send it to Schwab">${tradeLabel(d)}</button>`
     : '';
   const o = d.lastOrder;
-  const sent = o ? `<p class="share-order-sent" role="status">Sent ${esc(o.time)}: ${o.isLong ? 'buy' : 'short'} ${o.qty}${o.orderId ? ', order ' + esc(o.orderId) : ''}. <button type="button" class="pos-link" data-action="openCardOrder" data-arg="${arg}">Status</button></p>` : '';
+  const sent = o ? `<p class="share-order-sent${o.lost ? ' lost' : ''}" role="status">${o.lost ? 'No answer from Schwab' : 'Sent'} ${esc(o.time)}: ${o.isLong ? 'buy' : 'short'} ${o.qty}${o.orderId ? ', order ' + esc(o.orderId) : ''}${o.lost ? '. Check your Schwab orders before trading it again' : ''}. <button type="button" class="pos-link" data-action="openCardOrder" data-arg="${arg}">Status</button></p>` : '';
   const pos = plan.shares * plan.entry, risk = plan.shares * plan.riskPerShare;
   el.innerHTML = `
     <div class="pinned-header">

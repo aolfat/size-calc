@@ -19,7 +19,7 @@ import { inZone } from '../lib/zone.js';
 import { showSheetQuote, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 import { rawStop } from './stops.js';
-import { refreshQuote } from './ticker.js';
+import { refreshQuote, tradierQuote } from './ticker.js';
 import { maybeCapture, scheduleCloseCapture } from './schwab-capture.js';
 
 const TRADE_LABEL = 'Trade at Schwab';
@@ -333,7 +333,8 @@ function ticketFor(p, q, now) {
  */
 async function freshQuote(symbol, cardId = '') {
   if (cardId) {
-    const q = await refreshShareOrderQuote(cardId).catch(() => null);
+    // a card removed while its review is open still gets its re-check, from the ticker's own quote
+    const q = state.pinnedData[cardId] ? await refreshShareOrderQuote(cardId).catch(() => null) : await tradierQuote(symbol, false).catch(() => null);
     if (q) renderShareOrderCard(cardId);
     return q && q.symbol === symbol ? q : null;
   }
@@ -511,7 +512,7 @@ export async function placeTrade() {
     } else {
       if (e instanceof TypeError) {
         state.tradeLast = { symbol: t.symbol, at: Date.now() }; // it may have gone through
-        cardSent(t);
+        cardSent(t, { lost: true });
         await saveTradePlan(t); // with no id: the journal finds its trade by time, if there is one
       }
       t.result = { ok: false, text: e instanceof TypeError ? 'No answer from Schwab. Check your Schwab orders before trying again.' : e.status ? 'Schwab rejected the order. ' + e.message : e.message };
@@ -524,11 +525,11 @@ export async function placeTrade() {
 }
 
 /** the order card a sent ticket came from says so, and keeps the ticket for its status */
-function cardSent(t) {
+function cardSent(t, { lost = false } = {}) {
   const d = t.cardId && state.pinnedData[t.cardId];
   if (!d) return;
-  d.lastOrder = { ticket: t, qty: t.qty, isLong: t.isLong, orderId: t.orderId || '', time: inZone(Date.now(), { hour: 'numeric', minute: '2-digit' }) };
-  renderShareOrderCard(t.cardId);
+  d.lastOrder = { ticket: t, qty: t.qty, isLong: t.isLong, orderId: t.orderId || '', lost, time: inZone(Date.now(), { hour: 'numeric', minute: '2-digit' }) };
+  renderShareOrderCard(t.cardId, { force: true });
 }
 
 export async function checkTradeStatus() {

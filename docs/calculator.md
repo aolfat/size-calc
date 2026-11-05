@@ -96,6 +96,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   The card's Entry and Stop boxes are editable (shareOrderEntryChanged, shareOrderStopChanged); a typed stop is a custom stop for the plan from then on.
   ↻ and the pinned cards' live refresh read the card's quote from Tradier (refreshShareOrderQuote); the calculator's loaded ticker never changes.
   While Schwab is connected each card has its own **Trade at Schwab** (openCardTrade, docs/schwab.md); a sent order shows on the card with **Status**, which reopens that order's review.
+  A redraw you didn't cause (the live refresh, a login change, a review starting) waits while you're typing in a card's box; committing the box redraws it.
   Cards live in memory like the other pinned cards: a reload clears them.
 - **Simulate returns**: Black-Scholes (normCdf via Abramowitz-Stegun, RISK_FREE 4%) canvas modal — return % over time (now → expiry) at a slider-chosen underlying price, IV held constant.
   Green above breakeven / red below via canvas clipping, max-loss floor, drag crosshair readout (est $/ct, %, $ P&L × qty).

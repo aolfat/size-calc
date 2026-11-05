@@ -16,3 +16,4 @@
 /* share order cards (ui/share-orders.js): the trade button full width, what was sent under it */
 .share-order-actions { margin-top: 14px; }
 .share-order-sent { flex: 1 1 100%; margin: 0; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
+.share-order-sent.lost { color: var(--amber); }
