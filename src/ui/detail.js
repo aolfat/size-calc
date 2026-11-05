@@ -6,6 +6,7 @@ import { DESKTOP_MQ, mq } from '../lib/media.js';
 import { allocationOptionBody } from './allocation.js';
 import { chainColCount } from './chain.js';
 import { withFlash } from './feedback.js';
+import { optionTradeButton } from './option-trade.js';
 import { simParamsFromCard } from './sim.js';
 
 export function detailInRail() { return mq(DESKTOP_MQ); }
@@ -34,7 +35,8 @@ export function detailBody(c, acct) {
       <span>${c.opt.symbol} · ${c.isCall ? 'Call' : 'Put'} ${fmt$(c.opt.strike)} · bid ${fmt$(c.opt.bid||0)} / ask ${fmt$(c.opt.ask||0)}${c.wideSpread ? ` · <span style="color:var(--amber)">wide spread: ${c.spreadPct.toFixed(0)}% of mid</span>` : ''} · Δ ${c.delta.toFixed(3)} · IV ${c.iv > 0 ? (c.iv*100).toFixed(1) + '%' : 'n/a'}${c.iv > 0 && state.hv20 > 0 ? (c.iv > state.hv20 * 1.5 ? ` <span style="color:var(--amber)">vs HV20 ${(state.hv20*100).toFixed(1)}% · paying up for vol</span>` : ` vs HV20 ${(state.hv20*100).toFixed(1)}%`) : ''} · Est. via ${c.model === 'bs' ? 'Black-Scholes, IV const' : 'Δ + ½Γ·move² approx'}</span>
       <button class="filter-btn" style="margin-left:auto;" data-action="openSimFor" data-arg="${c.opt.symbol}">simulate returns</button>
       ${state.chainSide !== 'both' ? `<button class="filter-btn" data-action="startSpread" data-arg="${c.opt.symbol}" title="Buy this leg, then tap the strike to sell against it">+ debit spread</button><button class="filter-btn" data-action="startSpread" data-arg="${c.opt.symbol}" data-arg2="credit" title="Sell this leg, then tap the strike to buy against it">+ credit spread</button>` : ''}
-    </div>`;
+    </div>
+    ${optionTradeButton(c)}`;
 }
 
 export function showDetail(tr, c, acct) {

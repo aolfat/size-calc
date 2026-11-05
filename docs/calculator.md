@@ -89,11 +89,21 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Image copying (also available as 'share' on pinned cards) renders a hand-drawn canvas PNG (drawShareCard — deliberately NOT a DOM screenshot: no deps, Safari foreignObject is unreliable) via ClipboardItem (promise constructed inside the gesture for Safari); falls back to downloading the PNG.
   Shares images label custom stops explicitly and retain percentage-based risk/position values and the $10k-account example.
   Copy-as-text one-liners (copyShares/copyPinned) state risk as % of account and end with a $100-risk example (ex100: units for $100, or the one-unit risk when a single unit exceeds it)
+- **Share order cards** (ui/share-orders.js, owner request: several share orders open at once, each ready to send): the shares card's **Pin order** (#sharesPin, pinShares) keeps the shares answer as its own card in the pinned list, newest on top; pin one, load the next ticker, pin it too.
+  It shows on risk sizing for a stock or ETF (not futures, not allocation), works without Schwab, and is disabled without a valid stop.
+  A card (pinnedData kind 'shares') keeps its ticker, side, stop price, planned entry (blank = the market, effectivePrice of the card's own quote) and what the calculator knew for the order plan (planContext at the pin).
+  The share count follows the max loss now, like every pinned card (cardPlan: unitsFor(riskDollars(), |entry − stop|)).
+  The card's Entry and Stop boxes are editable (shareOrderEntryChanged, shareOrderStopChanged); a typed stop is a custom stop for the plan from then on.
+  ↻ and the pinned cards' live refresh read the card's quote from Tradier (refreshShareOrderQuote); the calculator's loaded ticker never changes.
+  While Schwab is connected each card has its own **Trade at Schwab** (openCardTrade, docs/schwab.md); a sent order shows on the card with **Status**, which reopens that order's review.
+  A redraw you didn't cause (the live refresh, a login change, a review starting) waits while you're typing in a card's box; committing the box redraws it.
+  Cards live in memory like the other pinned cards: a reload clears them.
 - **Simulate returns**: Black-Scholes (normCdf via Abramowitz-Stegun, RISK_FREE 4%) canvas modal — return % over time (now → expiry) at a slider-chosen underlying price, IV held constant.
   Green above breakeven / red below via canvas clipping, max-loss floor, drag crosshair readout (est $/ct, %, $ P&L × qty).
   Price chips: stop / now / 1R / 2R (R = distance to stop, side-aware), or −1σ / now / +1σ when opened from a position (#simRChips / #simEmChips).
   Entry points: chain detail row (simReg by OCC symbol), pinned cards (entry = mid), option positions (entry = your average cost).
   Esc closes
+- **Trade at Schwab on a contract**: the detail row and the rail ticket end with a button that buys the sized contracts to open at a limit with a stop on the option at the loss model's Premium @ stop (docs/schwab.md, Options entries).
 - **Option loss model**: Black-Scholes move applied to the market mid — `premium@stop = max(0, mid + BS(stop,T) − BS(spot,T))` so IV-skew level offsets cancel; time to expiry runs to the 4pm New York close (expiryCloseMs in core/options.js, whatever the device's zone; also the sim and the allocation expired check); falls back to Δ+½Γ·move² when the contract has no IV (model flag 'bs'/'approx').
   Clamped so a loss-direction move can't show a gain. loss/ct = (mid − premium@stop) × 100, contracts = floor(risk$ / loss per ct).
   Calls priced off the long stop, puts off the short stop.

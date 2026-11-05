@@ -148,3 +148,8 @@
   #tickerRow .field { min-width: 0; }
   #riskDollar { font-size: 20px !important; } /* keep the max-loss figure prominent on mobile */
 }
+/* a chain contract's Trade at Schwab, under its detail: the shares card's button, full width */
+.option-trade-btn { display: flex; width: 100%; justify-content: center; margin-top: 10px; min-height: 40px; font-weight: 600; background: linear-gradient(180deg, #16294a, #101f39); border-color: var(--blue-bd); color: var(--blue); }
+.option-trade-btn:hover { border-color: var(--blue); }
+.option-trade-btn:disabled { opacity: 0.4; cursor: default; border-color: var(--blue-bd); }
+@media (max-width: 600px) { .option-trade-btn { min-height: 46px; } }

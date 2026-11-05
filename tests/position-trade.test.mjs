@@ -1995,3 +1995,76 @@ test('back to the original stop cancels every limit, pair and extra stop, then o
   assert.match(run(`originalStopPlan(${rowWith('NVDA')}, { stop: 113, duration: 'DAY' }).error`), /original stop \$113\.00 is at or above the price \$112\.00/);
   assert.match(run(`originalStopPlan(${rowWith('NVDA')}, { stop: 0, duration: 'DAY' }).error`), /No original stop/);
 });
+
+// ---------- a limit at the bid, mid or ask ----------
+
+test('a limit at the quote: the bid or ask as quoted, the mid rounded toward a fill on the step the market trades in', async () => {
+  const { run } = await app();
+  const at = (side, q, o) => plain(run(`quoteLimit('${side}', ${JSON.stringify(q)}, ${JSON.stringify(o)})`));
+  const stock = { buy: false, option: false };
+  assert.deepEqual(at('mid', { bid: 41.08, ask: 41.13 }, stock), { price: 41.1, step: 0 }, 'a sell rounds the mid down');
+  assert.deepEqual(at('mid', { bid: 41.08, ask: 41.13 }, { buy: true, option: false }), { price: 41.11, step: 0 }, 'a buy rounds it up');
+  assert.deepEqual(at('mid', { bid: 0.5012, ask: 0.5015 }, stock), { price: 0.5013, step: 0 }, 'four decimals under $1');
+  assert.deepEqual(at('bid', { bid: 41.08, ask: 41.13 }, stock), { price: 41.08, step: 0 });
+  assert.deepEqual(at('ask', { bid: 41.08, ask: 41.13 }, stock), { price: 41.13, step: 0 });
+  const sell = { buy: false, option: true }, buy = { buy: true, option: true };
+  assert.deepEqual(at('mid', { bid: 1.0, ask: 1.1 }, sell), { price: 1.05, step: 0.05 }, 'nickels under $3');
+  assert.deepEqual(at('mid', { bid: 1.0, ask: 1.2 }, buy), { price: 1.1, step: 0.05 });
+  assert.deepEqual(at('mid', { bid: 1.0, ask: 1.15 }, sell), { price: 1.05, step: 0.05 }, 'between nickels, down on a sell');
+  assert.deepEqual(at('mid', { bid: 1.0, ask: 1.15 }, buy), { price: 1.1, step: 0.05 }, 'and up on a buy');
+  assert.deepEqual(at('mid', { bid: 1.02, ask: 1.07 }, buy), { price: 1.05, step: 0.01 }, 'a class quoting pennies trades in them');
+  assert.deepEqual(at('mid', { bid: 1.02, ask: 1.03 }, buy), { price: 1.03, step: 0.01 }, 'never past the ask');
+  assert.deepEqual(at('mid', { bid: 6.0, ask: 6.2 }, sell), { price: 6.1, step: 0.1 }, 'dimes from $3');
+  assert.deepEqual(at('mid', { bid: 6.05, ask: 6.15 }, sell), { price: 6.1, step: 0.05 }, 'nickels from $3 in a penny class');
+  assert.deepEqual(at('mid', { bid: 6.05, ask: 6.25 }, sell), { price: 6.15, step: 0.05 });
+  assert.deepEqual(at('mid', { bid: 2.95, ask: 3.2 }, buy), { price: 3.1, step: 0.1 }, 'a quote across $3 says nothing: the standard step');
+  assert.deepEqual(at('bid', { bid: 1.02, ask: 1.07 }, sell), { price: 1.02, step: 0.01 }, 'the bid as quoted, on its own step');
+  assert.deepEqual(at('mid', { bid: 0, ask: 1.1 }, sell), { price: 0, step: 0 }, 'no bid, no mid');
+  assert.deepEqual(at('mid', { bid: 1.2, ask: 1.1 }, sell), { price: 0, step: 0 }, 'a crossed quote gives none');
+  assert.equal(run('optionQuoteStep(1.05, 1.0, 1.1)'), 0.05);
+  assert.equal(run('onOptionStep(1.07, 0.05)'), 1.05);
+  assert.equal(run('onOptionStep(1.07, 0.05, "up")'), 1.1);
+});
+
+test('the close ticket sets a limit at the bid, mid or ask in one tap, and it stays put as the quote moves', async () => {
+  const quotes = { HOOD: { last: 41.1, bid: 41.08, ask: 41.13 } };
+  const b = broker(), net = withQuotes(b, quotes);
+  const { run, elements } = await withKey({ fetch: net.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  assert.match(body(), /aria-pressed="false" data-action="setCloseAt" data-arg="bid"[^>]*>Bid<[^]*data-arg="mid"[^>]*>Mid<[^]*data-arg="ask"[^>]*>Ask</, 'shown at market too');
+  run('setClosePortion(0.5)');
+  run("actions.setCloseAt({ dataset: { arg: 'mid' } })");
+  assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="LIMIT"/, 'a tap is a limit');
+  assert.match(body(), /aria-pressed="true" data-action="setCloseAt" data-arg="mid"/);
+  assert.match(body(), /id="posClosePrice"[^>]*value="41.10"/, 'the mid $41.105, down toward a sell\'s fill');
+  assert.match(body(), /At the mid of \$41\.08 × \$41\.13, rounded down toward a fill/);
+  assert.match(body(), /id="posCloseQty"[^>]*value="150"/, 'the size stays');
+  quotes.HOOD = { last: 41.5, bid: 41.48, ask: 41.52 };
+  assert.match(body(), /id="posClosePrice"[^>]*value="41.10"/);
+  run("actions.setCloseAt({ dataset: { arg: 'bid' } })");
+  assert.match(body(), /id="posClosePrice"[^>]*value="41.08"/);
+  assert.doesNotMatch(body(), /likely fills right away/, 'selling at the bid is meant to fill now');
+  run("setClosePrice('42')");
+  assert.match(elements.get('posCloseAt').innerHTML, /aria-pressed="false" data-action="setCloseAt" data-arg="bid"/, 'a typed price is your own');
+  run("actions.setCloseAt({ dataset: { arg: 'ask' } })");
+  await run('placePositionTrade()');
+  assert.equal(b.sent.at(-1).body.childOrderStrategies[0].price, 41.13, 'a sell at the ask, paired with the stop');
+});
+
+test('an option close at the mid keeps the step its quote shows', async () => {
+  const b = broker(), net = withQuotes(b, { AAPL261120C00230000: { last: 6.1, bid: 6.05, ask: 6.25 } });
+  const { run, elements } = await withKey({ fetch: net.fetch, storage: connected() });
+  await run(`openPositionTrade('${OPT}', 'close')`);
+  run("setCloseAt('mid')");
+  assert.match(elements.get('posTradeBody').innerHTML, /id="posClosePrice"[^>]*value="6.15"/, 'a nickel class over $3: $6.15, not the dime grid\'s $6.10 or $6.20');
+  assert.equal(run('posTicket.price'), 6.15);
+  await run('placePositionTrade()');
+  assert.equal(b.sent.at(-1).body.price ?? b.sent.at(-1).body.childOrderStrategies?.[0].price, 6.15);
+});
+
+test('without a Tradier key the close ticket has no quote chips', async () => {
+  const { run, elements } = await app({ fetch: broker().fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /setCloseAt/);
+});
