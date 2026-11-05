@@ -1,4 +1,5 @@
-// Schwab trading: the connect section in Settings, the shares card's trade button, and the order review sheet.
+// Schwab trading: the connect section in Settings, the shares card's trade button, and the order review sheet (an option entry
+// shares the sheet and its ticket slot, but its ticket, checks and send are ui/option-trade.js's).
 // The sheet freezes one ticket when it opens, for the account selected then; Place re-checks it against a fresh quote,
 // then sends exactly that payload once and never retries it. A limit entry still waiting moves through Positions' Edit.
 // The setup and entry tactic picks, and the plan kept once the order goes, are ui/order-plan.js.
@@ -341,7 +342,7 @@ export async function openTrade() {
 
 export function setTradeStopDuration(d) {
   const t = state.tradeTicket;
-  if (!t || t.error || t.sent || state.tradeBusy || (d !== 'DAY' && d !== 'GOOD_TILL_CANCEL')) return;
+  if (!t || t.option || t.error || t.sent || state.tradeBusy || (d !== 'DAY' && d !== 'GOOD_TILL_CANCEL')) return;
   store.set('schwab_stop_duration', d);
   state.tradeTicket = ticketFor({ ...t, stopDuration: d }, reviewedQuote(t), Date.now());
   renderTradeSheet();
@@ -350,7 +351,7 @@ export function setTradeStopDuration(d) {
 /** Market | Limit | Stop | Stop limit: the entry's order type; a stop entry only while the planned entry is past the market */
 export function setTradeEntryType(type) {
   const t = state.tradeTicket;
-  if (!t || t.error || t.sent || state.tradeBusy || !ENTRY_TYPES.includes(type) || type === t.entryType) return;
+  if (!t || t.option || t.error || t.sent || state.tradeBusy || !ENTRY_TYPES.includes(type) || type === t.entryType) return;
   if (!atMarket(type) && stopEntryError({ isLong: t.isLong, entryStop: t.entryStop, ...reviewedQuote(t) })) return;
   if (!atMarket(type)) store.set('schwab_entry_type', type);
   state.tradeTicket = ticketFor({ ...t, entryType: type }, reviewedQuote(t), Date.now());
@@ -360,7 +361,7 @@ export function setTradeEntryType(type) {
 /** typing a stop limit's limit: re-plans and redraws only the details, so the cursor stays put */
 export function setTradeEntryLimit(value) {
   const t = state.tradeTicket;
-  if (!t || t.error || t.sent || state.tradeBusy || t.entryType !== 'STOP_LIMIT') return;
+  if (!t || t.option || t.error || t.sent || state.tradeBusy || t.entryType !== 'STOP_LIMIT') return;
   const v = parseFloat(value);
   const next = ticketFor({ ...t, entryLimit: v > 0 ? priceTick(v) : 0 }, reviewedQuote(t), Date.now());
   state.tradeTicket = next;
@@ -372,7 +373,7 @@ export function setTradeEntryLimit(value) {
 /** typing a limit entry's price: re-plans and redraws only the details and the Place label, so the cursor stays put */
 export function setTradeLimit(value) {
   const t = state.tradeTicket;
-  if (!t || t.error || t.sent || state.tradeBusy || t.entryType !== 'LIMIT') return;
+  if (!t || t.option || t.error || t.sent || state.tradeBusy || t.entryType !== 'LIMIT') return;
   const v = parseFloat(value);
   const next = ticketFor({ ...t, limitPrice: v > 0 ? priceTick(v) : 0 }, reviewedQuote(t), Date.now());
   state.tradeTicket = next;
@@ -396,7 +397,7 @@ function recheck(t, fresh) {
 
 export async function placeTrade() {
   const t = state.tradeTicket;
-  if (!t || !t.order || t.sent || state.tradeBusy) return;
+  if (!t || t.option || !t.order || t.sent || state.tradeBusy) return; // an option entry is ui/option-trade.js's
   state.tradeBusy = true;
   // the quote again right before sending: the frozen order goes only while the market still allows it as reviewed
   t.result = { ok: null, text: 'Checking the quote…' };
@@ -450,7 +451,7 @@ export async function placeTrade() {
 
 export async function checkTradeStatus() {
   const t = state.tradeTicket;
-  if (!t || !t.orderId || state.tradeBusy) return;
+  if (!t || t.option || !t.orderId || state.tradeBusy) return;
   state.tradeBusy = true;
   renderTradeSheet();
   try { await updateTradeStatus(t); } finally {
@@ -462,7 +463,7 @@ export async function checkTradeStatus() {
 const ENDED = /REJECTED|CANCELED|EXPIRED/;
 
 /** green only when the entry is filled or working and its stop is in place; a stop Schwab refused is said out loud */
-async function updateTradeStatus(t) {
+export async function updateTradeStatus(t) {
   const o = await schwabOrder(t.orderId, t.hash).catch(() => null);
   if (!o) { t.result = { ok: null, text: `Sent${t.orderId ? ', order ' + t.orderId : ''}. Check Schwab for the fill and the stop.` }; return; }
   const child = o.childOrderStrategies && o.childOrderStrategies[0];
@@ -472,7 +473,7 @@ async function updateTradeStatus(t) {
   t.filled = filled;
   let text = orderStatusLine(t, o);
   if (entryOk && child && child.status && !stopOk) {
-    text += filled > 0 ? ` Your ${filled} ${t.symbol} have no stop. Set one in Schwab now.` : ' The stop is not in place. Check Schwab before the entry fills.';
+    text += filled > 0 ? ` Your ${filled} ${t.label || t.symbol} have no stop. Set one in Schwab now.` : ' The stop is not in place. Check Schwab before the entry fills.';
   }
   t.result = { ok: !entryOk || (child && child.status && !stopOk) ? false : stopOk ? true : null, text };
 }
@@ -483,10 +484,11 @@ export function orderStatusLine(t, o) {
   const legs = (o.orderActivityCollection || []).flatMap(a => a.executionLegs || []);
   const qty = legs.reduce((n, l) => n + (Number(l.quantity) || 0), 0);
   const avg = qty ? legs.reduce((n, l) => n + (Number(l.quantity) || 0) * (Number(l.price) || 0), 0) / qty : 0;
+  const px = t.option ? v => '$' + v.toFixed(2) : fmtTick; // option prices in dollars and cents, whatever their size
   let text = `Order ${t.orderId}: ${word(o.status)}`;
-  if (avg > 0) text += ` ${qty} at ${fmtTick(avg)}`;
+  if (avg > 0) text += ` ${qty} at ${px(avg)}`;
   const child = o.childOrderStrategies && o.childOrderStrategies[0];
-  if (child && child.status) text += `. Stop ${fmtTick(t.stop)}: ${word(child.status)}`;
+  if (child && child.status) text += `. Stop ${px(t.stop)}: ${word(child.status)}`;
   if (o.statusDescription) text += `. ${o.statusDescription}`;
   return text + '.';
 }

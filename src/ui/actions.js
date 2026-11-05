@@ -24,7 +24,7 @@ import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
-import { openPositionTrade, placePositionTrade, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -58,6 +58,7 @@ import { loadTicker, refreshQuote, submitTicker, tickerInputChanged } from './ti
 import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.js';
 import { setOrb } from './orb.js';
 import { clearMissedFilters, openMissedFromList, setMissedFilterSetup, setMissedFilterSide, setMissedFilterWhy, setMissedSearch } from './journal-missed.js';
+import { checkOptionTradeStatus, openOptionTrade, placeOptionTrade, setOptionEntry, setOptionLimit, setOptionStopDuration } from './option-trade.js';
 import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
 import { setMode, setView } from './views.js';
 
@@ -384,6 +385,12 @@ export const actions = {
   setTradeLimit: el => setTradeLimit(el.value),
   setOrb: el => setOrb(num(el)),
   placeTrade: () => placeTrade(),
+  openOptionTrade: el => openOptionTrade(arg(el)),
+  setOptionEntry: el => setOptionEntry(arg(el)),
+  setOptionLimit: el => setOptionLimit(el.value),
+  setOptionStopDuration: el => setOptionStopDuration(arg(el)),
+  placeOptionTrade: () => placeOptionTrade(),
+  checkOptionTradeStatus: () => checkOptionTradeStatus(),
   checkTradeStatus: () => checkTradeStatus(),
   toggleTradeSetup: el => toggleTradeSetup(arg(el)),
   toggleTradeTactic: el => toggleTradeTactic(arg(el)),
@@ -438,6 +445,7 @@ export const actions = {
   setCloseQty: el => setCloseQty(el.value),
   setClosePrice: el => setClosePrice(el.value),
   setCloseR: el => setCloseR(num(el)),
+  setCloseAt: el => setCloseAt(arg(el)),
   setCloseRText: el => setCloseRText(el.value),
   openOriginalStop: el => openOriginalStop(arg(el), el.dataset.arg2),
   setOriginalStopText: el => setOriginalStopText(el.value),

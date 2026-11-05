@@ -1,7 +1,7 @@
 // @ts-check
 // Schwab positions as table rows (price, share of the account, stop and risk from working stop orders), the account's
 // working orders, the levels a position chart draws, and the order plans for a breakeven stop, a stop at your price, a profit target, a close, or cancelling or changing a working order.
-import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, optionPriceTick, optionStopTick, priceTick, stopTick } from './orders.js';
+import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, fmtTick, ocoOrder, onOptionStep, optionPriceTick, optionStopTick, priceTick, stopTick } from './orders.js';
 
 /**
  * @typedef {import('./orders.js').TradeAs} TradeAs
@@ -39,6 +39,12 @@ export function parseSchwabOption(symbol) {
 
 /** Schwab's padded option symbol as Tradier takes it: 'AAPL  260620C00245000' → 'AAPL260620C00245000'. @param {string} symbol */
 export const tradierSymbol = symbol => String(symbol || '').replace(/\s+/g, '');
+
+/** Tradier's OCC option symbol as Schwab takes it, the root padded to six: 'AAPL260620C00245000' → 'AAPL  260620C00245000'; '' when it isn't one. @param {string} occ */
+export function schwabOptionSymbol(occ) {
+  const m = String(occ || '').match(/^([A-Z][A-Z0-9.]{0,5})(\d{6}[CP]\d{8})$/);
+  return m ? m[1].padEnd(6, ' ') + m[2] : '';
+}
 
 /** what the table shows: the symbol, or 'AAPL 6/20/26 245C' for an option. @param {Instrument} instrument */
 export function positionLabel(instrument) {
@@ -922,10 +928,10 @@ export function positionLevels(row) {
  * plain stops are cut to the shares left. A limit goes in paired with the nearest stop for the same shares (one cancels the
  * other), so its shares keep a stop while it works. The close goes only if every step before it went through.
  * @param {Row} row
- * @param {{ type?: 'MARKET' | 'LIMIT', qty?: number, price?: number, duration?: StopDuration, session?: OrderSession }} [ticket] all of it at market by default; session for a limit
+ * @param {{ type?: 'MARKET' | 'LIMIT', qty?: number, price?: number, duration?: StopDuration, session?: OrderSession, step?: number }} [ticket] all of it at market by default; session for a limit; step an option limit's step from its quote (quoteLimit)
  * @returns {Plan}
  */
-export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DAY', session = 'NORMAL' } = {}) {
+export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DAY', session = 'NORMAL', step = 0 } = {}) {
   const fail = (/** @type {string} */ error) => ({ error, stop: 0, steps: [], paired: [], rest: 0, bare: 0, price: 0, moved: 0 });
   const blocked = tradeError(row);
   if (blocked) return fail(blocked);
@@ -933,7 +939,8 @@ export function closePlan(row, { type = 'MARKET', qty, price = 0, duration = 'DA
   const what = (/** @type {number} */ k) => `${k.toLocaleString('en-US')} ${assetType === 'OPTION' ? (k === 1 ? 'contract' : 'contracts') : (k === 1 ? 'share' : 'shares')}`;
   if (!Number.isInteger(n) || n < 1) return fail(`Pick how many ${assetType === 'OPTION' ? 'contracts' : 'shares'} to ${long ? 'sell' : 'buy back'}.`);
   if (n > held) return fail(`You hold ${what(held)}.`);
-  const limit = type === 'LIMIT' ? (assetType === 'OPTION' ? optionPriceTick(price) : priceTick(price)) : 0;
+  // an option limit from its quote keeps the step that quote shows (onOptionStep), a typed one the standard grid
+  const limit = type === 'LIMIT' ? (assetType === 'OPTION' ? (step > 0 ? onOptionStep(price, step) : optionPriceTick(price)) : priceTick(price)) : 0;
   if (type === 'LIMIT' && !(limit > 0)) return fail('Set a limit price.');
   /** @type {Step[]} */
   let steps;

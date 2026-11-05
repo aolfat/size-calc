@@ -1,5 +1,5 @@
 // @ts-check
-// Schwab orders: the shares entry (market, limit, stop or stop limit) that triggers a stop, stops and market closes for held positions, price ticks, and ticket checks.
+// Schwab orders: the shares entry (market, limit, stop or stop limit) that triggers a stop, a bought option's limit entry that triggers its stop, stops and market closes for held positions, price ticks, limits at the quote, and ticket checks.
 
 /** @typedef {'DAY' | 'GOOD_TILL_CANCEL'} StopDuration */
 /** @typedef {'NORMAL' | 'AM' | 'PM' | 'SEAMLESS'} OrderSession when a limit works: regular hours, pre-market, after hours, or Ext (all three) */
@@ -74,6 +74,51 @@ export function optionPriceTick(p) {
   return Math.round(p * 100 / step) * step / 100;
 }
 
+const onGrid = (/** @type {number} */ p, /** @type {number} */ step) => Math.abs(p / step - Math.round(p / step)) < 1e-6;
+const cents = (/** @type {number} */ p) => Math.round(p * 100) / 100;
+
+/**
+ * The step an option takes at price p, read from its own quote: a class quoting pennies (or nickels from $3) off the standard
+ * $0.05 / $0.10 grid trades in them, so its mid can sit between. Only a bid and ask on p's side of $3 say; else the standard step.
+ * @param {number} p @param {number} bid @param {number} ask @returns {number}
+ */
+export function optionQuoteStep(p, bid, ask) {
+  const std = p < 3 ? 0.05 : 0.1;
+  if (!(bid > 0) || !(ask > 0) || (bid < 3) !== (p < 3) || (ask < 3) !== (p < 3)) return std;
+  if (onGrid(bid, std) && onGrid(ask, std)) return std;
+  return std === 0.1 && onGrid(bid, 0.05) && onGrid(ask, 0.05) ? 0.05 : 0.01;
+}
+
+/** An option price on a step: to the nearest, or toward a fill (up on a buy, down on a sell). @param {number} p @param {number} step @param {'near' | 'up' | 'down'} [way] */
+export function onOptionStep(p, step, way = 'near') {
+  const n = p / step;
+  return cents((way === 'up' ? Math.ceil(n - 1e-6) : way === 'down' ? Math.floor(n + 1e-6) : Math.round(n)) * step);
+}
+
+/**
+ * A limit at the quote: the bid, the ask, or the mid between them rounded toward a fill (up on a buy, down on a sell), on the
+ * step the order takes: Schwab's tick for a stock, the option's own step (optionQuoteStep) for an option, never past the far
+ * side. step is the option step the price sits on (0 for a stock); price 0 when the quote can't give one.
+ * @param {'bid' | 'mid' | 'ask'} at @param {{ bid: number, ask: number }} q @param {{ buy: boolean, option: boolean }} o
+ * @returns {{ price: number, step: number }}
+ */
+export function quoteLimit(at, { bid, ask }, { buy, option }) {
+  const none = { price: 0, step: 0 };
+  if (at === 'bid' || at === 'ask') {
+    const p = at === 'bid' ? bid : ask;
+    if (!(p > 0)) return none;
+    return option ? { price: cents(p), step: optionQuoteStep(p, bid, ask) } : { price: priceTick(p), step: 0 };
+  }
+  if (at !== 'mid' || !(bid > 0) || !(ask > 0) || ask < bid) return none;
+  const m = (bid + ask) / 2;
+  if (option) {
+    const step = optionQuoteStep(m, bid, ask), price = onOptionStep(m, step, buy ? 'up' : 'down');
+    return { price: buy ? Math.min(price, cents(ask)) : Math.max(price, cents(bid)), step };
+  }
+  const f = m >= 1 ? 100 : 10000, n = m * f;
+  return { price: (buy ? Math.ceil(n - 1e-6) : Math.floor(n + 1e-6)) / f, step: 0 };
+}
+
 /** @typedef {'EQUITY' | 'OPTION'} TradeAs */
 
 /** The instruction that closes a long or a short. @param {TradeAs} assetType @param {boolean} isLong */
@@ -103,6 +148,42 @@ export function closeMarketOrder(p) {
  */
 export function closeLimitOrder(p) {
   return { orderType: 'LIMIT', session: p.assetType === 'OPTION' ? 'NORMAL' : p.session || 'NORMAL', duration: p.duration, orderStrategyType: 'SINGLE', price: p.price, orderLegCollection: closingLeg(p) };
+}
+
+/**
+ * Buy to open a call or a put at a limit, today, and once it fills, a stop that sells the same contracts to close when the
+ * option itself trades at the stop (Schwab's stops on an option trigger on its own price, not the underlying's).
+ * @param {{ symbol: string, qty: number, limit: number, stop: number, stopDuration: StopDuration }} t symbol is Schwab's padded one
+ */
+export function optionEntryOrder({ symbol, qty, limit, stop, stopDuration }) {
+  const leg = (/** @type {string} */ instruction) => ({ instruction, quantity: qty, instrument: { symbol, assetType: 'OPTION' } });
+  return {
+    orderType: 'LIMIT', session: 'NORMAL', duration: 'DAY', price: limit, orderStrategyType: 'TRIGGER',
+    orderLegCollection: [leg('BUY_TO_OPEN')],
+    childOrderStrategies: [{ orderType: 'STOP', session: 'NORMAL', duration: stopDuration, orderStrategyType: 'SINGLE', stopPrice: stop, orderLegCollection: [leg('SELL_TO_CLOSE')] }],
+  };
+}
+
+const optPx = (/** @type {number} */ p) => '$' + p.toFixed(2);
+
+/**
+ * Why a bought option's entry can't go at all; '' when it can. stop is the option's own stop price.
+ * @param {{ qty: number, bid: number, ask: number, stop: number }} t
+ */
+export function optionTicketError({ qty, bid, ask, stop }) {
+  if (!(bid > 0) || !(ask > 0)) return 'This contract has no two-sided market right now (no bid or no ask), so there is no price to buy at.';
+  if (ask < bid) return `The quote is crossed (bid ${optPx(bid)}, ask ${optPx(ask)}). Wait for a clean market.`;
+  if (!(qty >= 1)) return 'Your max loss per trade buys less than one contract at this stop. Raise the risk or move the stop closer.';
+  if (!(stop > 0)) return 'At your stop the model puts this contract near $0, so there is no option price to stop at. Move the stop closer or pick another strike.';
+  if (stop >= bid) return `The option stop ${optPx(stop)} is at or above the bid ${optPx(bid)}, so it would sell right after the buy. Move the stop further away.`;
+  return '';
+}
+
+/** Why the entry's limit can't work; '' when it can. Shown beside the price, it holds the order back until fixed. @param {{ limit: number, stop: number }} t */
+export function optionLimitError({ limit, stop }) {
+  if (!(limit > 0)) return 'Set a limit price.';
+  if (limit <= stop) return `The limit ${optPx(limit)} is at or under the option stop ${optPx(stop)}. Buy above the stop.`;
+  return '';
 }
 
 /** Two orders where the first to fill cancels the other: a target and its stop. @param {object} a @param {object} b */
