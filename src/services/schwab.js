@@ -227,20 +227,21 @@ export async function schwabExchangeCode(code) {
   await shareLogin(saveTokens(j, Date.now() + REFRESH_LIFE, binding)); // the other devices pick it up
 }
 
-const freshAccess = t => !!t?.access && t.accessExp - Date.now() > 120000;
+/** an access token good for at least minLeft more (two minutes for a call; a warm-up asks for more) */
+const freshAccess = (t, minLeft = 120000) => !!t?.access && t.accessExp - Date.now() > minLeft;
 
 // one refresh at a time across this origin's tabs: two tabs spending the same refresh token at once could see one
 // refused and end a login the other just renewed
-function refreshTokens(connectionId) {
-  const run = () => refreshOnce(connectionId, false);
+function refreshTokens(connectionId, minLeft) {
+  const run = () => refreshOnce(connectionId, false, minLeft);
   const locks = globalThis.navigator?.locks;
   return locks ? locks.request('schwab-refresh', run) : run();
 }
 
-async function refreshOnce(connectionId, retried) {
+async function refreshOnce(connectionId, retried, minLeft = 120000) {
   const t = schwabSession();
   if (t?.connectionId !== connectionId) throw loginChanged();
-  if (freshAccess(t)) return t.access; // another tab refreshed while this one waited
+  if (freshAccess(t, minLeft)) return t.access; // another tab refreshed while this one waited
   // a logout or a new login while the refresh was out wins: its answer is neither saved nor allowed to end that login
   const same = () => schwabSession()?.connectionId === connectionId && readTokens()?.refresh === t.refresh;
   let j;
@@ -257,7 +258,7 @@ async function refreshOnce(connectionId, retried) {
     // refused: another device may have logged in again (ending this login) or renewed it, so take the account's
     if (!retried && await schwabSyncShared()) {
       const now = schwabSession();
-      if (now) return freshAccess(now) ? now.access : refreshOnce(now.connectionId, true);
+      if (now) return freshAccess(now) ? now.access : refreshOnce(now.connectionId, true, minLeft);
     }
     // the login is over: here, and in the account if it's still the one kept there
     store.del('schwab_tokens');
@@ -277,13 +278,38 @@ function notSent(e) {
   return e;
 }
 
-/** a bearer token good for at least two more minutes, refreshing once if needed */
-export async function schwabAccessToken() {
+/** a bearer token good for at least two more minutes (minLeft), refreshing once if needed */
+export async function schwabAccessToken(minLeft = 120000) {
   const t = schwabSession();
   if (!t) throw new Error('Log in to Schwab in Settings.');
-  if (freshAccess(t)) return t.access;
-  if (!state.schwabRefreshing) state.schwabRefreshing = refreshTokens(t.connectionId).finally(() => { state.schwabRefreshing = null; });
+  if (freshAccess(t, minLeft)) return t.access;
+  if (!state.schwabRefreshing) state.schwabRefreshing = refreshTokens(t.connectionId, minLeft).finally(() => { state.schwabRefreshing = null; });
   return state.schwabRefreshing;
+}
+
+/** a review renews a login with less than this left, so the send never waits on a renewal */
+const WARM_LOGIN = 10 * 60000;
+/** the worker lets a browser keep a CORS preflight 10 minutes (Access-Control-Max-Age 600); warm again a little sooner */
+const WARM_AGAIN = 8 * 60000;
+
+/**
+ * Ready a send while its review is open: renew a login that would need it, open the connection to the worker, and have
+ * the browser ask the worker's CORS preflight for the exact URLs the send uses. An order call carries Authorization, so the
+ * browser asks permission first (OPTIONS) unless it holds an answer for that URL; a GET of the same URL gets that answer,
+ * and it covers every method the worker allows (POST, PUT, DELETE). post: the account's /orders (a new order); orderIds:
+ * /orders/{id} (a cancel or a replace; the GET reads that order, harmlessly). Never throws, never sends an order.
+ * @param {string} hash @param {{ post?: boolean, orderIds?: (number | string | null | undefined)[] }} [what]
+ */
+export async function schwabWarm(hash, { post = false, orderIds = [] } = {}) {
+  try {
+    await schwabAccessToken(WARM_LOGIN);
+    const base = accountPath(hash);
+    const paths = [...(post ? [base + '/orders'] : []), ...[...new Set(orderIds.filter(id => id != null).map(String))].map(id => `${base}/orders/${encodeURIComponent(id)}`)];
+    const now = Date.now(), warmed = state.schwabWarmed;
+    const due = paths.filter(p => !(now - (warmed[p] || 0) < WARM_AGAIN));
+    for (const p of due) warmed[p] = now;
+    await Promise.all(due.map(p => schwabApi(p).then(r => r.body?.cancel?.(), () => { delete warmed[p]; })));
+  } catch(e) { /* a warm-up that fails leaves the send to do it */ }
 }
 
 const READ_TIMEOUT = 15000;

@@ -123,6 +123,7 @@ test('the review buys the card\'s contracts at the mid with the model\'s option 
   assert.deepEqual(net.posts[0], plain(t.order));
   assert.equal(net.posts[0].orderLegCollection[0].instrument.symbol, SCHWAB);
   assert.match(body(), /Order 2001: working\. Stop \$1\.50: awaiting parent order\./);
+  assert.match(body(), /class="hint trade-timing">Sent in \d+\.\ds: quote \d+\.\ds, Schwab \d+\.\ds\.</, 'the option review says how long the send took too');
   assert.match(body(), /data-action="openOrderEdit" data-arg="2001"[^>]*>Change limit</, 'a waiting limit can move through Positions\' Edit');
   assert.deepEqual(plain(state.tradeLast).symbol, SCHWAB);
 });

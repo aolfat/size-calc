@@ -473,7 +473,7 @@ export const actions = {
   openOrderCancel: el => openOrderCancel(arg(el)),
   setCancelKeep: el => setCancelKeep(arg(el) === 'keep'),
   sendOrderCancel: () => sendOrderCancel(),
-  openCancelAll: () => openCancelAll(),
+  openCancelAll: el => openCancelAll((el && arg(el)) || null), // with a position's symbol or spread key: its orders only; without: the whole account
   setCancelAllOnly: el => setCancelAllOnly(arg(el)),
   sendCancelAll: () => sendCancelAll(),
   openOrderEdit: el => openOrderEdit(arg(el)),
@@ -511,6 +511,7 @@ export const actions = {
     else if (what === 'sim') simPosition(key);
     else if (what === 'legs') togglePosLegs(key);
     else if (what === 'spreadClose') openSpreadClose(key);
+    else if (what === 'cancelOrders') return openCancelAll(key);
     else openPositionTrade(key, what);
   },
   setPosLayout: el => setPosLayout(arg(el)),

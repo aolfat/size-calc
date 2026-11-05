@@ -117,16 +117,24 @@ export async function fetchQuote() {
 }
 
 // re-reads the LOADED symbol, never the field; true only when a fresh quote for it was applied
-export async function refreshQuote() {
+export async function refreshQuote(draw = true) {
   const ticker = state.quoteData?.symbol;
   if (!ticker) return false;
   try {
     const q = isFuturesQuote(state.quoteData) ? await fetchFuturesQuote(ticker) : await tradierQuote(ticker, false).catch(() => null);
     if (!q || q.symbol !== ticker || state.quoteData?.symbol !== ticker) return false;
-    state.quoteData = q; renderQuote(); renderChain(); fetchChart(ticker);
-    document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
+    state.quoteData = q;
+    if (draw) drawQuote();
     return true;
   } catch(e) { return false; }
+}
+
+/** the card, the chain and the chart from state.quoteData; an order send holds this until the order is out (refreshQuote(false)) */
+export function drawQuote() {
+  const ticker = state.quoteData?.symbol;
+  if (!ticker) return;
+  renderQuote(); renderChain(); fetchChart(ticker);
+  document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
 }
 
 /**

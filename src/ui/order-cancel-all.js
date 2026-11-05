@@ -1,10 +1,11 @@
-// Cancel all: every working order in the account (or only the entries, keeping stops and targets), reviewed in a sheet and
+// Cancel all: every working order in the account (or only the entries, keeping stops and targets), or every one on one position
+// (its Cancel orders button: a stock or contract, or a spread's legs), reviewed in a sheet and
 // sent once after a re-read shows the same plan; each order is its own cancel, a refused one doesn't stop the rest,
 // and afterwards Schwab is re-read to say what still works.
 import { state } from '../state.js';
 import { marketEscape as esc } from '../core/format.js';
 import { cancelAllPlan, workingOrders, workingWords } from '../core/positions.js';
-import { schwabAccount, schwabConnected } from '../services/schwab.js';
+import { schwabAccount, schwabConnected, schwabWarm } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { cancelWorking, sendsSame } from './order-cancel.js';
 import { failureText } from './position-trade.js';
@@ -30,34 +31,49 @@ function stopWarnings(gone) {
   return out;
 }
 
-/** the frozen review: the plan from what Schwab shows now */
-export function buildCancelAllTicket(only = 'all') {
+/** a position key (a symbol, or a spread's key) as the symbols its orders are on, and its name; null for the whole account */
+function scopeOf(key) {
   const p = state.positions;
-  const t = { hash: (p && p.hash) || '', only, error: '', notice: '', steps: [], gone: [], kept: [], warnings: [], sent: false, checking: false, failures: 0, done: '', confirmed: false };
+  if (!key || !p) return null;
+  const spread = (p.spreads || []).find(s => s.key === key);
+  if (spread) return { key, symbols: spread.legs.map(l => l.symbol), label: spread.label };
+  const row = p.rows.find(r => r.symbol === key);
+  return { key, symbols: [key], label: row ? row.label : key };
+}
+
+/** the frozen review: the plan from what Schwab shows now; key = one position's orders only */
+export function buildCancelAllTicket(only = 'all', key = null) {
+  const p = state.positions;
+  const scope = scopeOf(key);
+  if (scope) only = 'all'; // one position: every order on it, its stops and targets included
+  const t = { hash: (p && p.hash) || '', only, scope, error: '', notice: '', steps: [], gone: [], kept: [], warnings: [], sent: false, checking: false, failures: 0, done: '', confirmed: false };
   if (!p) { t.error = 'Could not read your orders from Schwab. ' + state.positionsError; return t; }
   if (p.stopsMissing) { t.error = 'Schwab did not return the orders on this account. Try again in a moment.'; return t; }
-  Object.assign(t, cancelAllPlan(p.orders, p.rows, { only }));
+  Object.assign(t, cancelAllPlan(p.orders, p.rows, { only, symbols: scope ? scope.symbols : null }));
   if (t.error) return t;
   t.warnings = [...stopWarnings(t.gone), ...t.gone.filter(o => o.filled > 0)
     .map(o => `${o.label}: ${o.filled.toLocaleString('en-US')} of ${o.qty.toLocaleString('en-US')} already filled and stay filled.`)];
   return t;
 }
 
-export async function openCancelAll() {
+/** key: a position's Cancel orders (its symbol, or a spread's key); none: the Working orders card's Cancel all */
+export async function openCancelAll(key = null) {
   if (state.posTradeBusy) return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
   try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
-  state.cancelAllTicket = buildCancelAllTicket();
+  state.cancelAllTicket = buildCancelAllTicket('all', key);
   if (state.positionsError && !state.cancelAllTicket.error) state.cancelAllTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   renderCancelAllSheet();
   openSheet('cancelAll');
+  const c = state.cancelAllTicket; // ready the cancels while you review
+  if (!c.error) schwabWarm(c.hash, { orderIds: c.steps.map(s => s.orderId) });
 }
 
 /** everything, or only the entries (stops and targets on what you hold stay) */
 export function setCancelAllOnly(only) {
   const t = state.cancelAllTicket;
-  if (!t || t.sent || state.posTradeBusy || (only !== 'all' && only !== 'entries')) return;
+  if (!t || t.sent || t.scope || state.posTradeBusy || (only !== 'all' && only !== 'entries')) return;
   state.cancelAllTicket = buildCancelAllTicket(only);
   renderCancelAllSheet();
 }
@@ -70,7 +86,7 @@ export async function sendCancelAll() {
   t.checking = true;
   renderCancelAllSheet();
   let fresh;
-  try { await refreshPositions(); fresh = buildCancelAllTicket(t.only); } finally { t.checking = false; }
+  try { await refreshPositions(); fresh = buildCancelAllTicket(t.only, t.scope && t.scope.key); } finally { t.checking = false; }
   if (state.positionsError && !fresh.error) fresh.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   const moved = state.positions && fresh.hash !== t.hash ? 'account' : fresh.error || !sendsSame(fresh, t) ? 'orders' : '';
   if (moved) {
@@ -131,8 +147,9 @@ export function renderCancelAllSheet() {
   const acct = schwabAccount();
   document.getElementById('cancelAllAccount').textContent = acct ? 'Account ••' + acct.last4 : '';
   const body = document.getElementById('cancelAllBody');
+  document.getElementById('cancelAllTitle').textContent = t && t.scope ? `Cancel ${t.scope.label} orders` : 'Cancel all orders';
   if (!t) { body.innerHTML = ''; return; }
-  const choice = !t.sent && t.only === 'entries' && /closes something you hold/.test(t.error);
+  const choice = !t.sent && !t.scope && t.only === 'entries' && /closes something you hold/.test(t.error);
   if (t.error) {
     body.innerHTML = `${choice ? `<dl class="trade-legs">${onlyChoice(t)}</dl>` : ''}<p class="trade-warn" role="alert">${esc(t.error)}</p><div class="trade-actions"><button class="btn" data-action="closeSheet">Close</button></div>`;
     return;
@@ -144,7 +161,7 @@ export function renderCancelAllSheet() {
   body.innerHTML = `
     ${t.notice ? `<p class="trade-warn" role="alert">${esc(t.notice)}</p>` : ''}
     <dl class="trade-legs">
-      ${onlyChoice(t)}
+      ${t.scope ? '' : onlyChoice(t)}
       <div><dt>${t.sent ? 'Sent' : 'Will send'}</dt><dd><ol class="pos-steps">${steps}</ol></dd></div>
       ${t.kept.length ? `<div><dt>Stays</dt><dd><span class="shares-detail">${esc(t.kept.map(o => `${workingWords(o)} ${o.label}`).join(', '))}</span></dd></div>` : ''}
     </dl>

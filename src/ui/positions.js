@@ -11,7 +11,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { originalSize } from '../core/journal.js';
-import { INSTRUCTION_WORDS, atBreakeven, breakevenDone, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, breakevenDone, cancelAllPlan, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
@@ -307,6 +307,18 @@ function riskCell(r) {
 }
 
 // Chart (and Simulate for options), Stop, BE stop and Close sit under the symbol, in the pinned column, so phones see them without scrolling
+/** how many working orders a position's Cancel orders would take out (a pair's halves and an entry's waiting stop counted) */
+function ordersOn(symbols) {
+  const p = state.positions;
+  return p && !p.stopsMissing ? cancelAllPlan(p.orders, [], { symbols }).gone.length : 0;
+}
+const cancelWords = n => `Cancel ${n === 1 ? 'order' : `${n} orders`}`;
+/** Cancel orders: every working order on this position (key: its symbol, or a spread's key), reviewed first; '' with none */
+function cancelOrdersButton(key, symbols) {
+  const n = ordersOn(symbols);
+  return n ? `<button class="pos-act" data-action="openCancelAll" data-arg="${esc(key)}" title="Review cancelling every working order on this position">${cancelWords(n)}</button>` : '';
+}
+
 function tradeButtons(r) {
   if (!r.tradeAs) return '';
   // every share already has a stop at or past breakeven (after a trim, every one of them): nothing to move, and moving it would loosen it
@@ -316,7 +328,7 @@ function tradeButtons(r) {
   const chart = `<button class="pos-act${charted ? ' active' : ''}" aria-pressed="${charted}" data-action="togglePositionChart" data-arg="${arg}" title="${r.tradeAs === 'OPTION' ? 'The contract\'s 5-minute chart' : 'Daily chart'} with your cost, stops and targets: set a profit target on it">Chart</button>`
     + (r.option ? `<button class="pos-act" data-action="simPosition" data-arg="${arg}" title="Simulate returns over time from your average cost (Black-Scholes)">Simulate</button>` : '');
   const stop = `<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="stop" title="Set a stop at a price you pick">Stop</button>`;
-  return `<span class="pos-acts many">${chart}${stop}${atBe ? `<span class="pos-locked">${atBe}</span>` :`<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act pos-act-close" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button></span>`;
+  return `<span class="pos-acts many">${chart}${stop}${atBe ? `<span class="pos-locked">${atBe}</span>` :`<button class="pos-act" data-action="openPositionTrade" data-arg="${arg}" data-arg2="breakeven" title="Move the stop to your average cost">BE stop</button>`}<button class="pos-act pos-act-close" data-action="openPositionTrade" data-arg="${arg}" data-arg2="close" title="Close all or part, at market or a limit">Close</button>${cancelOrdersButton(r.symbol, [r.symbol])}</span>`;
 }
 
 function positionRow(r, leg = false) {
@@ -337,7 +349,8 @@ function positionRow(r, leg = false) {
 function spreadButtons(s) {
   const open = state.posLegsOpen.includes(s.key);
   return `<button class="pos-act${open ? ' active' : ''}" data-action="togglePosLegs" data-arg="${esc(s.key)}" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the legs, each with its own chart, simulator and orders">Legs</button>`
-    + `<button class="pos-act pos-act-close" data-action="openSpreadClose" data-arg="${esc(s.key)}" title="Close all or part of the spread as one order, at a net limit or market">Close</button>`;
+    + `<button class="pos-act pos-act-close" data-action="openSpreadClose" data-arg="${esc(s.key)}" title="Close all or part of the spread as one order, at a net limit or market">Close</button>`
+    + cancelOrdersButton(s.key, s.legs.map(l => l.symbol));
 }
 
 function spreadRow(s) {
@@ -568,7 +581,7 @@ function renderPosActions() {
       <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(s.pnl)}">${headline(s.pnl, s.pnlPct)}</span><span class="${tone(s.pnl)}">${figuresOf(s.pnlPct, r)}</span></div>
       <div class="pc-sub">${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${Math.abs(s.qty) === 1 ? 'spread' : 'spreads'} · ${esc(s.legWords)}</div>
       ${spreadLadder(s)}${spreadNote(s)}
-      <div class="pa-acts">${actBtn(s.key, 'legs', open ? 'Hide legs' : 'Show legs')}${actBtn(s.key, 'spreadClose', 'Close spread', 'pos-act-close')}</div>
+      <div class="pa-acts">${actBtn(s.key, 'legs', open ? 'Hide legs' : 'Show legs')}${actBtn(s.key, 'spreadClose', 'Close spread', 'pos-act-close')}${(n => n ? actBtn(s.key, 'cancelOrders', cancelWords(n)) : '')(ordersOn(s.legs.map(l => l.symbol)))}</div>
     </div>`;
     return;
   }
@@ -581,6 +594,7 @@ function renderPosActions() {
     actBtn(row.symbol, 'stop', row.stop === null ? 'Set stop' : 'Edit stop'),
     breakevenDone(row) ? '' : actBtn(row.symbol, 'breakeven', 'Move stop to breakeven'),
     actBtn(row.symbol, 'close', 'Close', 'pos-act-close'),
+    (n => n ? actBtn(row.symbol, 'cancelOrders', cancelWords(n)) : '')(ordersOn([row.symbol])),
   ].join('') : '';
   body.innerHTML = `<div class="pa-body">
     <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(row.pnl)}">${headline(row.pnl, row.pnlPct)}</span><span class="${tone(row.pnl)}">${figuresOf(row.pnlPct, R)}</span></div>

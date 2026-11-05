@@ -8,7 +8,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { inRegularHours, onOptionStep, optionEntryOrder, optionLimitError, optionQuoteStep, optionStopTick, optionTicketError, quoteLimit } from '../core/orders.js';
 import { fmtPositionPrice, positionLabel, schwabOptionSymbol } from '../core/positions.js';
 import { store } from '../lib/store.js';
-import { schwabAccount, schwabAccounts, schwabConnected, schwabStopDuration } from '../services/schwab.js';
+import { schwabAccount, schwabAccounts, schwabConnected, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { showError } from './feedback.js';
 import { planContext, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { readLegQuotes, showSheetQuote, watchSheetQuote } from './sheet-quote.js';
@@ -120,6 +120,7 @@ export async function openOptionTrade(occ) {
   startTradePlan(state.tradeTicket);
   renderOptionTradeSheet();
   openSheet('trade');
+  if (state.tradeTicket.hash) schwabWarm(state.tradeTicket.hash, { post: true }); // the login, the connection and the browser's permission to post, while you review
   // a buy fills at the ask
   watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol: occ, n: 1 }], first: q, fills: () => 'ask' });
 }
@@ -218,7 +219,8 @@ export function renderOptionTradeSheet() {
       <button class="btn" data-action="closeSheet">${t.sent ? 'Close' : 'Cancel'}</button>
       ${action}
     </div>
-    <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>`;
+    <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>
+    ${t.timing ? `<p class="hint trade-timing">${esc(t.timing)}</p>` : ''}`;
 }
 
 /** everything under the price pick: the entry, the stop, the risk, the warnings and the payload */

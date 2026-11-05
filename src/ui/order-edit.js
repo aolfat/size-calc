@@ -8,7 +8,7 @@ import { inZone } from '../lib/zone.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { editPlan, fmtPositionPrice, schwabTime, workingOrders, workingWords } from '../core/positions.js';
 import { planWithOrder, updateOrderPlan } from '../services/order-plans.js';
-import { schwabAccount, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder } from '../services/schwab.js';
+import { schwabAccount, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabWarm } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
 import { cancelWorking, schwabList, sendsSame, shownCancelled, statusOf } from './order-cancel.js';
 import { failureText } from './position-trade.js';
@@ -69,6 +69,8 @@ export async function openOrderEdit(orderId) {
   if (state.positionsError && !state.editTicket.error) state.editTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   renderEditSheet();
   openSheet('edit');
+  const e = state.editTicket; // ready the send while you review: the replace (or the cancels) and a pair placed again
+  if (!e.error) schwabWarm(e.hash, { post: true, orderIds: [e.order?.orderId, e.partner?.orderId] });
   // the live bid and ask over it; the side the order fills on is lit (the ask on a buy, the bid on a sell)
   const o = state.editTicket.order;
   return watchSheetQuote({ sheet: 'edit', el: 'editQuote', legs: o ? [{ symbol: tradierSymbol(o.symbol), n: 1 }] : [], fills: () => o && /^BUY/.test(o.instruction) ? 'ask' : 'bid' });
