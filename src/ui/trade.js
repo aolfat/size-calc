@@ -544,7 +544,8 @@ export async function sendReviewed(t, { reread, recheck: check, render, sentText
   render();
   try {
     const t1 = Date.now();
-    await schwabAccessToken().catch(() => {}); // timed on its own; a failure surfaces in the send, tagged nothing sent
+    // timed on its own; a login that fails here stops the send with its own reason (nothing reached Schwab), never renewed twice
+    try { await schwabAccessToken(); } catch(e) { e.notSent = true; throw e; }
     const t2 = Date.now();
     const { orderId } = await schwabPlaceOrder(t.order, t.hash);
     const t3 = Date.now();

@@ -812,6 +812,19 @@ test('a stale live quote is read again before the order, and the timing names it
   assert.equal(run("timingWords({ quote: null, login: 3, schwab: 480, total: 483 })"), 'Sent in 0.5s: live quote, Schwab 0.5s.', 'a login under 50ms goes unsaid');
 });
 
+test('a login Schwab refuses at Place stops the send with Schwab\'s reason, renewed once, nothing sent', async () => {
+  const storage = connected();
+  const net = quotes([QUOTE], async (path, init) => path === '/refresh' ? json({ error: 'invalid_grant' }, 400) : created(path, init));
+  const { run, state } = await sharesCard({ fetch: net.fetch, storage });
+  await run('openTrade()'); // 20 minutes left: the warm-up renews nothing
+  const tokens = JSON.parse(storage.get('schwab_tokens'));
+  storage.set('schwab_tokens', JSON.stringify({ ...tokens, accessExp: Date.now() - 1000 })); // then it runs out before Place
+  await run('placeTrade()');
+  assert.equal(net.calls.filter(c => c.url.endsWith('/refresh')).length, 1, 'renewed once, not again by the order call');
+  assert.equal(net.posts().filter(c => c.url.includes('/orders')).length, 0, 'no order went out');
+  assert.match(state.tradeTicket.result.text, /login expired \(Schwab: invalid_grant\)\. Log in again in Settings\. Nothing was sent to Schwab\./);
+});
+
 test('opening the review warms the send: a GET of the account\'s /orders, once, and never an order', async () => {
   const net = quotes([QUOTE], created);
   const { run } = await sharesCard({ fetch: net.fetch, storage: connected() });

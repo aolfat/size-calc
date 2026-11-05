@@ -219,7 +219,8 @@ export function renderOptionTradeSheet() {
       <button class="btn" data-action="closeSheet">${t.sent ? 'Close' : 'Cancel'}</button>
       ${action}
     </div>
-    <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>`;
+    <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>
+    ${t.timing ? `<p class="hint trade-timing">${esc(t.timing)}</p>` : ''}`;
 }
 
 /** everything under the price pick: the entry, the stop, the risk, the warnings and the payload */
