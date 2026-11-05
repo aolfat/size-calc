@@ -100,9 +100,19 @@ export function rUnitWords(unit, row) {
   return `the stop ${px(unit.stop)}`;
 }
 
-/** the records, your stops and merges, when the R column (or the phone cards' R), an open chart's targets or a close's original size need them and nothing has read them yet */
-function readPositionJournal(force = false, need = false) {
-  if (!(rShown() || state.posChart || need || mq(PHONE_MQ)) || !state.session || state.journalLoading) return;
+/**
+ * The rows again over the Journal's trades: a position whose open trade the Journal holds takes its whole-position average cost
+ * (adds averaged in, trims leaving it) instead of Schwab's, which drops the oldest shares first on a trim.
+ */
+function applyJournalCost() {
+  const p = state.positions;
+  if (!p || !p.account) return;
+  Object.assign(p, positionRows(p.account, p.orders, { trades: positionTrades(), last4: p.last4 }));
+}
+
+/** the records, your stops and merges (signed in, nothing has read them yet): the average cost, R, an open chart's targets and a close's original size read them */
+function readPositionJournal(force = false) {
+  if (!state.session || state.journalLoading) return;
   if (state.posJournalBusy) return state.posJournalBusy;
   if (!force && (state.journalRecords || state.posJournalError)) return;
   state.posJournalBusy = Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades()]).then(([records, reviews, saved]) => {
@@ -112,13 +122,14 @@ function readPositionJournal(force = false, need = false) {
     if (saved.status === 'fulfilled') { state.journalSaved = saved.value; state.journalSavedError = ''; }
   }).finally(() => {
     state.posJournalBusy = false;
+    applyJournalCost();
     if (state.positionsView) { renderPositionsTable(); renderPositionChart(); }
   });
   return state.posJournalBusy;
 }
 
 /** a close ticket waits for the Journal's records (signed in, not read yet), so its percents of the original start right */
-export async function readPositionJournalForClose() { await readPositionJournal(false, true); }
+export async function readPositionJournalForClose() { await readPositionJournal(); }
 
 /** the kept records and this read's orders: an order in both is taken from the read, the newer of the two */
 function positionRecords() {
@@ -226,7 +237,8 @@ async function readPositions(id, acct, asked) {
     // stops are extra: positions still show when the orders read fails
     const [account, orders] = await Promise.all([schwabPositions(acct.hash), schwabRecentOrders(Date.now(), acct.hash).catch(() => null)]);
     if (id !== state.positionsRequest) return newest();
-    state.positions = { ...positionRows(account, orders || []), orders: orders || [], hash: acct.hash, last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
+    state.positions = { ...positionRows(account, orders || []), account, orders: orders || [], hash: acct.hash, last4: acct.last4, asOf: Date.now(), stopsMissing: !orders };
+    applyJournalCost();
     state.positionsError = '';
     applyAccountValue(account, acct.hash); // the first read of the day sets the account size
     if (asked) showToast(`Positions refreshed at ${inZone(state.positions.asOf)}.`);
@@ -264,6 +276,14 @@ export function positionsAccountChanged() {
   renderPositions();
 }
 
+/** the average cost's source when it isn't Schwab's figure: 'Schwab $12.00' under it, with why in its title */
+function avgNote(r) {
+  if (!r.cost || !(r.schwabAvg > 0) || Math.abs(r.schwabAvg - r.avg) < 0.005) return '';
+  const px = v => fmtPositionPrice(v, r.tradeAs);
+  const title = `Your whole position's average cost, from the Journal: every add averages in and a trim leaves it. Schwab shows ${px(r.schwabAvg)}: on a trim it drops your oldest ${r.option ? 'contracts' : 'shares'} first.`;
+  return `<span class="pos-sub" title="${esc(title)}">Schwab ${px(r.schwabAvg)}</span>`;
+}
+
 function riskCell(r) {
   if (r.risk === null) return '—';
   const held = Math.abs(r.qty);
@@ -291,7 +311,7 @@ function positionRow(r, leg = false) {
   return `<tr${leg ? ' class="pos-leg"' : ''}>
     <td><b>${esc(r.label)}</b>${tradeButtons(r)}</td>
     <td>${count(r.qty)}</td>
-    <td>${r.avg > 0 ? fmt$(r.avg) : '—'}</td>
+    <td>${r.avg > 0 ? fmt$(r.avg) + avgNote(r) : '—'}</td>
     <td>${fmt$(r.price)}</td>
     <td>${money(r.value)}</td>
     ${shownCols().map(([, , cell]) => `<td>${cell(r)}</td>`).join('')}
@@ -482,7 +502,7 @@ function ptRow(r, leg = false) {
   return `<tr class="pt-row${leg ? ' pos-leg' : ''}" data-action="openPosActions" data-arg="${esc(r.symbol)}">
     ${ptSymbol(r.symbol, r.label, sub, be ? 'pos-locked' : '')}
     ${ptCell(px(r.price))}${state.posPnlPct ? '' : ptCell(pnl$(r.pnl))}${ptCell(pnlPctCell(r.pnlPct))}${ptCell(money(r.value))}
-    ${ptCell(count(r.qty))}${ptCell(r.avg > 0 ? px(r.avg) : '—')}${ptCell(r.stop === null ? '—' : px(r.stop))}${ptCell(cardRisk(r))}${ptCell(rCellOf(r.pnl === null ? null : cardR(r)))}
+    ${ptCell(count(r.qty))}${ptCell(r.avg > 0 ? px(r.avg) + avgNote(r) : '—')}${ptCell(r.stop === null ? '—' : px(r.stop))}${ptCell(cardRisk(r))}${ptCell(rCellOf(r.pnl === null ? null : cardR(r)))}
   </tr>`;
 }
 
@@ -553,6 +573,7 @@ function renderPosActions() {
   body.innerHTML = `<div class="pa-body">
     <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(row.pnl)}">${headline(row.pnl, row.pnlPct)}</span><span class="${tone(row.pnl)}">${figuresOf(row.pnlPct, R)}</span></div>
     <div class="pc-sub">${row.avg > 0 ? `${px(row.avg)} → ` : ''}<b>${px(row.price)}</b> · ${count(row.qty)} ${row.option ? 'ct' : 'sh'}</div>
+    ${avgNote(row) ? `<div class="pc-sub">Whole position's average · ${avgNote(row)}</div>` : ''}
     ${rowLadder(row)}${stopNote(row)}
     <div class="pa-orig">${rUnitLine(row)}${originalStopBlock(row, 'actions')}</div>
     <dl class="pc-stats">${stat('Mkt val', money(row.value))}${stat('Stop', row.stop === null ? '—' : px(row.stop))}${stat('Risk @ stop', cardRisk(row))}</dl>

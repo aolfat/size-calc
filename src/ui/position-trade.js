@@ -5,7 +5,7 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick } from '../core/orders.js';
-import { INSTRUCTION_WORDS, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, breakevenChoices, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
@@ -65,7 +65,7 @@ function pairingWarnings(t) {
 export function buildPositionTicket(row, kind, symbol, now = Date.now(), target = null) {
   // hash: the account it was read from, and the only one its steps go to
   const t = { kind, symbol, hash: (state.positions && state.positions.hash) || '', row: row || null, error: '', notice: '', listing: false, stop: 0, steps: [], paired: [], rest: 0, bare: 0, kept: 0, locked: 0,
-    choose: false, mode: null, options: null, target, price: 0, moved: 0, stopDuration: schwabStopDuration(), session: 'NORMAL', warnings: [], warnFlags: [], sent: false, checking: false, failure: '', done: '', confirmed: false };
+    choose: false, mode: null, options: null, beAt: 'avg', beChoices: [], target, price: 0, moved: 0, stopDuration: schwabStopDuration(), session: 'NORMAL', warnings: [], warnFlags: [], sent: false, checking: false, failure: '', done: '', confirmed: false };
   if (!row) { t.error = `Schwab no longer shows a ${symbol} position.`; return t; }
   if (state.positions && state.positions.stopsMissing) {
     t.error = 'Schwab did not return the orders on this account, so there is no telling what already covers the position. Try again in a moment.';
@@ -88,6 +88,7 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
     // a stop at your price starts at the nearest stop when some shares have none, else empty
     // the chart's stop when it has one
     if (kind === 'stop') { t.stopInput = target && target.price > 0 ? target.price : row.stop !== null && row.covered < Math.abs(row.qty) ? row.stop : 0; t.target = null; t.reset = false; t.origStop = originalStop(row); }
+    t.beChoices = breakevenChoices(row); // after a trim: the average, the shares left by lot, or the whole trade even
     planStops(t);
   }
   if (t.error) return t;
@@ -105,13 +106,32 @@ function planStops(t) {
     t.planError = t.error; t.error = '';
     return;
   }
-  const plan = limits => t.kind === 'stop' ? stopPlan(t.row, { stop: t.stopInput, duration: t.stopDuration, limits }) : breakevenPlan(t.row, t.stopDuration, { limits });
+  const plan = limits => t.kind === 'stop' ? stopPlan(t.row, { stop: t.stopInput, duration: t.stopDuration, limits }) : breakevenPlan(beRow(t), t.stopDuration, { limits });
   const options = { keep: plan('keep'), pair: plan('pair'), cancel: plan('cancel') };
   t.choose = closersInTheWay(t.row).length > 0 && Object.values(options).some(p => !p.error);
   t.options = t.choose ? options : null;
   if (t.mode && (!t.options || t.options[t.mode].error)) t.mode = null;
   Object.assign(t, !t.choose ? options.pair : t.mode ? t.options[t.mode] : { error: '', stop: options.pair.stop, steps: [], paired: [], rest: 0, bare: 0, kept: 0, locked: 0 });
   if (t.kind === 'stop') { t.planError = t.error; t.error = ''; }
+}
+
+/** the breakeven picked, or null for the average cost */
+const beChoice = t => (t.beChoices || []).find(c => c.key === t.beAt) || null;
+
+/** the row with its breakeven at the one picked: the breakeven stop's plan goes there */
+function beRow(t) {
+  const c = beChoice(t);
+  return c && c.key !== 'avg' ? { ...t.row, be: c.price } : t.row;
+}
+
+/** which breakeven the stop goes to after a trim: avg (your average cost), lots (the shares left by lot), net (the whole trade even) */
+export function setPositionBeAt(key) {
+  const t = state.posTicket;
+  if (!t || t.kind !== 'breakeven' || t.sent || t.error || !(t.beChoices || []).some(c => c.key === key)) return;
+  t.beAt = key;
+  planStops(t);
+  t.warnings = buildWarnings(t, Date.now());
+  renderPositionTradeSheet();
 }
 
 const stopOpen = () => { const t = state.posTicket; return t && t.kind === 'stop' && !t.error && !t.sent ? t : null; };
@@ -330,6 +350,7 @@ function freshTicket(kind, symbol, target, prev = null, now = Date.now()) {
   else if (kind === 'target') planTarget(t);
   else if (kind === 'breakeven' || kind === 'stop') {
     if (kind === 'stop') { t.stopInput = prev.stopInput; t.reset = !!prev.reset && !!t.origStop; }
+    if (t.beChoices.some(c => c.key === prev.beAt)) t.beAt = prev.beAt;
     planStops(t);
     if (prev.mode && t.choose && !t.options[prev.mode].error) { t.mode = prev.mode; planStops(t); }
   }
@@ -564,6 +585,26 @@ function choicePrompt(t) {
     </div></dd></div>`;
 }
 
+const BE_WORDS = {
+  avg: ['Average cost', "Your whole position's average: every add counts, trims don't move it."],
+  lots: ['Last lots', "What the shares left cost by lot, oldest sold first. Schwab's way."],
+  net: ['Scratch the trade', 'Counts what the trims brought in: the whole trade comes out even.'],
+};
+
+/** after a trim, where breakeven is: the average cost, the shares left by lot, or the whole trade even; each says what the trade makes there */
+function beChoicePrompt(t) {
+  const row = t.row, px = p => fmtPositionPrice(p, row.tradeAs);
+  const opt = c => {
+    const [title, sub] = BE_WORDS[c.key], on = t.beAt === c.key;
+    const off = (row.qty > 0 ? !(row.price > c.price) : !(row.price < c.price)) ? `The price ${px(row.price)} is already through it.`
+      : atBreakeven({ ...row, be: c.price }) ? 'Every share already has a stop at or past it.' : '';
+    const trade = Math.abs(c.trade) < 0.005 ? '$0.00' : (c.trade > 0 ? '+' : '−') + fmt$(Math.abs(c.trade));
+    return `<button class="pos-choice-opt${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPositionBeAt" data-arg="${c.key}"${off || t.sent ? ' disabled' : ''}><strong>${esc(`${title} ${px(c.price)}`)}</strong><span>${esc(off || `${sub} The whole trade ${trade} if it stops here.`)}</span></button>`;
+  };
+  return `<div><dt>Breakeven</dt><dd><span class="shares-detail">You trimmed, so breakeven depends on what you count. Fees aren't counted.</span>
+    <div class="pos-choice" role="group" aria-label="Which breakeven">${t.beChoices.map(opt).join('')}</div></dd></div>`;
+}
+
 /** a target's own rows: how long its orders last, and what it makes */
 function targetRows(t, duration) {
   const row = t.row, unit = positionRUnit(row), g = targetGain(row, t.price, t.target.qty, unit.per);
@@ -675,9 +716,13 @@ function stopChoice(t) {
 function stopForm(t) {
   const row = t.row, long = row.qty > 0, off = t.sent ? ' disabled' : '';
   const v = t.stopInput, value = v > 0 ? v.toFixed(row.tradeAs === 'OPTION' || v >= 1 ? 2 : 4) : '';
-  const beOk = row.be !== null && (long ? row.price > row.be : row.price < row.be);
-  const on = beOk && t.stop === row.be && !t.planError;
-  const chip = beOk ? `<button class="filter-btn pos-stop-at${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPositionStopAt" data-arg="${row.be}" title="Your average cost, on the tick"${off}>Breakeven ${fmtPositionPrice(row.be, row.tradeAs)}</button>` : '';
+  // after a trim, every breakeven gets a chip: the average, the shares left by lot, the whole trade even
+  const levels = t.beChoices.length ? t.beChoices : row.be !== null ? [{ key: 'avg', price: row.be }] : [];
+  const CHIP = { avg: 'Breakeven', lots: 'Last lots', net: 'Scratch' };
+  const chip = levels.filter(c => long ? row.price > c.price : row.price < c.price).map(c => {
+    const on = t.stop === c.price && !t.planError;
+    return `<button class="filter-btn pos-stop-at${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPositionStopAt" data-arg="${c.price}" title="${esc(BE_WORDS[c.key][1])}"${off}>${CHIP[c.key]} ${fmtPositionPrice(c.price, row.tradeAs)}</button>`;
+  }).join('');
   const now = row.stop !== null ? ` · nearest stop ${fmtPositionPrice(row.stop, row.tradeAs)}${row.covered < Math.abs(row.qty) ? ` for ${units(row, row.covered)}` : ''}` : ' · no stop now';
   const choice = stopChoice(t);
   if (t.reset) return choice;
@@ -716,14 +761,17 @@ export function renderPositionTradeSheet(form = true) {
   const duration = (d, label) => `<button class="${t.stopDuration === d ? 'active' : ''}" aria-pressed="${t.stopDuration === d}" data-action="setPositionStopDuration" data-arg="${d}"${t.sent ? ' disabled' : ''}>${label}</button>`;
   // ≥ 0: the rounding is toward the market, and stops already past breakeven stay where they are
   const locked = t.steps.length ? t.locked : (row.qty > 0 ? t.stop - row.avg : row.avg - t.stop) * held * row.mult;
-  const rounding = (t.stop === row.avg ? 'Exactly your average cost' : `Rounded from ${px(row.avg)}${row.tradeAs === 'OPTION' ? ': option stops use $0.05 steps under $3 and $0.10 from $3' : ''}`)
+  const be = beChoice(t), from = be ? be.raw : row.avg;
+  const what = !be || be.key === 'avg' ? 'your average cost' : be.key === 'lots' ? 'what the shares left cost by lot' : 'the whole trade even';
+  const rounding = (Math.abs(t.stop - from) < 1e-9 ? `Exactly ${what}` : `Rounded from ${px(from)}${be ? `, ${what}` : ''}${row.tradeAs === 'OPTION' ? ': option stops use $0.05 steps under $3 and $0.10 from $3' : ''}`)
+    + (be && be.key !== 'avg' ? `. From your average cost ${px(row.avg)}` : '')
     + (t.kept ? `. ${cap(units(row, t.kept))} keep ${t.kept === 1 ? 'its' : 'their'} stop past it` : '')
     + (t.bare ? `. ${cap(units(row, t.bare))} in your limit have no stop` : '');
   const extra = t.kind === 'close' ? (t.planError ? '' : closeEstimate(t))
     : t.kind === 'target' ? targetRows(t, duration)
     : t.kind === 'stop' ? stopRows(t, duration)
     : `<div><dt>Stop lasts</dt><dd><div class="seg" role="group" aria-label="Stop lasts">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
-      <div><dt>Risk at stop</dt><dd><span class="pos-locked">${locked > 0.005 ? '+' + fmt$(locked) + ' locked' : '$0.00'}</span><span class="shares-detail">${rounding}</span></dd></div>`;
+      <div><dt>Risk at stop</dt><dd>${locked > 0.005 ? `<span class="pos-locked">+${fmt$(locked)} locked</span>` : locked < -0.005 ? `<span class="pos-loss">−${fmt$(-locked)}</span>` : '<span class="pos-locked">$0.00</span>'}<span class="shares-detail">${esc(rounding)}</span></dd></div>`;
   const pairedQty = (t.paired || []).reduce((n, l) => n + l.qty, 0);
   const hint = t.kind === 'close' ? closeHint(t)
     : t.kind === 'target' ? targetHint(t)
@@ -763,6 +811,7 @@ export function renderPositionTradeSheet(form = true) {
   body.innerHTML = `
     <dl class="trade-legs">
       <div><dt>Position</dt><dd><strong>${row.qty > 0 ? 'Long' : 'Short'} ${units(row, held)} ${esc(row.label)}</strong><span class="shares-detail">Average cost ${px(row.avg)} · now ${px(row.price)}</span></dd></div>
+      ${t.kind === 'breakeven' && t.beChoices.length ? beChoicePrompt(t) : ''}
       ${t.kind === 'breakeven' ? choice : ''}
       ${t.kind === 'close' ? closeForm(t, duration) : t.kind === 'stop' ? stopForm(t) : ''}
     </dl>

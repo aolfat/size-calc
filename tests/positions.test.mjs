@@ -736,9 +736,8 @@ test('a close ticket reads the Journal for the original size: older fills kept t
   const { run, elements, state } = await app({ fetch: network(schwab).fetch, storage: signedIn(), supabase, session: SESSION });
   run("setView('positions')");
   await settle();
-  assert.equal(state.journalRecords, null, 'no R column: nothing read yet');
+  assert.equal(state.journalRecords.length, 2, 'signed in, Positions reads the Journal for the average cost');
   await run("openPositionTrade('TEST', 'close')");
-  assert.equal(state.journalRecords.length, 2, 'the close waited for the Journal');
   assert.match(elements.get('posTradeBody').innerHTML, /% of your original 200 shares, the most held since you were last flat\. 100 left \(50%\)\./);
   run('setClosePortion(0.25)');
   assert.match(elements.get('posTradeBody').innerHTML, /id="posCloseQty"[^>]*value="50"/);
@@ -751,18 +750,16 @@ test('a close ticket reads the Journal for the original size: older fills kept t
     'signed out, only the sell shows: nothing open to measure from');
 });
 
-test('the R column is in the Columns picker, and the Journal is read only once it is on', async () => {
+test('the R column is in the Columns picker; signed in, the Journal is read on opening Positions', async () => {
   const supabase = fakeRecords([TEST_BUY]);
   const { run, elements, state } = await app({ fetch: network(schwabOk).fetch, storage: signedIn(), supabase, session: SESSION });
   run("setView('positions')");
   await settle();
-  assert.equal(state.journalRecords, null, 'no R column, no Journal read');
+  assert.equal(state.journalRecords.length, 1, 'read for the average cost, R column or not');
   run('togglePosColumnsMenu()');
   assert.match(elements.get('positionsSection').innerHTML, /data-action="togglePosColumn" data-arg="r"/);
   run("togglePosColumn('r')");
-  assert.match(elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>')), /…/, 'waiting on the Journal');
   await settle();
-  assert.equal(state.journalRecords.length, 1);
   assert.match(elements.get('positionsSection').innerHTML, /\+1\.67R/);
   assert.equal(elements.get('positionsSection').innerHTML.split('<tfoot>')[1].includes('R</'), false, 'no total for R');
 });

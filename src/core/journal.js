@@ -28,7 +28,7 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  * @typedef {{ orderId: string, rootId: string, account: string, symbol: string, instruction: string, stopPrice: number, entered: string, status: string }} StopOrder
  * @typedef {{ key: string, account: string, symbol: string, label: string, assetType: string, multiplier: number,
  *   direction: 'long' | 'short', openedAt: string, closedAt: string | null, entryQty: number, openQty: number, peakQty?: number,
- *   avgEntry: number, avgExit: number | null, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
+ *   avgEntry: number, avgExit: number | null, costAvg?: number, lotsAvg?: number, pnl: number, exits: number, fillIds: string[], entryOrderIds: string[], holdMs: number | null,
  *   status: 'open' | 'win' | 'loss' | 'breakeven' | 'history', expired: boolean, via?: 'assigned' | 'exercised' | 'delivered' | null, stop: number | null, stopOrderId: string, risk: number | null,
  *   rBasis: 'stop' | 'premium' | 'debit' | 'width' | null, r: number | null, stopSource: 'yours' | 'schwab' | null, schwabStop: number | null,
  *   stopTrail: StopOrder[], movedTo: number | null, ownStopIgnored: boolean, deleted: boolean,
@@ -45,6 +45,9 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  * via = an option delivered it: the option's trade closed at $0 by an assignment or exercise, or the shares' trade opened
  * or closed by one at the strike (delivered: the option is older than the history). From Schwab's transactions.
  * peakQty = the most held at once (a single or merged trade; a spread has none).
+ * costAvg = what the shares still open cost on average, the whole position's: each add averages in, a trim leaves it as it was.
+ * lotsAvg = what the shares still open cost by lot, oldest sold first (Schwab's way, so a trim after an add leaves the add's price).
+ * Both on an open trade only (a single or merged one).
  * realized = the P&L each exit took, when it took it (a trim's profit is that day's, even while the rest stays open).
  * @typedef {{ at: string, qty: number, pnl: number }} Realized one exit: its time, the quantity it closed, its P&L (net after fees)
  * @typedef {{ stop?: number | null, deleted?: boolean }} TradeReview
@@ -63,7 +66,7 @@ function startTrade(fill, account, direction) {
     key: `${account}|${fill.symbol}|${direction}|${fill.time}`,
     account, symbol: fill.symbol, label: fill.label || fill.symbol, assetType: fill.assetType, multiplier: multiplierOf(fill.assetType, fill.symbol),
     direction, openedAt: fill.time, closedAt: /** @type {string | null} */ (null), entryQty: 0, entryNotional: 0, exitQty: 0, exitNotional: 0,
-    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, via: /** @type {Fill['via'] | null} */ (null), lots: /** @type {{ qty: number, price: number }[]} */ ([]), peakQty: 0,
+    pnl: 0, exits: 0, fillIds: [], entryOrderIds: /** @type {string[]} */ ([]), orderQty: /** @type {Record<string, number>} */ ({}), history: false, expired: false, via: /** @type {Fill['via'] | null} */ (null), lots: /** @type {{ qty: number, price: number }[]} */ ([]), peakQty: 0, costAvg: 0,
     realized: /** @type {Realized[]} */ ([]),
   };
 }
@@ -73,12 +76,13 @@ function finish(t) {
   const openQty = t.lots.reduce((/** @type {number} */ n, l) => n + l.qty, 0);
   const closed = openQty <= EPS;
   const pnl = Math.round(t.pnl * 100) / 100;
+  const open = closed ? {} : { costAvg: round8(t.costAvg), lotsAvg: round8(t.lots.reduce((/** @type {number} */ n, l) => n + l.qty * l.price, 0) / openQty) };
   return {
     key: t.key, account: t.account, symbol: t.symbol, label: t.label, assetType: t.assetType, multiplier: t.multiplier,
     direction: t.direction, openedAt: t.openedAt, closedAt: closed ? t.closedAt : null,
     entryQty: t.entryQty, openQty: closed ? 0 : openQty, peakQty: t.peakQty,
     avgEntry: t.entryQty ? t.entryNotional / t.entryQty : 0,
-    avgExit: t.exitQty ? t.exitNotional / t.exitQty : null,
+    avgExit: t.exitQty ? t.exitNotional / t.exitQty : null, ...open,
     pnl, exits: t.exits, fillIds: t.fillIds, entryOrderIds: t.entryOrderIds, orderQty: t.orderQty,
     holdMs: closed && t.closedAt ? Date.parse(t.closedAt) - Date.parse(t.openedAt) : null,
     status: t.history ? 'history' : !closed ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: !!t.expired, via: t.via || null,
@@ -145,6 +149,8 @@ export function buildTrades(fills, opts = {}) {
       const used = (/** @type {number} */ n) => { t.orderQty[f.orderId] = (t.orderQty[f.orderId] || 0) + n; };
       if (adds) {
         used(qty);
+        const held = t.lots.reduce((/** @type {number} */ n, /** @type {{ qty: number }} */ l) => n + l.qty, 0);
+        t.costAvg = (t.costAvg * held + f.price * qty) / (held + qty); // an add averages in; a trim never moves it
         t.lots.push({ qty, price: f.price });
         t.entryQty += qty;
         t.entryNotional += qty * f.price;
@@ -181,6 +187,7 @@ export function buildTrades(fills, opts = {}) {
           t.fillIds.push(f.id);
           if (f.via) t.via = f.via;
           t.lots.push({ qty, price: f.price });
+          t.costAvg = f.price;
           t.entryQty += qty;
           t.entryNotional += qty * f.price;
           t.peakQty = qty;
@@ -541,6 +548,10 @@ function mergedTrade(parts, key, reviews, stops) {
     status: open ? 'open' : pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven', expired: parts.every(p => p.expired),
     deleted: !!reviews[key]?.deleted,
   };
+  // the open part's (the earlier parts went flat, so its average is the merged trade's); none once all are closed
+  const live = parts.find(p => p.status === 'open');
+  delete t.costAvg; delete t.lotsAvg;
+  if (live && live.costAvg) Object.assign(t, { costAvg: live.costAvg, lotsAvg: live.lotsAvg });
   return withRisk(t, stops, reviews[key]?.stop ?? null);
 }
 

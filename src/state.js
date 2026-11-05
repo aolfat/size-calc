@@ -216,7 +216,7 @@ export function createState() {
     zoneFilter: { otm: true, itm: false },
     railDetailSym: null,
     pinnedData: {},
-    positions: null, // the last Schwab read: positionRows() plus { hash, orders, last4, asOf, stopsMissing }
+    positions: null, // the last Schwab read: positionRows() plus { account (Schwab's answer, for the rows again once the Journal is read), hash, orders, last4, asOf, stopsMissing }
     positionsError: '',
     positionsBusy: false, // the read in flight (a promise resolving to the newest read), or false
     positionsRequest: 0, // bumped per read, so a late answer for an old account is dropped

@@ -18,9 +18,11 @@ import { closeLimitOrder, closeMarketOrder, closeStopOrder, closingInstruction, 
  * @typedef {{ orderId: number | string | null, symbol: string, closes: 'long' | 'short', orderType: string, stop: number | null, price: number | null, qty: number,
  *   oco: number | string | null, duration: string, session: string }} Resting
  * @typedef {{ symbol: string, label: string, under: string, option: { root: string, exp: string, type: string, strike: number } | null,
- *   tradeAs: TradeAs | null, qty: number, mult: number, avg: number, be: number | null, price: number, value: number, pctAcct: number,
+ *   tradeAs: TradeAs | null, qty: number, mult: number, avg: number, schwabAvg: number, cost: Cost | null, be: number | null, price: number, value: number, pctAcct: number,
  *   stop: number | null, stops: number, covered: number, risk: number | null, riskPct: number | null, stopOrders: Resting[], closers: Resting[],
  *   pnl: number | null, pnlPct: number | null, day: number | null, dayPct: number | null }} Row
+ * @typedef {{ avg: number, lots: number, net: number, trimmed: boolean }} Cost the Journal's open trade on a position (journalCost)
+ * @typedef {{ key: 'avg' | 'lots' | 'net', price: number, raw: number, trade: number }} BeChoice a breakeven to pick (breakevenChoices)
  * @typedef {{ kind: 'cancel' | 'replace' | 'place', orderId?: number | string | null, was?: Resting, order?: object, pairs?: Resting }} Step
  * @typedef {{ error: string, stop: number, steps: Step[], paired: Resting[], rest: number, bare: number, price?: number, moved?: number, kept?: number, locked?: number }} Plan
  * @typedef {{ limit: Resting | undefined, legs: Resting[] }} Hold
@@ -322,10 +324,15 @@ const isStop = o => /STOP/.test(o.orderType) && o.stop !== null;
  * (positionSpreads), and totals. Risk is what a stop fill loses from the average cost; negative when the stop locks a gain.
  * Totals count losses only, a spread its max loss.
  * P/L is from the average cost (null without one), as % of that cost; today's is Schwab's day P/L, as % of the value before it.
+ * The average cost is the whole position's when the Journal's open trade matches the position (journal: its trades and the
+ * account's last 4; journalCost): every add averages in and a trim leaves it, so a breakeven stop after an add and a trim
+ * stays at what the whole position cost. Otherwise it's Schwab's, which drops the oldest shares first on a trim (FIFO).
+ * schwabAvg keeps Schwab's either way.
  * @param {{ positions?: Position[], currentBalances?: { liquidationValue?: number, cashBalance?: number } }} account
  * @param {Order[]} orders
+ * @param {{ trades: import('./journal.js').Trade[] | null, last4: string } | null} [journal]
  */
-export function positionRows(account, orders) {
+export function positionRows(account, orders, journal = null) {
   const value = Number(account.currentBalances?.liquidationValue) || 0;
   const cash = Number(account.currentBalances?.cashBalance) || 0;
   const pct = (/** @type {number} */ v) => value > 0 ? v * 100 / value : 0;
@@ -339,7 +346,9 @@ export function positionRows(account, orders) {
     const long = qty > 0;
     const option = instrument.assetType === 'OPTION' ? parseSchwabOption(instrument.symbol || '') : null;
     const mult = instrument.assetType === 'OPTION' ? Number(instrument.optionMultiplier) || 100 : 1;
-    const avg = Number(long ? p.averageLongPrice ?? p.averagePrice : p.averageShortPrice ?? p.averagePrice) || 0;
+    const schwabAvg = Number(long ? p.averageLongPrice ?? p.averagePrice : p.averageShortPrice ?? p.averagePrice) || 0;
+    const journalBasis = journal ? journalCost(positionJournalTrade({ symbol: instrument.symbol || '', qty }, journal.trades, journal.last4), Math.abs(qty)) : null;
+    const avg = journalBasis ? journalBasis.avg : schwabAvg;
     const mv = Number(p.marketValue) || 0;
     const as = tradeAs(instrument);
     const closers = resting.filter(o => o.symbol === instrument.symbol && o.closes === (long ? 'long' : 'short'));
@@ -357,7 +366,7 @@ export function positionRows(account, orders) {
     const before = day === null ? 0 : Math.abs(mv - day);
     rows.push({
       symbol: instrument.symbol || '', label: positionLabel(instrument), under: instrument.underlyingSymbol || option?.root || instrument.symbol || '', option,
-      tradeAs: as, qty, mult, avg, be: as && avg > 0 ? (as === 'OPTION' ? optionStopTick(avg, long) : stopTick(avg, long)) : null,
+      tradeAs: as, qty, mult, avg, schwabAvg, cost: journalBasis, be: as && avg > 0 ? (as === 'OPTION' ? optionStopTick(avg, long) : stopTick(avg, long)) : null,
       price: mv / (qty * mult), value: mv, pctAcct: pct(Math.abs(mv)),
       stop: mine.length ? mine[0].stop : null, stops: mine.length, covered: Math.abs(qty) - left,
       risk, riskPct: risk === null ? null : pct(risk), stopOrders: mine, closers,
@@ -484,9 +493,46 @@ export function spreadR(s) {
 }
 
 /** the Journal's open trade on a position: same account, contract and direction, not deleted, not inside a spread */
-export const positionJournalTrade = (/** @type {Row} */ row, /** @type {import('./journal.js').Trade[] | null} */ trades, /** @type {string} */ last4) =>
+export const positionJournalTrade = (/** @type {{ symbol: string, qty: number }} */ row, /** @type {import('./journal.js').Trade[] | null} */ trades, /** @type {string} */ last4) =>
   (trades || []).find(x => x.status === 'open' && !x.deleted && x.kind !== 'spread' && x.account === last4
     && x.symbol === row.symbol && x.direction === (row.qty > 0 ? 'long' : 'short')) || null;
+
+/**
+ * What the shares still open cost, from the Journal's open trade on the position when it holds what Schwab shows (null otherwise):
+ * avg the whole position's average (adds average in, trims leave it), lots by lot with the oldest sold first (Schwab's way),
+ * net what each share left would have to fetch for the whole trade to come out even, counting what the trims brought in
+ * (what was paid less what the trims brought in, over the shares left; a short the same). trimmed: some of it was sold.
+ * @param {import('./journal.js').Trade | null} t @param {number} held @returns {Cost | null}
+ */
+export function journalCost(t, held) {
+  if (!t || !(Number(t.costAvg) > 0) || !(t.openQty > 0) || Math.abs(t.openQty - held) > 1e-6) return null;
+  const sold = t.entryQty - t.openQty;
+  const net = (t.avgEntry * t.entryQty - (t.avgExit || 0) * sold) / t.openQty;
+  return { avg: Number(t.costAvg), lots: Number(t.lotsAvg) || Number(t.costAvg), net, trimmed: sold > 1e-6 };
+}
+
+/**
+ * The breakevens a stop can go to once a position has been trimmed, each on the stop's tick and toward the market
+ * (stopTick / optionStopTick), the same price once only: avg the whole position's average cost, lots the shares left by lot
+ * (oldest sold first, Schwab's way), net the whole trade even, the trims counted. trade = what the whole trade makes if
+ * every share left stops there, before fees. Empty when the position has one breakeven (not trimmed, or no Journal trade).
+ * @param {Row} row @returns {BeChoice[]}
+ */
+export function breakevenChoices(row) {
+  const c = row.cost;
+  if (!c || !c.trimmed || !row.tradeAs || row.be === null) return [];
+  const long = row.qty > 0, held = Math.abs(row.qty), side = long ? 1 : -1;
+  const tick = (/** @type {number} */ v) => row.tradeAs === 'OPTION' ? optionStopTick(v, long) : stopTick(v, long);
+  /** @type {BeChoice[]} */
+  const out = [];
+  for (const [key, raw] of /** @type {[BeChoice['key'], number][]} */ ([['avg', c.avg], ['lots', c.lots], ['net', c.net]])) {
+    if (!(raw > 0)) continue;
+    const price = key === 'avg' ? row.be : tick(raw);
+    if (!(price > 0) || out.some(o => Math.abs(o.price - price) < 1e-9)) continue;
+    out.push({ key, price, raw, trade: side * (price - c.net) * held * row.mult });
+  }
+  return out.length > 1 ? out : [];
+}
 
 /**
  * @typedef {{ r: number | null, risk: number | null, source: 'journal' | 'stop' | 'premium' | null,
