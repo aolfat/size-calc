@@ -140,6 +140,8 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   At send, Schwab is re-read and re-planned; a changed list sends nothing and shows the new plan.
   Each order is its own cancel: a refused one (or one that filled first) is marked and the rest still go.
   Confirmed when the re-read no longer shows any of them working; otherwise it names the ones Schwab still shows.
+  **Cancel orders** on a position (owner request): every position with working orders gets a 'Cancel 2 orders' button after Close (the table row, the phone card, the phone table's actions sheet, and a spread for its legs' orders; none without orders).
+  It opens the same sheet for that position only (openCancelAll(key), cancelAllPlan's symbols: its orders, a pair counted when either half is on it, an entry with its waiting stop), titled 'Cancel IBM orders', with no Everything / Only entries choice: its stops and targets go too, and the sheet says when that leaves it with no stop.
 
   **Edit** (ui/order-edit.js, #editSheet = SHEETS.edit, state.editTicket): beside Cancel on rows editable() allows (single-leg STOP, LIMIT, STOP_LIMIT, not waiting on an entry).
   It re-reads Schwab, then plans with editPlan (core/positions.js, pure): a form with the stop and/or limit (priceTick, options optionPriceTick), the size (the open quantity) and Today / Until canceled; typing re-plans from the same read and redraws only #editDetail.

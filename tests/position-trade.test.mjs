@@ -1212,6 +1212,52 @@ test('cancel all with only entries leaves the stops; a refused cancel doesn\'t s
   assert.equal(b.live.orders.find(o => o.orderId === 102).status, 'WORKING', 'stops on what you hold stay');
 });
 
+test('a position\'s Cancel orders takes out only its own orders: a pair once, nothing on other symbols', async () => {
+  const { run } = await app();
+  const orders = JSON.stringify([...ORDERS, ENTRY]);
+  const hood = plain(run(`cancelAllPlan(${orders}, [], { symbols: ['HOOD'] })`));
+  assert.deepEqual(hood.steps.map(s => s.orderId), [101, 102, 103]);
+  const amd = plain(run(`cancelAllPlan(${orders}, [], { symbols: ['AMD'] })`));
+  assert.deepEqual([amd.steps.map(s => s.orderId), amd.gone.map(o => o.orderId)], [[501], [501, 502]], 'the pair is one cancel');
+  const nvda = plain(run(`cancelAllPlan(${orders}, [], { symbols: ['NVDA'] })`));
+  assert.deepEqual(nvda.gone.map(o => o.orderId), [600, 601], 'an entry takes its waiting stop');
+  assert.match(run(`cancelAllPlan(${orders}, [], { symbols: ['MSFT'] }).error`), /No working orders on this position/);
+});
+
+test('each position with working orders gets Cancel orders; the review is that position\'s, with no account-wide choice', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  const html = elements.get('positionsSection').innerHTML;
+  assert.match(html, /data-action="openCancelAll" data-arg="HOOD"[^>]*>Cancel 3 orders</);
+  assert.match(html, /data-action="openCancelAll" data-arg="AMD"[^>]*>Cancel 2 orders</);
+  assert.doesNotMatch(html, /data-action="openCancelAll" data-arg="NVDA"/, 'no orders on it, no button');
+  await run("actions.openCancelAll({ dataset: { arg: 'HOOD' } })");
+  assert.equal(elements.get('cancelAllTitle').textContent, 'Cancel HOOD orders');
+  const review = elements.get('cancelAllBody').innerHTML;
+  assert.doesNotMatch(review, /setCancelAllOnly/);
+  assert.match(review, /After this, your 300 HOOD have no stop\./);
+  assert.doesNotMatch(review, /AMD|TSLA|QQQ/);
+  assert.match(review, />Cancel all 3 orders</);
+  await run('sendCancelAll()');
+  assert.deepEqual(b.sent.map(c => c.path).sort(), ['/orders/101', '/orders/102', '/orders/103']);
+  assert.match(elements.get('cancelAllBody').innerHTML, /Schwab no longer shows any of the 3 orders working\./);
+  assert.equal(b.live.orders.find(o => o.orderId === 201).status, 'WORKING', 'other positions keep theirs');
+  await run('openCancelAll()');
+  assert.equal(elements.get('cancelAllTitle').textContent, 'Cancel all orders', 'the card\'s Cancel all is still the account');
+});
+
+test('the phone actions sheet offers Cancel orders and opens that position\'s review', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run('refreshPositions()');
+  run("openPosActions('AMD')");
+  assert.match(elements.get('posActionsBody').innerHTML, /data-action="posSheetAct" data-arg="AMD" data-arg2="cancelOrders">Cancel 2 orders</);
+  await run("actions.posSheetAct({ dataset: { arg: 'AMD', arg2: 'cancelOrders' } })");
+  assert.equal(elements.get('cancelAllSheet').style.display, '');
+  assert.equal(elements.get('cancelAllTitle').textContent, 'Cancel AMD orders');
+});
+
 test('cancel all sends nothing when Schwab changed since the review', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });

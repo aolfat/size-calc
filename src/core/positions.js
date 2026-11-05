@@ -181,11 +181,14 @@ export function cancelPlan(orders, orderId, { keep = true } = {}) {
  * One DELETE per order: a one-cancels-other pair is one cancel (Schwab cancels the two together), and an order waiting on its
  * entry isn't sent alone (it goes with the entry). A pair stays in 'entries' when either half closes something held.
  * gone: every order the run takes out, pairs' other halves and waiting children included; kept: what stays working.
- * @param {Order[]} orders @param {Row[]} rows @param {{ only?: 'all' | 'entries' }} [opts]
+ * symbols: only the orders on these (one position, or a spread's legs); a pair counts when either half is on one. The rest of the account stays out of the plan.
+ * @param {Order[]} orders @param {Row[]} rows @param {{ only?: 'all' | 'entries', symbols?: string[] | null }} [opts]
  * @returns {{ error: string, only: 'all' | 'entries', steps: Step[], gone: Working[], kept: Working[] }}
  */
-export function cancelAllPlan(orders, rows = [], { only = 'all' } = {}) {
-  const list = workingOrders(orders);
+export function cancelAllPlan(orders, rows = [], { only = 'all', symbols = null } = {}) {
+  const every = workingOrders(orders);
+  const on = (/** @type {Working} */ w) => !symbols || symbols.includes(w.symbol);
+  const list = symbols ? every.filter(w => on(w) || (w.oco !== null && every.some(o => o.oco === w.oco && on(o))) || (w.parentId !== null && every.some(o => o.orderId === w.parentId && on(o)))) : every;
   const closes = (/** @type {Working} */ w) => {
     const side = CLOSES[w.instruction];
     return !!side && rows.some(r => r.symbol === w.symbol && (r.qty > 0 ? 'long' : 'short') === side);
@@ -203,7 +206,7 @@ export function cancelAllPlan(orders, rows = [], { only = 'all' } = {}) {
     for (const o of group(w)) gone.add(o);
     for (const o of list) if (o.parentId !== null && o.parentId === w.orderId) gone.add(o);
   }
-  const error = steps.length ? '' : only === 'entries' && list.length ? 'Every working order closes something you hold. Nothing to cancel here.' : 'Nothing working to cancel.';
+  const error = steps.length ? '' : only === 'entries' && list.length ? 'Every working order closes something you hold. Nothing to cancel here.' : symbols ? 'No working orders on this position.' : 'Nothing working to cancel.';
   return { error, only, steps, gone: list.filter(o => gone.has(o)), kept: list.filter(o => !gone.has(o)) };
 }
 
