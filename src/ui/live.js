@@ -8,6 +8,7 @@ import { DESKTOP_MQ, mq } from '../lib/media.js';
 import { store } from '../lib/store.js';
 import { inZone } from '../lib/zone.js';
 import { baseUrl, headers, streamSession } from '../services/tradier.js';
+import { marketFetch, marketSource } from '../services/market-source.js';
 import { refreshAllPinned } from './cards.js';
 import { fetchChain } from './chain.js';
 import { fetchChart } from './chart.js';
@@ -178,7 +179,7 @@ async function pollQuote() {
   try {
     const futures = isFuturesQuote(state.quoteData);
     const q = futures ? await fetchFuturesQuote(ticker)
-      : (await (await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}`, { headers: headers() })).json())?.quotes?.quote;
+      : (await (await marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}`, { headers: headers() })).json())?.quotes?.quote;
     if (ticker !== state.quoteData?.symbol) return; // a Load landed meanwhile
     if (!futures && state.liveStreamOk) return; // the stream is fresher
     if (q && q.symbol === ticker) { state.quoteData = q; if (!editingAnswer()) renderQuote(); }
@@ -239,7 +240,7 @@ export async function livePoll() {
 export function ensureStream() {
   const sym = state.quoteData?.symbol;
   if (!sym || isFuturesQuote(state.quoteData)) return;
-  if (document.getElementById('apiEnv').value === 'sandbox' || !document.getElementById('apiKey').value.trim()) return;
+  if (document.getElementById('apiEnv').value === 'sandbox' || marketSource() !== 'tradier') return; // Schwab's quotes poll
   const ws = state.liveSocket;
   if (ws) {
     if (ws.readyState === 1 && ws.sessionid && state.liveStreamSymbol !== sym) {

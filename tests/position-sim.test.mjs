@@ -32,17 +32,23 @@ const QUOTES = [
   { symbol: 'HOOD261218C00060000', type: 'option', bid: 0.95, ask: 1.05, greeks: { mid_iv: 0.55 } },
 ];
 
+// the underlying's quote as Schwab's /marketdata/v1/quotes sends it
+const SCHWAB_QUOTES = {
+  HOOD: { assetMainType: 'EQUITY', assetSubType: 'COE', symbol: 'HOOD', quote: { lastPrice: 41.1, bidPrice: 41.05, askPrice: 41.15 } },
+};
+
 function network({ quotes = QUOTES } = {}) {
-  const tradier = [];
+  const tradier = [], schwab = [];
   const fetch = async (url) => {
     if (url.startsWith(PROXY)) {
       const path = url.slice(PROXY.length);
+      if (path.startsWith('/marketdata/v1/quotes')) { schwab.push(path); return json(SCHWAB_QUOTES); }
       return path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
     }
     if (url.includes('/markets/quotes')) { tradier.push(url); return json({ quotes: { quote: quotes } }); }
     throw new Error('Unexpected request ' + url);
   };
-  return { fetch, tradier };
+  return { fetch, tradier, schwab };
 }
 
 async function simApp({ key = true, ...opts } = {}) {
@@ -53,7 +59,7 @@ async function simApp({ key = true, ...opts } = {}) {
   h.run("setView('positions')");
   await settle();
   h.run('var opened = null; openSim = o => { opened = o; };');
-  return { ...h, tradier: net.tradier };
+  return { ...h, tradier: net.tradier, schwab: net.schwab };
 }
 
 const tableRow = (elements, label) => elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes(`<b>${label}`)) || '';
@@ -111,13 +117,24 @@ test('sold options measure P/L the other way, as % of the premium received (not 
   assert.equal(run('simReturnBase(opened)'), 1.2); // no width: % of the credit, not of a spread's max loss
 });
 
-test('no Tradier key: nothing is fetched and Settings opens', async () => {
-  const { run, tradier, elements } = await simApp({ key: false });
+test('no Tradier key: the quotes come from Schwab', async () => {
+  const { run, tradier, schwab } = await simApp({ key: false });
   await run(`simPosition('${CALL}')`);
   assert.equal(tradier.length, 0);
+  assert.equal(schwab.length, 1);
+  assert.match(schwab[0], /^\/marketdata\/v1\/quotes\?symbols=HOOD&/, "the underlying's quote");
+  assert.equal(run('opened.spot'), 41.1);
+  assert.ok(run('opened.iv > 0'));
+});
+
+test('no Tradier key and no Schwab login: nothing is fetched and Settings opens', async () => {
+  const { run, tradier, schwab, elements } = await simApp({ key: false });
+  run("store.del('schwab_tokens')");
+  await run(`simPosition('${CALL}')`);
+  assert.equal(tradier.length + schwab.length, 0);
   assert.equal(run('opened'), null);
   assert.equal(run('openSheetName'), 'settings');
-  assert.match(elements.get('errorBox').textContent, /Tradier API key/);
+  assert.match(elements.get('errorBox').textContent, /Tradier API key or log in to Schwab/);
 });
 
 test('Tradier without the underlying: an error, no simulator', async () => {

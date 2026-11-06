@@ -671,7 +671,7 @@ function renderPositionsTable() {
   const refresh = `<button class="btn" data-action="refreshPositions"${state.positionsBusy ? ' disabled' : ''} title="Read positions from Schwab now (r)">${state.positionsBusy ? '<span class="spinner" style="width:12px;height:12px;"></span> Refreshing…' : '↻ Refresh'}</button>`;
   if (!p) {
     el.innerHTML = !schwabConnected()
-      ? `<div class="card empty-card"><div class="setup-title">Connect Schwab to see your positions</div><p>${state.positionsError ? esc(state.positionsError) : 'Positions come live from your Schwab account. Log in under Settings, Schwab trading.'}</p><button class="btn primary" data-action="openSheet" data-arg="settings">Open settings</button></div>`
+      ? `<div class="card empty-card"><div class="setup-title">Connect Schwab to see your positions</div><p>${state.positionsError ? esc(state.positionsError) : 'Positions come live from your Schwab account. Log in under Settings, Schwab.'}</p><button class="btn primary" data-action="openSheet" data-arg="settings">Open settings</button></div>`
       : `<div class="card empty-card"><div class="setup-title">${state.positionsBusy ? '<span class="spinner" style="vertical-align:middle;margin-right:8px;"></span>Loading positions…' : 'Positions'}</div>${state.positionsError ? `<p class="shares-error" role="status">${esc(state.positionsError)}</p>` : ''}${refresh}</div>`;
     return;
   }

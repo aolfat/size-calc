@@ -8,7 +8,7 @@ import { BARS_KEEP_DAYS, nyDay } from '../core/bars.js';
 import { viewRange } from '../core/chart-view.js';
 import { marketEscape as esc } from '../core/format.js';
 import { dailyWindow, holdChartBars, unpackBars } from '../core/trade-page.js';
-import { fetchTradeBars, loadTradeBars, tradierKeyHere } from '../services/bars.js';
+import { fetchTradeBars, loadTradeBars, marketDataHere } from '../services/bars.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
@@ -34,10 +34,10 @@ export function loadMissedChart(symbol, day, mark = 'missed') {
 async function fiveMinute(p) {
   try {
     let rows = await loadTradeBars(p.symbol, [p.day]).catch(() => []);
-    if (!rows.length && tradierKeyHere()) rows = await fetchTradeBars(p.symbol, [p.day]);
+    if (!rows.length && marketDataHere()) rows = await fetchTradeBars(p.symbol, [p.day]);
     p.five = holdChartBars(unpackBars(rows), []);
     const now = Date.now();
-    p.status5 = p.five.length ? '' : !tradierKeyHere() ? `Add a Tradier key in Settings for ${p.symbol}'s 5-minute chart.`
+    p.status5 = p.five.length ? '' : !marketDataHere() ? `Add a Tradier key or log in to Schwab in Settings for ${p.symbol}'s 5-minute chart.`
       : p.day < nyDay(now - BARS_KEEP_DAYS * 864e5) ? `No 5-minute bars for ${p.symbol} that day: Tradier keeps about 40 days.`
       : `No 5-minute bars for ${p.symbol} that day yet.`;
   } catch(e) {
@@ -47,7 +47,7 @@ async function fiveMinute(p) {
 
 /** the daily: Tradier's year, framed 40 sessions before the day through 10 after */
 async function daily(p) {
-  if (!tradierKeyHere()) { p.statusD = `Add a Tradier key in Settings for ${p.symbol}'s daily chart.`; return; }
+  if (!marketDataHere()) { p.statusD = `Add a Tradier key or log in to Schwab in Settings for ${p.symbol}'s daily chart.`; return; }
   try {
     p.daily = (await dailyHistory(p.symbol)).map(d => ({ date: d.date, open: +d.open, high: +d.high, low: +d.low, close: +d.close, volume: +d.volume || 0 }));
     const at = `${p.day}T16:00:00Z`;

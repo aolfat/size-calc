@@ -7,7 +7,7 @@ import { LOOKBACK_DAYS, MARKET_BASKET } from '../core/bars.js';
 import { featureBarNeeds } from '../core/features/index.js';
 import { buildTrades } from '../core/journal.js';
 import { fillsFrom } from '../core/journal-records.js';
-import { saveTradeBars, tradierKeyHere } from '../services/bars.js';
+import { saveTradeBars, marketDataHere } from '../services/bars.js';
 import { loadSavedRecords } from '../services/journal.js';
 import { state } from '../state.js';
 
@@ -32,7 +32,7 @@ export function barsToKeep() {
  */
 export async function maybeSaveBars({ records, force = false } = {}) {
   const user = state.session?.user?.id;
-  if (!user || !tradierKeyHere() || state.barsBusy) return null;
+  if (!user || !marketDataHere() || state.barsBusy) return null;
   const last = lastBars();
   if (!force && last && last.user === user && Date.now() - last.at < BARS_EVERY) return null;
   state.barsBusy = true;

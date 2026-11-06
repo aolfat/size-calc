@@ -6,6 +6,7 @@ import { parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { mq } from '../lib/media.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch } from '../services/market-source.js';
 import { recalcPinnedStop, renderPinnedCard, updatePinnedBar } from './cards.js';
 import { fetchFiveMinuteBars } from './chart.js';
 import { clearError, showError } from './feedback.js';
@@ -46,8 +47,8 @@ export async function fetchQuickOption(str, fromSearch = false) {
   try {
     const optSyms = parsed.spread ? `${parsed.occ},${parsed.occ2}` : parsed.occ;
     const [quoteRes, optRes] = await Promise.all([
-      fetch(`${baseUrl()}/markets/quotes?symbols=${parsed.ticker}`, { headers: headers() }),
-      fetch(`${baseUrl()}/markets/quotes?symbols=${optSyms}&greeks=true`, { headers: headers() })
+      marketFetch(`${baseUrl()}/markets/quotes?symbols=${parsed.ticker}`, { headers: headers() }),
+      marketFetch(`${baseUrl()}/markets/quotes?symbols=${optSyms}&greeks=true`, { headers: headers() })
     ]);
     const quoteJson = await quoteRes.json();
     const optJson = await optRes.json();

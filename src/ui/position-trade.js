@@ -8,6 +8,7 @@ import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, opti
 import { INSTRUCTION_WORDS, breakevenBlocked, breakevenChoices, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
+import { marketSource } from '../services/market-source.js';
 import { showError, showToast } from './feedback.js';
 import { positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { originalStopBlock } from './position-original.js';
@@ -703,8 +704,8 @@ function closeForm(t, duration) {
   const what = `${row.tradeAs === 'OPTION' ? 'Contracts' : 'Shares'} to ${row.qty > 0 ? 'sell' : 'buy back'}`;
   const price = closePriceText(t), unit = positionRUnit(row);
   const per = unit.per ? `1R is ${fmt$(unit.per)} a ${row.tradeAs === 'OPTION' ? 'contract' : 'share'}, from ${rUnitWords(unit, row)}` : unit.why || 'No risk to count R from.';
-  // with a Tradier key the sheet reads a live quote, so a limit can go at its bid, mid or ask in one tap
-  const atChips = document.getElementById('apiKey').value.trim()
+  // with a Tradier key or a Schwab login the sheet reads a live quote, so a limit can go at its bid, mid or ask in one tap
+  const atChips = marketSource()
     ? `<div class="chip-row pos-portions pos-close-portions pos-close-at" id="posCloseAt" role="group" aria-label="Limit at the quote">${closeAtChips(t)}</div>` : '';
   return `<div><dt>Order</dt><dd><div class="pos-close-qty"><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div>${atChips}</div></dd></div>
     <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="${t.original && t.original.qty > held ? 'Percent of the original position' : 'Percent of the position'}">${chips}</div></div>${portionLine(t) ? `<span class="shares-detail">${esc(portionLine(t))}</span>` : ''}</dd></div>

@@ -4,6 +4,7 @@ import { hv20At } from '../core/bars.js';
 import { fmt$, fmtDayVol, fmtLev, nyDateStr } from '../core/format.js';
 import { LEV_ALIASES, LEV_ETFS, LEV_NAMES, LEV_REVERSE } from '../core/lev-etfs.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch, marketSource } from '../services/market-source.js';
 import { showError } from './feedback.js';
 import { fetchQuote } from './ticker.js';
 import { setView } from './views.js';
@@ -53,11 +54,10 @@ export async function findLevEtfs() {
     return;
   }
   const rows = fam.map(([sym, lev]) => ({ sym, lev }));
-  const key = document.getElementById('apiKey').value.trim();
-  if (!key) { renderLevTable(under, rows, note, false); return; }
+  if (!marketSource()) { renderLevTable(under, rows, note, false); return; }
   document.getElementById('levBtnText').innerHTML = '<span class="spinner"></span>';
   try {
-    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(rows.map(r => r.sym).join(','))}`, { headers: headers() });
+    const res = await marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(rows.map(r => r.sym).join(','))}`, { headers: headers() });
     const json = await res.json();
     let qs = json?.quotes?.quote || [];
     if (!Array.isArray(qs)) qs = [qs];
@@ -118,7 +118,7 @@ export function renderLevTable(under, rows, note, live) {
 export function levLoad(sym) {
   document.getElementById('ticker').value = sym;
   setView('calc');
-  if (document.getElementById('apiKey').value.trim()) fetchQuote();
+  if (marketSource()) fetchQuote();
   else document.getElementById('ticker').focus();
 }
 
@@ -140,14 +140,14 @@ export async function levTarget() {
   }
   const target = parseFloat(document.getElementById('levTgtPrice').value);
   if (!(target > 0)) { out.innerHTML = `<div class="hint" style="margin:0;">enter a target price for ${r.under}</div>`; return; }
-  if (!document.getElementById('apiKey').value.trim()) {
-    out.innerHTML = '<div class="hint" style="margin:0;">needs a Tradier key · add one in Settings</div>';
+  if (!marketSource()) {
+    out.innerHTML = '<div class="hint" style="margin:0;">needs a Tradier key or a Schwab login · add one in Settings</div>';
     return;
   }
   const days = Math.max(1, Math.round(parseFloat(document.getElementById('levTgtDays').value) || 1));
   document.getElementById('levTgtBtnText').innerHTML = '<span class="spinner"></span>';
   try {
-    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(sym + ',' + r.under)}`, { headers: headers() });
+    const res = await marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(sym + ',' + r.under)}`, { headers: headers() });
     let qs = (await res.json())?.quotes?.quote || [];
     if (!Array.isArray(qs)) qs = [qs];
     const etfNow = qs.find(q => q.symbol === sym)?.last;
@@ -162,7 +162,7 @@ export async function levTarget() {
       let hv = 0;
       try {
         const from = new Date(); from.setDate(from.getDate() - 60);
-        const hres = await fetch(`${baseUrl()}/markets/history?symbol=${encodeURIComponent(r.under)}&interval=daily&start=${nyDateStr(from)}&end=${nyDateStr(new Date())}`, { headers: headers() });
+        const hres = await marketFetch(`${baseUrl()}/markets/history?symbol=${encodeURIComponent(r.under)}&interval=daily&start=${nyDateStr(from)}&end=${nyDateStr(new Date())}`, { headers: headers() });
         let hdays = (await hres.json())?.history?.day || [];
         if (!Array.isArray(hdays)) hdays = [hdays];
         const closes = hdays.map(d => d.close).filter(c => c > 0);

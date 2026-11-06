@@ -7,18 +7,24 @@
 // since every provider serves them back years any time.
 import { barsByDay } from '../core/bars.js';
 import { baseUrl, headers } from './tradier.js';
+import { marketFetch, marketSource } from './market-source.js';
 
-/** Tradier: timesales already speaks the app's form (unpadded OCC symbols, bars stamped with their start, New York time) */
+/**
+ * Tradier: timesales already speaks the app's form (unpadded OCC symbols, bars stamped with their start, New York time).
+ * Without a Tradier key the same reads go to Schwab's price history (services/market-source.js answers them in Tradier's
+ * form), and the rows say so: name is 'schwab' then. Schwab has no price history for options, so an option's bars wait
+ * for a Tradier key.
+ */
 const tradier = {
-  name: 'tradier',
+  get name() { return marketSource() === 'schwab' ? 'schwab' : 'tradier'; },
   /**
    * one symbol's 5-minute bars from one New York day through another, extended hours included (04:00 to 20:00)
    * @param {string} symbol @param {string} from @param {string} to @returns {Promise<Map<string, (string | number)[][]>>}
    */
   async intraday(symbol, from, to) {
     const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(symbol)}&interval=5min&start=${encodeURIComponent(from + ' 04:00')}&end=${encodeURIComponent(to + ' 20:00')}&session_filter=all`;
-    const res = await fetch(url, { headers: headers() });
-    if (!res.ok) { const err = new Error(`Tradier answered ${res.status}`); err.status = res.status; throw err; }
+    const res = await marketFetch(url, { headers: headers() });
+    if (!res.ok) { const err = new Error(`${this.name === 'schwab' ? 'Schwab' : 'Tradier'} answered ${res.status}`); err.status = res.status; throw err; }
     const data = (await res.json())?.series?.data;
     return barsByDay(data ? (Array.isArray(data) ? data : [data]) : []);
   },
@@ -31,8 +37,8 @@ const tradier = {
    */
   async daily(symbol, from, to) {
     const url = `${baseUrl()}/markets/history?symbol=${encodeURIComponent(symbol)}&interval=daily&start=${encodeURIComponent(from)}&end=${encodeURIComponent(to)}`;
-    const res = await fetch(url, { headers: headers() });
-    if (!res.ok) { const err = new Error(`Tradier answered ${res.status}`); err.status = res.status; throw err; }
+    const res = await marketFetch(url, { headers: headers() });
+    if (!res.ok) { const err = new Error(`${this.name === 'schwab' ? 'Schwab' : 'Tradier'} answered ${res.status}`); err.status = res.status; throw err; }
     const days = (await res.json())?.history?.day;
     return (days ? (Array.isArray(days) ? days : [days]) : [])
       .map(d => ({ date: String(d?.date || ''), open: +d?.open, high: +d?.high, low: +d?.low, close: +d?.close, volume: +d?.volume || 0 }))

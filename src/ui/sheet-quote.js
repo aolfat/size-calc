@@ -4,6 +4,7 @@ import { state } from '../state.js';
 import { fmtTick } from '../core/orders.js';
 import { inZone } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch, marketSource } from '../services/market-source.js';
 import { onSheetChange } from './sheets.js';
 
 const SHEET_QUOTE_MS = 2000;
@@ -19,7 +20,7 @@ export const tradierSymbol = s => String(s || '').replace(/\s+/g, '');
 
 /** one quote read for every leg: { symbol: { last, bid, ask } }; a leg Tradier didn't answer is left out */
 export async function readLegQuotes(symbols) {
-  const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, { headers: headers() });
+  const res = await marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, { headers: headers() });
   const q = (await res.json())?.quotes?.quote;
   const out = {};
   for (const one of Array.isArray(q) ? q : q ? [q] : []) {
@@ -53,7 +54,7 @@ export function netQuote(legs, quotes) {
  */
 export function watchSheetQuote({ sheet, el, legs, fills, first = null }) {
   stopSheetQuote();
-  if (!legs.length || !document.getElementById('apiKey').value.trim()) return Promise.resolve(); // no Tradier key, nothing to read
+  if (!legs.length || !marketSource()) return Promise.resolve(); // no Tradier key or Schwab login, nothing to read
   const gen = ++state.sheetQuoteGen;
   const symbols = legs.map(l => l.symbol);
   state.sheetQuote = { sheet, el, legs, fills, last: 0, bid: 0, ask: 0, mid: legs.length > 1 || legs[0].n !== 1, at: 0, failed: false };
