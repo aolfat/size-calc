@@ -46,7 +46,7 @@ export function planContext(isLong, stopPlanned) {
   };
 }
 
-/** the max loss and the account it comes from, as they stand now */
+/** the max loss and the account it comes from, as they stand now (a share order card's review reads them fresh) */
 export function riskContext() {
   return { max_loss: round2(riskDollars()), account_size: num('accountSize'), account_source: accountSizeFromSchwab() ? 'schwab' : 'typed', risk_pct: num('riskPct') };
 }
