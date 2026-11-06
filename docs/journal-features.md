@@ -22,7 +22,7 @@ Labels (step 3) are what you say about a trade. Features are what the data says,
 - **Provider seam:** `src/services/bar-source.js` holds the provider in use (`barSource`, Tradier for now). `services/bars.js` fetches through it and never calls Tradier itself. Moving off Tradier is a new provider in that file. Daily bars joined the seam in part 2 (`barSource.daily`).
 - **The app's form:** symbols are the OCC symbol without its padding (`AAPL261218C00245000`, a stock as itself), days are New York days, a bar is stamped with its start in New York time ('09:30' = 9:30 to 9:35), rows are `[time, open, high, low, close, volume]`, extended hours included (04:00 to 20:00). A provider whose symbols or stamps differ translates them in its own entry.
 - **Source:** `bars_5m.source` (migration `20261029000000_bars_source.sql`, default `tradier`). Providers differ a little (volume from every exchange or one, extended-hours prints), so a feature can tell what it compares, and one provider's days can be fetched again. Before the push, rows save without it.
-- **Market basket** (`MARKET_BASKET` in `core/bars.js`): SPY, QQQ, IWM, DIA and the 11 sector SPDRs, saved every weekday whether you traded or not, so market features work for every trade. VIX is left out until it's checked that Tradier serves it intraday.
+- **Market basket** (`MARKET_BASKET` in `core/bars.js`): SPY, QQQ, IWM, DIA and the 11 sector SPDRs, saved every weekday whether you traded or not, so market features work for every trade. VIX isn't in the basket itself: the VIX features name it in their needs, so the saver keeps it the same way (Tradier's symbol `VIX`).
 - **Lookback** (`LOOKBACK_DAYS`, 20): the weekdays before each trade's open are saved for its stock (an option's underlying, not the contract), for comparisons like the volume run rate.
 - **Window:** all of it within the last 35 days (`BARS_KEEP_DAYS`), finished days only. The first run fills in everything Tradier still has. It runs when the Journal opens and after an import, at most hourly, with a Tradier key in Settings; open the Journal at least every few weeks or days fall out of Tradier's window for good.
 - **Size:** about 9 KB a saved day. The basket is about 15 × 252 days a year, plus your symbols. Watch it against Supabase's free 500 MB; packing bars tighter is the fix if it grows.
@@ -84,6 +84,7 @@ feature({
 - **The whole day's relative volume** isn't an entry feature: the day hasn't finished at the entry. day_volume_at_exit is the honest version: the day's volume by the exit against a whole normal session.
 - **Distance from the all-time high:** entry over the highest prior high (every prior day, plus today's before the entry), as a %. Needs daily bars back to the listing, which providers serve any time, so it stamps for the whole history at once. Only per symbol `{ high, date, through }` has to be kept. Needs split-adjusted prices (to be checked at Tradier; after a split the symbol's history is fetched again), and says 'high since 1998' when the provider's history starts after the listing.
 - **SPY / QQQ over the daily 8 EMA at entry:** SPY's price at the entry bar against the daily 8 EMA updated with that price, so it never sees the day's close. Without SPY's 5-minute bars that day, the prior close against the prior EMA, flagged as such.
+- **VIX at entry** (`vix_at_entry`, and `vix_change_at_entry` against the close the day before): VIX's last 5-minute value at the entry. Without that day's VIX bars (older than the saver's window, or Tradier didn't serve them), the day's daily open from 9:30, else the close before, noted 'the open' or 'prior close', so every past trade gets a reading from daily history alone. Before 9:30 there's no change yet.
 - **Entry over VWAP:** the underlying at the fill time against its session VWAP (for an option, the underlying's, not the option's).
 
 ## Part 3: the features page, filters and stats
@@ -97,5 +98,5 @@ feature({
 ## Open questions
 
 - Is Tradier's daily history split-adjusted, and how far back does it go for an old stock? The docs don't say either; the features line the history up with the day's own prices (see Splits above), so they're right either way. Worth one check against a real key (a stock that split, like NVDA in June 2024).
-- Does Tradier serve VIX timesales?
+- Does Tradier serve VIX timesales? The VIX features ask for them; if Tradier refuses, they wait out the saver's 35-day window on recent trades and then fall back to the daily open or the close before. Worth one check against a real key.
 - A provider with deep intraday history (Polygon / Massive, Alpaca) would fill intraday features further back than the 40 days saved now. Worth deciding once the features are in use.
