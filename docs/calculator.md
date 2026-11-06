@@ -16,6 +16,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   There is no stream: ensureStream only opens Tradier's, so Live polls the quote every 2s.
   The setup notice, the settings button's amber dot and requireKey all count a Schwab login as a source; Settings' status line says 'Quotes from Schwab'.
   The Schwab app needs Market Data Production, and the worker must relay `/marketdata/v1` (a worker deployed before futures answers 404).
+  A refused read says which (schwabRefusal: 404 the worker, 401 or 403 Market Data Production) on a Load and in the chain's status, instead of 'Symbol not found'.
   Schwab has no price history for options, so a contract's own 5-minute bars (the journal's option bars, the position chart's option pane) need a Tradier key.
 - **This week's rules** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip (same phone `order` as the strip, after it in the markup; under it in the desktop rail) listing the rules last week's review set (docs/journal.md, Rules for next week).
   Shown in Stocks & futures and Options while signed in and the week has rules; a weekend shows the coming week's (notebookToday).

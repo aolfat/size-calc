@@ -48,6 +48,7 @@ Each area's behavior is written down in its own file under `docs/`.
 Read it before changing that area, and update it in the same PR when behavior changes.
 - `docs/calculator.md`: the Size tab (Tradier, stops and stop strategies, ATR, shares and allocation sizing, the options chain and loss model, the simulator, quick lookup, verticals, the daily and intraday charts, live mode, extended hours)
 - `docs/sync.md`: Google sign-in, settings sync, the Tradier key in Vault
+- `docs/schwab-setup.md`: the guide for other people: their own Schwab developer app and worker, no Tradier key (owner request; Schwab's individual developer access covers one's own accounts, so each user brings their own app)
 - `docs/schwab.md`: the Schwab login and worker, Trade at Schwab, the banner, account size from Schwab, raw capture, the history download
 - `docs/positions.md`: the Positions tab (rows, spreads, columns and R, position trades, the spread close, working orders, cancel, cancel all, edit, the position chart and targets)
 - `docs/journal.md`: the Journal tab (imports, trades, spreads, fees, reviews, bars, features, the trade page, the review deck, calendar and stats, the notebook)

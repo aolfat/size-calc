@@ -8,7 +8,7 @@ import { cleanExpirations } from '../core/options.js';
 import { isShorthand, parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
-import { marketFetch } from '../services/market-source.js';
+import { marketFetch, marketSource, schwabRefusal } from '../services/market-source.js';
 import { fetchChain, markActiveExp, renderChain, renderExpTabs } from './chain.js';
 import { fetchChart } from './chart.js';
 import { fetchAdr, updateChartVisibility } from './daily.js';
@@ -145,6 +145,8 @@ export function drawQuote() {
  */
 export async function tradierQuote(ticker, greeks = true) {
   const qRes = await marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}${greeks ? '&greeks=true' : ''}`, { headers: headers() });
+  const refused = !qRes.ok && marketSource() === 'schwab' && schwabRefusal(qRes.status);
+  if (refused) throw new Error(refused); // a setup problem, not a bad ticker
   const q = (await qRes.json())?.quotes?.quote;
   if (!q || Array.isArray(q) || q.type === 'option') throw new Error('Symbol not found or invalid.');
   if (!isSymbol(q.symbol)) q.symbol = ticker;

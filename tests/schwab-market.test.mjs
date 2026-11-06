@@ -180,3 +180,17 @@ test('with neither a Tradier key nor a Schwab login, Load says what to add and o
   assert.equal(h.run('openSheetName'), 'settings');
   assert.equal(h.elements.get('errorBox').textContent, 'Add a Tradier API key or log in to Schwab in Settings.');
 });
+
+test('a Schwab app without Market Data Production says what to fix, not "symbol not found"', async () => {
+  const fetch = async url => {
+    if (url.startsWith(PROXY + '/marketdata/v1/')) return json({ message: 'Forbidden' }, 403);
+    throw new Error('Unexpected request ' + url);
+  };
+  const h = await app({ fetch, storage: connected() });
+  h.elements.get('ticker').value = 'AAPL';
+  await h.run('fetchQuote()');
+  await settle();
+  assert.equal(h.elements.get('errorBox').textContent, 'Error: Schwab refused the market data. Check that your Schwab app has Market Data Production, then log in to Schwab again.');
+  assert.equal(h.run('schwabRefusal(404)'), "Your Schwab worker can't read market data yet. Redeploy it (worker/schwab/README.md).");
+  assert.equal(h.run('schwabRefusal(500)'), '');
+});

@@ -2,7 +2,7 @@
 
 The Positions tab: rows, spreads, optional columns and R, position trades (stop, breakeven stop, close, spread close), working orders, cancel, cancel all, edit, and the position chart with profit targets.
 
-- **Positions** (Schwab, read-only): a top-level header tab (Positions, count badge #posCount = rows in the last read, key v), not part of the instrument switcher. positionsView is a display state, NOT a mode — currentMode stays shares/options underneath (tradeCtx etc. unaffected); selecting it hides all sizing surfaces (including the ticket card) and shows #positionsSection only: a live table of the account picked in Settings → Schwab trading, straight from Schwab (no Tradier key needed).
+- **Positions** (Schwab, read-only): a top-level header tab (Positions, count badge #posCount = rows in the last read, key v), not part of the instrument switcher. positionsView is a display state, NOT a mode — currentMode stays shares/options underneath (tradeCtx etc. unaffected); selecting it hides all sizing surfaces (including the ticket card) and shows #positionsSection only: a live table of the account picked in Settings → Schwab, straight from Schwab (no Tradier key needed).
   Two reads per refresh: `GET /accounts/{hash}?fields=positions` (schwabPositions) and the last 59 days of orders (schwabRecentOrders; Schwab's window is 60).
   Columns: Symbol (options as 'AAPL 6/20/26 245C' from Schwab's padded OCC symbol), Qty (shorts negative), Avg cost, Price (market value / qty × multiplier, Schwab's own mark), Market value, % of acct (of liquidation value, not the risk strip's account size), Stop, Risk @ stop; total row sums value and loss-only risk.
 

@@ -17,6 +17,17 @@ export function marketKey() {
   return source === 'tradier' ? tradierKey() : source;
 }
 
+/**
+ * A refused Schwab market data read in words that say what to fix ('' for a status that says nothing about the setup):
+ * 404 is a worker from before the market data relay, 401 or 403 a Schwab app without Market Data Production.
+ * @param {number} status
+ */
+export function schwabRefusal(status) {
+  if (status === 404) return 'Your Schwab worker can\'t read market data yet. Redeploy it (worker/schwab/README.md).';
+  if (status === 401 || status === 403) return 'Schwab refused the market data. Check that your Schwab app has Market Data Production, then log in to Schwab again.';
+  return '';
+}
+
 const answer = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 /** gives up with an AbortError when the caller's signal fires, like fetch would */

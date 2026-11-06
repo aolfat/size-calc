@@ -2,6 +2,7 @@
 import { fmt$, marketEscape } from '../core/format.js';
 import { FUTURES_CONTRACTS, fmtTicks, futuresBars, futuresDays, futuresSymbol, parseFuturesQuote } from '../core/futures.js';
 import { store } from '../lib/store.js';
+import { schwabRefusal } from '../services/market-source.js';
 import { schwabFuturesBars, schwabFuturesDaily, schwabFuturesQuote, schwabSession } from '../services/schwab.js';
 
 export const FUTURES_ROOTS = Object.keys(FUTURES_CONTRACTS).map(r => '/' + r);
@@ -15,9 +16,7 @@ export function futuresLoadError(text) {
 
 /** Schwab's refusals in words that say what to fix */
 function words(e) {
-  if (e?.status === 404) return 'Your Schwab worker can\'t read market data yet. Redeploy it (worker/schwab/README.md).';
-  if (e?.status === 401 || e?.status === 403) return 'Schwab refused the market data. Check that your Schwab app has Market Data Production, then log in to Schwab again.';
-  return e?.message || 'Couldn\'t read Schwab\'s market data.';
+  return schwabRefusal(e?.status) || e?.message || 'Couldn\'t read Schwab\'s market data.';
 }
 
 /** a futures ticker's quote in the app's quote form; a failure throws with words that say what to fix */

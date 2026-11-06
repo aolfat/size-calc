@@ -16,6 +16,11 @@ browser's storage only (never in sync). Browser calls are accepted
 only from `ALLOWED_ORIGINS`. The worker operator can access tokens passing
 through this worker. They are not hidden from the operator by encryption.
 
+Using the hosted app (https://aolfat.github.io/size-calc/) with your own Schwab
+login? Follow [the setup guide](../../docs/schwab-setup.md): it's the same steps,
+and this folder's `wrangler.toml` already has the hosted app's callback and
+origins, so you only add your app's key and secret.
+
 ## One-time setup
 
 Needs your Schwab developer app (status "Ready For Use") and a free Cloudflare
@@ -41,7 +46,7 @@ npx wrangler secret put SCHWAB_APP_SECRET   # paste the Secret
 
 Until both secrets are set, the worker answers "worker not configured".
 
-Then in the app: Settings → Schwab trading → paste the worker URL → Log in to
+Then in the app: Settings → Schwab → paste the worker URL → Log in to
 Schwab.
 
 ## Logging in
