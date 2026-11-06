@@ -54,7 +54,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Missing ATR blocks automatic sizing only for the ATR strategy.
   Formula reference: https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/atr; candle timestamps: https://docs.tradier.com/docs/timesale
 - **Shares mode** (default): Shares = risk$ / |entry − stop|.
-  The Long/Short toggle lives FIRST in the Entry & stops row (direction is the first decision; dirField hidden in options mode where chain side plays that role)
+  The Long/Short switch sits FIRST, full width above the entry and stop (direction is the first decision; #dirField, hidden in options mode where chain side plays that role).
+  The side you're on is filled solid with an up or down arrow (owner request: make it obvious), and aria-pressed follows it.
 - **Futures in Stocks & futures** (the Shares mode, renamed; there is no Futures tab): a ticker starting with / loads a futures contract (ui/futures.js, core/futures.js).
   futuresSymbol takes a root FUTURES_CONTRACTS knows (/MES, the active contract) or one month (/MESZ26); any other / ticker says which roots work.
   Everything comes from Schwab's market data through the worker (Tradier has no futures), so it needs a Schwab login; without one the box says so and reads nothing.

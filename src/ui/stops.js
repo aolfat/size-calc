@@ -19,6 +19,8 @@ export function setDirection(dir) {
   const s = document.getElementById('dirShort');
   l.className = dir === 'long' ? 'active long' : '';
   s.className = dir === 'short' ? 'active short' : '';
+  l.setAttribute('aria-pressed', String(dir === 'long'));
+  s.setAttribute('aria-pressed', String(dir === 'short'));
   updateStopVisibility();
   renderAdr();
   renderShares();

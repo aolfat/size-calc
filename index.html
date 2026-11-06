@@ -126,14 +126,13 @@
       <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
     </div>
     <div class="section-title" id="entryStopsTitle" style="margin-top:16px;">Entry &amp; stops</div>
-    <div class="row" id="entryStopsRow" style="align-items:flex-end;">
-      <div class="field" style="flex:0 0 auto;" id="dirField">
-        <label>Direction</label>
-        <div class="seg dir" id="dirSeg">
-          <button id="dirLong" class="active long" data-action="setDirection" data-arg="long">Long</button>
-          <button id="dirShort" data-action="setDirection" data-arg="short">Short</button>
-        </div>
+    <div class="dir-row" id="dirField">
+      <div class="seg dir dir-big" id="dirSeg" role="group" aria-label="Direction">
+        <button id="dirLong" class="active long" aria-pressed="true" data-action="setDirection" data-arg="long" title="Long (d switches)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>Long</button>
+        <button id="dirShort" aria-pressed="false" data-action="setDirection" data-arg="short" title="Short (d switches)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>Short</button>
       </div>
+    </div>
+    <div class="row" id="entryStopsRow" style="align-items:flex-end;">
       <div class="field" style="flex:0 0 150px;">
         <label for="entryPrice">Entry</label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="entryPrice" placeholder="now" step="0.01" min="0" title="The underlying price you plan to enter at. Blank uses the current price" data-input="stopsChanged" /></div>
