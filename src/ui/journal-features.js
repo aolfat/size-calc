@@ -8,7 +8,7 @@ import { nyDay } from '../core/bars.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { FEATURE_FAMILIES, FEATURES, featureCoverage, featureDataNeeds, featureDue, featureNeedsWords, featuresDue, featureValueWords, featureVersion, stampableTrade, stampTrade } from '../core/features/index.js';
 import { fetchDailyBars, loadFeatureStamps, loadKeptBars, saveFeatureStamps } from '../services/features.js';
-import { tradierKeyHere } from '../services/bars.js';
+import { marketDataHere } from '../services/bars.js';
 import { state } from '../state.js';
 import { journalTradeList, renderJournal } from './journal.js';
 
@@ -71,7 +71,7 @@ export async function maybeStampFeatures({ force = false } = {}) {
       for (const [symbol, days] of needs.intraday) intraday.set(symbol, await loadKeptBars(symbol, days));
       for (const [symbol, from] of needs.daily) {
         if (daily.has(symbol) && daily.get(symbol).from <= from) continue;
-        if (!tradierKeyHere()) continue; // not read: those features wait for a key
+        if (!marketDataHere()) continue; // not read: those features wait for a key
         try { daily.set(symbol, { from, bars: await fetchDailyBars(symbol, from, nyDay(now)) }); }
         catch(e) { daily.set(symbol, { from: '', bars: null }); } // not again this run; they wait
       }

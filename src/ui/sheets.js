@@ -1,5 +1,6 @@
 // Sheets: settings, account & risk, the Schwab order reviews (new trade, held position, closing a spread, cancelling or changing a working order, cancelling them all), the Journal's Import and Export, and a journal trade (your stop, deleting it), a panel under the header on desktop and a bottom sheet on phones.
 import { state } from '../state.js';
+import { marketSource } from '../services/market-source.js';
 
 export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', posActions: 'posActionsSheet', spreadClose: 'spreadCloseSheet', cancel: 'cancelSheet', cancelAll: 'cancelAllSheet', edit: 'editSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', tradeReview: 'tradeReviewSheet', journalLibrary: 'journalLibrarySheet' };
 // the page behind a sheet goes inert (no clicks, no Tab stops, hidden from screen readers); the toast stays live
@@ -35,7 +36,7 @@ export function openSheet(name) {
   if (!trapped.has(sheet)) { trapped.add(sheet); sheet.addEventListener('keydown', sheetTab); }
   // an empty key field is the one place focus helps; elsewhere it would pop the phone keyboard over the chips
   const keyEl = document.getElementById('apiKey');
-  if (name === 'settings' && !keyEl.value.trim()) keyEl.focus();
+  if (name === 'settings' && !marketSource()) keyEl.focus();
   else sheet.focus();
   for (const fn of watchers) fn(name);
 }

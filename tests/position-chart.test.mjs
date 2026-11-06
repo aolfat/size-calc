@@ -42,17 +42,21 @@ const OPT_BARS = ['2026-10-08', '2026-10-09', '2026-10-12'].flatMap((day, d) => 
 
 // Schwab answers from the fixtures; Tradier answers the daily history and the option's timesales, counted
 function network({ bars = BARS, fiveFails = false } = {}) {
-  const tradier = [];
+  const tradier = [], schwab = [];
   const fetch = async (url) => {
     if (url.startsWith(PROXY)) {
       const path = url.slice(PROXY.length);
+      if (path.startsWith('/marketdata/v1/pricehistory')) {
+        schwab.push(path);
+        return json({ symbol: 'HOOD', empty: false, candles: bars.map(d => ({ datetime: Date.parse(d.date + 'T05:00:00Z'), open: d.open, high: d.high, low: d.low, close: d.close, volume: 1000 })) });
+      }
       return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
     }
     if (url.includes('/markets/history')) { tradier.push(url); return json({ history: bars.length ? { day: bars } : null }); }
     if (url.includes('/markets/timesales')) { tradier.push(url); return fiveFails ? json({}, 400) : json({ series: { data: OPT_BARS } }); }
     throw new Error('Unexpected request ' + url);
   };
-  return { fetch, tradier };
+  return { fetch, tradier, schwab };
 }
 
 const event = e => ({ button: 0, preventDefault() { this.prevented = true; }, stopImmediatePropagation() {}, ...e });
@@ -77,7 +81,7 @@ async function chartApp({ key = true, ...opts } = {}) {
   h.run('initPositionChartEvents()');
   h.run("setView('positions')");
   await settle();
-  return { ...h, canvas, canvas5, tradier: net.tradier };
+  return { ...h, canvas, canvas5, tradier: net.tradier, schwab: net.schwab };
 }
 
 const tableRow = (elements, symbol) => elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes(`<b>${symbol}`)) || '';
@@ -121,8 +125,20 @@ test('Chart opens the position\'s 5-minute and daily charts next to the table, a
   assert.match(tableRow(elements, 'HOOD'), /aria-pressed="false" data-action="togglePositionChart"/);
 });
 
-test('without a Tradier key the chart says so and the target can still be typed', async () => {
+test("without a Tradier key the daily chart comes from Schwab's price history", async () => {
+  const { run, elements, tradier, schwab } = await chartApp({ key: false });
+  run("togglePositionChart('HOOD')");
+  await settle();
+  assert.equal(tradier.length, 0);
+  assert.ok(schwab.some(p => /^\/marketdata\/v1\/pricehistory\?symbol=HOOD&periodType=day&frequencyType=minute&frequency=5&/.test(p)), "the 5-minute pane");
+  assert.match(schwab.find(p => p.includes("frequencyType=daily")), /^\/marketdata\/v1\/pricehistory\?symbol=HOOD&periodType=year&frequencyType=daily&frequency=1&startDate=\d+&endDate=\d+$/);
+  assert.equal(elements.get('posChartPlot').style.display, '');
+  assert.doesNotMatch(elements.get('posChartStatus').textContent, /needs a Tradier key/);
+});
+
+test('with neither a Tradier key nor a Schwab login the chart says so and the target can still be typed', async () => {
   const { run, elements, tradier } = await chartApp({ key: false });
+  run("store.del('schwab_tokens')");
   run("togglePositionChart('HOOD')");
   await settle();
   assert.equal(tradier.length, 0);

@@ -13,6 +13,7 @@ import { breakevenAdd, closersInTheWay, fmtPositionPrice, positionLevels, rTarge
 import { sessionVwap } from '../core/trade-page.js';
 import { schwabStopDuration } from '../services/schwab.js';
 import { dailyHistory } from '../services/tradier.js';
+import { marketSource } from '../services/market-source.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles, snapToBar } from './candles.js';
 import { fetchFiveMinuteBars } from './chart.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
@@ -111,7 +112,7 @@ export function closePositionChart() {
 }
 
 function loadBars(c) {
-  if (!document.getElementById('apiKey').value.trim()) { c.error = 'The chart needs a Tradier key: add one in Settings. You can still type a target below.'; renderPositionChart(); return; }
+  if (!marketSource()) { c.error = 'The chart needs a Tradier key or a Schwab login: add one in Settings. You can still type a target below.'; renderPositionChart(); return; }
   for (const kind of PANES) c[kind].loading = true;
   renderPositionChart();
   for (const kind of PANES) loadPane(c, kind); // both at once, each drawn when it lands

@@ -2021,11 +2021,18 @@ test('an option position reads Tradier\'s OCC symbol, and a change to a working 
   assert.match(elements.get('editQuote').innerHTML, /<div class="tq-cell fills"><span class="tq-label">Bid<\/span><span class="tq-val">\$41\.08</, 'the sell limit fills at the bid');
 });
 
-test('no Tradier key, no strip; a quote that fails says so', async () => {
-  const b = broker();
-  const plainRun = await app({ fetch: b.fetch, storage: connected() });
+test("no Tradier key: the strip reads Schwab's quote; a quote that fails says so", async () => {
+  const b = broker(), seen = [];
+  const fetch = (url, init) => {
+    if (!url.startsWith(PROXY + '/marketdata/v1/')) return b.fetch(url, init);
+    seen.push(url);
+    return Promise.resolve(json({ HOOD: { assetMainType: 'EQUITY', symbol: 'HOOD', quote: { lastPrice: 41.1, bidPrice: 41.08, askPrice: 41.12 } } }));
+  };
+  const plainRun = await app({ fetch, storage: connected() });
   await plainRun.run("openPositionTrade('HOOD', 'close')");
-  assert.equal(plainRun.elements.get('posTradeQuote').style.display, 'none');
+  assert.equal(plainRun.elements.get('posTradeQuote').style.display, '');
+  assert.match(seen[0], /\/marketdata\/v1\/quotes\?symbols=HOOD&/);
+  assert.match(plainRun.elements.get('posTradeQuote').innerHTML, /Bid<\/span><span class="tq-val">\$41\.08</);
   const net = withQuotes(broker(), {});
   const { run, elements } = await withKey({ fetch: net.fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'close')");
@@ -2122,8 +2129,8 @@ test('an option close at the mid keeps the step its quote shows', async () => {
   assert.equal(b.sent.at(-1).body.price ?? b.sent.at(-1).body.childOrderStrategies?.[0].price, 6.15);
 });
 
-test('without a Tradier key the close ticket has no quote chips', async () => {
+test('without a Tradier key the close ticket keeps its quote chips: the Schwab login reads the quote', async () => {
   const { run, elements } = await app({ fetch: broker().fetch, storage: connected() });
   await run("openPositionTrade('HOOD', 'close')");
-  assert.doesNotMatch(elements.get('posTradeBody').innerHTML, /setCloseAt/);
+  assert.match(elements.get('posTradeBody').innerHTML, /setCloseAt/);
 });

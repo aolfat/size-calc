@@ -50,10 +50,10 @@
   <div id="sidePane" class="pane">
   <div id="railPane" class="pane">
   <div class="card setup-card" id="setupNotice" style="display:none;">
-    <div class="setup-title">Connect Tradier to load quotes</div>
-    <p>Add your Tradier API key in Settings to load stock quotes, charts, and option chains. Futures come from Schwab.</p>
+    <div class="setup-title">Connect Tradier or Schwab to load quotes</div>
+    <p>Add a Tradier API key or log in to Schwab in Settings to load stock quotes, charts, and option chains. Futures need Schwab. No Tradier? <a href="https://github.com/aolfat/size-calc/blob/main/docs/schwab-setup.md" target="_blank" rel="noopener">Set up your own Schwab login</a>.</p>
     <div class="setup-actions">
-      <button class="btn primary" data-action="openSheet" data-arg="settings">Add API key</button>
+      <button class="btn primary" data-action="openSheet" data-arg="settings">Open Settings</button>
       <button class="btn" data-action="openSheet" data-arg="risk">Set account and risk</button>
     </div>
   </div>
@@ -626,7 +626,7 @@
         <p class="api-notice" id="apiNotice">Stored in this browser. Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.</p>
       </div>
       <div class="sheet-section" id="schwabSection">
-        <div class="sheet-label">Schwab trading <span class="sheet-status" id="schwabStatus"></span></div>
+        <div class="sheet-label">Schwab <span class="sheet-status" id="schwabStatus"></span></div>
         <p class="hint" id="schwabProxyLine" style="display:none;">Worker: <span id="schwabProxyHost"></span> · <button class="link-btn" data-action="editSchwabProxy">Change</button></p>
         <div class="field" id="schwabProxyField">
           <label for="schwabProxy">Schwab worker URL</label>
@@ -660,8 +660,9 @@
           </div>
           <p class="hint" id="schwabSharedLine" style="display:none;">Your other devices use this login too. <button class="link-btn" data-action="disconnectSchwab" data-arg="everywhere">Disconnect everywhere</button></p>
         </div>
+        <p class="hint">Without a Tradier key, quotes, charts and option chains come from Schwab too (your Schwab app needs Market Data Production). There is no live stream then: Live polls every 2s.</p>
         <p class="hint">Sends shares orders from the shares card: a market entry, then your stop once it fills. Signed in, your Schwab login is saved to your account, encrypted, so your other devices use it without logging in again. The app administrator can decrypt it, and anyone who gets into your Google account could trade with it until it ends. Signed out, it stays in this browser. Tokens pass through the worker, whose operator can access them. Signing out disconnects Schwab on this device. Schwab asks you to log in again every 7 days.</p>
-        <details class="hint-details"><summary>Setup</summary>Deploy the worker in <b>worker/schwab</b> with your app key, secret, and callback URL (its README has the steps), then paste its URL above. Set the callback to this app's address and Schwab sends you straight back here after you log in. With https://127.0.0.1 as the callback, the page you land on won't load: copy its whole address and paste it here within about 30 seconds.</details>
+        <details class="hint-details"><summary>Set up your own Schwab login</summary>Make a Schwab developer app with Accounts and Trading Production and Market Data Production, and set its callback URL to <b id="schwabCallbackHint">this page's address</b>. Deploy your copy of the worker in <b>worker/schwab</b> with the app's key and secret, then paste the worker's URL above. <a href="https://github.com/aolfat/size-calc/blob/main/docs/schwab-setup.md" target="_blank" rel="noopener">Step-by-step guide</a>. With https://127.0.0.1 as the callback, the page you land on won't load: copy its whole address and paste it here within about 30 seconds.</details>
       </div>
     </div>
   </div>

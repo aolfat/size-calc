@@ -25,6 +25,7 @@ import { initSimEvents } from './ui/sim.js';
 import { updateStickyBar } from './ui/sticky-bar.js';
 import { updateStopVisibility } from './ui/stops.js';
 import { schwabSession } from './services/schwab.js';
+import { marketSource } from './services/market-source.js';
 import { fetchQuote, renderRecentTickers } from './ui/ticker.js';
 import { initSchwab, stripSchwabCallback } from './ui/trade.js';
 import { setView, startView } from './ui/views.js';
@@ -103,4 +104,4 @@ try { if (navigator.storage && navigator.storage.persist) navigator.storage.pers
 
 // pick up where you left off: auto-load the last ticker if its source is there (a Tradier key, or a Schwab login for futures)
 const lastTicker = document.getElementById('ticker').value.trim();
-if (!state.marketView && lastTicker && (lastTicker.startsWith('/') ? !!schwabSession() : !!document.getElementById('apiKey').value.trim())) fetchQuote();
+if (!state.marketView && lastTicker && (lastTicker.startsWith('/') ? !!schwabSession() : !!marketSource())) fetchQuote();

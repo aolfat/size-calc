@@ -20,6 +20,7 @@ import { cardPlan, refreshShareOrderQuote, renderShareOrderCard, renderShareOrde
 import { inZone } from '../lib/zone.js';
 import { showSheetQuote, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
+import { updateApiStatus } from './settings.js';
 import { rawStop } from './stops.js';
 import { drawQuote, refreshQuote, tradierQuote } from './ticker.js';
 import { maybeCapture, scheduleCloseCapture } from './schwab-capture.js';
@@ -205,6 +206,9 @@ export function updateSchwabUi() {
   renderShareOrderCards(); // their Trade at Schwab follows the login
   updateAccountSourceUi();
   updateSchwabBanner();
+  updateApiStatus(); // without a Tradier key, the Schwab login is what loads quotes
+  const here = globalThis.location;
+  if (here?.origin && /^https?:/.test(here.protocol)) document.getElementById('schwabCallbackHint').textContent = here.origin + here.pathname.replace(/index\.html$/, '');
 }
 
 // ---------- the banner under the header: not connected, or the login's last day ----------

@@ -4,13 +4,14 @@
 import { state } from '../state.js';
 import { barsNeeded, BARS_KEEP_DAYS, nyDay } from '../core/bars.js';
 import { barSource } from './bar-source.js';
+import { marketSource } from './market-source.js';
 import { supabaseClient } from './supabase.js';
 
 const DAY_MS = 86400000;
 const BATCH = 50;
 
-/** a Tradier key is in the settings box */
-export const tradierKeyHere = () => !!document.getElementById('apiKey')?.value.trim();
+/** bars can be read: a Tradier key, or a Schwab login */
+export const marketDataHere = () => !!marketSource();
 
 /** what's kept since `since`: 'SYMBOL|YYYY-MM-DD' */
 async function keptDays(client, since) {
