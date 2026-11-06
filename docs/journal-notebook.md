@@ -115,7 +115,7 @@ Tapping a line opens its day with it open, and that page's back button reads ←
 
 **Where the charts' bars come from:** the 5 minutes are the journal's kept bars when it has them (a trade of yours in that ticker that day), else Tradier's, read when you open it and never saved, so a day older than about 40 days has no 5-minute chart.
 The daily is Tradier's last year.
-Both need a Tradier key; without one each says so.
+Both need a Tradier key or a Schwab login; without either each says so.
 One missed trade is open at a time, so there's one set of charts; filling it in keeps them on the view you left.
 Remove takes one out at once, with Undo on the toast; its screenshots are deleted once Undo can't bring it back (10 seconds).
 Up to 20 a day.

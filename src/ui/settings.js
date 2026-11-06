@@ -6,6 +6,7 @@ import { CREDENTIAL_ORIGIN_MESSAGE, credentialOriginAllowed } from '../lib/crede
 import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, SESSION_KEY, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { schwabDisconnect, schwabSession, schwabSyncShared } from '../services/schwab.js';
+import { marketSource } from '../services/market-source.js';
 import { renderClaudeAccess } from './claude-access.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
@@ -185,7 +186,7 @@ export function setCloudUi(status) {
     : 'Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. The calculator works without signing in.';
   document.getElementById('apiNotice').innerHTML = !allowed ? 'API keys are disabled on this address.'
     : (s ? 'Saved to your account, encrypted. The app administrator can decrypt synced keys. ' : 'Stored in this browser. ')
-      + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>.';
+      + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>. Optional when you log in to Schwab below.';
 }
 
 export async function initCloud(href = location.href) {
@@ -243,24 +244,26 @@ export async function initCloud(href = location.href) {
 // setup status: the key line in Settings, the settings button's dot, and the first-run notice
 
 export function updateApiStatus() {
-  const key = document.getElementById('apiKey').value.trim();
-  document.getElementById('apiStatus').innerHTML = (key
+  const source = marketSource();
+  document.getElementById('apiStatus').innerHTML = (source === 'tradier'
     ? `<span style="color:var(--green)">●</span> Key saved · ${document.getElementById('apiEnv').value}`
+    : source === 'schwab' ? '<span style="color:var(--green)">●</span> Quotes from Schwab'
     : '○ No key yet') + (state.session ? ' · <span style="color:var(--blue)">Signed in</span>' : '');
-  document.getElementById('settingsBtn').classList.toggle('needs-key', !key);
+  document.getElementById('settingsBtn').classList.toggle('needs-key', !source);
   updateSetupNotice();
 }
 
-// the friendly first step: shown in the calculator until a key is saved
+// the friendly first step: shown in the calculator until quotes can be read (a Tradier key or a Schwab login)
 
 export function updateSetupNotice() {
   const calc = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView;
-  document.getElementById('setupNotice').style.display = calc && !document.getElementById('apiKey').value.trim() ? '' : 'none';
+  document.getElementById('setupNotice').style.display = calc && !marketSource() ? '' : 'none';
 }
 
+/** true when quotes can be read (a Tradier key, or a Schwab login); otherwise says so and opens Settings */
 export function requireKey() {
-  if (document.getElementById('apiKey').value.trim()) return true;
-  showError('Add your Tradier API key in Settings.');
+  if (marketSource()) return true;
+  showError('Add a Tradier API key or log in to Schwab in Settings.');
   openSheet('settings');
   return false;
 }

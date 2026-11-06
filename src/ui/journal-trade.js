@@ -17,7 +17,7 @@ import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBetween } from '../core/bar
 import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { viewRange } from '../core/chart-view.js';
-import { fetchTradeBars, loadTradeBars, saveTradeBars, tradierKeyHere } from '../services/bars.js';
+import { fetchTradeBars, loadTradeBars, saveTradeBars, marketDataHere } from '../services/bars.js';
 import { store } from '../lib/store.js';
 import { DESKTOP_MQ, mq } from '../lib/media.js';
 import { zoneAbbr } from '../lib/zone.js';
@@ -176,22 +176,22 @@ export function syncJournalPage() {
 async function intradayBars(symbol, t, days, now, save, whose) {
   try {
     // the sessions before the open, for context: straight from Tradier while it keeps them, never saved
-    const before = tradierKeyHere() ? contextDays(t, now) : [];
+    const before = marketDataHere() ? contextDays(t, now) : [];
     const context = before.length ? fetchTradeBars(symbol, before).catch(() => []) : Promise.resolve([]);
     let rows = await loadTradeBars(symbol, days);
     const recent = days.filter(d => d >= nyDay(now - BARS_KEEP_DAYS * 864e5) && d <= lastDoneDay(now));
-    if (rows.length < recent.length && tradierKeyHere()) {
+    if (rows.length < recent.length && marketDataHere()) {
       await save();
       rows = await loadTradeBars(symbol, days);
     }
     // today until it's saved (after 20:00 ET): straight from Tradier, never saved, so a half day can't be kept
     const today = days.filter(d => d === nyDay(now) && !rows.some(x => x.day === d));
-    if (today.length && tradierKeyHere()) rows = [...rows, ...await fetchTradeBars(symbol, today).catch(() => [])];
+    if (today.length && marketDataHere()) rows = [...rows, ...await fetchTradeBars(symbol, today).catch(() => [])];
     const held = (await context).filter(r => !rows.some(x => x.day === r.day));
     const fills = tradeFills(t);
     return {
       bars: holdChartBars(unpackBars([...held, ...rows]), fills),
-      status: holdChartBars(unpackBars(rows), fills).length ? '' : !tradierKeyHere() && !rows.length ? `Add a Tradier key in Settings to load ${whose}'s 5-minute bars.`
+      status: holdChartBars(unpackBars(rows), fills).length ? '' : !marketDataHere() && !rows.length ? `Add a Tradier key or log in to Schwab in Settings to load ${whose}'s 5-minute bars.`
         : days[days.length - 1] < nyDay(now - BARS_KEEP_DAYS * 864e5) ? `No 5-minute bars were saved for ${whose}: Tradier keeps about 40 days, and the journal saves them as you go.`
         : `No 5-minute bars for ${whose} yet: Tradier has none for it so far.`,
     };
@@ -231,7 +231,7 @@ async function loadCharts(p) {
   if (state.journalTrade !== p) return;
   renderJournalTrade();
   // daily: from Tradier, about a year
-  if (!tradierKeyHere()) { p.statusD = 'Add a Tradier key in Settings for the daily chart.'; renderJournalTrade(); return; }
+  if (!marketDataHere()) { p.statusD = 'Add a Tradier key or log in to Schwab in Settings for the daily chart.'; renderJournalTrade(); return; }
   p.loadingD = true;
   renderJournalTrade();
   try {

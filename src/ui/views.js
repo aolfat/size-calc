@@ -2,6 +2,7 @@
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch, marketSource } from '../services/market-source.js';
 import { fetchChain, markActiveExp, renderExpTabs } from './chain.js';
 import { drawChart } from './chart.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
@@ -105,9 +106,9 @@ export async function setMode(mode) {
   if (mode === 'options' && isFuturesQuote(state.quoteData)) { showError('No option chains for futures here. Load a stock for options.'); return; }
   if (mode === 'options' && state.quoteData && state.chainData.length === 0) {
     const ticker = state.quoteData.symbol; // the loaded symbol, not whatever the field holds now
-    if (ticker && document.getElementById('apiKey').value.trim()) {
+    if (ticker && marketSource()) {
       try {
-        const expRes = await fetch(`${baseUrl()}/markets/options/expirations?symbol=${encodeURIComponent(ticker)}&includeAllRoots=true`, { headers: headers() });
+        const expRes = await marketFetch(`${baseUrl()}/markets/options/expirations?symbol=${encodeURIComponent(ticker)}&includeAllRoots=true`, { headers: headers() });
         const expJson = await expRes.json();
         if (ticker !== state.quoteData?.symbol || state.currentMode !== 'options') return;
         const expList = cleanExpirations(expJson?.expirations?.date);

@@ -9,6 +9,7 @@ import { DESKTOP_MQ, SANS_FONT } from '../lib/media.js';
 import { store } from '../lib/store.js';
 import { zoneClock } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch } from '../services/market-source.js';
 import { renderChain } from './chain.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { fetchFuturesBars } from './futures.js';
@@ -52,7 +53,7 @@ export async function fetchFiveMinuteBars(ticker, extended = false) {
   const from = new Date(Date.now() - 14 * 864e5);
   const [open, close, filter] = extended ? ['04:00', '20:00', 'all'] : ['09:30', '16:00', 'open'];
   const url = `${baseUrl()}/markets/timesales?symbol=${encodeURIComponent(ticker)}&interval=5min&start=${encodeURIComponent(nyDateStr(from) + ' ' + open)}&end=${encodeURIComponent(nyDateStr(new Date()) + ' ' + close)}&session_filter=${filter}`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await marketFetch(url, { headers: headers() });
   if (!res.ok) throw new Error('Intraday data unavailable');
   const data = (await res.json())?.series?.data;
   return data ? (Array.isArray(data) ? data : [data]).map(b => ({ t: b.time, ts: b.timestamp, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume })) : [];

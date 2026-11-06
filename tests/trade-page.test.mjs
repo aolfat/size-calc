@@ -191,7 +191,7 @@ test('a row opens the trade page: its saved bars, MFE and MAE, the fills and sto
   assert.match(body(), /From 4 five-minute bars while it was open/);
   assert.match(body(), /<td>10\/1, 10:30 AM<\/td><td class="journal-buy">Buy<\/td><td>100<\/td><td>\$100\.02<\/td>/, 'the fills, in New York time');
   assert.match(body(), /\$95\.00 <span class="journal-tag journal-tag-quiet">first<\/span><\/td><td>filled<\/td>/, 'the stop orders');
-  assert.match(elements.get('jtStatusD').textContent, /Add a Tradier key in Settings for the daily chart/);
+  assert.match(elements.get('jtStatusD').textContent, /Add a Tradier key or log in to Schwab in Settings for the daily chart/);
   run('editJournalTrade()');
   assert.equal(state.openSheetName, 'tradeReview');
   run('closeSheet(); closeJournalTrade()');
@@ -480,5 +480,5 @@ test('a trade with nothing saved says why', async t => {
   await settle();
   assert.equal(state.journalTrade.five.length, 0);
   assert.equal(chart('jtChart5'), undefined, 'no bars, no chart');
-  assert.match(elements.get('jtStatus5').textContent, /Add a Tradier key in Settings to load this trade(?:'|’)s 5-minute bars|No 5-minute bars were saved/);
+  assert.match(elements.get('jtStatus5').textContent, /Add a Tradier key or log in to Schwab in Settings to load this trade(?:'|’)s 5-minute bars|No 5-minute bars were saved/);
 });

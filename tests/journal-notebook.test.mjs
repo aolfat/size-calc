@@ -639,7 +639,7 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   const id = saved()[0].id;
   assert.equal(saved()[0].symbol, 'NVDA');
   assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>[\s\S]*The day, 5 minutes[\s\S]*Daily setups[\s\S]*Entry tactics[\s\S]*Why you missed it/, 'open to fill in: the charts first, then the setup and tactic');
-  assert.match(out(), /Add a Tradier key in Settings for NVDA&#39;s 5-minute chart\./, 'no key: the charts say why');
+  assert.match(out(), /Add a Tradier key or log in to Schwab in Settings for NVDA&#39;s 5-minute chart\./, 'no key: the charts say why');
   assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15">15-minute pivot<`));
   run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); toggleMissedSetup('${id}', 'ema8_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedTactic('${id}', 'pivot15'); toggleMissedTactic('${id}', 'nope')`);
   run(`toggleMissedTactic('${id}', 'six20'); toggleMissedTactic('${id}', 'pivot30')`);

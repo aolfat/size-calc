@@ -6,6 +6,7 @@ import { fmt$ } from '../core/format.js';
 import { cardValueAt, isBull, sizeUnit, spreadWidth, strikesLabel, yearsToExp } from '../core/options.js';
 import { unitsFor } from '../core/sizing.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch } from '../services/market-source.js';
 import { renderAllocationCard } from './allocation.js';
 import { showError, withFlash } from './feedback.js';
 import { riskDollars } from './risk.js';
@@ -53,8 +54,8 @@ export function recalcPinnedStop(d) {
 export async function refreshCardData(d) {
   const optSyms = d.legs ? d.legs.map(L => L.occ).join(',') : d.parsed.occ;
   const [qRes, oRes] = await Promise.all([
-    fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(d.parsed.ticker)}`, { headers: headers() }),
-    fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(optSyms)}&greeks=true`, { headers: headers() })
+    marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(d.parsed.ticker)}`, { headers: headers() }),
+    marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(optSyms)}&greeks=true`, { headers: headers() })
   ]);
   const uq = (await qRes.json())?.quotes?.quote;
   const oqRaw = (await oRes.json())?.quotes?.quote;

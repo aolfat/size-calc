@@ -7,6 +7,7 @@ import { expiryCloseMs, isMonthlyExp, isOccSymbol, lossClass, yearsToExp } from 
 import { unitsFor } from '../core/sizing.js';
 import { COMPACT_CHAIN_MQ, mq } from '../lib/media.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch } from '../services/market-source.js';
 import { calcAllocationOption, updateSizingControls } from './allocation.js';
 import { drawChart } from './chart.js';
 import { ivRankInfo, renderAdr } from './daily.js';
@@ -64,7 +65,7 @@ export async function fetchChain(ticker, exp, scrollAtm) {
     tbody.style.opacity = '0.4';
   }
   try {
-    const res = await fetch(`${baseUrl()}/markets/options/chains?symbol=${encodeURIComponent(ticker)}&expiration=${encodeURIComponent(exp)}&greeks=true`, { headers: headers() });
+    const res = await marketFetch(`${baseUrl()}/markets/options/chains?symbol=${encodeURIComponent(ticker)}&expiration=${encodeURIComponent(exp)}&greeks=true`, { headers: headers() });
     const json = await res.json();
     if (requestId !== state.chainRequestId || ticker !== (state.quoteData?.symbol ?? ticker) || exp !== state.selectedExp) return;
     const opts = json?.options?.option;

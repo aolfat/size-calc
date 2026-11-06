@@ -4,6 +4,19 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 
 - **Tradier API**: `api.tradier.com/v1` (or sandbox), Bearer auth.
   Endpoints used: `/markets/quotes` (greeks=true), `/markets/options/expirations`, `/markets/options/chains`, `/markets/timesales` (5min interval, for the chart)
+- **Market data from Schwab** (services/market-source.js, core/schwab-market.js; owner request: a Schwab login alone makes the app work): with no Tradier key in Settings and a live Schwab login, every stock and option read goes to Schwab's `/marketdata/v1` through the Schwab worker instead.
+  A Tradier key wins when both are there (marketSource: 'tradier', 'schwab' or ''), since only Tradier streams.
+  The call sites don't change: they call marketFetch with the same Tradier URL, which is plain fetch with a key, and otherwise turns the URL into the Schwab read (schwabRequest) and Schwab's answer back into the JSON Tradier would have sent (tradierBody).
+  The Market tab passes it as fetchImpl, so its batches and retries are the same.
+  Quotes: `/markets/quotes` → `/quotes` (fields quote, reference, regular, fundamental); last, change and change % are the regular session's, as Tradier's are, so after-hours prices still come through extSession from the bid and ask; close is today's close only once the session is over; average_volume is Schwab's 10-day average.
+  Options: the padded symbol Schwab uses ('AAPL  261218C00245000') goes in and comes back unpadded; IV comes in percent and becomes Tradier's fraction (mid_iv and smv_vol); Schwab's -999 (no value) is null; strike, side and expiration are read from the symbol.
+  Expirations → `/expirationchain`; a chain → `/chains` for that one date (contractType ALL, strategy SINGLE), its call and put maps flattened and sorted by strike.
+  5-minute bars → `/pricehistory` minute candles (needExtendedHoursData off for session_filter=open), stamped with their New York start like timesales; daily history → `/pricehistory` daily candles dated by trading day, plus today's bar from the quote when Schwab hasn't added it yet (Tradier's history ends with today's forming bar).
+  Cash indexes are bare in the app and get Schwab's $ on the way out (SCHWAB_INDEXES: SPX → $SPX, VIX → $VIX).
+  There is no stream: ensureStream only opens Tradier's, so Live polls the quote every 2s.
+  The setup notice, the settings button's amber dot and requireKey all count a Schwab login as a source; Settings' status line says 'Quotes from Schwab'.
+  The Schwab app needs Market Data Production, and the worker must relay `/marketdata/v1` (a worker deployed before futures answers 404).
+  Schwab has no price history for options, so a contract's own 5-minute bars (the journal's option bars, the position chart's option pane) need a Tradier key.
 - **This week's rules** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip (same phone `order` as the strip, after it in the markup; under it in the desktop rail) listing the rules last week's review set (docs/journal.md, Rules for next week).
   Shown in Stocks & futures and Options while signed in and the week has rules; a weekend shows the coming week's (notebookToday).
   The week reviews are read at boot once the Google session is back and again when the app comes to the front, at most every 5 minutes (loadWeekRules); saving the rules in the week's review redraws the card at once.

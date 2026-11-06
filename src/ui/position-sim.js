@@ -6,6 +6,7 @@ import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$ } from '../core/format.js';
 import { expiryCloseMs } from '../core/options.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch } from '../services/market-source.js';
 import { effects } from './effects.js';
 import { showError } from './feedback.js';
 import { requireKey } from './settings.js';
@@ -17,7 +18,7 @@ export async function simPosition(symbol) {
   if (!requireKey()) return;
   let quotes;
   try {
-    const res = await fetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(row.under)}`, { headers: headers() });
+    const res = await marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(row.under)}`, { headers: headers() });
     const raw = (await res.json())?.quotes?.quote;
     quotes = raw ? (Array.isArray(raw) ? raw : [raw]) : [];
   } catch(e) {

@@ -5,6 +5,7 @@ import { marketEscape, nyDateStr } from '../core/format.js';
 import { MarketData } from '../core/market-data.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
+import { marketFetch, marketKey, marketSource } from '../services/market-source.js';
 import { updateChartVisibility } from './daily.js';
 import { showToast } from './feedback.js';
 import { stopLive } from './live.js';
@@ -118,7 +119,7 @@ export async function marketLoadHistory(manual = false) {
     if (ms.historyJob.scope.id === scope.id) return;
     ms.historyJob.controller.abort();
   }
-  const key = document.getElementById('apiKey').value.trim();
+  const key = marketKey();
   if (!state.marketView || document.hidden || navigator.onLine === false || !key || !ms.quoteMode || ms.authBlocked
     || !(ms.auto || manual) || !marketHistoryScope(scope) || ms.historyRetryAt > Date.now()) return;
   const missing = marketHistoryMissing(scope);
@@ -128,10 +129,10 @@ export async function marketLoadHistory(manual = false) {
   ms.historyJob = context; ms.historyError = '';
   marketRenderRefreshStatus();
   const current = () => !context.controller.signal.aborted && environment === document.getElementById('apiEnv').value
-    && key === document.getElementById('apiKey').value.trim();
+    && key === marketKey();
   try {
     await MarketData.fetchHistories(missing, {
-      base:baseUrl(), auth:headers(), start:MarketData.dayBefore(today, { days:380 }), end:today, signal:context.controller.signal,
+      base:baseUrl(), auth:headers(), fetchImpl:marketFetch, start:MarketData.dayBefore(today, { days:380 }), end:today, signal:context.controller.signal,
       spacing:environment === 'sandbox' ? 1100 : 600, // Tradier allows ~120 market-data calls a minute (60 in the sandbox)
       onSymbol(symbol, days) {
         if (!current()) return;
@@ -167,7 +168,7 @@ export function marketSetCategory(category) {
 
 export function marketReadCache() {
   state.marketState.environment = document.getElementById('apiEnv').value;
-  state.marketState.key = document.getElementById('apiKey').value.trim();
+  state.marketState.key = marketKey();
   state.marketState.snapshots = Object.create(null);
   state.marketState.retryAt = 0; state.marketState.failures = 0; state.marketState.authBlocked = false;
   state.marketState.historyRetryAt = 0; state.marketState.historyError = '';
@@ -271,10 +272,10 @@ export function marketSizeTrade(ticker) {
   setView('calc');
   updateChartVisibility(); updateStickyBar();
   window.scrollTo({ top:0, behavior:'smooth' });
-  if (document.getElementById('apiKey').value.trim()) fetchQuote();
+  if (marketKey()) fetchQuote();
   else {
     openSheet('settings');
-    showToast(ticker + ' selected. Add your Tradier key to load its quote and size the trade.');
+    showToast(ticker + ' selected. Add a Tradier key or log in to Schwab to load its quote and size the trade.');
   }
 }
 
@@ -290,7 +291,7 @@ export function marketScheduleRefresh() {
     if (state.marketView) marketRenderRefreshStatus();
     return;
   }
-  const key = document.getElementById('apiKey').value.trim();
+  const key = marketKey();
   if (state.marketState.environment !== document.getElementById('apiEnv').value || state.marketState.key !== key) {
     marketAbortRefresh(); marketReadCache(); renderMarket();
   }
@@ -325,11 +326,11 @@ export function marketRenderRefreshStatus() {
   auto.classList.toggle('primary', ms.auto);
   const interval = scope.interval === 180000 ? '3 min' : '30 sec';
   auto.title = (ms.auto ? 'Pause automatic quote refresh. ' : 'Resume automatic quote refresh. ')
-    + scope.label + ' refreshes every ' + interval + ' while Market is visible and online. Requires a Tradier key in Size.';
+    + scope.label + ' refreshes every ' + interval + ' while Market is visible and online. Requires a Tradier key or a Schwab login.';
   const wait = Math.max(0, Math.ceil((ms.retryAt - Date.now()) / 1000));
   const status = navigator.onLine === false ? 'Offline · cached data kept'
-    : ms.authBlocked ? 'Auto paused · check your Tradier key in Size'
-    : !document.getElementById('apiKey').value.trim() ? 'Add a Tradier key in Size to refresh quotes.'
+    : ms.authBlocked ? (marketSource() === 'schwab' ? 'Auto paused · check your Schwab login in Settings' : 'Auto paused · check your Tradier key in Size')
+    : !marketKey() ? 'Add a Tradier key or log in to Schwab in Settings to refresh quotes.'
     : wait ? (ms.refresh ? 'Waiting to retry' : (ms.auto ? 'Retrying in ' : 'Refresh available in ') + wait + ' sec') + ' · previous data kept'
     : (ms.auto ? 'Auto every ' + interval : 'Auto paused') + ' · ' + scope.label + ' · ' + scope.rows.length.toLocaleString() + ' symbols';
   const statusElement = document.getElementById('marketRefreshStatus');
@@ -343,11 +344,11 @@ export function marketRenderRefreshStatus() {
     const count = scope.rows.filter(row => cached.quotes[row.ticker]).length;
     const job = ms.historyJob?.scope.id === scope.id ? ms.historyJob : null;
     const loaded = scope.rows.filter(row => ms.history[row.ticker]).length;
-    source.innerHTML = '<b>Today' + (ms.category === 'themes' ? '' : ' / from open') + ': Tradier ' + marketEscape(ms.environment)
+    source.innerHTML = '<b>Today' + (ms.category === 'themes' ? '' : ' / from open') + ': ' + (ms.key === 'schwab' ? 'Schwab' : 'Tradier ' + marketEscape(ms.environment))
       + '</b> · fetched ' + marketEscape(ageText) + (Date.now() - cached.fetchedAt >= scope.interval ? ' · <b>stale cache</b>' : '')
       + ' · ' + count.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' quotes available. Prices may be delayed. '
       + (!marketHistoryScope(scope) ? '<b>' + history + ': snapshot Sep 16, 2026.</b> Open a group for them from daily closes.'
-        : '<b>' + history + ': Tradier daily closes</b> · ' + (job ? 'loading ' + job.done + '/' + job.total
+        : '<b>' + history + ': ' + (ms.key === 'schwab' ? 'Schwab' : 'Tradier') + ' daily closes</b> · ' + (job ? 'loading ' + job.done + '/' + job.total
           : loaded.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' symbols')
           + (ms.historyError && !job ? ' · ' + marketEscape(ms.historyError) : '') + '.');
   } else {
@@ -359,9 +360,9 @@ export function marketRenderRefreshStatus() {
 export async function marketRefreshToday(automatic = false) {
   if (state.marketState.refresh || !state.marketState.stocks.length || !state.marketView || document.hidden || navigator.onLine === false) return;
   const notice = document.getElementById('marketNotice');
-  const key = document.getElementById('apiKey').value.trim();
+  const key = marketKey();
   if (!key) {
-    if (!automatic) { notice.textContent = 'Add your Tradier key in Size to refresh quotes. The imported snapshot is available without a key.'; notice.hidden = false; }
+    if (!automatic) { notice.textContent = 'Add a Tradier key or log in to Schwab in Settings to refresh quotes. The imported snapshot is available without either.'; notice.hidden = false; }
     return;
   }
   if (state.marketState.environment !== document.getElementById('apiEnv').value || state.marketState.key !== key) marketReadCache();
@@ -378,7 +379,7 @@ export async function marketRefreshToday(automatic = false) {
   if (!automatic) marketLoadHistory(true);
   try {
     const quotes = await MarketData.fetchQuotes(symbols, {
-      base:baseUrl(), auth:headers(), signal:context.controller.signal,
+      base:baseUrl(), auth:headers(), fetchImpl:marketFetch, signal:context.controller.signal,
       onProgress(done, total) {
         context.status = 'Refreshing ' + done.toLocaleString() + ' / ' + total.toLocaleString();
         marketRenderRefreshStatus();
@@ -389,7 +390,7 @@ export async function marketRefreshToday(automatic = false) {
         marketRenderRefreshStatus();
       },
     });
-    if (context.controller.signal.aborted || context.environment !== document.getElementById('apiEnv').value || key !== document.getElementById('apiKey').value.trim()) return;
+    if (context.controller.signal.aborted || context.environment !== document.getElementById('apiEnv').value || key !== marketKey()) return;
     const scopedQuotes = Object.create(null);
     symbols.forEach(symbol => { if (quotes[symbol]) scopedQuotes[symbol] = quotes[symbol]; });
     if (!Object.keys(scopedQuotes).length) throw new Error('Tradier returned no usable quotes.');

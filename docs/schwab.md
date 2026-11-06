@@ -19,7 +19,7 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   Warnings: outside 9:30–16:00 ET weekdays (no holiday table), risk at the current ask/bid >10% over the plan, a same-symbol order in the last 2 minutes.
   The review only opens on a fresh quote for the loaded symbol (refreshQuote answers true/false; a failed refresh shows an error, no ticket).
   **Live quote** (#tradeQuote, ui/sheet-quote.js watchSheetQuote): the top of the review shows Last, Bid and Ask, read from Tradier every 2s while the sheet is open (state.sheetQuote, its own setTimeout chain, skipped while the app is hidden, stopped when the sheet closes or another opens).
-  The same strip tops the Positions order sheets (docs/positions.md); without a Tradier key it stays hidden.
+  The same strip tops the Positions order sheets (docs/positions.md); without a Tradier key it reads Schwab's quote (docs/calculator.md, Market data from Schwab), and with neither it stays hidden.
   The side a market order fills on is lit: the ask on a buy, the bid on a short.
   A failed read keeps the last numbers and swaps Live for the time they're from.
   It only shows: the ticket and its warnings stay on the quote it was reviewed on (the details' **Reviewed at** row), and Place's own re-check is what moves it.
@@ -98,6 +98,7 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   Restoring the Google session (startSession) clears a Schwab login that isn't this user's or has ended, but keeps the attempt (schwabDisconnect({ keepAttempt: true })): on the callback page it runs first, and clearing the state there made every login say 'from another attempt'. main.js strips a Schwab ?code from the address at boot (stripSchwabCallback), before the Google session loads.
   `worker/schwab/` is a Cloudflare Worker: `/login` redirect, `/token` and `/refresh` with the app secret (Basic auth, only access/refresh/expires_in returned), `/trader/v1/*` relay passing the bearer through and exposing Location; browser calls only from ALLOWED_ORIGINS; it stores nothing.
   It also relays `GET /marketdata/v1/*` the same way, read only, for futures tickers' quotes and bars (docs/calculator.md, Futures in Stocks & futures); a worker deployed before that answers 404 there until it is redeployed, and the Schwab app needs Market Data Production.
+  Without a Tradier key the same relay serves every stock and option read too (docs/calculator.md, Market data from Schwab).
   Positions reads and trades through the same login (see Positions).
 
   **Account size from Schwab** (ui/account-size.js): while logged in, the selected account's liquidation value (rounded to dollars) becomes the account size once per New York day, on the day's first Schwab read: boot, window focus / visibilitychange, a Positions refresh (which reuses its own read, no extra call; dailyAccountSize skips while Positions is open), a login or account switch (a different account is due right away).
