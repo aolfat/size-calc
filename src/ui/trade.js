@@ -15,7 +15,7 @@ import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
 import { sharesPlan } from './shares.js';
 import { orbEntryName } from './orb.js';
-import { loadPlanChoices, planContext, riskContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
+import { loadPlanChoices, planContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { cardPlan, refreshShareOrderQuote, renderShareOrderCard, renderShareOrderCards, updatePinSharesButton } from './share-orders.js';
 import { inZone } from '../lib/zone.js';
 import { showSheetQuote, watchSheetQuote } from './sheet-quote.js';
@@ -268,13 +268,13 @@ export function buildTradeTicket(now = Date.now()) {
 }
 
 /**
- * A share order card's order, sized as the card shows it now against its own fresh quote. What the calculator knew comes from
- * when it was pinned, and the max loss and account from now, since the card sizes from them.
+ * A share order card's order, sized as the card shows it against its own fresh quote. What the calculator knew, the max loss
+ * and the account all come from when it was pinned, since the card keeps that size.
  */
 export function buildCardTicket(cardId, now = Date.now()) {
   const d = state.pinnedData[cardId];
   const plan = cardPlan(d);
-  const planCtx = { ...d.planCtx, ...riskContext(), stop_planned: Number.isFinite(plan.stop) ? plan.stop : null };
+  const planCtx = { ...d.planCtx, stop_planned: Number.isFinite(plan.stop) ? plan.stop : null };
   return ticketFromPlan(plan, d.quote, { customEntry: !!d.customEntry, entryNote: d.entryNote, planCtx, cardId }, now);
 }
 

@@ -106,8 +106,10 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 - **Share order cards** (ui/share-orders.js, owner request: several share orders open at once, each ready to send): the shares card's **Pin order** (#sharesPin, pinShares) keeps the shares answer as its own card in the pinned list, newest on top; pin one, load the next ticker, pin it too.
   It shows on risk sizing for a stock or ETF (not futures, not allocation), works without Schwab, and is disabled without a valid stop.
   A card (pinnedData kind 'shares') keeps its ticker, side, stop price, planned entry (blank = the market, effectivePrice of the card's own quote) and what the calculator knew for the order plan (planContext at the pin).
-  The share count follows the max loss now, like every pinned card (cardPlan: unitsFor(riskDollars(), |entry − stop|)).
+  A pinned order holds still (owner request): its stop and share count stay as pinned through a new low or high, the market moving and the risk strip changing (d.shares, d.risk; cardPlan reads d.shares).
+  Only an edit on the card resizes it, from the max loss it was pinned with (resizeCard: unitsFor(d.risk, |entry − stop|)).
   The card's Entry and Stop boxes are editable (shareOrderEntryChanged, shareOrderStopChanged); a typed stop is a custom stop for the plan from then on.
+  With a blank entry the risk at stop still moves with the market; the count doesn't.
   ↻ and the pinned cards' live refresh read the card's quote from Tradier (refreshShareOrderQuote); the calculator's loaded ticker never changes.
   While Schwab is connected each card has its own **Trade at Schwab** (openCardTrade, docs/schwab.md); a sent order shows on the card with **Status**, which reopens that order's review.
   A redraw you didn't cause (the live refresh, a login change, a review starting) waits while you're typing in a card's box; committing the box redraws it.

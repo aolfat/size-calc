@@ -1,5 +1,5 @@
 // Share order cards: the shares answer pinned as its own card (Pin order), as many as you like, each with its own Trade at Schwab.
-// A card keeps its ticker, side, stop and planned entry; the share count follows the max loss like every pinned card.
+// A card keeps its ticker, side, stop, planned entry and share count as pinned; only an edit on the card resizes it, from the max loss it was pinned with.
 import { state } from '../state.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
@@ -43,6 +43,7 @@ export function pinShares() {
     kind: 'shares', symbol: q.symbol, isLong: plan.isLong, stopLevel: plan.stop, stopName: stopSourceName(plan.isLong, true),
     customEntry, entry: customEntry ? plan.entry : 0, entryNote: customEntry ? orbEntryName() : '',
     quote: { ...q }, planCtx: planContext(plan.isLong, plan.stop), asOf: inZone(Date.now()), lastOrder: null, checking: false,
+    risk: riskDollars(), shares: plan.shares, // frozen: a new low, the market or the risk strip moving never resizes a pinned order
   };
   const div = document.createElement('div');
   div.className = 'pinned-card';
@@ -57,12 +58,19 @@ export function pinShares() {
 /** the card's entry: its planned price, else the market now (the extended price when there is one) */
 export const cardEntry = d => d.customEntry && d.entry > 0 ? d.entry : effectivePrice(d.quote);
 
-/** the card's plan in sharesPlan's shape: the share count from the max loss now */
+/** the card's plan in sharesPlan's shape: the share count it was pinned (or last edited) with */
 export function cardPlan(d) {
   const entry = cardEntry(d), stop = d.stopLevel, isLong = d.isLong;
   const riskPerShare = isLong ? entry - stop : stop - entry;
   const valid = Number.isFinite(stop) && stop > 0 && Number.isFinite(entry) && entry > 0 && riskPerShare > 0;
-  return { isLong, stop, entry, riskPerShare, valid, shares: valid ? unitsFor(riskDollars(), riskPerShare) : 0 };
+  return { isLong, stop, entry, riskPerShare, valid, shares: valid ? d.shares : 0 };
+}
+
+/** an edit on the card sizes it again: the max loss it was pinned with over the entry and stop as they are now */
+function resizeCard(d) {
+  const entry = cardEntry(d), stop = d.stopLevel;
+  const riskPerShare = d.isLong ? entry - stop : stop - entry;
+  d.shares = stop > 0 && entry > 0 && riskPerShare > 0 ? unitsFor(d.risk, riskPerShare) : 0;
 }
 
 /** what the card shows when its stop is on the wrong side */
@@ -92,6 +100,7 @@ export function shareOrderStopChanged(cardId, el) {
     d.stopLevel = v;
     d.stopName = 'Custom stop';
     d.planCtx = { ...d.planCtx, stop_source: 'custom', stop_strategy: null, stop_amount: null };
+    resizeCard(d);
   }
   state.flashNext = true;
   renderShareOrderCard(cardId, { force: true });
@@ -105,7 +114,10 @@ export function shareOrderEntryChanged(cardId, el) {
   const v = parseFloat(el.value), was = d.customEntry ? d.entry : 0;
   d.customEntry = v > 0;
   d.entry = v > 0 ? v : 0;
-  if (d.entry !== was) d.entryNote = ''; // an opening-range entry typed over is your own plan now
+  if (d.entry !== was) {
+    d.entryNote = ''; // an opening-range entry typed over is your own plan now
+    resizeCard(d);
+  }
   state.flashNext = true;
   renderShareOrderCard(cardId, { force: true });
   state.flashNext = false;
@@ -149,7 +161,7 @@ export function renderShareOrderCard(cardId, { force = false } = {}) {
       <button class="card-act" data-action="removePinned" data-arg="${arg}" title="Remove this order card" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;">×</button>
     </div>
     <div class="stat-grid">
-      <div class="stat highlight"><div class="s-label">Shares to ${d.isLong ? 'buy' : 'short'}</div><div class="s-val">${plan.valid ? plan.shares : '—'}</div><div class="s-sub">${plan.valid ? fmt$(pos) + ' position · ' + (pos / acct * 100).toFixed(1) + '%' : 'for ' + fmt$(riskDollars()) + ' risk'}</div></div>
+      <div class="stat highlight"><div class="s-label">Shares to ${d.isLong ? 'buy' : 'short'}</div><div class="s-val">${plan.valid ? plan.shares : '—'}</div><div class="s-sub">${plan.valid ? fmt$(pos) + ' position · ' + (pos / acct * 100).toFixed(1) + '%' : 'for ' + fmt$(d.risk) + ' risk'}</div></div>
       <div class="stat"><div class="s-label">Entry</div><div class="s-val"><input type="number" class="s-val-input" value="${d.customEntry ? priceText(d.entry) : ''}" placeholder="now" step="0.01" min="0" inputmode="decimal" title="Plan an entry price; blank is the market" aria-label="${sym} entry" data-change="shareOrderEntryChanged" data-arg="${arg}" /></div><div class="s-sub">${d.customEntry ? esc(d.entryNote || 'planned') : 'market ' + fmt$(plan.entry)}</div></div>
       <div class="stat danger"><div class="s-label">Stop price</div><div class="s-val"><input type="number" class="s-val-input" value="${priceText(d.stopLevel)}" step="0.01" min="0" inputmode="decimal" title="Edit the stop, the card resizes" aria-label="${sym} stop" data-change="shareOrderStopChanged" data-arg="${arg}" style="color:var(--red);" /></div><div class="s-sub">${esc(d.stopName)}</div></div>
       <div class="stat"><div class="s-label">Risk at stop</div><div class="s-val shares-loss">${plan.valid ? fmt$(risk) : '—'}</div><div class="s-sub">${plan.valid ? (risk / acct * 100).toFixed(2) + '% of account · ' + fmt$(plan.riskPerShare) + '/sh' : ''}</div></div>
