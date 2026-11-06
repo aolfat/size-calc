@@ -23,6 +23,7 @@ export function createState() {
     chartBars: [],
     chartHover: -1,
     chartHoverY: -1,
+    chartDragRange: null, // { lo, hi } held while a chart line is dragged, so the scale stays put under the pointer
     errorTimer: null,
     simState: null,
     simHover: -1,
@@ -45,8 +46,9 @@ export function createState() {
     sheetOpener: null,
     quickOpen: false,
     flashNext: false,
-    editingUsd: false,
-    editingPct: false,
+    editingRisk: false, // the max loss chips' Edit: a × on each chip and the add box
+    riskAddUnit: 'usd', // what a bare number in the add box means: 'usd' or 'pct' (a typed % wins)
+    riskAddNote: '', // the add box's last word: added, already there, or what to type
     rEdit: null, // the R chips while ✎ is on: one typed value per box, the last the '+' box
     stopStrategy: 'none',
     stopPercent: 0.05,

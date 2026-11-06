@@ -22,10 +22,11 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Shown in Stocks & futures and Options while signed in and the week has rules; a weekend shows the coming week's (notebookToday).
   The week reviews are read at boot once the Google session is back and again when the app comes to the front, at most every 5 minutes (loadWeekRules); saving the rules in the week's review redraws the card at once.
   Settings, This week's rules: Show in Size (the default) or Hide (setWeekRulesShown, `week_rules_calc`, this device only).
-- **Stops**: ONE global stop pair in the ticker card, used everywhere.
+- **Stops**: ONE global stop pair in the entry and stops card (#stopsCard), used everywhere; with options sized by allocation the card hides.
   Long stop (shares-long + calls, blank = LOD) and short stop (shares-short + puts, blank = HOD).
   Only the stop matching tradeCtx() is shown/drawn (shares follow the Long/Short toggle, options follow chain side; Both view shows both).
   Chart click sets the context's stop; in Both view, below price = long, above = short.
+  In Stocks & futures the direction follows the stop: a click or drag above the entry makes the trade a short, below it a long (followStop).
   Quick lookup uses the pair when its ticker matches the loaded quote, else that underlying's LOD/HOD.
   Inputs clear on symbol change.
   Only an explicit Load (fetchQuote) reads the ticker field, which doubles as the search box; every refresh (refreshQuote, live ticks, mode switch, expiry, chart interval) keys off `state.quoteData.symbol`, so typed-but-unloaded text never swaps the quote under the old stops.
@@ -54,7 +55,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Missing ATR blocks automatic sizing only for the ATR strategy.
   Formula reference: https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/atr; candle timestamps: https://docs.tradier.com/docs/timesale
 - **Shares mode** (default): Shares = risk$ / |entry − stop|.
-  The Long/Short toggle lives FIRST in the Entry & stops row (direction is the first decision; dirField hidden in options mode where chain side plays that role)
+  The Long/Short switch sits FIRST, full width above the entry and stop (direction is the first decision; #dirField, hidden in options mode where chain side plays that role).
+  The side you're on is filled solid with an up or down arrow (owner request: make it obvious), and aria-pressed follows it.
 - **Futures in Stocks & futures** (the Shares mode, renamed; there is no Futures tab): a ticker starting with / loads a futures contract (ui/futures.js, core/futures.js).
   futuresSymbol takes a root FUTURES_CONTRACTS knows (/MES, the active contract) or one month (/MESZ26); any other / ticker says which roots work.
   Everything comes from Schwab's market data through the worker (Tradier has no futures), so it needs a Schwab login; without one the box says so and reads nothing.
@@ -195,6 +197,15 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Dashed lines: HOD/LOD, red long stop, green short stop.
   Overlays: blue VWAP, purple 8 EMA.
   Click/tap = set stop (side-aware).
+  **Dragging the lines** (owner request: the chart sets the stop; chartLines, chartLineAt, moveChartLine): the entry line (amber, 'entry now' at the price until one is typed) and the active stop line (drawn even when it sits on the LOD / HOD) can be picked up within 6px with a mouse or 14px with a finger, and dragged.
+  A finger on a line drags it at once, with no long-press, and keeps the touch from the crosshair and the page (its listeners go on before attachTouchCrosshair's and stop the rest).
+  A dragged stop is a Custom stop; let go within 4px of the adjusted LOD / HOD (the stop adjustment's) and the field blanks, back on the level.
+  The entry let go within 4px of the price blanks too, back to now.
+  The entry stays a cent on its side of the stop (across it the stop would be on the wrong side and size nothing).
+  A stop dragged across the entry flips the direction and leaves the side it came from as it was when picked up, not at the last price it passed.
+  While a line moves the scale holds still (state.chartDragRange) and the redraw runs once a frame; the click that ends a press is swallowed.
+  In options the chain side decides which stop; the Both view moves the line you picked up.
+  The mouse cursor turns ns-resize over a line.
   Touch: LONG-PRESS (~220ms hold) engages the crosshair via attachTouchCrosshair — the chart owns the gesture (preventDefault, page holds still), and RELEASING SETS THE STOP at the final crosshair price (onEnd gets the last point; the trailing click is suppressed so it can't double-fire; sim chart release is read-only).
   Quick swipes scroll the page normally, plain taps still set stops.
   Mouse hover = full crosshair (vertical bar line + horizontal price line with axis tag) + OHLC readout.

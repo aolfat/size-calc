@@ -19,6 +19,8 @@ export function setDirection(dir) {
   const s = document.getElementById('dirShort');
   l.className = dir === 'long' ? 'active long' : '';
   s.className = dir === 'short' ? 'active short' : '';
+  l.setAttribute('aria-pressed', String(dir === 'long'));
+  s.setAttribute('aria-pressed', String(dir === 'short'));
   updateStopVisibility();
   renderAdr();
   renderShares();
@@ -167,6 +169,9 @@ export function tradeCtx() {
 
 export function updateStopVisibility() {
   renderOrb();
+  // options sized by allocation use no entry or stop: the whole card goes, not just what's in it
+  const calcView = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView;
+  document.getElementById('stopsCard').style.display = calcView && !(state.sizingMode === 'allocation' && state.currentMode === 'options') ? '' : 'none';
   document.getElementById('stopAdjustment').style.display = state.sizingMode === 'allocation' ? 'none' : '';
   document.getElementById('entryStopsTitle').textContent = state.sizingMode === 'allocation' ? 'Entry' : 'Entry & stops';
   document.getElementById('entryStopsRow').style.display = state.sizingMode === 'allocation' && state.currentMode === 'options' ? 'none' : '';
@@ -184,13 +189,14 @@ export function updateStopVisibility() {
   document.getElementById('stopLongField').style.display = tc !== 'short' ? 'flex' : 'none';
   document.getElementById('stopShortField').style.display = tc !== 'long' ? 'flex' : 'none';
   document.getElementById('stopsHint').textContent =
-    tc === 'long' ? `Blank uses the ${autoStopName(true)}. Click the chart to set it.`
-    : tc === 'short' ? `Blank uses the ${autoStopName(false)}. Click the chart to set it.`
+    tc === 'long' ? `Blank uses the ${autoStopName(true)}. Drag it on the chart, or tap a price.`
+    : tc === 'short' ? `Blank uses the ${autoStopName(false)}. Drag it on the chart, or tap a price.`
     : `Blank uses the ${state.stopStrategy !== 'none' ? 'buffered LOD / HOD' : 'LOD / HOD'}. On the chart, below price sets the long stop and above sets the short.`;
   document.getElementById('chartClickHint').textContent =
-    tc === 'long' ? 'tap, or hold-aim-release, to set your long stop'
-    : tc === 'short' ? 'tap, or hold-aim-release, to set your short stop'
-    : 'tap or hold-aim-release to set a stop: below price = long, above = short';
+    state.currentMode === 'shares' ? 'drag the stop or entry line, or tap a price: below the entry is a long stop, above a short'
+    : tc === 'long' ? 'drag the stop or entry line, or tap to set your long stop'
+    : tc === 'short' ? 'drag the stop or entry line, or tap to set your short stop'
+    : 'drag a line, or tap to set a stop: below price = long, above = short';
 }
 
 export function stopsChanged() {

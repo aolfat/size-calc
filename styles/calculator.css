@@ -7,12 +7,37 @@
 .link-btn { background:none; border:0; padding:2px 0; color:var(--text2); font:12px var(--num); cursor:pointer; white-space:nowrap; }
 .link-btn:hover { color:var(--text); text-decoration:underline; }
 .risk-strip .chip-row { margin-top:10px; }
-.risk-strip .chip-row + .chip-row { margin-top:6px; }
 .risk-strip .filter-btn.active { background:var(--red-bg); border-color:var(--red-bd); color:var(--text); }
+.risk-strip-links { display:flex; align-items:baseline; gap:14px; }
+.risk-edit-btn { color:var(--blue); padding:4px 0; }
+.risk-edit-btn[aria-pressed="true"] { font-weight:600; }
+/* one row of chips, dollars over percent (owner request: the same order on every chip); the column count is set inline */
+.risk-chips { display:grid; gap:5px; margin-top:10px; }
+.risk-chip { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; min-width:0; min-height:44px; padding:5px 2px; line-height:1.15; }
+.risk-chip .rc-usd { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; }
+.risk-chip .rc-pct { font-size:11px; color:var(--text2); white-space:nowrap; }
+.risk-chip.active .rc-usd { color:var(--red); }
+.risk-chip-wrap { position:relative; display:flex; min-width:0; }
+.risk-chip-wrap .risk-chip { flex:1 1 auto; }
+.risk-chip-wrap .risk-chip { padding-top:9px; } /* room for the × */
+.risk-chip-x { position:absolute; top:-8px; right:-5px; width:20px; height:20px; padding:0; border-radius:10px; z-index:1; border:1px solid var(--border2); background:var(--bg4); color:var(--text); font:13px/1 var(--sans); cursor:pointer; }
+.risk-chip-x:hover { border-color:var(--red-bd); color:var(--red); }
+.risk-add { display:flex; gap:6px; align-items:center; margin-top:10px; }
+.risk-add input { flex:1 1 auto; min-width:0; width:auto; padding:9px 10px; font-size:14px; }
+.risk-unit button { min-width:36px; }
+.risk-add-note { font-size:12px; color:var(--text2); margin-top:6px; }
+.risk-add-note:empty { display:none; }
 .week-rules { padding:10px 16px 12px; }
 .week-rules-title { color:var(--text2); }
 .week-rules-list { margin:6px 0 0; padding-left:20px; font-size:13.5px; line-height:1.5; }
 #allocationControls .row { margin-top:2px; }
+
+/* direction: its own full-width switch, the side you're on filled solid (owner request: make long / short obvious) */
+.dir-row { display:flex; margin-bottom:12px; }
+.seg.dir-big { flex:1 1 auto; padding:4px; gap:4px; border-radius:12px; background:var(--bg); }
+.seg.dir-big button { flex:1 1 0; display:flex; align-items:center; justify-content:center; gap:7px; min-height:44px; padding:0 8px; border:0; border-radius:9px; font-size:15px; font-weight:700; letter-spacing:0; }
+.seg.dir-big button.active.long { background:var(--green); color:var(--bg); border:0; padding:0 8px; }
+.seg.dir-big button.active.short { background:var(--red); color:var(--bg); border:0; padding:0 8px; }
 
 /* Risk $ is the number that matters: the money you're willing to lose */
 #riskDollar { font-size: 20px; font-weight: 700; color: var(--red); border-color: var(--red-bd); }
@@ -119,11 +144,7 @@
 @media (max-width: 600px) {
   .quote-price { font-size: 24px; }
   .seg.mode-big button { font-size: 14px; }
-  /* preset rows: equal-width chips, one line, everything visible */
-  #riskPresets, #riskUsdRow { flex-wrap: nowrap !important; gap: 5px; }
-  #riskPresets .filter-btn, #riskUsdRow .filter-btn, #riskPresets .usd-edit-box, #riskUsdRow .usd-edit-box { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 6px 2px; font-size: 12px; text-align: center; width: auto; } /* thumb-sized: these are the quick risk changes */
-  #riskPresets > span:first-child, #riskUsdRow > span:first-child { display: none; } /* % and $ make the labels redundant */
-  #riskPresets .usd-edit-box, #riskUsdRow .usd-edit-box { padding-left: 0; padding-right: 0; } /* 16px digits (no iOS zoom) in a seventh of the row: .125 fits */
+  .risk-add input { font-size: 16px; } /* 16px: no iOS zoom on focus */
   /* recent tickers: unbounded list, keep the side-swipe */
   #recentTickers { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   #recentTickers::-webkit-scrollbar { display: none; }
@@ -134,11 +155,8 @@
   .btn-word { display: none; }
   /* entry & stops: direction, entry and stop as one row of tiles (Both view: entry and the two stops) */
   #entryStopsTitle { display: none !important; } /* the tiles label themselves */
-  #entryStopsRow { gap: 8px; margin-top: 14px; }
+  #entryStopsRow { gap: 8px; }
   #entryStopsRow .field { flex: 1 1 0 !important; min-width: 0; }
-  #dirSeg { width: 100%; padding: 2px; }
-  #dirSeg button { flex: 1 1 0; min-width: 0; padding: 0 2px; min-height: 40px; font-size: 13px; }
-  #dirSeg button.active.long, #dirSeg button.active.short { padding: 0 1px; }
   #entryStopsRow .prefix { display: none; } /* the label says it's a price; the room goes to the number */
   #entryStopsRow .prefix-wrap input { padding-left: 10px; padding-right: 6px; text-overflow: ellipsis; min-height: 46px; } /* thumb-sized, level with the direction switch */
   .lbl-extra { display: none; }

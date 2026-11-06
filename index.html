@@ -61,21 +61,18 @@
   <div class="card risk-strip" id="riskStrip">
     <div class="risk-strip-head">
       <span class="strip-title" id="riskStripTitle">Max loss per trade</span>
-      <button class="link-btn" data-action="openSheet" data-arg="risk" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button>
+      <span class="risk-strip-links"><button class="link-btn" data-action="openSheet" data-arg="risk" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button><button class="link-btn risk-edit-btn" id="riskEditBtn" data-action="toggleRiskEdit" aria-pressed="false" title="Add or remove presets, in dollars or percent">Edit</button></span>
     </div>
     <div class="field" id="riskDollarField">
       <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" data-input="syncFromDollar" title="The dollar amount you're willing to lose on this trade. - and = step through your presets" /></div>
     </div>
-    <div class="chip-row" id="riskPresets">
-      <span class="chip-label">Percent</span>
-      <span id="riskPctPresets" style="display:contents;"></span>
-      <button class="filter-btn" id="pctEditBtn" data-action="togglePctEdit" title="Edit the percent presets">✎</button>
+    <div class="risk-chips" id="riskPresets" role="group" aria-label="Max loss presets"></div>
+    <div class="risk-add" id="riskAddRow" style="display:none;">
+      <input type="text" id="riskAddInput" inputmode="decimal" autocomplete="off" placeholder="Add an amount" aria-label="New max loss preset, in dollars or percent" aria-describedby="riskAddNote" data-enter="addRiskPreset" />
+      <div class="seg risk-unit" role="group" aria-label="Unit"><button id="riskAddUsd" class="active" aria-pressed="true" data-action="setRiskAddUnit" data-arg="usd">$</button><button id="riskAddPct" aria-pressed="false" data-action="setRiskAddUnit" data-arg="pct">%</button></div>
+      <button class="btn" data-action="addRiskPreset">Add</button>
     </div>
-    <div class="chip-row" id="riskUsdRow">
-      <span class="chip-label">Dollars</span>
-      <span id="riskUsdPresets" style="display:contents;"></span>
-      <button class="filter-btn" id="usdEditBtn" data-action="toggleUsdEdit" title="Edit the dollar presets">✎</button>
-    </div>
+    <div class="risk-add-note" id="riskAddNote" role="status"></div>
     <div id="allocationControls" style="display:none;">
       <div class="row">
         <div class="field"><label for="allocationPct">Target allocation %</label><input type="number" id="allocationPct" value="5" min="0" max="100" step="0.1" data-input="allocationChanged" /></div>
@@ -93,50 +90,15 @@
     <ol class="week-rules-list" id="weekRulesList"></ol>
   </div>
 
-  <div class="card" id="modeCard">
-    <div class="seg mode-big" id="modeSeg" aria-label="Instrument">
-      <button id="modeShares" class="active" data-action="setMode" data-arg="shares">Stocks &amp; futures</button>
-      <button id="modeOptions" data-action="setMode" data-arg="options">Options</button>
-    </div>
-    <div id="sizingControls">
-    <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
-      <div class="field" id="symbolField" style="flex:0 0 140px;">
-        <label for="ticker">Ticker</label>
-        <input type="text" id="ticker" placeholder="AAPL, /MES" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
-      </div>
-      <div class="field" style="flex:0 0 auto;">
-        <label>&nbsp;</label>
-        <button class="btn primary" data-action="submitTicker">
-          <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
-        </button>
-      </div>
-      <div class="field" style="flex:0 0 auto;">
-        <label>&nbsp;</label>
-        <button class="btn" data-action="refreshQuote" title="Refresh quote (r) · press ? for all shortcuts">
-          ↻<span class="btn-word"> Refresh</span>
-        </button>
-      </div>
-      <div class="field" style="flex:0 0 auto;">
-        <label>&nbsp;</label>
-        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Phones and tablets go live on every Load (tap to stop); desktop taps for 1m, again for 5m, again for 30m, again to stop. Pauses while backgrounded (l)">⚡ Live</button>
+  <div class="card" id="stopsCard">
+    <div class="section-title" id="entryStopsTitle">Entry &amp; stops</div>
+    <div class="dir-row" id="dirField">
+      <div class="seg dir dir-big" id="dirSeg" role="group" aria-label="Direction">
+        <button id="dirLong" class="active long" aria-pressed="true" data-action="setDirection" data-arg="long" title="Long (d switches)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>Long</button>
+        <button id="dirShort" aria-pressed="false" data-action="setDirection" data-arg="short" title="Short (d switches)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>Short</button>
       </div>
     </div>
-    <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
-    <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
-    <div id="optionTradeControls" style="display:none;margin-top:16px;">
-      <div class="section-title">Option trade</div>
-      <div class="seg"><button id="optionBuy" class="active" aria-pressed="true" data-action="setOptionTradeSide" data-arg="buy">Buy options</button><button id="optionSellPut" aria-pressed="false" data-action="setOptionTradeSide" data-arg="sell-put">Sell put</button></div>
-      <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
-    </div>
-    <div class="section-title" id="entryStopsTitle" style="margin-top:16px;">Entry &amp; stops</div>
     <div class="row" id="entryStopsRow" style="align-items:flex-end;">
-      <div class="field" style="flex:0 0 auto;" id="dirField">
-        <label>Direction</label>
-        <div class="seg dir" id="dirSeg">
-          <button id="dirLong" class="active long" data-action="setDirection" data-arg="long">Long</button>
-          <button id="dirShort" data-action="setDirection" data-arg="short">Short</button>
-        </div>
-      </div>
       <div class="field" style="flex:0 0 150px;">
         <label for="entryPrice">Entry</label>
         <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="entryPrice" placeholder="now" step="0.01" min="0" title="The underlying price you plan to enter at. Blank uses the current price" data-input="stopsChanged" /></div>
@@ -185,7 +147,6 @@
       </div>
       <div id="stopBufferInfo" role="status"></div>
       <details class="hint-details"><summary>How adjustments work</summary>Moves the stop below the LOD for longs and above the HOD for shorts. A stop you type or set on the chart overrides it. It's a price trigger with no 5m close confirmation, and the presets are untested.</details>
-    </div>
     </div>
   </div>
 
@@ -261,6 +222,44 @@
     </div>
   </div>
 
+  <div class="card" id="modeCard">
+    <div class="seg mode-big" id="modeSeg" aria-label="Instrument">
+      <button id="modeShares" class="active" data-action="setMode" data-arg="shares">Stocks &amp; futures</button>
+      <button id="modeOptions" data-action="setMode" data-arg="options">Options</button>
+    </div>
+    <div id="sizingControls">
+    <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
+      <div class="field" id="symbolField" style="flex:0 0 140px;">
+        <label for="ticker">Ticker</label>
+        <input type="text" id="ticker" placeholder="AAPL, /MES" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
+      </div>
+      <div class="field" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <button class="btn primary" data-action="submitTicker">
+          <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
+        </button>
+      </div>
+      <div class="field" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <button class="btn" data-action="refreshQuote" title="Refresh quote (r) · press ? for all shortcuts">
+          ↻<span class="btn-word"> Refresh</span>
+        </button>
+      </div>
+      <div class="field" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Phones and tablets go live on every Load (tap to stop); desktop taps for 1m, again for 5m, again for 30m, again to stop. Pauses while backgrounded (l)">⚡ Live</button>
+      </div>
+    </div>
+    <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
+    <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
+    <div id="optionTradeControls" style="display:none;margin-top:16px;">
+      <div class="section-title">Option trade</div>
+      <div class="seg"><button id="optionBuy" class="active" aria-pressed="true" data-action="setOptionTradeSide" data-arg="buy">Buy options</button><button id="optionSellPut" aria-pressed="false" data-action="setOptionTradeSide" data-arg="sell-put">Sell put</button></div>
+      <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
+    </div>
+    </div>
+  </div>
+
   <div id="quoteSection" style="display:none;">
     <div class="card" id="quoteCard">
       <div class="quote-bar">
@@ -332,7 +331,7 @@
       <div id="chartColD"><div class="chart-cap" id="dailyCap" style="display:flex;gap:5px;align-items:center;"><span class="daily-toggle" data-action="toggleDaily" title="Tap to hide the daily chart (bring it back with the D1 chip)">Daily <span class="cap-note">· tap to hide</span></span><button class="filter-btn" data-action="setDailyRange" data-arg="21" style="padding:2px 8px;font-size:11px;">1M</button><button class="filter-btn active" data-action="setDailyRange" data-arg="63" style="padding:2px 8px;font-size:11px;">3M</button><button class="filter-btn" data-action="setDailyRange" data-arg="126" style="padding:2px 8px;font-size:11px;">6M</button><button class="filter-btn" data-action="setDailyRange" data-arg="252" style="padding:2px 8px;font-size:11px;">1Y</button></div><canvas id="dailyChart" height="260"></canvas><button class="filter-btn" id="dailyToday" data-action="dailyToday" style="display:none;padding:2px 8px;font-size:11px;" title="Back to the latest session">Today →</button></div>
       <div id="chartCol5"><div class="chart-cap" id="ivChips" style="display:flex;gap:5px;align-items:center;"><span style="margin-right:2px;">Intraday</span><button class="filter-btn" data-iv="5" data-action="setChartInterval" data-arg="5" style="padding:2px 8px;font-size:11px;">5m</button><button class="filter-btn" data-iv="15" data-action="setChartInterval" data-arg="15" style="padding:2px 8px;font-size:11px;">15m</button><button class="filter-btn" data-iv="30" data-action="setChartInterval" data-arg="30" style="padding:2px 8px;font-size:11px;">30m</button><button class="filter-btn" data-iv="65" data-action="setChartInterval" data-arg="65" style="padding:2px 8px;font-size:11px;">65m</button><button class="filter-btn" id="extToggle" data-action="toggleExtHours" aria-pressed="false" style="padding:2px 8px;font-size:11px;margin-left:10px;" title="Extended hours: pre-market and after-hours bars on the chart, and in the default LOD / HOD stops. ATR stays on regular hours">Ext</button><button class="filter-btn active" id="dailyToggle" data-action="toggleDaily" style="padding:2px 8px;font-size:11px;margin-left:5px;" title="Show / hide the daily chart">D1</button></div><canvas id="chart" height="260"></canvas></div>
     </div>
-    <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--blue);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span> &nbsp;·&nbsp; daily: pinch or ctrl+scroll to zoom, drag to pan</div>
+    <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--amber);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span> &nbsp;·&nbsp; daily: pinch or ctrl+scroll to zoom, drag to pan</div>
   </div>
 
   <div class="positions-split" id="positionsSplit">

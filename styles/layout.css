@@ -5,13 +5,14 @@
 
 .app.market-view { display:block; max-width:1500px; }
 
-/* Phone and tablet: one column in trade order. Inputs, quote, the answer, the chart to set stops, ideas, then the chain.
-   The pane wrappers are display:contents here, so every card is a flex item of .app and `order` places it. */
+/* Phone and tablet: one column in trade order. The max loss, the ticker and its quote, the chart that sets the stop,
+   entry and stops, the answer, ideas, then the chain. The pane wrappers are display:contents here, so every card is a
+   flex item of .app and `order` places it (the desktop main pane, a flex column, follows the same numbers). */
 #appHeader, #schwabBanner { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #riskStrip { order: 3; } /* risk first: the max loss frames the trade */
 #weekRulesCard { order: 3; } /* under the risk strip: same order, later in the markup */
-#modeCard { order: 4; } #quoteCard { order: 5; } #sharesSection { order: 6; }
-#optionTicket { order: 7; } #chartWrap { order: 8; }
-#quickCard { order: 9; } #pinnedBar { order: 10; } #pinnedSection { order: 11; } #positionsSection { order: 12; }
+#modeCard { order: 4; } #quoteCard { order: 5; } #chartWrap { order: 6; } #stopsCard { order: 7; } #sharesSection { order: 8; }
+#optionTicket { order: 9; }
+#quickCard { order: 10; } #pinnedBar { order: 11; } #pinnedSection { order: 12; } #positionsSection { order: 13; }
 #optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection, #journalTradeSection { order: 15; }
 
 /* Desktop shell (calculator and positions): the page holds still and each pane scrolls on its own.
@@ -35,22 +36,19 @@
   .app.journal-view .pane > * { width: 100%; max-width: 1100px; margin-inline: auto; }
   .app.market-view .pane > * { width: 100%; max-width: 1468px; margin-inline: auto; }
 
-  /* the rail is phone-width: reuse the phone's compact ticket rows */
-  #railPane .seg.mode-big button { font-size: 14px; }
-  #tickerRow { gap: 8px; }
+  /* the ticker card heads the main pane, over the quote and chart it loads: the instrument switch, then the ticker row */
+  #mainPane #modeCard { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); column-gap: 24px; align-items: start; padding: 14px 18px; }
+  #mainPane #modeCard .seg.mode-big { margin-top: 22px; } /* level with the inputs under their labels */
+  #mainPane #modeCard .seg.mode-big button { font-size: 14px; }
+  #tickerRow { gap: 8px; margin-top: 0 !important; }
   #tickerRow .field { min-width: 0; }
-  #symbolField { flex: 1 1 90px !important; }
-  #tickerRow .btn { padding: 9px 11px; }
-  #railPane .btn-word { display: none; }
-  #dirField { flex-basis: 100% !important; }
-  #dirSeg button { flex: 1 1 0; }
-  #entryStopsRow .field:not(#dirField) { flex: 1 1 130px !important; min-width: 0; } /* two per row; a third (Both view) wraps */
+  #symbolField { flex: 0 1 220px !important; }
+  #tickerRow .btn { padding: 9px 12px; }
+  #entryStopsRow .field { flex: 1 1 130px !important; min-width: 0; } /* two per row; a third (Both view) wraps */
   #entryStopsRow > div:not(.field) { flex: 0 0 100%; }
   #quickInput { padding-right: 12px !important; }
   #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
-  #riskStrip .chip-row { flex-wrap: nowrap; gap: 5px; }
-  #riskStrip .chip-row .filter-btn, #riskStrip .usd-edit-box { flex: 1 1 0; min-width: 0; padding: 6px 2px; text-align: center; width: auto; }
-  #riskStrip .chip-label { display: none; }
+  #riskStrip .risk-chip { min-height: 40px; }
   #sharesSection .shares-primary { gap: 16px; }
   #sharesSection .shares-stop { padding-left: 16px; }
   #sharesSection .shares-primary .s-val { font-size: 30px; }
@@ -66,6 +64,12 @@
   #sidePane .pinned-header .pinned-badge, #trayPane .pinned-header .pinned-badge { display: none; }
   #sidePane .pinned-header .pinned-meta, #trayPane .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
   #sidePane .pinned-header .card-act, #trayPane .pinned-header .card-act { order: 3; }
+}
+
+/* the compact desktop tier: the main pane is too narrow for the switch and the ticker row side by side */
+@media (min-width: 1100px) and (max-width: 1439px) {
+  #mainPane #modeCard { grid-template-columns: minmax(0, 1fr); row-gap: 14px; }
+  #mainPane #modeCard .seg.mode-big { margin-top: 0; max-width: 420px; }
 }
 
 /* very wide screens: pinned ideas get their own tray column on the right */

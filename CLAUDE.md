@@ -34,12 +34,16 @@ A Tradier key is optional: without one, a Schwab login alone loads stock quotes,
 Account size and risk % persist in localStorage.
 Risk $ (labelled "Max loss per trade") is styled as the loud number (big, bold, red — it's the max loss).
 Risk % preset chips (default .125/.25/.50/1/2/3%, persisted as risk_pct_presets) and fixed dollar chips (default 100/250/500/1000, persisted as risk_usd_presets).
-Each row has its own ✎ chip (owner request: add or edit the percents too), deduped, max 6, under 100 for a percent.
+Both show as ONE row of chips (#riskPresets, riskChips), smallest dollars first, every chip its dollars on top and its percent of the account under (owner request: the same order on every chip, never mixed).
+A % chip's dollars follow the account size; a $ chip shows what it is of the account (pctOfAccountLabel); a $ preset that lands on a % chip's dollars shows once, as the % chip.
+The column count is set inline: all in one row up to 6, else two even rows (12 at most: 6 of each).
+Edit (#riskEditBtn, next to the summary link) puts a × on every chip and opens the add box (#riskAddRow): a number plus a $ / % unit, and a typed % sign wins (parseRiskPreset), so a preset can be added in either unit (owner request).
+The add box refuses duplicates (by dollars), a 7th of a kind and a percent of 100 or more, and says so in #riskAddNote; × removes from that chip's own list, and an emptied list stays empty (a saved '[]' is not the defaults).
 Both lists always show smallest first (owner request): saving sorts them, and getPctPresets / getUsdPresets sort what was saved before.
 Both are account settings (CLOUD_KEYS), so signed in they follow you to every device.
 Active chips track whatever the current values resolve to — a $ tap can light its matching % chip too.
 The amount per trade must stay ONE TAP away: the risk strip (#riskStrip) is one of the FIRST things on the page (owner request: the max loss frames the trade): top of the rail on desktop, first card under the header on phones, in every mode, after only the first-run setup notice.
-It holds the risk $ input and both chip rows; the active chips tint red.
+It holds the risk $ input and the chip row; the active chips tint red.
 Its summary link (#riskStatus, '1% of $50,000'; allocation mode retitles the strip 'Allocation' and swaps in #allocationControls) opens #riskSheet, which only holds the slower settings: Risk / Allocation method, account size, risk %.
 The strip shows in Stocks & futures and Options, hidden in Positions, Tools and Market.
 Keys - and = (or +) step risk through one ladder of every preset (riskLadder: % chips at this account size ∪ your $ chips; stepRisk, no-op in allocation).
@@ -86,29 +90,31 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Canvas has no tabular-digit switch, so canvas digits are proportional.
   Labels, section titles, and stat labels are sentence case (no tracked caps); dense table headers stay small caps.
   Helper copy is short sentences; longer rules go in a <details class="hint-details"> disclosure
-- The shares answer is its own card (#sharesSection, class card) right after the ticket inputs, outside #quoteSection, so setQuoteVisible/updateModeSections drive its visibility.
+- The shares answer is its own card (#sharesSection, class card) right after the entry and stops card (#stopsCard), outside #quoteSection, so setQuoteVisible/updateModeSections drive its visibility.
   Shares sizing leads with an editable share count and equally prominent **Stop price**, followed by risk at stop, position value, and risk per share.
   Entry sits under shares; the stop source is **Custom stop** for an explicit input, otherwise **Low of day (LOD)** or **High of day (HOD)** according to direction.
   Never infer the source from price equality.
   Image and summary actions sit in the footer.
 - Desktop shell (≥1100px, calculator and Positions only, media-only — no toggle): .app becomes a 100vh grid and the PAGE HOLDS STILL; each pane scrolls on its own (no position:sticky anywhere — sticky charts once shifted against the page; don't re-add).
-  Panes: #sidePane = #railPane (setup notice, #riskStrip, ticket card #modeCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, quote card, charts, chain (and the positions table in Positions, which spans the full width).
+  Panes: #sidePane = #railPane (setup notice, #riskStrip, week rules, entry and stops #stopsCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, the ticker card #modeCard (instrument switch and ticker row side by side, stacked in the 1100–1439 tier), quote card, charts, chain (and the positions table in Positions, which spans the full width).
+  The ticket was split in two so the rail reads max loss, entry and stops, then the answer, which starts above the fold at 900px tall.
   Tools and Market scroll as a normal page at ≥1100 but keep the shell's full-width header at the same position and height (`.app > .header`), so switching views never moves the tabs; their content is a centered column (888px; Market 1468px).
   The Journal at ≥1100 holds still like the shell (its panes scroll on their own, up to 1680px wide: the Workbench rail, list and panel, the Review desk, the full review, the calendar; styles/journal-desktop.css, docs/journal.md The desktop). ≥1800px: #sidePane goes display:contents and the tray becomes its own right column (360 / 1fr / 340).
-  Below 1100 every pane wrapper is display:contents and .app is a flex column, so the cards are flex items placed by `order` (setupNotice, riskStrip, modeCard, quoteCard, sharesSection, chartWrap, quick lookup, pinned, positions, then optionsSection).
+  Below 1100 every pane wrapper is display:contents and .app is a flex column, so the cards are flex items placed by `order` (setupNotice, riskStrip, weekRulesCard, modeCard, quoteCard, chartWrap, stopsCard, sharesSection, optionTicket, quick lookup, pinned, positions, then optionsSection).
   Chain tiers: COMPACT_CHAIN_MQ (1100–1439) keeps the compact columns (twoPaneChain(), isMobileChain() true, Δ/OI re-shown, colspans both 13 / single 8 / banner 6, charts stacked 5m first); ≥1440 the main pane is ~1000px so the full table returns (min-width dropped to fit, charts side by side).
   CSS mirrors DESKTOP_MQ / COMPACT_CHAIN_MQ exactly.
   On desktop, tapping a chain contract fills the rail ticket (#optionTicket via detailBody/showDetail, railDetailSym, re-armed on re-render, cleared by closeDetails) instead of an inline row; phones and tablets keep the inline detail row.
   ATM auto-scroll moves only the chain's own panel, centered on its on-screen slice. quoteSection is display:contents everywhere; its visibility uses style.display '' (never 'block')
 - Keyboard help card is grouped (navigate / views / chain / data)
-- Mobile rows (≤600px): preset chip rows (#riskPresets, #riskUsdRow) are single-line EQUAL-SPLIT thumb-sized chips (flex 1 1 0, 36px tall, labels hidden — % and $ speak for themselves; nowrap !important over .chip-row's default wrap; the desktop rail splits them the same way); #recentTickers stays side-swipe (unbounded list).
-  Editing % or $ presets is in-place: ✎ turns each chip into a number box (blank = delete, trailing '+' box = add) and itself into ✓ to save (editingPct / editingUsd state, Enter also saves); mobile quick-lookup parse preview sits on its own line under the input (the absolute in-field overlay overlapped the typed text at phone widths); ticker row is one line (#symbolField flexes, .field min-width 0, .btn-word spans hide → 'Load'/'↻'); Entry & stops = ONE row of tiles (direction switch, entry, stop; the Both view puts entry and both stops there), 46px tall, no $ prefix, no section title, ' · calls'/' · puts' label tails hidden, hint on its own line.
-  The desktop rail keeps direction full-width with entry and stop two per row.
+- Mobile rows (≤600px): the preset chips are an equal-split grid, 44px tall (40px in the desktop rail), the add box's input 16px so iOS doesn't zoom; #recentTickers stays side-swipe (unbounded list).
+  Mobile quick-lookup parse preview sits on its own line under the input (the absolute in-field overlay overlapped the typed text at phone widths); ticker row is one line (#symbolField flexes, .field min-width 0, .btn-word spans hide → 'Load'/'↻'); Entry & stops = ONE row of tiles (entry, stop; the Both view puts entry and both stops there), 46px tall, no $ prefix, no section title, ' · calls'/' · puts' label tails hidden, hint on its own line.
+  The desktop rail puts entry and stop two per row.
+  Direction is its own full-width switch above them at every width (#dirField, .dir-big, owner request: make long / short obvious): 44px, an arrow on each side, the side you're on filled solid green or red.
   Safe areas: .app and the sticky bar pad for the notch, toasts sit above the tab bar
-- Daily chart toggle: 'D1' chip in the interval row AND the tappable 'Daily · tap to hide' label (.daily-toggle, truncates on narrow phones) both call toggleDaily (show_daily persisted); updateChartVisibility gates chartColD on showDaily, syncs the D1 active state, and repaints on re-show
+- Daily chart toggle: 'D1' chip in the interval row AND the tappable 'Daily · tap to hide' label (.daily-toggle, truncates on narrow phones) both call toggleDaily (show_daily persisted; until it's saved initShowDaily starts it on at desktop width and off below, where it would stack between the intraday chart and the stops it sets); updateChartVisibility gates chartColD on showDaily, syncs the D1 active state, and repaints on re-show
 - Card headers (pinned/spread): wide cards = one line, flex-wrap nowrap so the .pinned-meta shrinks/ellipsizes instead of splitting the .card-act cluster; mobile (<600px) and the narrow desktop columns (rail, tray) = identity line, full-width meta (keeps the editable stop visible), action row, badges hidden in rail/tray
-- The chart card lives in #mainPane outside quoteSection; on phones it follows the quote and shares answer (the sticky bar carries the share count while you tap the chart to set stops); updateChartVisibility gates on positionsView since the card doesn't inherit quoteSection's hiding. drawChart skips a hidden canvas (it would wipe it to zero width) and setView repaints on the way back
-- Page order = trade order: setup notice (only with neither a Tradier key nor a Schwab login), risk strip, ticket (instrument, ticker, entry and stops), quote bar, the answer, chart, quick lookup (collapsible, q expands), pinned cards, then the chain.
+- The chart card lives in #mainPane outside quoteSection; on phones it follows the quote and comes before entry and stops and the answer (owner request: the chart sets the stop; the sticky bar carries the share count while you drag); updateChartVisibility gates on positionsView since the card doesn't inherit quoteSection's hiding. drawChart skips a hidden canvas (it would wipe it to zero width) and setView repaints on the way back
+- Page order = trade order: setup notice (only with neither a Tradier key nor a Schwab login), risk strip, ticker card (instrument, ticker), quote bar, chart, entry and stops, the answer, quick lookup (collapsible, q expands), pinned cards, then the chain.
   Chart sits ABOVE the chain — levels before contracts.
   Setup never sits in the page: the header settings button (amber dot until a key exists) opens #settingsSheet (account, times, key, environment) and the risk strip's summary link opens #riskSheet.
   Sheets (openSheet/closeSheet) are a panel under the header on desktop and a bottom sheet on phones; missing-key actions call requireKey(), which toasts and opens Settings
