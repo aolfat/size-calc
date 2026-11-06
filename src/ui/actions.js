@@ -29,7 +29,7 @@ import { openPositionTrade, placePositionTrade, setCloseAt, setClosePortion, set
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
-import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, toggleUsdEdit } from './risk.js';
+import { recalcAll, setRiskPct, setRiskUsd, syncFromDollar, togglePctEdit, toggleUsdEdit } from './risk.js';
 import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
 import { addPeriodRule, carryPeriodRule, closePeriodReview, openPeriodReview, periodRuleDraftInput, periodRuleInput, periodRuleSave, periodTextInput, periodTextSave, removePeriodRule, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
@@ -354,6 +354,7 @@ export const actions = {
   setRiskPct: el => setRiskPct(num(el)),
   setRiskUsd: el => setRiskUsd(num(el)),
   toggleUsdEdit: () => toggleUsdEdit(),
+  togglePctEdit: () => togglePctEdit(),
   allocationChanged: () => allocationChanged(),
   setAllocationPct: el => setAllocationPct(num(el)),
   setOptionTradeSide: el => setOptionTradeSide(arg(el)),
