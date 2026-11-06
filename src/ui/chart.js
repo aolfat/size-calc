@@ -14,7 +14,7 @@ import { renderChain } from './chain.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { fetchFuturesBars } from './futures.js';
 import { renderLevels } from './shares.js';
-import { chartStopVal, rawStop, stopsChanged, tradeCtx } from './stops.js';
+import { adjustedStop, chartStopVal, currentAtr5, dayRange, entryVal, rawStop, setDirection, stopLongVal, stopShortVal, stopsChanged, tradeCtx } from './stops.js';
 
 export const CHART_SESSIONS = { 5: 1, 15: 2, 30: 3, 65: 5 };
 
@@ -89,6 +89,7 @@ export function chartGeom(canvas) {
 }
 
 export function chartRange() {
+  if (state.chartDragRange) return state.chartDragRange; // a line being dragged holds the scale still under the pointer
   let lo = Infinity, hi = -Infinity;
   for (const b of state.chartBars) { if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h; }
   // Include manual and buffered stop lines in range (only the active direction).
@@ -217,10 +218,13 @@ export function drawChart() {
     ctx.fillText(label + ' ' + price.toFixed(2), g.w - g.padR - 90, y(price) - 4);
     ctx.restore();
   };
-  const tc = tradeCtx();
-  if (tc !== 'short') stopLine(chartStopVal(true), cRed, 'long stop');
-  if (tc !== 'long') stopLine(chartStopVal(false), cGreen, 'short stop');
-  stopLine(rawStop('entryPrice'), cBlue, 'entry');
+  // the active stop and the entry are always drawn: they are the lines you drag
+  if (state.sizingMode !== 'allocation') {
+    const tc = tradeCtx();
+    if (tc !== 'short') stopLine(stopLongVal(), cRed, 'long stop');
+    if (tc !== 'long') stopLine(stopShortVal(), cGreen, 'short stop');
+  }
+  stopLine(entryVal(), cAmber, rawStop('entryPrice') ? 'entry' : 'entry now');
 
   // candles
   for (let i = 0; i < n; i++) {
@@ -297,11 +301,20 @@ export function chartPriceAtY(clientY) {
   return hi - (yy - g.padT) / g.plotH * (hi - lo);
 }
 
-// clicks on either chart set the active context's stop; in Both view, below price = long, above = short
+// clicks on either chart set the active context's stop; in Both view, below price = long, above = short.
+// In Stocks & futures the direction follows the stop: a stop above the entry is a short's.
+
+/** shares and futures: the direction a stop at this price means, switched to when it differs */
+function followStop(price) {
+  if (state.currentMode !== 'shares') return;
+  const side = price < entryVal() ? 'long' : 'short';
+  if (side !== state.direction) setDirection(side);
+}
 
 export function setStopFromPrice(price) {
   if (state.sizingMode === 'allocation') return;
   if (!(price > 0)) return;
+  followStop(price);
   const tc = tradeCtx();
   const spot = effectivePrice(state.quoteData);
   const id = tc === 'long' ? 'stopLong'
@@ -309,6 +322,95 @@ export function setStopFromPrice(price) {
     : (spot > 0 && price >= spot) ? 'stopShort' : 'stopLong';
   document.getElementById(id).value = price.toFixed(2);
   stopsChanged();
+}
+
+// dragging the lines (owner request: the chart sets the stop): press on the stop or the entry line and move it.
+// A stop let go on the adjusted LOD / HOD goes back to it (the field blanks), an entry let go on the price goes back
+// to now; while a line moves the scale holds still (state.chartDragRange).
+
+export const GRAB_PX = { mouse: 6, touch: 14 };
+
+/** the lines you can pick up: the entry (typed, or now) and the active context's stops */
+export function chartLines() {
+  if (state.sizingMode === 'allocation' || !state.quoteData) return [];
+  const tc = tradeCtx(), lines = [{ id: 'entry', price: entryVal() }];
+  if (tc !== 'short') lines.push({ id: 'stopLong', price: stopLongVal() });
+  if (tc !== 'long') lines.push({ id: 'stopShort', price: stopShortVal() });
+  return lines.filter(l => l.price > 0 && Number.isFinite(l.price));
+}
+
+/** the line within px of a pointer at clientY: the nearest, a stop on a tie; null when none */
+export function chartLineAt(clientY, px) {
+  const canvas = document.getElementById('chart');
+  if (!state.chartBars.length || !canvas) return null;
+  const rect = canvas.getBoundingClientRect(), g = chartGeom(canvas), { lo, hi } = chartRange();
+  if (!(hi > lo)) return null;
+  const at = p => rect.top + g.padT + (hi - p) / (hi - lo) * g.plotH;
+  let best = null, bestD = px;
+  for (const l of chartLines()) {
+    const d = Math.abs(at(l.price) - clientY);
+    if (d < bestD || (d === bestD && l.id !== 'entry')) { best = l.id; bestD = d; }
+  }
+  return best;
+}
+
+/** the price a few pixels are worth on the chart: how close counts as on a level */
+export function chartSnapTolerance(px = 4) {
+  const canvas = document.getElementById('chart');
+  const g = chartGeom(canvas), { lo, hi } = chartRange();
+  return g.plotH > 0 ? (hi - lo) / g.plotH * px : 0;
+}
+
+/** move a picked-up line to price; returns the line now held (a stop dragged across the entry is the other side's) */
+export function moveChartLine(id, price, snap = 0) {
+  if (state.sizingMode === 'allocation' || !(price > 0)) return id;
+  price = Math.round(price * 100) / 100;
+  if (id === 'entry') {
+    const now = effectivePrice(state.quoteData);
+    document.getElementById('entryPrice').value = now > 0 && Math.abs(price - now) <= snap ? '' : price.toFixed(2);
+  } else {
+    followStop(price);
+    const tc = tradeCtx();
+    const isLong = tc === 'long' ? true : tc === 'short' ? false : id === 'stopLong';
+    const range = dayRange();
+    const level = adjustedStop(isLong ? range.low : range.high, isLong, currentAtr5());
+    document.getElementById(isLong ? 'stopLong' : 'stopShort').value = level > 0 && Math.abs(price - level) <= snap ? '' : price.toFixed(2);
+    id = isLong ? 'stopLong' : 'stopShort';
+  }
+  stopsChanged();
+  return id;
+}
+
+/** pick up, move and let go of a line with a pointer (mouse or one finger): a few lines of state shared by both */
+function lineDrag(canvas) {
+  let held = null, pending = null, frame = 0, suppressUntil = 0;
+  const flush = () => { frame = 0; if (held && pending != null) held = moveChartLine(held, chartPriceAtY(pending), chartSnapTolerance()); pending = null; };
+  return {
+    get held() { return held; },
+    start(clientY, px) {
+      const id = chartLineAt(clientY, px);
+      if (!id) return false;
+      held = id;
+      state.chartDragRange = chartRange();
+      canvas.style.cursor = 'ns-resize';
+      return true;
+    },
+    move(clientY) {
+      if (!held) return;
+      pending = clientY;
+      if (!frame) frame = requestAnimationFrame(flush) || 0; // one redraw a frame, however fast the pointer moves
+    },
+    end() {
+      if (!held) return;
+      if (frame) cancelAnimationFrame(frame);
+      flush(); // where it was let go, even if that frame never came
+      held = null;
+      state.chartDragRange = null;
+      suppressUntil = Date.now() + 350; // the click that ends a press must not set a stop too
+      drawChart();
+    },
+    suppressed: () => Date.now() < suppressUntil,
+  };
 }
 
 // gestures (optional): { start(), pan(dx), pinch(scale, mid0X, dMidX) } — a quick horizontal swipe pans
@@ -384,8 +486,30 @@ export function attachTouchCrosshair(canvas, onMove, onEnd, gestures = null) {
 
 export function initChartEvents() {
   const canvas = document.getElementById('chart');
+  const drag = lineDrag(canvas);
+  canvas.addEventListener('mousedown', e => {
+    if (e.button !== 0 || !drag.start(e.clientY, GRAB_PX.mouse)) return;
+    e.preventDefault();
+    const move = ev => drag.move(ev.clientY);
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); drag.end(); };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+  // one finger on a line drags it right away (no long-press); registered before the crosshair so it can take the touch
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 1 && drag.start(e.touches[0].clientY, GRAB_PX.touch)) e.stopImmediatePropagation();
+  }, { passive: true });
+  canvas.addEventListener('touchmove', e => {
+    if (!drag.held) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.touches.length === 1) drag.move(e.touches[0].clientY);
+  }, { passive: false });
+  const touchEnd = e => { if (drag.held) { e.stopImmediatePropagation(); drag.end(); } };
+  canvas.addEventListener('touchend', touchEnd);
+  canvas.addEventListener('touchcancel', touchEnd);
   canvas.addEventListener('mousemove', e => {
     if (!state.chartBars.length) return;
+    if (!drag.held) canvas.style.cursor = chartLineAt(e.clientY, GRAB_PX.mouse) ? 'ns-resize' : 'crosshair';
     const rect = canvas.getBoundingClientRect();
     const g = chartGeom(canvas);
     const xx = e.clientX - rect.left;
@@ -415,7 +539,7 @@ export function initChartEvents() {
     if (state.chartBars.length) drawChart();
   });
   canvas.addEventListener('click', e => {
-    if (!state.chartBars.length) return;
+    if (!state.chartBars.length || drag.suppressed()) return;
     setStopFromPrice(chartPriceAtY(e.clientY));
   });
   window.addEventListener('resize', () => {

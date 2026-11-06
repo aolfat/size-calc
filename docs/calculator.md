@@ -26,6 +26,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Long stop (shares-long + calls, blank = LOD) and short stop (shares-short + puts, blank = HOD).
   Only the stop matching tradeCtx() is shown/drawn (shares follow the Long/Short toggle, options follow chain side; Both view shows both).
   Chart click sets the context's stop; in Both view, below price = long, above = short.
+  In Stocks & futures the direction follows the stop: a click or drag above the entry makes the trade a short, below it a long (followStop).
   Quick lookup uses the pair when its ticker matches the loaded quote, else that underlying's LOD/HOD.
   Inputs clear on symbol change.
   Only an explicit Load (fetchQuote) reads the ticker field, which doubles as the search box; every refresh (refreshQuote, live ticks, mode switch, expiry, chart interval) keys off `state.quoteData.symbol`, so typed-but-unloaded text never swaps the quote under the old stops.
@@ -196,6 +197,13 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Dashed lines: HOD/LOD, red long stop, green short stop.
   Overlays: blue VWAP, purple 8 EMA.
   Click/tap = set stop (side-aware).
+  **Dragging the lines** (owner request: the chart sets the stop; chartLines, chartLineAt, moveChartLine): the entry line (amber, 'entry now' at the price until one is typed) and the active stop line (drawn even when it sits on the LOD / HOD) can be picked up within 6px with a mouse or 14px with a finger, and dragged.
+  A finger on a line drags it at once, with no long-press, and keeps the touch from the crosshair and the page (its listeners go on before attachTouchCrosshair's and stop the rest).
+  A dragged stop is a Custom stop; let go within 4px of the adjusted LOD / HOD (the stop adjustment's) and the field blanks, back on the level.
+  The entry let go within 4px of the price blanks too, back to now.
+  While a line moves the scale holds still (state.chartDragRange) and the redraw runs once a frame; the click that ends a press is swallowed.
+  In options the chain side decides which stop; the Both view moves the line you picked up.
+  The mouse cursor turns ns-resize over a line.
   Touch: LONG-PRESS (~220ms hold) engages the crosshair via attachTouchCrosshair — the chart owns the gesture (preventDefault, page holds still), and RELEASING SETS THE STOP at the final crosshair price (onEnd gets the last point; the trailing click is suppressed so it can't double-fire; sim chart release is read-only).
   Quick swipes scroll the page normally, plain taps still set stops.
   Mouse hover = full crosshair (vertical bar line + horizontal price line with axis tag) + OHLC readout.

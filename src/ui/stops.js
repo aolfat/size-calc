@@ -186,13 +186,14 @@ export function updateStopVisibility() {
   document.getElementById('stopLongField').style.display = tc !== 'short' ? 'flex' : 'none';
   document.getElementById('stopShortField').style.display = tc !== 'long' ? 'flex' : 'none';
   document.getElementById('stopsHint').textContent =
-    tc === 'long' ? `Blank uses the ${autoStopName(true)}. Click the chart to set it.`
-    : tc === 'short' ? `Blank uses the ${autoStopName(false)}. Click the chart to set it.`
+    tc === 'long' ? `Blank uses the ${autoStopName(true)}. Drag it on the chart, or tap a price.`
+    : tc === 'short' ? `Blank uses the ${autoStopName(false)}. Drag it on the chart, or tap a price.`
     : `Blank uses the ${state.stopStrategy !== 'none' ? 'buffered LOD / HOD' : 'LOD / HOD'}. On the chart, below price sets the long stop and above sets the short.`;
   document.getElementById('chartClickHint').textContent =
-    tc === 'long' ? 'tap, or hold-aim-release, to set your long stop'
-    : tc === 'short' ? 'tap, or hold-aim-release, to set your short stop'
-    : 'tap or hold-aim-release to set a stop: below price = long, above = short';
+    state.currentMode === 'shares' ? 'drag the stop or entry line, or tap a price: below the entry is a long stop, above a short'
+    : tc === 'long' ? 'drag the stop or entry line, or tap to set your long stop'
+    : tc === 'short' ? 'drag the stop or entry line, or tap to set your short stop'
+    : 'drag a line, or tap to set a stop: below price = long, above = short';
 }
 
 export function stopsChanged() {

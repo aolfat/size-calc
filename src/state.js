@@ -23,6 +23,7 @@ export function createState() {
     chartBars: [],
     chartHover: -1,
     chartHoverY: -1,
+    chartDragRange: null, // { lo, hi } held while a chart line is dragged, so the scale stays put under the pointer
     errorTimer: null,
     simState: null,
     simHover: -1,
