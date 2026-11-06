@@ -62,6 +62,7 @@
 .nb-traded-yes { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
 .nb-played-worked { color: var(--green); }
 .nb-played-failed { color: var(--red); }
+.nb-played-triggered { color: var(--amber); }
 .nb-focus-name { margin-left: 0; font-weight: 600; }
 /* the calendar's marks: the plan written, reviewed, a review due */
 .jc-marks { display: flex; gap: 4px; margin-top: auto; padding-top: 2px; font-size: 11px; line-height: 1; }

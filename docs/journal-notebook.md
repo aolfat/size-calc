@@ -64,7 +64,7 @@ Type the ticker and + Add (or Enter); it opens with its charts, and the rest is 
 | Setups | My setups as chips, the ones on first, then most used; any number on at once (six at most), named in the side's words; + New setup makes one ('New setup for QCOM on your focus list') |
 | Note | One line, up to 500 characters: levels, the trigger, what you're waiting for |
 | Screenshots | Like a missed trade's: Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most |
-| How it played | Worked, Failed, Didn't trigger; for after the close, but there any time |
+| How it played | Worked, Failed, Triggered (it triggered but whether it worked isn't known), Didn't trigger; for after the close, but there any time |
 | Review | One line, up to 500 characters: what it did, what you did |
 
 Closed, each is one line: the ticker, side and setups, Traded once a trade on it opened or took P&L that day (a stock's symbol, an option's or a spread's underlying), its note, how it played and how many screenshots it has.

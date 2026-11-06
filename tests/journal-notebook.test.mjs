@@ -433,7 +433,11 @@ test('a focus list: tickers added before the open with their setups, reviewed af
   await settle();
   assert.deepEqual(saved().map(f => f.played), ['no_trigger', 'worked']);
   assert.match(out(), /<span class="nb-played nb-played-no_trigger">Didn&#39;t trigger<\/span>/, 'on its line');
-  run(`setFocusPlayed('${msft}', 'worked')`);
+  run(`setFocusPlayed('${msft}', 'triggered')`);
+  await settle();
+  assert.equal(saved()[1].played, 'triggered', 'triggered, not known yet if it worked');
+  assert.match(out(), /<span class="nb-played nb-played-triggered">Triggered<\/span>/);
+  run(`setFocusPlayed('${msft}', 'triggered')`);
   await settle();
   assert.equal(saved()[1].played, null, 'tapping the lit one clears it');
   run(`openFocusTicker('${id}', 'review')`);

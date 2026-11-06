@@ -45,8 +45,8 @@ export const MISSED_SIDES = /** @type {[string, string][]} */ ([['long', 'Long']
 /** the most missed trades a day keeps, and a note's longest text */
 export const MAX_MISSED = 20;
 export const MAX_MISSED_NOTE = 500;
-/** how a focus ticker played, said after the close */
-export const FOCUS_PLAYED = /** @type {[string, string][]} */ ([['worked', 'Worked'], ['failed', 'Failed'], ['no_trigger', "Didn't trigger"]]);
+/** how a focus ticker played, said after the close; Triggered is for one that triggered but whether it worked isn't known yet */
+export const FOCUS_PLAYED = /** @type {[string, string][]} */ ([['worked', 'Worked'], ['failed', 'Failed'], ['triggered', 'Triggered'], ['no_trigger', "Didn't trigger"]]);
 /** the most tickers a day's focus list keeps, and its notes' longest text */
 export const MAX_FOCUS_ITEMS = 12;
 export const MAX_FOCUS_NOTE = 500;
