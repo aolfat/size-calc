@@ -68,12 +68,8 @@
     </div>
     <div class="chip-row" id="riskPresets">
       <span class="chip-label">Percent</span>
-      <button class="filter-btn" data-pct="0.125" data-action="setRiskPct" data-arg="0.125">.125%</button>
-      <button class="filter-btn" data-pct="0.25" data-action="setRiskPct" data-arg="0.25">.25%</button>
-      <button class="filter-btn" data-pct="0.5" data-action="setRiskPct" data-arg="0.5">.50%</button>
-      <button class="filter-btn" data-pct="1" data-action="setRiskPct" data-arg="1">1%</button>
-      <button class="filter-btn" data-pct="2" data-action="setRiskPct" data-arg="2">2%</button>
-      <button class="filter-btn" data-pct="3" data-action="setRiskPct" data-arg="3">3%</button>
+      <span id="riskPctPresets" style="display:contents;"></span>
+      <button class="filter-btn" id="pctEditBtn" data-action="togglePctEdit" title="Edit the percent presets">✎</button>
     </div>
     <div class="chip-row" id="riskUsdRow">
       <span class="chip-label">Dollars</span>

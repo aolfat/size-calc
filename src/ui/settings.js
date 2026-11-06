@@ -17,7 +17,7 @@ import { renderOrb } from './orb.js';
 import { drawPositionChart } from './position-chart.js';
 import { updateAccountSourceUi } from './account-size.js';
 import { showError, showToast } from './feedback.js';
-import { recalcAll, renderUsdPresets, syncRiskDollar } from './risk.js';
+import { recalcAll, renderRiskPresets, syncRiskDollar } from './risk.js';
 import { openSheet } from './sheets.js';
 import { updateStopVisibility } from './stops.js';
 import { updateSchwabUi } from './trade.js';
@@ -91,7 +91,7 @@ export function cloudRehydrate() {
     if (tick.trim()) document.getElementById('ticker').value = tick; // never yank a symbol the user typed or loaded
     updateApiStatus();
     updateSchwabUi(); // the worker URL syncs
-    renderUsdPresets();
+    renderRiskPresets();
     recalcAll();
     if (state.journalView) renderJournal(); // journal_fees, journal_deck_pnl, journal_review_from and journal_funds sync
   } finally { state.cloudSuppress = false; }

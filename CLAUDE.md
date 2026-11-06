@@ -32,8 +32,10 @@ Sizes shares and options positions off a dollar risk amount (account size × ris
 Futures (/MES) size in contracts in the same ticket, from Schwab's market data through the Schwab worker (Tradier has no futures).
 Account size and risk % persist in localStorage.
 Risk $ (labelled "Max loss per trade") is styled as the loud number (big, bold, red — it's the max loss).
-Risk % preset chips: .125/.25/.50/1/2/3%, plus fixed dollar chips (default 100/250/500/1000, editable via the ✎ chip → comma list, deduped, max 6, persisted as risk_usd_presets).
-The $ chips always show smallest first (owner request): saving sorts them, and getUsdPresets sorts what was saved before.
+Risk % preset chips (default .125/.25/.50/1/2/3%, persisted as risk_pct_presets) and fixed dollar chips (default 100/250/500/1000, persisted as risk_usd_presets).
+Each row has its own ✎ chip (owner request: add or edit the percents too), deduped, max 6, under 100 for a percent.
+Both lists always show smallest first (owner request): saving sorts them, and getPctPresets / getUsdPresets sort what was saved before.
+Both are account settings (CLOUD_KEYS), so signed in they follow you to every device.
 Active chips track whatever the current values resolve to — a $ tap can light its matching % chip too.
 The amount per trade must stay ONE TAP away: the risk strip (#riskStrip) is one of the FIRST things on the page (owner request: the max loss frames the trade): top of the rail on desktop, first card under the header on phones, in every mode, after only the first-run setup notice.
 It holds the risk $ input and both chip rows; the active chips tint red.
@@ -98,7 +100,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   ATM auto-scroll moves only the chain's own panel, centered on its on-screen slice. quoteSection is display:contents everywhere; its visibility uses style.display '' (never 'block')
 - Keyboard help card is grouped (navigate / views / chain / data)
 - Mobile rows (≤600px): preset chip rows (#riskPresets, #riskUsdRow) are single-line EQUAL-SPLIT thumb-sized chips (flex 1 1 0, 36px tall, labels hidden — % and $ speak for themselves; nowrap !important over .chip-row's default wrap; the desktop rail splits them the same way); #recentTickers stays side-swipe (unbounded list).
-  Editing $ presets is in-place: ✎ turns each chip into a number box (blank = delete, trailing '+' box = add) and itself into ✓ to save (editingUsd state, Enter also saves); mobile quick-lookup parse preview sits on its own line under the input (the absolute in-field overlay overlapped the typed text at phone widths); ticker row is one line (#symbolField flexes, .field min-width 0, .btn-word spans hide → 'Load'/'↻'); Entry & stops = ONE row of tiles (direction switch, entry, stop; the Both view puts entry and both stops there), 46px tall, no $ prefix, no section title, ' · calls'/' · puts' label tails hidden, hint on its own line.
+  Editing % or $ presets is in-place: ✎ turns each chip into a number box (blank = delete, trailing '+' box = add) and itself into ✓ to save (editingPct / editingUsd state, Enter also saves); mobile quick-lookup parse preview sits on its own line under the input (the absolute in-field overlay overlapped the typed text at phone widths); ticker row is one line (#symbolField flexes, .field min-width 0, .btn-word spans hide → 'Load'/'↻'); Entry & stops = ONE row of tiles (direction switch, entry, stop; the Both view puts entry and both stops there), 46px tall, no $ prefix, no section title, ' · calls'/' · puts' label tails hidden, hint on its own line.
   The desktop rail keeps direction full-width with entry and stop two per row.
   Safe areas: .app and the sticky bar pad for the notch, toasts sit above the tab bar
 - Daily chart toggle: 'D1' chip in the interval row AND the tappable 'Daily · tap to hide' label (.daily-toggle, truncates on narrow phones) both call toggleDaily (show_daily persisted); updateChartVisibility gates chartColD on showDaily, syncs the D1 active state, and repaints on re-show
