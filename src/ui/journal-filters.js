@@ -1,10 +1,10 @@
 // The Journal's More filters (docs/journal.md, More filters; core/journal-filters.js): + Add filter puts a field under the
-// filters (the setup grade, the outcome, R, the instrument, time and day opened, hold, exits, and what the review says),
-// is or is not, its values as chips with how many trades each lets through, × takes it off. Trades, Calendar and Stats.
+// filters (the setup grade, the outcome, R, the ticker type, the instrument, time and day opened, hold, exits, and what the
+// review says), is or is not, its values as chips with how many trades each lets through, × takes it off. Trades, Calendar and Stats.
 import { FILTER_FIELDS, applyFilters, filterChoices, filterField, filtersOn } from '../core/journal-filters.js';
 import { marketEscape as esc } from '../core/format.js';
 import { state } from '../state.js';
-import { reviewLibrary, setupGradeOf, shownSide, tradeReviewState } from './journal-review.js';
+import { myFunds, reviewLibrary, setupGradeOf, shownSide, tradeReviewState } from './journal-review.js';
 import { renderJournal, reviewsRead } from './journal.js';
 
 /** the tabs the filters narrow: the same ones the setup filter does */
@@ -19,6 +19,7 @@ function context() {
     market: t => d ? tradeReviewState(t).market || '' : '',
     labels: (t, kind) => d ? [...new Set((d.labels[t.key] || []).filter(l => l.kind === kind).map(l => lib.resolve(kind, l.value)))] : [],
     nameOf: (kind, key) => lib.nameOf(kind, key, side),
+    funds: myFunds(),
   };
 }
 

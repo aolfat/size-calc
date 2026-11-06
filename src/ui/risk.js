@@ -59,12 +59,12 @@ export function updateRiskPresets() {
   });
 }
 
-// fixed dollar presets: your standard bets, editable via the pencil chip
+// fixed dollar presets: your standard bets, editable via the pencil chip, always smallest first
 
 export function getUsdPresets() {
   try {
     const a = JSON.parse(store.get('risk_usd_presets') || '[]');
-    if (Array.isArray(a) && a.length && a.every(v => v > 0)) return a;
+    if (Array.isArray(a) && a.length && a.every(v => v > 0)) return [...a].sort((x, y) => x - y); // saved before sorting, or synced
   } catch(e) {}
   return [100, 250, 500, 1000];
 }
@@ -97,7 +97,7 @@ export function setRiskUsd(v) {
 export function toggleUsdEdit() {
   if (state.editingUsd) { // ✓ pressed: collect the boxes
     const vals = [...new Set([...document.querySelectorAll('.usd-edit-box')]
-      .map(b => parseFloat(b.value)).filter(v => v > 0))].slice(0, 6);
+      .map(b => parseFloat(b.value)).filter(v => v > 0))].slice(0, 6).sort((x, y) => x - y);
     if (vals.length) store.set('risk_usd_presets', JSON.stringify(vals));
   }
   state.editingUsd = !state.editingUsd;

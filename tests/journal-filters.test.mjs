@@ -139,3 +139,45 @@ test('a calendar day picked on the Trades tab keeps through its notebook page an
   assert.equal(a.run('state.journalDay'), '2026-10-02');
   assert.equal(a.shown(), 'NVDA');
 });
+
+test('core: Ticker type is what the trade is on, whatever the instrument: Stocks, ETFs, Indexes, Futures', async () => {
+  const { tickerType } = await import('../src/core/journal-filters.js');
+  const { ETFS } = await import('../src/core/etfs.js');
+  const { readFileSync, readdirSync } = await import('node:fs');
+  assert.equal(tickerType({ symbol: 'AAPL', assetType: 'EQUITY' }), 'Stocks');
+  assert.equal(tickerType({ symbol: 'NVDA', assetType: 'EQUITY' }), 'Stocks', 'a stock a leveraged fund tracks is still a stock');
+  assert.equal(tickerType({ symbol: 'SPY', assetType: 'EQUITY' }), 'ETFs');
+  assert.equal(tickerType({ symbol: 'TQQQ', assetType: 'EQUITY' }), 'ETFs', 'a leveraged fund');
+  assert.equal(tickerType({ symbol: 'XYZW', assetType: 'COLLECTIVE_INVESTMENT' }), 'ETFs', 'Schwab says so');
+  assert.equal(tickerType({ symbol: 'ABCD', assetType: 'EQUITY' }, { ABCD: '-NVDA' }), 'ETFs', 'one of your funds');
+  assert.equal(tickerType({ symbol: 'QQQ   261120C00500000', assetType: 'OPTION' }), 'ETFs', 'an option on an ETF');
+  assert.equal(tickerType({ symbol: 'AAPL  261120C00200000', assetType: 'OPTION' }), 'Stocks');
+  assert.equal(tickerType({ symbol: 'SPXW  261106C05900000', assetType: 'OPTION' }), 'Indexes');
+  assert.equal(tickerType({ symbol: 'SPY', assetType: 'SPREAD', legs: [] }), 'ETFs', 'a spread goes by its root');
+  assert.equal(tickerType({ symbol: '/MESZ26', assetType: 'FUTURE' }), 'Futures');
+  // the Market tab's ETF list is all in
+  const csv = readdirSync('data').find(f => /^market-etfs-.*\.csv$/.test(f));
+  const tickers = readFileSync(`data/${csv}`, 'utf8').trim().split('\n').slice(1).map(l => l.split(',')[0]);
+  assert.deepEqual(tickers.filter(t => !ETFS.has(t)), []);
+  // only ETFs, or everything but futures
+  const trades = [
+    { key: 'a', symbol: 'AAPL', assetType: 'EQUITY', status: 'closed' }, { key: 's', symbol: 'SPY', assetType: 'EQUITY', status: 'closed' },
+    { key: 'f', symbol: '/MESZ26', assetType: 'FUTURE', status: 'closed' },
+  ];
+  const ctx = { grade: () => '', plan: () => '', market: () => '', labels: () => [], nameOf: (k, v) => v };
+  const keys = filters => applyFilters(trades, filters, ctx).map(t => t.key).join(',');
+  assert.equal(keys([{ field: 'ticker', values: ['ETFs'] }]), 's');
+  assert.equal(keys([{ field: 'ticker', values: ['Stocks'] }]), 'a');
+  assert.equal(keys([{ field: 'ticker', values: ['Futures'], not: true }]), 'a,s');
+  assert.deepEqual(filterChoices(trades, [], 'ticker', ctx).map(c => `${c.name} ${c.count}`), ['Stocks 1', 'ETFs 1', 'Futures 1'], 'only the kinds some trade has');
+});
+
+test('+ Add filter offers Ticker type in the rail', async () => {
+  const a = await journal();
+  assert.match(a.list(), /<option value="ticker">Ticker type<\/option>/);
+  a.run("addJournalFilter('ticker')");
+  const block = a.list().split('class="jf-filter')[1].split('class="jf-foot"')[0];
+  assert.match(block, /data-arg2="Stocks">Stocks <b>3<\/b>/);
+  a.run("toggleJournalFilterValue('ticker', 'ETFs')");
+  assert.equal(a.shown(), '');
+});

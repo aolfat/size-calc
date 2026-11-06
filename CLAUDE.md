@@ -33,6 +33,7 @@ Futures (/MES) size in contracts in the same ticket, from Schwab's market data t
 Account size and risk % persist in localStorage.
 Risk $ (labelled "Max loss per trade") is styled as the loud number (big, bold, red — it's the max loss).
 Risk % preset chips: .125/.25/.50/1/2/3%, plus fixed dollar chips (default 100/250/500/1000, editable via the ✎ chip → comma list, deduped, max 6, persisted as risk_usd_presets).
+The $ chips always show smallest first (owner request): saving sorts them, and getUsdPresets sorts what was saved before.
 Active chips track whatever the current values resolve to — a $ tap can light its matching % chip too.
 The amount per trade must stay ONE TAP away: the risk strip (#riskStrip) is one of the FIRST things on the page (owner request: the max loss frames the trade): top of the rail on desktop, first card under the header on phones, in every mode, after only the first-run setup notice.
 It holds the risk $ input and both chip rows; the active chips tint red.
