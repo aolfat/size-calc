@@ -54,12 +54,36 @@ test('the risk amount and its chips come first, ahead of the ticket, one tap awa
   const strip = block('riskStrip');
   for (const id of ['riskDollar', 'riskPresets', 'riskEditBtn', 'riskAddInput', 'allocationControls', 'riskStatus']) assert.match(strip, new RegExp(`id="${id}"`), id);
   const rail = block('railPane');
-  assert.ok(rail.indexOf('id="riskStrip"') < rail.indexOf('id="modeCard"'), 'desktop rail: risk above the ticket');
+  assert.ok(rail.indexOf('id="riskStrip"') >= 0 && rail.indexOf('id="riskStrip"') < rail.indexOf('id="stopsCard"'), 'desktop rail: risk above entry and stops');
   // phones and tablets place cards with CSS order: risk must come before the ticket there too
   const order = id => +css.match(new RegExp(`#${id}(?:, [^{]+)? \\{ order: (\\d+); \\}`))[1];
   assert.ok(order('riskStrip') < order('modeCard'), 'phone order: risk above the ticket');
   assert.ok(order('setupNotice') <= order('riskStrip'));
   assert.doesNotMatch(block('riskSheet'), /id="riskDollar"|id="riskPresets"/, 'one copy of each control');
+});
+
+test('the chart sets the stop: phones run ticker, quote, chart, entry and stops, then the answer; desktop puts the ticker over the quote and the answer in the rail', async () => {
+  const order = id => +css.match(new RegExp(`#${id}(?:, [^{]+)? \\{ order: (\\d+); \\}`))[1];
+  const phone = ['riskStrip', 'modeCard', 'quoteCard', 'chartWrap', 'stopsCard', 'sharesSection', 'optionTicket', 'quickCard', 'pinnedSection', 'optionsSection'];
+  assert.deepEqual([...phone].sort((a, b) => order(a) - order(b)), phone);
+  const main = block('mainPane'), rail = block('railPane');
+  assert.ok(main.indexOf('id="modeCard"') >= 0 && main.indexOf('id="modeCard"') < main.indexOf('id="quoteSection"'), 'desktop: the ticker card heads the main pane');
+  for (const id of ['dirField', 'entryStopsRow', 'orbRow', 'stopAdjustment']) assert.match(block('stopsCard'), new RegExp(`id="${id}"`), id);
+  assert.ok(rail.indexOf('id="stopsCard"') < rail.indexOf('id="sharesSection"'), 'rail: entry and stops, then the answer');
+  assert.doesNotMatch(block('modeCard'), /id="entryStopsRow"/, 'one copy');
+  const { run, elements } = await app();
+  run("setView('positions')");
+  assert.ok(!shown(elements.get('stopsCard')), 'no stops in Positions');
+  run("setView('calc')");
+  assert.ok(shown(elements.get('stopsCard')));
+});
+
+test('the daily pane starts on at desktop width and off on phones; a saved choice wins', async () => {
+  const daily = async opts => { const h = await harness(opts); h.run('initShowDaily()'); return h.state.showDaily; };
+  assert.equal(await daily({ width: 1400 }), true);
+  assert.equal(await daily({ width: 390 }), false);
+  assert.equal(await daily({ width: 390, storage: new Map([['show_daily', '1']]) }), true);
+  assert.equal(await daily({ width: 1400, storage: new Map([['show_daily', '0']]) }), false);
 });
 
 test('the risk strip shows wherever risk sizes a trade', async () => {

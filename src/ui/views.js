@@ -63,6 +63,7 @@ export function setView(v) {
   document.querySelector('.app').classList.toggle('market-view', state.marketView);
   document.getElementById('lastUpdated').style.display = state.marketView || state.utilsView || state.journalView ? 'none' : '';
   document.getElementById('modeCard').style.display = calc ? '' : 'none';
+  document.getElementById('stopsCard').style.display = calc ? '' : 'none';
   document.getElementById('riskStrip').style.display = calc ? '' : 'none';
   renderWeekRulesCard();
   updateSetupNotice();

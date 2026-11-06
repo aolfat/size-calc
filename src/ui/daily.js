@@ -5,6 +5,7 @@ import { clampView, viewRange } from '../core/chart-view.js';
 import { effectivePrice } from '../core/extended-hours.js';
 import { fmtN, nyDateStr } from '../core/format.js';
 import { futuresSessionClock, futuresSymbol, priceLabeler } from '../core/futures.js';
+import { DESKTOP_MQ } from '../lib/media.js';
 import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
@@ -49,6 +50,15 @@ export async function fetchAdr(ticker) {
   updateChartVisibility();
   if (state.chartBars.length) drawChart(); // prior-day lines
   if (state.dailyBars.length) drawDailyChart();
+}
+
+/**
+ * the daily pane at boot: as you left it; until then on at desktop width and off on phones and tablets, where it would
+ * stack between the intraday chart and the entry and stops it sets (D1 brings it back)
+ */
+export function initShowDaily() {
+  const saved = store.get('show_daily');
+  state.showDaily = saved != null ? saved !== '0' : (typeof window.matchMedia !== 'function' || window.matchMedia(DESKTOP_MQ).matches);
 }
 
 export function toggleDaily() {

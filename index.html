@@ -90,42 +90,8 @@
     <ol class="week-rules-list" id="weekRulesList"></ol>
   </div>
 
-  <div class="card" id="modeCard">
-    <div class="seg mode-big" id="modeSeg" aria-label="Instrument">
-      <button id="modeShares" class="active" data-action="setMode" data-arg="shares">Stocks &amp; futures</button>
-      <button id="modeOptions" data-action="setMode" data-arg="options">Options</button>
-    </div>
-    <div id="sizingControls">
-    <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
-      <div class="field" id="symbolField" style="flex:0 0 140px;">
-        <label for="ticker">Ticker</label>
-        <input type="text" id="ticker" placeholder="AAPL, /MES" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
-      </div>
-      <div class="field" style="flex:0 0 auto;">
-        <label>&nbsp;</label>
-        <button class="btn primary" data-action="submitTicker">
-          <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
-        </button>
-      </div>
-      <div class="field" style="flex:0 0 auto;">
-        <label>&nbsp;</label>
-        <button class="btn" data-action="refreshQuote" title="Refresh quote (r) · press ? for all shortcuts">
-          ↻<span class="btn-word"> Refresh</span>
-        </button>
-      </div>
-      <div class="field" style="flex:0 0 auto;">
-        <label>&nbsp;</label>
-        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Phones and tablets go live on every Load (tap to stop); desktop taps for 1m, again for 5m, again for 30m, again to stop. Pauses while backgrounded (l)">⚡ Live</button>
-      </div>
-    </div>
-    <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
-    <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
-    <div id="optionTradeControls" style="display:none;margin-top:16px;">
-      <div class="section-title">Option trade</div>
-      <div class="seg"><button id="optionBuy" class="active" aria-pressed="true" data-action="setOptionTradeSide" data-arg="buy">Buy options</button><button id="optionSellPut" aria-pressed="false" data-action="setOptionTradeSide" data-arg="sell-put">Sell put</button></div>
-      <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
-    </div>
-    <div class="section-title" id="entryStopsTitle" style="margin-top:16px;">Entry &amp; stops</div>
+  <div class="card" id="stopsCard">
+    <div class="section-title" id="entryStopsTitle">Entry &amp; stops</div>
     <div class="dir-row" id="dirField">
       <div class="seg dir dir-big" id="dirSeg" role="group" aria-label="Direction">
         <button id="dirLong" class="active long" aria-pressed="true" data-action="setDirection" data-arg="long" title="Long (d switches)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>Long</button>
@@ -181,7 +147,6 @@
       </div>
       <div id="stopBufferInfo" role="status"></div>
       <details class="hint-details"><summary>How adjustments work</summary>Moves the stop below the LOD for longs and above the HOD for shorts. A stop you type or set on the chart overrides it. It's a price trigger with no 5m close confirmation, and the presets are untested.</details>
-    </div>
     </div>
   </div>
 
@@ -254,6 +219,44 @@
         <span><kbd>l</kbd> live · again extends 1m→5m→30m</span>
         <span><kbd>-</kbd> <kbd>=</kbd> step risk down / up</span>
       </div>
+    </div>
+  </div>
+
+  <div class="card" id="modeCard">
+    <div class="seg mode-big" id="modeSeg" aria-label="Instrument">
+      <button id="modeShares" class="active" data-action="setMode" data-arg="shares">Stocks &amp; futures</button>
+      <button id="modeOptions" data-action="setMode" data-arg="options">Options</button>
+    </div>
+    <div id="sizingControls">
+    <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
+      <div class="field" id="symbolField" style="flex:0 0 140px;">
+        <label for="ticker">Ticker</label>
+        <input type="text" id="ticker" placeholder="AAPL, /MES" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
+      </div>
+      <div class="field" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <button class="btn primary" data-action="submitTicker">
+          <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
+        </button>
+      </div>
+      <div class="field" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <button class="btn" data-action="refreshQuote" title="Refresh quote (r) · press ? for all shortcuts">
+          ↻<span class="btn-word"> Refresh</span>
+        </button>
+      </div>
+      <div class="field" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Phones and tablets go live on every Load (tap to stop); desktop taps for 1m, again for 5m, again for 30m, again to stop. Pauses while backgrounded (l)">⚡ Live</button>
+      </div>
+    </div>
+    <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
+    <div id="recentTickers" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"></div>
+    <div id="optionTradeControls" style="display:none;margin-top:16px;">
+      <div class="section-title">Option trade</div>
+      <div class="seg"><button id="optionBuy" class="active" aria-pressed="true" data-action="setOptionTradeSide" data-arg="buy">Buy options</button><button id="optionSellPut" aria-pressed="false" data-action="setOptionTradeSide" data-arg="sell-put">Sell put</button></div>
+      <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
+    </div>
     </div>
   </div>
 
