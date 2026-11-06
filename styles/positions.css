@@ -67,6 +67,12 @@
 .pc-key.pc-cost { background: var(--text); }
 .pc-key.pc-price { width: 9px; height: 9px; border-radius: 50%; background: var(--text2); }
 .pc-list { display: grid; gap: 10px; }
+.pc-group { display: grid; gap: 10px; } /* a spread with its legs open: one cell of the grid */
+@media (min-width: 601px) {
+  /* Cards wider than a phone (Settings, Positions: Cards): as many columns as fit, each card its own height */
+  .pc-list { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
+  .pc-tiles { max-width: 640px; }
+}
 .pc { background: var(--bg2); border: 1px solid var(--border2); border-radius: 20px; overflow: hidden; }
 .pc.pc-leg { margin-left: 16px; border-radius: 16px; background: var(--bg); }
 .pc-top { display: grid; gap: 4px; padding: 14px 16px 12px; cursor: pointer; }

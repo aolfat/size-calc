@@ -2,7 +2,7 @@
 // option legs folded into the spreads they make (each spread's legs a tap away, the spread closed or trimmed as one order in spread-close.js),
 // buttons into a position's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the stop, breakeven-stop and close reviews (position-trade.js),
 // optional P/L and R columns picked from Columns (kept on this device; R reads the Journal's trades for each position's first stop), the account value hidden on request,
-// a card per position on phones (P/L, R and a bar from the stop past your cost to the price; a tap opens its figures and buttons),
+// a card per position (P/L, R and a bar from the stop past your cost to the price; a tap opens its figures and buttons),
 // and every order still working in the account.
 import { mq, PHONE_MQ } from '../lib/media.js';
 import { store } from '../lib/store.js';
@@ -487,7 +487,8 @@ function spreadCard(s) {
   });
   const more = open ? `<div class="pc-more"><dl class="pc-stats">${stat('Mkt val', money(s.value))}${stat('Max loss', s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span>`)}${stat('Legs', esc(s.legWords))}</dl><span class="pos-acts">${spreadButtons(s)}</span></div>` : '';
   const legs = state.posLegsOpen.includes(s.key) ? s.legs.map(l => positionCard(l, true)).join('') : '';
-  return `<article class="pc${open ? ' pc-open' : ''}">${top}${more}</article>${legs}`;
+  const card = `<article class="pc${open ? ' pc-open' : ''}">${top}${more}</article>`;
+  return legs ? `<div class="pc-group">${card}${legs}</div>` : card; // the legs stay under their spread in the desktop's grid
 }
 
 /** a tap on a phone card: opens or closes its figures and buttons */
@@ -623,7 +624,10 @@ export function openPosActions(key) {
 
 // ---------- Settings, Positions: the phone layout and the dollar P/L ----------
 
-/** Cards or Table, for Positions on a phone */
+/** Cards or Table as picked in Settings; until then cards on a phone, the table on anything wider */
+export const posLayoutNow = () => state.posLayout || (mq(PHONE_MQ) ? 'cards' : 'table');
+
+/** Cards or Table, for Positions at any width */
 export function setPosLayout(v) {
   state.posLayout = v === 'table' ? 'table' : 'cards';
   store.set('positions_layout', state.posLayout);
@@ -641,7 +645,9 @@ export function setPosPnl(v) {
 
 /** the two switches show what's in use */
 export function syncPosSettings() {
-  for (const [id, on] of [['posLayoutCards', state.posLayout === 'cards'], ['posLayoutTable', state.posLayout === 'table'], ['posPnlBoth', !state.posPnlPct], ['posPnlPct', state.posPnlPct]]) {
+  watchPhone();
+  const layout = posLayoutNow();
+  for (const [id, on] of [['posLayoutCards', layout === 'cards'], ['posLayoutTable', layout === 'table'], ['posPnlBoth', !state.posPnlPct], ['posPnlPct', state.posPnlPct]]) {
     const b = document.getElementById(id);
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
@@ -653,7 +659,7 @@ let phoneWatched = false;
 function watchPhone() {
   if (phoneWatched || !window.matchMedia) return;
   phoneWatched = true;
-  window.matchMedia(PHONE_MQ).addEventListener?.('change', () => { if (state.positionsView) { readPositionJournal(); renderPositionsTable(); } });
+  window.matchMedia(PHONE_MQ).addEventListener?.('change', () => { syncPosSettings(); if (state.positionsView) { readPositionJournal(); renderPositionsTable(); } });
 }
 
 export function renderPositions() {
@@ -680,9 +686,10 @@ function renderPositionsTable() {
   const asOf = inZone(p.asOf);
   watchPhone();
   const phone = mq(PHONE_MQ);
+  const cards = posLayoutNow() === 'cards';
   const cols = shownCols();
-  // phones show the account value in a tile over the cards
-  const value = state.posHideValue ? 'Account value hidden' : phone ? `Cash ${money(p.cash)}` : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
+  // the cards and the phone table show the account value over them
+  const value = state.posHideValue ? 'Account value hidden' : phone || cards ? `Cash ${money(p.cash)}` : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
   const hide = `<button class="pos-link" data-action="togglePosHideValue" aria-pressed="${state.posHideValue}" title="${state.posHideValue ? 'Show' : 'Hide'} the account value and cash">${state.posHideValue ? 'Show' : 'Hide'}</button>`;
   const picker = state.posColsOpen ? `<div class="chip-row pos-cols" role="group" aria-label="Optional columns">${pickable().map(([key, label]) => {
     const on = state.posCols.includes(key);
@@ -692,16 +699,16 @@ function renderPositionsTable() {
     <div class="positions-head">
       <span class="section-title">Schwab ••${esc(p.last4)}</span>
       <span class="positions-meta">${value} ${hide} · as of ${asOf}</span>
-      ${phone ? '' : `<button class="btn pos-cols-btn" data-action="togglePosColumnsMenu" aria-expanded="${state.posColsOpen}" title="Add or remove columns: P/L, R and today's P/L">Columns</button>`}
+      ${phone || cards ? '' : `<button class="btn pos-cols-btn" data-action="togglePosColumnsMenu" aria-expanded="${state.posColsOpen}" title="Add or remove columns: P/L, R and today's P/L">Columns</button>`}
       ${refresh}
     </div>
-    ${phone ? '' : picker}
+    ${phone || cards ? '' : picker}
     ${state.positionsError ? `<p class="shares-error" role="status">Refresh failed: ${esc(state.positionsError)} Showing ${asOf}.</p>` : ''}
     ${p.stopsMissing ? '<p class="hint">Stops unavailable: Schwab did not return this account\'s orders.</p>' : ''}
-    ${p.rows.length && phone && state.posLayout === 'table' ? `${phoneTable(p, items)}
+    ${p.rows.length && phone && !cards ? `${phoneTable(p, items)}
     <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost; a spread's is its max loss. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now.</p>`
-    : p.rows.length && phone ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => i.spread ? spreadCard(i.spread) : positionCard(i.row)).join('')}</div>
-    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now. Tap a card for its figures and buttons.</p>`
+    : p.rows.length && cards ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => i.spread ? spreadCard(i.spread) : positionCard(i.row)).join('')}</div>
+    <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now. ${phone ? 'Tap' : 'Click'} a card for its figures and buttons.</p>`
     : p.rows.length ? `<div class="positions-wrap"><table class="positions-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th>${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
       <tbody>${items.map(i => i.spread ? spreadRow(i.spread) : positionRow(i.row)).join('')}</tbody>

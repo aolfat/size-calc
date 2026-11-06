@@ -250,6 +250,30 @@ test('Settings can put a phone on the table instead: the symbol pinned, P/L firs
   assert.match(html(), /<article class="pc/);
 });
 
+test('Settings Cards works on the desktop too: the table until picked, then the cards in a grid', async () => {
+  const net = network(schwabOk);
+  const storage = connected();
+  const { run, elements } = await app({ width: 1280, fetch: net.fetch, storage });
+  run("setView('positions')");
+  await settle();
+  const html = () => elements.get('positionsSection').innerHTML;
+  assert.match(html(), /<table class="positions-table">/, 'the table until a layout is picked');
+  run('syncPosSettings()');
+  assert.equal(elements.get('posLayoutTable').getAttribute('aria-pressed'), 'true', 'Settings says what is showing');
+  run("setPosLayout('cards')");
+  assert.equal(storage.get('positions_layout'), 'cards');
+  assert.equal(elements.get('posLayoutCards').getAttribute('aria-pressed'), 'true');
+  assert.doesNotMatch(html(), /<table class="positions-table">/);
+  assert.doesNotMatch(html(), /togglePosColumnsMenu/, 'the cards have no columns to pick');
+  assert.equal((html().match(/<article class="pc/g) || []).length, 4);
+  assert.match(html(), /<dt>Account<\/dt>/);
+  assert.match(html(), /Click a card/);
+  run("togglePosCard('TEST')");
+  assert.match(html().split('<article').find(c => c.includes('data-arg="TEST"')), /togglePositionChart/, 'the buttons open as on a phone');
+  run("setPosLayout('table')");
+  assert.match(html(), /<table class="positions-table">/);
+});
+
 test('% only hides the dollar P/L of open positions on the cards, the phone table and the desktop columns', async () => {
   const net = network(schwabOk);
   const storage = connected();

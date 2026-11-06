@@ -63,7 +63,10 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   A spread's card shows its net cost → net mark in spreads, its structure and max loss, a ladder from zero for a debit spread (none for a credit), and opens to Mkt val, Max loss, the legs and Legs / Close; Legs lists each leg as its own card under it.
   Working orders stay a table that scrolls sideways.
 
-  **Phone layout** (Settings → Positions: Cards | Table; setPosLayout, state.posLayout, positions_layout, this device only, Cards by default): Table is the old sideways table rebuilt for a thumb.
+  **Layout** (Settings → Positions: Cards | Table; setPosLayout, state.posLayout, positions_layout, this device only): it applies at every width (owner request: the cards on the desktop too).
+  Until it is picked, posLayoutNow gives cards on a phone and the table on anything wider, and Settings lights whichever is showing.
+  Wider than a phone the cards fill a grid (as many 300px-plus columns as fit, each card its own height, a spread with its legs open kept in one cell), with the same tiles, legend, tap to open and buttons, and no Columns.
+  On a phone, Table is the old sideways table rebuilt for a thumb.
   The account value sits large over it with the open P/L under it; the symbol column stays pinned with the size ('40 sh'), an option's contract ('55C 12/18/26') or 'stop at breakeven' (green) under the symbol; then Price, P/L, P/L %, Mkt val, Qty, Avg, Stop, Risk @ stop and R, a swipe away, and a Total row (P/L, P/L %, value, the loss-only risk).
   A tap on a row (openPosActions, state.posActions) opens #posActionsSheet (SHEETS.posActions): the P/L, cost → price, the cards' stop ladder and stop line, Mkt val / Stop / Risk @ stop, and the actions two by two with Close across the bottom: Chart, Simulate on options, Set stop or Edit stop, Move stop to breakeven (gone once every share is at or past it), Close; a spread gets Show legs / Hide legs and Close spread.
   The buttons go through posSheetAct: Chart, Simulate and the legs show on the page, so the sheet closes first; Stop, breakeven, Close and the spread close open their own review sheets.

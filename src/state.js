@@ -234,7 +234,7 @@ export function createState() {
     posColsOpen: false, // the Columns picker showing
     posLegsOpen: [], // the Positions spreads (SpreadRow keys) showing their legs
     posCardsOpen: [], // the phone cards (a row's symbol or a spread's key) opened to their figures and buttons
-    posLayout: store.get('positions_layout') === 'table' ? 'table' : 'cards', // Positions on a phone: a card per position, or the table with the symbol pinned (positions_layout, this device only)
+    posLayout: ['cards', 'table'].includes(store.get('positions_layout')) ? store.get('positions_layout') : null, // Positions: a card per position, or the table (positions_layout, this device only); null until picked = cards on a phone, the table wider (posLayoutNow)
     posPnlPct: store.get('positions_pnl_pct') === '1', // open P/L in percent only, the dollars hidden (positions_pnl_pct, this device only)
     posActions: '', // the position (a row's symbol or a spread's key) the phone table's action sheet is for
     posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
