@@ -52,7 +52,8 @@ export function updateRiskPresets() {
   const usd = riskDollars();
   document.querySelectorAll('#riskPresets .risk-chip').forEach(b => {
     const v = parseFloat(b.dataset.value);
-    b.classList.toggle('active', b.dataset.kind === 'pct' ? v === pct : Math.abs(v - usd) < 0.5);
+    // a % chip by its percent, or by its dollars when the max loss got there another way (a $ chip, - / =, typing)
+    b.classList.toggle('active', b.dataset.kind === 'pct' ? v === pct || Math.abs(parseFloat(b.dataset.usd) - usd) < 0.005 : Math.abs(v - usd) < 0.5);
   });
 }
 
@@ -114,7 +115,7 @@ export function renderRiskPresets() {
     const isUsd = c.kind === 'usd';
     const usd = usdChipLabel(c.usd), pct = !isUsd ? pctLabel(c.v) : pctOfAccountLabel(c.usd, acct);
     const words = `${usd}${pct ? `, ${pct} of the account` : ''}`;
-    const chip = `<button class="filter-btn risk-chip" data-kind="${c.kind}" data-value="${c.v}" data-action="${isUsd ? 'setRiskUsd' : 'setRiskPct'}" data-arg="${c.v}" aria-label="${words}"><span class="rc-usd">${usd}</span><span class="rc-pct">${pct || '&nbsp;'}</span></button>`;
+    const chip = `<button class="filter-btn risk-chip" data-kind="${c.kind}" data-value="${c.v}" data-usd="${c.usd}" data-action="${isUsd ? 'setRiskUsd' : 'setRiskPct'}" data-arg="${c.v}" aria-label="${words}"><span class="rc-usd">${usd}</span><span class="rc-pct">${pct || '&nbsp;'}</span></button>`;
     return editing
       ? `<span class="risk-chip-wrap">${chip}<button class="risk-chip-x" data-action="removeRiskPreset" data-arg="${c.kind}" data-arg2="${c.v}" aria-label="Remove ${words}" title="Remove">×</button></span>`
       : chip;

@@ -60,6 +60,19 @@ test('a tap sets the max loss and lights its chip; a % chip follows the account 
   assert.ok(chips(elements).includes('pct 0.25 $200 .25%'), 'the chip redraws with the new dollars');
 });
 
+test('a % chip lights by its dollars too: stepping or typing onto them, not only tapping it', async () => {
+  const { run, elements } = await account({}, 72266);
+  run('setRiskUsd(90.33)'); // what - / = sets on the way to .125%
+  const lit = [];
+  document.querySelectorAll = sel => sel === '#riskPresets .risk-chip'
+    ? [...elements.get('riskPresets').innerHTML.matchAll(/data-kind="(\w+)" data-value="([\d.]+)" data-usd="([\d.]+)"/g)].map(m => ({
+        dataset: { kind: m[1], value: m[2], usd: m[3] }, classList: { toggle: (c, on) => { if (on) lit.push(m[2]); } },
+      }))
+    : [];
+  run('updateRiskPresets()');
+  assert.deepEqual(lit, ['0.125']);
+});
+
 test('Edit: a × on every chip and the add box; Done puts them away', async () => {
   const { run, elements, state } = await account();
   run('toggleRiskEdit()');
@@ -141,7 +154,11 @@ test('both preset lists are account settings: an edit is pending for the cloud, 
 test('allocation sizing hides the chips and Edit, and closes the editor', async () => {
   const { run, elements, state } = await account();
   run('toggleRiskEdit()');
+  elements.get('riskAddInput').value = 'abc';
+  run('addRiskPreset()');
+  assert.notEqual(elements.get('riskAddNote').textContent, '');
   run("setSizingMode('allocation')");
+  assert.equal(elements.get('riskAddNote').textContent, '', 'the note goes with the editor');
   assert.equal(elements.get('riskPresets').style.display, 'none');
   assert.equal(elements.get('riskEditBtn').style.display, 'none');
   assert.equal(state.editingRisk, false);

@@ -76,6 +76,12 @@ test('the chart sets the stop: phones run ticker, quote, chart, entry and stops,
   assert.ok(!shown(elements.get('stopsCard')), 'no stops in Positions');
   run("setView('calc')");
   assert.ok(shown(elements.get('stopsCard')));
+  // options sized by allocation use no entry or stop: no empty card
+  await run("setMode('options')");
+  run("setSizingMode('allocation')");
+  assert.ok(!shown(elements.get('stopsCard')));
+  run("setSizingMode('risk')");
+  assert.ok(shown(elements.get('stopsCard')));
 });
 
 test('the daily pane starts on at desktop width and off on phones; a saved choice wins', async () => {

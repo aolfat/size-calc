@@ -22,7 +22,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Shown in Stocks & futures and Options while signed in and the week has rules; a weekend shows the coming week's (notebookToday).
   The week reviews are read at boot once the Google session is back and again when the app comes to the front, at most every 5 minutes (loadWeekRules); saving the rules in the week's review redraws the card at once.
   Settings, This week's rules: Show in Size (the default) or Hide (setWeekRulesShown, `week_rules_calc`, this device only).
-- **Stops**: ONE global stop pair in the ticker card, used everywhere.
+- **Stops**: ONE global stop pair in the entry and stops card (#stopsCard), used everywhere; with options sized by allocation the card hides.
   Long stop (shares-long + calls, blank = LOD) and short stop (shares-short + puts, blank = HOD).
   Only the stop matching tradeCtx() is shown/drawn (shares follow the Long/Short toggle, options follow chain side; Both view shows both).
   Chart click sets the context's stop; in Both view, below price = long, above = short.
@@ -201,6 +201,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   A finger on a line drags it at once, with no long-press, and keeps the touch from the crosshair and the page (its listeners go on before attachTouchCrosshair's and stop the rest).
   A dragged stop is a Custom stop; let go within 4px of the adjusted LOD / HOD (the stop adjustment's) and the field blanks, back on the level.
   The entry let go within 4px of the price blanks too, back to now.
+  The entry stays a cent on its side of the stop (across it the stop would be on the wrong side and size nothing).
+  A stop dragged across the entry flips the direction and leaves the side it came from as it was when picked up, not at the last price it passed.
   While a line moves the scale holds still (state.chartDragRange) and the redraw runs once a frame; the click that ends a press is swallowed.
   In options the chain side decides which stop; the Both view moves the line you picked up.
   The mouse cursor turns ns-resize over a line.

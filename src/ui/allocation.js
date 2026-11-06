@@ -39,6 +39,8 @@ export function updateSizingControls() {
     state.editingRisk = false;
     document.getElementById('riskAddRow').style.display = 'none';
     document.getElementById('riskEditBtn').textContent = 'Edit';
+    state.riskAddNote = '';
+    document.getElementById('riskAddNote').textContent = '';
   }
   for (const id of ['riskPctField', 'riskDollarField', 'riskPresets', 'riskEditBtn']) document.getElementById(id).style.display = alloc ? 'none' : '';
   document.getElementById('allocationControls').style.display = alloc ? '' : 'none';

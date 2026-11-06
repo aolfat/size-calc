@@ -361,11 +361,19 @@ export function chartSnapTolerance(px = 4) {
   return g.plotH > 0 ? (hi - lo) / g.plotH * px : 0;
 }
 
-/** move a picked-up line to price; returns the line now held (a stop dragged across the entry is the other side's) */
-export function moveChartLine(id, price, snap = 0) {
+/**
+ * move a picked-up line to price; returns the line now held (a stop dragged across the entry is the other side's).
+ * origin: the stop fields as they were when the line was picked up, so a stop dragged across the entry and on leaves
+ * the side it came from as it was, not at the last price it passed.
+ */
+export function moveChartLine(id, price, snap = 0, origin = null) {
   if (state.sizingMode === 'allocation' || !(price > 0)) return id;
   price = Math.round(price * 100) / 100;
   if (id === 'entry') {
+    // the entry stays on its side of the stop: across it the stop would be on the wrong side and size nothing
+    const tc = tradeCtx();
+    if (tc === 'long' && stopLongVal() > 0) price = Math.max(price, Math.round((stopLongVal() + 0.01) * 100) / 100);
+    if (tc === 'short' && stopShortVal() > 0) price = Math.min(price, Math.round((stopShortVal() - 0.01) * 100) / 100);
     const now = effectivePrice(state.quoteData);
     document.getElementById('entryPrice').value = now > 0 && Math.abs(price - now) <= snap ? '' : price.toFixed(2);
   } else {
@@ -375,6 +383,7 @@ export function moveChartLine(id, price, snap = 0) {
     const range = dayRange();
     const level = adjustedStop(isLong ? range.low : range.high, isLong, currentAtr5());
     document.getElementById(isLong ? 'stopLong' : 'stopShort').value = level > 0 && Math.abs(price - level) <= snap ? '' : price.toFixed(2);
+    if (origin && state.currentMode === 'shares') { const other = isLong ? 'stopShort' : 'stopLong'; document.getElementById(other).value = origin[other]; }
     id = isLong ? 'stopLong' : 'stopShort';
   }
   stopsChanged();
@@ -383,14 +392,15 @@ export function moveChartLine(id, price, snap = 0) {
 
 /** pick up, move and let go of a line with a pointer (mouse or one finger): a few lines of state shared by both */
 function lineDrag(canvas) {
-  let held = null, pending = null, frame = 0, suppressUntil = 0;
-  const flush = () => { frame = 0; if (held && pending != null) held = moveChartLine(held, chartPriceAtY(pending), chartSnapTolerance()); pending = null; };
+  let held = null, pending = null, frame = 0, suppressUntil = 0, origin = null;
+  const flush = () => { frame = 0; if (held && pending != null) held = moveChartLine(held, chartPriceAtY(pending), chartSnapTolerance(), origin); pending = null; };
   return {
     get held() { return held; },
     start(clientY, px) {
       const id = chartLineAt(clientY, px);
       if (!id) return false;
       held = id;
+      origin = { stopLong: document.getElementById('stopLong').value, stopShort: document.getElementById('stopShort').value };
       state.chartDragRange = chartRange();
       canvas.style.cursor = 'ns-resize';
       return true;

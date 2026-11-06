@@ -169,6 +169,9 @@ export function tradeCtx() {
 
 export function updateStopVisibility() {
   renderOrb();
+  // options sized by allocation use no entry or stop: the whole card goes, not just what's in it
+  const calcView = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView;
+  document.getElementById('stopsCard').style.display = calcView && !(state.sizingMode === 'allocation' && state.currentMode === 'options') ? '' : 'none';
   document.getElementById('stopAdjustment').style.display = state.sizingMode === 'allocation' ? 'none' : '';
   document.getElementById('entryStopsTitle').textContent = state.sizingMode === 'allocation' ? 'Entry' : 'Entry & stops';
   document.getElementById('entryStopsRow').style.display = state.sizingMode === 'allocation' && state.currentMode === 'options' ? 'none' : '';

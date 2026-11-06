@@ -155,7 +155,7 @@
   .btn-word { display: none; }
   /* entry & stops: direction, entry and stop as one row of tiles (Both view: entry and the two stops) */
   #entryStopsTitle { display: none !important; } /* the tiles label themselves */
-  #entryStopsRow { gap: 8px; margin-top: 14px; }
+  #entryStopsRow { gap: 8px; }
   #entryStopsRow .field { flex: 1 1 0 !important; min-width: 0; }
   #entryStopsRow .prefix { display: none; } /* the label says it's a price; the room goes to the number */
   #entryStopsRow .prefix-wrap input { padding-left: 10px; padding-right: 6px; text-overflow: ellipsis; min-height: 46px; } /* thumb-sized, level with the direction switch */

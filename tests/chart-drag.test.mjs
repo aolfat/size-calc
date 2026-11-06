@@ -76,8 +76,33 @@ test('a stop dragged above the entry makes the trade a short, and back below a l
   fireWin('mousemove', { clientY: yOf(15.5) });
   assert.equal(state.direction, 'long');
   assert.equal(field('stopLong'), '15.50');
+  assert.equal(field('stopShort'), '', 'the short side is left as it was before the drag');
   fireWin('mouseup', {});
   assert.equal(run('tradeCtx()'), 'long');
+  // let go as a short: the long stop you dragged from stays what it was, not the last price it passed
+  run("document.getElementById('stopLong').value = '15.20'; stopsChanged()");
+  fire('mousedown', { clientY: yOf(15.2) });
+  fireWin('mousemove', { clientY: yOf(16.6) });
+  assert.equal(field('stopLong'), '16.60');
+  fireWin('mousemove', { clientY: yOf(17.0) });
+  fireWin('mouseup', {});
+  assert.equal(state.direction, 'short');
+  assert.equal(field('stopShort'), '17.00');
+  assert.equal(field('stopLong'), '15.20');
+});
+
+test('the entry stays on its side of the stop', async () => {
+  const { run, fire, fireWin, yOf, field } = await chartApp();
+  run("document.getElementById('stopLong').value = '15.50'; stopsChanged()");
+  fire('mousedown', { clientY: yOf(16.71) });
+  fireWin('mousemove', { clientY: yOf(15.0) });
+  fireWin('mouseup', {});
+  assert.equal(field('entryPrice'), '15.51', 'a cent over the long stop');
+  run("setDirection('short'); document.getElementById('entryPrice').value = ''; stopsChanged()");
+  fire('mousedown', { clientY: yOf(16.71) });
+  fireWin('mousemove', { clientY: yOf(17.3) });
+  fireWin('mouseup', {});
+  assert.equal(field('entryPrice'), '17.11', 'a cent under the HOD stop');
 });
 
 test('let go on the LOD (or on the adjusted LOD) the stop goes back to it; the entry let go on the price goes back to now', async () => {
