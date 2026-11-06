@@ -16,10 +16,10 @@ browser's storage only (never in sync). Browser calls are accepted
 only from `ALLOWED_ORIGINS`. The worker operator can access tokens passing
 through this worker. They are not hidden from the operator by encryption.
 
-Using the hosted app (https://aolfat.github.io/size-calc/) with your own Schwab
-login? Follow [the setup guide](../../docs/schwab-setup.md): it's the same steps,
-and this folder's `wrangler.toml` already has the hosted app's callback and
-origins, so you only add your app's key and secret.
+Setting one up for a friend with their own Schwab developer app? Run
+`node scripts/friend-worker.mjs <friend>` from the repo root instead: it deploys
+this worker under its own name with their key, secret and callback
+([the setup guide](../../docs/schwab-setup.md)).
 
 ## One-time setup
 

@@ -207,8 +207,6 @@ export function updateSchwabUi() {
   updateAccountSourceUi();
   updateSchwabBanner();
   updateApiStatus(); // without a Tradier key, the Schwab login is what loads quotes
-  const here = globalThis.location;
-  if (here?.origin && /^https?:/.test(here.protocol)) document.getElementById('schwabCallbackHint').textContent = here.origin + here.pathname.replace(/index\.html$/, '');
 }
 
 // ---------- the banner under the header: not connected, or the login's last day ----------
