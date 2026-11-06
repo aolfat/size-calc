@@ -52,7 +52,7 @@ test('setup lives in sheets: settings holds the account and key; the risk sheet 
 
 test('the risk amount and its chips come first, ahead of the ticket, one tap away', async () => {
   const strip = block('riskStrip');
-  for (const id of ['riskDollar', 'riskPresets', 'riskUsdRow', 'usdEditBtn', 'allocationControls', 'riskStatus']) assert.match(strip, new RegExp(`id="${id}"`), id);
+  for (const id of ['riskDollar', 'riskPresets', 'riskEditBtn', 'riskAddInput', 'allocationControls', 'riskStatus']) assert.match(strip, new RegExp(`id="${id}"`), id);
   const rail = block('railPane');
   assert.ok(rail.indexOf('id="riskStrip"') < rail.indexOf('id="modeCard"'), 'desktop rail: risk above the ticket');
   // phones and tablets place cards with CSS order: risk must come before the ticket there too

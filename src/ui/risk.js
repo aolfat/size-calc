@@ -1,4 +1,4 @@
-// Risk strip: max loss input, % and $ chips (both editable, synced presets), the step ladder, and recalculation.
+// Risk strip: max loss input, one row of preset chips ($ over %, editable, synced), the step ladder, and recalculation.
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { updateSizingControls } from './allocation.js';
@@ -13,7 +13,7 @@ export function syncRiskDollar() {
   document.getElementById('riskDollar').value = +(acct * pct / 100).toFixed(2);
   store.set('calc_account', acct);
   store.set('calc_risk', pct);
-  updateRiskPresets();
+  renderRiskPresets(); // a % chip's dollars follow the account size
   updateRiskStatus();
 }
 
@@ -49,31 +49,32 @@ export function setRiskPct(pct) {
 
 export function updateRiskPresets() {
   const pct = parseFloat(document.getElementById('riskPct').value);
-  document.querySelectorAll('#riskPresets .filter-btn[data-pct]').forEach(b => {
-    b.classList.toggle('active', parseFloat(b.dataset.pct) === pct);
-  });
   const usd = riskDollars();
-  document.querySelectorAll('#riskUsdPresets .filter-btn[data-usd]').forEach(b => {
-    b.classList.toggle('active', Math.abs(parseFloat(b.dataset.usd) - usd) < 0.5);
+  document.querySelectorAll('#riskPresets .risk-chip').forEach(b => {
+    const v = parseFloat(b.dataset.value);
+    b.classList.toggle('active', b.dataset.kind === 'pct' ? v === pct : Math.abs(v - usd) < 0.5);
   });
 }
 
-// the preset chips: your standard bets, as % of the account and as fixed dollars, each editable via its pencil chip
-// (in place: every chip a box, a blank one deletes, the trailing + box adds), up to 6, always smallest first, and synced
-// with your account (risk_pct_presets, risk_usd_presets)
+// the preset chips: your standard bets, one row of chips each showing its dollars over its percent of the account
+// (owner request), smallest first. Each keeps the unit it was added in: a % chip follows the account size, a $ chip
+// stays put. Edit puts a × on every chip and an add box that takes either. Two synced lists underneath, up to 6 each
+// (risk_pct_presets, risk_usd_presets).
 
 const PRESETS = {
-  pct: { key: 'risk_pct_presets', fallback: [0.125, 0.25, 0.5, 1, 2, 3], max: 100, el: 'riskPctPresets', btn: 'pctEditBtn', editing: 'editingPct', toggle: 'togglePctEdit', what: 'percent' },
-  usd: { key: 'risk_usd_presets', fallback: [100, 250, 500, 1000], max: Infinity, el: 'riskUsdPresets', btn: 'usdEditBtn', editing: 'editingUsd', toggle: 'toggleUsdEdit', what: 'dollar' },
+  pct: { key: 'risk_pct_presets', fallback: [0.125, 0.25, 0.5, 1, 2, 3], max: 100, what: 'percent' },
+  usd: { key: 'risk_usd_presets', fallback: [100, 250, 500, 1000], max: Infinity, what: 'dollar' },
 };
+const MAX_PRESETS = 6;
 const byValue = (a, b) => a - b;
 
-/** a kind's saved presets, smallest first (a list saved before sorting, or synced, too); the defaults when none */
+/** a kind's saved presets, smallest first (a list saved before sorting, or synced, too); the defaults until one is saved */
 function presets(kind) {
-  const p = PRESETS[kind];
+  const p = PRESETS[kind], raw = store.get(p.key);
+  if (raw == null) return [...p.fallback];
   try {
-    const a = JSON.parse(store.get(p.key) || '[]');
-    if (Array.isArray(a) && a.length && a.every(v => typeof v === 'number' && v > 0 && v < p.max)) return [...a].sort(byValue);
+    const a = JSON.parse(raw);
+    if (Array.isArray(a) && a.every(v => typeof v === 'number' && v > 0 && v < p.max)) return [...a].sort(byValue);
   } catch(e) {}
   return [...p.fallback];
 }
@@ -83,45 +84,108 @@ export const getUsdPresets = () => presets('usd');
 /** a % chip's words: .125%, .25%, .50%, 1%, 2.5% */
 export const pctLabel = v => (v < 1 ? (Number.isInteger(v * 10) ? v.toFixed(2) : String(v)).replace(/^0/, '') : String(v)) + '%';
 
-function renderPresets(kind) {
-  const p = PRESETS[kind], el = document.getElementById(p.el), vals = presets(kind), editing = state[p.editing];
-  if (editing) {
-    // a % box is text so it reads like its chip (.125, not a cut-off 0.1); the keypad is a number pad either way
-    const type = kind === 'pct' ? 'type="text"' : 'type="number" min="0" step="any"';
-    const shown = v => kind === 'pct' ? pctLabel(v).slice(0, -1) : v;
-    el.innerHTML = vals
-      .map(v => `<input ${type} class="usd-edit-box" value="${shown(v)}" inputmode="decimal" aria-label="${p.what} preset" data-enter="${p.toggle}" />`)
-      .join('')
-      + `<input ${type} class="usd-edit-box" placeholder="+" inputmode="decimal" aria-label="New ${p.what} preset" data-enter="${p.toggle}" />`;
-  } else {
-    el.innerHTML = kind === 'pct'
-      ? vals.map(v => `<button class="filter-btn" data-pct="${v}" data-action="setRiskPct" data-arg="${v}">${pctLabel(v)}</button>`).join('')
-      : vals.map(v => `<button class="filter-btn" data-usd="${v}" data-action="setRiskUsd" data-arg="${v}">$${v.toLocaleString()}</button>`).join('');
+const accountSize = () => parseFloat(document.getElementById('accountSize').value) || 0;
+const cents = v => Math.round(v * 100) / 100;
+
+/** a chip's dollars: whole dollars from $100 up, cents below when there are any */
+export const usdChipLabel = v => '$' + (v >= 100 || Number.isInteger(v) ? Math.round(v).toLocaleString('en-US') : v.toFixed(2));
+
+/** what a $ chip is of the account: .069%, .35%, 1.38% (three figures at most) */
+export function pctOfAccountLabel(usd, acct = accountSize()) {
+  if (!(acct > 0)) return '';
+  const p = usd / acct * 100;
+  const s = p >= 1 ? +p.toFixed(2) : +p.toPrecision(p >= 0.1 ? 3 : 2);
+  return String(s).replace(/^0(?=\.)/, '') + '%';
+}
+
+/** every chip in one list, smallest first: { kind, v, usd }; a $ preset that lands on a % chip's dollars shows once, as the % chip */
+export function riskChips(acct = accountSize()) {
+  const chips = getPctPresets().map(v => ({ kind: 'pct', v, usd: cents(acct * v / 100) }));
+  for (const v of getUsdPresets()) if (!chips.some(c => Math.abs(c.usd - v) < 0.005)) chips.push({ kind: 'usd', v, usd: v });
+  return chips.sort((a, b) => a.usd - b.usd || (a.kind === 'pct' ? -1 : 1));
+}
+
+export function renderRiskPresets() {
+  const el = document.getElementById('riskPresets'), acct = accountSize(), editing = state.editingRisk;
+  const chips = riskChips(acct);
+  const cols = chips.length <= 6 ? chips.length : Math.ceil(chips.length / 2);
+  el.style.gridTemplateColumns = `repeat(${Math.max(cols, 1)}, minmax(0, 1fr))`;
+  el.innerHTML = chips.map(c => {
+    const isUsd = c.kind === 'usd';
+    const usd = usdChipLabel(c.usd), pct = !isUsd ? pctLabel(c.v) : pctOfAccountLabel(c.usd, acct);
+    const words = `${usd}${pct ? `, ${pct} of the account` : ''}`;
+    const chip = `<button class="filter-btn risk-chip" data-kind="${c.kind}" data-value="${c.v}" data-action="${isUsd ? 'setRiskUsd' : 'setRiskPct'}" data-arg="${c.v}" aria-label="${words}"><span class="rc-usd">${usd}</span><span class="rc-pct">${pct || '&nbsp;'}</span></button>`;
+    return editing
+      ? `<span class="risk-chip-wrap">${chip}<button class="risk-chip-x" data-action="removeRiskPreset" data-arg="${c.kind}" data-arg2="${c.v}" aria-label="Remove ${words}" title="Remove">×</button></span>`
+      : chip;
+  }).join('');
+  const btn = document.getElementById('riskEditBtn');
+  btn.textContent = editing ? 'Done' : 'Edit';
+  btn.title = editing ? 'Done editing the presets' : 'Add or remove presets, in dollars or percent';
+  btn.setAttribute('aria-pressed', String(!!editing));
+  document.getElementById('riskAddRow').style.display = editing ? '' : 'none';
+  for (const u of ['usd', 'pct']) {
+    const b = document.getElementById(u === 'usd' ? 'riskAddUsd' : 'riskAddPct');
+    b.classList.toggle('active', state.riskAddUnit === u);
+    b.setAttribute('aria-pressed', String(state.riskAddUnit === u));
   }
-  const btn = document.getElementById(p.btn);
-  btn.textContent = editing ? '✓' : '✎';
-  btn.title = editing ? `Save the ${p.what} presets` : `Edit the ${p.what} presets`;
-  btn.classList.toggle('active', editing);
+  document.getElementById('riskAddNote').textContent = editing ? state.riskAddNote : '';
   updateRiskPresets();
 }
-export function renderPctPresets() { renderPresets('pct'); }
-export function renderUsdPresets() { renderPresets('usd'); }
-/** both chip rows (boot, and after a sync brings new presets) */
-export function renderRiskPresets() { renderPresets('pct'); renderPresets('usd'); }
 
-function toggleEdit(kind) {
-  const p = PRESETS[kind];
-  if (state[p.editing]) { // ✓ pressed: collect the boxes, the first 6 typed, smallest first
-    const vals = [...new Set([...document.querySelectorAll(`#${p.el} .usd-edit-box`)]
-      .map(b => parseFloat(b.value)).filter(v => v > 0 && v < p.max))].slice(0, 6).sort(byValue);
-    if (vals.length) store.set(p.key, JSON.stringify(vals));
-  }
-  state[p.editing] = !state[p.editing];
-  renderPresets(kind);
-  if (state[p.editing]) { const first = document.querySelector(`#${p.el} .usd-edit-box`); if (first) first.select(); }
+export function toggleRiskEdit() {
+  state.editingRisk = !state.editingRisk;
+  state.riskAddNote = '';
+  if (!state.editingRisk) document.getElementById('riskAddInput').value = '';
+  renderRiskPresets();
+  if (state.editingRisk) document.getElementById('riskAddInput').focus();
 }
-export function togglePctEdit() { toggleEdit('pct'); }
-export function toggleUsdEdit() { toggleEdit('usd'); }
+
+export function setRiskAddUnit(unit) {
+  state.riskAddUnit = unit === 'pct' ? 'pct' : 'usd';
+  renderRiskPresets();
+}
+
+/** a typed preset: '75', '$1,500', '0.1%' or '.1' with % picked; null when it isn't one */
+export function parseRiskPreset(text, unit = 'usd') {
+  const t = String(text || '').trim().replace(/[\s,$]/g, '');
+  const m = t.match(/^(\d*\.?\d+)(%?)$/);
+  if (!m) return null;
+  const v = parseFloat(m[1]), kind = m[2] ? 'pct' : unit === 'pct' ? 'pct' : 'usd';
+  if (!(v > 0) || v >= PRESETS[kind].max) return null;
+  return { kind, v: kind === 'usd' ? cents(v) : +v.toFixed(4) };
+}
+
+function savePresets(kind, vals) {
+  store.set(PRESETS[kind].key, JSON.stringify([...vals].sort(byValue)));
+}
+
+export function addRiskPreset() {
+  const input = document.getElementById('riskAddInput');
+  const p = parseRiskPreset(input.value, state.riskAddUnit);
+  if (!p) {
+    state.riskAddNote = state.riskAddUnit === 'pct' ? 'Type a percent under 100, like 0.1.' : 'Type a dollar amount, like 75. Or a percent, like 0.1%.';
+  } else {
+    const list = presets(p.kind), acct = accountSize();
+    const usd = p.kind === 'pct' ? cents(acct * p.v / 100) : p.v;
+    const label = p.kind === 'pct' ? pctLabel(p.v) : usdChipLabel(p.v);
+    if (list.includes(p.v) || riskChips(acct).some(c => Math.abs(c.usd - usd) < 0.005)) state.riskAddNote = `${label} is already there.`;
+    else if (list.length >= MAX_PRESETS) state.riskAddNote = `Six ${PRESETS[p.kind].what} presets at most. Remove one first.`;
+    else {
+      savePresets(p.kind, [...list, p.v]);
+      state.riskAddNote = `Added ${label}.`;
+      input.value = '';
+    }
+  }
+  renderRiskPresets();
+}
+
+export function removeRiskPreset(kind, v) {
+  if (!PRESETS[kind]) return;
+  savePresets(kind, presets(kind).filter(x => x !== v));
+  state.riskAddNote = '';
+  renderRiskPresets();
+}
 
 export function setRiskUsd(v) {
   document.getElementById('riskDollar').value = v;
@@ -137,7 +201,7 @@ export function syncFromDollar() {
   }
   store.set('calc_account', acct);
   store.set('calc_risk', document.getElementById('riskPct').value);
-  updateRiskPresets();
+  renderRiskPresets();
   updateRiskStatus();
   state.flashNext = true;
   if (state.quoteData) { renderShares(); renderChain(); }

@@ -35,7 +35,12 @@ export function setAllocationPct(pct) {
 
 export function updateSizingControls() {
   const alloc = state.sizingMode === 'allocation';
-  for (const id of ['riskPctField', 'riskDollarField', 'riskPresets', 'riskUsdRow']) document.getElementById(id).style.display = alloc ? 'none' : '';
+  if (alloc && state.editingRisk) { // the chips' editor closes with them
+    state.editingRisk = false;
+    document.getElementById('riskAddRow').style.display = 'none';
+    document.getElementById('riskEditBtn').textContent = 'Edit';
+  }
+  for (const id of ['riskPctField', 'riskDollarField', 'riskPresets', 'riskEditBtn']) document.getElementById(id).style.display = alloc ? 'none' : '';
   document.getElementById('allocationControls').style.display = alloc ? '' : 'none';
   document.getElementById('optionTradeControls').style.display = alloc && state.currentMode === 'options' ? '' : 'none';
   for (const [id, active] of [['sizingRisk', !alloc], ['sizingAllocation', alloc], ['optionBuy', state.optionTradeSide === 'buy'], ['optionSellPut', state.optionTradeSide === 'sell-put']]) {

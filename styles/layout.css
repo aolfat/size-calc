@@ -48,9 +48,7 @@
   #entryStopsRow > div:not(.field) { flex: 0 0 100%; }
   #quickInput { padding-right: 12px !important; }
   #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
-  #riskStrip .chip-row { flex-wrap: nowrap; gap: 5px; }
-  #riskStrip .chip-row .filter-btn, #riskStrip .usd-edit-box { flex: 1 1 0; min-width: 0; padding: 6px 2px; text-align: center; width: auto; }
-  #riskStrip .chip-label { display: none; }
+  #riskStrip .risk-chip { min-height: 40px; }
   #sharesSection .shares-primary { gap: 16px; }
   #sharesSection .shares-stop { padding-left: 16px; }
   #sharesSection .shares-primary .s-val { font-size: 30px; }
