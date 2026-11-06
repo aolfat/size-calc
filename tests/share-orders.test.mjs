@@ -77,6 +77,49 @@ test('Pin order keeps the shares answer as a card, and a second ticker makes a s
   assert.match(elements.get(a).innerHTML, /Shares to buy<\/div><div class="s-val">500</, 'cards size from the max loss now');
 });
 
+test('a pinned LOD stop follows a new low, and a typed stop stays put', async () => {
+  const net = network();
+  const h = await loaded('AAA', { fetch: net.fetch, storage: connected() });
+  const { run, elements, state } = h;
+  const a = run('pinShares()');
+  QUOTES.AAA = { ...QUOTES.AAA, last: 99, bid: 98.98, ask: 99.02, low: 97 };
+  try {
+    await run(`refreshPinned('${a}')`);
+    assert.equal(state.pinnedData[a].stopLevel, 97, 'the stop moved down to the new LOD');
+    assert.equal(state.pinnedData[a].planCtx.stop_level, 97);
+    assert.match(elements.get(a).innerHTML, /Shares to buy<\/div><div class="s-val">250</, '$500 over $2 from the 99 market to the 97 LOD');
+    await run(`openCardTrade('${a}')`);
+    assert.equal(state.tradeTicket.stop, 97);
+    run('closeSheet()');
+    run(`shareOrderStopChanged('${a}', { value: '96.50' })`);
+    QUOTES.AAA = { ...QUOTES.AAA, low: 96 };
+    await run(`refreshPinned('${a}')`);
+    assert.equal(state.pinnedData[a].stopLevel, 96.5, 'a typed stop is yours: the new low leaves it');
+  } finally {
+    QUOTES.AAA = { symbol: 'AAA', type: 'stock', last: 100, bid: 99.98, ask: 100.02, low: 98, high: 102 };
+  }
+});
+
+test('a pinned stop keeps its buffer under a new low, and a custom stop pinned stays put', async () => {
+  const net = network();
+  const h = await loaded('AAA', { fetch: net.fetch, storage: connected() });
+  const { run, state } = h;
+  run("setStopStrategy('percent'); stopPercent = 1; renderShares()");
+  const a = run('pinShares()');
+  assert.equal(state.pinnedData[a].stopLevel, 97.02, 'LOD 98 less 1%');
+  run("document.getElementById('stopLong').value = '97.50'; renderShares()");
+  const b = run('pinShares()');
+  QUOTES.AAA = { ...QUOTES.AAA, low: 97 };
+  try {
+    await run(`refreshPinned('${a}')`);
+    await run(`refreshPinned('${b}')`);
+    assert.equal(state.pinnedData[a].stopLevel, 96.02, 'the same 98 cent buffer under the new 97 low');
+    assert.equal(state.pinnedData[b].stopLevel, 97.5);
+  } finally {
+    QUOTES.AAA = { symbol: 'AAA', type: 'stock', last: 100, bid: 99.98, ask: 100.02, low: 98, high: 102 };
+  }
+});
+
 test('the pin button needs a valid stop, and stays away from futures and allocation', async () => {
   const { run, elements } = await loaded('AAA');
   const pin = elements.get('sharesPin');

@@ -107,6 +107,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   It shows on risk sizing for a stock or ETF (not futures, not allocation), works without Schwab, and is disabled without a valid stop.
   A card (pinnedData kind 'shares') keeps its ticker, side, stop price, planned entry (blank = the market, effectivePrice of the card's own quote) and what the calculator knew for the order plan (planContext at the pin).
   The share count follows the max loss now, like every pinned card (cardPlan: unitsFor(riskDollars(), |entry − stop|)).
+  The card is live (owner request): an LOD / HOD stop follows the card's own day range on every refresh, keeping the distance the stop adjustment gave it at the pin (stopOffset, followDayRange in refreshShareOrderQuote; rounded outward to the cent), so the share count moves with it.
+  A custom or opening-range stop pinned, or a stop typed on the card, stays put.
   The card's Entry and Stop boxes are editable (shareOrderEntryChanged, shareOrderStopChanged); a typed stop is a custom stop for the plan from then on.
   ↻ and the pinned cards' live refresh read the card's quote from Tradier (refreshShareOrderQuote); the calculator's loaded ticker never changes.
   While Schwab is connected each card has its own **Trade at Schwab** (openCardTrade, docs/schwab.md); a sent order shows on the card with **Status**, which reopens that order's review.
