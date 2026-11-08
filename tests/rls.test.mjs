@@ -42,7 +42,7 @@ test('every table carries its owner and is deleted with the account', () => {
 
 // Claude access (docs/claude-access.md): these take a key in place of a sign-in, so they're the one thing anon may run;
 // each one checks the key before anything else, and the check itself is never callable
-const KEYED = ['claude_journal_read', 'claude_journal_save', 'claude_model_books_read', 'claude_model_books_save'];
+const KEYED = ['claude_journal_read', 'claude_journal_save', 'claude_model_books_read', 'claude_model_books_save', 'claude_features_read'];
 // these check a key too, but only the service role runs them: the Edge Function that uploads a Model books screenshot
 const SERVICE_KEYED = ['claude_model_example_add'];
 const KEY_CHECK = 'claude_key_user';

@@ -1,7 +1,8 @@
 // Run with: node --test
 // Claude access (docs/claude-access.md): keys in Settings (made in the browser, only the hash saved, shown once, revoked),
 // the journal a Claude session reads (the app's own trades from claude_journal_read's answer), a review turned into
-// claude_journal_save's changes (names matched or added, the day's market or the trade's, reviewed_at), and the script.
+// claude_journal_save's changes (names matched or added, the day's market or the trade's, reviewed_at), each trade's
+// result beside its feature stamps (claude_features_read), and the script.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -12,7 +13,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { dayDetail, findItem, findTrades, handleOf, journalFrom, periodDetail, planDay, planPeriod, planReview, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
+import { dayDetail, FEATURE_TABLE_COLUMNS, featureCoverageText, featureTable, findItem, findTrades, handleOf, journalFrom, periodDetail, planDay, planPeriod, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
+import { FEATURES, featureVersion } from '../src/core/features/index.js';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r)); };
@@ -333,13 +335,62 @@ test("this week's rules: each day checks them, the week's review shows how the d
   assert.deepEqual(done.changes.periods[0].fields.rules_kept, { r1: 'yes', r2: 'partly' });
 });
 
+// ---------- trade features, for analysis ----------
+
+const byKey = k => FEATURES.find(f => f.key === k);
+/** the QQQ put's stamps: one current value, one unknown, one stamped by an older version (so not counted) */
+const STAMP_ROWS = [{ trade_key: KEY, stamps: {
+  atr_from_daily_sma50: { v: featureVersion(byKey('atr_from_daily_sma50')), value: 4.0123, note: '50 SMA 690.10 · ATR $8.20 (1.15%)' },
+  gap_atr: { v: featureVersion(byKey('gap_atr')), value: null, note: 'fewer than 15 daily sessions before, for the ATR' },
+  adr_from_vwap: { v: '0.1', value: 9 },
+} }, { trade_key: 'gone|trade', stamps: { atr_from_daily_sma50: { v: '1.1', value: 1 } } }];
+
+test("each closed trade's result beside its features: the app's own numbers, current stamps only, by symbol and day", () => {
+  const j = journalFrom({ ...DATA, labels: [{ trade_key: KEY, kind: 'setup', value: 'lotto', set_by: 'you' }] }, { now: Date.parse('2026-10-24T18:00:00Z') });
+  const stamps = stampsFrom(STAMP_ROWS);
+  const table = featureTable(j, stamps);
+  assert.deepEqual(table.columns, [...FEATURE_TABLE_COLUMNS, ...FEATURES.map(f => f.key)]);
+  assert.equal(table.rows.length, 1, 'one closed trade; a stamp for a trade that is gone is left out');
+  const row = Object.fromEntries(table.columns.map((c, i) => [c, table.rows[0][i]]));
+  assert.deepEqual({ ...Object.fromEntries(FEATURE_TABLE_COLUMNS.map(c => [c, row[c]])) }, {
+    handle: handleOf(KEY), opened: '2026-10-23 13:40', closed: '2026-10-23 15:50', symbol: 'QQQ 10/23/26 706P', underlying: 'QQQ',
+    type: 'OPTION', side: 'short', status: j.trades[0].status, market: null, setups: j.lib.nameOf('setup', 'lotto', 'short'), tactics: null,
+    mistakes: null, grade: null, plan: null, qty: 1, entry: 1.69, exit: 1.8, pnl: 11, risk: 169, r: 0.07, hold_min: 130,
+  });
+  assert.equal(row.atr_from_daily_sma50, 4.0123, 'a current value');
+  assert.equal(row.gap_atr, null, 'unknown');
+  assert.equal(row.adr_from_vwap, null, 'stamped by an older version: not counted');
+  assert.equal(featureTable(j, stamps, { symbol: 'qqq' }).rows.length, 1, 'by the underlying, any case');
+  assert.equal(featureTable(j, stamps, { symbol: 'SPY' }).rows.length, 0);
+  assert.equal(featureTable(j, stamps, { from: '2026-10-23', to: '2026-10-23' }).rows.length, 1);
+  assert.equal(featureTable(j, stamps, { from: '2026-10-24' }).rows.length, 0, 'opened before');
+  // how far the features are stamped over those trades
+  const cov = featureCoverageText(table, stamps);
+  assert.match(cov, new RegExp(`^1 closed trade · 1 with an R · 1 with features stamped · ${FEATURES.length} features\n`));
+  assert.match(cov, /\nMoving averages:\n/);
+  assert.match(cov, /\n  atr_from_daily_sma50: 1 value\n/);
+  assert.match(cov, /\n  gap_atr: 0 values, 1 unknown \(fewer than 15 daily sessions before, for the ATR\)\n/);
+  assert.match(cov, /\n  adr_from_vwap: 0 values, 1 not stamped yet\n/);
+});
+
+test('a table as CSV: one header row, fields quoted only when they must be, empty for null', () => {
+  assert.equal(toCsv({ columns: ['a', 'b', 'c'], rows: [['x,y', 'say "hi"', 2.5], [null, 'two\nlines', -1]] }), 'a,b,c\n"x,y","say ""hi""",2.5\n,"two\nlines",-1\n');
+});
+
+test('the features read: its own keyed function returning every trade_features row of the key\'s owner', () => {
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  const sql = readFileSync(new URL('20261118000000_claude_features_read.sql', dir), 'utf8').replace(/--[^\n]*/g, '');
+  assert.match(sql, /create or replace function public\.claude_features_read\(p_key text\) returns jsonb[\s\S]*uid uuid := public\.claude_key_user\(p_key\);[\s\S]*jsonb_build_object\('trade_key', f\.trade_key, 'stamps', f\.stamps\)[\s\S]*from public\.trade_features f where f\.user_id = uid/);
+  assert.doesNotMatch(sql, /insert|update|delete/i, 'read only');
+});
+
 // ---------- the script ----------
 
 const SCRIPT = fileURLToPath(new URL('../scripts/journal.mjs', import.meta.url));
 const PRELOAD = fileURLToPath(new URL('./helpers/journal-fetch.mjs', import.meta.url));
-function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA, oldSave = false } = {}) {
+function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA, oldSave = false, features = [], noFeatures = false } = {}) {
   const file = join(mkdtempSync(join(tmpdir(), 'journal-')), 'fake.json');
-  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data, oldSave }));
+  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data, oldSave, features, noFeatures }));
   const env = { ...process.env, FAKE_JOURNAL: file, JOURNAL_KEY: key };
   for (const k of ['HTTPS_PROXY', 'https_proxy', 'NODE_USE_ENV_PROXY']) delete env[k];
   const r = spawnSync(process.execPath, ['--import', PRELOAD, SCRIPT, ...args], { env, encoding: 'utf8' });
@@ -371,6 +422,29 @@ test('the script: lists and shows trades, saves a review, a dry run saves nothin
   assert.match(none.stderr, /No JOURNAL_KEY/);
   const unknown = script(['show', 'tnothere']);
   assert.match(unknown.stderr, /No trade tnothere/);
+});
+
+test('the script: the features table as CSV on stdout or to a file, the coverage, a database without the read', () => {
+  const features = STAMP_ROWS;
+  const out = script(['features'], { features });
+  assert.equal(out.status, 0, out.stderr);
+  const [header, row, end] = out.stdout.split('\n');
+  assert.ok(header.startsWith('handle,opened,closed,symbol,underlying,') && header.endsWith(FEATURES.at(-1).key));
+  assert.ok(row.startsWith(`${handleOf(KEY)},2026-10-23 13:40,2026-10-23 15:50,QQQ 10/23/26 706P,QQQ,OPTION,short,`));
+  assert.ok(row.includes(',4.0123,'), row);
+  assert.equal(end, '', 'ends with a line break');
+  assert.match(out.stderr, /^1 closed trade · 1 with an R · 1 with features stamped/);
+  const file = join(mkdtempSync(join(tmpdir(), 'features-')), 'trades.csv');
+  const saved = script(['features', '--out', file, '--from', '2026-10-01'], { features });
+  assert.equal(saved.status, 0, saved.stderr);
+  assert.equal(readFileSync(file, 'utf8'), out.stdout);
+  assert.match(saved.stdout, new RegExp(`^Wrote 1 trades × ${FEATURE_TABLE_COLUMNS.length + FEATURES.length} columns to `));
+  const cov = script(['features', '--coverage'], { features });
+  assert.match(cov.stdout, /\n  atr_from_daily_sma50: 1 value\n/);
+  assert.match(script(['features', '--from', '10/1'], { features }).stderr, /Not a day: 10\/1/);
+  const old = script(['features'], { noFeatures: true });
+  assert.equal(old.status, 1);
+  assert.match(old.stderr, /doesn't have Claude access to trade features yet: npx supabase db push/);
 });
 
 test("the script: shows a day, saves its review, a dry run saves nothing", () => {

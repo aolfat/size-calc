@@ -107,6 +107,7 @@ feature({
 
 ## Part 3: the features page, filters and stats
 
+- **For a Claude session** (built): `node scripts/journal.mjs features` puts every closed trade's result (P&L, risk, R, setups, grade) beside its current feature values, one CSV row a trade, through the read-only `claude_features_read` (docs/claude-access.md), so the analysis below can be run and talked through before the app's own explorer exists.
 - **Features page** (built in part 2, the Journal's Features tab): every feature with its name, what it measures, what it reads, its version, and how far it's stamped ('412 of 430, 18 unknown: bars too old, 3 to come'). Grouped by family. It's read from the feature list, so a new feature shows up there by itself. Search comes with the Conditions picker.
 - **On the trade:** the trade page's Features tab (built in part 2, beside Review) lists every feature by family with its value, each tapping open to what it measures and reads; any can be a column in the trades list (part 3).
 - **Conditions filter:** beside All setups, over Trades, Calendar and Stats. A searchable picker by family with pinned favorites; numbers take any threshold ('run rate ≥ 1.8'), words pick values. Conditions combine, and a combination can be saved as a named view.

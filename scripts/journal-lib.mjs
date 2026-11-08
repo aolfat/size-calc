@@ -5,13 +5,15 @@
 // and reviewed_at stamped once every required field is in. A day's review ({ grade: 'D', rules: { 'Follow your stops':
 // 'broke' }, weekRules: { 'No trades before 9:45': 'kept' }, ... }) becomes the notebook's changes the same way, and a
 // week's or month's review ({ parts: { 'Risk management': { grade: 'D' } }, rulesNext: [...], rulesKept: {...} }) its
-// period_reviews row. Nothing here reads the network or the page.
+// period_reviews row. And every closed trade's result beside its feature stamps, one row a trade, for analysis.
+// Nothing here reads the network or the page.
 import { createHash, randomUUID } from 'node:crypto';
 import { fillWords, fillsFrom } from '../src/core/journal-records.js';
-import { holdWords, journalTrades } from '../src/core/journal.js';
+import { FEATURES, featureVersion } from '../src/core/features/index.js';
+import { holdWords, journalTrades, tradeUnderlying } from '../src/core/journal.js';
 import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
 import { cleanDayRow, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, isDay, lastFocus, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
-import { dailyPnl, nyParts, periodKey } from '../src/core/journal-stats.js';
+import { countedTrades, dailyPnl, nyParts, periodKey } from '../src/core/journal-stats.js';
 import { cleanPeriodRow, gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, periodMissingWords, periodReviewState, periodRules, periodTradeRows, previousPeriod, RULE_KEPT, ruleKeptOf, weekRulesFor, weekRuleTally } from '../src/core/journal-week.js';
 import { cleanPlanRow, matchPlans, planLines } from '../src/core/order-plans.js';
 
@@ -476,3 +478,78 @@ export function periodDetail(j, unit, key) {
 
 /** whether a plan changes anything */
 export const changesAnything = c => Object.values(c).some(list => list.length);
+
+// ---------- trade features, for analysis ----------
+
+/** the columns before the features: who the trade is and how it went (P&L before fees; risk and R where a stop is known, or a long option's premium) */
+export const FEATURE_TABLE_COLUMNS = ['handle', 'opened', 'closed', 'symbol', 'underlying', 'type', 'side', 'status', 'market',
+  'setups', 'tactics', 'mistakes', 'grade', 'plan', 'qty', 'entry', 'exit', 'pnl', 'risk', 'r', 'hold_min'];
+
+/** the stamps claude_features_read returns, by trade key @param {{ trade_key: string, stamps: any }[]} rows */
+export const stampsFrom = rows => Object.fromEntries((rows || []).map(r => [r.trade_key, r.stamps && typeof r.stamps === 'object' ? r.stamps : {}]));
+
+/** a feature's current stamp on a trade: one stamped by an older version doesn't count @param {any} stamps @param {import('../src/core/features/define.js').Feature} f */
+const currentStamp = (stamps, f) => stamps && stamps[f.key] && stamps[f.key].v === featureVersion(f) ? stamps[f.key] : null;
+
+/**
+ * Every closed trade (not deleted, not from before your history) with its result and every feature's value, oldest
+ * first: the table an analysis runs on. A feature not stamped yet, stamped by an older version or unknown is null.
+ * Filters: the underlying or the contract, and the New York days it opened from and to.
+ * @param {ReturnType<typeof journalFrom>} j @param {Record<string, any>} stampsByKey
+ * @param {{ features?: import('../src/core/features/define.js').Feature[], symbol?: string, from?: string, to?: string }} [opts]
+ * @returns {{ columns: string[], rows: (string | number | null)[][], trades: any[], features: import('../src/core/features/define.js').Feature[] }}
+ */
+export function featureTable(j, stampsByKey, opts = {}) {
+  const features = opts.features || FEATURES, sym = (opts.symbol || '').trim().toUpperCase();
+  const trades = countedTrades(j.trades)
+    .filter(t => (!sym || tradeUnderlying(t).toUpperCase() === sym || t.symbol.toUpperCase().startsWith(sym))
+      && (!opts.from || dayOf(t) >= opts.from) && (!opts.to || dayOf(t) <= opts.to))
+    .sort((a, b) => a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0);
+  const when = iso => { const p = nyParts(iso); return `${p.day} ${p.time}`; };
+  const num = v => v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 1e4) / 1e4;
+  const rows = trades.map(t => {
+    const rv = j.reviews[t.key] || {}, st = stateOf(j, t), stamps = stampsByKey[t.key];
+    return [
+      handleOf(t.key), when(t.openedAt), when(t.closedAt), t.label, tradeUnderlying(t), t.assetType, t.bias || t.direction, t.status,
+      st.market ? j.lib.nameOf('market', st.market) : null, labelWords(j, t, 'setup').join('; ') || null, labelWords(j, t, 'tactic').join('; ') || null,
+      labelWords(j, t, 'mistake').join('; ') || null, rv.setup_grade || null, rv.plan_followed || null,
+      num(t.entryQty), num(t.avgEntry), num(t.avgExit), num(t.pnl), num(t.risk), num(t.r), t.holdMs ? Math.round(t.holdMs / 60000) : null,
+      ...features.map(f => currentStamp(stamps, f)?.value ?? null),
+    ];
+  });
+  return { columns: [...FEATURE_TABLE_COLUMNS, ...features.map(f => f.key)], rows, trades, features };
+}
+
+/** a table as CSV: a header row, fields quoted when they hold a comma, a quote or a line break; null is empty */
+export function toCsv({ columns, rows }) {
+  const cell = v => { const s = v === null || v === undefined ? '' : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  return [columns, ...rows].map(r => r.map(cell).join(',')).join('\n') + '\n';
+}
+
+/**
+ * How far each feature is stamped over the table's trades: values, unknown (with the commonest reason), and not stamped
+ * yet (missing, outdated, or waiting for its data), one line a feature by family; the trades with any stamp at all and
+ * the trades with an R first.
+ * @param {ReturnType<typeof featureTable>} table @param {Record<string, any>} stampsByKey
+ */
+export function featureCoverageText(table, stampsByKey) {
+  const n = table.trades.length;
+  const withR = table.trades.filter(t => t.r !== null && t.r !== undefined).length;
+  const stamped = table.trades.filter(t => Object.keys(stampsByKey[t.key] || {}).length).length;
+  const lines = [`${n} closed trade${n === 1 ? '' : 's'} · ${withR} with an R · ${stamped} with features stamped · ${table.features.length} features`];
+  let family = '';
+  for (const f of table.features) {
+    if (f.family.name !== family) { family = f.family.name; lines.push(`${family}:`); }
+    let value = 0, unknown = 0;
+    const why = new Map();
+    for (const t of table.trades) {
+      const s = currentStamp(stampsByKey[t.key], f);
+      if (!s) continue;
+      if (s.value === null) { unknown++; const w = s.note || 'not known'; why.set(w, (why.get(w) || 0) + 1); }
+      else value++;
+    }
+    const top = [...why].sort((a, b) => b[1] - a[1])[0];
+    lines.push(`  ${f.key}: ${value} value${value === 1 ? '' : 's'}${unknown ? `, ${unknown} unknown (${top[0]}${why.size > 1 ? ', …' : ''})` : ''}${n - value - unknown ? `, ${n - value - unknown} not stamped yet` : ''}`);
+  }
+  return lines.join('\n');
+}

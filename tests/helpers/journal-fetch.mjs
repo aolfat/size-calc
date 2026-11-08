@@ -1,7 +1,8 @@
 // Preloaded into scripts/journal.mjs by tests/claude-access.test.mjs (node --import): fetch answers the Claude functions
 // and the claude-model-example Edge Function from a JSON file instead of Supabase. FAKE_JOURNAL names the file ({ data,
-// books, key }); each save's body is appended to its saves list (with fn, the function's name), each added example to
-// its added list, and a wrong key is refused the way the database refuses it.
+// books, features, key; noFeatures: a database before the features read }); each save's body is appended to its saves
+// list (with fn, the function's name), each added example to its added list, and a wrong key is refused the way the
+// database refuses it.
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const path = process.env.FAKE_JOURNAL;
@@ -22,6 +23,7 @@ globalThis.fetch = async (url, init) => {
   }
   if (body.p_key !== fake.key) return answer(401, { code: '28000', message: 'not a Claude key' });
   if (fn === 'claude_journal_read') return answer(200, fake.data);
+  if (fn === 'claude_features_read') return fake.noFeatures ? answer(404, { message: 'Could not find the function public.claude_features_read' }) : answer(200, fake.features || []);
   if (fn === 'claude_model_books_read') return answer(200, { ...fake.books, library: [...(fake.data.library || []), ...(fake.library || [])] });
   if (fn === 'claude_journal_save' || fn === 'claude_model_books_save') {
     fake.saves = [...(fake.saves || []), fn === 'claude_journal_save' ? body.p_changes : { fn, ...body.p_changes }];
