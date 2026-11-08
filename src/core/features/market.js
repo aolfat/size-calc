@@ -1,6 +1,7 @@
 // @ts-check
 // Market features: where the market stood when you took the trade. One generator per kind, so SPY / QQQ / IWM over their
 // daily EMAs are one line each. The VIX reading at the entry, and its move on the day.
+import { ATR_N, DAILY_SESSIONS, yardstickWords } from './averages.js';
 import { family, feature } from './define.js';
 
 export const MARKET_FAMILY = family({ key: 'market', name: 'Market', version: 1 });
@@ -33,6 +34,31 @@ const vsDailyEma = (symbol, n) => feature(MARKET_FAMILY, {
   },
 });
 
+/**
+ * The same, in the index's own daily ATRs: (price − EMA) ÷ its 14-day ATR (Wilder's, the sessions before that day).
+ * @param {string} symbol @param {number} n
+ */
+const atrsFromDailyEma = (symbol, n) => feature(MARKET_FAMILY, {
+  key: `${symbol.toLowerCase()}_atr_from_daily_ema${n}`,
+  name: `${symbol} ATRs from the daily ${n} EMA`,
+  desc: `${symbol}'s price at your entry against its daily ${n} EMA, in its own daily ATRs: (price − EMA) ÷ the 14-day ATR (Wilder's). Above 0 = over it.`,
+  version: 1, at: 'entry', unit: 'atr', bins: [-1, 0, 1, 2],
+  needs: { intraday: [symbol], daily: [symbol], dailySessions: DAILY_SESSIONS, session: 'all' },
+  compute: ctx => {
+    const d = ctx.daily(symbol, EMA_SESSIONS), a = ctx.daily(symbol, DAILY_SESSIONS), s = ctx.intraday(symbol, { session: 'all' });
+    if (!d || !a || !s) return null;
+    const atr = a.atr(ATR_N);
+    if (s.price !== null) {
+      const basis = ctx.dailyBasis(symbol, s.price);
+      if (basis === null) return { value: null, note: "the daily history doesn't line up with the day's prices" };
+      const price = s.price * basis, e = d.emaWith(n, price);
+      return e && atr ? { value: (price - e) / atr, note: yardstickWords('ATR', atr, basis, a.prevClose) } : null;
+    }
+    const e = d.ema(n);
+    return e && atr && d.prevClose ? { value: (d.prevClose - e) / atr, note: `prior close · ${yardstickWords('ATR', atr, 1, a.prevClose)}` } : null;
+  },
+});
+
 /** the CBOE volatility index, as Tradier names it */
 const VIX = 'VIX';
 
@@ -53,7 +79,7 @@ function vixNow(ctx) {
 const VIX_NEEDS = { intraday: [VIX], daily: [VIX], dailySessions: 5, session: /** @type {'all'} */ ('all') };
 
 export const MARKET_FEATURES = [
-  vsDailyEma('SPY', 8), vsDailyEma('QQQ', 8),
+  vsDailyEma('SPY', 8), vsDailyEma('QQQ', 8), atrsFromDailyEma('SPY', 8), atrsFromDailyEma('QQQ', 8),
   feature(MARKET_FAMILY, {
     key: 'vix_at_entry',
     name: 'VIX at entry',

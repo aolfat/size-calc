@@ -3,7 +3,7 @@
 // cut off there, so no feature can look ahead. Intraday bars are the saved 5-minute ones: a bar counts once it has ended
 // (it starts 09:40 and the moment is 09:45 or later); the bar the moment falls in shows only its open, which was known
 // when it started. Daily bars are the days before the moment's day, plus that day's open once it's 9:30. The shared
-// helpers (VWAP, volume so far, the volume by the same time on earlier days (average or median), EMAs, highs) are worked out once per trade
+// helpers (VWAP, volume so far, the volume by the same time on earlier days (average or median), daily and weekly EMAs and SMAs, ATR, ADR, highs) are worked out once per trade
 // and moment, whichever feature asks first. Every read notes what was missing: data that could still come (a day the
 // bar saver hasn't got to, today's bars, daily bars not read yet) makes the feature wait; data gone for good makes it
 // unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare.
@@ -34,6 +34,21 @@ export function featureSymbol(token, trade) {
   if (token === '$self') return trade.assetType === 'SPREAD' ? null : opt ? tradierSymbol(trade.symbol) : trade.symbol;
   if (token === '$underlying') return opt ? opt.root : trade.symbol;
   return token;
+}
+
+/** an EMA's step @param {number} n */
+const k = n => 2 / (n + 1);
+/** the EMA of a run of closes, seeded with the first `n` closes' average; null with fewer than `n` @param {number[]} closes @param {number} n */
+function emaOf(closes, n) {
+  if (closes.length < n) return null;
+  let e = closes.slice(0, n).reduce((a, c) => a + c, 0) / n;
+  for (const c of closes.slice(n)) e = c * k(n) + e * (1 - k(n));
+  return e;
+}
+/** the Monday a New York day's week starts on, 'YYYY-MM-DD' @param {string} d */
+function weekOf(d) {
+  const t = Date.parse(d + 'T12:00:00Z');
+  return new Date(t - ((new Date(t).getUTCDay() + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
 }
 
 /** prices a split could leave between two series: the daily history and the day's own prices */
@@ -84,6 +99,16 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
       open: first && clock >= OPEN ? first.open : null,
       /** the high so far: ended bars, and the open of the one in progress */
       high: bars.length || stub !== null ? Math.max(...bars.map(b => b.high), ...(stub === null ? [] : [stub])) : null,
+      /**
+       * the low and high since `from` ('HH:MM'): the ended bars that started then or later, and the open of the one in
+       * progress; null before any
+       * @param {string} from
+       */
+      rangeSince: from => {
+        const xs = bars.filter(b => (b.time || '') >= from).flatMap(b => [b.low, b.high]);
+        if (now && (now.time || '') >= from) xs.push(now.open);
+        return xs.length ? { low: Math.min(...xs), high: Math.max(...xs) } : null;
+      },
       /** the session VWAP over the ended bars (typical price × volume); null before any volume */
       vwap: () => {
         let pv = 0, v = 0;
@@ -152,14 +177,25 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
     const prior = (rows || []).filter(b => b.date < day);
     const bars = Number.isFinite(sessions) ? prior.slice(-sessions) : prior; // a fixed window, so an EMA never depends on how much was fetched
     const today = (rows || []).find(b => b.date === day);
-    const k = (/** @type {number} */ n) => 2 / (n + 1);
     /** the EMA of the closes, seeded with the first `n` closes' average; null with fewer than `n` */
-    const ema = (/** @type {number} */ n) => once(`ema|${s}|${sessions}|${n}`, () => {
-      if (bars.length < n) return null;
-      let e = bars.slice(0, n).reduce((a, b) => a + b.close, 0) / n;
-      for (const b of bars.slice(n)) e = b.close * k(n) + e * (1 - k(n));
-      return e;
+    const ema = (/** @type {number} */ n) => once(`ema|${s}|${sessions}|${n}`, () => emaOf(bars.map(b => b.close), n));
+    /**
+     * each finished week's close (Monday to Friday, its last session's), oldest first; the moment's own week is left
+     * out, since its close is the price at the moment
+     */
+    const weekCloses = () => once(`weeks|${s}|${sessions}`, () => {
+      const now = weekOf(day), out = /** @type {number[]} */ ([]);
+      let last = '';
+      for (const b of bars) {
+        const w = weekOf(b.date);
+        if (w === now) continue;
+        if (w === last) out[out.length - 1] = b.close;
+        else { out.push(b.close); last = w; }
+      }
+      return out;
     });
+    /** a run of closes for the frame: the daily closes, or each finished week's @param {'daily' | 'weekly'} frame @returns {number[]} */
+    const closesOf = frame => frame === 'weekly' ? weekCloses() : once(`closes|${s}|${sessions}`, () => bars.map(b => b.close));
     const top = once(`high|${s}|${sessions}`, () => bars.reduce((m, b) => (b.high > m.high ? { high: b.high, date: b.date } : m), { high: -Infinity, date: '' }));
     const series = {
       symbol: s, missing: !rows, bars,
@@ -171,6 +207,36 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
       ema,
       /** the EMA moved on by one more close: today's price so far, so it never sees the day's close @param {number} n @param {number} price */
       emaWith: (n, price) => { const e = ema(n); return e === null ? null : price * k(n) + e * (1 - k(n)); },
+      /**
+       * A daily or weekly EMA or SMA with the price at the moment as its latest close (the day's, or the week's: the
+       * week so far closes at that price), so it never sees a close to come. An SMA: that price and the `n - 1` closes
+       * before. An EMA: the EMA of the closes before, moved on by that price. Null with too few closes.
+       * @param {'ema' | 'sma'} kind @param {number} n @param {number} price @param {'daily' | 'weekly'} [frame]
+       */
+      averageWith: (kind, n, price, frame = 'daily') => {
+        const closes = closesOf(frame);
+        if (kind === 'sma') {
+          if (closes.length < n - 1) return null;
+          return (closes.slice(closes.length - (n - 1)).reduce((a, c) => a + c, 0) + price) / n;
+        }
+        const e = once(`ema|${s}|${sessions}|${frame}|${n}`, () => emaOf(closes, n));
+        return e === null ? null : price * k(n) + e * (1 - k(n));
+      },
+      /** the average daily range in dollars: high − low over the last `n` sessions before, averaged; null with fewer @param {number} n */
+      adr: n => once(`adr|${s}|${sessions}|${n}`, () => bars.length < n ? null : bars.slice(-n).reduce((a, b) => a + b.high - b.low, 0) / n),
+      /**
+       * Wilder's average true range of the sessions before (none of the moment's day, whose range isn't finished): each
+       * session's true range is the largest of its high to low and its high and low against the close before; the first
+       * `n` are averaged, then each later one moves it a 1/n step. Null with fewer than `n + 1` sessions.
+       * @param {number} n
+       */
+      atr: n => once(`atr|${s}|${sessions}|${n}`, () => {
+        if (bars.length < n + 1) return null;
+        const tr = bars.slice(1).map((b, i) => { const pc = bars[i].close; return Math.max(b.high - b.low, Math.abs(b.high - pc), Math.abs(b.low - pc)); });
+        let a = tr.slice(0, n).reduce((x, y) => x + y, 0) / n;
+        for (const t of tr.slice(n)) a = (a * (n - 1) + t) / n;
+        return a;
+      }),
       /** the highest prior high and its day */
       maxHigh: () => top.high === -Infinity ? null : top,
     };
