@@ -49,7 +49,7 @@ export async function saveTradeBars(trades, now = Date.now(), opts = {}) {
     let byDay;
     try { byDay = await barSource.intraday(symbol, missing[0], missing[missing.length - 1]); }
     catch(e) { failed.push(symbol); continue; }
-    const rows = missing.map(day => ({ symbol, day, bars: byDay.get(day) || [], source: barSource.name }));
+    const rows = missing.map(day => ({ symbol, day, bars: byDay.get(day) || [], source: barSource.sourceFor(symbol) }));
     for (let i = 0; i < rows.length; i += BATCH) {
       const upsert = batch => client.from('bars_5m').upsert(batch, { onConflict: 'user_id,symbol,day', ignoreDuplicates: true });
       let res = await upsert(rows.slice(i, i + BATCH));

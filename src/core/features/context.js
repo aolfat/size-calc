@@ -7,18 +7,19 @@
 // and moment, whichever feature asks first. Every read notes what was missing: data that could still come (a day the
 // bar saver hasn't got to, today's bars, daily bars not read yet) makes the feature wait; data gone for good makes it
 // unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare. A future
-// ('/MNQZ26') has daily bars (Schwab's, for its continuous root) but no kept 5-minute bars: the bar saver keeps none, so
-// its intraday reads are gone at once, never waited on; and a future never splits, so its prices line up as they are.
+// ('/MNQZ26') reads like a stock: its kept 5-minute bars (the contract's, from Schwab) and its daily bars (Schwab's, for
+// its continuous root); a future never splits, so its prices line up as they are. A daily read that failed says why in
+// what the feature waits for.
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBefore } from '../bars.js';
 import { parseSchwabOption, tradierSymbol } from '../positions.js';
 import { nyStamp } from '../trade-page.js';
 
 /**
  * @typedef {{ date: string, time?: string, open: number, high: number, low: number, close: number, volume?: number }} Candle
- * @typedef {{ intraday: Map<string, Map<string, Candle[]>>, daily: Map<string, Candle[] | null> }} FeatureData
+ * @typedef {{ intraday: Map<string, Map<string, Candle[]>>, daily: Map<string, Candle[] | null>, dailyErrors?: Map<string, string> }} FeatureData
  *   intraday: symbol → New York day → that day's 5-minute bars, oldest first ([] = kept empty, a holiday; a day not in
  *   the map wasn't kept). daily: symbol → daily bars, oldest first ([] = the provider has none; null or absent = not
- *   read, try again).
+ *   read, try again). dailyErrors: symbol → why its daily read failed this run, said in what the features wait for.
  * @typedef {{ symbol: string, assetType: string, openedAt: string, closedAt: string | null }} FeatureTrade
  * @typedef {{ kind: 'intraday' | 'daily', symbol: string, session?: string, sessions?: number, lookback?: number }} FeatureRead
  */
@@ -90,8 +91,7 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
     const inSession = (/** @type {Candle} */ b) => !regular || ((b.time || '') >= OPEN && (b.time || '') < CLOSE);
     const kept = dayBars(s, day);
     const gaps = { waits: /** @type {string[]} */ ([]), gones: /** @type {string[]} */ ([]) };
-    if (kept === undefined && isFutureSymbol(s)) gaps.gones.push(`no 5-minute bars are kept for futures (${s})`);
-    else if (kept === undefined) (couldCome(day) ? gaps.waits : gaps.gones).push(`${s} 5-minute bars on ${md(day)}`);
+    if (kept === undefined) (couldCome(day) ? gaps.waits : gaps.gones).push(`${s} 5-minute bars on ${md(day)}`);
     const all = (kept || []).filter(inSession);
     const bars = all.filter(b => minutes(b.time || '00:00') + 5 <= clockMin); // ended by the moment
     const now = all.find(b => { const m = minutes(b.time || '00:00'); return m <= clockMin && clockMin < m + 5; });
@@ -178,7 +178,8 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
   function dailySeries(s, sessions) {
     const rows = data.daily.get(s);
     const gaps = { waits: /** @type {string[]} */ ([]), gones: /** @type {string[]} */ ([]) };
-    if (!rows) gaps.waits.push(`${s} daily bars`);
+    const why = data.dailyErrors?.get(s);
+    if (!rows) gaps.waits.push(`${s} daily bars${why ? ` (${why.slice(0, 80)})` : ''}`);
     else if (!rows.length) gaps.gones.push(`no daily history for ${s}`);
     const prior = (rows || []).filter(b => b.date < day);
     const bars = Number.isFinite(sessions) ? prior.slice(-sessions) : prior; // a fixed window, so an EMA never depends on how much was fetched
