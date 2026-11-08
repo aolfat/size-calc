@@ -1,6 +1,6 @@
 # Trade features
 
-Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3: the Stats explorer and the features table for a Claude session built; the Conditions filter and features as list columns next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
+Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3: the Stats explorer, the features table for a Claude session and the conditions (features in More filters) built; saved views, features as list columns and What matters next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
 
 ## Goal
 
@@ -110,7 +110,13 @@ feature({
 - **For a Claude session** (built): `node scripts/journal.mjs features` puts every closed trade's result (P&L, risk, R, setups, grade) beside its current feature values, one CSV row a trade, through the read-only `claude_features_read` (docs/claude-access.md), so the analysis below can be run and talked through before the app's own explorer exists.
 - **Features page** (built in part 2, the Journal's Features tab): every feature with its name, what it measures, what it reads, its version, and how far it's stamped ('412 of 430, 18 unknown: bars too old, 3 to come'). Grouped by family. It's read from the feature list, so a new feature shows up there by itself. Search comes with the Conditions picker.
 - **On the trade:** the trade page's Features tab (built in part 2, beside Review) lists every feature by family with its value, each tapping open to what it measures and reads; any can be a column in the trades list (part 3).
-- **Conditions filter:** beside All setups, over Trades, Calendar and Stats. A searchable picker by family with pinned favorites; numbers take any threshold ('run rate ≥ 1.8'), words pick values. Conditions combine, and a combination can be saved as a named view.
+- **Conditions** (built, in More filters rather than a picker of their own, so they combine with every other filter): once the stamps are read, + Add filter lists every feature under 'Features: <family>'.
+  A number feature is a condition: at least, at most or between (either order, both ends in), typed in the feature's own unit (2 = 2 ATRs, 2%, 2×), the unit shown after the box.
+  A trade without a current value (not stamped, an older version, unknown) never fits a condition once its number is in, and the box says so: 'N of M trades fit · K without a value left out'; with no number yet it narrows nothing and says how many trades have a value.
+  Switching at least / at most / between keeps the numbers typed; an emptied box clears its number.
+  A feature of words would pick its words as chips, like the other filters.
+  Signed out or before the stamps are read, conditions stand down (they'd otherwise hide every trade) and the menu leaves features out.
+  Not built: saving a combination as a named view, and pinned favorites (the menu's own type-to-find stands in for search on desktop).
 - **Stats** (built): By a feature, at the end of the Stats tab (`core/feature-stats.js` featureBreakdown, `ui/journal-stats.js`): pick any feature (by family) and see the tab's trades split by its value, each group with groupStats' numbers and Avg R, thin under 10.
   Five even groups by default: splits a fifth, two fifths... of the way through the sorted values, a split inside a run of equal values moved up to the next value so equal values never straddle two groups, each group named by its own lowest and highest value.
   Cut points: the feature's own `bins` (under the first, between each pair, the last and over; a value on a cut point goes to the group above).

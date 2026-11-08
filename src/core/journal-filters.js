@@ -2,17 +2,23 @@
 // The Journal's More filters, pure (docs/journal.md, More filters): each one a field (the setup grade, the outcome, R, the
 // ticker type, the instrument, what the review says...), is or is not, and any of its values; a trade passes when it fits
 // every one. The buckets are the Stats tab's own (time of day, hold, weekday), so a filter and a breakdown row agree.
+// Every trade feature is a field too ('feature:<key>', docs/journal-features.md, part 3): a condition on its stamped value
+// (at least, at most or between), which a trade without a current value never fits; a feature of words picks words.
 import { INDEXES, isEtf } from './etfs.js';
+import { FEATURES } from './features/index.js';
 import { HOLD_ORDER, TIME_BUCKETS, WEEKDAYS, holdBucket, instrumentOf, nyParts, timeBucket } from './journal-stats.js';
 import { parseSchwabOption } from './positions.js';
 
 /** @typedef {import('./journal-stats.js').StatTrade} StatTrade
- * @typedef {{ field: string, values: string[], not?: boolean }} TradeFilter
+ * @typedef {{ field: string, values: string[], not?: boolean, op?: 'atleast' | 'atmost' | 'between', min?: number | null, max?: number | null }} TradeFilter
+ *   a feature's condition: op with min (at least), max (at most) or both (between), in the feature's own unit
  * @typedef {{ grade: (t: StatTrade) => string, plan: (t: StatTrade) => string, market: (t: StatTrade) => string,
  *   labels: (t: StatTrade, kind: string) => string[], nameOf: (kind: string, key: string) => string,
- *   funds?: Record<string, string> }} FilterContext
- *   what the review says about a trade, an item's name (the UI's review data), and your funds (journal_funds)
- * @typedef {{ key: string, label: string, review?: boolean, kind?: string, order?: [string, string][],
+ *   funds?: Record<string, string>, featureValue?: (t: StatTrade, f: Feature) => number | string | null }} FilterContext
+ *   what the review says about a trade, an item's name (the UI's review data), your funds (journal_funds), and a trade
+ *   feature's current stamped value (null: not stamped, outdated or unknown)
+ * @typedef {import('./features/define.js').Feature} Feature
+ * @typedef {{ key: string, label: string, review?: boolean, kind?: string, order?: [string, string][], feature?: Feature,
  *   of: (t: StatTrade, ctx: FilterContext) => string[] }} FilterField */
 
 /** what a trade with nothing set has, for a review field: 'none' (No mistakes, Not graded) */
@@ -63,8 +69,34 @@ export const FILTER_FIELDS = [
   { key: 'sector', label: 'Sector', review: true, kind: 'sector', of: labelField('sector') },
   { key: 'tag', label: 'Tags', review: true, kind: 'tag', of: labelField('tag') },
 ];
-/** @param {string} key */
-export const filterField = key => FILTER_FIELDS.find(f => f.key === key) || null;
+/** a feature's field key: 'feature:atr_from_daily_sma50' */
+export const FEATURE_FIELD = 'feature:';
+/** the conditions a number feature takes */
+export const CONDITION_OPS = /** @type {const} */ (['atleast', 'atmost', 'between']);
+/** @type {Map<string, FilterField>} */
+const featureFields = new Map(FEATURES.map(f => [FEATURE_FIELD + f.key, {
+  key: FEATURE_FIELD + f.key, label: f.name, feature: f, order: f.values,
+  of: (/** @type {StatTrade} */ t, /** @type {FilterContext} */ ctx) => { const v = ctx.featureValue?.(t, f); return v === null || v === undefined ? [] : [String(v)]; },
+}]));
+/** a field by its key: one of the menu's, or a trade feature's ('feature:<key>') @param {string} key */
+export const filterField = key => FILTER_FIELDS.find(f => f.key === key) || featureFields.get(key) || null;
+/** a field that takes a condition on a number (a feature without words) @param {FilterField | null} field */
+export const isCondition = field => !!field?.feature && !field.feature.values?.length;
+const finite = (/** @type {unknown} */ v) => typeof v === 'number' && Number.isFinite(v);
+/** whether a feature's condition has what its op needs, so it narrows the list @param {TradeFilter} f */
+export const conditionSet = f => f.op === 'atmost' ? finite(f.max) : f.op === 'between' ? finite(f.min) && finite(f.max) : finite(f.min);
+/** whether a filter narrows the list: values picked, or a condition set @param {TradeFilter} f */
+const narrows = f => { const field = filterField(f.field); return !!field && (isCondition(field) ? conditionSet(f) : f.values.length > 0); };
+/**
+ * whether a number fits a condition: at least min, at most max, or between them (either order, both ends in)
+ * @param {number} v @param {TradeFilter} f
+ */
+export function fitsCondition(v, f) {
+  const min = /** @type {number} */ (f.min), max = /** @type {number} */ (f.max);
+  if (f.op === 'atmost') return v <= max;
+  if (f.op === 'between') return v >= Math.min(min, max) && v <= Math.max(min, max);
+  return v >= min;
+}
 
 /** what each label field's 'none' reads as */
 const NONE_WORDS = /** @type {Record<string, string>} */ ({ tactic: 'No tactic', mistake: 'No mistakes', market: 'Not set', sector: 'Not set', tag: 'No tags' });
@@ -75,16 +107,36 @@ const NONE_WORDS = /** @type {Record<string, string>} */ ({ tactic: 'No tactic',
  */
 export function fitsFilter(t, f, ctx) {
   const field = filterField(f.field);
+  if (field && isCondition(field)) {
+    if (!conditionSet(f)) return true;
+    const v = ctx.featureValue?.(t, /** @type {Feature} */ (field.feature));
+    return typeof v === 'number' && fitsCondition(v, f);
+  }
   if (!field || !f.values.length) return true;
   const hit = field.of(t, ctx).some(v => f.values.includes(v));
   return f.not ? !hit : hit;
 }
 
 /** the trades that fit every filter. @param {StatTrade[]} trades @param {TradeFilter[]} filters @param {FilterContext} ctx */
-export const applyFilters = (trades, filters, ctx) => filters.some(f => f.values.length) ? trades.filter(t => filters.every(f => fitsFilter(t, f, ctx))) : trades;
+export const applyFilters = (trades, filters, ctx) => filters.some(narrows) ? trades.filter(t => filters.every(f => fitsFilter(t, f, ctx))) : trades;
 
-/** how many filters narrow the list (one with no values picked doesn't). @param {TradeFilter[]} filters */
-export const filtersOn = filters => filters.filter(f => f.values.length && filterField(f.field)).length;
+/** how many filters narrow the list (one with no values picked, or a condition without its number, doesn't). @param {TradeFilter[]} filters */
+export const filtersOn = filters => filters.filter(narrows).length;
+
+/**
+ * What a feature's condition does over the trades the other filters leave: how many fit it, and how many have no current
+ * value (never fit once it's set).
+ * @param {StatTrade[]} trades @param {TradeFilter[]} filters @param {string} key @param {FilterContext} ctx
+ */
+export function conditionCounts(trades, filters, key, ctx) {
+  const field = filterField(key), mine = filters.find(f => f.field === key);
+  const rest = applyFilters(trades, filters.filter(f => f.field !== key), ctx);
+  if (!field?.feature) return { total: rest.length, fit: rest.length, noValue: 0 };
+  const values = rest.map(t => ctx.featureValue?.(t, /** @type {Feature} */ (field.feature)));
+  const noValue = values.filter(v => typeof v !== 'number').length;
+  const fit = mine && conditionSet(mine) ? values.filter(v => typeof v === 'number' && fitsCondition(v, mine)).length : rest.length;
+  return { total: rest.length, fit, noValue };
+}
 
 /**
  * A field's choices with how many trades each would let through, given the other filters (not this one, so the counts say

@@ -1,12 +1,14 @@
 // Run with: node --test
 // The Journal's More filters (docs/journal.md, More filters): + Add filter, a field's values as chips counted over what the
 // other filters leave, is or is not, every filter at once, on Trades, Calendar and Stats; and a day on the Trades tab
-// opening its notebook page to review it, ← Trades back to the list as it was.
+// opening its notebook page to review it, ← Trades back to the list as it was. A trade feature as a condition: at least,
+// at most or between its stamped value, a trade without a current value left out, counted, and only once stamps are read.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { applyFilters, filterChoices, filtersOn, NONE } from '../src/core/journal-filters.js';
+import { applyFilters, conditionCounts, filterChoices, filterField, filtersOn, NONE } from '../src/core/journal-filters.js';
+import { FEATURES, featureVersion } from '../src/core/features/index.js';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 let n = 0;
@@ -64,6 +66,64 @@ test('core: each filter is any of its values (none of them with is not), every f
   assert.deepEqual(filterChoices(trades, filters, 'grade', ctx).map(c => `${c.name} ${c.count}${c.on ? ' on' : ''}`), ['A 1 on', 'C 1']);
   assert.deepEqual(filterChoices(trades, filters, 'outcome', ctx).map(c => `${c.name} ${c.count}`), ['Win 1', 'Loss 0'], 'a picked value stays with 0');
   assert.deepEqual(filterChoices(trades, [], 'mistake', ctx).map(c => `${c.name} ${c.count}`), ['Chased the entry 1', 'No mistakes 2'], 'yours most used first, none last');
+});
+
+test('core: a feature condition is at least, at most or between its value; no current value never fits; no number narrows nothing', () => {
+  const F = FEATURES.find(f => f.key === 'atr_from_daily_sma50'), key = `feature:${F.key}`;
+  const values = { a: -1, b: 2, c: 4.5, d: null };
+  const trades = ['a', 'b', 'c', 'd', 'e'].map(k => ({ key: k, status: 'win', pnl: 1 }));
+  const ctx = { featureValue: (t, f) => f === F ? values[t.key] ?? null : null };
+  const keys = filters => applyFilters(trades, filters, ctx).map(t => t.key).join(',');
+  assert.equal(filterField(key).label, 'ATRs from the daily 50 SMA');
+  assert.equal(keys([{ field: key, values: [], op: 'atleast', min: 2 }]), 'b,c', 'at least: the number itself fits');
+  assert.equal(keys([{ field: key, values: [], op: 'atmost', max: 2 }]), 'a,b');
+  assert.equal(keys([{ field: key, values: [], op: 'between', min: 4.5, max: 0 }]), 'b,c', 'between, either order, both ends in');
+  assert.equal(keys([{ field: key, values: [], op: 'atleast', min: null }]), 'a,b,c,d,e', 'no number yet: narrows nothing');
+  assert.equal(keys([{ field: key, values: [], op: 'between', min: 1, max: null }]), 'a,b,c,d,e', 'between needs both');
+  assert.equal(filtersOn([{ field: key, values: [], op: 'atleast', min: null }, { field: key, values: [], op: 'atmost', max: 0 }]), 1);
+  assert.equal(keys([{ field: key, values: [], op: 'atleast', min: -5 }, { field: 'outcome', values: ['win'] }]), 'a,b,c', 'with the others; d unknown and e not stamped left out');
+  assert.deepEqual(conditionCounts(trades, [{ field: key, values: [], op: 'atleast', min: 3 }], key, ctx), { total: 5, fit: 1, noValue: 2 });
+  assert.deepEqual(conditionCounts(trades, [{ field: key, values: [], op: 'atleast', min: null }], key, ctx), { total: 5, fit: 5, noValue: 2 });
+  assert.equal(filterField('feature:not_a_feature'), null);
+});
+
+test('a feature as a filter: in the menu by family once stamps are read; the condition narrows Trades and Stats; counts; the numbers', async () => {
+  const a = await journal();
+  const F = FEATURES.find(f => f.key === 'atr_from_daily_sma50'), key = `feature:${F.key}`, v = featureVersion(F);
+  a.run("featureStamps = null; renderJournal()");
+  assert.doesNotMatch(a.list(), /Features: /, 'before the stamps are read: no features in the menu');
+  a.run(`featureStamps = ${JSON.stringify({ [a.key('AAPL')]: { [F.key]: { v, value: 1.2 } }, [a.key('MSFT')]: { [F.key]: { v, value: 4.8 } }, [a.key('NVDA')]: { [F.key]: { v, value: null, note: 'fewer than 49 daily sessions before' } } })}; renderJournal()`);
+  assert.match(a.list(), /<optgroup label="Features: Moving averages">[^]*?<option value="feature:atr_from_daily_sma50">ATRs from the daily 50 SMA<\/option>/);
+  a.run(`addJournalFilter('${key}')`);
+  let block = a.list().split('class="jf-filter jf-condition')[1].split('class="jf-foot"')[0];
+  assert.match(block, /aria-pressed="true" data-action="setJournalFilterOp" data-arg="feature:atr_from_daily_sma50" data-arg2="atleast">at least</);
+  assert.match(block, /<input class="jf-num" type="number" step="any" value="" data-change="setJournalFilterBound" data-arg="feature:atr_from_daily_sma50" data-arg2="min"/);
+  assert.match(block, /<span class="jf-unit">ATR<\/span><span class="jf-count">2 of 3 trades have a value<\/span>/);
+  assert.equal(a.shown(), 'AAPL,MSFT,NVDA', 'no number yet: every trade');
+  a.run(`setJournalFilterBound('${key}', 'min', '3')`);
+  assert.equal(a.shown(), 'MSFT');
+  block = a.list().split('class="jf-filter jf-condition')[1].split('class="jf-foot"')[0];
+  assert.match(block, /^ active"/, 'set: active');
+  assert.match(block, /value="3"/);
+  assert.match(block, /1 of 3 trades fit · 1 without a value left out/);
+  a.run(`setJournalFilterOp('${key}', 'atmost'); setJournalFilterBound('${key}', 'max', '2')`);
+  assert.equal(a.shown(), 'AAPL');
+  a.run(`setJournalFilterOp('${key}', 'between'); setJournalFilterBound('${key}', 'max', '5')`);
+  assert.equal(a.shown(), 'MSFT', 'between the 3 typed before and 5: the typed numbers stay');
+  assert.match(a.list(), /value="3"[^]*?<span class="jf-and">and<\/span>[^]*?value="5"/);
+  a.run(`setJournalFilterBound('${key}', 'min', '-1')`);
+  assert.equal(a.shown(), 'AAPL,MSFT');
+  a.run("setJournalTab('stats')");
+  assert.match(a.list(), />AAPL</);
+  assert.doesNotMatch(a.list(), />NVDA</, 'Stats count the same trades');
+  a.run(`setJournalTab('trades'); setJournalFilterBound('${key}', 'min', '')`);
+  assert.equal(a.shown(), 'AAPL,MSFT,NVDA', 'a number cleared: narrows nothing again');
+  a.run(`setJournalFilterOp('${key}', 'sideways'); setJournalFilterBound('${key}', 'mid', '1')`);
+  assert.equal(a.run(`journalFilters.find(f => f.field === '${key}').op`), 'between', 'unknown ops and ends change nothing');
+  // the stamps not read (signed out, or the table not pushed): the condition stands down rather than hide every trade
+  a.run(`setJournalFilterBound('${key}', 'min', '3'); featuresError = 'no table'; renderJournal()`);
+  assert.equal(a.shown(), 'AAPL,MSFT,NVDA');
+  assert.doesNotMatch(a.list(), /jf-condition/);
 });
 
 test('+ Add filter: Setup grade with its values counted; picking A narrows Trades, Stats and Calendar; is not; × takes it off', async () => {

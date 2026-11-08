@@ -82,6 +82,7 @@ export function createState() {
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)
     journalSetupFilter: '', // the list, calendar and stats narrowed to trades with this setup (its key)
     journalFilters: [], // More filters (core/journal-filters.js): [{ field, values, not }], each any of its values (none of them with not), all at once; Trades, Calendar and Stats
+    // a trade feature's ('feature:<key>') is a condition instead: { field, values: [], op: atleast | atmost | between, min, max }
     journalReviewFilter: 'all', // the trades tab's review chips: all | open | todo (to review) | done (reviewed) | untagged (no setup)
     claudeKeys: null, // your Claude access keys once read (Settings): [{ id, label, created_at, last_used_at }]
     claudeKeysError: '', // they couldn't be read (the migration not pushed yet, say)
