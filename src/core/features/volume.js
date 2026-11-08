@@ -98,7 +98,7 @@ export const VOLUME_FEATURES = [
     key: 'rvol_prior_day',
     name: 'Prior day relative volume',
     desc: "The stock's volume the session before your entry over its average daily volume across the 20 sessions before that. A heavy day yesterday often means news or a breakout still in play.",
-    version: 1, at: 'entry', unit: 'x', bins: [1, 1.5, 2, 3],
+    version: 2, at: 'entry', unit: 'x', bins: [1, 1.5, 2, 3],
     needs: { daily: ['$underlying'], dailySessions: RVOL_SESSIONS + 1 },
     compute: ctx => {
       const d = ctx.daily('$underlying', RVOL_SESSIONS + 1);
@@ -111,10 +111,11 @@ export const VOLUME_FEATURES = [
   feature(VOLUME_FAMILY, {
     key: 'avg_dollar_volume_20d',
     name: 'Average dollar volume, 20 days ($M)',
-    desc: "The stock's average daily close × volume across the 20 sessions before your entry, in millions of dollars. How liquid the name is: thin names fill worse and gap more.",
-    version: 1, at: 'entry', unit: '', bins: [10, 50, 250, 1000],
+    desc: "The stock's average daily close × volume across the 20 sessions before your entry, in millions of dollars. How liquid the name is: thin names fill worse and gap more. None for a future: price × contracts isn't dollars traded.",
+    version: 2, at: 'entry', unit: '', bins: [10, 50, 250, 1000],
     needs: { daily: ['$underlying'], dailySessions: RVOL_SESSIONS },
     compute: ctx => {
+      if (ctx.future('$underlying')) return { value: null, note: "a future's price × contracts isn't dollars traded" };
       const d = ctx.daily('$underlying', RVOL_SESSIONS);
       if (!d) return null;
       if (d.bars.length < RVOL_SESSIONS) return d.bars.length ? { value: null, note: `only ${d.bars.length} sessions of daily history` } : null;
@@ -125,7 +126,7 @@ export const VOLUME_FEATURES = [
     key: 'volume_trend_5_20',
     name: 'Volume trend, 5 vs 20 days',
     desc: "The stock's average daily volume over the 5 sessions before your entry against the 20 before it. Above 1× = interest building into the trade, below = fading.",
-    version: 1, at: 'entry', unit: 'x', bins: [0.8, 1, 1.25, 1.5],
+    version: 2, at: 'entry', unit: 'x', bins: [0.8, 1, 1.25, 1.5],
     needs: { daily: ['$underlying'], dailySessions: RVOL_SESSIONS },
     compute: ctx => {
       const d = ctx.daily('$underlying', RVOL_SESSIONS);

@@ -6,7 +6,9 @@
 // helpers (VWAP, volume so far, the volume by the same time on earlier days (average or median), daily and weekly EMAs and SMAs, ATR, ADR, highs) are worked out once per trade
 // and moment, whichever feature asks first. Every read notes what was missing: data that could still come (a day the
 // bar saver hasn't got to, today's bars, daily bars not read yet) makes the feature wait; data gone for good makes it
-// unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare.
+// unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare. A future
+// ('/MNQZ26') has daily bars (Schwab's, for its continuous root) but no kept 5-minute bars: the bar saver keeps none, so
+// its intraday reads are gone at once, never waited on; and a future never splits, so its prices line up as they are.
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBefore } from '../bars.js';
 import { parseSchwabOption, tradierSymbol } from '../positions.js';
 import { nyStamp } from '../trade-page.js';
@@ -51,6 +53,9 @@ function weekOf(d) {
   return new Date(t - ((new Date(t).getUTCDay() + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
 }
 
+/** a futures symbol ('/MNQZ26', '/MES'): the app's own form for one @param {string} s */
+export const isFutureSymbol = s => s.startsWith('/');
+
 /** prices a split could leave between two series: the daily history and the day's own prices */
 const SPLITS = [2, 3, 4, 5, 8, 10, 15, 20, 1 / 2, 1 / 3, 1 / 4, 1 / 5, 1 / 8, 1 / 10, 1 / 15, 1 / 20];
 
@@ -85,7 +90,8 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
     const inSession = (/** @type {Candle} */ b) => !regular || ((b.time || '') >= OPEN && (b.time || '') < CLOSE);
     const kept = dayBars(s, day);
     const gaps = { waits: /** @type {string[]} */ ([]), gones: /** @type {string[]} */ ([]) };
-    if (kept === undefined) (couldCome(day) ? gaps.waits : gaps.gones).push(`${s} 5-minute bars on ${md(day)}`);
+    if (kept === undefined && isFutureSymbol(s)) gaps.gones.push(`no 5-minute bars are kept for futures (${s})`);
+    else if (kept === undefined) (couldCome(day) ? gaps.waits : gaps.gones).push(`${s} 5-minute bars on ${md(day)}`);
     const all = (kept || []).filter(inSession);
     const bars = all.filter(b => minutes(b.time || '00:00') + 5 <= clockMin); // ended by the moment
     const now = all.find(b => { const m = minutes(b.time || '00:00'); return m <= clockMin && clockMin < m + 5; });
@@ -251,6 +257,8 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
     /** a stock's first fill price; null for options and spreads */
     entryPrice: trade.assetType === 'OPTION' || trade.assetType === 'SPREAD' ? null : entryPrice,
     symbol: sym,
+    /** whether a token names a future ('$underlying' on a /MNQZ26 trade) @param {string} token */
+    future: token => isFutureSymbol(sym(token) || ''),
     /**
      * a symbol's 5-minute bars on the moment's day, cut off at the moment; null when the trade has no such symbol (a
      * spread's $self). Regular hours (09:30 to 16:00) by default, or 'all' for extended hours too.
@@ -286,6 +294,7 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
     dailyBasis(token, price) {
       const s = sym(token);
       if (!s) return null;
+      if (isFutureSymbol(s)) return 1; // a future never splits
       const d = once(`d|${s}|${Infinity}`, () => dailySeries(s, Infinity)).series;
       const kept = dayBars(s, day), first = (kept || []).find(b => b.time === OPEN);
       if (first && d.todayOpen) {

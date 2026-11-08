@@ -61,10 +61,11 @@ export const LEVEL_FEATURES = [
   feature(LEVELS_FAMILY, {
     key: 'gap_at_open',
     name: 'Gap at the open',
-    desc: "The stock's open that day against the close the day before, as a %. Known from 9:30, so an entry before the open has none.",
-    version: 1, at: 'entry', unit: '%', bins: [-2, 0, 2],
+    desc: "The stock's open that day against the close the day before, as a %. Known from 9:30, so an entry before the open has none. None for a future: its day opens the evening before.",
+    version: 2, at: 'entry', unit: '%', bins: [-2, 0, 2],
     needs: { daily: ['$underlying'], dailySessions: 5 },
     compute: ctx => {
+      if (ctx.future('$underlying')) return { value: null, note: "a future's daily bar opens at 6 PM the evening before, so it has no 9:30 gap" };
       const d = ctx.daily('$underlying', 5);
       if (!d) return null;
       if (ctx.clock < '09:30') return { value: null, note: 'entered before the open' };
@@ -75,7 +76,7 @@ export const LEVEL_FEATURES = [
     key: 'dist_from_ath',
     name: 'Distance from the all-time high',
     desc: "Your entry against the highest high before it (every day before, and that day's high before your entry), as a %. 0 = at the high, below 0 = under it.",
-    version: 1, at: 'entry', unit: '%', bins: [-30, -10, -3],
+    version: 2, at: 'entry', unit: '%', bins: [-30, -10, -3],
     needs: { intraday: ['$underlying'], daily: ['$underlying'] },
     compute: ctx => {
       const d = ctx.daily('$underlying'), s = ctx.intraday('$underlying');
@@ -111,10 +112,11 @@ export const LEVEL_FEATURES = [
   feature(LEVELS_FAMILY, {
     key: 'gap_atr',
     name: 'Gap at the open, in ATRs',
-    desc: "The stock's open that day against the close the day before, in daily ATRs: (open − prior close) ÷ the 14-day ATR (Wilder's). Known from 9:30, so an entry before the open has none.",
-    version: 1, at: 'entry', unit: 'atr', bins: [-1, 0, 1],
+    desc: "The stock's open that day against the close the day before, in daily ATRs: (open − prior close) ÷ the 14-day ATR (Wilder's). Known from 9:30, so an entry before the open has none. None for a future: its day opens the evening before.",
+    version: 2, at: 'entry', unit: 'atr', bins: [-1, 0, 1],
     needs: { daily: ['$underlying'], dailySessions: DAILY_SESSIONS },
     compute: ctx => {
+      if (ctx.future('$underlying')) return { value: null, note: "a future's daily bar opens at 6 PM the evening before, so it has no 9:30 gap" };
       const d = ctx.daily('$underlying', DAILY_SESSIONS);
       if (!d) return null;
       if (ctx.clock < '09:30') return { value: null, note: 'entered before the open' };
@@ -130,7 +132,7 @@ export const LEVEL_FEATURES = [
     key: 'atr_from_ath',
     name: 'ATRs from the all-time high',
     desc: "Your entry against the highest high before it (every day before, and that day's high before your entry), in daily ATRs: (entry − high) ÷ the 14-day ATR (Wilder's). 0 = at the high, below 0 = under it.",
-    version: 1, at: 'entry', unit: 'atr', bins: [-10, -3, -1],
+    version: 2, at: 'entry', unit: 'atr', bins: [-10, -3, -1],
     needs: { intraday: ['$underlying'], daily: ['$underlying'] },
     compute: ctx => {
       const d = ctx.daily('$underlying'), a = ctx.daily('$underlying', DAILY_SESSIONS), s = ctx.intraday('$underlying');

@@ -495,6 +495,31 @@ test('the daily range: ADR and ATR, each in dollars in the day\'s own prices and
   assert.deepEqual(result(byKey('atr_14_pct'), stock('10:02'), young), { state: 'unknown', value: null, note: 'fewer than 15 daily sessions before' });
 });
 
+test("futures: daily history under the contract, no split check, no gap, never waiting on 5-minute bars", () => {
+  const data = world();
+  // a future's daily bars, as the stamper keeps them: under the contract traded (read from Schwab for its root)
+  const fut = data.daily.get('AAPL').map(b => ({ ...b, open: b.open * 200, high: b.high * 200, low: b.low * 200, close: b.close * 200 }));
+  data.daily.set('/MNQZ26', fut);
+  const trade = { ...stock('10:02'), key: '6789|/MNQZ26|long|10:02', symbol: '/MNQZ26', assetType: 'FUTURE' };
+  const prior = fut.filter(b => b.date < D), atr = wilder14(fut);
+  const fill = prior.at(-1).close * 1.3; // far from the history: a stock would read it as a split, a future never splits
+  const sma = (closes, n, price) => (closes.slice(-(n - 1)).reduce((a, b) => a + b, 0) + price) / n;
+  const r = result(byKey('atr_from_daily_sma50'), trade, data, fill);
+  assert.equal(r.state, 'value', r.note);
+  near(r.value, (fill - sma(prior.slice(-300).map(b => b.close), 50, fill)) / atr, 'ATRs from the 50 SMA, prices as they are');
+  near(result(byKey('atr_14_pct'), trade, data, fill).value, atr / prior.at(-1).close * 100, 'ATR as a %');
+  assert.equal(result(byKey('rvol_prior_day'), trade, data, fill).state, 'value', 'volume ratios work');
+  // no 9:30 gap, no dollar volume
+  for (const k of ['gap_at_open', 'gap_atr']) assert.deepEqual(result(byKey(k), trade, data, fill), { state: 'unknown', value: null, note: "a future's daily bar opens at 6 PM the evening before, so it has no 9:30 gap" }, k);
+  assert.equal(result(byKey('avg_dollar_volume_20d'), trade, data, fill).note, "a future's price × contracts isn't dollars traded");
+  // inside the bar saver's window a stock's day would wait; a future's is gone at once (the saver keeps none)
+  const lod = result(byKey('adr_from_lod'), trade, data, fill);
+  assert.equal(lod.state, 'unknown');
+  assert.match(lod.note, /no 5-minute bars are kept for futures \(\/MNQZ26\)/);
+  // its daily history not read yet: waits, like a stock's
+  assert.equal(result(byKey('atr_from_daily_sma50'), trade, { ...data, daily: new Map([...data.daily].filter(([k]) => k !== '/MNQZ26')) }, fill).state, 'waiting');
+});
+
 // ---------- stamping ----------
 
 test('stamping: missing or outdated features are due, three states, unknown stamped with why, waiting left for later', () => {
@@ -659,7 +684,7 @@ test('a feature waiting for its data is tried again later, not stamped; a new ve
   j.supabase.tables.trade_features.get(`user-1:${KEY}`).stamps.gap_at_open.v = '1.0';
   await a.run('loadJournal()');
   await settle();
-  assert.equal(stamps().gap_at_open.v, '1.1', 'restamped');
+  assert.equal(stamps().gap_at_open.v, featureVersion(byKey('gap_at_open')), 'restamped');
 });
 
 test('before the trade_features table is pushed, the Journal works and says what features need', async () => {
