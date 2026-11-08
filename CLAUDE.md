@@ -121,6 +121,8 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Chart sits ABOVE the chain — levels before contracts.
   Setup never sits in the page: the header settings button (amber dot until a key exists) opens #settingsSheet (account, times, key, environment) and the risk strip's summary link opens #riskSheet.
   Sheets (openSheet/closeSheet) are a panel under the header on desktop and a bottom sheet on phones; missing-key actions call requireKey(), which toasts and opens Settings
+  On phones a sheet behaves like an iOS one (owner request: feel like a native app): it slides up, has a grabber, and pulls down to close (attachSheetDrag: only from the top of its own scroll, past a quarter of its height or 120px, or a flick), the page behind holds still (body.sheet-open), and × or the backdrop slide it down first (dismissSheet; Escape and code close it at once).
+  The motion skips for prefers-reduced-motion.
 - Sticky context bar (fixed, appears when scrolled past the quote card; never on the desktop shell since the page doesn't scroll): symbol, price/chg, share count in shares mode, LOD/HOD, ADR used %, risk $, chart/chain jump chips (jumpTo — smooth-scroll, offset by bar height), and a live chip (sbLive — start/extend/stop live from anywhere on the page, synced with the main button via syncSbLive; stopPropagation so it doesn't trigger the bar's back-to-top).
   Click elsewhere on the bar = back to top
 - Stop inputs carry their chart line colors (red long stop, green short stop — a stop is a loss point, and it groups with the level it defaults to: LOD red, HOD green).
@@ -144,6 +146,9 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
 - iOS home-screen meta tags present (apple-mobile-web-app-*) — file is meant to be hosted (GitHub Pages) and added to iPhone home screen.
   Status bar style is `black` (opaque, the page starts below it), not `black-translucent`: since iOS 26 a translucent status bar gets Liquid Glass's edge blur, which reached into the header and greyed it out even at the top; no CSS turns it off. iOS reads the style when the app is added, so an old install keeps the blur until it's removed and added again
 - Double tap never zooms the page on phones (owner request): `* { touch-action: manipulation }` in base.css; pinch zoom stays on (no user-scalable=no, which iOS ignores anyway).
+- No web page tells on phones (owner request: feel like a native iOS app): no grey tap flash, no text selection or callout menu from a long press on buttons and [data-action] elements (fields still select), every field 16px so iOS never zooms on focus, and no font inflation when the phone turns sideways (base.css).
+  Tapping the tab you're on scrolls to the top, or leaves a Journal trade page (docs/tools.md).
+  tests/native-feel.test.mjs covers these.
 - Wheel over a focused number input blurs it so the page scrolls instead of spinning the value
 - Owner's style: direct, terse.
   No em dashes in user-facing copy.

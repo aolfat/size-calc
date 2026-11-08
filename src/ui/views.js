@@ -40,6 +40,12 @@ function rememberView(v) {
   globalThis.history.replaceState(null, '', loc.pathname + loc.search + want); // no new history entry per tab switch
 }
 
+/** the tab you're on, tapped again: back to the top, gliding unless the device asks for less motion */
+export function scrollViewToTop() {
+  const still = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+}
+
 export function setView(v) {
   if (v !== 'journal' && state.modelBooks.viewerId) closeModelImage();
   rememberView(v);

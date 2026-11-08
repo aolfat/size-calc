@@ -1,6 +1,12 @@
 /* Tokens, reset, element defaults, and components shared across views. */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 * { touch-action: manipulation; } /* no double-tap zoom on phones (pinch still zooms); every element, since a scroll pane starts its own chain. Gesture rules like pan-y win */
+/* Feel like an app, not a page: no grey flash on tap, no text selection or callout menu from a long press on a control,
+   and iOS keeps the font size when the phone turns sideways. Typing still selects as usual. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+* { -webkit-tap-highlight-color: transparent; }
+button, summary, [role="button"], [data-action], .brand-tabs { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; }
 * { font-variant-numeric: tabular-nums !important; } /* every digit the same width so figures line up; !important because the font shorthand resets it */
 button, input, select, textarea { font-family: inherit; } /* controls default to the OS font otherwise */
 /* One look everywhere: Apple's system font (SF Pro) on iPhone and Mac, Inter (its open twin, self-hosted latin subset,
@@ -165,6 +171,6 @@ a:hover { text-decoration: underline; }
 
 @media (max-width: 600px) {
   .stat-grid { grid-template-columns: 1fr 1fr; }
-  input, select { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
+  input, select, textarea { font-size: 16px !important; } /* <16px triggers iOS focus zoom */
   .s-val-input { font-size: 22px !important; } /* keep stat-value inputs matching the stat font */
 }

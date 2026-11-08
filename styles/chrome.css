@@ -144,7 +144,19 @@ kbd { background: var(--bg4); border: 1px solid var(--border2); border-bottom-wi
   .brand-nav .count-badge { position:absolute; top:2px; left:calc(50% + 7px); font-size:10px; line-height:14px; padding:0 5px; }
   .error { bottom:calc(78px + env(safe-area-inset-bottom)); }
   .app:has(input:focus, select:focus, textarea:focus) .brand-tabs { display:none; } /* the keyboard owns the bottom while typing */
-  .sheet { top:auto; left:0; right:0; bottom:0; width:100%; max-height:85vh; border-radius:18px 18px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .sheet { top:auto; left:0; right:0; bottom:0; width:100%; max-height:85vh; border-radius:18px 18px 0 0; padding:24px 16px calc(18px + env(safe-area-inset-bottom)); overscroll-behavior:contain; }
+  /* the grabber: pull the sheet down to close it (sheets.js, attachSheetDrag) */
+  .sheet::before { content:''; position:absolute; top:7px; left:50%; width:36px; height:5px; margin-left:-18px; border-radius:3px; background:var(--border2); }
+  /* the page behind a sheet holds still */
+  html:has(body.sheet-open), body.sheet-open { overflow:hidden; }
   .sheet-backdrop { background:rgba(0,0,0,0.5); }
   .trade-actions .btn { flex:1; justify-content:center; min-height:46px; }
 }
+
+/* Phones: a sheet slides up from the bottom on iOS's own curve and the dim fades in; sheets.js slides it back down */
+@media (max-width: 600px) and (prefers-reduced-motion: no-preference) {
+  .sheet { animation: sheet-up 380ms cubic-bezier(.32,.72,0,1); }
+  .sheet-backdrop { animation: sheet-dim 300ms ease; }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@keyframes sheet-dim { from { opacity: 0; } }

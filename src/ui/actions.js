@@ -49,7 +49,7 @@ import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund,
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { contractsQtyChanged, renderShares, sharesQtyChanged } from './shares.js';
-import { closeSheet, openSheet } from './sheets.js';
+import { closeSheet, dismissSheet, openSheet } from './sheets.js';
 import { toggleKbdHelp } from './shortcuts.js';
 import { closeSim, drawSim, simFromPinned, simPriceTyped, simSetPrice } from './sim.js';
 import { cancelSpread, startSpread } from './spreads.js';
@@ -61,7 +61,7 @@ import { setOrb } from './orb.js';
 import { clearMissedFilters, openMissedFromList, setMissedFilterSetup, setMissedFilterSide, setMissedFilterWhy, setMissedSearch } from './journal-missed.js';
 import { checkOptionTradeStatus, openOptionTrade, placeOptionTrade, setOptionEntry, setOptionLimit, setOptionStopDuration } from './option-trade.js';
 import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openCardOrder, openCardTrade, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
-import { setMode, setView } from './views.js';
+import { scrollViewToTop, setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
 /** run a Review action on the trade open on the Journal's trade page */
@@ -71,13 +71,18 @@ const num = el => Number(el.dataset.arg);
 /** @type {Record<string, import('../lib/delegate.js').Handler>} */
 export const actions = {
   // ---------- views and navigation ----------
-  setView: el => setView(arg(el)),
+  // tapping the tab you're on does what it does in an iOS app: back out of a trade page, else back to the top
+  setView: el => {
+    if (!el.classList?.contains('brand-nav') || el.getAttribute('aria-current') !== 'page') return setView(arg(el));
+    if (state.journalView && state.journalTrade) return closeJournalTrade();
+    scrollViewToTop();
+  },
   setMode: el => setMode(arg(el)),
   scrollToTop: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
   jumpTo: el => jumpTo(arg(el)),
   toggleKbdHelp: () => toggleKbdHelp(),
   openSheet: el => openSheet(arg(el)),
-  closeSheet: () => closeSheet(),
+  closeSheet: () => dismissSheet(),
 
   // ---------- settings: account and key ----------
   saveKey: () => saveKey(),
