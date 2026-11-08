@@ -4,7 +4,8 @@
 import { ADR_N, ATR_N, DAILY_SESSIONS, priceNow } from './averages.js';
 import { family, feature } from './define.js';
 
-export const RANGE_FAMILY = family({ key: 'range', name: 'Daily range', version: 1 });
+// version 2: futures have daily history (Schwab's, for the continuous root), so their trades restamp
+export const RANGE_FAMILY = family({ key: 'range', name: 'Daily range', version: 2 });
 
 const KINDS = {
   atr: { name: `ATR (${ATR_N} days)`, n: ATR_N, sessions: DAILY_SESSIONS, what: `the ${ATR_N}-day average true range (Wilder's, gaps included)` },

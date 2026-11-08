@@ -272,3 +272,27 @@ test('the worker relays market data reads and nothing else there', async () => {
     globalThis.fetch = realFetch;
   }
 });
+
+test("the trade features' daily history for a future: Schwab's, for the continuous root, between the days asked; none without the login", async () => {
+  const calls = [];
+  const fetch = async url => {
+    calls.push(url);
+    if (url.startsWith(PROXY + '/marketdata/v1/pricehistory')) return json({ symbol: '/MNQ', empty: false, candles: [
+      candle(ny(22, 0, 0), 25000, 25100, 24900, 25050), candle(ny(23, 0, 0), 25050, 25200, 25000, 25150), candle(ny(26, 0, 0), 25150, 25300, 25100, 25250)] });
+    return json({}, 404);
+  };
+  const h = await app({ fetch, storage: connected() });
+  const days = await h.run("barSource.daily('/MNQZ26', '2026-10-23', '2026-10-26')");
+  assert.deepEqual(days.map(d => [d.date, d.close]), [['2026-10-23', 25150], ['2026-10-26', 25250]], 'only the days asked');
+  const q = new URL(calls.find(u => u.includes('/pricehistory'))).searchParams;
+  assert.equal(q.get('symbol'), '/MNQ', 'the continuous root, not the contract');
+  assert.equal(q.get('frequencyType'), 'daily');
+  assert.equal(new Date(Number(q.get('startDate'))).toISOString(), '2026-10-23T04:00:00.000Z', 'from midnight New York time');
+  assert.ok(Number(q.get('endDate')) > Number(q.get('startDate')));
+  // a stock goes the usual way (here, no Tradier key: Schwab's history in Tradier's form), its symbol as it is
+  await h.run("barSource.daily('AAPL', '2026-10-23', '2026-10-26').catch(() => null)");
+  assert.equal(new URL(calls.filter(u => u.includes('/pricehistory')).at(-1)).searchParams.get('symbol'), 'AAPL');
+  // without the Schwab login: refused, so the features wait for it
+  const out = await app({ fetch, storage: new Map() });
+  await assert.rejects(out.run("barSource.daily('/MNQZ26', '2026-10-23', '2026-10-26')"), /Futures history needs the Schwab login/);
+});

@@ -3,7 +3,8 @@
 // ATRs (an option's underlying, never the contract). One generator, so each average is one line.
 import { family, feature } from './define.js';
 
-export const AVERAGES_FAMILY = family({ key: 'averages', name: 'Moving averages', version: 1 });
+// version 2: futures have daily history (Schwab's, for the continuous root), so their trades restamp
+export const AVERAGES_FAMILY = family({ key: 'averages', name: 'Moving averages', version: 2 });
 
 /** daily sessions a daily average and the ATR are worked out over: room for a 200 SMA, and for a 50 EMA to settle */
 export const DAILY_SESSIONS = 300;

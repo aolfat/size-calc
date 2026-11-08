@@ -160,3 +160,99 @@ export function filterChoices(trades, filters, key, ctx) {
   return order.filter(([v]) => counts.has(v) || picked.includes(v)).map(([value, name]) => ({ value, name, count: counts.get(value) || 0, on: picked.includes(value) }));
 }
 
+
+// ---------- saved views: a set of filters kept under a name (journal_views, synced), one tap to put back ----------
+
+/**
+ * @typedef {{ name: string, setup: string, side: string, filters: TradeFilter[] }} JournalView
+ *   the setup filter (its key, '' for all), the side (all | long | short) and the More filters that narrow
+ */
+
+/** a view's name, at most this long */
+export const MAX_VIEW_NAME = 40;
+/** what journal_views may hold: a setting syncs as text of at most 2000 characters */
+export const VIEWS_MAX_CHARS = 2000;
+const SIDES = ['all', 'long', 'short'];
+
+/**
+ * A filter as a view keeps it: only one that narrows, with only what it needs (a condition's op and numbers, or the values
+ * and is not); null for one that narrows nothing or isn't a field any more.
+ * @param {any} f @returns {TradeFilter | null}
+ */
+export function cleanFilter(f) {
+  const field = f && typeof f.field === 'string' ? filterField(f.field) : null;
+  if (!field) return null;
+  if (isCondition(field)) {
+    const op = CONDITION_OPS.includes(f.op) ? f.op : 'atleast';
+    const out = { field: field.key, values: [], op, min: op === 'atmost' ? null : f.min, max: op === 'atleast' ? null : f.max };
+    return conditionSet(out) ? out : null;
+  }
+  const values = Array.isArray(f.values) ? [...new Set(f.values.filter((/** @type {unknown} */ v) => typeof v === 'string' && v))] : [];
+  return values.length ? { field: field.key, values, not: !!f.not } : null;
+}
+
+/**
+ * What's set now, as a view would keep it (no name): the setup, the side and the filters that narrow, in field order so
+ * two views with the same filters added in another order are the same.
+ * @param {{ setup?: string, side?: string, filters?: any[] }} now
+ */
+export function viewOf(now) {
+  const filters = /** @type {TradeFilter[]} */ ((now.filters || []).map(cleanFilter).filter(Boolean)).sort((a, b) => a.field < b.field ? -1 : a.field > b.field ? 1 : 0);
+  return { setup: typeof now.setup === 'string' ? now.setup : '', side: SIDES.includes(String(now.side)) ? String(now.side) : 'all', filters };
+}
+
+/** whether a view sets anything at all @param {{ setup: string, side: string, filters: TradeFilter[] }} v */
+export const viewSetsAnything = v => !!v.setup || v.side !== 'all' || v.filters.length > 0;
+
+/** whether two views (or a view and what's set now) narrow the same way, names aside @param {any} a @param {any} b */
+export function sameView(a, b) {
+  const key = (/** @type {any} */ v) => { const x = viewOf(v); return JSON.stringify([x.setup, x.side, x.filters.map(f => [f.field, f.values, !!f.not, f.op || '', f.min ?? null, f.max ?? null])]); };
+  return key(a) === key(b);
+}
+
+/**
+ * Saved views from the setting: anything that doesn't read as one is dropped (a name, and something it sets; a filter
+ * whose field is gone drops alone). [] for nothing saved or text that isn't JSON.
+ * @param {string | null} text @returns {JournalView[]}
+ */
+export function parseViews(text) {
+  let raw;
+  try { raw = JSON.parse(text || '[]'); } catch(e) { return []; }
+  if (!Array.isArray(raw)) return [];
+  /** @type {JournalView[]} */
+  const out = [];
+  for (const v of raw) {
+    const name = typeof v?.name === 'string' ? v.name.trim().slice(0, MAX_VIEW_NAME) : '';
+    if (!name || out.some(o => o.name.toLowerCase() === name.toLowerCase())) continue;
+    const view = { name, ...viewOf(v) };
+    if (viewSetsAnything(view)) out.push(view);
+  }
+  return out;
+}
+
+/** views as the setting keeps them: only what each sets, so more fit in 2000 characters @param {JournalView[]} views */
+export function viewsText(views) {
+  return JSON.stringify(views.map(v => ({
+    name: v.name, ...(v.setup ? { setup: v.setup } : {}), ...(v.side !== 'all' ? { side: v.side } : {}),
+    filters: v.filters.map(f => f.op ? { field: f.field, op: f.op, ...(f.min !== null && f.min !== undefined ? { min: f.min } : {}), ...(f.max !== null && f.max !== undefined ? { max: f.max } : {}) }
+      : { field: f.field, values: f.values, ...(f.not ? { not: true } : {}) }),
+  })));
+}
+
+/**
+ * Save what's set now under a name: a new view, or the one of that name (any case) replaced. Throws what's wrong, in
+ * words: no name, nothing set, or too many views to sync.
+ * @param {JournalView[]} views @param {string} name @param {{ setup?: string, side?: string, filters?: any[] }} now
+ * @returns {{ views: JournalView[], text: string }}
+ */
+export function saveView(views, name, now) {
+  const n = String(name || '').trim().slice(0, MAX_VIEW_NAME);
+  if (!n) throw new Error('Give the view a name.');
+  const view = { name: n, ...viewOf(now) };
+  if (!viewSetsAnything(view)) throw new Error('Set a filter first: a view keeps the filters you have on.');
+  const at = views.findIndex(v => v.name.toLowerCase() === n.toLowerCase());
+  const next = at < 0 ? [...views, view] : views.map((v, i) => i === at ? view : v);
+  const text = viewsText(next);
+  if (text.length > VIEWS_MAX_CHARS) throw new Error('Too many views to sync: delete one first.');
+  return { views: next, text };
+}

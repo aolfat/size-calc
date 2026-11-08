@@ -3,7 +3,10 @@
 // review says), is or is not, its values as chips with how many trades each lets through, × takes it off. Trades, Calendar and Stats.
 // Every trade feature is in the menu too, by family, once the stamps are read: a condition on its value (at least, at most
 // or between, in its own unit), with how many trades fit and how many have no value (docs/journal-features.md, part 3).
-import { CONDITION_OPS, conditionCounts, conditionSet, FEATURE_FIELD, FILTER_FIELDS, applyFilters, filterChoices, filterField, filtersOn, isCondition } from '../core/journal-filters.js';
+// Saved views: Save as view keeps the setup, the side and the filters under a name (journal_views, synced); the Views row
+// puts one back with a tap, lights the one that matches, and its × deletes it.
+import { CONDITION_OPS, conditionCounts, conditionSet, FEATURE_FIELD, FILTER_FIELDS, applyFilters, filterChoices, filterField, filtersOn, isCondition, MAX_VIEW_NAME, parseViews, sameView, saveView, viewOf, viewSetsAnything, viewsText } from '../core/journal-filters.js';
+import { store } from '../lib/store.js';
 import { FEATURE_FAMILIES, FEATURES, featureVersion } from '../core/features/index.js';
 import { marketEscape as esc } from '../core/format.js';
 import { state } from '../state.js';
@@ -77,7 +80,79 @@ export function moreFiltersHtml(base) {
       <div class="jf-vals jf-cond">${boxes}${unit ? `<span class="jf-unit">${esc(unit)}</span>` : ''}<span class="jf-count">${count}</span></div>
     </div>`;
   };
-  return `<div class="jf" role="group" aria-label="More filters">${list.map(f => isCondition(filterField(f.field)) ? condition(f) : block(f)).join('')}<div class="jf-foot">${add}${clear}</div></div>`;
+  return `<div class="jf" role="group" aria-label="More filters">${viewsRow()}${list.map(f => isCondition(filterField(f.field)) ? condition(f) : block(f)).join('')}<div class="jf-foot">${add}${clear}${saveBit()}</div></div>`;
+}
+
+// ---------- saved views ----------
+
+/** the synced setting the views are kept in */
+const VIEWS_KEY = 'journal_views';
+/** the saved views, as the setting has them (core parseViews drops anything that doesn't read as one) */
+const savedViews = () => parseViews(store.get(VIEWS_KEY));
+/** what's set now: the setup, the side and the More filters */
+const setNow = () => ({ setup: state.journalSetupFilter, side: state.journalSide, filters: state.journalFilters });
+
+/** the Views row: a chip per view, lit while what's set matches it, with × to delete the lit one; nothing with no views */
+function viewsRow() {
+  const list = savedViews();
+  if (!list.length) return '';
+  const now = setNow();
+  const chip = (v, i) => {
+    const on = sameView(v, now);
+    return `<span class="jf-view"><button class="journal-chip${on ? ' active' : ''}" aria-pressed="${on}" data-action="applyJournalView" data-arg="${i}">${esc(v.name)}</button>${on ? `<button class="jf-x" data-action="deleteJournalView" data-arg="${i}" aria-label="Delete the view ${esc(v.name)}" title="Delete view">×</button>` : ''}</span>`;
+  };
+  return `<div class="jf-views" role="group" aria-label="Saved views"><span class="jf-views-label">Views</span>${list.map(chip).join('')}</div>`;
+}
+
+/** Save as view once something is set and no view has it; then the name box, Save and Cancel, and why it couldn't */
+function saveBit() {
+  const note = state.journalViewNote ? `<span class="jf-note" role="status">${esc(state.journalViewNote)}</span>` : '';
+  if (state.journalViewDraft !== null) {
+    return `<span class="jf-save"><input id="journalViewName" class="jf-num jf-view-name" type="text" maxlength="${MAX_VIEW_NAME}" autocomplete="off" placeholder="Name this view" aria-label="Name this view" value="${esc(state.journalViewDraft)}" data-input="journalViewTyped" data-enter="saveJournalView" /><button class="btn" data-action="saveJournalView">Save</button><button class="pos-link" data-action="cancelJournalView">Cancel</button></span>${note}`;
+  }
+  const now = viewOf(setNow());
+  return viewSetsAnything(now) && !savedViews().some(v => sameView(v, now)) ? `<button class="pos-link" data-action="startJournalView">Save as view</button>${note}` : note;
+}
+
+/** a view put back: its setup, side and filters replace what's set */
+export function applyJournalView(i) {
+  const v = savedViews()[Number(i)];
+  if (!v) return renderJournal();
+  state.journalSetupFilter = v.setup;
+  state.journalSide = v.side;
+  state.journalFilters = v.filters.map(f => f.op ? { ...f, values: [] } : { ...f, values: [...f.values] });
+  state.journalViewDraft = null;
+  state.journalViewNote = '';
+  renderJournal();
+}
+/** Save as view: the name box opens, focused */
+export function startJournalView() {
+  state.journalViewDraft = '';
+  state.journalViewNote = '';
+  renderJournal();
+  /** @type {HTMLInputElement | null} */ (document.getElementById('journalViewName'))?.focus?.();
+}
+/** the name as it's typed (no redraw, so the box keeps its focus) */
+export function journalViewTyped(text) { state.journalViewDraft = String(text); }
+export function cancelJournalView() { state.journalViewDraft = null; state.journalViewNote = ''; renderJournal(); }
+/** Save: what's set now under the name typed (the same name replaces that view); says why when it can't */
+export function saveJournalView() {
+  try {
+    const r = saveView(savedViews(), state.journalViewDraft || '', setNow());
+    store.set(VIEWS_KEY, r.text);
+    state.journalViewDraft = null;
+    state.journalViewNote = '';
+  } catch(e) {
+    state.journalViewNote = String(/** @type {any} */ (e)?.message || e);
+  }
+  renderJournal();
+}
+/** × on the lit view: gone from every device ('[]' too, so the delete syncs) */
+export function deleteJournalView(i) {
+  const list = savedViews();
+  if (!list[Number(i)]) return renderJournal();
+  store.set(VIEWS_KEY, viewsText(list.filter((_, at) => at !== Number(i))));
+  renderJournal();
 }
 
 /** + Add filter: the field goes on with nothing picked yet (it narrows nothing until a value is) */

@@ -1,6 +1,7 @@
 // Schwab Trader API through the size-calc-schwab worker, which holds the app secret, swaps codes for tokens,
 // and relays /trader/v1 calls and /marketdata/v1 reads (futures quotes and bars). Signed in, the login is shared by your
 // devices through the account (Vault); signed out, it stays on the device. The worker URL syncs as a setting.
+import { nyWallMs } from '../core/format.js';
 import { state } from '../state.js';
 import { store } from '../lib/store.js';
 import { assertCredentialOrigin, credentialOriginAllowed } from '../lib/credential-origin.js';
@@ -477,6 +478,17 @@ export function schwabFuturesBars(symbol, days = 8, now = Date.now()) {
 /** a futures ticker's daily candles over the last year (Schwab's price history body) @param {string} symbol */
 export function schwabFuturesDaily(symbol) {
   const q = new URLSearchParams({ symbol, periodType: 'year', period: '1', frequencyType: 'daily', frequency: '1' });
+  return marketData(`/pricehistory?${q}`);
+}
+
+/**
+ * A futures ticker's daily candles between two New York days (Schwab's price history body): the trade features' history,
+ * read for the continuous root ('/MNQ'), which Schwab answers with the front month as it rolled.
+ * @param {string} symbol @param {string} from 'YYYY-MM-DD' @param {string} to 'YYYY-MM-DD' @param {number} [now]
+ */
+export function schwabFuturesHistory(symbol, from, to, now = Date.now()) {
+  const q = new URLSearchParams({ symbol, periodType: 'year', frequencyType: 'daily', frequency: '1',
+    startDate: String(nyWallMs(from, '00:00')), endDate: String(Math.min(nyWallMs(to, '23:59'), now)) });
   return marketData(`/pricehistory?${q}`);
 }
 

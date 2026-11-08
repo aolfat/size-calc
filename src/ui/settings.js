@@ -94,7 +94,7 @@ export function cloudRehydrate() {
     updateSchwabUi(); // the worker URL syncs
     renderRiskPresets();
     recalcAll();
-    if (state.journalView) renderJournal(); // journal_fees, journal_deck_pnl, journal_review_from and journal_funds sync
+    if (state.journalView) renderJournal(); // journal_fees, journal_deck_pnl, journal_review_from, journal_funds and journal_views sync
   } finally { state.cloudSuppress = false; }
 }
 

@@ -1,6 +1,6 @@
 # Trade features
 
-Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3: the Stats explorer, the features table for a Claude session and the conditions (features in More filters) built; saved views, features as list columns and What matters next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
+Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3: the Stats explorer, the features table for a Claude session and the conditions (features in More filters) and saved views built; features as list columns and What matters next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
 
 ## Goal
 
@@ -75,6 +75,12 @@ feature({
 - **Which trades:** every one but deleted trades and closes from before your history (no entry). A restored trade is stamped on the next load. Rows under an old key (a merge, a separate) are left, not deleted: a key can vanish for a moment while records load.
 - **Runs:** after the Journal loads (once the bar saver is done, so today's saves count) and after an import. Chunks of 40 trades: each reads its bars, computes, saves. Only waiting features left: tried again at most every 15 minutes. Daily bars are read once a run per symbol, back to 1960 when a feature wants the listing; with neither a Tradier key nor a Schwab login, daily features wait.
 - **Splits:** Tradier's docs don't say whether `/markets/history` is split-adjusted (they say it "usually" covers the company's lifetime). So the features that compare daily history with the day's own prices line them up first (`dailyBasis`): the exact ratio of that day's 9:30 open in the 5-minute bars and the daily bar's open, or, without that day's bars, the fill against the daily open (or the close before) at the nearest of no split and the usual split ratios, allowing a day's 30% move. Nothing lines up: unknown, never a made-up number.
+- **Futures** (owner request: daily history for futures, from the continuous front month): a future's daily bars always come from Schwab's price history (`services/bar-source.js`, `schwabFuturesHistory`; Tradier has no futures), for its continuous root: a /MNQZ26 trade reads /MNQ, the front month as it rolled, so the moving averages, ATR, ADR and all-time high have a long, liquid history; kept under the contract's symbol, so the features read it as the trade's own.
+  It needs the Schwab login, with or without a Tradier key; without it those features wait, like a stock's without a key.
+  A future never splits, so `dailyBasis` is 1 and a fill far from the history is taken as it is.
+  A future's daily bar opens at 6 PM the evening before, so the gap features (`gap_at_open`, `gap_atr`) are unknown for one, saying so, and `avg_dollar_volume_20d` too (price × contracts isn't dollars traded); the volume ratios work.
+  The bar saver keeps no 5-minute bars for futures, so a future's intraday reads are gone at once ('no 5-minute bars are kept for futures'), never waited on for the saver's 35 days; VWAP, the low and high of day and the volume run rates stay unknown for futures, and the all-time high counts the days before, not that day's high so far.
+  The versions were bumped (Moving averages and Daily range families to 2, the gap, all-time high and daily volume features to 2) so futures trades restamp; a stock's values come out the same.
 - **The all-time high** keeps no `{ high, date, through }` summary yet: the daily history is read whole on each run that needs it (one call per symbol). Worth adding if runs get slow.
 
 ### Worked examples
@@ -116,7 +122,8 @@ feature({
   Switching at least / at most / between keeps the numbers typed; an emptied box clears its number.
   A feature of words would pick its words as chips, like the other filters.
   Signed out or before the stamps are read, conditions stand down (they'd otherwise hide every trade) and the menu leaves features out.
-  Not built: saving a combination as a named view, and pinned favorites (the menu's own type-to-find stands in for search on desktop).
+  A combination is kept as a saved view (docs/journal.md, Saved views), so a set of conditions you come back to is one tap.
+  Not built: pinned favorites (the menu's own type-to-find stands in for search on desktop).
 - **Stats** (built): By a feature, at the end of the Stats tab (`core/feature-stats.js` featureBreakdown, `ui/journal-stats.js`): pick any feature (by family) and see the tab's trades split by its value, each group with groupStats' numbers and Avg R, thin under 10.
   Five even groups by default: splits a fifth, two fifths... of the way through the sorted values, a split inside a run of equal values moved up to the next value so equal values never straddle two groups, each group named by its own lowest and highest value.
   Cut points: the feature's own `bins` (under the first, between each pair, the last and over; a value on a cut point goes to the group above).
