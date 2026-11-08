@@ -137,7 +137,8 @@ They never count in P&L, stats, the plan or the review.
 
 **Day reviewed** = the grade, every rule answered, each of this week's rules answered, and one of the two guided notes. `reviewed_at` is stamped while it's true.
 
-A Claude session can save this review too (`node scripts/journal.mjs day`, docs/claude-access.md), stamping `reviewed_at` the same way; it never touches the premarket plan, the focus list or the missed trades.
+A Claude session can save this review too (`node scripts/journal.mjs day`, docs/claude-access.md), stamping `reviewed_at` the same way; it never touches the check-in or the missed trades.
+It can write the premarket plan and the focus list (`node scripts/journal.mjs plan`, migration 20261120000000_claude_day_plan.sql), sending the whole list back with each ticker's id, played and review kept.
 
 **This week's rules on a day** (weekRulesFor in core/journal-week.js): the list the week before's review set (`period_reviews` row of the Monday a week earlier); a weekend day's are its week's.
 They're read with the week reviews (state.periodReviews), so a page shows them once those are in.

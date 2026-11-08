@@ -5,14 +5,16 @@
 // and reviewed_at stamped once every required field is in. A day's review ({ grade: 'D', rules: { 'Follow your stops':
 // 'broke' }, weekRules: { 'No trades before 9:45': 'kept' }, ... }) becomes the notebook's changes the same way, and a
 // week's or month's review ({ parts: { 'Risk management': { grade: 'D' } }, rulesNext: [...], rulesKept: {...} }) its
-// period_reviews row. And every closed trade's result beside its feature stamps, one row a trade, for analysis.
+// period_reviews row. A day's plan ({ plan: '...', focus: { NVDA: { side: 'long', setups: ['EMA 21 bounce'], note: '...' } } })
+// becomes its premarket plan and focus list. And every closed trade's result beside its feature stamps, one row a trade,
+// for analysis.
 // Nothing here reads the network or the page.
 import { createHash, randomUUID } from 'node:crypto';
 import { fillWords, fillsFrom } from '../src/core/journal-records.js';
 import { FEATURES, featureVersion } from '../src/core/features/index.js';
 import { holdWords, journalTrades, tradeUnderlying } from '../src/core/journal.js';
 import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
-import { cleanDayRow, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, isDay, lastFocus, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
+import { cleanDayRow, cleanFocusList, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, FOCUS_PLAYED, isDay, lastFocus, MAX_DAY_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, missedSymbol, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
 import { countedTrades, dailyPnl, nyParts, periodKey } from '../src/core/journal-stats.js';
 import { cleanPeriodRow, gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, periodMissingWords, periodReviewState, periodRules, periodTradeRows, previousPeriod, RULE_KEPT, ruleKeptOf, weekRulesFor, weekRuleTally } from '../src/core/journal-week.js';
 import { cleanPlanRow, matchPlans, planLines } from '../src/core/order-plans.js';
@@ -356,6 +358,90 @@ export function dayDetail(j, day) {
     `  more notes: ${or(row.note)}`,
     `  tomorrow's focus: ${or(row.focus_next)}`,
     `  ${st.reviewed ? 'reviewed' : `missing: ${reviewMissingWords(st)}`}`,
+  ].join('\n');
+}
+
+/** a day's plan, in the words a plan uses */
+export const PLAN_FIELDS = ['plan', 'focus'];
+/** what a focus ticker takes */
+const FOCUS_FIELDS = ['side', 'setups', 'note'];
+
+/**
+ * A day's plan (the notebook's premarket half, the part Claude may write) turned into the changes claude_journal_save
+ * takes: plan the day's plan text, focus the tickers you're watching by symbol ({ NVDA: { side, setups, note } }, null
+ * takes one off). A ticker already on the list keeps its id, how it played and its review, and changes only what's given;
+ * setups are matched to your choices or added, as a review's are. The whole list is sent, in the app's own form. The
+ * check-in and planned_at aren't Claude's to set.
+ * @param {ReturnType<typeof journalFrom>} j @param {string} day @param {Record<string, any>} input
+ * @param {{ newId?: () => string }} [opts]
+ */
+export function planPremarket(j, day, input, opts = {}) {
+  const newId = opts.newId || randomUUID;
+  if (!isDay(day)) throw new Error('a day as YYYY-MM-DD');
+  const unknown = Object.keys(input).filter(k => !PLAN_FIELDS.includes(k));
+  if (unknown.length) throw new Error(`a day's plan takes ${PLAN_FIELDS.join(', ')}; not ${unknown.join(', ')}`);
+  const row = dayRow(j, day), fields = {}, said = [];
+  const names = librarian(j, { newId });
+
+  if ('plan' in input) {
+    const text = input.plan === null ? '' : String(input.plan).trim();
+    if (text.length > MAX_DAY_NOTE) throw new Error(`plan: ${MAX_DAY_NOTE} characters at most`);
+    if ((row.plan ?? null) !== (text || null)) fields.plan = text || null;
+  }
+  let list = row.focus_list.map(f => ({ ...f }));
+  if ('focus' in input) {
+    const raw = input.focus;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error("focus: an object by ticker, { NVDA: { side: 'long', setups: ['EMA 21 bounce'], note: '...' } }, null takes one off");
+    for (const [ref, want] of Object.entries(raw)) {
+      const symbol = missedSymbol(ref);
+      if (!symbol) throw new Error(`${ref} isn't a ticker`);
+      const at = list.findIndex(f => f.symbol === symbol);
+      if (want === null) { if (at >= 0) list.splice(at, 1); continue; }
+      if (typeof want !== 'object' || Array.isArray(want)) throw new Error(`${symbol}: { side, setups, note }, or null to take it off`);
+      const bad = Object.keys(want).filter(k => !FOCUS_FIELDS.includes(k));
+      if (bad.length) throw new Error(`${symbol} takes ${FOCUS_FIELDS.join(', ')}; not ${bad.join(', ')}`);
+      const f = at >= 0 ? list[at] : { id: newId(), symbol, side: null, setups: [], note: null, played: null, review: null };
+      if ('side' in want) {
+        const side = want.side === null ? null : norm(want.side);
+        if (side !== null && !MISSED_SIDES.some(([k]) => k === side)) throw new Error(`${symbol} side: long or short, or null`);
+        f.side = side;
+      }
+      if ('setups' in want) {
+        const refs = want.setups === null || want.setups === '' ? [] : Array.isArray(want.setups) ? want.setups : [want.setups];
+        if (refs.length > MAX_MISSED_PICKS) throw new Error(`${symbol}: ${MAX_MISSED_PICKS} setups at most`);
+        f.setups = [...new Set(refs.map(r => names.itemKey('setup', r)))];
+      }
+      if ('note' in want) {
+        const text = want.note === null ? '' : String(want.note).trim();
+        if (text.length > MAX_FOCUS_NOTE) throw new Error(`${symbol} note: ${MAX_FOCUS_NOTE} characters at most`);
+        f.note = text || null;
+      }
+      if (at < 0) {
+        if (list.length >= MAX_FOCUS_ITEMS) throw new Error(`${MAX_FOCUS_ITEMS} tickers on a focus list at most; ${day}'s has ${list.map(x => x.symbol).join(', ')}`);
+        list.push(f);
+      }
+    }
+    list = cleanFocusList(list);
+    if (JSON.stringify(list) !== JSON.stringify(row.focus_list)) fields.focus_list = list;
+  }
+  said.push(...names.said);
+  const notebook = Object.keys(fields).length ? [{ day, fields }] : [];
+  return { changes: { library: names.library, reviews: [], labels_remove: [], labels_add: [], days: [], notebook }, said, after: { ...row, ...fields } };
+}
+
+/** a focus ticker in words: 'NVDA · long · EMA 21 bounce, ORB · the note' */
+const focusLine = (j, f) => [f.symbol, f.side, f.setups.map(k => j.lib.nameOf('setup', k, f.side || 'long')).join(', '), f.note,
+  f.played ? `played: ${FOCUS_PLAYED.find(([k]) => k === f.played)?.[1]}` : '', f.review ? `review: ${f.review}` : ''].filter(Boolean).join(' · ');
+
+/** a day's premarket plan: the last focus, the plan and the focus list */
+export function planDetail(j, day) {
+  const row = dayRow(j, day), last = lastFocus(j.notebook, day);
+  return [
+    `${day} (${WEEKDAYS[new Date(`${day}T12:00:00Z`).getUTCDay()]}) premarket`,
+    ...(last ? [`last focus (${last.day}): ${last.text}`] : []),
+    `plan: ${row.plan ? `\n${row.plan.split('\n').map(l => `  ${l}`).join('\n')}` : '—'}`,
+    `focus list (${row.focus_list.length} of ${MAX_FOCUS_ITEMS}):`,
+    ...(row.focus_list.length ? row.focus_list.map(f => `  ${focusLine(j, f)}`) : ['  —']),
   ].join('\n');
 }
 

@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { dayDetail, FEATURE_TABLE_COLUMNS, featureCoverageText, featureTable, findItem, findTrades, handleOf, journalFrom, periodDetail, planDay, planPeriod, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
+import { dayDetail, FEATURE_TABLE_COLUMNS, featureCoverageText, featureTable, findItem, findTrades, handleOf, journalFrom, periodDetail, planDay, planDetail, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
 import { FEATURES, featureVersion } from '../src/core/features/index.js';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
@@ -235,6 +235,60 @@ test("the whole day: its market, P&L, trades and the review in words, with what'
   assert.match(text, /missing: a grade, 1 rule and what went well or what to work on$/);
 });
 
+// ---------- the day's plan (the notebook's premarket half: the plan and the focus list) ----------
+
+const NEXT = '2026-10-26';
+const SETUPS = [{ id: 's1', kind: 'pattern', name: 'EMA 21 bounce' }, { id: 's2', kind: 'setup', name: 'EMA 21 bounce', settings: { pattern: 'mine:s1' } }];
+const FOCUS_KEPT_ROW = { id: 'f1', symbol: 'AMD', side: 'short', setups: [], note: 'Under 150.', played: 'worked', review: 'Clean fade.' };
+const PLAN_DATA = { ...DATA, library: [...RULES, ...SETUPS], days: [{ day: NEXT, focus_list: [FOCUS_KEPT_ROW] }] };
+
+test("a day's plan becomes the notebook's changes: the plan text, tickers added or changed by symbol, setups matched or added", () => {
+  const j = journalFrom(PLAN_DATA);
+  const p = planPremarket(j, NEXT, {
+    plan: '  Trade only the open drive. ',
+    focus: { nvda: { side: 'Long', setups: ['ema 21 bounce'], note: 'Reclaim of 180, stop under the LOD.' }, AMD: { note: 'Under 148 now.' }, TSLA: { setups: ['Gap fill'] } },
+  }, opts);
+  const [amd, nvda, tsla] = p.changes.notebook[0].fields.focus_list;
+  assert.equal(p.changes.notebook[0].fields.plan, 'Trade only the open drive.');
+  assert.deepEqual(p.changes.notebook[0].fields.focus_list.map(f => f.symbol), ['AMD', 'NVDA', 'TSLA'], 'the list as it was, new ones after');
+  assert.deepEqual(amd, { ...FOCUS_KEPT_ROW, note: 'Under 148 now.' }, 'a ticker already there keeps its id, side, how it played and its review');
+  assert.deepEqual({ ...nvda, id: 'x' }, { id: 'x', symbol: 'NVDA', side: 'long', setups: ['mine:s2'], note: 'Reclaim of 180, stop under the LOD.', played: null, review: null });
+  assert.equal(p.changes.library.length, 2, 'Gap fill: a pattern and the setup made of it');
+  assert.deepEqual(tsla.setups, [`mine:${p.changes.library[1].id}`]);
+  assert.match(p.said.join('\n'), /New setup in My setups: Gap fill\./);
+  assert.deepEqual([p.changes.reviews, p.changes.days, p.changes.labels_add], [[], [], []]);
+});
+
+test("a day's plan again: the same changes nothing, null takes a ticker off and clears the plan", () => {
+  const j = journalFrom({ ...PLAN_DATA, days: [{ day: NEXT, plan: 'Open drive.', focus_list: [FOCUS_KEPT_ROW] }] });
+  assert.deepEqual(planPremarket(j, NEXT, { plan: 'Open drive.', focus: { AMD: { note: 'Under 150.' } } }, opts).changes.notebook, []);
+  assert.deepEqual(planPremarket(j, NEXT, { plan: null, focus: { AMD: null, QQQ: null } }, opts).changes.notebook,
+    [{ day: NEXT, fields: { plan: null, focus_list: [] } }]);
+});
+
+test("a day's plan that can't be: an unknown field, a bad ticker, side or note, a 13th ticker, a bad day", () => {
+  const j = journalFrom(PLAN_DATA);
+  assert.throws(() => planPremarket(j, NEXT, { grade: 'B' }), /a day's plan takes plan, focus; not grade/);
+  assert.throws(() => planPremarket(j, NEXT, { focus: ['NVDA'] }), /focus: an object by ticker/);
+  assert.throws(() => planPremarket(j, NEXT, { focus: { 'not a ticker': {} } }), /isn't a ticker/);
+  assert.throws(() => planPremarket(j, NEXT, { focus: { NVDA: { side: 'up' } } }), /NVDA side: long or short/);
+  assert.throws(() => planPremarket(j, NEXT, { focus: { NVDA: { played: 'worked' } } }), /NVDA takes side, setups, note; not played/);
+  assert.throws(() => planPremarket(j, NEXT, { focus: { NVDA: { note: 'x'.repeat(501) } } }), /NVDA note: 500 characters at most/);
+  assert.throws(() => planPremarket(j, NEXT, { plan: 'x'.repeat(5001) }), /plan: 5000 characters at most/);
+  const many = Object.fromEntries(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map(s => [s, {}]));
+  assert.throws(() => planPremarket(j, NEXT, { focus: many }), /12 tickers on a focus list at most; 2026-10-26's has AMD, A, B/);
+  assert.throws(() => planPremarket(j, '2026-02-30', { plan: 'x' }), /a day as YYYY-MM-DD/);
+});
+
+test("the day's plan in words: the last focus, the plan and each ticker", () => {
+  const j = journalFrom({ ...PLAN_DATA, days: [{ day: DAY, focus_next: 'Name the setup first.' }, { day: NEXT, plan: 'Open drive.\nNothing after 11.', focus_list: [FOCUS_KEPT_ROW, { id: 'f2', symbol: 'NVDA', side: 'long', setups: ['mine:s2'], note: null }] }] });
+  assert.equal(planDetail(j, NEXT), [
+    '2026-10-26 (Mon) premarket', 'last focus (2026-10-23): Name the setup first.', 'plan: ', '  Open drive.', '  Nothing after 11.',
+    'focus list (2 of 12):', '  AMD · short · Under 150. · played: Worked · review: Clean fade.', '  NVDA · long · EMA 21 bounce',
+  ].join('\n'));
+  assert.match(planDetail(journalFrom(DATA), NEXT), /plan: —\nfocus list \(0 of 12\):\n  —$/);
+});
+
 // ---------- a week's or month's review (period_reviews) ----------
 
 const MONDAY = '2026-10-19';
@@ -388,9 +442,9 @@ test('the features read: its own keyed function returning every trade_features r
 
 const SCRIPT = fileURLToPath(new URL('../scripts/journal.mjs', import.meta.url));
 const PRELOAD = fileURLToPath(new URL('./helpers/journal-fetch.mjs', import.meta.url));
-function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA, oldSave = false, features = [], noFeatures = false } = {}) {
+function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA, oldSave = false, features = [], noFeatures = false, noPlan = false } = {}) {
   const file = join(mkdtempSync(join(tmpdir(), 'journal-')), 'fake.json');
-  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data, oldSave, features, noFeatures }));
+  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data, oldSave, features, noFeatures, noPlan }));
   const env = { ...process.env, FAKE_JOURNAL: file, JOURNAL_KEY: key };
   for (const k of ['HTTPS_PROXY', 'https_proxy', 'NODE_USE_ENV_PROXY']) delete env[k];
   const r = spawnSync(process.execPath, ['--import', PRELOAD, SCRIPT, ...args], { env, encoding: 'utf8' });
@@ -491,6 +545,25 @@ test("the script: shows a week or a month, saves its review, a dry run saves not
   assert.match(old.stderr, /npx supabase db push/);
 });
 
+test("the script: shows a day's plan, saves it, a dry run saves nothing, a database before the migration says so", () => {
+  const show = script(['plan', NEXT], { data: PLAN_DATA });
+  assert.equal(show.status, 0, show.stderr);
+  assert.match(show.stdout, /^2026-10-26 \(Mon\) premarket\n/);
+  const input = JSON.stringify({ plan: 'Open drive only.', focus: { NVDA: { side: 'long', setups: ['EMA 21 bounce'], note: 'Reclaim of 180.' } } });
+  const dry = script(['plan', NEXT, input, '--dry-run'], { data: PLAN_DATA });
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.deepEqual(dry.saves, []);
+  assert.match(dry.stdout, /"focus_list"/);
+  const saved = script(['plan', NEXT, input], { data: PLAN_DATA });
+  assert.equal(saved.status, 0, saved.stderr);
+  assert.deepEqual(saved.saves[0].notebook[0].fields.focus_list.map(f => [f.symbol, f.setups]), [['AMD', []], ['NVDA', ['mine:s2']]]);
+  assert.match(saved.stdout, /^Saved\./m);
+  assert.match(script(['plan'], { data: PLAN_DATA }).stderr, /Which day\?/);
+  const old = script(['plan', NEXT, input], { data: PLAN_DATA, noPlan: true });
+  assert.equal(old.status, 1);
+  assert.match(old.stderr, /doesn't take a day's plan yet: npx supabase db push/);
+});
+
 test('the save function takes the week and month review fields; the read returns the rows', async () => {
   const { readFileSync, readdirSync } = await import('node:fs');
   const dir = new URL('../supabase/migrations/', import.meta.url);
@@ -508,18 +581,22 @@ test('the save function takes the week and month review fields; the read returns
   assert.match(read, /'went_well', d\.went_well/, "the day's review stays");
 });
 
-test('the save function takes the day review fields and nothing else of the notebook; the read returns them', async () => {
+test('the save function takes the day review fields, the plan and the focus list, nothing else of the notebook; the read returns them', async () => {
   const { readFileSync, readdirSync } = await import('node:fs');
   const dir = new URL('../supabase/migrations/', import.meta.url);
   const sql = readdirSync(dir).filter(f => f.endsWith('.sql')).sort().map(f => readFileSync(new URL(f, dir), 'utf8')).join('\n').replace(/--[^\n]*/g, '');
   const last = name => [...sql.matchAll(new RegExp(`create or replace function public\\.${name}\\(p_key text[\\s\\S]*?end \\$\\$;`, 'gi'))].pop()?.[0] || '';
   const save = last('claude_journal_save'), read = last('claude_journal_read');
   assert.match(save, /p_changes->'notebook'/);
-  assert.match(save, /k not in \('grade', 'rules', 'week_rules', 'went_well', 'work_on', 'note', 'focus_next', 'focus_kept', 'reviewed_at'\)/, 'the review half only, never the plan');
+  assert.match(save, /k not in \('grade', 'rules', 'week_rules', 'went_well', 'work_on', 'note', 'focus_next', 'focus_kept', 'reviewed_at', 'plan', 'focus_list'\)/, 'the review, the plan and the focus list; never the check-in or the missed trades');
   assert.match(save, /jsonb_strip_nulls\(coalesce\(d\.week_rules, '\{\}'\) \|\| \(f->'week_rules'\)\)/, 'week rules merge one at a time too');
   assert.match(save, /jsonb_strip_nulls\(coalesce\(p\.rules_kept, '\{\}'\) \|\| \(f->'rules_kept'\)\)/, 'Kept it? merges one rule at a time');
   assert.match(save, /rules_next = case when f \? 'rules_next' then coalesce\(f->'rules_next', '\[\]'\)/, 'the list is replaced whole');
   assert.match(read, /'week_rules', d\.week_rules/);
+  assert.match(read, /'plan', d\.plan, 'focus_list', d\.focus_list/, "each day's plan and focus list");
+  assert.match(save, /focus_list = case when f \? 'focus_list' then coalesce\(f->'focus_list', '\[\]'\)/, 'the focus list is replaced whole');
+  assert.match(save, /jsonb_array_length\(f->'focus_list'\) > 12/, 'twelve tickers at most, as the app keeps');
+  assert.doesNotMatch(save, /feelings|energy|sleep_hours|missed =|planned_at/, 'the check-in, the missed trades and the plan stamp stay out of reach');
   assert.match(read, /'rules_next', p\.rules_next, 'rules_kept', p\.rules_kept, 'rules_note', p\.rules_note/);
   assert.match(save, /jsonb_strip_nulls\(coalesce\(d\.rules, '\{\}'\) \|\| \(f->'rules'\)\)/, 'rules merge one at a time, null clears one');
   assert.match(read, /'order_plans', coalesce/, 'the read keeps the order plans');
