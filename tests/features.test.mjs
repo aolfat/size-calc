@@ -366,10 +366,7 @@ test('ATRs from the moving averages: (price − average) ÷ the daily ATR, daily
   assert.deepEqual(FEATURES.filter(f => f.family.key === 'averages').map(f => f.key), keys, 'the fifteen averages, in order');
   // worked out here a second way: Wilder's ATR(14) over the 300 sessions before, the averages over their closes
   const prior = data.daily.get('AAPL').filter(b => b.date < D);
-  const days = prior.slice(-300);
-  const tr = days.slice(1).map((b, i) => Math.max(b.high - b.low, Math.abs(b.high - days[i].close), Math.abs(b.low - days[i].close)));
-  let atr = tr.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
-  for (const t of tr.slice(14)) atr = (atr * 13 + t) / 14;
+  const days = prior.slice(-300), atr = wilder14(prior);
   const ema = (closes, n, price) => {
     let e = closes.slice(0, n).reduce((a, b) => a + b, 0) / n;
     for (const c of closes.slice(n)) e = c * 2 / (n + 1) + e * (1 - 2 / (n + 1));
@@ -463,6 +460,9 @@ test('distances inside the day in ADRs: VWAP, the low and the high of day so far
   const dl = data.daily.get('AAPL'), open = dl.find(b => b.date === D).open, prev = dl.filter(b => b.date < D).at(-1).close;
   near(result(byKey('gap_atr'), stock('10:02'), data).value, (open - prev) / atr, 'the gap');
   assert.equal(result(byKey('gap_atr'), stock('08:10'), data).note, 'entered before the open');
+  const splitGap = result(byKey('gap_atr'), stock('10:02'), split);
+  near(splitGap.value, (open - prev) / atr, 'the gap across a split');
+  assert.ok(splitGap.note.startsWith(`ATR $${atr.toFixed(2)} (`), `the note's dollars in the day's own prices: ${splitGap.note}`);
   // the all-time high, in ATRs
   const top = Math.max(...dl.filter(b => b.date < D).map(b => b.high), Math.max(...morning.map(b => b.high), bars.find(b => b.time === '10:00').open));
   near(result(byKey('atr_from_ath'), stock('10:02'), data, 90).value, (90 - top) / atr, 'under the high');

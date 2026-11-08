@@ -121,7 +121,9 @@ export const LEVEL_FEATURES = [
       const atr = d.atr(ATR_N);
       if (!d.todayOpen || !d.prevClose) return null;
       if (!atr) return fewer(ATR_N + 1, 'ATR');
-      return { value: (d.todayOpen - d.prevClose) / atr, note: yardstickWords('ATR', atr, 1, d.prevClose) };
+      // the note's dollars in the day's own prices where they can be lined up (that day's bars, or your fill), else the history's
+      const basis = ctx.dailyBasis('$underlying', ctx.entryPrice) ?? 1;
+      return { value: (d.todayOpen - d.prevClose) / atr, note: yardstickWords('ATR', atr, basis, d.prevClose) };
     },
   }),
   feature(LEVELS_FAMILY, {

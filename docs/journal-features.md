@@ -90,7 +90,7 @@ feature({
   The average takes that price as its latest close (the day's, or the week's: a weekly average is the finished weeks' closes plus the entry as the week so far), so it matches the chart at that moment and never sees a close to come.
   The ATR is Wilder's ATR(14), what TradingView and thinkorswim show, over the completed sessions before the entry's day; that day's range isn't finished, so it's left out, and every average, weekly ones too, divides by the same daily ATR.
   Windows are fixed so a value never depends on how much was fetched: 300 daily sessions for the daily averages and the ATR, 1300 (about five years) for the weekly closes, so a weekly 50 EMA settles.
-  A stock with too short a history says so ('fewer than 199 daily sessions before'); the note on a value gives the average and the ATR in the history's terms.
+  A stock with too short a history says so ('fewer than 199 daily sessions before'); the note on a value gives the average and the ATR in the day's own prices, the ATR as a % of the close before too.
   A stock's features need no 5-minute bars, so they stamp for every past trade from daily history alone; an option's need its underlying's bars that day.
 - **Distances in ADRs or ATRs, beside the %** (owner request: a % reads the same on a slow name and a fast one): a distance inside the day is in ADRs, one that reaches across days in ATRs.
   ADR is the 20-day average daily range in dollars, (high − low) averaged over the 20 sessions before; ATR is the same Wilder's ATR(14) the moving averages use, so gaps count in it and not in ADR.
