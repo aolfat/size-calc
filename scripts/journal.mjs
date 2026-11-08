@@ -6,6 +6,7 @@
 //   node scripts/journal.mjs trades [--symbol QQQ] [--day 2026-10-23] [--todo] [--open] [--deleted] [--limit 20]
 //   node scripts/journal.mjs show <handle or key>
 //   node scripts/journal.mjs choices [kind]
+//   node scripts/journal.mjs features [--symbol NVDA] [--from 2026-09-01] [--to 2026-10-31] [--out trades.csv] [--coverage]
 //   node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]
 //   node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]
 //   node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]   (month <YYYY-MM> the same way)
@@ -21,10 +22,10 @@
 // or month's: parts ({ name or key: { grade (A+ to F), note } }), wentWell, workOn, note, rulesNext (the whole list, up to
 // 5), rulesKept ({ last one's rule by its text or number: yes | partly | no | null }), rulesNote; null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { SUPABASE_KEY, SUPABASE_URL } from '../src/services/supabase.js';
 import { imageInfo } from '../supabase/functions/claude-model-example/handler.js';
-import { changesAnything, choicesText, dayDetail, findTrades, journalFrom, periodDetail, planDay, planPeriod, planReview, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
+import { changesAnything, choicesText, dayDetail, featureCoverageText, featureTable, findTrades, journalFrom, periodDetail, planDay, planPeriod, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
 import { bookBy, booksFrom, booksText, exampleBy, exampleLine, planBook, planExample, shortId } from './model-books-lib.mjs';
 
 // Node's fetch ignores HTTPS_PROXY unless told to (a cloud session's traffic goes through one): run again with it on
@@ -58,7 +59,7 @@ async function call(fn, body, { edge = false } = {}) {
   const msg = out?.message || text || res.statusText;
   if (/not a Claude key/i.test(msg)) fail('Supabase refused the key: revoked, or not one of yours. Make a new one in Settings → Claude access.');
   if (edge && res.status === 404) fail(`The ${fn} function isn't deployed yet: npx supabase functions deploy ${fn} --no-verify-jwt`);
-  if (res.status === 404 || /could not find the function/i.test(msg)) fail(`The database doesn't have ${/model/.test(fn) ? 'Claude access to Model books' : 'Claude access'} yet: npx supabase db push`);
+  if (res.status === 404 || /could not find the function/i.test(msg)) fail(`The database doesn't have ${/model/.test(fn) ? 'Claude access to Model books' : /features/.test(fn) ? 'Claude access to trade features' : 'Claude access'} yet: npx supabase db push`);
   if (res.status === 403 && !out) fail(`Blocked before Supabase (${res.status}). If this is a cloud session, allow ${new URL(SUPABASE_URL).host} in the environment's network access.`);
   fail(`Supabase refused (${res.status}): ${msg}`);
 }
@@ -66,7 +67,7 @@ async function call(fn, body, { edge = false } = {}) {
 const args = process.argv.slice(2);
 const flag = name => args.includes(`--${name}`);
 const opt = name => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
-const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && ['--symbol', '--day', '--limit'].includes(args[i - 1])));
+const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && ['--symbol', '--day', '--limit', '--from', '--to', '--out'].includes(args[i - 1])));
 const [cmd, ...rest] = positional;
 // a JSON argument may come without a ref before it (book '<json>' makes a new book)
 const [ref, json] = rest.length === 1 && /^\s*\{/.test(rest[0]) ? [undefined, rest[0]] : rest;
@@ -96,6 +97,20 @@ if (cmd === 'trades') {
 } else if (cmd === 'show') {
   const j = await journal();
   console.log(tradeDetail(j, trade(j)));
+} else if (cmd === 'features') {
+  // every closed trade's result beside its features, oldest first: CSV on stdout (or --out), the coverage on stderr
+  for (const d of [opt('from'), opt('to')]) if (d !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(d)) fail(`Not a day: ${d}. Give it as YYYY-MM-DD.`);
+  const [j, stamps] = await Promise.all([journal(), call('claude_features_read', {}).then(stampsFrom)]);
+  const table = featureTable(j, stamps, { symbol: opt('symbol'), from: opt('from'), to: opt('to') });
+  const coverage = featureCoverageText(table, stamps);
+  if (flag('coverage')) { console.log(coverage); process.exit(0); }
+  if (opt('out')) {
+    try { writeFileSync(opt('out'), toCsv(table)); } catch(e) { fail(`Can't write ${opt('out')}: ${e.code || e.message}`); }
+    console.log(`Wrote ${table.rows.length} trades × ${table.columns.length} columns to ${opt('out')}.\n${coverage.split('\n')[0]}`);
+  } else {
+    process.stdout.write(toCsv(table));
+    console.error(coverage.split('\n')[0]);
+  }
 } else if (cmd === 'choices') {
   console.log(choicesText(await journal(), ref || ''));
 } else if (cmd === 'review') {
@@ -177,5 +192,5 @@ if (cmd === 'trades') {
   const after = await books();
   console.log(`Saved. ${exampleLine(after, exampleBy(after, ex.id) || ex)}`);
 } else {
-  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | week <day> [<json>] | month <YYYY-MM> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
+  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | features [--out file] [--coverage] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | week <day> [<json>] | month <YYYY-MM> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
 }

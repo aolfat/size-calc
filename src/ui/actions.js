@@ -41,7 +41,7 @@ import { toggleTradeFeatures } from './journal-features.js';
 import { addJournalFilter, clearJournalFilters, removeJournalFilter, setJournalFilterNot, toggleJournalFilterValue } from './journal-filters.js';
 import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { reviewUpNext, skipUpNext } from './journal-cards.js';
-import { setCalendarMode } from './journal-stats.js';
+import { setCalendarMode, setStatsFeature, setStatsFeatureMode } from './journal-stats.js';
 import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, cancelSetupEdit, editSetup, newLibrarySetup, startLibraryChoice, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, reviewSearchInput, reviewSearchPick, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
@@ -126,6 +126,8 @@ export const actions = {
   // ---------- the notebook: a page per trading day ----------
   openJournalDay: el => openJournalDay(arg(el)),
   setCalendarMode: el => setCalendarMode(arg(el)),
+  setStatsFeature: el => setStatsFeature(/** @type {HTMLSelectElement} */ (el).value),
+  setStatsFeatureMode: el => setStatsFeatureMode(arg(el)),
   closeJournalDay: () => closeJournalDay(),
   reviewJournalDay: el => reviewJournalDay(arg(el)),
   stepJournalDay: el => stepJournalDay(arg(el)),

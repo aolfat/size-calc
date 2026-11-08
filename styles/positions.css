@@ -461,6 +461,8 @@ button.jc-day:hover { border-color: var(--border2); }
 .js-range { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--text2); }
 .js-period .seg button, .jc-head > .seg button { padding: 6px 12px; font-size: 12px; }
 .jc-nav:disabled { opacity: 0.4; cursor: default; }
+.js-feature-pick { flex-wrap: wrap; gap: 8px; }
+.js-feature-pick .js-feature-select { max-width: 340px; }
 .jc-out { opacity: 0; }
 .jc-daychip { padding: 5px 10px; font-size: 12px; }
 @media (max-width: 600px) {
@@ -473,6 +475,7 @@ button.jc-day:hover { border-color: var(--border2); }
   .jc-span { flex: 1 0 100%; }
   .jc-span button { flex: 1 1 0; }
   .js-range { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .js-feature-pick .js-feature-select { width: 100%; max-width: none; }
   .js-range label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .js-range .jr-from input { margin-left: 0; width: 100%; min-width: 0; min-height: 40px; }
 }

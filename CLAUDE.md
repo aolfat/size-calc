@@ -73,6 +73,7 @@ A review is written by talking (owner request): ask the owner the page's questio
 It needs the `JOURNAL_KEY` secret and network access to the Supabase host; without them it says what's missing, so pass that on instead of guessing at the journal.
 Show the owner what you'll save (or run `--dry-run`) when a field is your judgment call, and never print or commit the key.
 Model books the same way: `books`, `book`, `add-example <image>` and `example` (docs/claude-access.md).
+To analyze trades against their features (which conditions they fail in), `features` gives every closed trade's result beside its feature values as CSV (`--out file`, `--coverage` for how far they're stamped).
 
 ## Writing these notes
 One sentence per line, in CLAUDE.md and in the area docs: git merges line by line, so two branches adding sentences to the same area only collide when they touch the same sentence.

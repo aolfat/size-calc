@@ -16,7 +16,7 @@ A database without the migration says so in the section.
 
 ## What a key can do
 
-Four database functions take the key in place of a sign-in, and they're the only thing the anonymous role may run (tests/rls.test.mjs allows these alone and checks each starts with the key check).
+Five database functions take the key in place of a sign-in, and they're the only thing the anonymous role may run (tests/rls.test.mjs allows these alone and checks each starts with the key check).
 `claude_key_user` turns a key into its owner and stamps last_used_at; nobody can call it directly.
 `claude_journal_read` returns that owner's records (the newest 5000, as the Journal reads them), shaped trades, reviews, labels, each day's market and the library.
 It returns the order plans too (migration 20261107000000_order_plans.sql redefines it), and `show` prints a trade's under 'order plan:' the way the trade page does (docs/journal.md), for analyzing risk as a % of the account and how stops were set.
@@ -28,6 +28,7 @@ The rest of the notebook (the premarket plan, the check-in, the focus list, the 
 Rule answers merge one rule at a time, and a null answer clears that rule's.
 `claude_model_books_read` (migration 20261108000000_claude_model_books.sql) returns that owner's books, examples (no image links) and library.
 `claude_model_books_save` makes and renames books and edits an example's title, notes, setups and book; it can't delete either, and a new example only comes with its screenshot, below.
+`claude_features_read` (migration 20261118000000_claude_features_read.sql) returns that owner's trade feature stamps (trade_features, docs/journal-features.md), read only; it's its own function because stamps run a few KB a trade and only `features` needs them.
 Every row it touches is the key owner's; the tables' own checks still apply.
 
 ## Model books screenshots
@@ -72,6 +73,10 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 - `node scripts/journal.mjs trades [--symbol QQQ] [--day 2026-10-23] [--todo] [--open] [--limit 20]`: one line per trade, newest first, starting with its handle (`t` and 7 hex of the key's SHA-256).
 - `node scripts/journal.mjs show <handle or key>`: the numbers, the fills and the review in words, with what's missing.
 - `node scripts/journal.mjs choices [kind]`: your choices with their keys.
+- `node scripts/journal.mjs features [--symbol NVDA] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--out trades.csv] [--coverage]`: every closed trade (not deleted, not from before your history), oldest first, one CSV row each: handle, open and close times (ET), symbol, underlying, type, side, status, market, setups, tactics, mistakes, grade, plan, qty, entry, exit, P&L (before fees), risk, R, minutes held, then every feature's value by its key.
+  A feature not stamped yet, stamped by an older version or unknown is empty, so the table only ever holds current values.
+  The CSV goes to stdout (or `--out`), with the coverage's first line on stderr; `--coverage` prints, per feature, how many trades have a value, how many are unknown (with the commonest reason) and how many aren't stamped yet.
+  It's what an analysis of the trades runs on (owner request: which conditions your trades fail in); the analysis itself is a conversation, in the owner's words where it becomes a rule.
 - `node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]`: saves a review and prints the trade after; a dry run prints the changes instead.
 - `node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day: its market, P&L, trades, and its review (this week's rules numbered) with what's missing; with it, saves the day's review and prints the day after.
 - `node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]` and `month <YYYY-MM> ...`: without JSON, the week (by its Monday) or month: its P&L from the exits taken in it, its trades, the rules the last one set (numbered, how the days checked each, Kept it?, how they went), each part's grade and note and the rules for next one with what's missing; with it, saves the review and prints it after.
