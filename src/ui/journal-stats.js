@@ -4,9 +4,11 @@
 // review (ui/journal-week.js, Review the month the month's), This month comes back to today's; Dates lays out any span of days the same way. The stats cover all time (closed trades) or one day, week or month of exits, the
 // same ones the calendar adds up (‹ › step through the ones with exits), or the exits between two dates you pick: the headline numbers, the equity curve with its drawdown, results by month (or by day),
 // streaks and the breakdowns, each group with the same stats, thin under 10. The Journal's side, symbol and fee choices
-// apply here too.
+// apply here too. By a feature splits the same trades by any trade feature's value (core/feature-stats.js).
 // A dot marks a day's economic releases, with a hover card of their times (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
+import { featureBreakdown, FEATURE_GROUP_MODES } from '../core/feature-stats.js';
+import { FEATURE_FAMILIES, FEATURES } from '../core/features/index.js';
 import { holdWords } from '../core/journal.js';
 import { activeMonths, activePeriods, breakdowns, byPlan, calendarMonth, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, stepPeriod, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
 import { DESKTOP_MQ, mq, SANS_FONT } from '../lib/media.js';
@@ -392,6 +394,38 @@ function planTable(list) {
   return rows.length ? statTable('With a plan or without', rows, `By the day it opened, from your first notebook day (${shortDay(since)}). No plan unless the day's plan box has words.`) : '';
 }
 
+/** the feature By a feature shows: the one picked, else the first */
+const statsFeature = () => FEATURES.find(f => f.key === state.statsFeature) || FEATURES[0];
+/** By a feature shows this feature (a key from the picker) */
+export function setStatsFeature(key) { if (FEATURES.some(f => f.key === key)) state.statsFeature = key; renderJournal(); }
+/** By a feature splits into five even groups or at the feature's own cut points */
+export function setStatsFeatureMode(mode) { state.statsFeatureMode = FEATURE_GROUP_MODES.includes(mode) ? mode : 'even'; renderJournal(); }
+
+/**
+ * By a feature: pick any feature and see these trades split by its value, the same columns as every table here. Says
+ * how many have a value, are unknown or aren't stamped yet, and warns that with this many features some splits look
+ * meaningful by chance.
+ */
+function featureSection(list) {
+  const head = '<div class="section-title js-sub">By a feature</div>';
+  if (state.featuresError) return `${head}<p class="hint">Features need the database update: npx supabase db push.</p>`;
+  if (!state.featureStamps) return `${head}<p class="hint">${state.session ? 'Features load with the Journal.' : 'Sign in to see your trades by their features.'}</p>`;
+  const f = statsFeature(), mode = state.statsFeatureMode === 'cuts' && f.bins?.length ? 'cuts' : 'even';
+  const options = FEATURE_FAMILIES.map(fam => {
+    const list = FEATURES.filter(x => x.family.key === fam.key);
+    return list.length ? `<optgroup label="${esc(fam.name)}">${list.map(x => `<option value="${x.key}"${x.key === f.key ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</optgroup>` : '';
+  }).join('');
+  const on = v => `class="${mode === v ? 'active' : ''}" aria-pressed="${mode === v}"`;
+  const modes = f.values?.length ? '' : `<div class="seg" aria-label="Groups"><button ${on('even')} data-action="setStatsFeatureMode" data-arg="even">Five even groups</button>${f.bins?.length ? `<button ${on('cuts')} data-action="setStatsFeatureMode" data-arg="cuts">Cut points</button>` : ''}</div>`;
+  const b = featureBreakdown(list, state.featureStamps, f, mode);
+  const count = `${b.valued} of ${b.total} trade${b.total === 1 ? '' : 's'} with a value${b.unknown ? `, ${b.unknown} unknown` : ''}${b.pending ? `, ${b.pending} not stamped yet` : ''}.`;
+  const table = b.rows.length ? statTable(esc(f.name), b.rows, `${esc(f.desc)} ${count}`, 'Value', { withR: true })
+    : `<p class="hint">${count} Nothing to split yet.</p>`;
+  return `${head}<div class="jc-head js-feature-pick"><select id="statsFeature" class="journal-setup-filter js-feature-select" data-change="setStatsFeature" aria-label="Feature">${options}</select>${modes}</div>
+    ${table}
+    <p class="hint">With ${FEATURES.length} features, some splits will look meaningful by chance. Trust a pattern with plenty of trades in each group, one that holds in both your older and newer trades.</p>`;
+}
+
 export function statsView(trades) {
   if (!countedTrades(trades).length && !activePeriods(trades, 'day').length) return '<p class="hint">No closed trades match yet.</p>';
   const scope = statsScope(trades), { unit, key, list } = scope;
@@ -413,6 +447,7 @@ export function statsView(trades) {
     ${statTable('By hold time', b.byHold, hold)}
     ${statTable('Scaled out or all at once', b.byExits, 'Scaled out: more than one exit.')}
     ${rBars(b.rDistribution, b.withR)}
+    ${featureSection(list)}
     <p class="hint">${unit === 'all' ? 'Closed trades only, by the day they closed' : `The exits taken ${scopeWords(unit)}, like the calendar: a trim counts here even while the rest is still open or closes later`} (New York time). Deleted trades and trades from before your history don't count. Groups under ${THIN} trades are marked thin.</p>`;
 }
 
