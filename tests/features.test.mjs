@@ -124,7 +124,7 @@ test('every feature keeps its contract: a unique key, a version, its family, onl
     assert.ok(f.name && f.desc, `${f.key} has a name and says what it measures`);
     assert.ok(['entry', 'exit'].includes(f.at));
     assert.ok(FEATURE_FAMILIES.includes(f.family), `${f.key} is in a listed family`);
-    assert.ok(['%', 'x', ''].includes(f.unit));
+    assert.ok(['%', 'x', 'atr', ''].includes(f.unit));
     assert.deepEqual(Object.keys(f.needs).filter(k => !['intraday', 'lookback', 'daily', 'dailySessions', 'session'].includes(k)), [], `${f.key}: only known needs`);
     assert.match(featureVersion(f), /^\d+\.\d+$/);
     assert.ok(featureNeedsWords(f), `${f.key} says what it reads`);
@@ -357,6 +357,63 @@ test('distance from the all-time high: the highest high before the entry, that d
   const open = data.daily.get('AAPL').find(b => b.date === D).open;
   const off = computeFeature(f, featureContext(stock('10:02'), at('10:02'), { ...data, intraday: new Map() }, { ...later, entryPrice: open / 1.42 }));
   assert.deepEqual([off.state, off.note], ['unknown', "the daily history doesn't line up with your entry (a split?)"]);
+});
+
+test('ATRs from the moving averages: (price − average) ÷ the daily ATR, daily and weekly, the entry as the latest close', () => {
+  const data = world();
+  const keys = ['daily_ema8', 'daily_ema9', 'daily_sma10', 'daily_sma20', 'daily_ema21', 'daily_sma50', 'daily_ema50', 'daily_sma100', 'daily_sma200',
+    'weekly_ema8', 'weekly_ema9', 'weekly_sma10', 'weekly_ema21', 'weekly_sma50', 'weekly_ema50'].map(k => `atr_from_${k}`);
+  assert.deepEqual(FEATURES.filter(f => f.family.key === 'averages').map(f => f.key), keys, 'the fifteen averages, in order');
+  // worked out here a second way: Wilder's ATR(14) over the 300 sessions before, the averages over their closes
+  const prior = data.daily.get('AAPL').filter(b => b.date < D);
+  const days = prior.slice(-300);
+  const tr = days.slice(1).map((b, i) => Math.max(b.high - b.low, Math.abs(b.high - days[i].close), Math.abs(b.low - days[i].close)));
+  let atr = tr.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
+  for (const t of tr.slice(14)) atr = (atr * 13 + t) / 14;
+  const ema = (closes, n, price) => {
+    let e = closes.slice(0, n).reduce((a, b) => a + b, 0) / n;
+    for (const c of closes.slice(n)) e = c * 2 / (n + 1) + e * (1 - 2 / (n + 1));
+    return price * 2 / (n + 1) + e * (1 - 2 / (n + 1));
+  };
+  const sma = (closes, n, price) => (closes.slice(-(n - 1)).reduce((a, b) => a + b, 0) + price) / n;
+  // weeks by their number since the epoch (day 0 was a Thursday, so +3 starts them on Monday); the entry's week left out
+  const week = d => Math.floor((Date.parse(d + 'T12:00:00Z') / 864e5 + 3) / 7);
+  const weekly = [];
+  for (const b of prior.filter(b => week(b.date) !== week(D))) {
+    if (weekly.length && weekly.at(-1).w === week(b.date)) weekly.at(-1).c = b.close; else weekly.push({ w: week(b.date), c: b.close });
+  }
+  const wc = weekly.map(x => x.c), dc = days.map(b => b.close);
+  const price = 101.37;
+  const want = {
+    atr_from_daily_ema8: ema(dc, 8, price), atr_from_daily_sma50: sma(dc, 50, price), atr_from_daily_ema50: ema(dc, 50, price), atr_from_daily_sma200: sma(dc, 200, price),
+    atr_from_weekly_sma10: sma(wc, 10, price), atr_from_weekly_ema21: ema(wc, 21, price), atr_from_weekly_sma50: sma(wc, 50, price),
+  };
+  for (const [k, avg] of Object.entries(want)) {
+    const r = result(byKey(k), stock('10:02'), data, price);
+    assert.equal(r.state, 'value', k);
+    near(r.value, (price - avg) / atr, k);
+    assert.match(r.note, /^\d+ [ES]MA [\d.]+ · ATR [\d.]+$/, `${k} says the average and the ATR`);
+  }
+  for (const k of keys) assert.equal(result(byKey(k), stock('10:02'), data).state, 'value', `${k} on the fixture`);
+  // an option: the underlying's last price at the moment (the 9:55 bar's close at 10:02), never the contract's
+  const under = data.intraday.get('AAPL').get(D).find(b => b.time === '09:55').close;
+  near(result(byKey('atr_from_daily_sma50'), call('10:02'), data).value, (under - sma(dc, 50, under)) / atr, 'the underlying');
+  // the history adjusted for a split since: the fill is put in the same terms, and ATRs don't care about the scale
+  const split = { ...data, daily: new Map([...data.daily].map(([s, b]) => [s, s === 'AAPL' ? b.map(x => ({ ...x, open: x.open / 4, high: x.high / 4, low: x.low / 4, close: x.close / 4 })) : b])) };
+  near(result(byKey('atr_from_daily_sma50'), stock('10:02'), split, price).value, (price - want.atr_from_daily_sma50) / atr, 'the same across a split');
+  // a young stock: too few sessions or weeks for the long averages, said so
+  const young = { ...data, daily: new Map([...data.daily].map(([s, b]) => [s, s === 'AAPL' ? b.slice(-110) : b])) };
+  assert.deepEqual(result(byKey('atr_from_daily_sma200'), stock('10:02'), young), { state: 'unknown', value: null, note: 'fewer than 199 daily sessions before' });
+  assert.deepEqual(result(byKey('atr_from_weekly_sma50'), stock('10:02'), young), { state: 'unknown', value: null, note: 'fewer than 49 weeks before' });
+  assert.equal(result(byKey('atr_from_daily_sma100'), stock('10:02'), young).state, 'value', '100 sessions are enough for the 100 SMA');
+  // a stock's fill needs no 5-minute bars: an old trade stamps from daily history alone
+  const old = computeFeature(byKey('atr_from_weekly_ema8'), featureContext(stock('10:02'), at('10:02'), { ...data, intraday: new Map() }, { now: NOW + 60 * 864e5, entryPrice: price }));
+  near(old.value, (price - ema(wc, 8, price)) / atr, 'from the daily bars alone');
+  assert.equal(featureValueWords(byKey('atr_from_daily_sma50'), 4.012), '+4.01 ATR');
+  assert.equal(featureValueWords(byKey('atr_from_daily_sma50'), -0.5), '−0.50 ATR');
+  // the weekly ones read about five years of daily bars
+  const needs = featureDataNeeds([{ trade: stock('10:02'), features: [byKey('atr_from_weekly_ema50')] }]);
+  assert.ok(needs.daily.get('AAPL') < '2021-11-01', 'five years back for the weekly closes');
 });
 
 // ---------- stamping ----------

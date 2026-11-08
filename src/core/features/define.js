@@ -11,7 +11,7 @@
  * @typedef {number | string | null | { value: number | string | null, note?: string }} FeatureOutput
  *   a number, a word from `values`, or null (unknown); with a note to say how it was found or why it isn't known
  * @typedef {{ key: string, name: string, desc: string, version: number, at: 'entry' | 'exit', needs: FeatureNeeds,
- *   unit?: '%' | 'x' | '', values?: [string, string][], bins?: number[], family: FeatureFamily,
+ *   unit?: '%' | 'x' | 'atr' | '', values?: [string, string][], bins?: number[], family: FeatureFamily,
  *   compute: (ctx: import('./context.js').FeatureContext) => FeatureOutput }} Feature
  *   key: permanent, never reused. name and desc: free to change (nothing restamps). version: bump when what it measures
  *   changes. bins: where Stats will cut it later (part 3); changing them never restamps.
