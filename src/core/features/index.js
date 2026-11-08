@@ -168,13 +168,13 @@ export function featureCoverage(f, trades, stampsByKey) {
   return { total: list.length, value, unknown, pending: list.length - value - unknown, reasons: [...reasons].sort((a, b) => b[1] - a[1]) };
 }
 
-/** a stamped value in words: '+1.23%', '2.34×', '+4.01 ATR', a word's name, or '—' @param {Feature} f @param {number | string | null | undefined} value */
+/** a stamped value in words: '+1.23%', '2.34×', '+4.01 ATR', '+0.50 ADR', a word's name, or '—' @param {Feature} f @param {number | string | null | undefined} value */
 export function featureValueWords(f, value) {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'string') return (f.values || []).find(([k]) => k === value)?.[1] || value;
   if (f.unit === '%') return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(2)}%`;
   if (f.unit === 'x') return `${value.toFixed(2)}×`;
-  if (f.unit === 'atr') return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(2)} ATR`;
+  if (f.unit === 'atr' || f.unit === 'adr') return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(2)} ${f.unit.toUpperCase()}`;
   return String(value);
 }
 

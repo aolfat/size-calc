@@ -6,11 +6,13 @@ import { family, feature } from './define.js';
 export const AVERAGES_FAMILY = family({ key: 'averages', name: 'Moving averages', version: 1 });
 
 /** daily sessions a daily average and the ATR are worked out over: room for a 200 SMA, and for a 50 EMA to settle */
-const DAILY_SESSIONS = 300;
+export const DAILY_SESSIONS = 300;
 /** daily sessions the weekly closes come from: about five years, so a weekly 50 EMA settles */
 const WEEKLY_SESSIONS = 1300;
 /** the ATR's length, in sessions */
-const ATR_N = 14;
+export const ATR_N = 14;
+/** the ADR's length, in sessions: what a distance inside the day is measured in */
+export const ADR_N = 20;
 
 /**
  * The stock's price at the moment, in the daily history's terms: your fill for a stock, the underlying's last price for
@@ -18,7 +20,7 @@ const ATR_N = 14;
  * @param {import('./context.js').FeatureContext} ctx
  * @returns {{ price: number } | { value: null, note: string } | null}
  */
-function priceNow(ctx) {
+export function priceNow(ctx) {
   const raw = ctx.entryPrice ?? ctx.intraday('$underlying', { session: 'all' })?.price ?? null;
   if (!raw) return { value: null, note: 'no price for the stock at your entry' };
   const basis = ctx.dailyBasis('$underlying', raw);

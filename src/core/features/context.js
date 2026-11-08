@@ -3,7 +3,7 @@
 // cut off there, so no feature can look ahead. Intraday bars are the saved 5-minute ones: a bar counts once it has ended
 // (it starts 09:40 and the moment is 09:45 or later); the bar the moment falls in shows only its open, which was known
 // when it started. Daily bars are the days before the moment's day, plus that day's open once it's 9:30. The shared
-// helpers (VWAP, volume so far, the volume by the same time on earlier days (average or median), daily and weekly EMAs and SMAs, ATR, highs) are worked out once per trade
+// helpers (VWAP, volume so far, the volume by the same time on earlier days (average or median), daily and weekly EMAs and SMAs, ATR, ADR, highs) are worked out once per trade
 // and moment, whichever feature asks first. Every read notes what was missing: data that could still come (a day the
 // bar saver hasn't got to, today's bars, daily bars not read yet) makes the feature wait; data gone for good makes it
 // unknown. Every read is also recorded, so a test can check a feature only reads what its `needs` declare.
@@ -99,6 +99,16 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
       open: first && clock >= OPEN ? first.open : null,
       /** the high so far: ended bars, and the open of the one in progress */
       high: bars.length || stub !== null ? Math.max(...bars.map(b => b.high), ...(stub === null ? [] : [stub])) : null,
+      /**
+       * the low and high since `from` ('HH:MM'): the ended bars that started then or later, and the open of the one in
+       * progress; null before any
+       * @param {string} from
+       */
+      rangeSince: from => {
+        const xs = bars.filter(b => (b.time || '') >= from).flatMap(b => [b.low, b.high]);
+        if (now && (now.time || '') >= from) xs.push(now.open);
+        return xs.length ? { low: Math.min(...xs), high: Math.max(...xs) } : null;
+      },
       /** the session VWAP over the ended bars (typical price × volume); null before any volume */
       vwap: () => {
         let pv = 0, v = 0;
@@ -212,6 +222,8 @@ export function featureContext(trade, at, data, { now, entryPrice = null }) {
         const e = once(`ema|${s}|${sessions}|${frame}|${n}`, () => emaOf(closes, n));
         return e === null ? null : price * k(n) + e * (1 - k(n));
       },
+      /** the average daily range in dollars: high − low over the last `n` sessions before, averaged; null with fewer @param {number} n */
+      adr: n => once(`adr|${s}|${sessions}|${n}`, () => bars.length < n ? null : bars.slice(-n).reduce((a, b) => a + b.high - b.low, 0) / n),
       /**
        * Wilder's average true range of the sessions before (none of the moment's day, whose range isn't finished): each
        * session's true range is the largest of its high to low and its high and low against the close before; the first

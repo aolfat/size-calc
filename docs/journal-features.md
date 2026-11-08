@@ -92,6 +92,13 @@ feature({
   Windows are fixed so a value never depends on how much was fetched: 300 daily sessions for the daily averages and the ATR, 1300 (about five years) for the weekly closes, so a weekly 50 EMA settles.
   A stock with too short a history says so ('fewer than 199 daily sessions before'); the note on a value gives the average and the ATR in the history's terms.
   A stock's features need no 5-minute bars, so they stamp for every past trade from daily history alone; an option's need its underlying's bars that day.
+- **Distances in ADRs or ATRs, beside the %** (owner request: a % reads the same on a slow name and a fast one): a distance inside the day is in ADRs, one that reaches across days in ATRs.
+  ADR is the 20-day average daily range in dollars, (high − low) averaged over the 20 sessions before; ATR is the same Wilder's ATR(14) the moving averages use, so gaps count in it and not in ADR.
+  Each is the dollars between the price and the level over the yardstick: $10 above VWAP on a $5 ADR is +2 ADR.
+  In ADRs: `adr_from_vwap` (the entry against the regular session's VWAP), `adr_from_lod` and `adr_from_hod` (the entry above the day's low so far, and below its high, both 0 or more).
+  The day's low and high are the regular session's from 9:30 (after-hours too, for an entry after the close) and the premarket's from 4:00 before the open; a stock's fill counts, since it traded, and without that day's 5-minute bars they're unknown, never 0.
+  In ATRs: `gap_atr` (the open against the close before), `atr_from_ath` (the entry against the all-time high), `spy_atr_from_daily_ema8` and `qqq_atr_from_daily_ema8` (each in its own ATR).
+  The % versions stay as they were; the ADR and ATR are in the daily history's terms, so the distance is put in them too (`dailyBasis`) and a split since changes nothing.
 - **VIX at entry** (`vix_at_entry`, and `vix_change_at_entry` against the close the day before): VIX's last 5-minute value at the entry. Without that day's VIX bars (older than the saver's window, or Tradier didn't serve them), the day's daily open from 9:30, else the close before, noted 'the open' or 'prior close', so every past trade gets a reading from daily history alone. Before 9:30 there's no change yet.
 - **Entry over VWAP:** the underlying at the fill time against its session VWAP (for an option, the underlying's, not the option's).
 
