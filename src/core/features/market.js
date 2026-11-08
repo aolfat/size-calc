@@ -1,7 +1,7 @@
 // @ts-check
 // Market features: where the market stood when you took the trade. One generator per kind, so SPY / QQQ / IWM over their
 // daily EMAs are one line each. The VIX reading at the entry, and its move on the day.
-import { ATR_N, DAILY_SESSIONS } from './averages.js';
+import { ATR_N, DAILY_SESSIONS, yardstickWords } from './averages.js';
 import { family, feature } from './define.js';
 
 export const MARKET_FAMILY = family({ key: 'market', name: 'Market', version: 1 });
@@ -52,10 +52,10 @@ const atrsFromDailyEma = (symbol, n) => feature(MARKET_FAMILY, {
       const basis = ctx.dailyBasis(symbol, s.price);
       if (basis === null) return { value: null, note: "the daily history doesn't line up with the day's prices" };
       const price = s.price * basis, e = d.emaWith(n, price);
-      return e && atr ? { value: (price - e) / atr, note: `ATR ${atr.toFixed(2)}` } : null;
+      return e && atr ? { value: (price - e) / atr, note: yardstickWords('ATR', atr, basis, a.prevClose) } : null;
     }
     const e = d.ema(n);
-    return e && atr && d.prevClose ? { value: (d.prevClose - e) / atr, note: `prior close · ATR ${atr.toFixed(2)}` } : null;
+    return e && atr && d.prevClose ? { value: (d.prevClose - e) / atr, note: `prior close · ${yardstickWords('ATR', atr, 1, a.prevClose)}` } : null;
   },
 });
 

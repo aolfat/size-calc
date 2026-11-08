@@ -68,7 +68,7 @@ feature({
 
 ### As built
 
-- **Files:** `src/core/features/` (pure, `// @ts-check`): `define.js` (`family`, `feature`), `context.js` (the cut and the shared helpers), one file per family (`market.js`, `volume.js`, `levels.js`, `averages.js`), `index.js` (FEATURES, due, data needs, compute, stamp, coverage, words). `services/features.js` reads and writes `trade_features` and reads the kept bars; `ui/journal-features.js` runs the stamper and draws the Journal's Features tab and the trade page's Features tab.
+- **Files:** `src/core/features/` (pure, `// @ts-check`): `define.js` (`family`, `feature`), `context.js` (the cut and the shared helpers), one file per family (`market.js`, `volume.js`, `levels.js`, `range.js`, `averages.js`), `index.js` (FEATURES, due, data needs, compute, stamp, coverage, words). `services/features.js` reads and writes `trade_features` and reads the kept bars; `ui/journal-features.js` runs the stamper and draws the Journal's Features tab and the trade page's Features tab.
 - **A feature** also has `desc` (what it measures, for the Features tab). `needs` is `{ intraday, lookback, daily, dailySessions, session }`; the contract test fails a feature that reads anything it doesn't declare, so `needs` stays true and the saver and the stamper can trust it.
 - **The cut:** a 5-minute bar counts once it has ended; the bar the moment falls in shows only its open. Daily bars are the days before the moment's day, plus that day's open from 9:30. The trade itself shows only its symbol, type and open time (and the close, for an exit feature): no exit, P&L or R at the entry.
 - **Stamps:** `trade_features` (migration `20261030000000_trade_features.sql`), `stamps` = `{ key: { v: '<family version>.<feature version>', value, note } }`. Unknown is `value: null` with the why in `note`. Waiting isn't stored: the last run's reasons are kept on the device for the trade page.
@@ -99,6 +99,9 @@ feature({
   The day's low and high are the regular session's from 9:30 (after-hours too, for an entry after the close) and the premarket's from 4:00 before the open; a stock's fill counts, since it traded, and without that day's 5-minute bars they're unknown, never 0.
   In ATRs: `gap_atr` (the open against the close before), `atr_from_ath` (the entry against the all-time high), `spy_atr_from_daily_ema8` and `qqq_atr_from_daily_ema8` (each in its own ATR).
   The % versions stay as they were; the ADR and ATR are in the daily history's terms, so the distance is put in them too (`dailyBasis`) and a split since changes nothing.
+  A distance is a plain count of ADRs or ATRs, never dollars or %; the yardstick itself is both (owner request): its note reads 'ADR $2.22 (2.10%)', the dollars in the day's own prices and the % of the close before.
+- **The daily range** (`range.js`, the Daily range family): the yardsticks stamped on their own, each in dollars and as a %: `adr_20_usd`, `adr_20_pct`, `atr_14_usd`, `atr_14_pct`.
+  The % is the dollar figure over the close before the entry's day, so it's the same ADR or ATR two ways; the dollars are in the day's own prices, so a split since doesn't shrink them.
 - **VIX at entry** (`vix_at_entry`, and `vix_change_at_entry` against the close the day before): VIX's last 5-minute value at the entry. Without that day's VIX bars (older than the saver's window, or Tradier didn't serve them), the day's daily open from 9:30, else the close before, noted 'the open' or 'prior close', so every past trade gets a reading from daily history alone. Before 9:30 there's no change yet.
 - **Entry over VWAP:** the underlying at the fill time against its session VWAP (for an option, the underlying's, not the option's).
 

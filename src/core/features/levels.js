@@ -2,7 +2,7 @@
 // Level features: where the stock was against its own levels when you got in (an option's underlying, never the
 // contract's own price). A distance inside the day (VWAP, the low and high of day) is also given in ADRs, one that
 // reaches across days (the gap, the all-time high) in ATRs, beside the %.
-import { ADR_N, ATR_N, DAILY_SESSIONS } from './averages.js';
+import { ADR_N, ATR_N, DAILY_SESSIONS, yardstickWords } from './averages.js';
 import { family, feature } from './define.js';
 
 export const LEVELS_FAMILY = family({ key: 'levels', name: 'Levels', version: 1 });
@@ -39,7 +39,7 @@ const fromDayRange = side => feature(LEVELS_FAMILY, {
     if (basis === null) return offHistory;
     if (!adr) return fewer(ADR_N, 'ADR');
     const dayAdr = adr / basis, level = side === 'low' ? low : high;
-    return { value: Math.abs(price - level) / dayAdr, note: `${side} ${level.toFixed(2)} · ADR ${dayAdr.toFixed(2)}` };
+    return { value: Math.abs(price - level) / dayAdr, note: `${side} ${level.toFixed(2)} · ${yardstickWords('ADR', adr, basis, d.prevClose)}` };
   },
 });
 
@@ -104,7 +104,7 @@ export const LEVEL_FEATURES = [
       const basis = ctx.dailyBasis('$underlying', price), adr = d.adr(ADR_N);
       if (basis === null) return offHistory;
       if (!adr) return fewer(ADR_N, 'ADR');
-      return { value: (price - vwap) * basis / adr, note: `VWAP ${vwap.toFixed(2)} · ADR ${(adr / basis).toFixed(2)}` };
+      return { value: (price - vwap) * basis / adr, note: `VWAP ${vwap.toFixed(2)} · ${yardstickWords('ADR', adr, basis, d.prevClose)}` };
     },
   }),
   fromDayRange('low'), fromDayRange('high'),
@@ -121,7 +121,7 @@ export const LEVEL_FEATURES = [
       const atr = d.atr(ATR_N);
       if (!d.todayOpen || !d.prevClose) return null;
       if (!atr) return fewer(ATR_N + 1, 'ATR');
-      return { value: (d.todayOpen - d.prevClose) / atr, note: `ATR ${atr.toFixed(2)}` };
+      return { value: (d.todayOpen - d.prevClose) / atr, note: yardstickWords('ATR', atr, 1, d.prevClose) };
     },
   }),
   feature(LEVELS_FAMILY, {
@@ -141,7 +141,7 @@ export const LEVEL_FEATURES = [
       if (!atr) return fewer(ATR_N + 1, 'ATR');
       const today = s.high === null ? -Infinity : s.high * basis;
       const high = Math.max(top.high, today);
-      return { value: (price * basis - high) / atr, note: `high ${high.toFixed(2)} ${today >= top.high ? 'that day' : `on ${md(top.date)}`} · ATR ${atr.toFixed(2)}` };
+      return { value: (price * basis - high) / atr, note: `high ${high.toFixed(2)} ${today >= top.high ? 'that day' : `on ${md(top.date)}`} · ${yardstickWords('ATR', atr, basis, a.prevClose)}` };
     },
   }),
 ];

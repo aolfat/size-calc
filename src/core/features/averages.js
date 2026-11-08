@@ -18,15 +18,22 @@ export const ADR_N = 20;
  * The stock's price at the moment, in the daily history's terms: your fill for a stock, the underlying's last price for
  * an option or spread (extended hours too), lined up with the history across a split.
  * @param {import('./context.js').FeatureContext} ctx
- * @returns {{ price: number } | { value: null, note: string } | null}
+ * @returns {{ price: number, basis: number } | { value: null, note: string } | null}
  */
 export function priceNow(ctx) {
   const raw = ctx.entryPrice ?? ctx.intraday('$underlying', { session: 'all' })?.price ?? null;
   if (!raw) return { value: null, note: 'no price for the stock at your entry' };
   const basis = ctx.dailyBasis('$underlying', raw);
   if (basis === null) return { value: null, note: "the daily history doesn't line up with your entry (a split?)" };
-  return { price: raw * basis };
+  return { price: raw * basis, basis };
 }
+
+/**
+ * A yardstick in words, both ways: 'ATR $2.50 (2.10%)', the dollars in the day's own prices (the history's over `basis`),
+ * the % of the close before. Without a close, the dollars alone.
+ * @param {string} name @param {number} value in the daily history's terms @param {number} basis @param {number | null} prevClose
+ */
+export const yardstickWords = (name, value, basis, prevClose) => `${name} $${(value / basis).toFixed(2)}${prevClose ? ` (${(value / prevClose * 100).toFixed(2)}%)` : ''}`;
 
 /**
  * The stock's distance from a daily or weekly EMA or SMA at the entry, in daily ATRs: (price − average) ÷ ATR(14). The
@@ -51,7 +58,7 @@ const atrsFrom = (frame, kind, n) => {
       const need = kind === 'sma' ? n - 1 : n;
       if (avg === null) return { value: null, note: `fewer than ${need} ${frame === 'weekly' ? 'weeks' : 'daily sessions'} before` };
       if (!atr) return { value: null, note: `fewer than ${ATR_N + 1} daily sessions before, for the ATR` };
-      return { value: (p.price - avg) / atr, note: `${n} ${kind.toUpperCase()} ${avg.toFixed(2)} · ATR ${atr.toFixed(2)}` };
+      return { value: (p.price - avg) / atr, note: `${n} ${kind.toUpperCase()} ${(avg / p.basis).toFixed(2)} · ${yardstickWords('ATR', atr, p.basis, a.prevClose)}` };
     },
   });
 };

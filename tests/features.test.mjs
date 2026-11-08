@@ -124,7 +124,7 @@ test('every feature keeps its contract: a unique key, a version, its family, onl
     assert.ok(f.name && f.desc, `${f.key} has a name and says what it measures`);
     assert.ok(['entry', 'exit'].includes(f.at));
     assert.ok(FEATURE_FAMILIES.includes(f.family), `${f.key} is in a listed family`);
-    assert.ok(['%', 'x', 'atr', 'adr', ''].includes(f.unit));
+    assert.ok(['%', 'x', '$', 'atr', 'adr', ''].includes(f.unit));
     assert.deepEqual(Object.keys(f.needs).filter(k => !['intraday', 'lookback', 'daily', 'dailySessions', 'session'].includes(k)), [], `${f.key}: only known needs`);
     assert.match(featureVersion(f), /^\d+\.\d+$/);
     assert.ok(featureNeedsWords(f), `${f.key} says what it reads`);
@@ -392,7 +392,7 @@ test('ATRs from the moving averages: (price − average) ÷ the daily ATR, daily
     const r = result(byKey(k), stock('10:02'), data, price);
     assert.equal(r.state, 'value', k);
     near(r.value, (price - avg) / atr, k);
-    assert.match(r.note, /^\d+ [ES]MA [\d.]+ · ATR [\d.]+$/, `${k} says the average and the ATR`);
+    assert.match(r.note, /^\d+ [ES]MA [\d.]+ · ATR \$[\d.]+ \([\d.]+%\)$/, `${k} says the average and the ATR, in dollars and %`);
   }
   for (const k of keys) assert.equal(result(byKey(k), stock('10:02'), data).state, 'value', `${k} on the fixture`);
   // an option: the underlying's last price at the moment (the 9:55 bar's close at 10:02), never the contract's
@@ -435,7 +435,8 @@ test('distances inside the day in ADRs: VWAP, the low and the high of day so far
   const low = Math.min(...morning.map(b => b.low)), high = Math.max(...morning.map(b => b.high), bars.find(b => b.time === '10:00').open);
   const lod = result(byKey('adr_from_lod'), stock('10:02'), data, price);
   near(lod.value, (price - low) / adr, 'above the low');
-  assert.equal(lod.note, `low ${low.toFixed(2)} · ADR ${adr.toFixed(2)}`);
+  const prevClose = data.daily.get('AAPL').filter(b => b.date < D).at(-1).close;
+  assert.equal(lod.note, `low ${low.toFixed(2)} · ADR $${adr.toFixed(2)} (${(adr / prevClose * 100).toFixed(2)}%)`);
   near(result(byKey('adr_from_hod'), stock('10:02'), data, price).value, (high - price) / adr, 'below the high');
   // the fill traded, so a fill under every bar's low is the low itself
   assert.equal(result(byKey('adr_from_lod'), stock('10:02'), data, low - 1).value, 0);
@@ -452,7 +453,7 @@ test('distances inside the day in ADRs: VWAP, the low and the high of day so far
   const vol = morning.reduce((a, b) => a + b.volume, 0), vwap = morning.reduce((a, b) => a + (b.high + b.low + b.close) / 3 * b.volume, 0) / vol;
   const v = result(byKey('adr_from_vwap'), stock('10:02'), data, price);
   near(v.value, (price - vwap) / adr, 'from VWAP');
-  assert.match(v.note, /^VWAP [\d.]+ · ADR [\d.]+$/);
+  assert.match(v.note, /^VWAP [\d.]+ · ADR \$[\d.]+ \([\d.]+%\)$/);
   assert.equal(result(byKey('adr_from_vwap'), stock('09:31'), data).note, 'no VWAP yet in the first 5 minutes');
   // the ADR comes from the history, so a split since doesn't change the answer
   const split = { ...data, daily: new Map([...data.daily].map(([s, b]) => [s, s === 'AAPL' ? b.map(x => ({ ...x, open: x.open / 4, high: x.high / 4, low: x.low / 4, close: x.close / 4 })) : b])) };
@@ -473,6 +474,25 @@ test('distances inside the day in ADRs: VWAP, the low and the high of day so far
   near(result(byKey('spy_atr_from_daily_ema8'), stock('10:02'), data).value, (spy - (spy * 2 / 9 + e * 7 / 9)) / wilder14(spyDaily), 'SPY in its ATRs');
   assert.equal(result(byKey('qqq_atr_from_daily_ema8'), call('10:02'), data).state, 'value');
   assert.equal(featureValueWords(byKey('adr_from_vwap'), 0.5), '+0.50 ADR');
+});
+
+test('the daily range: ADR and ATR, each in dollars in the day\'s own prices and as a % of the close before', () => {
+  const data = world();
+  const dl = data.daily.get('AAPL'), adr = adr20(dl), atr = wilder14(dl), prev = dl.filter(b => b.date < D).at(-1).close;
+  assert.deepEqual(FEATURES.filter(f => f.family.key === 'range').map(f => f.key), ['adr_20_usd', 'adr_20_pct', 'atr_14_usd', 'atr_14_pct']);
+  near(result(byKey('adr_20_usd'), stock('10:02'), data).value, adr, 'ADR $');
+  near(result(byKey('adr_20_pct'), stock('10:02'), data).value, adr / prev * 100, 'ADR %');
+  near(result(byKey('atr_14_usd'), stock('10:02'), data).value, atr, 'ATR $');
+  near(result(byKey('atr_14_pct'), stock('10:02'), data).value, atr / prev * 100, 'ATR %');
+  assert.equal(featureValueWords(byKey('atr_14_usd'), 2.5), '$2.50');
+  assert.equal(featureValueWords(byKey('atr_14_pct'), 2.1), '+2.10%');
+  // history adjusted for a 4-for-1 since: the dollars stay in the day's prices, the % never changes
+  const split = { ...data, daily: new Map([...data.daily].map(([s, b]) => [s, s === 'AAPL' ? b.map(x => ({ ...x, open: x.open / 4, high: x.high / 4, low: x.low / 4, close: x.close / 4 })) : b])) };
+  near(result(byKey('atr_14_usd'), stock('10:02'), split).value, atr, "the day's dollars");
+  near(result(byKey('adr_20_pct'), stock('10:02'), split).value, adr / prev * 100, 'the same %');
+  // a young stock
+  const young = { ...data, daily: new Map([...data.daily].map(([s, b]) => [s, s === 'AAPL' ? b.slice(-14) : b])) };
+  assert.deepEqual(result(byKey('atr_14_pct'), stock('10:02'), young), { state: 'unknown', value: null, note: 'fewer than 15 daily sessions before' });
 });
 
 // ---------- stamping ----------

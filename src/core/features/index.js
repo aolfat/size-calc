@@ -7,6 +7,7 @@
 import { nyDay, weekdaysBefore } from '../bars.js';
 import { AVERAGE_FEATURES, AVERAGES_FAMILY } from './averages.js';
 import { featureContext, featureSymbol } from './context.js';
+import { RANGE_FAMILY, RANGE_FEATURES } from './range.js';
 import { LEVEL_FEATURES, LEVELS_FAMILY } from './levels.js';
 import { MARKET_FAMILY, MARKET_FEATURES } from './market.js';
 import { VOLUME_FAMILY, VOLUME_FEATURES } from './volume.js';
@@ -22,9 +23,9 @@ import { VOLUME_FAMILY, VOLUME_FEATURES } from './volume.js';
  *   reads: import('./context.js').FeatureRead[] }} FeatureResult
  */
 
-export const FEATURE_FAMILIES = [MARKET_FAMILY, VOLUME_FAMILY, LEVELS_FAMILY, AVERAGES_FAMILY];
+export const FEATURE_FAMILIES = [MARKET_FAMILY, VOLUME_FAMILY, LEVELS_FAMILY, RANGE_FAMILY, AVERAGES_FAMILY];
 /** @type {Feature[]} every feature, by family */
-export const FEATURES = [...MARKET_FEATURES, ...VOLUME_FEATURES, ...LEVEL_FEATURES, ...AVERAGE_FEATURES];
+export const FEATURES = [...MARKET_FEATURES, ...VOLUME_FEATURES, ...LEVEL_FEATURES, ...RANGE_FEATURES, ...AVERAGE_FEATURES];
 
 /** what a stamp has to carry to be current: the family's version and the feature's @param {Feature} f */
 export const featureVersion = f => `${f.family.version}.${f.version}`;
@@ -168,12 +169,13 @@ export function featureCoverage(f, trades, stampsByKey) {
   return { total: list.length, value, unknown, pending: list.length - value - unknown, reasons: [...reasons].sort((a, b) => b[1] - a[1]) };
 }
 
-/** a stamped value in words: '+1.23%', '2.34×', '+4.01 ATR', '+0.50 ADR', a word's name, or '—' @param {Feature} f @param {number | string | null | undefined} value */
+/** a stamped value in words: '+1.23%', '2.34×', '$2.22', '+4.01 ATR', '+0.50 ADR', a word's name, or '—' @param {Feature} f @param {number | string | null | undefined} value */
 export function featureValueWords(f, value) {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'string') return (f.values || []).find(([k]) => k === value)?.[1] || value;
   if (f.unit === '%') return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(2)}%`;
   if (f.unit === 'x') return `${value.toFixed(2)}×`;
+  if (f.unit === '$') return `$${value.toFixed(2)}`;
   if (f.unit === 'atr' || f.unit === 'adr') return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(2)} ${f.unit.toUpperCase()}`;
   return String(value);
 }
