@@ -38,7 +38,7 @@ import { clearJournalDates, clearJournalDay, closeJournalSetup, journalThisMonth
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
-import { addJournalFilter, clearJournalFilters, removeJournalFilter, setJournalFilterNot, toggleJournalFilterValue } from './journal-filters.js';
+import { addJournalFilter, clearJournalFilters, removeJournalFilter, setJournalFilterBound, setJournalFilterNot, setJournalFilterOp, toggleJournalFilterValue } from './journal-filters.js';
 import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { reviewUpNext, skipUpNext } from './journal-cards.js';
 import { setCalendarMode, setStatsFeature, setStatsFeatureMode } from './journal-stats.js';
@@ -236,6 +236,8 @@ export const actions = {
   addJournalFilter: el => addJournalFilter(/** @type {HTMLSelectElement} */ (el).value),
   toggleJournalFilterValue: el => toggleJournalFilterValue(arg(el), el.dataset.arg2 || ''),
   setJournalFilterNot: el => setJournalFilterNot(arg(el), el.dataset.arg2 || ''),
+  setJournalFilterOp: el => setJournalFilterOp(arg(el), el.dataset.arg2 || ''),
+  setJournalFilterBound: el => setJournalFilterBound(arg(el), el.dataset.arg2 || '', /** @type {HTMLInputElement} */ (el).value),
   removeJournalFilter: el => removeJournalFilter(arg(el)),
   clearJournalFilters: () => clearJournalFilters(),
   // the Review section acts on the trade on the page
