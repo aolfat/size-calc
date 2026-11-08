@@ -125,6 +125,30 @@ test('risk steps through your presets from the keyboard', async () => {
   key('='); assert.equal(risk(), 500, 'allocation sizing ignores risk steps');
 });
 
+test('risk steps through your presets from the strip\'s − + buttons and the arrow keys in the max loss field', async () => {
+  const { run, elements, listeners } = await app();
+  elements.get('accountSize').value = '50000';
+  elements.get('riskPct').value = '1';
+  run('recalcAll(); initShortcuts()');
+  const risk = () => +elements.get('riskDollar').value;
+  const down = elements.get('riskDown'), up = elements.get('riskUp');
+  run("actions.stepRisk({ dataset: { arg: '1' } })"); assert.equal(risk(), 1000, '+ goes to the next preset up');
+  run("actions.stepRisk({ dataset: { arg: '-1' } })"); assert.equal(risk(), 500, '− back down');
+  let prevented = false;
+  const key = k => listeners.get('keydown')({ key: k, target: elements.get('riskDollar'), preventDefault() { prevented = true; } });
+  elements.get('riskDollar').tagName = 'INPUT';
+  key('ArrowDown'); assert.equal(risk(), 250, '↓ in the field steps a preset, not $50');
+  assert.ok(prevented, 'the input\'s own step is skipped');
+  key('ArrowUp'); key('ArrowUp'); key('ArrowUp'); key('ArrowUp'); assert.equal(risk(), 1500);
+  assert.equal(up.disabled, true, '+ greys out at the top preset');
+  assert.equal(down.disabled, false);
+  for (let i = 0; i < 7; i++) key('ArrowDown');
+  assert.equal(risk(), 62.5);
+  assert.equal(down.disabled, true, '− greys out at the bottom preset');
+  assert.equal(up.disabled, false);
+  key('-'); assert.equal(risk(), 62.5, 'typing - in the field is still just typing');
+});
+
 test('sheets open one at a time and close back to the page', async () => {
   const { run, elements } = await app();
   const settings = elements.get('settingsSheet'), risk = elements.get('riskSheet'), backdrop = elements.get('sheetBackdrop');
