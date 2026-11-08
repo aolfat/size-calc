@@ -3,7 +3,8 @@
 // traded. An option reads its underlying, never the contract.
 import { family, feature } from './define.js';
 
-export const VOLUME_FAMILY = family({ key: 'volume', name: 'Volume', version: 1 });
+// version 2: futures trades have their 5-minute bars (the contract's, from Schwab), so they restamp
+export const VOLUME_FAMILY = family({ key: 'volume', name: 'Volume', version: 2 });
 
 /** the sessions a run rate compares against */
 const RVOL_SESSIONS = 20;

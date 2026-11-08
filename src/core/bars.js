@@ -125,11 +125,12 @@ export function orbLevels({ high, low }, isLong) {
 
 /**
  * the symbols a trade's charts need, in Tradier's form: the stock; an option and its underlying; a leveraged ETF's trade on
- * its underlying, that one too (first: the last is the one features compare, still the fund); none for a future (Tradier has none).
+ * its underlying, that one too (first: the last is the one features compare, still the fund); a future, the contract
+ * traded ('/MNQZ26', from Schwab: services/bar-source.js).
  * @param {{ symbol: string, assetType: string, setupOn?: string | null }} trade
  */
 export function tradeBarSymbols(trade) {
-  if (trade.assetType === 'FUTURE') return [];
+  if (trade.assetType === 'FUTURE') return [trade.symbol];
   if (trade.setupOn) return [trade.setupOn, trade.symbol];
   const o = trade.assetType === 'OPTION' ? parseSchwabOption(trade.symbol) : null;
   return o ? [trade.symbol.replace(/\s+/g, ''), o.root] : [trade.symbol];

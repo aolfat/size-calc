@@ -495,11 +495,13 @@ test('the daily range: ADR and ATR, each in dollars in the day\'s own prices and
   assert.deepEqual(result(byKey('atr_14_pct'), stock('10:02'), young), { state: 'unknown', value: null, note: 'fewer than 15 daily sessions before' });
 });
 
-test("futures: daily history under the contract, no split check, no gap, never waiting on 5-minute bars", () => {
+test("futures: their own 5-minute and daily bars, no split check, no gap, and a failed daily read says why", () => {
   const data = world();
-  // a future's daily bars, as the stamper keeps them: under the contract traded (read from Schwab for its root)
-  const fut = data.daily.get('AAPL').map(b => ({ ...b, open: b.open * 200, high: b.high * 200, low: b.low * 200, close: b.close * 200 }));
+  // a future's bars, as the stamper has them: under the contract traded (daily read from Schwab for its root)
+  const x200 = b => ({ ...b, open: b.open * 200, high: b.high * 200, low: b.low * 200, close: b.close * 200 });
+  const fut = data.daily.get('AAPL').map(x200);
   data.daily.set('/MNQZ26', fut);
+  data.intraday.set('/MNQZ26', new Map([...data.intraday.get('AAPL')].map(([d, bars]) => [d, bars.map(x200)])));
   const trade = { ...stock('10:02'), key: '6789|/MNQZ26|long|10:02', symbol: '/MNQZ26', assetType: 'FUTURE' };
   const prior = fut.filter(b => b.date < D), atr = wilder14(fut);
   const fill = prior.at(-1).close * 1.3; // far from the history: a stock would read it as a split, a future never splits
@@ -512,12 +514,19 @@ test("futures: daily history under the contract, no split check, no gap, never w
   // no 9:30 gap, no dollar volume
   for (const k of ['gap_at_open', 'gap_atr']) assert.deepEqual(result(byKey(k), trade, data, fill), { state: 'unknown', value: null, note: "a future's daily bar opens at 6 PM the evening before, so it has no 9:30 gap" }, k);
   assert.equal(result(byKey('avg_dollar_volume_20d'), trade, data, fill).note, "a future's price × contracts isn't dollars traded");
-  // inside the bar saver's window a stock's day would wait; a future's is gone at once (the saver keeps none)
-  const lod = result(byKey('adr_from_lod'), trade, data, fill);
-  assert.equal(lod.state, 'unknown');
-  assert.match(lod.note, /no 5-minute bars are kept for futures \(\/MNQZ26\)/);
-  // its daily history not read yet: waits, like a stock's
-  assert.equal(result(byKey('atr_from_daily_sma50'), trade, { ...data, daily: new Map([...data.daily].filter(([k]) => k !== '/MNQZ26')) }, fill).state, 'waiting');
+  // its 5-minute bars read like a stock's: the low of day from 9:30, VWAP, the run rate against the 20 sessions before
+  const bars = data.intraday.get('/MNQZ26').get(D), inFill = bars.find(b => b.time === '09:50').close;
+  const low = Math.min(...bars.filter(b => b.time >= '09:30' && b.time < '10:00').map(b => b.low));
+  near(result(byKey('adr_from_lod'), trade, data, inFill).value, (inFill - low) / (fut.filter(b => b.date < D).slice(-20).reduce((a, b) => a + b.high - b.low, 0) / 20), 'ADRs above the low');
+  for (const k of ['adr_from_vwap', 'rvol_at_entry', 'vwap_sd_at_entry']) assert.equal(result(byKey(k), trade, data, inFill).state, 'value', k);
+  // its day not kept yet, inside the saver's window: waits for it, like a stock's
+  const noDay = { ...data, intraday: new Map([...data.intraday].map(([s, m]) => [s, s === '/MNQZ26' ? new Map([...m].filter(([d]) => d !== D)) : m])) };
+  const wait = result(byKey('adr_from_lod'), trade, noDay, inFill);
+  assert.deepEqual([wait.state, wait.note], ['waiting', 'waiting for /MNQZ26 5-minute bars on 10/14']);
+  // its daily history not read: waits, and a read that failed says why
+  const unread = { ...data, daily: new Map([...data.daily].filter(([k]) => k !== '/MNQZ26')) };
+  assert.equal(result(byKey('atr_from_daily_sma50'), trade, unread, fill).note, 'waiting for /MNQZ26 daily bars');
+  assert.equal(result(byKey('atr_from_daily_sma50'), trade, { ...unread, dailyErrors: new Map([['/MNQZ26', 'Schwab answered 400']]) }, fill).note, 'waiting for /MNQZ26 daily bars (Schwab answered 400)');
 });
 
 // ---------- stamping ----------
@@ -537,7 +546,7 @@ test('stamping: missing or outdated features are due, three states, unknown stam
   assert.deepEqual(Object.keys(r.stamps[('spy_vs_daily_ema8')]), ['v', 'value']);
   assert.equal(r.stamps.spy_vs_daily_ema8.v, '1.1');
   const early = stampTrade(stock('09:31'), {}, FEATURES, data, { now: NOW, entryPrice: 101 });
-  assert.deepEqual(early.stamps.rvol_at_entry, { v: '1.1', value: null, note: 'entered in the first 5 minutes' }, 'unknown for good: stamped, with why');
+  assert.deepEqual(early.stamps.rvol_at_entry, { v: featureVersion(byKey('rvol_at_entry')), value: null, note: 'entered in the first 5 minutes' }, 'unknown for good: stamped, with why');
   // a newer version is due again; the current one isn't
   const f = FEATURES[0];
   assert.equal(featureDue(f, r.stamps), false);
@@ -642,7 +651,7 @@ test('the Journal stamps every trade after it loads, shows the Features tab, and
   assert.match(body(), /<div class="jf-fam">Market<\/div>/, 'by family');
   assert.match(body(), /<span class="jf-name">Volume run rate at entry<\/span><span class="jf-val">\d\.\d\d×<\/span>/);
   assert.match(body(), /<span class="jf-name">Distance from the all-time high<\/span><span class="jf-val">−[\d.]+%<\/span><span class="jf-how">high [\d.]+ on/);
-  assert.match(body(), /<details class="jf-item">[\s\S]*?<p>The stock[^ ]* volume from 9:30[\s\S]*?Reads 5-minute bars: the stock, and the 20 sessions before · version 1\.1 · <span class="jf-key">rvol_at_entry/, 'tap one: what it measures and reads');
+  assert.match(body(), /<details class="jf-item">[\s\S]*?<p>The stock[^ ]* volume from 9:30[\s\S]*?Reads 5-minute bars: the stock, and the 20 sessions before · version 2\.1 · <span class="jf-key">rvol_at_entry/, 'tap one: what it measures and reads');
   assert.doesNotMatch(body(), /<details class="jf-item[^"]*" open>/, 'closed until tapped');
   a.run('toggleTradeFeatures()');
   assert.match(a.elements.get('jtFeatures').innerHTML, /<details class="jf-item" open>/, 'Expand all opens every one, in place');

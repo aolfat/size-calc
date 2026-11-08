@@ -5,7 +5,8 @@
 import { ADR_N, ATR_N, DAILY_SESSIONS, yardstickWords } from './averages.js';
 import { family, feature } from './define.js';
 
-export const LEVELS_FAMILY = family({ key: 'levels', name: 'Levels', version: 1 });
+// version 2: futures trades have their 5-minute bars (the contract's, from Schwab), so they restamp
+export const LEVELS_FAMILY = family({ key: 'levels', name: 'Levels', version: 2 });
 
 /** the stock's price at the moment: your fill for a stock, the underlying's last price for an option or spread */
 const stockPrice = (/** @type {import('./context.js').FeatureContext} */ ctx, /** @type {{ price: number | null } | null} */ s) => ctx.entryPrice ?? s?.price ?? null;

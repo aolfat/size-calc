@@ -59,6 +59,7 @@ export async function maybeStampFeatures({ force = false } = {}) {
   syncFeatures();
   const fillsById = new Map(fillsFrom(state.journalRecords).map(f => [f.id, f]));
   const daily = new Map(); // symbol → { from, bars }, read once a run
+  const dailyErrors = new Map(); // symbol → why its daily read failed, for what its features wait for
   const now = Date.now();
   const counts = { value: 0, unknown: 0, waiting: 0 };
   const waits = {};
@@ -73,9 +74,9 @@ export async function maybeStampFeatures({ force = false } = {}) {
         if (daily.has(symbol) && daily.get(symbol).from <= from) continue;
         if (!marketDataHere()) continue; // not read: those features wait for a key
         try { daily.set(symbol, { from, bars: await fetchDailyBars(symbol, from, nyDay(now)) }); }
-        catch(e) { daily.set(symbol, { from: '', bars: null }); } // not again this run; they wait
+        catch(e) { daily.set(symbol, { from: '', bars: null }); dailyErrors.set(symbol, String(e?.message || e)); } // not again this run; they wait
       }
-      const data = { intraday, daily: new Map([...daily].map(([s, x]) => [s, x.bars])) };
+      const data = { intraday, daily: new Map([...daily].map(([s, x]) => [s, x.bars])), dailyErrors };
       const rows = [];
       for (const { trade, features } of chunk) {
         const r = stampTrade(trade, state.featureStamps[trade.key], features, data, { now, entryPrice: firstFillPrice(trade, fillsById) });
