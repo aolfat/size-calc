@@ -1,6 +1,6 @@
 # Trade features
 
-Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3: the Stats explorer, the features table for a Claude session and the conditions (features in More filters) built; saved views, features as list columns and What matters next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
+Status: part 1 (saving the raw data) and part 2 (features stamped onto every trade, the Journal's Features tab, a Features tab on each trade page) built. Part 3: the Stats explorer, the features table for a Claude session and the conditions (features in More filters) and saved views built; features as list columns and What matters next. Part of [the journal plan](journal-plan.md), beside [step 3](journal-step-3.md)'s review labels.
 
 ## Goal
 
@@ -116,7 +116,8 @@ feature({
   Switching at least / at most / between keeps the numbers typed; an emptied box clears its number.
   A feature of words would pick its words as chips, like the other filters.
   Signed out or before the stamps are read, conditions stand down (they'd otherwise hide every trade) and the menu leaves features out.
-  Not built: saving a combination as a named view, and pinned favorites (the menu's own type-to-find stands in for search on desktop).
+  A combination is kept as a saved view (docs/journal.md, Saved views), so a set of conditions you come back to is one tap.
+  Not built: pinned favorites (the menu's own type-to-find stands in for search on desktop).
 - **Stats** (built): By a feature, at the end of the Stats tab (`core/feature-stats.js` featureBreakdown, `ui/journal-stats.js`): pick any feature (by family) and see the tab's trades split by its value, each group with groupStats' numbers and Avg R, thin under 10.
   Five even groups by default: splits a fifth, two fifths... of the way through the sorted values, a split inside a run of equal values moved up to the next value so equal values never straddle two groups, each group named by its own lowest and highest value.
   Cut points: the feature's own `bins` (under the first, between each pair, the last and over; a value on a cut point goes to the group above).

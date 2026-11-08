@@ -3,11 +3,12 @@
 // other filters leave, is or is not, every filter at once, on Trades, Calendar and Stats; and a day on the Trades tab
 // opening its notebook page to review it, ← Trades back to the list as it was. A trade feature as a condition: at least,
 // at most or between its stamped value, a trade without a current value left out, counted, and only once stamps are read.
+// Saved views: the setup, side and filters under a name (journal_views, synced), put back with a tap, deleted with ×.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { applyFilters, conditionCounts, filterChoices, filterField, filtersOn, NONE } from '../src/core/journal-filters.js';
+import { applyFilters, conditionCounts, filterChoices, filterField, filtersOn, NONE, parseViews, sameView, saveView, VIEWS_MAX_CHARS, viewsText } from '../src/core/journal-filters.js';
 import { FEATURES, featureVersion } from '../src/core/features/index.js';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
@@ -124,6 +125,70 @@ test('a feature as a filter: in the menu by family once stamps are read; the con
   a.run(`setJournalFilterBound('${key}', 'min', '3'); featuresError = 'no table'; renderJournal()`);
   assert.equal(a.shown(), 'AAPL,MSFT,NVDA');
   assert.doesNotMatch(a.list(), /jf-condition/);
+});
+
+test('core: a view keeps what narrows, the same in any order, a name replaces its own, and fits the setting or says so', () => {
+  const COND = { field: 'feature:atr_from_daily_sma50', values: [], op: 'atleast', min: 4, max: 9 };
+  const now = { setup: 'ema21_bounce', side: 'long', filters: [COND, { field: 'grade', values: ['A', 'A', 'B'] }, { field: 'outcome', values: [] }, { field: 'gone', values: ['x'] }] };
+  const { views, text } = saveView([], '  Stretched longs ', now);
+  assert.deepEqual(views, [{ name: 'Stretched longs', setup: 'ema21_bounce', side: 'long', filters: [
+    { field: 'feature:atr_from_daily_sma50', values: [], op: 'atleast', min: 4, max: null }, { field: 'grade', values: ['A', 'B'], not: false },
+  ] }], 'only what narrows, an unused bound dropped, fields in order');
+  assert.equal(text, '[{"name":"Stretched longs","setup":"ema21_bounce","side":"long","filters":[{"field":"feature:atr_from_daily_sma50","op":"atleast","min":4},{"field":"grade","values":["A","B"]}]}]');
+  assert.deepEqual(parseViews(text), views, 'read back the same');
+  assert.ok(sameView(views[0], { ...now, filters: [...now.filters].reverse() }), 'the same filters in another order');
+  assert.ok(!sameView(views[0], { ...now, side: 'all' }));
+  // the same name (any case) replaces; nothing set or no name is refused in words
+  assert.equal(saveView(views, 'STRETCHED LONGS', { side: 'short', filters: [] }).views.length, 1);
+  assert.equal(saveView(views, 'Shorts', { side: 'short', filters: [] }).views.length, 2);
+  assert.throws(() => saveView(views, '', now), /Give the view a name/);
+  assert.throws(() => saveView(views, 'Empty', { side: 'all', setup: '', filters: [{ field: 'grade', values: [] }] }), /Set a filter first/);
+  // more than the setting holds
+  let many = [];
+  assert.throws(() => { for (let i = 0; i < 200; i++) many = saveView(many, `View number ${i}`, now).views; }, /Too many views to sync: delete one first/);
+  assert.ok(viewsText(many).length <= VIEWS_MAX_CHARS);
+  // what isn't a view is dropped
+  assert.deepEqual(parseViews('not json'), []);
+  assert.deepEqual(parseViews('{"name":"x"}'), []);
+  assert.deepEqual(parseViews('[{"name":""},{"name":"Nothing"},{"name":"Old","filters":[{"field":"gone","values":["x"]}]},{"name":"Ok","side":"short"},{"name":"ok","side":"long"}]').map(v => v.name), ['Ok'], 'no name, sets nothing, a field gone, a name twice');
+});
+
+test('saved views: Save as view keeps the setup, side and filters; the chip puts them back, lit while they match; × deletes; synced', async () => {
+  const a = await journal();
+  const foot = () => a.list().split('class="jf-foot"')[1].split('</div>')[0];
+  assert.doesNotMatch(a.list(), /jf-views|Save as view/, 'no views and nothing set: neither');
+  a.run("setJournalSide('long'); addJournalFilter('grade'); toggleJournalFilterValue('grade', 'A')");
+  assert.equal(a.shown(), 'AAPL');
+  assert.match(foot(), /data-action="startJournalView">Save as view</);
+  a.run('startJournalView()');
+  assert.match(a.list(), /<input id="journalViewName" class="jf-num jf-view-name" type="text" maxlength="40"[^>]*data-input="journalViewTyped" data-enter="saveJournalView"/);
+  a.run('saveJournalView()');
+  assert.match(a.list(), /<span class="jf-note" role="status">Give the view a name\.<\/span>/, 'no name: says so, box stays');
+  a.run("journalViewTyped('A longs'); saveJournalView()");
+  assert.equal(a.run("store.get('journal_views')"), '[{"name":"A longs","side":"long","filters":[{"field":"grade","values":["A"]}]}]');
+  assert.ok(a.run("JSON.parse(store.get('cloud_pending') || '[]')").includes('journal_views'), 'marked to sync');
+  assert.doesNotMatch(a.list(), /journalViewName|Save as view/, 'saved: the box closes, and this set has a view');
+  assert.match(a.list(), /<div class="jf-views" role="group" aria-label="Saved views"><span class="jf-views-label">Views<\/span><span class="jf-view"><button class="journal-chip active" aria-pressed="true" data-action="applyJournalView" data-arg="0">A longs<\/button><button class="jf-x" data-action="deleteJournalView" data-arg="0"/);
+  // cleared, then one tap puts it all back
+  a.run("clearJournalFilters(); setJournalSide('all')");
+  assert.equal(a.shown(), 'AAPL,MSFT,NVDA');
+  assert.match(a.list(), /class="journal-chip" aria-pressed="false" data-action="applyJournalView" data-arg="0">A longs</, 'not lit');
+  assert.doesNotMatch(a.list(), /deleteJournalView/, '× only on the lit view');
+  a.run('applyJournalView(0)');
+  assert.equal(a.shown(), 'AAPL');
+  assert.equal(a.run('journalSide'), 'long');
+  assert.match(a.list(), /class="journal-chip active"/);
+  // a condition saves and comes back as one
+  a.run(`featureStamps = {}; addJournalFilter('feature:atr_from_daily_sma50'); setJournalFilterBound('feature:atr_from_daily_sma50', 'min', '2'); startJournalView(); journalViewTyped('Extended'); saveJournalView(); clearJournalFilters(); applyJournalView(1)`);
+  assert.deepEqual(a.run('journalFilters').find(f => f.field.startsWith('feature:')), { field: 'feature:atr_from_daily_sma50', values: [], op: 'atleast', min: 2, max: null });
+  // × deletes the lit one; '[]' once none are left, so the delete syncs
+  a.run('deleteJournalView(1)');
+  assert.deepEqual(parseViews(a.run("store.get('journal_views')")).map(v => v.name), ['A longs']);
+  a.run('applyJournalView(0); deleteJournalView(0)');
+  assert.equal(a.run("store.get('journal_views')"), '[]');
+  assert.doesNotMatch(a.list(), /jf-views/);
+  a.run('applyJournalView(5); deleteJournalView(5); startJournalView(); cancelJournalView()');
+  assert.doesNotMatch(a.list(), /journalViewName/, 'Cancel closes the box');
 });
 
 test('+ Add filter: Setup grade with its values counted; picking A narrows Trades, Stats and Calendar; is not; × takes it off', async () => {
