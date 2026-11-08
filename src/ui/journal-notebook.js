@@ -16,7 +16,7 @@
 // Premarket opens with the day's economic releases (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
-import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, stepWeekday } from '../core/journal-notebook.js';
+import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, standingRuleFor, stepWeekday } from '../core/journal-notebook.js';
 import { tradeUnderlying } from '../core/journal.js';
 import { LEGACY_RULE_ID, weekRulesFor } from '../core/journal-week.js';
 import { dailyPnl, nyParts } from '../core/journal-stats.js';
@@ -279,6 +279,21 @@ export function moveNotebookItem(id, by) {
   [order[i], order[j]] = [order[j], order[i]];
   const rows = order.map((rid, n) => { const r = libRow(rid); return { ...r, settings: { ...(r.settings || {}), order: n + 1 } }; });
   return Promise.all(rows.filter(r => r.settings.order !== libRow(r.id)?.settings?.order).map(saveItem));
+}
+/**
+ * A week's (or month's) rule made permanent (the week review's Make it permanent): onto your standing rules at the
+ * end, asked every day from today on. A retired one with the same words comes back instead, its history with it.
+ * @returns {Promise<'added' | 'back' | 'have' | false>} false when it couldn't be saved (or the list is full)
+ */
+export async function makeRuleStanding(text) {
+  const name = String(text || '').trim().slice(0, MAX_ITEM);
+  if (!name || notebookOff()) return false;
+  const rules = lists().rules, same = standingRuleFor(rules, name);
+  if (same && !same.hidden) return 'have';
+  if (activeItems(rules).length >= MAX_ITEMS) { showError(`${MAX_ITEMS} rules at most: retire one first.`); return false; }
+  if (same) return await saveItem({ ...libRow(same.id), hidden: false }) && 'back';
+  const order = rules.reduce((m, i) => Math.max(m, i.order), 0) + 1;
+  return await saveItem({ id: newId(), kind: 'rule', name, default_key: null, hidden: false, merged_into: null, settings: { order, since: nyParts(nowIso()).day } }) && 'added';
 }
 /** Retire: out of the list and the daily check, its answers kept; Bring back puts it back */
 export function retireNotebookItem(id) {

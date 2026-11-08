@@ -420,8 +420,9 @@ button.jc-day:hover { border-color: var(--border2); }
 .jw-rule-item { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .jw-rule-item .jw-rule-text { margin-bottom: 4px; }
 .jw-tally { display: block; font-size: 12.5px; color: var(--text2); margin-bottom: 6px; }
-.jw-kept .pos-link { margin-left: auto; }
-.jw-carried { margin-left: auto; font-size: 12px; color: var(--text3); }
+.jw-rule-acts { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 14px; }
+.jw-rule-acts:empty { display: none; }
+.jw-carried { font-size: 12px; color: var(--text3); }
 .jw-rule-line .jw-rule-input { flex: 1 1 auto; min-width: 0; }
 .jw-trades { margin: 4px 0 10px; }
 .jw-trades-table { min-width: 0; }

@@ -317,6 +317,10 @@ The Journal tab: imports, trades and spreads, fees, your stops and deletes, bars
   A review from before the list (rule_next only) reads as a list of one with the id 'rule' (LEGACY_RULE_ID); saving the list gives it an id of its own.
   **This week's rules** (reviewTop): the rules the period before set, on top of the parts, labelled 'This week's rules · set last week'.
   Each shows how the week's days checked it ('Kept 2 · Broke 0 · 2 days not checked', weekRuleTally over Monday to Friday, days after today not counted; weeks only, not months), Kept it? (yes, partly, no; setRuleKept(id, value) saves rules_kept, rule id → answer, on this period's row), and Keep it next week (carryPeriodRule: onto this period's list with a new id; 'On next week's list' once it's there).
+  Make it permanent (graduatePeriodRule, owner request: a week's rule you like graduates) puts it on your standing rules, the notebook's Rules (makeRuleStanding: a library_items rule at the end of the list, since today), so every day asks it after the close from then on; it reads 'In your rules' once it is one.
+  The same words in any case (standingRuleFor) are never added twice: a retired standing rule with them comes back instead, its history kept; 20 rules at most, like the notebook's + Add.
+  Once a rule is permanent its Keep it next week goes, since every day asks it already; one already carried keeps 'On next week's list' beside it.
+  It needs only the notebook's columns, not the week rules', and nothing in the review waits on it.
   Under them, How did this week's rules go? (rules_note, a draft and saved on blur).
   Kept it? on each and the answer are needed to finish the review; a rule from before the list answers in rule_kept and is never needed.
   The columns are read on their own query (loadPeriodReviews returns rulesError too): before the push state.periodRulesError brings back the one Rule for next week box, disables the answer box and says so, and Kept it? on the old rule still saves.

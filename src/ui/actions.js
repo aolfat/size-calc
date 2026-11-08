@@ -32,7 +32,7 @@ import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { addRiskPreset, recalcAll, removeRiskPreset, setRiskAddUnit, setRiskPct, setRiskUsd, stepRisk, syncFromDollar, toggleRiskEdit } from './risk.js';
 import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
-import { addPeriodRule, carryPeriodRule, closePeriodReview, openPeriodReview, periodRuleDraftInput, periodRuleInput, periodRuleSave, periodTextInput, periodTextSave, removePeriodRule, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
+import { addPeriodRule, carryPeriodRule, closePeriodReview, graduatePeriodRule, openPeriodReview, periodRuleDraftInput, periodRuleInput, periodRuleSave, periodTextInput, periodTextSave, removePeriodRule, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { setWeekRulesShown } from './week-rules.js';
 import { clearJournalDates, clearJournalDay, closeJournalSetup, journalThisMonth, setCalendarDates, setCalendarRange, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalDates, setJournalPeriod, setStatsDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
@@ -212,6 +212,7 @@ export const actions = {
   periodRuleSave: el => periodRuleSave(arg(el), /** @type {HTMLInputElement} */ (el).value),
   removePeriodRule: el => removePeriodRule(arg(el)),
   carryPeriodRule: el => carryPeriodRule(arg(el)),
+  graduatePeriodRule: el => graduatePeriodRule(arg(el)),
   setWeekRulesShown: el => setWeekRulesShown(arg(el)),
   setPeriodTradeSort: el => setPeriodTradeSort(arg(el)),
   periodTextInput: el => periodTextInput(arg(el), /** @type {HTMLTextAreaElement} */ (el).value),
