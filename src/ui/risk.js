@@ -26,7 +26,8 @@ export function updateRiskStatus() {
   document.getElementById('riskStatus').textContent = `${pct}% of $${Math.round(acct).toLocaleString('en-US')}`;
 }
 
-// - and = walk one ladder of every preset you have: the % chips at this account size plus your $ chips
+// - and = (anywhere), ↓ ↑ (in the max loss field) and the strip's − + buttons walk one ladder of every preset you have:
+// the % chips at this account size plus your $ chips
 
 export function riskLadder() {
   const acct = parseFloat(document.getElementById('accountSize').value) || 0;
@@ -55,6 +56,10 @@ export function updateRiskPresets() {
     // a % chip by its percent, or by its dollars when the max loss got there another way (a $ chip, - / =, typing)
     b.classList.toggle('active', b.dataset.kind === 'pct' ? v === pct || Math.abs(parseFloat(b.dataset.usd) - usd) < 0.005 : Math.abs(v - usd) < 0.5);
   });
+  // − and + grey out at the ends of the ladder
+  const ladder = riskLadder();
+  document.getElementById('riskDown').disabled = !ladder.some(v => v < usd - 0.005);
+  document.getElementById('riskUp').disabled = !ladder.some(v => v > usd + 0.005);
 }
 
 // the preset chips: your standard bets, one row of chips each showing its dollars over its percent of the account

@@ -43,6 +43,13 @@
 #riskDollar { font-size: 20px; font-weight: 700; color: var(--red); border-color: var(--red-bd); }
 #riskDollar:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,93,93,0.12); }
 .risk-wrap .prefix { color: var(--red); font-weight: 700; }
+/* − and + either side of the max loss: one tap to the next preset down or up */
+.risk-step-row { flex-direction: row; align-items: stretch; gap: 6px; }
+.risk-step-row .risk-wrap { flex: 1 1 auto; min-width: 0; }
+.risk-step { flex: 0 0 auto; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 12px; font-size: 20px; font-weight: 600; line-height: 1; }
+.risk-step:disabled { opacity: 0.35; cursor: default; }
+.risk-step:disabled:hover { background: var(--bg3); border-color: var(--border2); }
+.risk-step:disabled:active { transform: none; }
 
 .usd-edit-box { width: 68px; padding: 5px 4px; font-size: 12px; background: var(--bg3); border: 1px solid var(--blue-bd); border-radius: var(--radius); color: var(--text); font-family: var(--num); text-align: center; outline: none; }
 .usd-edit-box:focus { border-color: var(--blue); }

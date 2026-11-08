@@ -29,6 +29,8 @@ export function initShortcuts() {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
+    // in the max loss field, ↑ ↓ step through your presets instead of the input's fixed $50
+    if (e.target.id === 'riskDollar' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); stepRisk(e.key === 'ArrowUp' ? 1 : -1); return; }
     if (e.key === 'Escape') {
       if (state.openSheetName) { closeSheet(); return; }
       if (state.simState) { closeSim(); return; }
