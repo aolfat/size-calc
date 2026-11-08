@@ -296,6 +296,11 @@ test('phones get the view tabs as a bottom bar with icons, clear of the home ind
   assert.match(phone, /\.brand-tabs \{ position:fixed;[^}]*bottom:0;[^}]*safe-area-inset-bottom/);
 });
 
+test('a double tap never zooms the page; pinch still does', () => {
+  assert.match(css, /\* \{ touch-action: manipulation; \}/, 'manipulation drops double-tap zoom and keeps pan and pinch');
+  assert.doesNotMatch(html, /user-scalable|maximum-scale/, 'pinch zoom stays on for accessibility');
+});
+
 test('the header names the current screen', async () => {
   const { run, elements } = await app();
   const title = elements.get('viewTitle');

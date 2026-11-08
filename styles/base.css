@@ -1,5 +1,6 @@
 /* Tokens, reset, element defaults, and components shared across views. */
 * { box-sizing: border-box; margin: 0; padding: 0; }
+* { touch-action: manipulation; } /* no double-tap zoom on phones (pinch still zooms); every element, since a scroll pane starts its own chain. Gesture rules like pan-y win */
 * { font-variant-numeric: tabular-nums !important; } /* every digit the same width so figures line up; !important because the font shorthand resets it */
 button, input, select, textarea { font-family: inherit; } /* controls default to the OS font otherwise */
 /* One look everywhere: Apple's system font (SF Pro) on iPhone and Mac, Inter (its open twin, self-hosted latin subset,

@@ -143,6 +143,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Green toast variant: .error.ok via showToast()
 - iOS home-screen meta tags present (apple-mobile-web-app-*) — file is meant to be hosted (GitHub Pages) and added to iPhone home screen.
   Status bar style is `black` (opaque, the page starts below it), not `black-translucent`: since iOS 26 a translucent status bar gets Liquid Glass's edge blur, which reached into the header and greyed it out even at the top; no CSS turns it off. iOS reads the style when the app is added, so an old install keeps the blur until it's removed and added again
+- Double tap never zooms the page on phones (owner request): `* { touch-action: manipulation }` in base.css; pinch zoom stays on (no user-scalable=no, which iOS ignores anyway).
 - Wheel over a focused number input blurs it so the page scrolls instead of spinning the value
 - Owner's style: direct, terse.
   No em dashes in user-facing copy.
