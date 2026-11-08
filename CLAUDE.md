@@ -47,6 +47,8 @@ It holds the risk $ input and the chip row; the active chips tint red.
 Its summary link (#riskStatus, '1% of $50,000'; allocation mode retitles the strip 'Allocation' and swaps in #allocationControls) opens #riskSheet, which only holds the slower settings: Risk / Allocation method, account size, risk %.
 The strip shows in Stocks & futures and Options, hidden in Positions, Tools and Market.
 Keys - and = (or +) step risk through one ladder of every preset (riskLadder: % chips at this account size ∪ your $ chips; stepRisk, no-op in allocation).
+The same ladder is one tap on a phone: − and + buttons either side of the risk $ input (#riskDown, #riskUp, owner request), greyed out at the ladder's ends.
+In the risk $ input, ↑ ↓ step the ladder too instead of the input's fixed $50 (the - and = keys stay off while typing).
 There is no header risk pill (it was removed: two extra taps per change). risk_open is an orphan key from the old collapsible card.
 This week's rules (#weekRulesCard, the list last week's review set) sit right under the strip while signed in; Settings can hide them (docs/calculator.md).
 

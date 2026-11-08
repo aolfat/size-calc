@@ -63,8 +63,10 @@
       <span class="strip-title" id="riskStripTitle">Max loss per trade</span>
       <span class="risk-strip-links"><button class="link-btn" data-action="openSheet" data-arg="risk" title="Account size, risk %, and sizing method"><span id="riskStatus"></span> ›</button><button class="link-btn risk-edit-btn" id="riskEditBtn" data-action="toggleRiskEdit" aria-pressed="false" title="Add or remove presets, in dollars or percent">Edit</button></span>
     </div>
-    <div class="field" id="riskDollarField">
-      <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" data-input="syncFromDollar" title="The dollar amount you're willing to lose on this trade. - and = step through your presets" /></div>
+    <div class="field risk-step-row" id="riskDollarField">
+      <button class="btn risk-step" id="riskDown" data-action="stepRisk" data-arg="-1" aria-label="Max loss down to the next preset" title="Next preset down (- key)">−</button>
+      <div class="prefix-wrap risk-wrap"><span class="prefix">$</span><input type="number" id="riskDollar" value="500" min="1" step="50" aria-label="Max loss per trade in dollars" data-input="syncFromDollar" title="The dollar amount you're willing to lose on this trade. ↑ ↓ here, or - and = anywhere, step through your presets" /></div>
+      <button class="btn risk-step" id="riskUp" data-action="stepRisk" data-arg="1" aria-label="Max loss up to the next preset" title="Next preset up (= key)">+</button>
     </div>
     <div class="risk-chips" id="riskPresets" role="group" aria-label="Max loss presets"></div>
     <div class="risk-add" id="riskAddRow" style="display:none;">
@@ -217,7 +219,7 @@
       <div class="kbd-group"><div class="kbd-h">Data</div>
         <span><kbd>r</kbd> refresh quote</span>
         <span><kbd>l</kbd> live · again extends 1m→5m→30m</span>
-        <span><kbd>-</kbd> <kbd>=</kbd> step risk down / up</span>
+        <span><kbd>-</kbd> <kbd>=</kbd> step risk down / up (<kbd>↓</kbd> <kbd>↑</kbd> in the max loss field)</span>
       </div>
     </div>
   </div>
