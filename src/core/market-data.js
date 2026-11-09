@@ -237,13 +237,15 @@ export const MarketData = (() => {
   }
   /**
    * POST quotes in batches of 100, retrying timeouts, 429s and 5xx with backoff (Retry-After honored).
+   * onBatch sees each batch's quotes as it lands; spacing (ms, or read before each wait) separates batches.
    * @param {string[]} symbols
    * @param {{ base: string, auth: Record<string, string>, signal?: AbortSignal, onProgress?: (done: number, total: number) => void,
-   *   onRetry?: (info: { delay: number, status?: number, attempt: number }) => void, fetchImpl?: typeof fetch, retries?: number,
-   *   pause?: (ms: number, signal?: AbortSignal) => Promise<unknown> }} options
+   *   onRetry?: (info: { delay: number, status?: number, attempt: number }) => void, onBatch?: (quotes: Record<string, Quote>) => void,
+   *   fetchImpl?: typeof fetch, retries?: number, pause?: (ms: number, signal?: AbortSignal) => Promise<unknown>,
+   *   spacing?: number | (() => number) }} options
    */
-  async function fetchQuotes(symbols, { base, auth, signal, onProgress = () => {}, onRetry = () => {}, fetchImpl = fetch,
-    retries = 2, pause = waitForRefresh }) {
+  async function fetchQuotes(symbols, { base, auth, signal, onProgress = () => {}, onRetry = () => {}, onBatch = () => {}, fetchImpl = fetch,
+    retries = 2, pause = waitForRefresh, spacing = 1250 }) {
     const result = Object.create(null);
     for (let i = 0; i < symbols.length; i += 100) {
       for (let attempt = 0; ; attempt++) {
@@ -277,7 +279,9 @@ export const MarketData = (() => {
           const payload = await response.json();
           if (payload?.errors || !payload?.quotes) throw Object.assign(new Error('Tradier returned an invalid quote response.'), {status:422});
           if (signal?.aborted) throw new Error('Refresh cancelled.');
-          Object.assign(result, quoteRows(payload));
+          const batch = quoteRows(payload);
+          Object.assign(result, batch);
+          onBatch(batch);
         } catch (error) {
           if (signal?.aborted) throw new Error('Refresh cancelled.');
           failure = controller.signal.aborted ? new Error('Tradier timed out. Try refreshing again.') : /** @type {Error & { status?: number, retryAfter?: number }} */ (error);
@@ -292,7 +296,7 @@ export const MarketData = (() => {
         await pause(delay, signal);
       }
       onProgress(Math.min(i + 100, symbols.length), symbols.length);
-      if (i + 100 < symbols.length) await pause(1250, signal);
+      if (i + 100 < symbols.length) await pause(typeof spacing === 'function' ? spacing() : spacing, signal);
     }
     if (signal?.aborted) throw new Error('Refresh cancelled.');
     return result;

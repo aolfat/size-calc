@@ -11,10 +11,13 @@ The Market tab: theme tracker and ETF categories, live refresh, cached quotes an
   `/` searches, Escape returns from a group, r refreshes quotes for the active scope.
   `MarketData` is a pure inline script tested by `node --test`; no build/dependencies.
   Snapshot dates are explicit.
-  Auto refresh defaults on with a configured key: active ETF category / opened group every 30 seconds, full Theme Tracker every three minutes after completion.
-  Refresh quotes uses the same scope, preserves period/sort/search/table scroll/focus, commits atomically, and caches per scope and environment outside sync (v3, with v2 migration retaining timestamps).
+  Auto refresh defaults on with a configured key: active ETF category / opened group every 10 seconds, full Theme Tracker every minute after completion (owner request: faster, and not only when Market is opened).
+  Once Market has loaded in a session, its last scope keeps refreshing from the other tabs every two minutes (MARKET_BACKGROUND_MS, batches 2 seconds apart to leave room for the calculator's live polling), so Market is current on the way back; daily history loads only in Market, and a hidden app or no network stops both.
+  Refresh quotes uses the same scope, preserves period/sort/search/table scroll/focus, and caches per scope and environment outside sync (v3, with v2 migration retaining timestamps).
+  A scope that already has quotes shows each batch as it lands (the overview is 29 batches); the rest keep their previous quotes, the fetched time moves only when the last batch lands, and a failure or cancel puts the previous snapshot back.
+  A first refresh, with nothing to show yet, commits at once at the end.
   Cached quotes appear immediately with age/coverage/stale labels; a group can reuse a newer full-theme cache without making the overview appear fresh.
-  One batched Tradier POST refresh runs at a time (100 symbols/batch, 1.25-second spacing); scope/view/visibility/offline changes cancel it.
+  One batched Tradier POST refresh runs at a time (100 symbols/batch, 0.6 seconds apart in Market, 1.1 in the sandbox, 2 from other tabs); scope/visibility/offline changes cancel it, leaving Market does not.
   Failed batches retry twice with cancellable backoff, rate-limit headers are honored, exhausted failures back off 30 seconds–three minutes, and auth failures pause Auto.
   Auto off / Cancel pauses polling; Use snapshot also restores the imported data.
   Returning refreshes only stale scopes.

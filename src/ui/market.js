@@ -41,7 +41,19 @@ export function marketRefreshScope() {
   const rows = theme ? state.marketState.group ? state.marketState.stocks.filter(row => row.group === state.marketState.group) : state.marketState.stocks
     : state.marketState.etfs.filter(row => row.category === category.id);
   return {id:theme && state.marketState.group ? 'group:' + state.marketState.group : category.id,
-    label:state.marketState.group || category.name, rows, interval:theme && !state.marketState.group ? 180000 : 30000};
+    label:state.marketState.group || category.name, rows, interval:theme && !state.marketState.group ? 60000 : 10000};
+}
+
+/** once Market has loaded, its last scope keeps refreshing this often from other tabs, so it's current on the way back */
+export const MARKET_BACKGROUND_MS = 120000;
+
+/** how old the scope's quotes may get before the next refresh: its own interval in Market, the background one elsewhere */
+export function marketInterval(scope = marketRefreshScope()) { return state.marketView ? scope.interval : MARKET_BACKGROUND_MS; }
+
+/** the wait between quote batches: Tradier allows ~120 market-data calls a minute (60 in the sandbox), shared with the
+ * calculator's live polling, so a background refresh goes slower */
+export function marketBatchSpacing() {
+  return document.getElementById('apiEnv').value === 'sandbox' ? 1100 : state.marketView ? 600 : 2000;
 }
 
 export function marketQuoteSymbols() { return [...new Set(marketRefreshScope().rows.map(row => row.ticker))]; }
@@ -281,24 +293,31 @@ export function marketSizeTrade(ticker) {
 
 export function marketRefreshDue(scope = marketRefreshScope()) {
   const cached = marketCachedSnapshot(scope);
-  return Math.max(cached ? cached.fetchedAt + scope.interval : 0, state.marketState.retryAt);
+  return Math.max(cached ? cached.fetchedAt + marketInterval(scope) : 0, state.marketState.retryAt);
 }
 
+// In Market, the scope refreshes on its interval. Elsewhere, once Market has loaded, the same scope keeps refreshing in the
+// background (MARKET_BACKGROUND_MS, batches spaced wider); daily history loads only in Market. A hidden app or no network stops both.
 export function marketScheduleRefresh() {
   clearTimeout(state.marketState.timer); state.marketState.timer = null;
-  if (!state.marketView || document.hidden || navigator.onLine === false) {
+  const background = !state.marketView;
+  if (document.hidden || navigator.onLine === false || (background && !state.marketState.stocks.length)) {
     marketAbortRefresh();
     if (state.marketView) marketRenderRefreshStatus();
     return;
   }
+  if (background) state.marketState.historyJob?.controller.abort();
   const key = marketKey();
   if (state.marketState.environment !== document.getElementById('apiEnv').value || state.marketState.key !== key) {
-    marketAbortRefresh(); marketReadCache(); renderMarket();
+    marketAbortRefresh(); marketReadCache();
+    if (!background) renderMarket();
   }
   const scope = marketRefreshScope();
   if (state.marketState.refresh && state.marketState.refresh.scope.id !== scope.id) marketAbortRefresh();
-  if (!state.marketState.loading && scope.rows.length) marketLoadHistory();
-  marketRenderRefreshStatus();
+  if (!background) {
+    if (!state.marketState.loading && scope.rows.length) marketLoadHistory();
+    marketRenderRefreshStatus();
+  }
   if (state.marketState.refresh || state.marketState.loading || !scope.rows.length) return;
   const canRefresh = state.marketState.auto && key && !state.marketState.authBlocked;
   const delay = canRefresh ? Math.min(5000, Math.max(0, marketRefreshDue(scope) - Date.now())) : 5000;
@@ -324,9 +343,9 @@ export function marketRenderRefreshStatus() {
   auto.textContent = 'Auto: ' + (ms.auto ? 'on' : 'off');
   auto.setAttribute('aria-pressed', String(ms.auto));
   auto.classList.toggle('primary', ms.auto);
-  const interval = scope.interval === 180000 ? '3 min' : '30 sec';
+  const interval = scope.interval === 60000 ? '1 min' : '10 sec';
   auto.title = (ms.auto ? 'Pause automatic quote refresh. ' : 'Resume automatic quote refresh. ')
-    + scope.label + ' refreshes every ' + interval + ' while Market is visible and online. Requires a Tradier key or a Schwab login.';
+    + scope.label + ' refreshes every ' + interval + ' in Market, and every 2 min from other tabs once Market has opened. Requires a Tradier key or a Schwab login.';
   const wait = Math.max(0, Math.ceil((ms.retryAt - Date.now()) / 1000));
   const status = navigator.onLine === false ? 'Offline · cached data kept'
     : ms.authBlocked ? (marketSource() === 'schwab' ? 'Auto paused · check your Schwab login in Settings' : 'Auto paused · check your Tradier key in Size')
@@ -358,7 +377,7 @@ export function marketRenderRefreshStatus() {
 }
 
 export async function marketRefreshToday(automatic = false) {
-  if (state.marketState.refresh || !state.marketState.stocks.length || !state.marketView || document.hidden || navigator.onLine === false) return;
+  if (state.marketState.refresh || !state.marketState.stocks.length || (!state.marketView && !automatic) || document.hidden || navigator.onLine === false) return;
   const notice = document.getElementById('marketNotice');
   const key = marketKey();
   if (!key) {
@@ -373,13 +392,29 @@ export async function marketRefreshToday(automatic = false) {
   clearTimeout(state.marketState.timer); state.marketState.timer = null;
   const context = {controller:new AbortController(), scope, environment:state.marketState.environment,
     status:'Refreshing ' + scope.label + '…'};
+  // A scope with quotes already shows each batch as it lands (the overview is 29 batches); until the last one, the rest
+  // keep their previous quotes and time. A failure or cancel puts the previous snapshot back.
+  const previous = state.marketState.snapshots[scope.id] || null;
+  let provisional = null;
+  const restore = () => {
+    if (!provisional || state.marketState.snapshots[scope.id] !== provisional) return;
+    if (previous) state.marketState.snapshots[scope.id] = previous;
+    else delete state.marketState.snapshots[scope.id];
+  };
   state.marketState.refresh = context;
   notice.hidden = true;
   marketRenderRefreshStatus();
   if (!automatic) marketLoadHistory(true);
   try {
     const quotes = await MarketData.fetchQuotes(symbols, {
-      base:baseUrl(), auth:headers(), fetchImpl:marketFetch, signal:context.controller.signal,
+      base:baseUrl(), auth:headers(), fetchImpl:marketFetch, signal:context.controller.signal, spacing:marketBatchSpacing,
+      onBatch(batch) {
+        if (!previous || context.controller.signal.aborted || symbols.length <= 100) return;
+        if (state.marketState.snapshots[scope.id] !== (provisional || previous)) return; // the cache was reread meanwhile
+        provisional = {fetchedAt:previous.fetchedAt, quotes:{...(provisional || previous).quotes, ...batch}};
+        state.marketState.snapshots[scope.id] = provisional;
+        if (state.marketView) renderMarket(true);
+      },
       onProgress(done, total) {
         context.status = 'Refreshing ' + done.toLocaleString() + ' / ' + total.toLocaleString();
         marketRenderRefreshStatus();
@@ -390,7 +425,7 @@ export async function marketRefreshToday(automatic = false) {
         marketRenderRefreshStatus();
       },
     });
-    if (context.controller.signal.aborted || context.environment !== document.getElementById('apiEnv').value || key !== marketKey()) return;
+    if (context.controller.signal.aborted || context.environment !== document.getElementById('apiEnv').value || key !== marketKey()) { restore(); return; }
     const scopedQuotes = Object.create(null);
     symbols.forEach(symbol => { if (quotes[symbol]) scopedQuotes[symbol] = quotes[symbol]; });
     if (!Object.keys(scopedQuotes).length) throw new Error('Tradier returned no usable quotes.');
@@ -399,6 +434,7 @@ export async function marketRefreshToday(automatic = false) {
     state.marketState.quoteMode = true; state.marketState.failures = 0; state.marketState.retryAt = 0; state.marketState.authBlocked = false;
     store.set(marketCacheKey(), JSON.stringify({scopes:state.marketState.snapshots}));
   } catch(error) {
+    restore();
     if (!context.controller.signal.aborted) {
       state.marketState.failures++;
       state.marketState.authBlocked = error.status === 401 || error.status === 403;
@@ -408,7 +444,8 @@ export async function marketRefreshToday(automatic = false) {
     }
   } finally {
     state.marketState.refresh = null;
-    renderMarket(true); marketScheduleRefresh();
+    if (state.marketView) renderMarket(true);
+    marketScheduleRefresh();
   }
 }
 

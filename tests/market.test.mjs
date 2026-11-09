@@ -248,10 +248,10 @@ test('refresh scopes cover the active ETF tab, opened group, or complete theme o
   const app = await appContext();
   app.run('marketState.stocks = ' + JSON.stringify(fixture()) + '; marketState.etfs = ' + JSON.stringify(etfFixture()) + ';');
   assert.equal(app.run('marketQuoteSymbols().sort().join()'), 'A,B,C');
-  assert.equal(app.run('marketRefreshScope().interval'), 180000);
+  assert.equal(app.run('marketRefreshScope().interval'), 60000);
   app.run("marketOpenGroup('Tech');");
   assert.equal(app.run('marketQuoteSymbols().sort().join()'), 'A,B');
-  assert.equal(app.run('marketRefreshScope().interval'), 30000);
+  assert.equal(app.run('marketRefreshScope().interval'), 10000);
   app.run("marketSetCategory('sectors');");
   assert.equal(app.run('marketQuoteSymbols().join()'), 'XLK');
 });
@@ -372,13 +372,13 @@ test('a scoped refresh preserves selected period, sort, unrelated caches and his
   assert.equal(app.run('marketCachedSnapshot()'), null);
 });
 
-test('automatic refresh respects cache age, pauses when hidden and resumes only when stale', async () => {
+test('automatic refresh respects cache age, pauses when hidden, resumes only when stale and slows down off Market', async () => {
   let calls = 0;
   const app = await appContext(async () => { calls++; return quoteResponse('XLK'); });
   seedMarket(app);
   await app.advance(0);
   assert.equal(calls, 1);
-  await app.advance(29000);
+  await app.advance(9000);
   assert.equal(calls, 1);
   await app.advance(1000);
   assert.equal(calls, 2);
@@ -388,9 +388,53 @@ test('automatic refresh respects cache age, pauses when hidden and resumes only 
   app.run('document.hidden = false; marketScheduleRefresh();');
   await app.advance(0);
   assert.equal(calls, 3);
+  // Other tabs keep the scope warm every two minutes, so Market is current on the way back.
   app.run("setView('calc');");
   await app.advance(60000);
   assert.equal(calls, 3);
+  await app.advance(60000);
+  assert.equal(calls, 4);
+  app.run('document.hidden = true; marketScheduleRefresh();');
+  await app.advance(300000);
+  assert.equal(calls, 4);
+});
+
+test('Market never refreshes in the background before it has loaded', async () => {
+  let calls = 0;
+  const app = await appContext(async () => { calls++; return quoteResponse('XLK'); });
+  app.element('apiKey').value = 'test';
+  app.run("setView('calc'); marketScheduleRefresh();");
+  await app.advance(300000);
+  assert.equal(calls, 0);
+  assert.equal(await app.run("marketRefreshToday()"), undefined);
+  assert.equal(calls, 0);
+});
+
+test('the overview shows each batch as it lands and puts the previous quotes back if a later batch fails', async () => {
+  const tickers = Array.from({length:150}, (_, i) => 'S' + i);
+  let second;
+  const app = await appContext(async (url, options) => {
+    const batch = new URLSearchParams(options.body).get('symbols').split(',');
+    if (batch.length < 100) return new Promise(done => { second = done; });
+    return {ok:true, json:async () => ({quotes:{quote:batch.map(symbol => ({symbol, last:10, change_percentage:7}))}})};
+  });
+  app.run('marketState.stocks = ' + JSON.stringify(data.parseCsv(header + '\n' + tickers.map(t => t + ',' + t + ',Tech,1,2,3,4,5,6').join('\n')))
+    + "; marketState.etfs = []; marketView = true; marketState.snapshots.themes = {fetchedAt: Date.now() - 120000, quotes: "
+    + JSON.stringify(Object.fromEntries(tickers.map(t => [t, {price:5, change:1}]))) + '};');
+  app.element('apiKey').value = 'test';
+  app.run('marketState.environment = "production"; marketState.key = "test";');
+  const request = app.run('marketRefreshToday()');
+  const settle = async () => { for (let i = 0; i < 10; i++) await app.advance(0); };
+  await settle();
+  await app.advance(600); // the pause between batches
+  await settle();
+  assert.equal(app.run("marketRows().find(row => row.ticker === 'S0').returns[0]"), 7);
+  assert.equal(app.run("marketRows().find(row => row.ticker === 'S149').returns[0]"), 1);
+  assert.ok(app.run('Date.now() - marketCachedSnapshot().fetchedAt') >= 120000, 'the time stays the previous refresh until the last batch');
+  second({ok:false, status:401});
+  await request;
+  assert.match(app.element('marketNotice').textContent, /Previous data kept/);
+  assert.equal(app.run("marketRows().find(row => row.ticker === 'S0').returns[0]"), 1);
 });
 
 test('a group reuses the full overview cache but a group-only refresh cannot mark the overview fresh', async () => {
@@ -422,12 +466,19 @@ test('snapshot mode pauses auto-refresh, and turning auto back on restores cache
   assert.equal(calls, 2);
 });
 
-test('leaving Market aborts in-flight requests and keeps the previous cache', async () => {
+test('leaving Market lets a refresh finish in the background; hiding the app aborts it and keeps the previous cache', async () => {
   let resolve, signal;
   const app = await appContext((url, options) => { signal = options.signal; return new Promise(done => { resolve = done; }); });
   seedMarket(app);
-  const request = app.run('marketRefreshToday()');
+  let request = app.run('marketRefreshToday()');
   app.run("setView('utils');");
+  assert.equal(signal.aborted, false);
+  resolve(quoteResponse('XLK'));
+  await request;
+  assert.equal(app.run('marketCachedSnapshot().quotes.XLK.change'), 2);
+  app.run("setView('market'); marketState.snapshots = {};");
+  request = app.run('marketRefreshToday()');
+  app.run('document.hidden = true; marketScheduleRefresh();');
   assert.equal(signal.aborted, true);
   resolve(quoteResponse('XLK'));
   await request;
