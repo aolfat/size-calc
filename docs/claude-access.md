@@ -4,6 +4,7 @@ A Claude Code session can read your journal, save trade reviews and add to your 
 You say what happened ("mark the QQQ put a lotto, I broke my VWAP stop") and the session saves the review the way the trade page would.
 You say how the day went and it saves the day's review in the notebook the way the day page would.
 You name the tickers you like for tomorrow and it adds them to that day's focus list, with the plan, the way the day page would.
+You tell it what you missed ("I missed the SDGR flag breakout, hesitated") and it logs the day's missed trade the way the day page would.
 You hand it a chart ("put this in Best longs as a 21 EMA bounce") and it adds the example the way Model books would.
 It can't reach anything else: not your settings, your Tradier key, your Schwab login or another account's rows.
 
@@ -26,7 +27,8 @@ Migration 20261114000000_claude_day_review.sql redefines both: the read returns 
 Migration 20261115000000_claude_week_review.sql redefines them again: the read returns every week's and month's review (`periods`, the period_reviews rows), and the save writes one (each part's grade and note, what went well, what to work on, more notes, the rule for the next period, whether the last one's was kept, reviewed_at).
 Migration 20261116000000_week_rules.sql redefines them once more: the read returns each day's check-ins on its week's rules (`week_rules`) and each review's rules list, Kept it? on each and how they went (`rules_next`, `rules_kept`, `rules_note`), and the save writes them (week_rules and rules_kept merge one rule at a time, a null clears one; rules_next is replaced whole).
 Migration 20261120000000_claude_day_plan.sql redefines them for the day's plan: the read returns each day's plan and focus list, and the save writes them (the plan text, and the focus list whole: up to 12 tickers, each an object with an id and a symbol, the app cleaning the rest as it does its own).
-The rest of the notebook (the check-in, the missed trades, planned_at) stays out of reach.
+Migration 20261121000000_claude_missed_trades.sql redefines them for the missed trades: the read returns each day's missed list, and the save writes it whole (up to 20, each an object with an id and a symbol, the app cleaning the rest as it does its own).
+The rest of the notebook (the check-in, planned_at) stays out of reach, and so do a missed trade's screenshots.
 Rule answers merge one rule at a time, and a null answer clears that rule's.
 `claude_model_books_read` (migration 20261108000000_claude_model_books.sql) returns that owner's books, examples (no image links) and library.
 `claude_model_books_save` makes and renames books and edits an example's title, notes, setups and book; it can't delete either, and a new example only comes with its screenshot, below.
@@ -45,7 +47,7 @@ A wrong key or a bad image never reaches Storage.
 The function runs with `--no-verify-jwt`: the Claude key stands in for a sign-in, so the gateway's JWT check is off and the handler checks the key.
 It reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, which Supabase gives every function; a `sb_secret_` key goes as the apikey alone, a legacy service_role JWT as the bearer too.
 
-Anyone holding a key can rewrite that account's trade, day, week and month reviews and labels, its days' plans and focus lists, and add to its model books, so keep it in the environment's secrets, never in a chat or a file in the repo.
+Anyone holding a key can rewrite that account's trade, day, week and month reviews and labels, its days' plans, focus lists and missed trades, and add to its model books, so keep it in the environment's secrets, never in a chat or a file in the repo.
 
 ## Setting up a Claude Code environment
 
@@ -85,6 +87,7 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 - `node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]`: saves a review and prints the trade after; a dry run prints the changes instead.
 - `node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day: its market, P&L, trades, and its review (this week's rules numbered) with what's missing; with it, saves the day's review and prints the day after.
 - `node scripts/journal.mjs plan <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day's premarket: the last focus, the plan and the focus list (each ticker's side, setups, note, and how it played once said); with it, saves the plan and prints it after.
+- `node scripts/journal.mjs missed <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day's missed trades (each ticker's side, setups, tactics, why and note); with it, saves them and prints them after.
 - `node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]` and `month <YYYY-MM> ...`: without JSON, the week (by its Monday) or month: its P&L from the exits taken in it, its trades, the rules the last one set (numbered, how the days checked each, Kept it?, how they went), each part's grade and note and the rules for next one with what's missing; with it, saves the review and prints it after.
 - `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id), then the examples in no book.
 - `node scripts/journal.mjs book [book] '<json>' [--dry-run]`: makes a book (`name`, `description`), or changes the one named.
@@ -106,6 +109,14 @@ A ticker already on the list keeps its id, how it played and its review, and cha
 Setups are matched the way a review's are, a new one added to My setups.
 The script sends the whole list back, so a ticker added in the app between the read and the save would be dropped; run it while the day page isn't being edited.
 The check-in stays the owner's, so the plan's planned_at only moves when the owner fills it in the app.
+
+Missed trades' JSON is an object by ticker: `{ "SDGR": { "side": "long", "setups": ["Pennant or flag breakout"], "tactics": ["5m flag break"], "why": "Hesitated", "note": "Clear breakout level." }, "AMD": null }`.
+A ticker already on the day's list keeps its id (its screenshots hang off it) and changes only the fields given (side long or short, setups and tactics up to 6 each, why one of Hesitated, Didn't see it, Away, Too late, Didn't trust it or At my limit by its words or key, a note of 500 characters); a new one goes at the end, 20 at most; null takes one off.
+Two missed trades of the same ticker on a day: the first is the one named.
+Setups and tactics are matched the way a review's are, a new one added to your choices.
+The script sends the whole list back, as with the focus list, so run it while the day page isn't being edited.
+A missed trade is the owner's own account, so its side, setups, why and note are theirs: ask for what they didn't say, show the dry run, and save once they say yes.
+A screenshot can't go on one from a session; the owner pastes it on the day page.
 
 A week's or month's JSON takes `parts` (`{ "Risk management": { "grade": "D+", "note": "..." } }`, each part by its name or key: selection, entry, exit, risk, emotion, market, prep, consistency; grades A+ to F), `wentWell`, `workOn`, `note`, `rulesNext` (the whole list, up to 5 rules of 500 characters; a rule already on it keeps its id), `rulesKept` (`{ "1": "partly" }`, each of the rules the last period set by its text or number: yes, partly, no or null, saved on this period's row as the page does) and `rulesNote` (how they went); fields left out stay, null clears one.
 Its reviewed_at is stamped once every part has a grade, the rules for next one are set and, when the last period set a list, each has its Kept it? and how they went is said; cleared if one comes off.
