@@ -40,6 +40,12 @@ function rememberView(v) {
   globalThis.history.replaceState(null, '', loc.pathname + loc.search + want); // no new history entry per tab switch
 }
 
+/** the tab you're on, tapped again: back to the top, gliding unless the device asks for less motion */
+export function scrollViewToTop() {
+  const still = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+}
+
 export function setView(v) {
   if (v !== 'journal' && state.modelBooks.viewerId) closeModelImage();
   rememberView(v);
@@ -59,7 +65,9 @@ export function setView(v) {
     const button = document.getElementById(id);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
-  document.getElementById('viewTitle').textContent = state.marketView ? 'Market' : state.positionsView ? 'Positions' : state.journalView ? 'Journal' : state.utilsView ? 'Tools' : 'Size';
+  const title = state.marketView ? 'Market' : state.positionsView ? 'Positions' : state.journalView ? 'Journal' : state.utilsView ? 'Tools' : 'Size';
+  document.getElementById('viewTitle').textContent = title;
+  document.getElementById('titleBarText').textContent = title; // the small title once the large one scrolls away
   document.querySelector('.app').classList.toggle('market-view', state.marketView);
   document.getElementById('lastUpdated').style.display = state.marketView || state.utilsView || state.journalView ? 'none' : '';
   document.getElementById('modeCard').style.display = calc ? '' : 'none';

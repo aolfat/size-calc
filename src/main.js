@@ -16,6 +16,7 @@ import { initMarketEvents, marketScheduleRefresh } from './ui/market.js';
 import { initModelBookEvents } from './ui/model-books.js';
 import { initPositionChartEvents } from './ui/position-chart.js';
 import { initJournalTradeEvents } from './ui/journal-trade.js';
+import { initNativeFeel, updateTitleBar } from './ui/native-feel.js';
 import { positionsVisibilityChanged, syncPosSettings } from './ui/positions.js';
 import { applyQuickOpen } from './ui/quick-lookup.js';
 import { renderRiskPresets, syncRiskDollar, updateRiskStatus } from './ui/risk.js';
@@ -72,7 +73,8 @@ setView(startView(location.hash)); // a reload stays on its tab (#journal, #mark
 updateIntervalChips();
 
 // page listeners
-window.addEventListener('scroll', () => requestAnimationFrame(updateStickyBar), { passive: true });
+window.addEventListener('scroll', () => requestAnimationFrame(() => { updateStickyBar(); updateTitleBar(); }), { passive: true });
+initNativeFeel(); // phones: the small title bar, pull to refresh, swipe back
 // backgrounding the app pauses a live session instead of polling blind; foregrounding pulls fresh account data
 document.addEventListener('visibilitychange', () => {
   marketScheduleRefresh();

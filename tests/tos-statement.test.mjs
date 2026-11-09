@@ -78,7 +78,7 @@ test('futures contracts: root, month and dollars per point from the symbol', () 
   assert.equal(multiplierOf('FUTURE', '/MESZ26'), 5);
   assert.equal(multiplierOf('OPTION', 'AAPL  261218C00245000'), 100);
   assert.equal(multiplierOf('EQUITY', 'AAPL'), 1);
-  assert.deepEqual(tradeBarSymbols({ symbol: '/MNQZ26', assetType: 'FUTURE' }), [], 'Tradier has no futures bars to save');
+  assert.deepEqual(tradeBarSymbols({ symbol: '/MNQZ26', assetType: 'FUTURE' }), ['/MNQZ26'], 'the contract traded: its bars come from Schwab');
 });
 
 test('the statement: futures fills with fees and whether each opened or closed, the account as its last 4 only', () => {

@@ -75,7 +75,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Round-trip fees per contract are typed in the card and kept per root on this device (futures_fees).
   A delayed quote, a Schwab tick that disagrees with FUTURES_CONTRACTS, or a max loss below one contract is said in amber.
   Futures size by risk only (loading one switches allocation back); Trade at Schwab, the image card and the opening range are hidden; Options says there are no futures chains here.
-  Copy summary names the month ('Short 11 /MESZ26 contracts @ …').
+  Copy text names the month ('Short 11 /MESZ26 contracts @ …').
   Live polls the Schwab quote each tick and the chart every fourth.
   A worker from before the market data relay answers 404 (redeploy it), a Schwab app without Market Data Production 401 or 403; the toast says which.
   The last ticker reloads at boot only when its source is there (a Schwab login for futures).
@@ -101,7 +101,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Single-side views (Calls/Puts) use a wider layout with bid/ask/IV/@stop/total.
   Mobile (<500px) shows OI/Vol/Δ/Mid per side (m-size hides Loss/Cts/Total — sizing lives in the tap-in detail; m-oi and m-delta re-shown) and compacts number formats; colspans both 9 / single 5 / banner 4.
   Chain header is locked while scrolling: sticky thead — on desktop the chain is its own scroll panel (.chain-scroll, max-height ~100vh); on mobile (table fits, no scroll wrapper) it sticks to the page below the context bar (--sbh offset)
-- **Share cards**: the shares sizing card has separate **Copy card image** and **Copy summary** actions, disabled when the stop is invalid.
+- **Share cards**: the shares sizing card has separate **Copy image** and **Copy text** actions, disabled when the stop is invalid.
+  The footer is Trade at Schwab across the top, then Pin order, Copy image and Copy text in one row of equal buttons (owner request: they wrapped two over one); whichever are hidden, the rest split the row.
   Image copying (also available as 'share' on pinned cards) renders a hand-drawn canvas PNG (drawShareCard — deliberately NOT a DOM screenshot: no deps, Safari foreignObject is unreliable) via ClipboardItem (promise constructed inside the gesture for Safari); falls back to downloading the PNG.
   Shares images label custom stops explicitly and retain percentage-based risk/position values and the $10k-account example.
   Copy-as-text one-liners (copyShares/copyPinned) state risk as % of account and end with a $100-risk example (ex100: units for $100, or the one-unit risk when a single unit exceeds it)
@@ -137,7 +138,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Chart draws PDH/PDL/PDC gray dashed lines when inside the visible range
 - **Recent tickers**: last 5 symbols as chips under the symbol row (recent_tickers, MRU, current excluded).
   Chain auto-scrolls to the ATM row on user-driven loads only (pendingAtmScroll — never on live polls).
-  On desktop, Live mode is a duration ladder: tap ⚡ for 1m @ 5s ticks, tap again to extend 5m @ 10s, again 30m @ 20s, again stops (LIVE_MODES).
+  With Settings > Live on 'Tap to start', Live mode is a duration ladder: tap ⚡ for 1m @ 5s ticks, tap again to extend 5m @ 10s, again 30m @ 20s, again stops (LIVE_MODES).
   Refreshes pinned cards every 4th tick offset from the chart.
   Backgrounding PAUSES the session (remaining time kept) and returning resumes it
 - **Reverse sizing**: Shares stat and Contracts stats (detail row, pinned cards) are editable inputs; committing a quantity writes risk$ back (riskForQty) and everything re-renders from it.
@@ -219,11 +220,10 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   A Load while live tells the open socket the new symbol (subscribeMessage) and ignores the old one's events.
   No stream with a sandbox key or for futures (Schwab's quote polls); a refused session or a dropped socket polls the quote every 2s and tries the stream again after 15s; backgrounding closes the socket and returning opens a fresh one.
   Sockets open through effects.openSocket, so tests use a fake.
-- **Live by default on phones and tablets** (below DESKTOP_MQ): every Load starts Live with no countdown (autoLive, startAlwaysLive, state.liveAlways): a 1s tick polls the quote every 2nd second only while the stream is down (and for futures), the chain every 5s in Options, the chart and pinned cards every 20s.
+- **Live by default, at every width** (desktop too since owner request: always live while a ticker is loaded and the page is in view): every Load starts Live with no countdown (autoLive, startAlwaysLive, state.liveAlways): a 1s tick polls the quote every 2nd second only while the stream is down (and for futures), the chain every 5s in Options, the chart and pinned cards every 20s.
   The button reads 'Live · tap: stop'; a tap stops it and a Load of the same ticker leaves it off (state.liveOptOut) until another ticker loads.
-  It rests (paused) in the other tabs and while backgrounded, and picks up on return.
-  Settings > Live switches it to 'Tap to start' (`live_mobile` '0', this device only, not synced); a tap then starts the desktop ladder.
-  Desktop stays tap-to-start, though its ladder streams the price too.
+  It rests (paused) in the other tabs and while the page is hidden (another browser tab, a minimized window, a backgrounded app), and picks up on return; a Load in a hidden tab starts it paused.
+  Settings > Live switches it to 'Tap to start' (`live_mobile` '0', named for when only phones had it; this device only, not synced); a tap then starts the duration ladder, which streams the price too.
 - **Extended hours**: extSession(q) is null unless NOW (New York) is inside a PRE or AH window, and only counts prints and quotes from that same window today; it picks the fresher of two signals inside the PRE (4:00–9:30 ET, vs prevclose) / AH (≥16:00, vs close) windows — the last trade print, or the extended NBBO mid (bid/ask with their own timestamps; Tradier often freezes `last` at the 15:59 closing print).
   Spreads >5% of mid rejected as overnight junk; null during RTH or when nothing is from today (ET).
   Shown as a dim secondary figure in the quote bar (qExt) and sticky bar

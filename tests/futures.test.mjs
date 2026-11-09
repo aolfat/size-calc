@@ -292,7 +292,34 @@ test("the trade features' daily history for a future: Schwab's, for the continuo
   // a stock goes the usual way (here, no Tradier key: Schwab's history in Tradier's form), its symbol as it is
   await h.run("barSource.daily('AAPL', '2026-10-23', '2026-10-26').catch(() => null)");
   assert.equal(new URL(calls.filter(u => u.includes('/pricehistory')).at(-1)).searchParams.get('symbol'), 'AAPL');
+  // back to the listing (1960) is at most 20 years for a future: Schwab takes dates from 1970 on
+  calls.length = 0;
+  await h.run("barSource.daily('/MNQZ26', '1960-01-01', '2026-10-26')");
+  assert.equal(new Date(Number(new URL(calls.find(u => u.includes('/pricehistory'))).searchParams.get('startDate'))).toISOString(), '2006-10-26T04:00:00.000Z');
   // without the Schwab login: refused, so the features wait for it
   const out = await app({ fetch, storage: new Map() });
-  await assert.rejects(out.run("barSource.daily('/MNQZ26', '2026-10-23', '2026-10-26')"), /Futures history needs the Schwab login/);
+  await assert.rejects(out.run("barSource.daily('/MNQZ26', '2026-10-23', '2026-10-26')"), /Futures bars need the Schwab login/);
+});
+
+test("a future's 5-minute bars for the journal: Schwab's for the contract traded, New York 04:00 to 20:00 by day, saved as Schwab's", async () => {
+  const calls = [];
+  const fetch = async url => {
+    calls.push(url);
+    if (url.startsWith(PROXY + '/marketdata/v1/pricehistory')) return json({ symbol: '/MNQZ26', empty: false, candles: [
+      candle(ny(26, 3, 55), 25000, 25010, 24990, 25005), // overnight: left out
+      candle(ny(26, 4, 0), 25005, 25020, 25000, 25015),
+      candle(ny(26, 9, 30), 25015, 25060, 25010, 25050),
+      candle(ny(26, 19, 55), 25050, 25055, 25040, 25045),
+      candle(ny(26, 20, 0), 25045, 25050, 25040, 25042), // the evening session: left out
+      candle(ny(27, 9, 30), 25042, 25100, 25030, 25090)] });
+    return json({}, 404);
+  };
+  const h = await app({ fetch, storage: connected() });
+  const days = await h.run("barSource.intraday('/MNQZ26', '2026-10-26', '2026-10-26').then(m => Object.fromEntries(m))");
+  assert.deepEqual(days, { '2026-10-26': [['04:00', 25005, 25020, 25000, 25015, 100], ['09:30', 25015, 25060, 25010, 25050, 100], ['19:55', 25050, 25055, 25040, 25045, 100]] }, 'the day asked, its 04:00 to 20:00 bars, by their start');
+  const q = new URL(calls.find(u => u.includes('/pricehistory'))).searchParams;
+  assert.deepEqual([q.get('symbol'), q.get('frequencyType'), q.get('frequency'), q.get('needExtendedHoursData')], ['/MNQZ26', 'minute', '5', 'true'], 'the contract traded');
+  assert.equal(h.run("barSource.sourceFor('/MNQZ26')"), 'schwab', 'saved as Schwab\'s whichever provider the rest use');
+  assert.deepEqual(h.run("tradeBarSymbols({ symbol: '/MNQZ26', assetType: 'FUTURE' })"), ['/MNQZ26'], 'the bar saver keeps them');
+  await assert.rejects((await app({ fetch, storage: new Map() })).run("barSource.intraday('/MNQZ26', '2026-10-26', '2026-10-26')"), /Futures bars need the Schwab login/);
 });

@@ -492,6 +492,17 @@ export function schwabFuturesHistory(symbol, from, to, now = Date.now()) {
   return marketData(`/pricehistory?${q}`);
 }
 
+/**
+ * A futures contract's 5-minute candles between two New York days, extended hours included (Schwab's price history body):
+ * the journal's saved bars for a futures trade, read for the contract traded ('/MNQZ26').
+ * @param {string} symbol @param {string} from 'YYYY-MM-DD' @param {string} to 'YYYY-MM-DD' @param {number} [now]
+ */
+export function schwabFuturesBarsBetween(symbol, from, to, now = Date.now()) {
+  const q = new URLSearchParams({ symbol, periodType: 'day', frequencyType: 'minute', frequency: '5',
+    startDate: String(nyWallMs(from, '00:00')), endDate: String(Math.min(nyWallMs(to, '23:59'), now)), needExtendedHoursData: 'true' });
+  return marketData(`/pricehistory?${q}`);
+}
+
 /** where to send the browser to log in; state ties the callback to this attempt */
 export function schwabLoginUrl() {
   assertCredentialOrigin();

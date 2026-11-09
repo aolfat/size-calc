@@ -175,6 +175,23 @@ export function futuresBars(body) {
 }
 
 /**
+ * Schwab's 5-minute candles as the journal's bars take them (core/bars.js barsByDay): { time 'YYYY-MM-DDTHH:MM:00' (the
+ * bar's start, New York), open, high, low, close, volume }, oldest first, only the stocks' hours (04:00 to 20:00) so a
+ * future's saved day reads like a stock's: the evening and overnight before 4 AM are left out.
+ * @param {any} body
+ * @returns {{ time: string, open: number, high: number, low: number, close: number, volume: number }[]}
+ */
+export function futuresTimesales(body) {
+  /** @type {any[]} */
+  const candles = Array.isArray(body?.candles) ? body.candles : [];
+  return candles
+    .filter(c => [c?.open, c?.high, c?.low, c?.close, c?.datetime].every(v => typeof v === 'number' && Number.isFinite(v)) && c.high >= c.low)
+    .sort((a, b) => a.datetime - b.datetime)
+    .map(c => { const { day, time } = wallClock(c.datetime, 'America/New_York'); return { time: `${day}T${time}:00`, open: c.open, high: c.high, low: c.low, close: c.close, volume: +c.volume || 0 }; })
+    .filter(b => b.time.slice(11, 16) >= '04:00' && b.time.slice(11, 16) < '20:00');
+}
+
+/**
  * Schwab's daily candles as the daily chart's days ({ date, open, high, low, close, volume }, oldest first), dated by
  * trading day whichever hour Schwab stamps them with.
  * @param {any} body

@@ -16,7 +16,7 @@ They sit outside `src/` on purpose (the test harness loads and scans every `src/
   Adding a control = attribute in markup + one entry in `actions`.
   A test fails on any inline `on*` attribute or any action name without a handler (and vice versa)
 - **Seams**: `onStoreWrite` (store tells the cloud module about value-changing writes, which marks account keys pending) and `onCloudView` (cloud reports status, rehydrate and pulled-toast to the settings sheet, which registers it on import).
-  Side effects tests swap go through `effects` in `src/ui/effects.js` (copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket): call `effects.x(...)`, not the import
+  Side effects tests swap go through `effects` in `src/ui/effects.js` (copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket, haptic): call `effects.x(...)`, not the import
 - **Types**: `core/` and `lib/` are `// @ts-check` with JSDoc; `jsconfig.json` makes editors check them.
   Ad-hoc full check (TypeScript is not a dependency): `npx -p typescript tsc -p jsconfig.json`
 - **Running**: ES modules do not load from `file://`; serve the folder (`npm run serve` = `python3 -m http.server 8765`) and open http://localhost:8765.
@@ -121,6 +121,8 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Chart sits ABOVE the chain — levels before contracts.
   Setup never sits in the page: the header settings button (amber dot until a key exists) opens #settingsSheet (account, times, key, environment) and the risk strip's summary link opens #riskSheet.
   Sheets (openSheet/closeSheet) are a panel under the header on desktop and a bottom sheet on phones; missing-key actions call requireKey(), which toasts and opens Settings
+  On phones a sheet behaves like an iOS one (owner request: feel like a native app): it slides up, has a grabber, and pulls down to close (attachSheetDrag: only from the top of its own scroll, past a quarter of its height or 120px, or a flick), the page behind holds still (body.sheet-open), and × or the backdrop slide it down first (dismissSheet; Escape and code close it at once).
+  The motion skips for prefers-reduced-motion.
 - Sticky context bar (fixed, appears when scrolled past the quote card; never on the desktop shell since the page doesn't scroll): symbol, price/chg, share count in shares mode, LOD/HOD, ADR used %, risk $, chart/chain jump chips (jumpTo — smooth-scroll, offset by bar height), and a live chip (sbLive — start/extend/stop live from anywhere on the page, synced with the main button via syncSbLive; stopPropagation so it doesn't trigger the bar's back-to-top).
   Click elsewhere on the bar = back to top
 - Stop inputs carry their chart line colors (red long stop, green short stop — a stop is a loss point, and it groups with the level it defaults to: LOD red, HOD green).
@@ -143,6 +145,12 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Green toast variant: .error.ok via showToast()
 - iOS home-screen meta tags present (apple-mobile-web-app-*) — file is meant to be hosted (GitHub Pages) and added to iPhone home screen.
   Status bar style is `black` (opaque, the page starts below it), not `black-translucent`: since iOS 26 a translucent status bar gets Liquid Glass's edge blur, which reached into the header and greyed it out even at the top; no CSS turns it off. iOS reads the style when the app is added, so an old install keeps the blur until it's removed and added again
+- Double tap never zooms the page on phones (owner request): `* { touch-action: manipulation }` in base.css; pinch zoom stays on (no user-scalable=no, which iOS ignores anyway).
+- No web page tells on phones (owner request: feel like a native iOS app): no grey tap flash, no text selection or callout menu from a long press on buttons and [data-action] elements (fields still select), every field 16px so iOS never zooms on focus, and no font inflation when the phone turns sideways (base.css).
+  Tapping the tab you're on scrolls to the top, or leaves a Journal trade page (docs/tools.md).
+  The rest of the native feel lives in ui/native-feel.js: the small title bar once the large title scrolls away, pull to refresh, swipe back from a Journal trade page's left edge, and haptics through effects.haptic (docs/tools.md, docs/journal.md).
+  Every :hover rule sits in @media (hover: hover) (a test keeps it so), so a tap never leaves a hover style stuck on a phone.
+  tests/native-feel.test.mjs covers these.
 - Wheel over a focused number input blurs it so the page scrolls instead of spinning the value
 - Owner's style: direct, terse.
   No em dashes in user-facing copy.
@@ -164,6 +172,7 @@ The shared Schwab worker remains in use; its operator can access tokens in trans
 The Supabase administrator can decrypt the shared Schwab login too (signed in, one login for every device: docs/schwab.md).
 Settings discloses both.
 The entry page must be `index.html` at the root; `styles/`, `src/`, `fonts/` and `data/` deploy beside it as plain files.
+A Pages deploy that fails or sticks in queued during a GitHub Actions outage may never restart, even re-run (Nov 2026: the re-runs sat queued and could not be cancelled); a new commit on main starts a fresh one.
 The Schwab worker deploys separately with wrangler (`worker/schwab/README.md`).
 The one Edge Function, `supabase/functions/claude-model-example` (Claude adding Model books screenshots), deploys with `npx supabase functions deploy claude-model-example --no-verify-jwt`.
 Database changes are SQL files in `supabase/migrations/`, applied with `npx supabase db push` after `npx supabase link --project-ref dhohfavttsxwutanvcuj` (it asks for the database password; never commit it).
