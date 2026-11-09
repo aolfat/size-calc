@@ -1,5 +1,6 @@
 // Sheet quote: the live bid and ask at the top of an order review (entry, position close, target, stop, order change, spread close),
-// read from Tradier every 2s while its sheet is open. Only the numbers reach markup, and the frozen ticket never moves with them.
+// read from Tradier every 2s while its sheet is open. Only the numbers reach markup; a sheet that asks (onQuote) hears each read,
+// and the entry review's Mid / Ask / Bid limit follows it while the pick is lit.
 import { state } from '../state.js';
 import { fmtTick } from '../core/orders.js';
 import { inZone } from '../lib/zone.js';
@@ -49,17 +50,19 @@ export function netQuote(legs, quotes) {
 
 /**
  * Starts the strip for one sheet: `el` is its #...Quote box, `first` a quote already read (the entry review's), `fills` says
- * which side to light as the ticket changes. Opening another sheet, or closing this one, stops it. Resolves once the first read is in.
- * @param {{ sheet: string, el: string, legs: QuoteLeg[], fills: () => string, first?: { last: number, bid: number, ask: number } | null }} watch
+ * which side to light as the ticket changes, onQuote hears every read after the first. Opening another sheet, or closing this one,
+ * stops it. Resolves once the first read is in.
+ * @param {{ sheet: string, el: string, legs: QuoteLeg[], fills: () => string, first?: { last: number, bid: number, ask: number } | null, onQuote?: () => void }} watch
  */
-export function watchSheetQuote({ sheet, el, legs, fills, first = null }) {
+export function watchSheetQuote({ sheet, el, legs, fills, first = null, onQuote }) {
   stopSheetQuote();
   if (!legs.length || !marketSource()) return Promise.resolve(); // no Tradier key or Schwab login, nothing to read
   const gen = ++state.sheetQuoteGen;
   const symbols = legs.map(l => l.symbol);
-  state.sheetQuote = { sheet, el, legs, fills, last: 0, bid: 0, ask: 0, mid: legs.length > 1 || legs[0].n !== 1, at: 0, failed: false };
+  state.sheetQuote = { sheet, el, legs, fills, last: 0, bid: 0, ask: 0, mid: legs.length > 1 || legs[0].n !== 1, at: 0, failed: false, onQuote: null };
   if (first) setSheetQuote({ last: Number(first.last) || 0, bid: Number(first.bid) || 0, ask: Number(first.ask) || 0 });
   else renderSheetQuote();
+  state.sheetQuote.onQuote = onQuote || null; // after the first quote: that one is what the review opened on
   const read = async () => {
     const q = await readLegQuotes(symbols).then(quotes => netQuote(legs, quotes)).catch(() => null);
     if (gen !== state.sheetQuoteGen) return; // closed, or another review opened, while it was out
@@ -93,6 +96,7 @@ export function showSheetQuote(sheet, q) {
 function setSheetQuote(q) {
   Object.assign(state.sheetQuote, { last: q.last, bid: q.bid, ask: q.ask, at: Date.now(), failed: false });
   renderSheetQuote();
+  state.sheetQuote.onQuote?.();
 }
 
 function hide(id) {

@@ -61,10 +61,15 @@ test('the sheet offers your setups and entry tactics; today\'s focus list and th
   const t = s.state.tradeTicket;
   assert.deepEqual([t.setups, t.tactics], [['ema21_bounce'], ['pivot15']]);
   // read before the sheet opened (the trade button starts it), so the picks are drawn with the sheet
-  assert.match(s.body(), /<dt>Setup<\/dt>/);
-  assert.match(s.body(), /class="filter-btn active" aria-pressed="true" data-action="toggleTradeSetup" data-arg="ema21_bounce">21 EMA bounce</);
-  assert.match(s.body(), /class="filter-btn active" aria-pressed="true" data-action="toggleTradeTactic" data-arg="pivot15">15-minute pivot</);
-  assert.match(s.body(), /data-action="toggleTradeTactic" data-arg="six20">6\/20/);
+  assert.match(s.body(), /<span class="tp-title">Setup<\/span>/);
+  // grouped as the journal's review groups them: the bounces under Bounce, each named for its level
+  assert.match(s.body(), /<span class="jr-group-name">Bounce<\/span><span class="jr-group-chips">[^]*?class="filter-btn active" aria-pressed="true" data-action="toggleTradeSetup" data-arg="ema21_bounce" title="21 EMA bounce">21 EMA</);
+  assert.match(s.body(), /<span class="jr-group-name">Patterns<\/span>[^]*?data-arg="base_breakout"/);
+  // tactics under their timeframe, the timeframe dropped from the chip; the rest under Other
+  assert.match(s.body(), /<span class="jr-group-name">15m<\/span><span class="jr-group-chips"><button class="filter-btn active" aria-pressed="true" data-action="toggleTradeTactic" data-arg="pivot15" title="15m pivot">Pivot</);
+  assert.match(s.body(), /<span class="jr-group-name">30m<\/span><span class="jr-group-chips"><button[^>]*data-arg="pivot30" title="30m pivot">Pivot</);
+  assert.match(s.body(), /<span class="jr-group-name">Other<\/span><span class="jr-group-chips"><button[^>]*data-arg="six20" title="6\/20 \(Gil Morales\)">6\/20/);
+  assert.ok(s.body().indexOf('>15m<') < s.body().indexOf('>30m<') && s.body().indexOf('>30m<') < s.body().indexOf('>Other<'), 'shortest timeframe first, Other last');
   s.run("toggleTradeSetup('ema21_bounce'); toggleTradeSetup('base_breakout'); toggleTradeTactic('pivot15'); toggleTradeTactic('six20')");
   assert.deepEqual([s.state.tradeTicket.setups, s.state.tradeTicket.tactics], [['base_breakout'], ['six20']]);
   s.run("tradeSetupSearch('earn')");
@@ -90,7 +95,7 @@ test('tapping a setup lights it where it is: the chips never move under your fin
   await settle();
   await s.run('openTrade()');
   const before = setupOrder(s.body());
-  assert.equal(before[0], 'ema21_bounce', 'the focus list\'s setup leads');
+  assert.ok(before.includes('ema21_bounce'), 'the focus list\'s setup is among them');
   s.run(`toggleTradeSetup('${before[3]}')`);
   assert.deepEqual(setupOrder(s.picks()), before);
   assert.match(s.picks(), new RegExp(`class="filter-btn active" aria-pressed="true" data-action="toggleTradeSetup" data-arg="${before[3]}"`));
@@ -247,4 +252,23 @@ test('order plans not pushed yet: the journal works as before', async () => {
   const j = await journal(db => db.failTable('order_plans'));
   assert.deepEqual(j.labels(), []);
   assert.match(j.elements.get('journalSection').innerHTML, /AAPL/);
+});
+
+test('entry tactics group by the timeframe their names start with, however it is written; old default names still find theirs', async () => {
+  const { tacticPickGroups, tacticTimeframe, goesBy, buildLibrary } = await import('../src/core/journal-labels.js');
+  const names = ['6/20 (Gil Morales)', '15m pivot', '30m pivot', 'N/A', 'VWAP bounce', '5m 9 EMA bounce', '5m 21 EMA bounce', '30m ORB', 'PDH/L break', '5m flag break', '15-minute ORB', 'RDR', '5m ORB'];
+  const groups = tacticPickGroups(names.map((name, i) => ({ key: 'k' + i, name })));
+  assert.deepEqual(groups.map(g => [g.name, g.items.map(i => i.label)]), [
+    ['5m', ['9 EMA bounce', '21 EMA bounce', 'Flag break', 'ORB']],
+    ['15m', ['Pivot', 'ORB']],
+    ['30m', ['Pivot', 'ORB']],
+    ['Other', ['6/20 (Gil Morales)', 'N/A', 'VWAP bounce', 'PDH/L break', 'RDR']],
+  ]);
+  assert.equal(groups[1].items[1].name, '15-minute ORB', 'the chip\'s title keeps the whole name');
+  assert.deepEqual(tacticTimeframe('30 min ORB'), { minutes: 30, rest: 'ORB' });
+  assert.deepEqual(tacticPickGroups([{ key: 'a', name: '5m' }]).map(g => g.name), ['Other'], 'a bare timeframe is a name, not a group');
+  const pivot = buildLibrary([]).item('tactic', 'pivot15');
+  assert.equal(pivot.name, '15m pivot');
+  assert.equal(goesBy('tactic', pivot, '15-MINUTE pivot'), true);
+  assert.equal(goesBy('tactic', { ...pivot, own: true }, '15-minute pivot'), false, 'only a default keeps its old names');
 });

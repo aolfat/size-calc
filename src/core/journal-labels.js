@@ -21,7 +21,7 @@ export const DEFAULTS = /** @type {Record<ItemKind, [string, string][]>} */ ({
   level: [['sma50', '50 SMA'], ['sma100', '100 SMA'], ['sma200', '200 SMA'], ['ema8', '8 EMA'], ['ema21', '21 EMA'], ['ema9w', '9 WK EMA'], ['support', 'Support'], ['resistance', 'Resistance'], ['avwap_ath', 'AVWAP from ATH'], ['avwap_atl', 'AVWAP from ATL'], ['avwap_earnings', 'AVWAP from earnings']],
   action: [['bounce', 'bounce'], ['undercut', 'undercut & rally'], ['rejection', 'rejection']],
   pattern: [['base_breakout', 'Base breakout'], ['flag_breakout', 'Pennant or flag breakout'], ['earnings_gap', 'Earnings gap']],
-  tactic: [['six20', '6/20 (Gil Morales)'], ['pivot15', '15-minute pivot'], ['pivot30', '30-minute pivot']],
+  tactic: [['six20', '6/20 (Gil Morales)'], ['pivot15', '15m pivot'], ['pivot30', '30m pivot']],
   tag: [['option_flow', 'Option flow']],
   mistake: [['chased', 'Chased the entry'], ['oversized', 'Oversized'], ['moved_stop', 'Moved the stop'], ['revenge', 'Revenge trade'], ['exited_early', 'Exited early'], ['skipped_stop', "Didn't take the stop"]],
 });
@@ -36,8 +36,14 @@ export const DEFAULT_SHORT = /** @type {Record<string, string>} */ ({
   'level:support': 'Resistance', 'level:resistance': 'Support',
   'pattern:base_breakout': 'Base breakdown', 'pattern:flag_breakout': 'Pennant or flag breakdown',
 });
-/** names a starting setup had before it was named for its parts: a row that still says one was never typed, so it follows them */
-const FORMER_NAMES = /** @type {Record<string, string[]>} */ ({ 'setup:flag_breakout': ['Flag breakout', 'Flag breakdown'] });
+/**
+ * Names a default had before: a setup's before it was named for its parts (a row that still says one was never typed, so it
+ * follows them), a tactic's before timeframes were written as '15m' everywhere (still found by its old name).
+ */
+export const FORMER_NAMES = /** @type {Record<string, string[]>} */ ({
+  'setup:flag_breakout': ['Flag breakout', 'Flag breakdown'],
+  'tactic:pivot15': ['15-minute pivot'], 'tactic:pivot30': ['30-minute pivot'],
+});
 /** defaults that are another one seen from the short side, merged into it for everyone: a rejection is a bounce on a short */
 export const BUILT_IN_MERGES = new Map([['action:rejection', 'bounce'], ['setup:ema21_rejection', 'ema21_bounce']]);
 
@@ -231,6 +237,37 @@ export function setupsByUse(lib, labels) {
   const used = new Map();
   for (const list of Object.values(labels || {})) for (const l of list) if (l.kind === 'setup') { const k = lib.resolve('setup', l.value); used.set(k, (used.get(k) || 0) + 1); }
   return lib.choices('setup').map((i, n) => ({ i, n, u: used.get(i.key) || 0 })).sort((a, b) => b.u - a.u || a.n - b.n).map(x => x.i);
+}
+
+/**
+ * Whether an item goes by a typed name: its own, or for a default a name it had before (FORMER_NAMES: '15-minute pivot'), case aside.
+ * @param {string} kind @param {{ key: string, name: string, own: boolean }} item @param {string} name
+ */
+export const goesBy = (kind, item, name) => [item.name, ...(item.own ? [] : FORMER_NAMES[`${kind}:${item.key}`] || [])]
+  .some(n => n.toLowerCase() === String(name || '').trim().toLowerCase());
+
+/** a tactic name's leading timeframe in minutes, as written ('5m ORB', '15-minute pivot', '30 min ORB'), and the rest; null without one. @param {string} name */
+export function tacticTimeframe(name) {
+  const m = /^(\d+)[\s-]*(?:m|min|mins|minute|minutes)\b[\s:-]*(.*)$/i.exec(String(name || '').trim());
+  return m ? { minutes: +m[1], rest: m[2] } : null;
+}
+
+/**
+ * Entry tactics in groups to pick from: the ones named for a timeframe under it ('5m', '15m', '30m', shortest first), each chip
+ * the rest of its name ('ORB', 'Pivot'), then the others as 'Other', in the library's order.
+ * @param {{ key: string, name: string }[]} items
+ * @returns {{ key: string, name: string, items: { key: string, label: string, name: string }[] }[]}
+ */
+export function tacticPickGroups(items) {
+  /** @type {Map<string, { key: string, name: string, order: number, items: { key: string, label: string, name: string }[] }>} */
+  const groups = new Map();
+  for (const i of items) {
+    const tf = tacticTimeframe(i.name);
+    const [key, name, order, label] = tf && tf.rest ? [`m${tf.minutes}`, `${tf.minutes}m`, tf.minutes, tf.rest.replace(/^./, c => c.toUpperCase())] : ['other', 'Other', Infinity, i.name];
+    if (!groups.has(key)) groups.set(key, { key, name, order, items: [] });
+    groups.get(key)?.items.push({ key: i.key, label, name: i.name });
+  }
+  return [...groups.values()].sort((a, b) => a.order - b.order).map(({ key, name, items }) => ({ key, name, items }));
 }
 
 /**

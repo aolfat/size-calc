@@ -263,7 +263,7 @@ const savedStopEntry = () => store.get('schwab_entry_type') === 'STOP' ? 'STOP' 
 /**
  * the order exactly as the card sizes it right now, with what could go wrong spelled out. A planned entry past the market
  * (over the ask on a long, under the bid on a short: a breakout) starts as the stop entry you picked last, anything else at market.
- * A limit is never where a review starts; picked, it starts at the planned entry. A stop entry can be picked any time: its trigger
+ * A limit is never where a review starts; picked, it starts at the mid and follows it. A stop entry can be picked any time: its trigger
  * starts at the planned entry when that's past the market, else blank, and a typed trigger re-sizes the shares to the max loss.
  */
 export function buildTradeTicket(now = Date.now()) {
@@ -452,7 +452,26 @@ function showReview(t, q) {
 function watchTradeQuote(t, q) {
   // the live bid and ask over it, from the quote just read; the side a market order fills on is lit (the ask on a buy, the bid on a short)
   watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol: t.symbol, n: 1 }], first: q,
-    fills: () => { const t = state.tradeTicket; return t && !t.error ? (t.isLong ? 'ask' : 'bid') : ''; } });
+    fills: () => { const t = state.tradeTicket; return t && !t.error ? (t.isLong ? 'ask' : 'bid') : ''; }, onQuote: followLimitPick });
+}
+
+/**
+ * A new live quote while a limit's Mid, Ask or Bid is lit: the limit moves with it (owner request), the ticket onto that quote.
+ * Not while sending or once sent, and not onto a quote the order can't go on (a stop now through it): Place's re-check says so.
+ */
+export function followLimitPick() {
+  const t = state.tradeTicket;
+  if (!t || t.option || t.error || t.sent || state.tradeBusy || t.entryType !== 'LIMIT' || !LIMIT_PICKS.includes(t.limitAt)) return;
+  const q = liveQuote(t, Date.now());
+  if (!q) return;
+  const { price } = quoteLimit(t.limitAt, q, { buy: t.isLong, option: false });
+  if (!(price > 0) || (price === t.limitPrice && q.bid === t.bid && q.ask === t.ask)) return;
+  const next = ticketFor({ ...t, limitPrice: price }, q, Date.now());
+  if (next.error) return;
+  state.tradeTicket = next;
+  const box = /** @type {HTMLInputElement | null} */ (document.getElementById('tradeLimit'));
+  if (box && document.activeElement !== box) box.value = priceText(price);
+  redrawTradeDetail(next);
 }
 
 export function setTradeStopDuration(d) {
@@ -464,17 +483,24 @@ export function setTradeStopDuration(d) {
 }
 
 /**
- * Market | Limit | Stop | Stop limit: the entry's order type. A stop entry whose trigger isn't past the market (the planned
- * entry at the price, with nothing typed) starts blank, with the trigger box focused.
+ * Market | Limit | Stop | Stop limit: the entry's order type. A limit starts on Mid, lit, so it follows the live quote until a
+ * price is typed. A stop entry whose trigger isn't past the market (the planned entry at the price, with nothing typed) starts
+ * blank, with the trigger box focused.
  */
 export function setTradeEntryType(type) {
   const t = state.tradeTicket;
   if (!t || t.option || t.error || t.sent || state.tradeBusy || !ENTRY_TYPES.includes(type) || type === t.entryType) return;
   const next = { ...t, entryType: type };
+  if (type === 'LIMIT') { // Mid, lit, from the freshest quote there is (owner request); the planned entry when there's no bid and ask
+    const q = liveQuote(t, Date.now()) || reviewedQuote(t);
+    const { price } = quoteLimit('mid', q, { buy: t.isLong, option: false });
+    if (price > 0) Object.assign(next, { limitPrice: price, limitAt: 'mid', bid: q.bid, ask: q.ask, last: q.last });
+    else Object.assign(next, { limitPrice: t.planEntry > 0 ? priceTick(t.planEntry) : t.limitPrice, limitAt: '' });
+  }
   const blank = !atMarket(type) && !!stopEntryError({ isLong: t.isLong, entryStop: t.entryStop, ...reviewedQuote(t) });
   if (blank) Object.assign(next, { entryStop: 0, entryLimit: 0 });
   if (!atMarket(type)) store.set('schwab_entry_type', type);
-  state.tradeTicket = ticketFor(next, reviewedQuote(t), Date.now());
+  state.tradeTicket = ticketFor(next, reviewedQuote(next), Date.now());
   renderTradeSheet();
   if (blank) /** @type {any} */ (document.getElementById('tradeEntryStop'))?.focus?.();
 }
