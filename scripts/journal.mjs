@@ -9,7 +9,7 @@
 //   node scripts/journal.mjs features [--symbol NVDA] [--from 2026-09-01] [--to 2026-10-31] [--out trades.csv] [--coverage]
 //   node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]
 //   node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]
-//   node scripts/journal.mjs plan <YYYY-MM-DD> ['<json>'] [--dry-run]
+//   node scripts/journal.mjs plan <YYYY-MM-DD> ['<json>'] [--dry-run [--json]]
 //   node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]   (month <YYYY-MM> the same way)
 //   node scripts/journal.mjs books [book]
 //   node scripts/journal.mjs book [book] '<json>' [--dry-run]
@@ -28,7 +28,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { SUPABASE_KEY, SUPABASE_URL } from '../src/services/supabase.js';
 import { imageInfo } from '../supabase/functions/claude-model-example/handler.js';
-import { changesAnything, choicesText, dayDetail, featureCoverageText, featureTable, findTrades, journalFrom, periodDetail, planDay, planDetail, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
+import { changesAnything, choicesText, dayDetail, featureCoverageText, featureTable, findTrades, journalFrom, periodDetail, journalAfterPlan, planChangeLines, planDay, planDetail, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
 import { bookBy, booksFrom, booksText, exampleBy, exampleLine, planBook, planExample, shortId } from './model-books-lib.mjs';
 
 // Node's fetch ignores HTTPS_PROXY unless told to (a cloud session's traffic goes through one): run again with it on
@@ -150,7 +150,9 @@ if (cmd === 'trades') {
   const p = plan(() => planPremarket(j, ref, parsed('day plan')));
   if (p.said.length) console.log(p.said.join('\n'));
   if (!changesAnything(p.changes)) { console.log('Nothing to change.'); process.exit(0); }
-  if (flag('dry-run')) { console.log(JSON.stringify(p.changes, null, 2)); process.exit(0); }
+  // a dry run says what changes, then the plan as it would read; --json prints the raw changes instead
+  if (flag('dry-run') && flag('json')) { console.log(JSON.stringify(p.changes, null, 2)); process.exit(0); }
+  if (flag('dry-run')) { console.log(`Dry run, nothing saved. Would change:\n${planChangeLines(j, ref, p).map(l => `  ${l}`).join('\n')}\n\nThe plan after:\n${planDetail(journalAfterPlan(j, ref, p), ref)}`); process.exit(0); }
   await call('claude_journal_save', { p_changes: p.changes });
   console.log(`Saved. ${planDetail(await journal(), ref)}`);
 } else if (cmd === 'week' || cmd === 'month') {
@@ -207,5 +209,5 @@ if (cmd === 'trades') {
   const after = await books();
   console.log(`Saved. ${exampleLine(after, exampleBy(after, ex.id) || ex)}`);
 } else {
-  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | features [--out file] [--coverage] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | plan <day> [<json>] [--dry-run]\n  | week <day> [<json>] | month <YYYY-MM> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
+  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | features [--out file] [--coverage] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | plan <day> [<json>] [--dry-run [--json]]\n  | week <day> [<json>] | month <YYYY-MM> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
 }
