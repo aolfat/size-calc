@@ -24,7 +24,7 @@
   .jb-acts .btn { width: 100%; margin: 0; padding: 9px 12px; text-align: left; }
   .jb-nav { display: grid; gap: 2px; }
   .jb-nav button { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; font: inherit; font-size: 14px; color: var(--text2); text-align: left; background: none; border: 0; border-radius: 8px; cursor: pointer; }
-  .jb-nav button:hover { color: var(--text); background: var(--bg3); }
+  @media (hover: hover) { .jb-nav button:hover { color: var(--text); background: var(--bg3); } }
   .jb-nav button.active { color: var(--text); font-weight: 600; background: var(--bg3); }
   .jb-nav-n { font-size: 12px; font-weight: 500; color: var(--text3); }
   .jb-filters { display: grid; gap: 8px; margin: 0; padding-top: 14px; border-top: 1px solid var(--border); }
@@ -68,7 +68,7 @@
   .jb-name b { font-size: 15px; }
   .jb-sub { margin-top: 3px; font-size: 12px; color: var(--text2); white-space: normal; }
   .jb-row { cursor: pointer; }
-  .jb-row:hover td { background: color-mix(in srgb, var(--blue) 6%, var(--bg2)); }
+  @media (hover: hover) { .jb-row:hover td { background: color-mix(in srgb, var(--blue) 6%, var(--bg2)); } }
   .jb-row.jb-sel td { background: color-mix(in srgb, var(--blue) 12%, var(--bg2)); }
   .jb-row.jb-sel td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
   .jb-day td { padding: 18px 12px 6px; background: var(--bg2); }
@@ -128,7 +128,7 @@
   .jb-li-miss .jb-li-label { font-weight: 600; color: var(--amber); }
   .jb-li-miss .jb-li-value, .jb-li-quiet, .jb-li-quiet .jb-li-value { color: var(--text3); }
   .jb-go { height: 44px; margin-top: 4px; color: #1b1405; background: var(--amber); border: 0; border-radius: 999px; }
-  .jb-go:hover { background: color-mix(in srgb, var(--amber) 88%, #fff); }
+  @media (hover: hover) { .jb-go:hover { background: color-mix(in srgb, var(--amber) 88%, #fff); } }
   .jb-open { width: 100%; margin: 0; justify-content: center; }
   .jb-p-links { text-align: center; }
   .jb-p-links .pos-link { color: var(--text2); font-size: 12.5px; }

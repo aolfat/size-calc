@@ -11,6 +11,7 @@ import { zoneClock } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { marketFetch } from '../services/market-source.js';
 import { renderChain } from './chain.js';
+import { effects } from './effects.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { fetchFuturesBars } from './futures.js';
 import { renderLevels } from './shares.js';
@@ -483,6 +484,7 @@ export function attachTouchCrosshair(canvas, onMove, onEnd, gestures = null) {
       armed = false;
       suppressClick = true;
       setTimeout(() => { suppressClick = false; }, 350);
+      effects.haptic(); // the release lands: a stop set, a price picked
       onEnd(last);
     }
   };

@@ -15,7 +15,7 @@
 .mb-nav { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; text-align: left; border: 1px solid transparent; border-radius: .5rem; padding: .5rem .625rem; background: transparent; color: var(--text2); cursor: pointer; font-size: .8125rem; line-height: 1.4; }
 .mb-nav span { overflow-wrap: anywhere; }
 .mb-nav small { color: var(--text3); }
-.mb-nav:hover { background: var(--bg3); color: var(--text); }
+@media (hover: hover) { .mb-nav:hover { background: var(--bg3); color: var(--text); } }
 .mb-nav.active { background: var(--blue-bg); border-color: var(--blue-bd); color: var(--blue); }
 .mb-nav.active small { color: inherit; }
 .mb-sidebar-hint { color: var(--text3); font-size: .75rem; line-height: 1.5; margin: 1.25rem .625rem 0; }
@@ -33,7 +33,7 @@
 .mb-example { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border2); border-radius: .625rem; overflow: hidden; background: var(--bg); }
 .mb-image { display: block; width: 100%; aspect-ratio: 16 / 10; padding: 0; border: 0; border-bottom: 1px solid var(--border); background: var(--bg3); cursor: zoom-in; overflow: hidden; }
 .mb-image img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .2s; }
-.mb-image:hover img { transform: scale(1.02); }
+@media (hover: hover) { .mb-image:hover img { transform: scale(1.02); } }
 .mb-image-wait { display: grid; place-items: center; color: var(--text3); font-size: .75rem; cursor: default; }
 .mb-example-body { flex: 1; display: flex; flex-direction: column; gap: .5rem; padding: .75rem .875rem; min-width: 0; }
 .mb-example-body h3 { font-size: .875rem; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
@@ -78,7 +78,6 @@
 .mb-viewer-bar { flex: none; }
 .mb-viewer > img { display: block; flex: 1 1 auto; min-height: 0; width: 100%; object-fit: contain; background: var(--bg); }
 .mb-viewer-body { flex: none; max-height: 35dvh; overflow-y: auto; display: flex; flex-direction: column; gap: .75rem; padding: .875rem 1rem 1rem; border-top: 1px solid var(--border); }
-@media (hover: none) { .mb-image:hover img { transform: none; } }
 @media (max-width: 700px) {
   .mb-shell { grid-template-columns: minmax(0, 1fr); min-height: 0; }
   /* the tab already says Model books: one row for the switch and + New book, then the books */
