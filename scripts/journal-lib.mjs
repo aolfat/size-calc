@@ -139,9 +139,28 @@ export function findItem(lib, kind, ref) {
 }
 
 /**
- * Names made into keys the way + New does: an item of a kind by its key or name, added to your library when it's new (a
- * setup that isn't one becomes a pattern of that name and the setup made of it). library is the rows to save, said what
- * was added, lib the library with them.
+ * A setup's name read as one of your levels and one of your actions, in either side's words or both ('AVWAP from earnings
+ * bounce', '50 SMA rejection', 'AVWAP from earnings bounce / rejection', 'Bounce at 21 EMA'): its parts, or null.
+ * @param {ReturnType<typeof buildLibrary>} lib @param {string} ref @returns {{ levels: string[], action: string } | null}
+ */
+export function setupPartsFromName(lib, ref) {
+  const want = norm(ref);
+  if (!want) return null;
+  for (const level of lib.choices('level')) for (const action of lib.choices('action')) {
+    const parts = { levels: [level.key], action: action.key };
+    for (const side of ['long', 'short', 'both']) {
+      if ([setupName(lib, parts, /** @type {any} */ (side)), lib.partsWords(parts, /** @type {any} */ (side))].some(n => norm(n) === want)) return parts;
+    }
+  }
+  return null;
+}
+
+/**
+ * Names made into keys the way + New does: an item of a kind by its key or name, added to your library when it's new. A
+ * setup that isn't one is read as one of your levels and actions when its name says so ('AVWAP from earnings bounce'),
+ * matched to a setup of the same parts under another name or made of them, as the setup builder does; any other name
+ * becomes a pattern of that name and the setup made of it. library is the rows to save, said what was added, lib the
+ * library with them.
  * @param {{ rows: any[], lib: ReturnType<typeof buildLibrary> }} j @param {{ newId?: () => string }} [opts]
  */
 export function librarian(j, opts = {}) {
@@ -156,6 +175,15 @@ export function librarian(j, opts = {}) {
     const name = String(ref).trim().slice(0, 80);
     if (!name) throw new Error(`a ${kind} needs a name`);
     if (kind === 'setup') {
+      const made = setupPartsFromName(out.lib, name);
+      if (made) {
+        const same = out.lib.choices('setup').find(i => sameParts(out.lib.parts(i.key), made));
+        if (same) return same.key;
+        const row = { id: newId(), kind: 'setup', name: setupName(out.lib, made), settings: made };
+        add(row);
+        out.said.push(`New setup in My setups: ${row.name} (${out.lib.partsWords(made)}).`);
+        return `mine:${row.id}`;
+      }
       const pattern = itemKey('pattern', name);
       const parts = { pattern };
       const same = out.lib.choices('setup').find(i => sameParts(out.lib.parts(i.key), parts));
@@ -427,12 +455,42 @@ export function planPremarket(j, day, input, opts = {}) {
   }
   said.push(...names.said);
   const notebook = Object.keys(fields).length ? [{ day, fields }] : [];
-  return { changes: { library: names.library, reviews: [], labels_remove: [], labels_add: [], days: [], notebook }, said, after: { ...row, ...fields } };
+  return { changes: { library: names.library, reviews: [], labels_remove: [], labels_add: [], days: [], notebook }, said, after: { ...row, ...fields }, lib: names.lib };
 }
 
 /** a focus ticker in words: 'NVDA · long · EMA 21 bounce, ORB · the note' */
 const focusLine = (j, f) => [f.symbol, f.side, f.setups.map(k => j.lib.nameOf('setup', k, f.side || 'long')).join(', '), f.note,
   f.played ? `played: ${FOCUS_PLAYED.find(([k]) => k === f.played)?.[1]}` : '', f.review ? `review: ${f.review}` : ''].filter(Boolean).join(' · ');
+
+/**
+ * What a day's plan would change, in words, for a dry run: the plan text set, changed or cleared, and each ticker added,
+ * taken off or changed (its side, setups added and taken off by name, its note). [] when nothing changes.
+ * @param {ReturnType<typeof journalFrom>} j @param {string} day @param {ReturnType<typeof planPremarket>} p
+ */
+export function planChangeLines(j, day, p) {
+  const before = dayRow(j, day), fields = p.changes.notebook[0]?.fields || {}, lib = p.lib || j.lib, out = [];
+  const setupWords = (keys, side) => keys.map(k => lib.nameOf('setup', k, side || 'long')).join(', ');
+  if ('plan' in fields) out.push(`plan: ${fields.plan === null ? 'cleared' : before.plan ? 'changed' : 'added'}`);
+  if ('focus_list' in fields) {
+    const after = fields.focus_list;
+    for (const f of after) {
+      const was = before.focus_list.find(x => x.id === f.id);
+      if (!was) { out.push(`${f.symbol}: added (${focusLine({ lib }, f).split(' · ').slice(1).join(' · ') || 'no side or setups yet'})`); continue; }
+      const what = [];
+      if (was.side !== f.side) what.push(`side ${was.side || '—'} → ${f.side || '—'}`);
+      const added = f.setups.filter(k => !was.setups.includes(k)), off = was.setups.filter(k => !f.setups.includes(k));
+      if (added.length) what.push(`setups + ${setupWords(added, f.side)}`);
+      if (off.length) what.push(`setups − ${setupWords(off, f.side)}`);
+      if (was.note !== f.note) what.push(f.note ? `note: ${f.note}` : 'note cleared');
+      if (what.length) out.push(`${f.symbol}: ${what.join('; ')}`);
+    }
+    for (const f of before.focus_list) if (!after.some(x => x.id === f.id)) out.push(`${f.symbol}: taken off`);
+  }
+  return out;
+}
+
+/** the journal as it would read after a day's plan is saved: its new library and the day's row. @param {ReturnType<typeof journalFrom>} j @param {string} day @param {ReturnType<typeof planPremarket>} p */
+export const journalAfterPlan = (j, day, p) => ({ ...j, lib: p.lib || j.lib, notebook: { ...j.notebook, [day]: p.after } });
 
 /** a day's premarket plan: the last focus, the plan and the focus list */
 export function planDetail(j, day) {

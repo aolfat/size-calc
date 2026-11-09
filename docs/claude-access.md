@@ -86,7 +86,8 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
   It's what an analysis of the trades runs on (owner request: which conditions your trades fail in); the analysis itself is a conversation, in the owner's words where it becomes a rule.
 - `node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]`: saves a review and prints the trade after; a dry run prints the changes instead.
 - `node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day: its market, P&L, trades, and its review (this week's rules numbered) with what's missing; with it, saves the day's review and prints the day after.
-- `node scripts/journal.mjs plan <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day's premarket: the last focus, the plan and the focus list (each ticker's side, setups, note, and how it played once said); with it, saves the plan and prints it after.
+- `node scripts/journal.mjs plan <YYYY-MM-DD> ['<json>'] [--dry-run [--json]]`: without JSON, the day's premarket: the last focus, the plan and the focus list (each ticker's side, setups, note, and how it played once said); with it, saves the plan and prints it after.
+  Its dry run says in words what would change (the plan added, changed or cleared; each ticker added, taken off, or its side, setups added and taken off, and note), then the plan as it would read; `--json` prints the raw changes instead.
 - `node scripts/journal.mjs missed <YYYY-MM-DD> ['<json>'] [--dry-run]`: without JSON, the day's missed trades (each ticker's side, setups, tactics, why and note); with it, saves them and prints them after.
 - `node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]` and `month <YYYY-MM> ...`: without JSON, the week (by its Monday) or month: its P&L from the exits taken in it, its trades, the rules the last one set (numbered, how the days checked each, Kept it?, how they went), each part's grade and note and the rules for next one with what's missing; with it, saves the review and prints it after.
 - `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id), then the examples in no book.
@@ -96,7 +97,8 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 
 A review's JSON takes `market`, `marketFor` ('day' or 'trade'), `sector`, `setups`, `tactics`, `tags`, `mistakes`, `grade` (A to F), `plan` (yes, partly, no), `entryNote`, `exitNote` and `stop`; fields left out stay, null clears one.
 Names match your choices in either side's words ("N/A", "Didn't take the stop", "Pennant or flag breakdown") or by key.
-Each label kind given is set to exactly those; a name that isn't one of yours is added to your choices, and a setup that isn't one becomes a pattern of that name and the setup made of it, as + New setup does.
+Each label kind given is set to exactly those; a name that isn't one of yours is added to your choices, and a setup that isn't one becomes a pattern of that name and the setup made of it, as + New setup does, unless its name says a level and an action.
+A setup named for one of your levels and actions, in either side's words or both ("AVWAP from earnings bounce", "50 SMA rejection", "Bounce at 21 EMA"), is the setup made of them, as the setup builder makes it: one of the same parts under another name if you have it, else a new one (`setupPartsFromName`, scripts/journal-lib.mjs).
 The market goes on the trade's day, unless the day already has another (then it's the trade's own and the script says so), or marketFor says otherwise.
 reviewed_at is stamped once everything a review needs is in, and cleared if something comes off.
 

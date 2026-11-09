@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { dayDetail, FEATURE_TABLE_COLUMNS, featureCoverageText, featureTable, findItem, findTrades, handleOf, journalFrom, missedDetail, periodDetail, planDay, planDetail, planMissed, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
+import { dayDetail, FEATURE_TABLE_COLUMNS, featureCoverageText, featureTable, findItem, findTrades, handleOf, journalFrom, missedDetail, periodDetail, planChangeLines, planDay, planDetail, planMissed, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
 import { FEATURES, featureVersion } from '../src/core/features/index.js';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
@@ -173,6 +173,21 @@ test('a review that can\'t be: an unknown field, a grade or plan not on the list
   assert.throws(() => planReview(j, t, { stop: -1 }), /stop/);
 });
 
+test("a setup named for one of your levels and actions is made of them, or found under another name, as the setup builder does", () => {
+  const news = { id: 'n1', kind: 'level', name: 'AVWAP from News' };
+  const typed = { id: 'k1', kind: 'setup', name: 'News candle reclaim', settings: { action: 'bounce', levels: ['mine:n1'] } };
+  const j = journalFrom({ ...DATA, library: [news, typed] });
+  const p = planReview(j, j.trades[0], { setups: ['AVWAP from earnings bounce', 'avwap from earnings undercut & rally / reclaim & fail', 'AVWAP from News bounce', 'Bounce at 21 EMA'] }, opts);
+  const [bounce, undercut] = p.changes.library;
+  assert.deepEqual([bounce.kind, bounce.name, bounce.settings], ['setup', 'AVWAP from earnings bounce', { levels: ['avwap_earnings'], action: 'bounce' }]);
+  assert.deepEqual([undercut.name, undercut.settings], ['AVWAP from earnings undercut & rally', { levels: ['avwap_earnings'], action: 'undercut' }], 'either side\'s words, any case');
+  assert.equal(p.changes.library.length, 2, 'no pattern made for them, and none for the ones that exist');
+  assert.deepEqual(p.changes.labels_add.map(l => l.value), [`mine:${bounce.id}`, `mine:${undercut.id}`, 'mine:k1', 'ema21_bounce'], 'the same parts under a typed name, and a default by its parts in words');
+  assert.match(p.said.join('\n'), /^New setup in My setups: AVWAP from earnings bounce \(Bounce at AVWAP from earnings\)\.$/m);
+  const other = planReview(j, j.trades[0], { setups: ['Inside day breakout'] }, opts).changes.library;
+  assert.deepEqual(other.map(r => r.kind), ['pattern', 'setup'], 'any other name is still a pattern and the setup made of it');
+});
+
 // ---------- the day's review (the notebook's post-market half) ----------
 
 const RULES = [
@@ -278,6 +293,19 @@ test("a day's plan that can't be: an unknown field, a bad ticker, side or note, 
   const many = Object.fromEntries(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map(s => [s, {}]));
   assert.throws(() => planPremarket(j, NEXT, { focus: many }), /12 tickers on a focus list at most; 2026-10-26's has AMD, A, B/);
   assert.throws(() => planPremarket(j, '2026-02-30', { plan: 'x' }), /a day as YYYY-MM-DD/);
+});
+
+test("a day's plan's changes in words, for a dry run: the plan, tickers added, changed and taken off", () => {
+  const j = journalFrom({ ...PLAN_DATA, days: [{ day: NEXT, plan: 'Open drive.', focus_list: [FOCUS_KEPT_ROW, { id: 'f2', symbol: 'SPOT', side: 'long', setups: ['mine:s2'], note: 'Reclaim.' }] }] });
+  const p = planPremarket(j, NEXT, { plan: 'Open drive only.', focus: { SPOT: { setups: ['Gap fill'], note: null }, AMD: null, TOST: { side: 'long' } } }, opts);
+  assert.deepEqual(planChangeLines(j, NEXT, p), [
+    'plan: changed',
+    'SPOT: setups + Gap fill; setups − EMA 21 bounce; note cleared',
+    'TOST: added (long)',
+    'AMD: taken off',
+  ]);
+  assert.deepEqual(planChangeLines(j, NEXT, planPremarket(j, NEXT, { plan: null, focus: { AMD: { side: 'long' } } }, opts)), ['plan: cleared', 'AMD: side short → long']);
+  assert.deepEqual(planChangeLines(j, NEXT, planPremarket(j, NEXT, { focus: { NVDA: {} } }, opts)), ['NVDA: added (no side or setups yet)']);
 });
 
 test("the day's plan in words: the last focus, the plan and each ticker", () => {
@@ -594,7 +622,11 @@ test("the script: shows a day's plan, saves it, a dry run saves nothing, a datab
   const dry = script(['plan', NEXT, input, '--dry-run'], { data: PLAN_DATA });
   assert.equal(dry.status, 0, dry.stderr);
   assert.deepEqual(dry.saves, []);
-  assert.match(dry.stdout, /"focus_list"/);
+  assert.match(dry.stdout, /^Dry run, nothing saved\. Would change:\n  plan: added\n  NVDA: added \(long · EMA 21 bounce · Reclaim of 180\.\)\n\nThe plan after:\n2026-10-26 \(Mon\) premarket\n/m, 'in words: what changes, then the plan as it would read');
+  assert.match(dry.stdout, /\n  NVDA · long · EMA 21 bounce · Reclaim of 180\.$/m);
+  const raw = script(['plan', NEXT, input, '--dry-run', '--json'], { data: PLAN_DATA });
+  assert.deepEqual(raw.saves, []);
+  assert.match(raw.stdout, /"focus_list"/, '--json: the raw changes');
   const saved = script(['plan', NEXT, input], { data: PLAN_DATA });
   assert.equal(saved.status, 0, saved.stderr);
   assert.deepEqual(saved.saves[0].notebook[0].fields.focus_list.map(f => [f.symbol, f.setups]), [['AMD', []], ['NVDA', ['mine:s2']]]);

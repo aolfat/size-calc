@@ -17,7 +17,7 @@ import { marketSource } from '../services/market-source.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles, snapToBar } from './candles.js';
 import { fetchFiveMinuteBars } from './chart.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
-import { positionRUnit, renderPositions, rUnitWords } from './positions.js';
+import { positionChartInCards, positionRUnit, renderPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 
 export const PORTIONS = [[0.1, '10%'], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [1, 'All']];
@@ -347,7 +347,7 @@ function addStatus(c, row) {
 export function renderPositionChart() {
   const c = state.posChart, open = !!c && state.positionsView;
   document.getElementById('posChartSection').style.display = open ? '' : 'none';
-  document.getElementById('positionsSplit').classList.toggle('open', open);
+  document.getElementById('positionsSplit').classList.toggle('open', open && !positionChartInCards()); // beside the table; the cards hold it under its card
   if (!c) return;
   const row = chartRow();
   document.getElementById('posChartTitle').textContent = c.label;
