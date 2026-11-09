@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { app } from './helpers/app.mjs';
 import { fakeRecords } from './helpers/supabase.mjs';
-import { dayDetail, FEATURE_TABLE_COLUMNS, featureCoverageText, featureTable, findItem, findTrades, handleOf, journalFrom, periodDetail, planChangeLines, planDay, planDetail, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
+import { dayDetail, FEATURE_TABLE_COLUMNS, featureCoverageText, featureTable, findItem, findTrades, handleOf, journalFrom, missedDetail, periodDetail, planChangeLines, planDay, planDetail, planMissed, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from '../scripts/journal-lib.mjs';
 import { FEATURES, featureVersion } from '../src/core/features/index.js';
 
 const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
@@ -317,6 +317,47 @@ test("the day's plan in words: the last focus, the plan and each ticker", () => 
   assert.match(planDetail(journalFrom(DATA), NEXT), /plan: —\nfocus list \(0 of 12\):\n  —$/);
 });
 
+// ---------- the trades you missed on a day (the notebook's Missed trades) ----------
+
+const MISSED_KEPT_ROW = { id: 'm1', symbol: 'AMD', side: 'short', setups: [], tactics: [], why: 'away', note: 'Faded the open.' };
+const MISSED_DATA = { ...DATA, library: [...RULES, ...SETUPS], days: [{ day: NEXT, missed: [MISSED_KEPT_ROW] }] };
+
+test("missed trades become the notebook's changes: by ticker, setups and tactics matched or added, why by its words", () => {
+  const j = journalFrom(MISSED_DATA);
+  const p = planMissed(j, NEXT, {
+    sdgr: { side: 'Long', setups: ['ema 21 bounce'], tactics: ['15-minute pivot'], why: "didn't see it", note: ' Clear breakout level. ' },
+    AMD: { why: 'Hesitated' }, TSLA: { setups: ['Gap fill'] },
+  }, opts);
+  const [amd, sdgr, tsla] = p.changes.notebook[0].fields.missed;
+  assert.deepEqual(p.changes.notebook[0].fields.missed.map(m => m.symbol), ['AMD', 'SDGR', 'TSLA'], 'the list as it was, new ones after');
+  assert.deepEqual(amd, { ...MISSED_KEPT_ROW, why: 'hesitated' }, 'a ticker already there keeps its id (its screenshots) and changes only what is given');
+  assert.deepEqual({ ...sdgr, id: 'x' }, { id: 'x', symbol: 'SDGR', side: 'long', setups: ['mine:s2'], tactics: ['pivot15'], why: 'not_seen', note: 'Clear breakout level.' });
+  assert.deepEqual(tsla.setups, [`mine:${p.changes.library[1].id}`]);
+  assert.match(p.said.join('\n'), /New setup in My setups: Gap fill\./);
+  assert.deepEqual([p.changes.reviews, p.changes.days, p.changes.labels_add], [[], [], []]);
+  assert.deepEqual(planMissed(j, NEXT, { AMD: { why: 'away', note: 'Faded the open.' } }, opts).changes.notebook, [], 'the same changes nothing');
+  assert.deepEqual(planMissed(j, NEXT, { AMD: null, QQQ: null }, opts).changes.notebook, [{ day: NEXT, fields: { missed: [] } }], 'null takes one off');
+});
+
+test("missed trades that can't be: not an object, a bad ticker, side, why or note, an unknown field, a 21st, a bad day", () => {
+  const j = journalFrom(MISSED_DATA);
+  assert.throws(() => planMissed(j, NEXT, ['SDGR']), /an object by ticker/);
+  assert.throws(() => planMissed(j, NEXT, { 'not a ticker': {} }), /isn't a ticker/);
+  assert.throws(() => planMissed(j, NEXT, { SDGR: { side: 'up' } }), /SDGR side: long or short/);
+  assert.throws(() => planMissed(j, NEXT, { SDGR: { why: 'Bored' } }), /SDGR why: Hesitated, Didn't see it, Away, Too late, Didn't trust it, At my limit, or null/);
+  assert.throws(() => planMissed(j, NEXT, { SDGR: { grade: 'A' } }), /SDGR takes side, setups, tactics, why, note; not grade/);
+  assert.throws(() => planMissed(j, NEXT, { SDGR: { note: 'x'.repeat(501) } }), /SDGR note: 500 characters at most/);
+  const many = Object.fromEntries('ABCDEFGHIJKLMNOPQRST'.split('').map(s => [s, {}]));
+  assert.throws(() => planMissed(j, NEXT, many), /20 missed trades a day at most; 2026-10-26 has 20/);
+  assert.throws(() => planMissed(j, '2026-02-30', { SDGR: {} }), /a day as YYYY-MM-DD/);
+});
+
+test("a day's missed trades in words", () => {
+  const j = journalFrom({ ...MISSED_DATA, days: [{ day: NEXT, missed: [MISSED_KEPT_ROW, { id: 'm2', symbol: 'SDGR', side: 'long', setups: ['mine:s2'], tactics: ['pivot15'], why: 'hesitated', note: null }] }] });
+  assert.equal(missedDetail(j, NEXT), ['2026-10-26 (Mon) missed trades (2):', '  AMD · short · Away · Faded the open.', '  SDGR · long · EMA 21 bounce · 15-minute pivot · Hesitated'].join('\n'));
+  assert.equal(missedDetail(journalFrom(DATA), NEXT), '2026-10-26 (Mon) missed trades (0):\n  —');
+});
+
 // ---------- a week's or month's review (period_reviews) ----------
 
 const MONDAY = '2026-10-19';
@@ -470,9 +511,9 @@ test('the features read: its own keyed function returning every trade_features r
 
 const SCRIPT = fileURLToPath(new URL('../scripts/journal.mjs', import.meta.url));
 const PRELOAD = fileURLToPath(new URL('./helpers/journal-fetch.mjs', import.meta.url));
-function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA, oldSave = false, features = [], noFeatures = false, noPlan = false } = {}) {
+function script(args, { key = 'scj_test_key_0123456789abcdefghijklmnop', data = DATA, oldSave = false, features = [], noFeatures = false, noPlan = false, noMissed = false } = {}) {
   const file = join(mkdtempSync(join(tmpdir(), 'journal-')), 'fake.json');
-  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data, oldSave, features, noFeatures, noPlan }));
+  writeFileSync(file, JSON.stringify({ key: 'scj_test_key_0123456789abcdefghijklmnop', data, oldSave, features, noFeatures, noPlan, noMissed }));
   const env = { ...process.env, FAKE_JOURNAL: file, JOURNAL_KEY: key };
   for (const k of ['HTTPS_PROXY', 'https_proxy', 'NODE_USE_ENV_PROXY']) delete env[k];
   const r = spawnSync(process.execPath, ['--import', PRELOAD, SCRIPT, ...args], { env, encoding: 'utf8' });
@@ -596,6 +637,27 @@ test("the script: shows a day's plan, saves it, a dry run saves nothing, a datab
   assert.match(old.stderr, /doesn't take a day's plan yet: npx supabase db push/);
 });
 
+test("the script: shows a day's missed trades, saves them, a dry run saves nothing, a database before the migration says so", () => {
+  const show = script(['missed', NEXT], { data: MISSED_DATA });
+  assert.equal(show.status, 0, show.stderr);
+  assert.match(show.stdout, /^2026-10-26 \(Mon\) missed trades \(1\):\n  AMD/);
+  const input = JSON.stringify({ SDGR: { side: 'long', setups: ['EMA 21 bounce'], why: 'Hesitated', note: 'Clear breakout level.' } });
+  const dry = script(['missed', NEXT, input, '--dry-run'], { data: MISSED_DATA });
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.deepEqual(dry.saves, []);
+  assert.match(dry.stdout, /"missed"/);
+  const saved = script(['missed', NEXT, input], { data: MISSED_DATA });
+  assert.equal(saved.status, 0, saved.stderr);
+  assert.deepEqual(saved.saves[0].notebook[0].fields.missed.map(m => [m.symbol, m.why]), [['AMD', 'away'], ['SDGR', 'hesitated']]);
+  assert.match(saved.stdout, /^Saved\./m);
+  assert.match(script(['missed'], { data: MISSED_DATA }).stderr, /Which day\?/);
+  const old = script(['missed', NEXT, input], { data: MISSED_DATA, noMissed: true });
+  assert.equal(old.status, 1);
+  assert.match(old.stderr, /doesn't take missed trades yet: npx supabase db push/);
+  const older = script(['missed', NEXT, input], { data: MISSED_DATA, noPlan: true });
+  assert.match(older.stderr, /doesn't take a day's missed trades yet: npx supabase db push/);
+});
+
 test('the save function takes the week and month review fields; the read returns the rows', async () => {
   const { readFileSync, readdirSync } = await import('node:fs');
   const dir = new URL('../supabase/migrations/', import.meta.url);
@@ -613,14 +675,14 @@ test('the save function takes the week and month review fields; the read returns
   assert.match(read, /'went_well', d\.went_well/, "the day's review stays");
 });
 
-test('the save function takes the day review fields, the plan and the focus list, nothing else of the notebook; the read returns them', async () => {
+test('the save function takes the day review fields, the plan, the focus list and the missed trades, nothing else of the notebook; the read returns them', async () => {
   const { readFileSync, readdirSync } = await import('node:fs');
   const dir = new URL('../supabase/migrations/', import.meta.url);
   const sql = readdirSync(dir).filter(f => f.endsWith('.sql')).sort().map(f => readFileSync(new URL(f, dir), 'utf8')).join('\n').replace(/--[^\n]*/g, '');
   const last = name => [...sql.matchAll(new RegExp(`create or replace function public\\.${name}\\(p_key text[\\s\\S]*?end \\$\\$;`, 'gi'))].pop()?.[0] || '';
   const save = last('claude_journal_save'), read = last('claude_journal_read');
   assert.match(save, /p_changes->'notebook'/);
-  assert.match(save, /k not in \('grade', 'rules', 'week_rules', 'went_well', 'work_on', 'note', 'focus_next', 'focus_kept', 'reviewed_at', 'plan', 'focus_list'\)/, 'the review, the plan and the focus list; never the check-in or the missed trades');
+  assert.match(save, /k not in \('grade', 'rules', 'week_rules', 'went_well', 'work_on', 'note', 'focus_next', 'focus_kept', 'reviewed_at', 'plan', 'focus_list', 'missed'\)/, 'the review, the plan, the focus list and the missed trades; never the check-in');
   assert.match(save, /jsonb_strip_nulls\(coalesce\(d\.week_rules, '\{\}'\) \|\| \(f->'week_rules'\)\)/, 'week rules merge one at a time too');
   assert.match(save, /jsonb_strip_nulls\(coalesce\(p\.rules_kept, '\{\}'\) \|\| \(f->'rules_kept'\)\)/, 'Kept it? merges one rule at a time');
   assert.match(save, /rules_next = case when f \? 'rules_next' then coalesce\(f->'rules_next', '\[\]'\)/, 'the list is replaced whole');
@@ -628,7 +690,10 @@ test('the save function takes the day review fields, the plan and the focus list
   assert.match(read, /'plan', d\.plan, 'focus_list', d\.focus_list/, "each day's plan and focus list");
   assert.match(save, /focus_list = case when f \? 'focus_list' then coalesce\(f->'focus_list', '\[\]'\)/, 'the focus list is replaced whole');
   assert.match(save, /jsonb_array_length\(f->'focus_list'\) > 12/, 'twelve tickers at most, as the app keeps');
-  assert.doesNotMatch(save, /feelings|energy|sleep_hours|missed =|planned_at/, 'the check-in, the missed trades and the plan stamp stay out of reach');
+  assert.match(read, /'focus_list', d\.focus_list, 'missed', d\.missed/, "each day's missed trades");
+  assert.match(save, /missed = case when f \? 'missed' then coalesce\(f->'missed', '\[\]'\)/, 'the missed trades are replaced whole');
+  assert.match(save, /jsonb_array_length\(f->'missed'\) > 20/, 'twenty a day at most, as the app keeps');
+  assert.doesNotMatch(save, /feelings|energy|sleep_hours|planned_at/, 'the check-in and the plan stamp stay out of reach');
   assert.match(read, /'rules_next', p\.rules_next, 'rules_kept', p\.rules_kept, 'rules_note', p\.rules_note/);
   assert.match(save, /jsonb_strip_nulls\(coalesce\(d\.rules, '\{\}'\) \|\| \(f->'rules'\)\)/, 'rules merge one at a time, null clears one');
   assert.match(read, /'order_plans', coalesce/, 'the read keeps the order plans');

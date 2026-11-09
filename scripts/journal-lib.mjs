@@ -6,7 +6,8 @@
 // 'broke' }, weekRules: { 'No trades before 9:45': 'kept' }, ... }) becomes the notebook's changes the same way, and a
 // week's or month's review ({ parts: { 'Risk management': { grade: 'D' } }, rulesNext: [...], rulesKept: {...} }) its
 // period_reviews row. A day's plan ({ plan: '...', focus: { NVDA: { side: 'long', setups: ['EMA 21 bounce'], note: '...' } } })
-// becomes its premarket plan and focus list. And every closed trade's result beside its feature stamps, one row a trade,
+// becomes its premarket plan and focus list, and the trades you missed ({ SDGR: { side: 'long', why: 'Hesitated' } }) its
+// missed list. And every closed trade's result beside its feature stamps, one row a trade,
 // for analysis.
 // Nothing here reads the network or the page.
 import { createHash, randomUUID } from 'node:crypto';
@@ -14,7 +15,7 @@ import { fillWords, fillsFrom } from '../src/core/journal-records.js';
 import { FEATURES, featureVersion } from '../src/core/features/index.js';
 import { holdWords, journalTrades, tradeUnderlying } from '../src/core/journal.js';
 import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
-import { cleanDayRow, cleanFocusList, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, FOCUS_PLAYED, isDay, lastFocus, MAX_DAY_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, missedSymbol, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
+import { cleanDayRow, cleanFocusList, cleanMissed, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, FOCUS_PLAYED, isDay, lastFocus, MAX_DAY_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED, MAX_MISSED_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
 import { countedTrades, dailyPnl, nyParts, periodKey } from '../src/core/journal-stats.js';
 import { cleanPeriodRow, gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, periodMissingWords, periodReviewState, periodRules, periodTradeRows, previousPeriod, RULE_KEPT, ruleKeptOf, weekRulesFor, weekRuleTally } from '../src/core/journal-week.js';
 import { cleanPlanRow, matchPlans, planLines } from '../src/core/order-plans.js';
@@ -501,6 +502,76 @@ export function planDetail(j, day) {
     `focus list (${row.focus_list.length} of ${MAX_FOCUS_ITEMS}):`,
     ...(row.focus_list.length ? row.focus_list.map(f => `  ${focusLine(j, f)}`) : ['  —']),
   ].join('\n');
+}
+
+/** what a missed trade takes */
+const MISSED_FIELDS = ['side', 'setups', 'tactics', 'why', 'note'];
+
+/**
+ * The trades you missed on a day (the notebook's Missed trades) turned into the changes claude_journal_save takes: each by
+ * its ticker ({ SDGR: { side, setups, tactics, why, note } }, null takes it off). A ticker already on the day's list keeps
+ * its id (its screenshots hang off it) and changes only what's given; a new one goes at the end, 20 at most. Setups and
+ * tactics are matched to your choices or added, as a review's are; why by its key or its words ('Hesitated', "Didn't see
+ * it"). The whole list is sent, in the app's own form.
+ * @param {ReturnType<typeof journalFrom>} j @param {string} day @param {Record<string, any>} input
+ * @param {{ newId?: () => string }} [opts]
+ */
+export function planMissed(j, day, input, opts = {}) {
+  const newId = opts.newId || randomUUID;
+  if (!isDay(day)) throw new Error('a day as YYYY-MM-DD');
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error("missed trades: an object by ticker, { SDGR: { side: 'long', setups: ['Flag breakout'], why: 'Hesitated' } }, null takes one off");
+  const row = dayRow(j, day), names = librarian(j, { newId });
+  let list = row.missed.map(m => ({ ...m }));
+  for (const [ref, want] of Object.entries(input)) {
+    const symbol = missedSymbol(ref);
+    if (!symbol) throw new Error(`${ref} isn't a ticker`);
+    const at = list.findIndex(m => m.symbol === symbol);
+    if (want === null) { if (at >= 0) list.splice(at, 1); continue; }
+    if (typeof want !== 'object' || Array.isArray(want)) throw new Error(`${symbol}: { ${MISSED_FIELDS.join(', ')} }, or null to take it off`);
+    const bad = Object.keys(want).filter(k => !MISSED_FIELDS.includes(k));
+    if (bad.length) throw new Error(`${symbol} takes ${MISSED_FIELDS.join(', ')}; not ${bad.join(', ')}`);
+    const m = at >= 0 ? list[at] : { id: newId(), symbol, side: null, setups: [], tactics: [], why: null, note: null };
+    if ('side' in want) {
+      const side = want.side === null ? null : norm(want.side);
+      if (side !== null && !MISSED_SIDES.some(([k]) => k === side)) throw new Error(`${symbol} side: long or short, or null`);
+      m.side = side;
+    }
+    for (const [field, kind] of /** @type {const} */ ([['setups', 'setup'], ['tactics', 'tactic']])) {
+      if (!(field in want)) continue;
+      const refs = want[field] === null || want[field] === '' ? [] : Array.isArray(want[field]) ? want[field] : [want[field]];
+      if (refs.length > MAX_MISSED_PICKS) throw new Error(`${symbol}: ${MAX_MISSED_PICKS} ${field} at most`);
+      m[field] = [...new Set(refs.map(r => names.itemKey(kind, r)))];
+    }
+    if ('why' in want) {
+      const why = want.why === null ? null : MISSED_WHY.find(([k, w]) => norm(k) === norm(want.why) || norm(w) === norm(want.why))?.[0];
+      if (why === undefined) throw new Error(`${symbol} why: ${MISSED_WHY.map(([, w]) => w).join(', ')}, or null`);
+      m.why = why;
+    }
+    if ('note' in want) {
+      const text = want.note === null ? '' : String(want.note).trim();
+      if (text.length > MAX_MISSED_NOTE) throw new Error(`${symbol} note: ${MAX_MISSED_NOTE} characters at most`);
+      m.note = text || null;
+    }
+    if (at < 0) {
+      if (list.length >= MAX_MISSED) throw new Error(`${MAX_MISSED} missed trades a day at most; ${day} has ${list.length}`);
+      list.push(m);
+    }
+  }
+  list = cleanMissed(list);
+  const fields = JSON.stringify(list) !== JSON.stringify(row.missed) ? { missed: list } : {};
+  const notebook = Object.keys(fields).length ? [{ day, fields }] : [];
+  return { changes: { library: names.library, reviews: [], labels_remove: [], labels_add: [], days: [], notebook }, said: names.said, after: { ...row, ...fields } };
+}
+
+/** a missed trade in words: 'SDGR · long · Pennant or flag breakout · 5m flag break · Hesitated · the note' */
+const missedLine = (j, m) => [m.symbol, m.side, m.setups.map(k => j.lib.nameOf('setup', k, m.side || 'long')).join(', '),
+  m.tactics.map(k => j.lib.nameOf('tactic', k, m.side || 'long')).join(', '), MISSED_WHY.find(([k]) => k === m.why)?.[1], m.note].filter(Boolean).join(' · ');
+
+/** a day's missed trades */
+export function missedDetail(j, day) {
+  const list = dayRow(j, day).missed;
+  return [`${day} (${WEEKDAYS[new Date(`${day}T12:00:00Z`).getUTCDay()]}) missed trades (${list.length}):`,
+    ...(list.length ? list.map(m => `  ${missedLine(j, m)}`) : ['  —'])].join('\n');
 }
 
 /** a week's or month's review, in the words a review uses: parts by their name or key, each { grade, note } */

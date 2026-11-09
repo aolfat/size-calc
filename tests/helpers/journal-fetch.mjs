@@ -1,6 +1,6 @@
 // Preloaded into scripts/journal.mjs by tests/claude-access.test.mjs (node --import): fetch answers the Claude functions
 // and the claude-model-example Edge Function from a JSON file instead of Supabase. FAKE_JOURNAL names the file ({ data,
-// books, features, key; noFeatures: a database before the features read, noPlan: one before the plan migration }); each save's body is appended to its saves
+// books, features, key; noFeatures: a database before the features read, noPlan: one before the plan migration, noMissed: one before the missed-trades migration }); each save's body is appended to its saves
 // list (with fn, the function's name), each added example to its added list, and a wrong key is refused the way the
 // database refuses it.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -29,6 +29,11 @@ globalThis.fetch = async (url, init) => {
     // noPlan: a database before the plan migration, whose save refuses a day's plan and focus list by name
     if (fake.noPlan && (body.p_changes.notebook || []).some(n => 'plan' in n.fields || 'focus_list' in n.fields)) {
       return answer(400, { code: 'P0001', message: 'day review fields: grade, rules, week_rules, went_well, work_on, note, focus_next, focus_kept, reviewed_at' });
+    }
+    // noPlan answers a missed list the same way; noMissed: a database before the missed-trades migration, which takes the plan but not missed
+    if ((fake.noPlan || fake.noMissed) && (body.p_changes.notebook || []).some(n => 'missed' in n.fields)) {
+      return answer(400, { code: 'P0001', message: fake.noPlan ? 'day review fields: grade, rules, week_rules, went_well, work_on, note, focus_next, focus_kept, reviewed_at'
+        : 'day fields: grade, rules, week_rules, went_well, work_on, note, focus_next, focus_kept, reviewed_at, plan, focus_list' });
     }
     fake.saves = [...(fake.saves || []), fn === 'claude_journal_save' ? body.p_changes : { fn, ...body.p_changes }];
     if (fn === 'claude_journal_save') fake.library = [...(fake.library || []), ...(body.p_changes.library || [])];
