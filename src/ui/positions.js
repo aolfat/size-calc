@@ -669,8 +669,60 @@ export function renderPositions() {
   renderPositionChart(); // its lines, sizes and target checks follow each read
 }
 
+// ---------- the open chart under its card ----------
+
+/** where the open chart goes in the Cards layout: a slot right after the charted card (a spread's when it's one of its legs) */
+const CHART_SLOT = '<div class="pc-chart-slot" id="posChartSlot"></div>';
+const charted = sym => !!state.posChart && state.posChart.symbol === sym;
+const chartUnder = i => i.spread ? i.spread.legs.some(l => charted(l.symbol)) : charted(i.row.symbol);
+let chartInCards = false;
+/** whether the open chart sits in the card list (then it isn't put beside the list on the desktop shell) */
+export const positionChartInCards = () => chartInCards;
+
+/** the chart card goes home (after the positions, in #positionsSplit) before the list is redrawn, or it would be wiped with it */
+function parkPositionChart(el) {
+  const chart = document.getElementById('posChartSection');
+  if (!el.contains(chart)) return null;
+  const active = document.activeElement;
+  const typing = active && chart.contains(active) ? active : null;
+  let sel = null;
+  try { sel = typing ? [typing.selectionStart, typing.selectionEnd] : null; } catch (e) {}
+  document.getElementById('positionsSplit').appendChild(chart);
+  return { chart, typing, sel };
+}
+
+/** wider than a phone the cards are a grid: the slot moves to the end of its card's row, so the cards beside it stay put */
+function endOfRow(slot) {
+  const list = slot.parentElement;
+  if (!list || !window.getComputedStyle) return;
+  const cols = getComputedStyle(list).gridTemplateColumns.split(' ').filter(Boolean).length;
+  if (cols < 2) return;
+  const items = [...list.children].filter(c => c !== slot && !c.classList.contains('pc-chart-slot'));
+  const at = items.indexOf(slot.previousElementSibling);
+  if (at < 0) return;
+  items[Math.min(items.length - 1, at - at % cols + cols - 1)].after(slot);
+}
+
+/** then into the new list's slot, the field you were typing in still focused (moving it blurs it) */
+function placePositionChart(el, parked) {
+  const chart = document.getElementById('posChartSection');
+  const slot = el.querySelector('#posChartSlot');
+  chartInCards = !!slot;
+  if (slot) { endOfRow(slot); slot.appendChild(chart); }
+  document.getElementById('positionsSplit').classList.toggle('open', !!state.posChart && state.positionsView && !chartInCards); // a layout switch moves it too
+  const typing = parked && parked.typing;
+  if (!typing || document.activeElement === typing || !chart.contains(typing)) return;
+  typing.focus({ preventScroll: true });
+  try { if (parked.sel && parked.sel[0] !== null) typing.setSelectionRange(parked.sel[0], parked.sel[1]); } catch (e) {}
+}
+
 function renderPositionsTable() {
   const el = document.getElementById('positionsSection');
+  const parked = parkPositionChart(el);
+  try { drawPositionsTable(el); } finally { placePositionChart(el, parked); }
+}
+
+function drawPositionsTable(el) {
   const p = state.positions;
   const items = p ? tableRows(p) : [];
   document.getElementById('posCount').textContent = items.length ? String(items.length) : '';
@@ -707,7 +759,7 @@ function renderPositionsTable() {
     ${p.stopsMissing ? '<p class="hint">Stops unavailable: Schwab did not return this account\'s orders.</p>' : ''}
     ${p.rows.length && phone && !cards ? `${phoneTable(p, items)}
     <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost; a spread's is its max loss. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now.</p>`
-    : p.rows.length && cards ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => i.spread ? spreadCard(i.spread) : positionCard(i.row)).join('')}</div>
+    : p.rows.length && cards ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => (i.spread ? spreadCard(i.spread) : positionCard(i.row)) + (chartUnder(i) ? CHART_SLOT : '')).join('')}</div>
     <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now. ${phone ? 'Tap' : 'Click'} a card for its figures and buttons.</p>`
     : p.rows.length ? `<div class="positions-wrap"><table class="positions-table">
       <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th>${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
