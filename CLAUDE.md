@@ -172,6 +172,7 @@ The shared Schwab worker remains in use; its operator can access tokens in trans
 The Supabase administrator can decrypt the shared Schwab login too (signed in, one login for every device: docs/schwab.md).
 Settings discloses both.
 The entry page must be `index.html` at the root; `styles/`, `src/`, `fonts/` and `data/` deploy beside it as plain files.
+A Pages deploy that fails or sticks in queued during a GitHub Actions outage may never restart, even re-run (Nov 2026: the re-runs sat queued and could not be cancelled); a new commit on main starts a fresh one.
 The Schwab worker deploys separately with wrangler (`worker/schwab/README.md`).
 The one Edge Function, `supabase/functions/claude-model-example` (Claude adding Model books screenshots), deploys with `npx supabase functions deploy claude-model-example --no-verify-jwt`.
 Database changes are SQL files in `supabase/migrations/`, applied with `npx supabase db push` after `npx supabase link --project-ref dhohfavttsxwutanvcuj` (it asks for the database password; never commit it).
