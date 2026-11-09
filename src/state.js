@@ -205,7 +205,7 @@ export function createState() {
     livePolling: false,
     liveModeIdx: 0,
     livePausedRemaining: 0,
-    liveAlways: false, // Live with no countdown (phones and tablets start it on every Load): runs while the app is open
+    liveAlways: false, // Live with no countdown (every Load starts it): runs while the page is in view
     liveOptOut: '', // the symbol whose Live you stopped: a Load of it doesn't start Live again
     liveSocket: null, // the streaming socket (core/stream.js) while Live is on
     liveStreamSymbol: '', // the symbol the socket was last told to watch

@@ -600,6 +600,31 @@ test('a limit entry starts at the planned entry, moves as you type and caps the 
   assert.equal(state.tradeTicket.entryType, 'MARKET', 'the next review starts at market again');
 });
 
+test('a limit entry takes Mid, Ask or Bid from the live quote, the mid rounded toward a fill', async () => {
+  const { run, elements, state } = await sharesCard({ fetch: network(async () => json({}, 404)).fetch, storage: connected() });
+  await run('openTrade()');
+  run("actions.setTradeEntryType({ dataset: { arg: 'LIMIT' } })");
+  assert.match(elements.get('tradeBody').innerHTML, /id="tradeLimitPicks"[^>]*><button class="" aria-pressed="false" data-action="setTradeLimitAt" data-arg="mid"[^>]*>Mid<\/button><button[^>]*data-arg="ask"[^>]*>Ask<\/button><button[^>]*data-arg="bid"[^>]*>Bid</);
+  run('sheetQuote.bid = 100.01; sheetQuote.ask = 100.04; sheetQuote.at = Date.now()');
+  run("actions.setTradeLimitAt({ dataset: { arg: 'mid' } })");
+  let t = state.tradeTicket;
+  assert.deepEqual([t.limitPrice, t.order.price, t.qty, t.limitAt], [100.03, 100.03, 250, 'mid'], 'the mid of 100.01 x 100.04, up a cent for a buy; the shares stay');
+  assert.match(elements.get('tradeBody').innerHTML, /id="tradeLimit"[^>]*value="100.03"/);
+  assert.match(elements.get('tradeBody').innerHTML, /class="active" aria-pressed="true" data-action="setTradeLimitAt" data-arg="mid"/);
+  assert.match(elements.get('tradeBody').innerHTML, /Reviewed at<\/dt><dd>Bid \$100\.01 · ask \$100\.04/, 'the ticket moves to the quote it priced from');
+  run("setTradeLimitAt('ask')");
+  assert.equal(state.tradeTicket.limitPrice, 100.04);
+  run("setTradeLimit('99.9')");
+  assert.equal(state.tradeTicket.limitAt, '', 'a typed price is your own');
+  assert.doesNotMatch(elements.get('tradeLimitPicks').innerHTML, /class="active"/);
+  run("setDirection('short')");
+  await run('openTrade()');
+  run("setTradeEntryType('LIMIT')");
+  run('sheetQuote.bid = 100.01; sheetQuote.ask = 100.04; sheetQuote.at = Date.now()');
+  run("setTradeLimitAt('mid')");
+  assert.equal(state.tradeTicket.limitPrice, 100.02, 'down a cent for a short');
+});
+
 test('a lost answer is never retried and the next review warns about a repeat', async () => {
   const net = network(async (path, init) => { if (init.method === 'POST') throw new TypeError('Failed to fetch'); return json({}, 404); });
   const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });

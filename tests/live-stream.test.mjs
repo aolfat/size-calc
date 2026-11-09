@@ -129,11 +129,19 @@ test('backgrounding closes the stream and coming back opens it again', async () 
   assert.match(s.elements.get('liveBtn').innerHTML, /tap: stop/);
 });
 
-test('desktop starts with a tap; the setting turns the phone default off; a sandbox key polls with no stream', async () => {
+test('desktop goes live on Load too, paused while hidden; the setting turns the default off; a sandbox key polls with no stream', async () => {
   const desk = await setup({ width: 1280 });
   await desk.load('AAPL');
-  assert.equal(desk.state.liveAlways, false);
-  assert.ok(!desk.state.liveInterval, 'not live');
+  assert.equal(desk.state.liveAlways, true, 'desktop is always on as well');
+  assert.ok(desk.state.liveInterval, 'live');
+
+  const hidden = await setup({ width: 1280 });
+  hidden.run('document.hidden = true');
+  await hidden.load('AAPL');
+  assert.ok(!hidden.state.liveInterval, 'a Load in a hidden tab waits');
+  assert.match(hidden.elements.get('liveBtn').innerHTML, /paused/);
+  hidden.run('document.hidden = false; resumeLive()');
+  assert.ok(hidden.state.liveInterval, 'back in view, it runs');
 
   const off = await setup({ storage: new Map([['live_mobile', '0']]) });
   await off.load('AAPL');

@@ -1,10 +1,9 @@
 // Live mode: the price streams from Tradier's socket (polled when the stream is down, and for a futures ticker from Schwab);
-// the chain, chart and cards poll. Phones and tablets start it on every Load and keep it on; desktop climbs a duration
-// ladder. Pauses while the app is backgrounded.
+// the chain, chart and cards poll. Every Load starts it and it stays on while the page is in view (desktop too, owner request);
+// with Settings' Live on 'Tap to start', a tap climbs a duration ladder instead. Pauses while the app is backgrounded.
 import { state } from '../state.js';
 import { isFuturesQuote } from '../core/futures.js';
 import { applyStreamEvent, parseStreamData, STREAM_URL, subscribeMessage } from '../core/stream.js';
-import { DESKTOP_MQ, mq } from '../lib/media.js';
 import { store } from '../lib/store.js';
 import { inZone } from '../lib/zone.js';
 import { baseUrl, headers, streamSession } from '../services/tradier.js';
@@ -33,12 +32,12 @@ const STREAM_RENDER_MS = 250;
 /** after a socket fails, the next try waits this long (it polls meanwhile) */
 const STREAM_RETRY_MS = 15e3;
 
-/** Live by default: on phones and tablets (below the desktop shell) unless Settings turned it off */
+/** Live by default, at every width, unless Settings turned it off (the key is named for when only phones had it) */
 export function liveByDefault() {
-  return !!window.matchMedia && !mq(DESKTOP_MQ) && store.get('live_mobile') !== '0';
+  return !!window.matchMedia && store.get('live_mobile') !== '0'; // matchMedia: off in the plain test app, which has none
 }
 
-/** Settings' Live switch: 'on' starts Live on every Load on phones and tablets, 'off' leaves it to a tap (this device only) @param {string} v */
+/** Settings' Live switch: 'on' starts Live on every Load, 'off' leaves it to a tap (this device only) @param {string} v */
 export function setLiveDefault(v) {
   store.set('live_mobile', v === 'off' ? '0' : '1');
   paintLiveDefault();
@@ -84,12 +83,13 @@ export function startAlwaysLive() {
   updateLiveBtn();
 }
 
-/** after a Load: Live starts by itself on phones and tablets, unless it's running or you stopped it for this symbol */
+/** after a Load: Live starts by itself, unless it's running or you stopped it for this symbol; a Load in a hidden tab starts it paused */
 export function autoLive() {
   const sym = state.quoteData?.symbol;
   if (!sym || state.liveInterval || state.livePausedRemaining > 0 || state.marketView || !liveByDefault()) return;
   if (state.liveOptOut === sym) return;
   startAlwaysLive();
+  if (document.hidden) pauseLive();
 }
 
 export function toggleLive() {

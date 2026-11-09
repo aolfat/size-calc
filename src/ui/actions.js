@@ -60,7 +60,7 @@ import { findLevEtfs, levLoad, levTarget, renderGain, setLevDir } from './tools.
 import { setOrb } from './orb.js';
 import { clearMissedFilters, openMissedFromList, setMissedFilterSetup, setMissedFilterSide, setMissedFilterWhy, setMissedSearch } from './journal-missed.js';
 import { checkOptionTradeStatus, openOptionTrade, placeOptionTrade, setOptionEntry, setOptionLimit, setOptionStopDuration } from './option-trade.js';
-import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openCardOrder, openCardTrade, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryType, setTradeLimit, setTradeStopDuration } from './trade.js';
+import { checkTradeStatus, connectSchwab, disconnectSchwab, finishSchwab, hideSchwabBanner, schwabBannerLogin, openCardOrder, openCardTrade, openTrade, placeTrade, reloadSchwabAccounts, schwabAccountChanged, schwabProxyChanged, schwabProxyDone, editSchwabProxy, setTradeEntryLimit, setTradeEntryStop, setTradeEntryType, setTradeLimit, setTradeLimitAt, setTradeStopDuration } from './trade.js';
 import { scrollViewToTop, setMode, setView } from './views.js';
 
 const arg = el => el.dataset.arg || '';
@@ -406,6 +406,8 @@ export const actions = {
   setTradeEntryType: el => setTradeEntryType(arg(el)),
   setTradeEntryLimit: el => setTradeEntryLimit(el.value),
   setTradeLimit: el => setTradeLimit(el.value),
+  setTradeEntryStop: el => setTradeEntryStop(el.value),
+  setTradeLimitAt: el => setTradeLimitAt(arg(el)),
   setOrb: el => setOrb(num(el)),
   placeTrade: () => placeTrade(),
   openOptionTrade: el => openOptionTrade(arg(el)),

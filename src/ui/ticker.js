@@ -105,7 +105,7 @@ export async function fetchQuote() {
       await fetchChain(sym, state.selectedExp, true);
     }
     if (current()) document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
-    if (current()) autoLive(); // phones and tablets go live on every Load
+    if (current()) autoLive(); // every Load goes live, unless Settings says tap to start
   } catch(e) {
     if (current()) showError('Error: ' + e.message);
   } finally {
