@@ -173,6 +173,21 @@ test('a review that can\'t be: an unknown field, a grade or plan not on the list
   assert.throws(() => planReview(j, t, { stop: -1 }), /stop/);
 });
 
+test("a setup named for one of your levels and actions is made of them, or found under another name, as the setup builder does", () => {
+  const news = { id: 'n1', kind: 'level', name: 'AVWAP from News' };
+  const typed = { id: 'k1', kind: 'setup', name: 'News candle reclaim', settings: { action: 'bounce', levels: ['mine:n1'] } };
+  const j = journalFrom({ ...DATA, library: [news, typed] });
+  const p = planReview(j, j.trades[0], { setups: ['AVWAP from earnings bounce', 'avwap from earnings undercut & rally / reclaim & fail', 'AVWAP from News bounce', 'Bounce at 21 EMA'] }, opts);
+  const [bounce, undercut] = p.changes.library;
+  assert.deepEqual([bounce.kind, bounce.name, bounce.settings], ['setup', 'AVWAP from earnings bounce', { levels: ['avwap_earnings'], action: 'bounce' }]);
+  assert.deepEqual([undercut.name, undercut.settings], ['AVWAP from earnings undercut & rally', { levels: ['avwap_earnings'], action: 'undercut' }], 'either side\'s words, any case');
+  assert.equal(p.changes.library.length, 2, 'no pattern made for them, and none for the ones that exist');
+  assert.deepEqual(p.changes.labels_add.map(l => l.value), [`mine:${bounce.id}`, `mine:${undercut.id}`, 'mine:k1', 'ema21_bounce'], 'the same parts under a typed name, and a default by its parts in words');
+  assert.match(p.said.join('\n'), /^New setup in My setups: AVWAP from earnings bounce \(Bounce at AVWAP from earnings\)\.$/m);
+  const other = planReview(j, j.trades[0], { setups: ['Inside day breakout'] }, opts).changes.library;
+  assert.deepEqual(other.map(r => r.kind), ['pattern', 'setup'], 'any other name is still a pattern and the setup made of it');
+});
+
 // ---------- the day's review (the notebook's post-market half) ----------
 
 const RULES = [

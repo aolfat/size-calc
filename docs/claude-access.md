@@ -93,7 +93,8 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 
 A review's JSON takes `market`, `marketFor` ('day' or 'trade'), `sector`, `setups`, `tactics`, `tags`, `mistakes`, `grade` (A to F), `plan` (yes, partly, no), `entryNote`, `exitNote` and `stop`; fields left out stay, null clears one.
 Names match your choices in either side's words ("N/A", "Didn't take the stop", "Pennant or flag breakdown") or by key.
-Each label kind given is set to exactly those; a name that isn't one of yours is added to your choices, and a setup that isn't one becomes a pattern of that name and the setup made of it, as + New setup does.
+Each label kind given is set to exactly those; a name that isn't one of yours is added to your choices, and a setup that isn't one becomes a pattern of that name and the setup made of it, as + New setup does, unless its name says a level and an action.
+A setup named for one of your levels and actions, in either side's words or both ("AVWAP from earnings bounce", "50 SMA rejection", "Bounce at 21 EMA"), is the setup made of them, as the setup builder makes it: one of the same parts under another name if you have it, else a new one (`setupPartsFromName`, scripts/journal-lib.mjs).
 The market goes on the trade's day, unless the day already has another (then it's the trade's own and the script says so), or marketFor says otherwise.
 reviewed_at is stamped once everything a review needs is in, and cleared if something comes off.
 

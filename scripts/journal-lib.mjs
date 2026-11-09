@@ -138,9 +138,28 @@ export function findItem(lib, kind, ref) {
 }
 
 /**
- * Names made into keys the way + New does: an item of a kind by its key or name, added to your library when it's new (a
- * setup that isn't one becomes a pattern of that name and the setup made of it). library is the rows to save, said what
- * was added, lib the library with them.
+ * A setup's name read as one of your levels and one of your actions, in either side's words or both ('AVWAP from earnings
+ * bounce', '50 SMA rejection', 'AVWAP from earnings bounce / rejection', 'Bounce at 21 EMA'): its parts, or null.
+ * @param {ReturnType<typeof buildLibrary>} lib @param {string} ref @returns {{ levels: string[], action: string } | null}
+ */
+export function setupPartsFromName(lib, ref) {
+  const want = norm(ref);
+  if (!want) return null;
+  for (const level of lib.choices('level')) for (const action of lib.choices('action')) {
+    const parts = { levels: [level.key], action: action.key };
+    for (const side of ['long', 'short', 'both']) {
+      if ([setupName(lib, parts, /** @type {any} */ (side)), lib.partsWords(parts, /** @type {any} */ (side))].some(n => norm(n) === want)) return parts;
+    }
+  }
+  return null;
+}
+
+/**
+ * Names made into keys the way + New does: an item of a kind by its key or name, added to your library when it's new. A
+ * setup that isn't one is read as one of your levels and actions when its name says so ('AVWAP from earnings bounce'),
+ * matched to a setup of the same parts under another name or made of them, as the setup builder does; any other name
+ * becomes a pattern of that name and the setup made of it. library is the rows to save, said what was added, lib the
+ * library with them.
  * @param {{ rows: any[], lib: ReturnType<typeof buildLibrary> }} j @param {{ newId?: () => string }} [opts]
  */
 export function librarian(j, opts = {}) {
@@ -155,6 +174,15 @@ export function librarian(j, opts = {}) {
     const name = String(ref).trim().slice(0, 80);
     if (!name) throw new Error(`a ${kind} needs a name`);
     if (kind === 'setup') {
+      const made = setupPartsFromName(out.lib, name);
+      if (made) {
+        const same = out.lib.choices('setup').find(i => sameParts(out.lib.parts(i.key), made));
+        if (same) return same.key;
+        const row = { id: newId(), kind: 'setup', name: setupName(out.lib, made), settings: made };
+        add(row);
+        out.said.push(`New setup in My setups: ${row.name} (${out.lib.partsWords(made)}).`);
+        return `mine:${row.id}`;
+      }
       const pattern = itemKey('pattern', name);
       const parts = { pattern };
       const same = out.lib.choices('setup').find(i => sameParts(out.lib.parts(i.key), parts));
