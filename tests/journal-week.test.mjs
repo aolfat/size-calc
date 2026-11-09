@@ -517,6 +517,44 @@ test("this week's rules on top: how the days checked each, Kept it? on each, how
   assert.equal(row().reviewed_at, null, 'an answer taken back takes the mark with it');
 });
 
+test("Make it permanent: one of this week's rules graduates to your standing rules, asked every day from today on", async () => {
+  const RULES = [{ id: 'r1', text: 'No trades before 9:45' }, { id: 'r2', text: 'Size down after a loss' }];
+  const a = await journal({ periods: [{ unit: 'week', period_key: '2026-09-28', rules_next: RULES }], opts: { clock: true, now: Date.parse('2026-10-08T21:00:00Z') } });
+  const { run, out, supabase } = a;
+  // a standing rule you retired once, in other words' case
+  supabase.tables.library_items.set('user-1:old', { user_id: 'user-1', id: 'old', kind: 'rule', name: 'size down after a loss', hidden: true, settings: { order: 1, since: '2026-09-01' } });
+  await run('loadJournalReview()');
+  run("openPeriodReview('week', '2026-10-05')");
+  assert.match(out(), /<span class="jw-rule-acts"><button class="pos-link" data-action="carryPeriodRule" data-arg="r1">Keep it next week<\/button><button class="pos-link" data-action="graduatePeriodRule" data-arg="r1">Make it permanent<\/button><\/span>/);
+  const lib = () => [...supabase.tables.library_items.values()];
+  const toast = () => run("document.getElementById('errorBox').textContent");
+
+  await run("graduatePeriodRule('r1')");
+  await settle();
+  const made = lib().find(r => r.name === 'No trades before 9:45');
+  assert.deepEqual([made.kind, made.hidden, made.settings.order, made.settings.since], ['rule', false, 2, '2026-10-08'], 'at the end of your rules, from today');
+  assert.equal(toast(), 'Added to your rules: every day asks it after the close.');
+  assert.match(out(), /data-arg2="no">No<\/button><span class="jw-rule-acts"><span class="jw-carried">In your rules<\/span><\/span>/, 'no Keep it next week: every day asks it already');
+  assert.doesNotMatch(out(), /carryPeriodRule" data-arg="r1"/);
+  await run("graduatePeriodRule('r1')");
+  await settle();
+  assert.equal(lib().length, 2, 'never twice');
+
+  run("carryPeriodRule('r2')");
+  await settle();
+  await run("graduatePeriodRule('r2')");
+  await settle();
+  assert.equal(lib().length, 2, 'the retired one came back instead of a second');
+  assert.equal(supabase.tables.library_items.get('user-1:old').hidden, false);
+  assert.equal(toast(), 'Back in your rules: every day asks it after the close.');
+  assert.match(out(), /<span class="jw-rule-acts"><span class="jw-carried">On next week's list<\/span><span class="jw-carried">In your rules<\/span><\/span>/);
+
+  run("openJournalDay('2026-10-09')");
+  assert.match(out(), new RegExp(`data-action="setDayRule" data-arg="mine:${made.id}"`), "Friday's post-market asks it");
+  run("openJournalDay('2026-10-07')");
+  assert.doesNotMatch(out(), new RegExp(`data-arg="mine:${made.id}"`), 'never a day before it was made');
+});
+
 test('before the week rules\' columns are pushed: the one rule box, a hint, and the rest saves', async () => {
   const sb = fakeRecords(RECORDS);
   sb.failColumn('period_reviews', 'rules_next');

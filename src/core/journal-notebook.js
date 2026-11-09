@@ -219,6 +219,18 @@ export function notebookLists(rows = []) {
 export const activeItems = items => items.filter(i => !i.hidden);
 
 /**
+ * The standing rule a week's (or month's) rule already is: the same words in any case, a long one as far as a rule's
+ * name goes (MAX_ITEM); one you have now before a retired one, else null.
+ * @param {ListItem[]} rules @param {string} text @returns {ListItem | null}
+ */
+export function standingRuleFor(rules, text) {
+  const name = String(text || '').trim().slice(0, MAX_ITEM).toLowerCase();
+  if (!name) return null;
+  const same = rules.filter(r => r.name.trim().toLowerCase() === name);
+  return same.find(r => !r.hidden) || same[0] || null;
+}
+
+/**
  * The rules a day asks about: the ones you had then (made on or before it) and haven't retired, plus any answered that
  * day (retired since or not), in your order.
  * @param {ListItem[]} rules @param {string} day @param {DayRow | null | undefined} row

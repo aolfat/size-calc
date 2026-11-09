@@ -151,6 +151,7 @@ Before the week rules migration is pushed (`weekRulesError`, read on its own que
 - Rows in `library_items`, kinds `goal` and `rule`, so each has a stable id (`mine:<uuid>`) and rewording one keeps its history. `settings` holds `{ order, since }`: the list order and the New York day it was made.
 - Edit on each list opens it in place: reword, move up or down, Retire (hidden: it leaves the list and the daily check, its answers stay), and + Add. Up to 20 of each, 200 characters each.
 - They start empty: they're yours to write.
+- A week's (or month's) rule you like can graduate into them: Make it permanent on it in the next review (docs/journal.md, This week's rules) adds it here from that day on, or brings back a retired one with the same words.
 - **Rules can carry a number** (slice 2), for the app to check after the close and pre-fill with its reason, which you confirm or change: a daily max loss as a % of the account (`{ check: 'max_loss_pct', value: 5 }`), oversizing against your max loss per trade, and a loss past −1R (didn't follow the stop).
 
 ## Data

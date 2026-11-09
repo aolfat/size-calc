@@ -9,7 +9,7 @@
 // back with a toast if Supabase refuses; a note is a draft while you type and saves when the box loses focus.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary } from '../core/journal-labels.js';
-import { MISSED_WHY, periodMissed } from '../core/journal-notebook.js';
+import { MISSED_WHY, notebookLists, periodMissed, standingRuleFor } from '../core/journal-notebook.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
 import { gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodRules, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, ruleKeptOf, sortPeriodTrades, weekRuleTally } from '../core/journal-week.js';
 import { excursions, unpackBars } from '../core/trade-page.js';
@@ -19,9 +19,9 @@ import { loadTradeBars } from '../services/bars.js';
 import { savePeriodFields } from '../services/journal-review.js';
 import { zoneWords } from '../lib/zone.js';
 import { state } from '../state.js';
-import { showError } from './feedback.js';
+import { showError, showToast } from './feedback.js';
 import { periodReviewContext, reviewedMark } from './journal-review.js';
-import { missedWords } from './journal-notebook.js';
+import { makeRuleStanding, missedWords } from './journal-notebook.js';
 import { periodName } from './journal-stats.js';
 import { journalTradeList, renderJournal } from './journal.js';
 import { loadPeriodReviewRows, renderWeekRulesCard } from './week-rules.js';
@@ -281,6 +281,16 @@ export function carryPeriodRule(id) {
   if (list.length >= MAX_PERIOD_RULES) { showError(`${MAX_PERIOD_RULES} rules at most: remove one first.`); return; }
   return saveRules([...list, { id: newRuleId(), text: r.text }]);
 }
+/** your standing rules (the notebook's Rules), retired ones too */
+const standingRules = () => notebookLists(state.journalReview?.library || []).rules;
+/** Make it permanent: one of this week's rules graduates to your standing rules, asked every day from today on */
+export async function graduatePeriodRule(id) {
+  const p = state.journalReviewPeriod;
+  const r = p && periodRules(prevOf(p.unit, p.key)).find(x => x.id === id);
+  if (!r) return;
+  const done = await makeRuleStanding(r.text);
+  if (done === 'added' || done === 'back') showToast(`${done === 'back' ? 'Back in' : 'Added to'} your rules: every day asks it after the close.`);
+}
 
 const OVERALL_KEYS = new Set(PERIOD_OVERALL_COLUMNS);
 /**
@@ -368,14 +378,20 @@ function reviewTop(p, off) {
   const rules = periodRules(prevOf(p.unit, p.key)), row = rowOf(p.unit, p.key), next = periodRules(row);
   if (!rules.length) return status;
   const listOffNow = off || state.periodRulesError ? ' disabled' : '';
+  // standing rules live in the notebook's library: before it loads, or without the notebook's columns, there's nowhere to put one
+  const d = state.journalReview, graduateOff = !d || !!state.journalReviewError || !!d.notebookError, mine = standingRules();
   const item = r => {
     const kept = ruleKeptOf(row, r.id) || '', tally = tallyWords(p, r.id), asked = r.id !== LEGACY_RULE_ID;
     const open = !off && asked && !kept ? ' jw-cat-open' : '';
-    const carried = next.some(x => x.text.toLowerCase() === r.text.toLowerCase());
-    const carry = state.periodRulesError ? '' : carried ? `<span class="jw-carried">On next ${word}'s list</span>`
+    const carried = next.some(x => x.text.toLowerCase() === r.text.toLowerCase()), standing = standingRuleFor(mine, r.text);
+    const permanent = !!standing && !standing.hidden;
+    // once it's permanent every day asks it, so it needs no place on next week's list
+    const carry = state.periodRulesError || (permanent && !carried) ? '' : carried ? `<span class="jw-carried">On next ${word}'s list</span>`
       : `<button class="pos-link" data-action="carryPeriodRule" data-arg="${esc(r.id)}"${off}>Keep it next ${word}</button>`;
+    const keep = permanent ? '<span class="jw-carried">In your rules</span>' : graduateOff ? ''
+      : `<button class="pos-link" data-action="graduatePeriodRule" data-arg="${esc(r.id)}"${off}>Make it permanent</button>`;
     return `<li class="jw-rule-item${open}"><p class="jw-rule-text">${esc(r.text)}</p>${tally ? `<span class="jw-tally">${esc(tally)}</span>` : ''}
-      <div class="jw-kept" role="group" aria-label="${esc(`Kept it? ${r.text}`)}"><span class="jw-kept-q">Kept it?</span>${RULE_KEPT.map(([v, w]) => chip(w, kept === v, `data-action="setRuleKept" data-arg="${esc(r.id)}" data-arg2="${v}"${off}`)).join('')}${carry}</div></li>`;
+      <div class="jw-kept" role="group" aria-label="${esc(`Kept it? ${r.text}`)}"><span class="jw-kept-q">Kept it?</span>${RULE_KEPT.map(([v, w]) => chip(w, kept === v, `data-action="setRuleKept" data-arg="${esc(r.id)}" data-arg2="${v}"${off}`)).join('')}<span class="jw-rule-acts">${carry}${keep}</span></div></li>`;
   };
   const these = `this ${word}'s rule${rules.length === 1 ? '' : 's'}`;
   const talk = `<div class="jw-overall-field${!off && !st.talk ? ' jw-cat-open' : ''}"><label class="jw-overall-label" for="jwRulesNote">How did ${these} go?</label>
