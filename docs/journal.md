@@ -354,6 +354,7 @@ The Journal tab: imports, trades and spreads, fees, your stops and deletes, bars
   Every text box on the page grows with its text (textarea.grow, lib/grow.js: on each keystroke and after each redraw), never shorter than its rows; Tomorrow's focus and a missed trade's note are one-row boxes that wrap instead of scrolling sideways.
 
   **Goals and rules** are library_items rows (kinds goal and rule, names up to 200, settings { order, since }, at most 20 active each), skipped by buildLibrary; Edit opens the list in place (state.notebookEdit): reword, ↑ ↓, Retire (hidden: out of the list and the check, its answers kept; Bring back), + Add.
+  The ones you have now also show in Size, under the risk strip (docs/calculator.md, Rules and goals).
   The new columns are read on their own query (loadNotebook, DAY_COLUMNS), so before the push the page says it needs `npx supabase db push`, everything in it is disabled, and the rest of the journal works.
   Calendar cells carry marks (dayMark): ✎ plan written, ✓ reviewed, an amber ● once a day with exits is over and not reviewed.
 

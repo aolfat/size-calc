@@ -89,9 +89,10 @@
     </div>
   </div>
 
-  <div class="card week-rules" id="weekRulesCard" style="display:none;" aria-label="This week's rules">
-    <div class="strip-title week-rules-title">This week's rules</div>
-    <ol class="week-rules-list" id="weekRulesList"></ol>
+  <div class="card week-rules" id="weekRulesCard" style="display:none;" aria-label="Your rules and goals">
+    <div class="week-rules-group" id="weekRulesGroup"><div class="strip-title week-rules-title">This week's rules</div><ol class="week-rules-list" id="weekRulesList"></ol></div>
+    <div class="week-rules-group" id="myRulesGroup" style="display:none;"><div class="strip-title week-rules-title">Rules</div><ol class="week-rules-list" id="myRulesList"></ol></div>
+    <div class="week-rules-group" id="myGoalsGroup" style="display:none;"><div class="strip-title week-rules-title">Goals</div><ol class="week-rules-list" id="myGoalsList"></ol></div>
   </div>
 
   <div class="card" id="stopsCard">
@@ -596,9 +597,9 @@
         <p class="hint">Live starts on every Load and stays on while the app is in view: the price streams trade by trade, the chain refreshes every 5s. It pauses in another tab or app. Tap Live to stop it for that ticker. This device only.</p>
       </div>
       <div class="sheet-section">
-        <div class="sheet-label">This week's rules</div>
-        <div class="seg" role="group" aria-label="This week's rules in Size"><button id="weekRulesOn" class="active" aria-pressed="true" data-action="setWeekRulesShown" data-arg="on">Show in Size</button><button id="weekRulesOff" aria-pressed="false" data-action="setWeekRulesShown" data-arg="off">Hide</button></div>
-        <p class="hint">The rules your last week's review set, under your max loss while you size a trade. Signed in only. This device only.</p>
+        <div class="sheet-label">Rules and goals</div>
+        <div class="seg" role="group" aria-label="Rules and goals in Size"><button id="weekRulesOn" class="active" aria-pressed="true" data-action="setWeekRulesShown" data-arg="on">Show in Size</button><button id="weekRulesOff" aria-pressed="false" data-action="setWeekRulesShown" data-arg="off">Hide</button></div>
+        <p class="hint">This week's rules, your rules and your goals from the Journal, under your max loss while you size a trade. Signed in only. This device only.</p>
       </div>
       <div class="sheet-section">
         <div class="sheet-label">Positions</div>
