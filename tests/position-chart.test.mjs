@@ -125,6 +125,33 @@ test('Chart opens the position\'s 5-minute and daily charts next to the table, a
   assert.match(tableRow(elements, 'HOOD'), /aria-pressed="false" data-action="togglePositionChart"/);
 });
 
+test('in the Cards layout the chart opens right under the card whose Chart was tapped, not beside the list', async () => {
+  const { run, elements } = await chartApp();
+  run("setPosLayout('cards')");
+  const list = elements.get('positionsSection'), slot = elements.get('posChartSlot'), split = elements.get('positionsSplit');
+  const moved = [];
+  list.querySelector = q => q === '#posChartSlot' && list.innerHTML.includes('id="posChartSlot"') ? slot : null;
+  slot.appendChild = child => moved.push(child.id);
+  assert.doesNotMatch(list.innerHTML, /posChartSlot/, 'no slot while no chart is open');
+  run("togglePosCard('TSLA')");
+  run("togglePositionChart('TSLA')");
+  await settle();
+  const cards = list.innerHTML.split('<article').slice(1);
+  const i = cards.findIndex(c => c.includes('data-arg="TSLA"'));
+  assert.ok(i >= 0);
+  assert.match(cards[i], /<\/article><div class="pc-chart-slot" id="posChartSlot"><\/div>/, 'the slot follows the charted card at once');
+  assert.equal((list.innerHTML.match(/posChartSlot/g) || []).length, 1);
+  assert.deepEqual(moved.slice(-1), ['posChartSection']);
+  assert.ok(!split.classList.contains('open'), 'not beside the list on the desktop shell');
+  assert.equal(elements.get('posChartSection').style.display, '');
+
+  run("setPosLayout('table')");
+  assert.doesNotMatch(list.innerHTML, /posChartSlot/);
+  assert.ok(split.classList.contains('open'), 'the table keeps it beside');
+  run("closePositionChart()");
+  assert.ok(!split.classList.contains('open'));
+});
+
 test("without a Tradier key the daily chart comes from Schwab's price history", async () => {
   const { run, elements, tradier, schwab } = await chartApp({ key: false });
   run("togglePositionChart('HOOD')");
