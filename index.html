@@ -157,8 +157,8 @@
     <div class="shares-actions" role="group" aria-label="Share trade plan">
       <button type="button" class="btn trade-btn" id="sharesTrade" data-action="openTrade" style="display:none;" title="Review a market order with this stop, then send it to Schwab" disabled>Trade at Schwab</button>
       <button type="button" class="filter-btn" id="sharesPin" data-action="pinShares" style="display:none;" title="Keep this order as a card with its own Trade at Schwab, then size the next ticker" disabled>Pin order</button>
-      <button type="button" class="filter-btn" id="sharesImage" data-action="shareShares" title="Copy a PNG card, or download it if image copying is unavailable" disabled>Copy card image</button>
-      <button type="button" class="filter-btn" id="sharesCopy" data-action="copyShares" title="Copy a compact text summary with entry, stop, risk percentage, and a $100-risk example" disabled>Copy summary</button>
+      <button type="button" class="filter-btn" id="sharesImage" data-action="shareShares" title="Copy a PNG card, or download it if image copying is unavailable" disabled>Copy image</button>
+      <button type="button" class="filter-btn" id="sharesCopy" data-action="copyShares" title="Copy a compact text summary with entry, stop, risk percentage, and a $100-risk example" disabled>Copy text</button>
     </div>
   </div>
 
@@ -249,7 +249,7 @@
       </div>
       <div class="field" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Phones and tablets go live on every Load (tap to stop); desktop taps for 1m, again for 5m, again for 30m, again to stop. Pauses while backgrounded (l)">⚡ Live</button>
+        <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Every Load goes live (tap to stop); with Settings set to Tap to start, taps run 1m, then 5m, then 30m, then stop. Pauses while the page is hidden (l)">⚡ Live</button>
       </div>
     </div>
     <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
@@ -590,8 +590,8 @@
       </div>
       <div class="sheet-section">
         <div class="sheet-label">Live</div>
-        <div class="seg" role="group" aria-label="Live on phones and tablets"><button id="liveDefaultOn" class="active" aria-pressed="true" data-action="setLiveDefault" data-arg="on">On when a ticker loads</button><button id="liveDefaultOff" aria-pressed="false" data-action="setLiveDefault" data-arg="off">Tap to start</button></div>
-        <p class="hint">On phones and tablets, Live starts on every Load and stays on while the app is open: the price streams trade by trade, the chain refreshes every 5s. Tap Live to stop it for that ticker. Desktop always starts with a tap. This device only.</p>
+        <div class="seg" role="group" aria-label="Live when a ticker loads"><button id="liveDefaultOn" class="active" aria-pressed="true" data-action="setLiveDefault" data-arg="on">On when a ticker loads</button><button id="liveDefaultOff" aria-pressed="false" data-action="setLiveDefault" data-arg="off">Tap to start</button></div>
+        <p class="hint">Live starts on every Load and stays on while the app is in view: the price streams trade by trade, the chain refreshes every 5s. It pauses in another tab or app. Tap Live to stop it for that ticker. This device only.</p>
       </div>
       <div class="sheet-section">
         <div class="sheet-label">This week's rules</div>

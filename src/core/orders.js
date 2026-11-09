@@ -196,15 +196,25 @@ export function optionLimitError({ limit, stop }) {
 export function ocoOrder(a, b) { return { orderStrategyType: 'OCO', childOrderStrategies: [a, b] }; }
 
 /**
+ * What no entry price can fix: not a stock, a symbol Schwab can't take, under one share, no stop.
+ * @param {{ symbol: string, type?: string, qty: number, stop: number }} t @returns {string}
+ */
+export function sharesBaseError({ symbol, type, qty, stop }) {
+  if (type && type !== 'stock' && type !== 'etf') return `${symbol} is not a stock or ETF.`;
+  if (!/^[A-Z][A-Z0-9./]{0,9}$/.test(symbol)) return `${symbol} is not a symbol Schwab can trade.`;
+  if (!Number.isInteger(qty) || qty < 1) return 'The size is under one share. Raise the risk or tighten the stop.';
+  if (!(stop > 0)) return 'No valid stop price.';
+  return '';
+}
+
+/**
  * Why a shares ticket can't be sent, or '' when it can.
  * @param {{ symbol: string, type?: string, qty: number, isLong: boolean, stop: number, bid?: number, ask?: number, last?: number, entryType?: EntryType, entryStop?: number }} t
  * @returns {string}
  */
 export function sharesTicketError({ symbol, type, qty, isLong, stop, bid = 0, ask = 0, last = 0, entryType = 'MARKET', entryStop = 0 }) {
-  if (type && type !== 'stock' && type !== 'etf') return `${symbol} is not a stock or ETF.`;
-  if (!/^[A-Z][A-Z0-9./]{0,9}$/.test(symbol)) return `${symbol} is not a symbol Schwab can trade.`;
-  if (!Number.isInteger(qty) || qty < 1) return 'The size is under one share. Raise the risk or tighten the stop.';
-  if (!(stop > 0)) return 'No valid stop price.';
+  const base = sharesBaseError({ symbol, type, qty, stop });
+  if (base) return base;
   // a stop entry: the stop only goes in once the entry fills there, so it's checked against the entry, which has to be past the market;
   // a limit can fill right away like a market order, so its stop is checked against the market
   if (entryType === 'STOP' || entryType === 'STOP_LIMIT') {
@@ -227,11 +237,11 @@ export function sharesTicketError({ symbol, type, qty, isLong, stop, bid = 0, as
  * @param {{ isLong: boolean, entryStop: number, bid?: number, ask?: number, last?: number }} t
  */
 export function stopEntryError({ isLong, entryStop, bid = 0, ask = 0, last = 0 }) {
-  if (!(entryStop > 0)) return 'Set a planned entry for the stop to wait at.';
+  if (!(entryStop > 0)) return 'Set the trigger price the stop entry waits for.';
   const ref = isLong ? (ask > 0 ? ask : last) : (bid > 0 ? bid : last);
   if (!(ref > 0)) return 'No live quote to place a stop entry against.';
-  if (isLong && entryStop <= ref) return `The buy stop ${fmtTick(entryStop)} is at or under the ask ${fmtTick(ref)}, so it would buy right away. Use Market, or a higher entry.`;
-  if (!isLong && entryStop >= ref) return `The sell-short stop ${fmtTick(entryStop)} is at or over the bid ${fmtTick(ref)}, so it would short right away. Use Market, or a lower entry.`;
+  if (isLong && entryStop <= ref) return `The buy stop ${fmtTick(entryStop)} is at or under the ask ${fmtTick(ref)}, so it would buy right away. Use Market, or a higher trigger.`;
+  if (!isLong && entryStop >= ref) return `The sell-short stop ${fmtTick(entryStop)} is at or over the bid ${fmtTick(ref)}, so it would short right away. Use Market, or a lower trigger.`;
   return '';
 }
 

@@ -135,7 +135,7 @@ export function shareCanvasToClipboard(canvas, name) {
 export function shareShares() {
   const q = state.quoteData;
   if (!q) { showError('Load a ticker first.'); return; }
-  if (isFuturesQuote(q)) { showError('The image card is for shares. Copy summary works for futures.'); return; }
+  if (isFuturesQuote(q)) { showError('The image card is for shares. Copy text works for futures.'); return; }
   if (state.sizingMode === 'allocation') {
     const r = calcAllocation({ ...allocationInputs(q.symbol), unitCost: entryVal() });
     if (r.error) return;

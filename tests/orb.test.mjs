@@ -188,15 +188,46 @@ test('a stop limit\'s limit is typed in place, and one under the stop holds the 
   assert.equal(elements.get('tradePlace').disabled, false);
 });
 
-test('no stop entry when the price is already through it: Market only, and a break before sending stops the send', async () => {
+test('a stop entry can be picked with the price through the plan: the trigger starts blank, and a typed one re-sizes the shares', async () => {
   const { run, elements, state, posts } = await card({ quote: { last: 100.6, bid: 100.58, ask: 100.62 } });
   await run('setOrb(15)');
   await run('openTrade()');
   assert.equal(state.tradeTicket.entryType, 'MARKET');
-  assert.match(elements.get('tradeBody').innerHTML, /data-arg="STOP" title="The buy stop \$100\.51 is at or under the ask \$100\.62, so it would buy right away\. Use Market, or a higher entry\." disabled/);
-  run("setTradeEntryType('STOP')");
-  assert.equal(state.tradeTicket.entryType, 'MARKET');
+  assert.equal(state.tradeTicket.qty, 450);
+  assert.match(elements.get('tradeBody').innerHTML, /data-action="setTradeEntryType" data-arg="STOP">Stop</, 'never greyed out');
+  run("actions.setTradeEntryType({ dataset: { arg: 'STOP' } })");
+  let t = state.tradeTicket;
+  assert.equal(t.entryType, 'STOP');
+  assert.equal(t.entryStop, 0, 'the planned entry is under the ask, so the trigger starts blank');
+  assert.equal(t.order, null);
+  assert.match(t.limitError, /Set the trigger price the stop entry waits for\./);
+  let body = elements.get('tradeBody').innerHTML;
+  assert.match(body, /<label for="tradeEntryStop">Trigger<\/label>[\s\S]*id="tradeEntryStop"[^>]*value="" placeholder="&gt; 100\.62" data-input="setTradeEntryStop"/);
+  assert.match(body, /id="tradePlace" data-action="placeTrade" disabled/);
 
+  elements.set('tradePlace', { disabled: true, textContent: '' });
+  run("actions.setTradeEntryStop({ value: '101' })");
+  t = state.tradeTicket;
+  assert.deepEqual([t.qty, t.order.orderType, t.order.stopPrice, t.order.orderLegCollection[0].quantity], [312, 'STOP', 101, 312], '$500 over $1.60 a share');
+  assert.equal(elements.get('tradePlace').disabled, false);
+  assert.equal(elements.get('tradePlace').textContent, 'Buy stop 312 TEST');
+  assert.match(elements.get('tradeDetail').innerHTML, /\$499\.20[\s\S]*From the stop entry \$101\.00\. 312 shares, re-sized from 450 at the trigger/);
+  assert.doesNotMatch(elements.get('tradeDetail').innerHTML, /15m range high/, 'the range note names the planned entry, not a typed trigger');
+
+  run("setTradeEntryStop('100.6')");
+  assert.equal(state.tradeTicket.order, null);
+  assert.match(elements.get('tradeDetail').innerHTML, /The buy stop \$100\.60 is at or under the ask \$100\.62, so it would buy right away\. Use Market, or a higher trigger\./);
+  assert.equal(elements.get('tradePlace').disabled, true);
+
+  run("setTradeEntryStop('101.25')");
+  run("setTradeEntryType('MARKET')");
+  assert.equal(state.tradeTicket.qty, 450, 'back at market: the calculator\'s size');
+  run("setTradeEntryType('STOP_LIMIT')");
+  t = state.tradeTicket;
+  assert.deepEqual([t.entryStop, t.entryLimit, t.qty], [101.25, 101.45, 270], 'the typed trigger stays, with its limit room');
+  await run('placeTrade()');
+  assert.equal(posts.length, 1);
+  assert.deepEqual([posts[0].orderType, posts[0].stopPrice, posts[0].price, posts[0].childOrderStrategies[0].stopPrice], ['STOP_LIMIT', 101.25, 101.45, 99.4]);
 });
 
 test('a break through the entry between review and Place sends nothing', async () => {
@@ -207,7 +238,9 @@ test('a break through the entry between review and Place sends nothing', async (
   run('sheetQuote.at -= 5000'); // the review's live quote is stale, so Place reads again
   await run('placeTrade()');
   assert.equal(posts.length, 0);
-  assert.match(state.tradeTicket.result.text, /The buy stop \$100\.51 is at or under the ask \$100\.62, so it would buy right away\. Use Market, or a higher entry\. Nothing was sent\./);
+  assert.match(state.tradeTicket.result.text, /The buy stop \$100\.51 is at or under the ask \$100\.62, so it would buy right away\. Use Market, or a higher trigger\. Nothing was sent\./);
+  assert.equal(state.tradeTicket.sent, false, 'the review stays open on the new quote, so the trigger can move');
+  assert.match(state.tradeTicket.limitError, /at or under the ask \$100\.62/);
 });
 
 test('in Pacific time the range and its notes read in PT, and flipping redraws the line', async () => {
