@@ -18,10 +18,13 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   The Schwab app needs Market Data Production, and the worker must relay `/marketdata/v1` (a worker deployed before futures answers 404).
   A refused read says which (schwabRefusal: 404 the worker, 401 or 403 Market Data Production) on a Load and in the chain's status, instead of 'Symbol not found'.
   Schwab has no price history for options, so a contract's own 5-minute bars (the journal's option bars, the position chart's option pane) need a Tradier key.
-- **This week's rules** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip (same phone `order` as the strip, after it in the markup; under it in the desktop rail) listing the rules last week's review set (docs/journal.md, Rules for next week).
-  Shown in Stocks & futures and Options while signed in and the week has rules; a weekend shows the coming week's (notebookToday).
-  The week reviews are read at boot once the Google session is back and again when the app comes to the front, at most every 5 minutes (loadWeekRules); saving the rules in the week's review redraws the card at once.
-  Settings, This week's rules: Show in Size (the default) or Hide (setWeekRulesShown, `week_rules_calc`, this device only).
+- **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip (same phone `order` as the strip, after it in the markup; under it in the desktop rail) listing the rules last week's review set (docs/journal.md, Rules for next week).
+  It also lists your standing rules and your goals, the notebook's lists (docs/journal.md, Goals and rules), in your order and without the retired ones (owner request: all the rules and the goals, not only the week's).
+  Three groups, each titled and shown only when it has items: This week's rules (#weekRulesGroup), Rules (#myRulesGroup), Goals (#myGoalsGroup); a standing rule with the same words as one of this week's shows once, under the week.
+  Shown in Stocks & futures and Options while signed in and any group has items; a weekend shows the coming week's rules (notebookToday).
+  The week reviews and the review data (your goals and rules among it, state.journalReview) are read at boot once the Google session is back and again when the app comes to the front, at most every 5 minutes (loadWeekRules); the review data isn't re-read while the Journal is open, which reads its own.
+  Saving the rules in the week's review, or a goal or rule in the notebook, shows in the card the next time Size is in view.
+  Settings, Rules and goals: Show in Size (the default) or Hide (setWeekRulesShown, `week_rules_calc`, this device only).
 - **Stops**: ONE global stop pair in the entry and stops card (#stopsCard), used everywhere; with options sized by allocation the card hides.
   Long stop (shares-long + calls, blank = LOD) and short stop (shares-short + puts, blank = HOD).
   Only the stop matching tradeCtx() is shown/drawn (shares follow the Long/Short toggle, options follow chain side; Both view shows both).

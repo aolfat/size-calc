@@ -1,6 +1,6 @@
 // Run with: node --test
-// This week's rules in Size: the rules last week's review set, a card under the risk strip while you're signed in, in
-// Stocks & futures and Options; Settings turns it off on this device.
+// Your rules and goals in Size: the rules last week's review set, your standing rules and your goals, a card under the
+// risk strip while you're signed in, in Stocks & futures and Options; Settings turns it off on this device.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -11,15 +11,17 @@ const SESSION = { user: { id: 'user-1', email: 'me@example.com' } };
 const RULES = [{ id: 'w1', text: 'No trades before 9:45' }, { id: 'w2', text: 'Size down <after> a loss' }];
 const shown = el => el.style.display !== 'none';
 
-async function size({ periods = [{ unit: 'week', period_key: '2026-09-28', rules_next: RULES }], session = SESSION, now = Date.parse('2026-10-06T15:00:00Z'), storage } = {}) {
+async function size({ periods = [{ unit: 'week', period_key: '2026-09-28', rules_next: RULES }], items = [], session = SESSION, now = Date.parse('2026-10-06T15:00:00Z'), storage } = {}) {
   const supabase = fakeRecords([]);
   for (const r of periods) supabase.tables.period_reviews.set(`user-1:${r.unit}:${r.period_key}`, { user_id: 'user-1', ...r });
+  for (const r of items) supabase.tables.library_items.set(`user-1:${r.id}`, { user_id: 'user-1', default_key: null, merged_into: null, hidden: false, ...r });
   const a = await app({ supabase, session, clock: true, now, storage });
   // what main.js does at boot, once the Google session is back
   a.run('paintWeekRulesSetting()');
   await a.run('loadWeekRules()');
   await settle();
-  return { ...a, supabase, card: () => a.elements.get('weekRulesCard'), list: () => a.elements.get('weekRulesList').innerHTML };
+  const html = id => a.elements.get(id).innerHTML;
+  return { ...a, supabase, card: () => a.elements.get('weekRulesCard'), list: () => html('weekRulesList'), rules: () => html('myRulesList'), goals: () => html('myGoalsList'), group: id => shown(a.elements.get(`${id}Group`)) };
 }
 
 test("signed in, Size shows this week's rules under the risk strip; other views hide them", async () => {
@@ -72,4 +74,49 @@ test("setting next week's rules in the week's review updates the card at once", 
   a.run("setView('size')");
   assert.ok(shown(a.card()));
   assert.equal(a.list(), '<li>Wait for the pivot</li>');
+});
+
+const ITEMS = [
+  { id: 'r2', kind: 'rule', name: 'Follow your stop', settings: { order: 1, since: '2026-09-01' } },
+  { id: 'r1', kind: 'rule', name: 'One trade at a time', settings: { order: 0, since: '2026-09-01' } },
+  { id: 'r3', kind: 'rule', name: 'Retired rule', hidden: true, settings: { order: 2, since: '2026-09-01' } },
+  { id: 'r4', kind: 'rule', name: 'no trades before 9:45', settings: { order: 3, since: '2026-09-01' } },
+  { id: 'g1', kind: 'goal', name: 'Abide by <my> rules', settings: { order: 0, since: '2026-09-01' } },
+];
+
+test('Size shows your standing rules and goals beside this week\'s, in your order, retired ones and repeats left out', async () => {
+  const a = await size({ items: ITEMS });
+  assert.ok(shown(a.card()));
+  assert.equal(a.list(), '<li>No trades before 9:45</li><li>Size down &lt;after&gt; a loss</li>');
+  assert.equal(a.rules(), '<li>One trade at a time</li><li>Follow your stop</li>', "this week's rule shows once, retired ones not at all");
+  assert.equal(a.goals(), '<li>Abide by &lt;my&gt; rules</li>');
+  assert.ok(a.group('weekRules') && a.group('myRules') && a.group('myGoals'));
+  a.run("setWeekRulesShown('off')");
+  assert.ok(!shown(a.card()), 'Settings hides them all');
+});
+
+test('without week rules the card still shows your rules and goals; each empty list hides', async () => {
+  const goalOnly = await size({ periods: [], items: ITEMS.filter(i => i.kind === 'goal') });
+  assert.ok(shown(goalOnly.card()));
+  assert.ok(!goalOnly.group('weekRules') && !goalOnly.group('myRules') && goalOnly.group('myGoals'));
+  const rulesOnly = await size({ periods: [], items: ITEMS.filter(i => i.kind === 'rule') });
+  assert.ok(shown(rulesOnly.card()));
+  assert.ok(!rulesOnly.group('weekRules') && rulesOnly.group('myRules') && !rulesOnly.group('myGoals'));
+  const out = await size({ session: null, items: ITEMS });
+  assert.ok(!shown(out.card()), 'signed out: nothing');
+});
+
+test('a goal added in the Journal shows in Size on the way back', async () => {
+  const a = await size({ periods: [], now: Date.parse('2026-10-06T15:00:00Z') });
+  assert.ok(!shown(a.card()));
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  a.run("setJournalTab('calendar')");
+  a.run("openJournalDay('2026-10-06')");
+  a.run("editNotebookList('goal'); notebookItemInput('Size by the stop'); addNotebookItem('goal')");
+  await settle();
+  a.run("setView('size')");
+  assert.ok(shown(a.card()));
+  assert.equal(a.goals(), '<li>Size by the stop</li>');
 });

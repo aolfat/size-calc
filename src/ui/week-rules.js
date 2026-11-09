@@ -1,13 +1,15 @@
-// This week's rules in Size (docs/calculator.md, docs/journal.md): the rules last week's review set, a small card under
-// the risk strip (#weekRulesCard) in Stocks & futures and Options while you're signed in and the week has rules; Settings
-// turns it off (week_rules_calc, this device only). Also reads the week and month reviews (period_reviews) into
-// state.periodReviews for the Journal, at boot and when the app comes back to the front, so the card is fresh.
+// Your rules and goals in Size (docs/calculator.md, docs/journal.md): the rules last week's review set, your standing
+// rules and your goals (the notebook's lists), a small card under the risk strip (#weekRulesCard) in Stocks & futures and
+// Options while you're signed in and any of them exist; Settings turns it off (week_rules_calc, this device only). Also
+// reads the week and month reviews (period_reviews) into state.periodReviews and the review data (your goals and rules
+// among it) into state.journalReview, at boot and when the app comes back to the front, so the card is fresh.
 import { marketEscape as esc } from '../core/format.js';
-import { notebookToday } from '../core/journal-notebook.js';
+import { activeItems, notebookLists, notebookToday } from '../core/journal-notebook.js';
 import { weekRulesFor } from '../core/journal-week.js';
 import { store } from '../lib/store.js';
 import { loadPeriodReviews } from '../services/journal-review.js';
 import { state } from '../state.js';
+import { loadJournalReview } from './journal-review.js';
 
 /** coming back to the app reads the reviews again at most this often */
 const REFRESH_MS = 5 * 60000;
@@ -27,10 +29,14 @@ export async function loadPeriodReviewRows() {
   renderWeekRulesCard();
 }
 
-/** at boot and on coming back to the app: the reviews, if you're signed in and they weren't just read */
+/**
+ * At boot and on coming back to the app: the reviews and your goals and rules, if you're signed in and they weren't just
+ * read. The Journal reads its own review data when it opens, so an open Journal isn't read under your hands.
+ */
 export function loadWeekRules() {
   if (!state.session || Date.now() - state.weekRulesAt < REFRESH_MS) return;
-  return loadPeriodReviewRows();
+  state.weekRulesAt = Date.now();
+  return Promise.all([loadPeriodReviewRows(), state.journalView ? null : loadJournalReview()]).then(renderWeekRulesCard);
 }
 
 /** the card is on in Settings (the default) */
@@ -58,11 +64,27 @@ export function currentWeekRules() {
   return weekRulesFor(state.periodReviews, notebookToday(new Date(Date.now()).toISOString())).rules;
 }
 
-/** the card: shown in the calculator when it's on and the week has rules */
+/** your standing rules and goals (the notebook's lists, not retired), or none until they've been read */
+export function standingLists() {
+  if (!state.session || !state.journalReview || state.journalReviewError) return { rules: [], goals: [] };
+  const { rules, goals } = notebookLists(state.journalReview.library || []);
+  return { rules: activeItems(rules), goals: activeItems(goals) };
+}
+
+/** the card: shown in the calculator when it's on and there are rules or goals; each list shows only when it has some */
 export function renderWeekRulesCard() {
   const card = document.getElementById('weekRulesCard');
   const calc = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView;
-  const rules = calc && weekRulesShown() ? currentWeekRules() : [];
-  card.style.display = rules.length ? '' : 'none';
-  document.getElementById('weekRulesList').innerHTML = rules.map(r => `<li>${esc(r.text)}</li>`).join('');
+  const on = calc && weekRulesShown();
+  const week = on ? currentWeekRules() : [];
+  const same = new Set(week.map(r => r.text.trim().toLowerCase()));
+  const lists = on ? standingLists() : { rules: [], goals: [] };
+  /** a standing rule this week's list already holds shows once, there */
+  const rules = lists.rules.filter(r => !same.has(r.name.trim().toLowerCase()));
+  const groups = [['weekRules', week.map(r => r.text)], ['myRules', rules.map(r => r.name)], ['myGoals', lists.goals.map(g => g.name)]];
+  for (const [id, items] of groups) {
+    document.getElementById(`${id}Group`).style.display = items.length ? '' : 'none';
+    document.getElementById(`${id}List`).innerHTML = items.map(t => `<li>${esc(t)}</li>`).join('');
+  }
+  card.style.display = groups.some(([, items]) => items.length) ? '' : 'none';
 }
