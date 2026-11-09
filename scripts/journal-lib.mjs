@@ -426,12 +426,42 @@ export function planPremarket(j, day, input, opts = {}) {
   }
   said.push(...names.said);
   const notebook = Object.keys(fields).length ? [{ day, fields }] : [];
-  return { changes: { library: names.library, reviews: [], labels_remove: [], labels_add: [], days: [], notebook }, said, after: { ...row, ...fields } };
+  return { changes: { library: names.library, reviews: [], labels_remove: [], labels_add: [], days: [], notebook }, said, after: { ...row, ...fields }, lib: names.lib };
 }
 
 /** a focus ticker in words: 'NVDA · long · EMA 21 bounce, ORB · the note' */
 const focusLine = (j, f) => [f.symbol, f.side, f.setups.map(k => j.lib.nameOf('setup', k, f.side || 'long')).join(', '), f.note,
   f.played ? `played: ${FOCUS_PLAYED.find(([k]) => k === f.played)?.[1]}` : '', f.review ? `review: ${f.review}` : ''].filter(Boolean).join(' · ');
+
+/**
+ * What a day's plan would change, in words, for a dry run: the plan text set, changed or cleared, and each ticker added,
+ * taken off or changed (its side, setups added and taken off by name, its note). [] when nothing changes.
+ * @param {ReturnType<typeof journalFrom>} j @param {string} day @param {ReturnType<typeof planPremarket>} p
+ */
+export function planChangeLines(j, day, p) {
+  const before = dayRow(j, day), fields = p.changes.notebook[0]?.fields || {}, lib = p.lib || j.lib, out = [];
+  const setupWords = (keys, side) => keys.map(k => lib.nameOf('setup', k, side || 'long')).join(', ');
+  if ('plan' in fields) out.push(`plan: ${fields.plan === null ? 'cleared' : before.plan ? 'changed' : 'added'}`);
+  if ('focus_list' in fields) {
+    const after = fields.focus_list;
+    for (const f of after) {
+      const was = before.focus_list.find(x => x.id === f.id);
+      if (!was) { out.push(`${f.symbol}: added (${focusLine({ lib }, f).split(' · ').slice(1).join(' · ') || 'no side or setups yet'})`); continue; }
+      const what = [];
+      if (was.side !== f.side) what.push(`side ${was.side || '—'} → ${f.side || '—'}`);
+      const added = f.setups.filter(k => !was.setups.includes(k)), off = was.setups.filter(k => !f.setups.includes(k));
+      if (added.length) what.push(`setups + ${setupWords(added, f.side)}`);
+      if (off.length) what.push(`setups − ${setupWords(off, f.side)}`);
+      if (was.note !== f.note) what.push(f.note ? `note: ${f.note}` : 'note cleared');
+      if (what.length) out.push(`${f.symbol}: ${what.join('; ')}`);
+    }
+    for (const f of before.focus_list) if (!after.some(x => x.id === f.id)) out.push(`${f.symbol}: taken off`);
+  }
+  return out;
+}
+
+/** the journal as it would read after a day's plan is saved: its new library and the day's row. @param {ReturnType<typeof journalFrom>} j @param {string} day @param {ReturnType<typeof planPremarket>} p */
+export const journalAfterPlan = (j, day, p) => ({ ...j, lib: p.lib || j.lib, notebook: { ...j.notebook, [day]: p.after } });
 
 /** a day's premarket plan: the last focus, the plan and the focus list */
 export function planDetail(j, day) {
