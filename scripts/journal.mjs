@@ -9,6 +9,7 @@
 //   node scripts/journal.mjs features [--symbol NVDA] [--from 2026-09-01] [--to 2026-10-31] [--out trades.csv] [--coverage]
 //   node scripts/journal.mjs review <handle or key> '<json>' [--dry-run]
 //   node scripts/journal.mjs day <YYYY-MM-DD> ['<json>'] [--dry-run]
+//   node scripts/journal.mjs plan <YYYY-MM-DD> ['<json>'] [--dry-run]
 //   node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]   (month <YYYY-MM> the same way)
 //   node scripts/journal.mjs books [book]
 //   node scripts/journal.mjs book [book] '<json>' [--dry-run]
@@ -18,14 +19,16 @@
 // A review's JSON: market, marketFor ('day' | 'trade'), sector, setups, tactics, tags, mistakes (names or keys; each one
 // given replaces that kind's labels), grade (A to F), plan (yes | partly | no), entryNote, exitNote, stop; null clears.
 // A day's: grade (A to F), rules ({ name or key: kept | broke | null }), weekRules ({ this week's rule by its text or
-// number: kept | broke | null }), wentWell, workOn, note, focusNext, focusKept (yes | partly | no); null clears. A week's
+// number: kept | broke | null }), wentWell, workOn, note, focusNext, focusKept (yes | partly | no); null clears. A day's
+// plan's: plan (the text), focus ({ TICKER: { side (long | short), setups, note } | null }, a ticker named changes only
+// what's given, null takes it off); null clears. A week's
 // or month's: parts ({ name or key: { grade (A+ to F), note } }), wentWell, workOn, note, rulesNext (the whole list, up to
 // 5), rulesKept ({ last one's rule by its text or number: yes | partly | no | null }), rulesNote; null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { SUPABASE_KEY, SUPABASE_URL } from '../src/services/supabase.js';
 import { imageInfo } from '../supabase/functions/claude-model-example/handler.js';
-import { changesAnything, choicesText, dayDetail, featureCoverageText, featureTable, findTrades, journalFrom, periodDetail, planDay, planPeriod, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
+import { changesAnything, choicesText, dayDetail, featureCoverageText, featureTable, findTrades, journalFrom, periodDetail, planDay, planDetail, planPeriod, planPremarket, planReview, stampsFrom, toCsv, tradeBy, tradeDetail, tradeLine } from './journal-lib.mjs';
 import { bookBy, booksFrom, booksText, exampleBy, exampleLine, planBook, planExample, shortId } from './model-books-lib.mjs';
 
 // Node's fetch ignores HTTPS_PROXY unless told to (a cloud session's traffic goes through one): run again with it on
@@ -57,6 +60,8 @@ async function call(fn, body, { edge = false } = {}) {
   try { out = JSON.parse(text); } catch(e) {}
   if (res.ok) return out;
   const msg = out?.message || text || res.statusText;
+  // a database before the plan migration (20261120000000_claude_day_plan.sql) refuses plan and focus_list by name
+  if (/^day review fields:/.test(msg)) fail("The database doesn't take a day's plan yet: npx supabase db push");
   if (/not a Claude key/i.test(msg)) fail('Supabase refused the key: revoked, or not one of yours. Make a new one in Settings → Claude access.');
   if (edge && res.status === 404) fail(`The ${fn} function isn't deployed yet: npx supabase functions deploy ${fn} --no-verify-jwt`);
   if (res.status === 404 || /could not find the function/i.test(msg)) fail(`The database doesn't have ${/model/.test(fn) ? 'Claude access to Model books' : /features/.test(fn) ? 'Claude access to trade features' : 'Claude access'} yet: npx supabase db push`);
@@ -138,6 +143,16 @@ if (cmd === 'trades') {
   // a database before the day-review migration skips the notebook list and says it saved nothing
   if (!saved?.saved) fail("Nothing was saved: the database doesn't take day reviews yet: npx supabase db push");
   console.log(`Saved. ${dayDetail(await journal(), ref)}`);
+} else if (cmd === 'plan') {
+  if (!ref) fail('Which day? Give it as YYYY-MM-DD: plan 2026-11-09');
+  const j = await journal();
+  if (!json) { console.log(planDetail(j, ref)); process.exit(0); }
+  const p = plan(() => planPremarket(j, ref, parsed('day plan')));
+  if (p.said.length) console.log(p.said.join('\n'));
+  if (!changesAnything(p.changes)) { console.log('Nothing to change.'); process.exit(0); }
+  if (flag('dry-run')) { console.log(JSON.stringify(p.changes, null, 2)); process.exit(0); }
+  await call('claude_journal_save', { p_changes: p.changes });
+  console.log(`Saved. ${planDetail(await journal(), ref)}`);
 } else if (cmd === 'week' || cmd === 'month') {
   if (!ref) fail(cmd === 'week' ? 'Which week? Give any day in it as YYYY-MM-DD: week 2026-10-26' : 'Which month? Give it as YYYY-MM: month 2026-10');
   const j = await journal();
@@ -192,5 +207,5 @@ if (cmd === 'trades') {
   const after = await books();
   console.log(`Saved. ${exampleLine(after, exampleBy(after, ex.id) || ex)}`);
 } else {
-  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | features [--out file] [--coverage] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | week <day> [<json>] | month <YYYY-MM> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
+  fail('node scripts/journal.mjs trades | show <trade> | choices [kind] | features [--out file] [--coverage] | review <trade> <json> [--dry-run] | day <day> [<json>] [--dry-run]\n  | plan <day> [<json>] [--dry-run]\n  | week <day> [<json>] | month <YYYY-MM> [<json>] [--dry-run]\n  | books [book] | book [book] <json> | add-example <image> <json> | example <example> <json> [--dry-run]');
 }
