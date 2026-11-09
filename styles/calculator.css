@@ -5,7 +5,7 @@
 .strip-title { font-size:13px; font-weight:600; color:var(--red); }
 .risk-strip.alloc .strip-title { color:var(--text2); }
 .link-btn { background:none; border:0; padding:2px 0; color:var(--text2); font:12px var(--num); cursor:pointer; white-space:nowrap; }
-.link-btn:hover { color:var(--text); text-decoration:underline; }
+@media (hover: hover) { .link-btn:hover { color:var(--text); text-decoration:underline; } }
 .risk-strip .chip-row { margin-top:10px; }
 .risk-strip .filter-btn.active { background:var(--red-bg); border-color:var(--red-bd); color:var(--text); }
 .risk-strip-links { display:flex; align-items:baseline; gap:14px; }
@@ -21,7 +21,7 @@
 .risk-chip-wrap .risk-chip { flex:1 1 auto; }
 .risk-chip-wrap .risk-chip { padding-top:9px; } /* room for the × */
 .risk-chip-x { position:absolute; top:-8px; right:-5px; width:20px; height:20px; padding:0; border-radius:10px; z-index:1; border:1px solid var(--border2); background:var(--bg4); color:var(--text); font:13px/1 var(--sans); cursor:pointer; }
-.risk-chip-x:hover { border-color:var(--red-bd); color:var(--red); }
+@media (hover: hover) { .risk-chip-x:hover { border-color:var(--red-bd); color:var(--red); } }
 .risk-add { display:flex; gap:6px; align-items:center; margin-top:10px; }
 .risk-add input { flex:1 1 auto; min-width:0; width:auto; padding:9px 10px; font-size:14px; }
 .risk-unit button { min-width:36px; }
@@ -48,7 +48,7 @@
 .risk-step-row .risk-wrap { flex: 1 1 auto; min-width: 0; }
 .risk-step { flex: 0 0 auto; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 12px; font-size: 20px; font-weight: 600; line-height: 1; }
 .risk-step:disabled { opacity: 0.35; cursor: default; }
-.risk-step:disabled:hover { background: var(--bg3); border-color: var(--border2); }
+@media (hover: hover) { .risk-step:disabled:hover { background: var(--bg3); border-color: var(--border2); } }
 .risk-step:disabled:active { transform: none; }
 
 .usd-edit-box { width: 68px; padding: 5px 4px; font-size: 12px; background: var(--bg3); border: 1px solid var(--blue-bd); border-radius: var(--radius); color: var(--text); font-family: var(--num); text-align: center; outline: none; }
@@ -119,7 +119,7 @@
 .shares-actions .filter-btn:disabled { opacity: 0.4; cursor: default; }
 .shares-actions .filter-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .shares-actions .trade-btn { flex: 1 1 100%; justify-content: center; min-height: 40px; font-weight: 600; background: linear-gradient(180deg, #16294a, #101f39); border-color: var(--blue-bd); color: var(--blue); }
-.shares-actions .trade-btn:hover { border-color: var(--blue); }
+@media (hover: hover) { .shares-actions .trade-btn:hover { border-color: var(--blue); } }
 .shares-actions .trade-btn:disabled { opacity: 0.4; cursor: default; border-color: var(--blue-bd); }
 .shares-error { color: var(--amber); font-size: 13px; padding: 8px 0; }
 .quote-levels { display: flex; gap: 8px 16px; align-items: center; flex-wrap: wrap; }
@@ -144,7 +144,7 @@
 .lod-pct { font-size: 11px; color: var(--text3); margin-left: 4px; }
 
 .btn.live-on { background: var(--red-bg); border-color: var(--red-bd); color: var(--red); }
-.btn.live-on:hover { border-color: var(--red); }
+@media (hover: hover) { .btn.live-on:hover { border-color: var(--red); } }
 
 .btn.live-on .pulse { display:inline-block; width:7px; height:7px; border-radius:50%; background: var(--red); animation: livePulse 1.2s ease-in-out infinite; }
 
@@ -178,6 +178,6 @@
 }
 /* a chain contract's Trade at Schwab, under its detail: the shares card's button, full width */
 .option-trade-btn { display: flex; width: 100%; justify-content: center; margin-top: 10px; min-height: 40px; font-weight: 600; background: linear-gradient(180deg, #16294a, #101f39); border-color: var(--blue-bd); color: var(--blue); }
-.option-trade-btn:hover { border-color: var(--blue); }
+@media (hover: hover) { .option-trade-btn:hover { border-color: var(--blue); } }
 .option-trade-btn:disabled { opacity: 0.4; cursor: default; border-color: var(--blue-bd); }
 @media (max-width: 600px) { .option-trade-btn { min-height: 46px; } }

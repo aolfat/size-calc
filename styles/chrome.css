@@ -6,13 +6,13 @@
 .brand-tabs { display:flex; align-items:center; gap:2px; margin-right:auto; }
 .brand-nav { background:none; border:0; border-radius:8px; padding:6px 12px; color:var(--text2); font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
 .brand-nav[aria-current="page"] { color:var(--text); background:var(--bg3); }
-.brand-nav:hover { color:var(--text); }
+@media (hover: hover) { .brand-nav:hover { color:var(--text); } }
 .count-badge { font:600 11px/16px var(--num); color:var(--blue); background:var(--blue-bg); border:1px solid var(--blue-bd); border-radius:999px; padding:0 6px; }
 .count-badge:empty { display:none; }
 .tab-icon, .view-title { display:none; }
 .brand-nav:focus-visible, #marketSection button:focus-visible, #marketSection a:focus-visible, .icon-btn:focus-visible, .link-btn:focus-visible { outline:2px solid var(--blue); outline-offset:4px; }
 .icon-btn { position:relative; flex:0 0 auto; width:36px; height:34px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:var(--radius); color:var(--text2); cursor:pointer; }
-.icon-btn:hover { color:var(--text); border-color:var(--blue); }
+@media (hover: hover) { .icon-btn:hover { color:var(--text); border-color:var(--blue); } }
 /* Schwab not connected (or its last day): a strip under the header in every view */
 .schwab-banner { display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:9px 10px 9px 14px; border:1px solid var(--red-bd); border-radius:var(--radius); background:var(--red-bg); font-size:13px; color:var(--text); }
 .schwab-banner.ending { border-color:color-mix(in srgb, var(--amber) 40%, var(--border2)); background:var(--amber-bg); }
@@ -51,7 +51,7 @@
 .sheet-head h2 { font-size:16px; font-weight:600; }
 .sheet-status { font:12px var(--num); color:var(--text2); }
 .sheet-close { margin-left:auto; background:none; border:0; color:var(--text3); font-size:20px; line-height:1; cursor:pointer; padding:2px 6px; border-radius:6px; }
-.sheet-close:hover { color:var(--text); }
+@media (hover: hover) { .sheet-close:hover { color:var(--text); } }
 .sheet-section + .sheet-section { border-top:1px solid var(--border); margin-top:16px; padding-top:16px; }
 .sheet-label { font-size:12px; font-weight:500; color:var(--text2); margin-bottom:8px; }
 
@@ -122,7 +122,7 @@
 .trade-result.bad { color:var(--red); }
 
 .kbd-toggle { background: none; border: none; color: var(--text3); font-size: 11.5px; cursor: pointer; padding: 2px 4px; }
-.kbd-toggle:hover { color: var(--text); }
+@media (hover: hover) { .kbd-toggle:hover { color: var(--text); } }
 .kbd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px 22px; font-size: 12.5px; color: var(--text2); }
 .kbd-group span { display: block; margin: 5px 0; }
 .kbd-h { font-size: 12px; font-weight: 600; color: var(--text3); margin-bottom: 2px; }
@@ -131,7 +131,7 @@ kbd { background: var(--bg4); border: 1px solid var(--border2); border-bottom-wi
 @media (max-width:600px) {
   .header { gap:10px; margin-bottom:14px; }
   .header .dot { display:none; }
-  .view-title { display:block; margin-right:auto; font-size:22px; font-weight:700; letter-spacing:-0.01em; }
+  .view-title { display:block; margin-right:auto; font-size:30px; font-weight:700; letter-spacing:-0.02em; } /* iOS's large title */
   .header .sub { font-size:0.6rem; }
   .header .kbd-toggle { display:none; }
   /* beside the bold screen title the quiet grey read as disabled */
@@ -160,3 +160,21 @@ kbd { background: var(--bg4); border: 1px solid var(--border2); border-bottom-wi
 }
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @keyframes sheet-dim { from { opacity: 0; } }
+
+/* Phones: the small title bar. Once the large title scrolls under the top, its name sits centered in a frosted bar,
+   as in an iOS app; tapping it goes back to the top. The sticky quote bar takes the top instead on Size (native-feel.js). */
+.title-bar, .pull-refresh { display:none; }
+@media (max-width: 600px) {
+  .title-bar { display:flex; align-items:center; justify-content:center; position:fixed; top:0; left:0; right:0; z-index:89; padding:calc(env(safe-area-inset-top) + 11px) 16px 11px; background:rgba(14,17,23,0.86); -webkit-backdrop-filter:blur(16px) saturate(1.4); backdrop-filter:blur(16px) saturate(1.4); border-bottom:1px solid var(--border); font-size:17px; font-weight:600; color:var(--text); cursor:pointer; opacity:0; pointer-events:none; transition:opacity 160ms ease; }
+  .title-bar.on { opacity:1; pointer-events:auto; }
+  /* pull to refresh: a round badge that slides down with the pull, its arrow turning until a release would refresh */
+  .pull-refresh { display:flex; align-items:center; justify-content:center; position:fixed; z-index:88; top:calc(env(safe-area-inset-top) + 8px); left:50%; width:36px; height:36px; border-radius:50%; background:var(--bg3); border:1px solid var(--border2); color:var(--text2); box-shadow:0 6px 18px -8px rgba(0,0,0,0.8); opacity:0; transform:translate(-50%, -40px); pointer-events:none; visibility:hidden; transition:transform 260ms cubic-bezier(.32,.72,0,1), opacity 200ms ease; }
+  .pull-refresh.show { visibility:visible; }
+  .pull-refresh.armed { color:var(--blue); border-color:var(--blue-bd); }
+  .pull-refresh.busy { color:var(--blue); }
+  .pull-refresh.busy svg { display:none; }
+  .pull-refresh.busy::after { content:''; width:16px; height:16px; border-radius:50%; border:2px solid var(--blue-bd); border-top-color:var(--blue); animation:pull-spin 700ms linear infinite; }
+  /* the app's pull replaces the browser's (Chrome would reload the page); iOS keeps its bounce */
+  html { overscroll-behavior-y:contain; }
+}
+@keyframes pull-spin { to { transform:rotate(360deg); } }

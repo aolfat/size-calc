@@ -32,7 +32,7 @@
 .nb-retired-name { color: var(--text3); }
 .nb-trades { margin-top: 8px; display: grid; gap: 4px; }
 .nb-trade { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; width: 100%; padding: 8px 10px; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
-.nb-trade:hover { border-color: var(--border2); }
+@media (hover: hover) { .nb-trade:hover { border-color: var(--border2); } }
 .nb-trade > span:last-child { font-family: var(--num); white-space: nowrap; }
 .nb-notes { padding-top: 6px; font-size: 13px; line-height: 1.5; }
 .nb-notes li + li { margin-top: 6px; }
@@ -71,7 +71,8 @@
 .jc-mk-due { color: var(--amber); font-size: 9px; }
 .jc-mk-missed { color: var(--text3); margin-left: auto; }
 button.jc-quiet { cursor: pointer; }
-button.jc-quiet:hover, .jc-noted { opacity: 0.9; }
+.jc-noted { opacity: 0.9; }
+@media (hover: hover) { button.jc-quiet:hover { opacity: 0.9; } }
 @media (max-width: 600px) {
   .nb-head .jc-title { min-width: 0; font-size: 14px; }
   .nb-hours { margin: 4px 0 0; }

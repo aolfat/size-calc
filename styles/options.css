@@ -17,7 +17,7 @@
 .exp-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .exp-tab { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text2); transition: all 0.12s; font-family: var(--num); position: relative; }
 .exp-tab.active { background: var(--blue-bg); border-color: var(--blue-bd); color: var(--blue); }
-.exp-tab:hover:not(.active) { border-color: var(--border2); color: var(--text); }
+@media (hover: hover) { .exp-tab:hover:not(.active) { border-color: var(--border2); color: var(--text); } }
 .exp-tab.monthly { border-color: var(--amber); border-style: solid; background: linear-gradient(180deg, rgba(245,176,46,0.08), transparent), var(--bg3); }
 .exp-tab.monthly::after { content: 'M'; font-size: 8.5px; font-weight: 700; color: var(--bg); background: var(--amber); border-radius: 3px; padding: 0px 3px; position: absolute; top: -6px; right: -5px; line-height: 1.4; }
 .exp-tab.monthly.active { border-color: var(--amber); color: var(--amber); background: var(--amber-bg); }

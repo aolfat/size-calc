@@ -18,7 +18,7 @@
 .positions-table thead th { text-transform: none; letter-spacing: 0; font-size: 11.5px; }
 .positions-table tbody tr { cursor: default; }
 .positions-table th:first-child, .positions-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg2); text-align: left; }
-.positions-table tbody tr:hover td:first-child { background: var(--bg3); }
+@media (hover: hover) { .positions-table tbody tr:hover td:first-child { background: var(--bg3); } }
 .positions-table tfoot th, .positions-table tfoot td { padding: 9px 10px; text-align: right; font-family: var(--num); font-weight: 600; border-top: 1px solid var(--border2); }
 .positions-table tfoot th:first-child { text-align: left; font-family: inherit; }
 .pos-sub { display: block; font-size: 11px; color: var(--text3); font-weight: 400; }
@@ -32,7 +32,7 @@
 .pos-acts { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; }
 .pos-acts.many { flex-wrap: wrap; } /* four or five buttons go two by two on a phone instead of widening the pinned column */
 .pos-act { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 11px; font-weight: 600; padding: 3px 8px; cursor: pointer; }
-.pos-act:hover { color: var(--text); border-color: var(--blue-bd); }
+@media (hover: hover) { .pos-act:hover { color: var(--text); border-color: var(--blue-bd); } }
 .pos-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .pos-step.done { color: var(--green); }
 .pos-step.failed { color: var(--red); }
@@ -262,7 +262,7 @@
 .jr-chips .filter-btn.active { color: #fff; background: color-mix(in srgb, var(--blue) 30%, var(--bg2)); border-color: color-mix(in srgb, var(--blue) 70%, var(--border)); }
 .jr-row.jr-mistakes .filter-btn.active { background: color-mix(in srgb, var(--red) 26%, var(--bg2)); border-color: color-mix(in srgb, var(--red) 65%, var(--border)); }
 .jr-new { font-size: 12.5px; padding: 5px 2px; }
-.jr-chips .filter-btn:not(.active):hover { color: var(--text); background: var(--bg4); border-color: var(--border2); }
+@media (hover: hover) { .jr-chips .filter-btn:not(.active):hover { color: var(--text); background: var(--bg4); border-color: var(--border2); } }
 /* the setup and tactic searches, and My setups grouped by what happened */
 .jr-search { flex: 0 1 200px; min-width: 0; padding: 6px 10px 6px 30px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='14' height='14'%3E%3Ccircle cx='7' cy='7' r='4.5' fill='none' stroke='%2397a0b3' stroke-width='1.6'/%3E%3Cpath d='m10.5 10.5 3 3' stroke='%2397a0b3' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 10px center; border: 1px solid var(--border2); border-radius: 8px; }
 .jr-search:focus { outline: none; border-color: var(--blue); }
@@ -289,7 +289,8 @@
 .jr-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .jr-shot-box { position: relative; display: inline-flex; }
 .jr-shot-x { position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); font-size: 15px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
-.jr-shot-x:hover, .jr-shot-x:focus-visible { color: #fff; background: var(--red); border-color: var(--red); outline: none; }
+.jr-shot-x:focus-visible { color: #fff; background: var(--red); border-color: var(--red); outline: none; }
+@media (hover: hover) { .jr-shot-x:hover { color: #fff; background: var(--red); border-color: var(--red); outline: none; } }
 .jr-shot-wait, .jr-shot-busy { font-size: 12px; color: var(--text3); }
 #journalTradeSection.jr-dropping { outline: 2px dashed var(--blue); outline-offset: -6px; }
 .shot-viewer { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -367,7 +368,7 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-grid th { font-size: 11px; font-weight: 500; color: var(--text3); text-align: left; padding: 0 6px; }
 .jc-grid td { vertical-align: top; padding: 0; }
 .jc-day { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 64px; padding: 6px 7px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); font: inherit; color: var(--text); text-align: left; cursor: pointer; }
-button.jc-day:hover { border-color: var(--border2); }
+@media (hover: hover) { button.jc-day:hover { border-color: var(--border2); } }
 .jc-day.journal-buy { background: color-mix(in srgb, var(--green) 12%, var(--bg2)); border-color: color-mix(in srgb, var(--green) 35%, var(--border)); }
 .jc-day.journal-sell { background: color-mix(in srgb, var(--red) 12%, var(--bg2)); border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
 .jc-quiet { cursor: default; opacity: 0.55; }
@@ -379,7 +380,7 @@ button.jc-day:hover { border-color: var(--border2); }
 .jc-rate { font-size: 10.5px; color: var(--text2); }
 .jc-week { padding: 6px 4px !important; font-weight: 600; font-family: var(--num); }
 .jc-weekbtn { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.jc-weekbtn:hover > span:first-child { text-decoration: underline; }
+@media (hover: hover) { .jc-weekbtn:hover > span:first-child { text-decoration: underline; } }
 .jc-weekbtn.active { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
 /* a week's or month's review, under the calendar */
 .jw-panel { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg2); }
@@ -505,17 +506,20 @@ button.jc-day:hover { border-color: var(--border2); }
 /* a row opens its trade: the name is the button (keyboard, screen readers), the rest of the row a bigger target */
 .journal-table tbody tr[data-action] { cursor: pointer; }
 /* the row under the pointer lights up, so you see which trade a click opens (over the open-trade tint too) */
-.journal-table tbody tr[data-action]:hover td { background: color-mix(in srgb, var(--blue) 10%, var(--bg2)); }
-.journal-table tbody tr[data-action]:hover td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
-.jtc:not(.jtc-reviewed):not(.jtc-todo):hover { border-color: var(--blue-bd); }
+@media (hover: hover) { .journal-table tbody tr[data-action]:hover td { background: color-mix(in srgb, var(--blue) 10%, var(--bg2)); } }
+@media (hover: hover) { .journal-table tbody tr[data-action]:hover td:first-child { box-shadow: inset 3px 0 0 var(--blue); } }
+@media (hover: hover) { .jtc:not(.jtc-reviewed):not(.jtc-todo):hover { border-color: var(--blue-bd); } }
 .journal-name { background: none; border: none; padding: 0; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
-.journal-name:hover b, .journal-name:focus-visible b, .journal-table tr[data-action]:hover .journal-name b { color: var(--blue); }
-.journal-name:hover b, .journal-name:focus-visible b { text-decoration: underline; text-underline-offset: 3px; }
+.journal-name:focus-visible b { color: var(--blue); }
+@media (hover: hover) { .journal-name:hover b, .journal-table tr[data-action]:hover .journal-name b { color: var(--blue); } }
+.journal-name:focus-visible b { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { .journal-name:hover b { text-decoration: underline; text-underline-offset: 3px; } }
 @media (hover: none) { .journal-name::after { content: '›'; margin-left: 6px; color: var(--text3); font-weight: 600; } } /* no hover on touch: say it opens */
 /* a deleted row's Restore, quiet so the figures lead */
 .journal-row-acts { display: flex; gap: 14px; margin-top: 3px; }
 .journal-row-acts .pos-link { color: var(--text2); }
-.journal-row-acts .pos-link:hover, .journal-row-acts .pos-link:focus-visible { color: var(--blue); }
+.journal-row-acts .pos-link:focus-visible { color: var(--blue); }
+@media (hover: hover) { .journal-row-acts .pos-link:hover { color: var(--blue); } }
 .journal-fees-missing { color: var(--amber); }
 .journal-tag-history { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); background: color-mix(in srgb, var(--amber) 10%, transparent); }
 .journal-tag-quiet { color: var(--text2); border-color: var(--border2); background: transparent; }
@@ -556,7 +560,8 @@ span.journal-pick { cursor: default; }
 /* its head: back, the trade, its numbers, then '3 of 25' and the arrows to the trade before and after */
 .jt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-bottom: 16px; }
 .jt-back { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; font: inherit; font-size: 13px; font-weight: 500; color: var(--text); background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
-.jt-back:hover, .jt-back:focus-visible { background: var(--bg4); border-color: var(--border2); outline: none; }
+.jt-back:focus-visible { background: var(--bg4); border-color: var(--border2); outline: none; }
+@media (hover: hover) { .jt-back:hover { background: var(--bg4); border-color: var(--border2); outline: none; } }
 .jt-id { display: grid; gap: 2px; min-width: 0; }
 .jt-id .section-title { margin: 0; color: var(--text); font-size: 18px; }
 .jt-id .section-title::after { display: none; }
@@ -567,7 +572,8 @@ span.journal-pick { cursor: default; }
 .jt-nav { display: flex; align-items: center; gap: 8px; }
 .jt-nav-count { font-size: 13px; color: var(--text2); margin-right: 4px; white-space: nowrap; }
 .jt-arrow { display: inline-grid; place-items: center; width: 38px; height: 38px; padding: 0; color: var(--text); background: var(--bg3); border: 1px solid var(--border2); border-radius: 10px; cursor: pointer; }
-.jt-arrow:hover:not(:disabled), .jt-arrow:focus-visible { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; }
+.jt-arrow:focus-visible { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; }
+@media (hover: hover) { .jt-arrow:hover:not(:disabled) { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; } }
 .jt-arrow:disabled { opacity: .35; cursor: default; }
 .jt-id .pos-link { font-size: inherit; }
 @media (max-width: 900px) { .jt-head-stats { order: 5; flex-basis: 100%; margin: 0; } }
@@ -644,7 +650,7 @@ span.journal-pick { cursor: default; }
 .jf-item summary::-webkit-details-marker { display: none; }
 .jf-item summary::before { content: '›'; position: absolute; left: 12px; top: 8px; color: var(--text3); transition: transform .15s; }
 .jf-item[open] summary::before { transform: rotate(90deg); }
-.jf-item summary:hover { background: var(--bg3); }
+@media (hover: hover) { .jf-item summary:hover { background: var(--bg3); } }
 .jf-name { font-weight: 500; }
 .jf-val { font-family: var(--num); font-weight: 600; text-align: right; }
 .jf-how { color: var(--text3); font-size: 12px; }
@@ -691,7 +697,7 @@ span.journal-pick { cursor: default; }
 /* the Journal's own tabs: a slim bar with a line under the one you're on, the filters one row under it */
 .seg.journal-tabs.journal-nav { flex-basis: 100%; gap: 4px; border-bottom: 1px solid var(--border); border-radius: 0; }
 .seg.journal-tabs.journal-nav button { margin-bottom: -1px; padding: 8px 12px 9px; font-size: 13.5px; font-weight: 500; color: var(--text2); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
-.seg.journal-tabs.journal-nav button:hover { color: var(--text); }
+@media (hover: hover) { .seg.journal-tabs.journal-nav button:hover { color: var(--text); } }
 .seg.journal-tabs.journal-nav button.active { color: var(--text); font-weight: 600; background: none; border-bottom-color: var(--blue); }
 .journal-filters { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .journal-filters .journal-setup-filter { max-width: 220px; min-width: 0; }
@@ -720,7 +726,7 @@ span.journal-pick { cursor: default; }
 .jf .jf-is.seg { flex: none; display: inline-flex; padding: 2px; }
 .jf .jf-is.seg button { flex: none; min-width: 0; padding: 3px 8px; font-size: 11.5px; letter-spacing: 0; white-space: nowrap; }
 .jf-x { margin-left: auto; padding: 0 4px; font: inherit; font-size: 16px; line-height: 1; color: var(--text3); background: none; border: 0; cursor: pointer; }
-.jf-x:hover { color: var(--text); }
+@media (hover: hover) { .jf-x:hover { color: var(--text); } }
 .jf-vals { display: flex; flex-wrap: wrap; gap: 5px; }
 .jf-vals .journal-chip { padding: 3px 9px; font-size: 12px; }
 .jf-vals .journal-chip b { font-weight: 600; color: var(--text3); }
@@ -744,7 +750,7 @@ span.journal-pick { cursor: default; }
 .jf-foot .pos-link { font-size: 12.5px; white-space: nowrap; }
 /* a day's date on the Trades tab opens its notebook page; Review the day beside the day's P&L */
 .jd-date { padding: 0; font: inherit; color: inherit; background: none; border: 0; cursor: pointer; text-align: left; }
-.jd-date:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { .jd-date:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; } }
 .jd-review { font-size: 12px; font-weight: 600; white-space: nowrap; }
 .jd-review-done { color: var(--green); font-weight: 500; }
 .jtc-day-end { display: inline-flex; align-items: baseline; gap: 10px; flex: none; }

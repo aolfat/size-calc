@@ -65,7 +65,9 @@ export function setView(v) {
     const button = document.getElementById(id);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
-  document.getElementById('viewTitle').textContent = state.marketView ? 'Market' : state.positionsView ? 'Positions' : state.journalView ? 'Journal' : state.utilsView ? 'Tools' : 'Size';
+  const title = state.marketView ? 'Market' : state.positionsView ? 'Positions' : state.journalView ? 'Journal' : state.utilsView ? 'Tools' : 'Size';
+  document.getElementById('viewTitle').textContent = title;
+  document.getElementById('titleBarText').textContent = title; // the small title once the large one scrolls away
   document.querySelector('.app').classList.toggle('market-view', state.marketView);
   document.getElementById('lastUpdated').style.display = state.marketView || state.utilsView || state.journalView ? 'none' : '';
   document.getElementById('modeCard').style.display = calc ? '' : 'none';

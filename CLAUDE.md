@@ -16,7 +16,7 @@ They sit outside `src/` on purpose (the test harness loads and scans every `src/
   Adding a control = attribute in markup + one entry in `actions`.
   A test fails on any inline `on*` attribute or any action name without a handler (and vice versa)
 - **Seams**: `onStoreWrite` (store tells the cloud module about value-changing writes, which marks account keys pending) and `onCloudView` (cloud reports status, rehydrate and pulled-toast to the settings sheet, which registers it on import).
-  Side effects tests swap go through `effects` in `src/ui/effects.js` (copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket): call `effects.x(...)`, not the import
+  Side effects tests swap go through `effects` in `src/ui/effects.js` (copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket, haptic): call `effects.x(...)`, not the import
 - **Types**: `core/` and `lib/` are `// @ts-check` with JSDoc; `jsconfig.json` makes editors check them.
   Ad-hoc full check (TypeScript is not a dependency): `npx -p typescript tsc -p jsconfig.json`
 - **Running**: ES modules do not load from `file://`; serve the folder (`npm run serve` = `python3 -m http.server 8765`) and open http://localhost:8765.
@@ -148,6 +148,8 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
 - Double tap never zooms the page on phones (owner request): `* { touch-action: manipulation }` in base.css; pinch zoom stays on (no user-scalable=no, which iOS ignores anyway).
 - No web page tells on phones (owner request: feel like a native iOS app): no grey tap flash, no text selection or callout menu from a long press on buttons and [data-action] elements (fields still select), every field 16px so iOS never zooms on focus, and no font inflation when the phone turns sideways (base.css).
   Tapping the tab you're on scrolls to the top, or leaves a Journal trade page (docs/tools.md).
+  The rest of the native feel lives in ui/native-feel.js: the small title bar once the large title scrolls away, pull to refresh, swipe back from a Journal trade page's left edge, and haptics through effects.haptic (docs/tools.md, docs/journal.md).
+  Every :hover rule sits in @media (hover: hover) (a test keeps it so), so a tap never leaves a hover style stuck on a phone.
   tests/native-feel.test.mjs covers these.
 - Wheel over a focused number input blurs it so the page scrolls instead of spinning the value
 - Owner's style: direct, terse.

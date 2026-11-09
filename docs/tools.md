@@ -8,6 +8,12 @@ The top-level tabs and the Tools view: the % gain card, the leveraged ETF finder
   On phones (≤600px) the same buttons become a fixed BOTTOM tab bar (five slots) with icons (.tab-icon, hidden elsewhere), clear of the home indicator via env(safe-area-inset-bottom) (viewport-fit=cover), hidden while a field has focus so the keyboard owns the bottom; the header then shows the screen title (#viewTitle, set by setView) and the settings button.
   Tapping the tab you're on does what an iOS app does (owner request: feel native): on a Journal trade page it goes back to the list, anywhere else it scrolls back to the top (smooth unless the device asks for less motion).
   Only the tab buttons do this; other buttons that open a view (data-action setView without .brand-nav) just open it.
+  Phones show the screen title large (30px, as iOS does) and, once it scrolls under the top, a small centered title in a frosted bar (#titleBar, updateTitleBar in ui/native-feel.js); tapping it goes back to the top, and on Size the sticky quote bar takes the top instead.
+  **Pull to refresh** (phones, attachPullRefresh): at the very top of a view, pull down and let go past 110px to run that view's own refresh: Size the quote (as ↻), Positions Refresh, Market today's quotes, Journal a fresh read (signed in, not on a trade page); Tools has none.
+  A badge (#pullRefresh) slides down with the pull, its arrow turning until a release would refresh, then spins until the refresh answers (at least half a second, at most 15).
+  The page keeps its own bounce; a gesture a chart claims, an open sheet or the simulator leave it alone, and html's overscroll-behavior-y: contain keeps Chrome's own pull-to-reload out of it.
+  **Haptics** (effects.haptic): a light tap on the risk − and +, the long / short switch (only when it changes side), a chart long-press release, and a pull that refreshes; Android vibrates, and iOS 18 or later ticks for a hidden checkbox switch flipped inside the tap (there is no web haptics API there).
+  **Hover needs a mouse**: every :hover rule sits in @media (hover: hover), so a tap never leaves a button lit on a phone; the one exception is a calendar day's events popover, which the tap opens.
   Click Size = calculator, click Tools = tools view (setView 'utils', keys t or u toggle tools ⇄ size).
   Tools view hides ALL calculator surfaces including the ticket card.
   Currently holds the % gain card (bought at / current price → gain %, per-unit change, multiple; renderGain, no API) and the leveraged ETF finder — add future small tools here

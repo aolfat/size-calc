@@ -82,15 +82,15 @@ body {
 .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 .btn { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); color: var(--text); font-size: 13px; font-weight: 500; padding: 9px 16px; cursor: pointer; transition: background 0.12s, border-color 0.12s, transform 0.06s; display: inline-flex; align-items: center; gap: 6px; }
-.btn:hover { background: var(--bg4); border-color: var(--blue); }
+@media (hover: hover) { .btn:hover { background: var(--bg4); border-color: var(--blue); } }
 .btn:active { transform: scale(0.97); }
 .btn.primary { background: linear-gradient(180deg, #16294a, #101f39); border-color: var(--blue-bd); color: var(--blue); }
-.btn.primary:hover { border-color: var(--blue); box-shadow: 0 0 14px -4px rgba(91,157,255,0.4); }
+@media (hover: hover) { .btn.primary:hover { border-color: var(--blue); box-shadow: 0 0 14px -4px rgba(91,157,255,0.4); } }
 
 /* segmented control */
 .seg { display: inline-flex; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; gap: 2px; }
 .seg button { background: transparent; border: none; border-radius: 6px; color: var(--text2); font-size: 12.5px; font-weight: 600; padding: 6px 14px; cursor: pointer; transition: all 0.12s; letter-spacing: 0.02em; }
-.seg button:hover { color: var(--text); }
+@media (hover: hover) { .seg button:hover { color: var(--text); } }
 .seg button.active { background: var(--bg4); color: var(--text); box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset; }
 .seg.dir button.active.long { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); padding: 5px 13px; }
 .seg.dir button.active.short { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-bd); padding: 5px 13px; }
@@ -125,7 +125,7 @@ thead th { font-size: 10.5px; font-weight: 600; color: var(--text3); text-transf
 
 thead th:first-child { text-align: left; }
 tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
-tbody tr:hover { background: var(--bg3); }
+@media (hover: hover) { tbody tr:hover { background: var(--bg3); } }
 tbody tr.selected { background: var(--bg4); }
 tbody td { padding: 9px 10px; text-align: right; color: var(--text); font-family: var(--num); }
 tbody td:first-child { text-align: left; font-family: inherit; }
@@ -149,10 +149,10 @@ tbody td:first-child { text-align: left; font-family: inherit; }
 
 .filter-btn { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--text2); transition: all 0.12s; }
 .filter-btn.active { background: var(--bg4); color: var(--text); border-color: var(--border2); }
-.filter-btn:hover { color: var(--text); }
+@media (hover: hover) { .filter-btn:hover { color: var(--text); } }
 
 a { color: var(--blue); text-decoration: none; }
-a:hover { text-decoration: underline; }
+@media (hover: hover) { a:hover { text-decoration: underline; } }
 
 .hint { font-size: 11px; color: var(--text3); margin-top: 7px; }
 .hint b { color: var(--text2); font-weight: 500; font-family: var(--num); }
