@@ -509,7 +509,7 @@ test('the week and month reviews list the trades you missed, by reason, each ope
     { id: 'b', symbol: 'AMD', side: 'long', why: 'hesitated' }] }, { day: '2026-10-08', missed: [{ id: 'c', symbol: 'TSLA', why: 'away' }] }] });
   go("setJournalTab('calendar'); openPeriodReview('week', '2026-10-05')");
   assert.match(out(), /Missed trades <span class="jw-optional">3<\/span><\/div>\s*<p class="hint jw-lines">Hesitated 2 · Away 1<\/p>/, 'counted, by reason');
-  assert.match(out(), /data-action="openMissedOnDay" data-arg="2026-10-06" data-arg2="a"[^>]*><span class="nb-trade-name"><b>NVDA<\/b> short · 8 EMA rejection, 50 SMA rejection · 15-minute pivot · Hesitated<span class="nb-miss-note">Saw it, waited<\/span><\/span><span class="jw-miss-day">Tue, Oct 6<\/span>/, 'a line each, setups in the side\'s words');
+  assert.match(out(), /data-action="openMissedOnDay" data-arg="2026-10-06" data-arg2="a"[^>]*><span class="nb-trade-name"><b>NVDA<\/b> short · 8 EMA rejection, 50 SMA rejection · 15m pivot · Hesitated<span class="nb-miss-note">Saw it, waited<\/span><\/span><span class="jw-miss-day">Tue, Oct 6<\/span>/, 'a line each, setups in the side\'s words');
   assert.match(out(), /aria-label="The week's missed trades">[\s\S]*NVDA[\s\S]*AMD[\s\S]*TSLA/);
   go("openMissedOnDay('2026-10-06', 'a')");
   assert.equal(state.journalNotebookDay, '2026-10-06');
@@ -644,7 +644,7 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   assert.equal(saved()[0].symbol, 'NVDA');
   assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>[\s\S]*The day, 5 minutes[\s\S]*Daily setups[\s\S]*Entry tactics[\s\S]*Why you missed it/, 'open to fill in: the charts first, then the setup and tactic');
   assert.match(out(), /Add a Tradier key or log in to Schwab in Settings for NVDA&#39;s 5-minute chart\./, 'no key: the charts say why');
-  assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15">15-minute pivot<`));
+  assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15">15m pivot<`));
   run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); toggleMissedSetup('${id}', 'ema8_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedTactic('${id}', 'pivot15'); toggleMissedTactic('${id}', 'nope')`);
   run(`toggleMissedTactic('${id}', 'six20'); toggleMissedTactic('${id}', 'pivot30')`);
   await settle();
@@ -659,7 +659,7 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setups: ['ema8_bounce'], tactics: ['pivot15'], why: 'hesitated', note: 'Saw the rejection, waited' }], 'tapped again: off');
   assert.ok(supabase.writes.filter(w => w.table === 'journal_days').every(w => Object.keys(w).filter(k => !['table', 'onConflict', 'ignoreDuplicates', 'day'].includes(k)).join() === 'missed'), 'only its own column');
   run(`openMissedTrade('${id}')`);
-  assert.match(out(), /<b>NVDA<\/b> short · 8 EMA rejection · 15-minute pivot · Hesitated<span class="nb-miss-note">Saw the rejection, waited<\/span><\/span><\/button>/, 'closed: one line');
+  assert.match(out(), /<b>NVDA<\/b> short · 8 EMA rejection · 15m pivot · Hesitated<span class="nb-miss-note">Saw the rejection, waited<\/span><\/span><\/button>/, 'closed: one line');
   assert.match(out(), /<span class="jr-status nb-miss-count" role="status">1 missed<\/span>/);
   run(`setMissedWhy('${id}', 'hesitated')`);
   await settle();

@@ -217,7 +217,7 @@ test('Share: one tap copies a card image with the entry, the stop, the exit, the
     ['Exit', '$94.98', ''],
     ['Result', '−1.00R', '−5.04%'],
   ], 'no dollars or share count');
-  assert.deepEqual(spec.details, [{ label: 'Setup', value: '21 EMA bounce' }, { label: 'Entry tactic', value: '15-minute pivot' }]);
+  assert.deepEqual(spec.details, [{ label: 'Setup', value: '21 EMA bounce' }, { label: 'Entry tactic', value: '15m pivot' }]);
   assert.equal(run('name'), 'AAPL-trade');
 });
 

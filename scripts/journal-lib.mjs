@@ -14,7 +14,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fillWords, fillsFrom } from '../src/core/journal-records.js';
 import { FEATURES, featureVersion } from '../src/core/features/index.js';
 import { holdWords, journalTrades, tradeUnderlying } from '../src/core/journal.js';
-import { bothWords, buildLibrary, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
+import { bothWords, buildLibrary, FORMER_NAMES, GRADES, PLAN_FOLLOWED, reviewState, sameParts, setupName, SINGLE, tradeSide } from '../src/core/journal-labels.js';
 import { cleanDayRow, cleanFocusList, cleanMissed, DAY_GRADES, DAY_TEXT, dayReviewState, dayTrades, FOCUS_KEPT, FOCUS_PLAYED, isDay, lastFocus, MAX_DAY_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED, MAX_MISSED_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, RULE_ANSWERS, reviewMissingWords, rulesForDay } from '../src/core/journal-notebook.js';
 import { countedTrades, dailyPnl, nyParts, periodKey } from '../src/core/journal-stats.js';
 import { cleanPeriodRow, gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, periodMissingWords, periodReviewState, periodRules, periodTradeRows, previousPeriod, RULE_KEPT, ruleKeptOf, weekRulesFor, weekRuleTally } from '../src/core/journal-week.js';
@@ -133,7 +133,8 @@ export function findItem(lib, kind, ref) {
   const want = norm(ref);
   if (!want) return null;
   const items = lib.byKind[kind] || [];
-  const hit = items.find(i => i.key === ref) || items.find(i => [i.name, i.short, bothWords(i.name, i.short)].some(n => n && norm(n) === want))
+  const former = i => i.own ? [] : FORMER_NAMES[`${kind}:${i.key}`] || []; // a default's old name ('15-minute pivot') still finds it
+  const hit = items.find(i => i.key === ref) || items.find(i => [i.name, i.short, bothWords(i.name, i.short), ...former(i)].some(n => n && norm(n) === want))
     || (kind === 'setup' ? items.find(i => ['long', 'short', 'both'].some(s => norm(lib.nameOf('setup', i.key, /** @type {any} */ (s))) === want)) : null);
   return hit ? lib.item(kind, hit.key) : null;
 }

@@ -4,7 +4,7 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, goesBy, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
 import { fundOf, listedFund, parseFunds } from '../core/journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { planLines } from '../core/order-plans.js';
@@ -277,7 +277,7 @@ export async function saveReviewItem(t, name) {
   name = String(name || '').trim().slice(0, 80);
   if (!kind || !name) return;
   const lib = library();
-  const same = (lib.byKind[kind] || []).find(i => i.name.toLowerCase() === name.toLowerCase());
+  const same = (lib.byKind[kind] || []).find(i => goesBy(kind, i, name));
   state.reviewNewKind = '';
   const key = same ? same.key : `mine:${newId()}`;
   if (!same) {
@@ -582,7 +582,7 @@ export async function addLibraryChoice(name) {
   name = String(name || '').trim().slice(0, 80);
   if (!n || !name) return;
   const kind = n.kind;
-  const same = (library().byKind[kind] || []).find(i => i.name.toLowerCase() === name.toLowerCase());
+  const same = (library().byKind[kind] || []).find(i => goesBy(kind, i, name));
   state.libraryNew = null;
   let key = same?.key || '';
   if (!same) {

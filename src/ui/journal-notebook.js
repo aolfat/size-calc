@@ -15,7 +15,7 @@
 // The calendar's marks: plan written, reviewed, review due, how many you missed.
 // Premarket opens with the day's economic releases (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { buildLibrary, setupsByUse } from '../core/journal-labels.js';
+import { buildLibrary, goesBy, setupsByUse } from '../core/journal-labels.js';
 import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, standingRuleFor, stepWeekday } from '../core/journal-notebook.js';
 import { tradeUnderlying } from '../core/journal.js';
 import { LEGACY_RULE_ID, weekRulesFor } from '../core/journal-week.js';
@@ -368,7 +368,7 @@ export function missedTacticInput(text) { state.missedTacticDraft = String(text 
 export async function addMissedTactic(id, name) {
   name = String(name || '').trim().slice(0, 80);
   if (!name || !missedOne(id) || missedOff()) return;
-  const same = buildLibrary(data()?.library || []).choices('tactic').find(i => i.name.toLowerCase() === name.toLowerCase());
+  const same = buildLibrary(data()?.library || []).choices('tactic').find(i => goesBy('tactic', i, name));
   state.missedNewTactic = '';
   state.missedTacticDraft = '';
   let key = same?.key;
