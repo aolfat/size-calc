@@ -145,15 +145,20 @@ export function drawShareCard(spec) {
   return c;
 }
 
+/**
+ * Copy a card to the clipboard, or download it where the clipboard can't take it. canvas may be a promise (a Journal trade's
+ * card waits for its price): the clipboard write still starts inside the tap, which Safari needs, and takes the image when it's drawn.
+ */
 export function shareCanvasToClipboard(canvas, name) {
-  const blobP = new Promise(res => canvas.toBlob(res, 'image/png'));
-  const fallback = () => {
+  const canvasP = Promise.resolve(canvas);
+  const blobP = canvasP.then(c => new Promise(res => c.toBlob(res, 'image/png')));
+  const fallback = () => canvasP.then(c => {
     const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
+    a.href = c.toDataURL('image/png');
     a.download = name + '.png';
     a.click();
     showToast('Clipboard unavailable, so the image was downloaded instead.');
-  };
+  });
   try {
     if (typeof ClipboardItem === 'undefined' || !navigator.clipboard || !navigator.clipboard.write) return fallback();
     navigator.clipboard.write([new ClipboardItem({ 'image/png': blobP })])

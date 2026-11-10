@@ -1,7 +1,7 @@
-// Sharing a Journal trade (the trade page's Share): a card image (drawShareCard) with the entry, the stop, the exit, the
-// result, the setup and the entry tactic, or the same in a line of text. No dollars and no size, like the other share cards.
-// An open trade has no result yet: opening Share reads its price (a stock's or one contract's), and the card says where it
-// stands now, in R against the stop, and how long it's been held so far.
+// Sharing a Journal trade (the trade page's Share, one tap): a card image (drawShareCard) with the entry, the stop, the exit,
+// the result, the setup and the entry tactic, copied. No dollars and no size, like the other share cards.
+// An open trade has no result yet: the tap reads its price (a stock's or one contract's), and the card says where it stands
+// now, in R against the stop, and how long it's been held so far.
 import { holdWords, pnlPct } from '../core/journal.js';
 import { stopWords } from '../core/order-plans.js';
 import { fmtPositionPrice } from '../core/positions.js';
@@ -12,7 +12,7 @@ import { state } from '../state.js';
 import { effects } from './effects.js';
 import { showError } from './feedback.js';
 import { labelNames, setupsOf } from './journal-review.js';
-import { journalPageTrade, renderJournalTrade } from './journal-trade.js';
+import { journalPageTrade } from './journal-trade.js';
 import { SC } from './share-image.js';
 import { readLegQuotes, tradierSymbol } from './sheet-quote.js';
 
@@ -36,7 +36,7 @@ export const sharePriceSymbol = t => t.status !== 'open' || t.legs || t.assetTyp
 /**
  * Everything the card and the text say about a trade: the stop, how far it was from the entry, how it was set and where it
  * moved; the exit; the result in R and %; the setups and entry tactics. An open trade instead has its price now (now: the
- * read from opening Share, { price, at }) in R and %, and what the part already closed made in R.
+ * read from the Share tap, { price, at }) in R and %, and what the part already closed made in R.
  */
 export function tradeShareFacts(t, now = null) {
   const side = sideOf(t), open = t.status === 'open', x = exitParts(t);
@@ -100,72 +100,30 @@ export function tradeShareSpec(t, now = null) {
   };
 }
 
-/** the same in a line, for a chat: 'Long $AAPL @ 100.02 · stop 95.00 (5.0% away, stop order) · exit 94.98 · −1.00R (−5.04%) · …' */
-export function tradeShareText(t, now = null) {
-  const f = tradeShareFacts(t, now), p = v => px(v, f.assetType).replace('$', '');
-  const name = f.assetType === 'OPTION' || f.assetType === 'SPREAD' || f.assetType === 'FUTURE' ? f.label : `$${f.label}`;
-  const notes = stopNotes(f);
-  const stop = f.stop !== null ? `stop ${p(f.stop)}${notes.length ? ` (${notes.join(', ')})` : ''}${f.stopMoved !== null ? `, moved to ${p(f.stopMoved)}` : ''}`
-    : f.premiumRisk ? 'risk = the premium' : 'no stop';
-  const exit = f.exit === null ? '' : `${f.exitAvg ? 'avg exit' : 'exit'} ${p(f.exit)}${f.partClosed ? ` (part closed${f.exitR !== null ? `, ${signedR(f.exitR)}` : ''})` : ''}`;
-  const result = f.open
-    ? `still open${f.now !== null ? `, now ${p(f.now)} (${[f.nowR !== null ? signedR(f.nowR) : '', signedPct(f.nowPct)].filter(Boolean).join(', ')})` : ''}`
-    : f.r !== null ? `${signedR(f.r)}${f.pct !== null ? ` (${signedPct(f.pct)})` : ''}` : f.pct !== null ? signedPct(f.pct) : '';
-  const side = f.side === 'neutral' ? 'Neutral' : f.side === 'long' ? 'Long' : 'Short';
-  return [`${side} ${name} @ ${p(f.entry)}`, stop, exit, result,
-    f.setups.length ? `setup ${f.setups.join(', ')}` : '', f.tactics.length ? `entry tactic ${f.tactics.join(', ')}` : ''].filter(Boolean).join(' · ');
+/** an open trade's price now, { price, at }, or null (a spread, a future, no market data, or the read failed): a contract's mid when it has a bid and ask, else its last */
+async function readSharePrice(t) {
+  const sym = sharePriceSymbol(t);
+  if (!sym || !marketDataHere()) return null;
+  try {
+    const q = (await readLegQuotes([sym]))[sym];
+    const mid = q && q.bid > 0 && q.ask > 0 ? (q.bid + q.ask) / 2 : 0;
+    const price = !q ? 0 : t.assetType === 'OPTION' && mid ? mid : q.last || mid;
+    return price > 0 ? { price, at: Date.now() } : null;
+  } catch(e) {
+    return null;
+  }
 }
 
 /**
- * An open trade's price, read once as Share opens (p.shareQuote: { loading } → { price, at } or { error }), so the card can be
- * drawn inside the tap (Safari's clipboard wants that). A contract's mid when it has a bid and ask, else its last.
+ * Share: the card image, copied (or downloaded where the clipboard can't take it). An open trade's card waits for its price;
+ * the clipboard write starts inside the tap all the same. Returns the drawn card (tests wait on it).
  */
-async function readSharePrice(p, t) {
-  const sym = sharePriceSymbol(t);
-  if (!sym || !marketDataHere()) { p.shareQuote = null; return; }
-  p.shareQuote = { loading: true };
-  try {
-    const q = (await readLegQuotes([sym]))[sym];
-    const price = !q ? 0 : t.assetType === 'OPTION' && q.bid > 0 && q.ask > 0 ? (q.bid + q.ask) / 2 : q.last || (q.bid > 0 && q.ask > 0 ? (q.bid + q.ask) / 2 : 0);
-    p.shareQuote = price > 0 ? { price, at: Date.now() } : { error: 'no price' };
-  } catch(e) {
-    p.shareQuote = { error: String(e?.message || e) };
-  }
-  if (state.journalTrade === p && p.shareOpen) renderJournalTrade();
-}
-
-/** the head's Share button opens or closes its choices; opening reads an open trade's price */
-export function toggleJournalShare() {
-  const p = state.journalTrade;
-  if (!p) return;
-  p.shareOpen = !p.shareOpen;
-  const t = journalPageTrade();
-  const reading = p.shareOpen && t ? readSharePrice(p, t) : null;
-  renderJournalTrade();
-  return reading;
-}
-
-function shareable() {
+export function shareJournalTrade() {
   const t = journalPageTrade();
   if (!t) return null;
   if (t.status === 'history' || !(t.avgEntry > 0)) { showError('Bought before your history: there\'s no entry to share.'); return null; }
-  return t;
-}
-const nowOf = () => state.journalTrade?.shareQuote?.price ? state.journalTrade.shareQuote : null;
-const closeChoices = () => { if (state.journalTrade?.shareOpen) { state.journalTrade.shareOpen = false; renderJournalTrade(); } };
-
-/** the card image, copied (or downloaded where the clipboard can't take it) */
-export function shareJournalTrade() {
-  const t = shareable();
-  if (!t) return;
-  effects.shareCanvasToClipboard(effects.drawShareCard(tradeShareSpec(t, nowOf())), `${t.label.replace(/[^\w.-]+/g, '-')}-trade`);
-  closeChoices();
-}
-
-/** the line of text, copied */
-export function copyJournalTrade() {
-  const t = shareable();
-  if (!t) return;
-  effects.copyPlainText(tradeShareText(t, nowOf()));
-  closeChoices();
+  const draw = now => effects.drawShareCard(tradeShareSpec(t, now));
+  const card = sharePriceSymbol(t) && marketDataHere() ? readSharePrice(t).then(draw) : draw(null);
+  effects.shareCanvasToClipboard(card, `${t.label.replace(/[^\w.-]+/g, '-')}-trade`);
+  return Promise.resolve(card);
 }

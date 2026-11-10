@@ -48,7 +48,7 @@ import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, can
 import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund, saveFund, setFundInverse, setFundOn, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalFilters, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
-import { copyJournalTrade, shareJournalTrade, toggleJournalShare } from './journal-share.js';
+import { shareJournalTrade } from './journal-share.js';
 import { contractsQtyChanged, renderShares, sharesQtyChanged } from './shares.js';
 import { closeSheet, dismissSheet, openSheet } from './sheets.js';
 import { toggleKbdHelp } from './shortcuts.js';
@@ -333,9 +333,7 @@ export const actions = {
   mergeTwin: el => mergeTwin(arg(el), el.dataset.arg2 || '', el.dataset.into || ''),
   setLibraryShort: el => setLibraryShort(arg(el), el.dataset.arg2 || '', /** @type {HTMLInputElement} */ (el).value),
   editJournalTrade: () => editJournalTrade(),
-  toggleJournalShare: () => toggleJournalShare(),
   shareJournalTrade: () => shareJournalTrade(),
-  copyJournalTrade: () => copyJournalTrade(),
   setJournalInterval: el => setJournalInterval(num(el)),
   setJournalRange: el => setJournalRange(el.dataset.arg),
   setJournalChartKind: el => setJournalChartKind(el.dataset.arg),

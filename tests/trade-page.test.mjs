@@ -200,17 +200,14 @@ test('a row opens the trade page: its saved bars, MFE and MAE, the fills and sto
   assert.equal(elements.get('journalTradeSection').style.display, 'none');
 });
 
-test("Share: a card image with the entry, the stop, the exit, the result, the setup and the entry tactic, or a line of text", async t => {
+test('Share: one tap copies a card image with the entry, the stop, the exit, the result, the setup and the entry tactic', async t => {
   const { run, head } = await page({}, t);
   run(`openJournalTrade('${KEY}')`);
   await settle();
-  assert.match(head(), /data-action="toggleJournalShare" aria-expanded="false"[^>]*>Share</);
-  assert.doesNotMatch(head(), /jt-share"/, 'the choices wait for the tap');
-  run('toggleJournalShare()');
-  assert.match(head(), /class="jt-share"[^]*data-action="shareJournalTrade">Card image<[^]*data-action="copyJournalTrade">Copy text</);
+  assert.match(head(), /data-action="editJournalTrade"[^>]*>Edit<\/button> · <button class="pos-link" data-action="shareJournalTrade"[^>]*>Share</);
   // the review's labels: a setup and an entry tactic
   run(`journalReview = { ...(journalReview || {}), reviews: {}, days: {}, library: [], weekly: {}, labels: { '${KEY}': [{ kind: 'setup', value: 'ema21_bounce' }, { kind: 'tactic', value: 'pivot15' }] } }`);
-  run('var spec, name, text; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = (c, n) => { name = n; }; copyPlainText = s => { text = s; }; shareJournalTrade()');
+  run('var spec, name; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = (c, n) => { name = n; }; shareJournalTrade()');
   const spec = json(run, 'spec');
   assert.deepEqual(spec.title.map(p => p.t), ['AAPL  ', 'LONG']);
   assert.match(spec.sub, /^Closed trade · opened 10\/1\/2026 10:30 AM ET · held /);
@@ -222,9 +219,6 @@ test("Share: a card image with the entry, the stop, the exit, the result, the se
   ], 'no dollars or share count');
   assert.deepEqual(spec.details, [{ label: 'Setup', value: '21 EMA bounce' }, { label: 'Entry tactic', value: '15-minute pivot' }]);
   assert.equal(run('name'), 'AAPL-trade');
-  assert.doesNotMatch(head(), /jt-share"/, 'a choice closes them');
-  run('copyJournalTrade()');
-  assert.equal(run('text'), 'Long $AAPL @ 100.02 · stop 95.00 (5.0% away, stop order) · exit 94.98 · −1.00R (−5.04%) · setup 21 EMA bounce · entry tactic 15-minute pivot');
 });
 
 test('Share on an open trade: where it stands now in R against the stop, the part already closed, or just open', async () => {
@@ -244,15 +238,12 @@ test('Share on an open trade: where it stands now in R against the stop, the par
   assert.deepEqual([s.stats[2].value, s.stats[2].sub], ['+0.50R', 'at $49.00 · +2.00% · 2:00 PM ET'], 'a short gains as it falls');
   assert.deepEqual(spec(open, null).stats[2], { label: 'Status', value: 'Open', sub: 'no live price' });
   assert.deepEqual([spec({ ...open, stop: null, stopSource: null, rBasis: null }, { price: 103, at: AT }).stats[2].value], ['+3.00%'], 'no stop: the move in percent');
-  assert.equal(run(`tradeShareText(${JSON.stringify({ ...open, avgExit: 102, exits: 2, openQty: 40 })}, { price: 103, at: ${AT} })`),
-    'Long $AAPL @ 100.00 · stop 95.00 (5.0% away, stop order) · avg exit 102.00 (part closed, +0.40R) · still open, now 103.00 (+0.60R, +3.00%)');
-  assert.equal(run(`tradeShareText(${JSON.stringify(open)})`), 'Long $AAPL @ 100.00 · stop 95.00 (5.0% away, stop order) · still open');
   assert.equal(run(`sharePriceSymbol(${JSON.stringify({ ...open, assetType: 'OPTION', symbol: 'AAPL  261120C00200000' })})`), 'AAPL261120C00200000', "a contract's own price");
   assert.equal(run(`sharePriceSymbol(${JSON.stringify({ ...open, assetType: 'SPREAD', legs: [] })})`), '', 'none for a spread');
   assert.equal(run(`sharePriceSymbol(${JSON.stringify({ ...open, status: 'win' })})`), '', 'none once closed');
 });
 
-test('Share on an open trade reads its price as it opens, and the card shows it', async t => {
+test('Share on an open trade reads its price in the same tap, and the card shows it', async t => {
   const supabase = fakeRecords([{ kind: 'order', record_id: '601', account: '6789', entered_at: '2026-10-01T14:30:00Z', data: { ...ENTRY, orderId: 601, childOrderStrategies: [] } }]);
   const fetch = async url => String(url).includes('/markets/quotes')
     ? new Response(JSON.stringify({ quotes: { quote: { symbol: 'AAPL', last: 104, bid: 103.98, ask: 104.02 } } }), { status: 200 })
@@ -265,12 +256,11 @@ test('Share on an open trade reads its price as it opens, and the card shows it'
   await a.run('loadJournal()');
   a.run(`openJournalTrade('${KEY}')`);
   await settle();
-  const head = () => a.elements.get('jtHead').innerHTML;
-  const reading = a.run('toggleJournalShare()');
-  assert.match(head(), /Getting the price now…/);
-  await reading;
-  assert.match(head(), /Still open: the card shows where it stands at \$104\.00, in R against the stop/);
-  a.run('var spec; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = () => {}; shareJournalTrade()');
+  a.run('var spec, handed; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = c => { handed = c; }');
+  const drawn = a.run('shareJournalTrade()');
+  assert.ok(a.run('handed instanceof Promise'), 'the clipboard gets the card inside the tap, as a promise of it');
+  assert.equal(a.run('spec'), undefined, 'drawn once the price is in');
+  await drawn;
   const spec = json(a.run, 'spec');
   assert.match(spec.sub, /^Open trade · /);
   assert.deepEqual(spec.stats.map(x => x.label), ['Entry', 'Stop', 'Now']);
