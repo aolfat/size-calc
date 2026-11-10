@@ -1,6 +1,9 @@
-# Size Calculator
+# Bracket
 
-Trade position sizing tool.
+Trading software: sizing off a max loss, options, positions, Trade at Schwab, the journal and the market.
+It was the Size Calculator; Bracket is its name (owner request: a bracket order is entry, stop and target, the core of the app).
+The name shows in the page title, the home-screen name (manifest.json, apple-mobile-web-app-title) and the share cards' wordmark ('● BRACKET', drawShareCard).
+Addresses keep size-calc (the repo, the Pages URL, the Schwab workers and callback, the service worker's cache, the history download's app field): renaming them would break sign-in and the Schwab login.
 No build step, no dependencies, no framework: `index.html` markup, `styles/*.css`, and native ES modules in `src/`, served as-is.
 Keep it that way.
 Two exceptions, both pinned in `vendor/`, committed and updated by hand, never loaded from a CDN, each with its version, sha256 and update steps in its header: Supabase's client library, `vendor/supabase.js` (supabase-js 2.117.3, the package's `dist/umd/supabase.js` wrapped as an ES module), loaded with `import()` only when signing in or when a session exists; and TradingView's Lightweight Charts, `vendor/lightweight-charts.js` (lightweight-charts 5.2.1, Apache-2.0, the package's `dist/lightweight-charts.standalone.production.mjs` unmodified under the header), loaded with `import()` (effects.loadChartLibrary) only when a Journal trade page draws a chart.

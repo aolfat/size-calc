@@ -1,7 +1,7 @@
 {
-  "name": "Size Calculator",
-  "short_name": "Size Calc",
-  "description": "Trade position sizing off dollar risk",
+  "name": "Bracket",
+  "short_name": "Bracket",
+  "description": "Trading software: size every trade off your max loss, trade at Schwab, journal every trade",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
