@@ -13,9 +13,15 @@ import { riskDollars } from './risk.js';
 import { entryVal, rawStop, stopLongVal, stopShortVal, stopSourceName } from './stops.js';
 import { effects } from './effects.js';
 
-export const SC = { bg: '#0b0d12', card1: '#161c28', card2: '#0e1118', border: '#323a4a', text: '#e9ecf2', text2: '#97a0b3', text3: '#5b6478', green: '#2fd67b', red: '#ff5d5d', blue: '#5b9dff', teal: '#2dd4bf' };
+export const SC = { bg: '#0b0d12', card1: '#161c28', card2: '#0e1118', border: '#323a4a', text: '#e9ecf2', text2: '#97a0b3', text3: '#5b6478', green: '#2fd67b', red: '#ff5d5d', blue: '#5b9dff', teal: '#2dd4bf', amber: '#f5b02e' };
 
+/**
+ * spec: title parts, sub, stats (four to a row: label, value, color, sub), optional details (label and words, one per line
+ * under the stats: a journal trade's setup and entry tactic) and footer
+ */
 export function drawShareCard(spec) {
+  const details = (spec.details || []).filter(d => d.value);
+  const DETAIL_LABEL = 150, DETAIL_H = 32;
   const rows = [];
   for (let i = 0; i < spec.stats.length; i += 4) rows.push(spec.stats.slice(i, i + 4));
 
@@ -40,12 +46,15 @@ export function drawShareCard(spec) {
     const subW = meas.measureText(spec.sub).width;
     meas.font = `500 13px ${SANS_FONT}`;
     const footW = spec.footer ? meas.measureText(spec.footer).width + 220 : 0; // leave room for the wordmark
-    W = Math.max(720, titleW + PAD * 2, subW + PAD * 2, footW + PAD * 2,
+    meas.font = `600 18px ${SANS_FONT}`;
+    const detailW = Math.min(900, Math.max(0, ...details.map(d => PAD * 2 + DETAIL_LABEL + meas.measureText(d.value).width)));
+    W = Math.max(720, titleW + PAD * 2, subW + PAD * 2, footW + PAD * 2, detailW,
       ...rowCols.map(ws => PAD * 2 + ws.reduce((a, b) => a + b, 0) + GAP * (ws.length - 1)));
     if (W <= 900) break;
   }
 
-  const H = 132 + rows.length * 116 + 24;
+  const detailsTop = 132 + rows.length * 116 + (details.length ? 8 : 0);
+  const H = detailsTop + details.length * DETAIL_H + (details.length ? 30 : 0) + 24;
   const scale = 2;
   const c = document.createElement('canvas');
   c.width = W * scale; c.height = H * scale;
@@ -99,6 +108,27 @@ export function drawShareCard(spec) {
       sx += widths[ci] + GAP + slack;
     });
   });
+
+  // the details: a divider, then each label with its words, cut short with an ellipsis if they'd run off the card
+  if (details.length) {
+    x.strokeStyle = SC.border; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(PAD, detailsTop - 8); x.lineTo(W - PAD, detailsTop - 8); x.stroke();
+    details.forEach((d, i) => {
+      const y = detailsTop + 24 + i * DETAIL_H;
+      x.font = `600 12px ${SANS_FONT}`;
+      x.fillStyle = SC.text3;
+      x.fillText(d.label.toUpperCase(), PAD, y - 2);
+      x.font = `600 18px ${SANS_FONT}`;
+      x.fillStyle = d.color || SC.text;
+      const room = W - PAD * 2 - DETAIL_LABEL;
+      let words = d.value;
+      if (x.measureText(words).width > room) {
+        while (words.length > 1 && x.measureText(words + '…').width > room) words = words.slice(0, -1);
+        words = words.trimEnd() + '…';
+      }
+      x.fillText(words, PAD + DETAIL_LABEL, y);
+    });
+  }
 
   if (spec.footer) {
     x.font = `500 13px ${SANS_FONT}`;

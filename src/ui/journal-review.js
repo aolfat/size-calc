@@ -772,6 +772,11 @@ export function labelKeys(t, kind) {
   const lib = library();
   return [...new Set((data().labels[t.key] || []).filter(l => l.kind === kind).map(l => lib.resolve(kind, l.value)))];
 }
+/** a trade's labels of one kind by name, in the trade's own side's words ('Opening range breakout') */
+export function labelNames(t, kind) {
+  const lib = library(), side = tradeSide(t);
+  return labelKeys(t, kind).map(k => lib.nameOf(kind, k, side));
+}
 /**
  * Where a trade's review stands, item by item, for the desktop trade panel and the full review's footer: the seven a review
  * needs (reviewState's), each done or not with what it says, then Mistakes (optional). An open trade's plan, grade and exit

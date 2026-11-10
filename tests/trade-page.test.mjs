@@ -200,6 +200,33 @@ test('a row opens the trade page: its saved bars, MFE and MAE, the fills and sto
   assert.equal(elements.get('journalTradeSection').style.display, 'none');
 });
 
+test("Share: a card image with the entry, the stop, the exit, the result, the setup and the entry tactic, or a line of text", async t => {
+  const { run, head } = await page({}, t);
+  run(`openJournalTrade('${KEY}')`);
+  await settle();
+  assert.match(head(), /data-action="toggleJournalShare" aria-expanded="false"[^>]*>Share</);
+  assert.doesNotMatch(head(), /jt-share"/, 'the choices wait for the tap');
+  run('toggleJournalShare()');
+  assert.match(head(), /class="jt-share"[^]*data-action="shareJournalTrade">Card image<[^]*data-action="copyJournalTrade">Copy text</);
+  // the review's labels: a setup and an entry tactic
+  run(`journalReview = { ...(journalReview || {}), reviews: {}, days: {}, library: [], weekly: {}, labels: { '${KEY}': [{ kind: 'setup', value: 'ema21_bounce' }, { kind: 'tactic', value: 'pivot15' }] } }`);
+  run('var spec, name, text; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = (c, n) => { name = n; }; copyPlainText = s => { text = s; }; shareJournalTrade()');
+  const spec = json(run, 'spec');
+  assert.deepEqual(spec.title.map(p => p.t), ['AAPL  ', 'LONG']);
+  assert.match(spec.sub, /^Closed trade · opened 10\/1\/2026 10:30 AM ET · held /);
+  assert.deepEqual(spec.stats.map(s => [s.label, s.value, s.sub]), [
+    ['Entry', '$100.02', ''],
+    ['Stop', '$95.00', '5.0% away · stop order'],
+    ['Exit', '$94.98', ''],
+    ['Result', '−1.00R', '−5.04%'],
+  ], 'no dollars or share count');
+  assert.deepEqual(spec.details, [{ label: 'Setup', value: '21 EMA bounce' }, { label: 'Entry tactic', value: '15-minute pivot' }]);
+  assert.equal(run('name'), 'AAPL-trade');
+  assert.doesNotMatch(head(), /jt-share"/, 'a choice closes them');
+  run('copyJournalTrade()');
+  assert.equal(run('text'), 'Long $AAPL @ 100.02 · stop 95.00 (5.0% away, stop order) · exit 94.98 · −1.00R (−5.04%) · setup 21 EMA bounce · entry tactic 15-minute pivot');
+});
+
 test('the 5-minute chart: candles, 8 EMA and volume, the fills marked, entry, exit and stop drawn, the readout', async t => {
   const { run, chart, charts, elements } = await page({}, t);
   run(`openJournalTrade('${KEY}')`);
