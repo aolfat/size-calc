@@ -12,59 +12,59 @@ import { fillsFrom, recordsSummary } from '../src/core/journal-records.js';
 import { journalTrades, multiplierOf } from '../src/core/journal.js';
 import { tradeBarSymbols } from '../src/core/bars.js';
 
-// a real export's shape (one day of MNQ, a stock trade), the account number made up
+// a real export's shape (one day of MNQ, a stock trade), every number in it made up
 const STATEMENT = `Account Statement for 12345678SCHW (Individual) since 10/19/26 through 10/19/26
 
 Cash Balance
 DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,AMOUNT,BALANCE
-10/19/26,22:00:00,BAL,,Cash balance at the start of business day 20.10 CST,,,,"77,977.16"
-10/20/26,10:47:48,TRD,="1008368285530",SOLD -4 STX @675.225,-0.06,,"2,700.90","76,541.49"
-,,,,TOTAL,($0.20),,"($4,166.30)","$73,810.66"
+10/19/26,22:00:00,BAL,,Cash balance at the start of business day 20.10 CST,,,,"25,000.00"
+10/20/26,10:47:48,TRD,="5052168285530",SOLD -4 XYZ @41.225,-0.06,,164.90,"25,164.90"
+,,,,TOTAL,($0.20),,"($1,250.00)","$23,914.90"
 
 Futures Statements
 Trade Date,Exec Date,Exec Time,Type,Ref #,Description,Misc Fees,Commissions & Fees,Amount,Balance
-10/19/26,10/19/26,22:00:00,BAL,--,Futures cash balance at the start of business day 20.10 CST,--,--,--,302.39
-10/19/26,10/19/26,22:00:00,FSWP,--,Cash sweep from equities account,--,--,"4,136.51","4,438.90"
-10/19/26,10/20/26,07:28:36,TRD,="1008355417428",BOT +1 /MNQZ26:XCME @29874.00,-0.36,-2.25,-303.00,"4,133.29"
-10/19/26,10/20/26,09:20:47,TRD,="1008365952276",SOLD -1 /MNQZ26:XCME @29716.75,-0.36,-2.25,--,"4,130.68"
-10/19/26,10/20/26,14:00:00,ADJ,--,/MNQZ26:XCME mark to market at 29675.25 preliminary settlement price,--,--,83.00,"4,213.68"
-*,10/20/26,15:07:08,TRD,="1008372347329",SOLD -1 /MNQZ26:XCME @29946.00,-0.36,-2.25,--,--
-*,10/20/26,15:27:05,TRD,="1008372347392",SOLD -2 /MNQZ26:XCME @29972.75,-0.72,-4.50,--,--
-*,10/20/26,16:21:47,TRD,="1008372347527",BOT +1 /MNQZ26:XCME @29885.00,-0.36,-2.25,-419.50,--
-*,10/20/26,16:21:47,TRD,="1008372347527",BOT +1 /MNQZ26:XCME @29885.00,-0.36,-2.25,122.00,--
-*,10/20/26,16:22:49,TRD,="1008372347553",BOT +1 /MNQZ26:XCME @29872.00,-0.36,-2.25,201.50,--
-*,10/20/26,16:23:49,TRD,="1008372347555",BOT +1 /MNQZ26:XCME @29870.50,-0.36,-2.25,204.50,--
-*,10/20/26,16:30:00,TRD,="1008372347600",BOT +1 /ZBZ26:XCBT @117.15625,-0.36,-2.25,--,--
+10/19/26,10/19/26,22:00:00,BAL,--,Futures cash balance at the start of business day 20.10 CST,--,--,--,100.00
+10/19/26,10/19/26,22:00:00,FSWP,--,Cash sweep from equities account,--,--,"1,000.00","1,100.00"
+10/19/26,10/20/26,07:28:36,TRD,="5052155417428",BOT +1 /MNQZ26:XCME @27874.00,-0.36,-2.25,-303.00,"1,094.39"
+10/19/26,10/20/26,09:20:47,TRD,="5052165952276",SOLD -1 /MNQZ26:XCME @27716.75,-0.36,-2.25,--,"1,091.78"
+10/19/26,10/20/26,14:00:00,ADJ,--,/MNQZ26:XCME mark to market at 27675.25 preliminary settlement price,--,--,83.00,"1,174.78"
+*,10/20/26,15:07:08,TRD,="5052172347329",SOLD -1 /MNQZ26:XCME @27946.00,-0.36,-2.25,--,--
+*,10/20/26,15:27:05,TRD,="5052172347392",SOLD -2 /MNQZ26:XCME @27972.75,-0.72,-4.50,--,--
+*,10/20/26,16:21:47,TRD,="5052172347527",BOT +1 /MNQZ26:XCME @27885.00,-0.36,-2.25,-419.50,--
+*,10/20/26,16:21:47,TRD,="5052172347527",BOT +1 /MNQZ26:XCME @27885.00,-0.36,-2.25,122.00,--
+*,10/20/26,16:22:49,TRD,="5052172347553",BOT +1 /MNQZ26:XCME @27872.00,-0.36,-2.25,201.50,--
+*,10/20/26,16:23:49,TRD,="5052172347555",BOT +1 /MNQZ26:XCME @27870.50,-0.36,-2.25,204.50,--
+*,10/20/26,16:30:00,TRD,="5052172347600",BOT +1 /ZBZ26:XCBT @117.15625,-0.36,-2.25,--,--
 
 
-"Total Cash $78,114.57"
+"Total Cash $25,089.67"
 
 Account Trade History
 ,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type
-,10/20/26 16:23:49,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,29870.50,29870.50,MKT
-,10/20/26 16:22:49,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,29872.00,29872.00,MKT
-,10/20/26 16:21:47,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,29885.00,29885.00,LMT
-,10/20/26 16:21:47,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,29885.00,29885.00,LMT
-,10/20/26 15:27:05,FUTURE,SELL,-2,TO OPEN,/MNQZ26,DEC 26,,FUTURE,29972.75,29972.75,LMT
-,10/20/26 15:07:08,FUTURE,SELL,-1,TO OPEN,/MNQZ26,DEC 26,,FUTURE,29946.00,29946.00,LMT
-,10/20/26 10:47:48,STOCK,SELL,-4,TO OPEN,STX,,,STOCK,675.225,675.225,MKT
-,10/20/26 09:20:47,FUTURE,SELL,-1,TO OPEN,/MNQZ26,DEC 26,,FUTURE,29716.75,29716.75,LMT
-,10/20/26 07:28:36,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,29874.00,29874.00,STP
+,10/20/26 16:23:49,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,27870.50,27870.50,MKT
+,10/20/26 16:22:49,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,27872.00,27872.00,MKT
+,10/20/26 16:21:47,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,27885.00,27885.00,LMT
+,10/20/26 16:21:47,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,27885.00,27885.00,LMT
+,10/20/26 15:27:05,FUTURE,SELL,-2,TO OPEN,/MNQZ26,DEC 26,,FUTURE,27972.75,27972.75,LMT
+,10/20/26 15:07:08,FUTURE,SELL,-1,TO OPEN,/MNQZ26,DEC 26,,FUTURE,27946.00,27946.00,LMT
+,10/20/26 10:47:48,STOCK,SELL,-4,TO OPEN,XYZ,,,STOCK,41.225,41.225,MKT
+,10/20/26 09:20:47,FUTURE,SELL,-1,TO OPEN,/MNQZ26,DEC 26,,FUTURE,27716.75,27716.75,LMT
+,10/20/26 07:28:36,FUTURE,BUY,+1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,27874.00,27874.00,STP
 
 Account Summary
-Net Liquidating Value,"$78,114.57"
+Net Liquidating Value,"$25,089.67"
 `;
 
-// the same STX sale as Schwab's API has it: 10:47:48 Pacific
-const STX_ORDER = {
-  orderId: 1008368285530, enteredTime: '2026-10-20T17:47:47+0000', status: 'FILLED',
-  orderLegCollection: [{ legId: 1, instruction: 'SELL_SHORT', quantity: 4, instrument: { symbol: 'STX', assetType: 'EQUITY' } }],
-  orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 1, executionLegs: [{ legId: 1, quantity: 4, price: 675.225, time: '2026-10-20T17:47:48+0000' }] }],
+// the same XYZ sale as Schwab's API has it: 10:47:48 Pacific
+const XYZ_ORDER = {
+  orderId: 5052168285530, enteredTime: '2026-10-20T17:47:47+0000', status: 'FILLED',
+  orderLegCollection: [{ legId: 1, instruction: 'SELL_SHORT', quantity: 4, instrument: { symbol: 'XYZ', assetType: 'EQUITY' } }],
+  orderActivityCollection: [{ activityType: 'EXECUTION', activityId: 1, executionLegs: [{ legId: 1, quantity: 4, price: 41.225, time: '2026-10-20T17:47:48+0000' }] }],
 };
-const SCHWAB = [{ kind: 'order', record_id: '1008368285530', account: '5678', entered_at: '2026-10-20T17:47:47Z', data: STX_ORDER }];
+const SCHWAB = [{ kind: 'order', record_id: '5052168285530', account: '5678', entered_at: '2026-10-20T17:47:47Z', data: XYZ_ORDER }];
 
 test('cells: quotes, thousands, and the ="…" thinkorswim puts around order numbers', () => {
-  assert.deepEqual(csvCells('10/20/26,TRD,="1008368285530","2,700.90",'), ['10/20/26', 'TRD', '1008368285530', '2,700.90', '']);
+  assert.deepEqual(csvCells('10/20/26,TRD,="5052168285530","1,164.90",'), ['10/20/26', 'TRD', '5052168285530', '1,164.90', '']);
   assert.deepEqual(csvCells('"say ""hi""",x'), ['say "hi"', 'x']);
 });
 
@@ -88,18 +88,18 @@ test('the statement: futures fills with fees and whether each opened or closed, 
   assert.ok(!JSON.stringify(p).includes('12345678'), 'the full account number goes nowhere');
   assert.deepEqual([p.from, p.through], ['2026-10-19', '2026-10-19']);
   assert.deepEqual(p.fills.map(f => [f.id, f.wall, f.side, f.qty, f.price, f.fee, f.instruction]), [
-    ['tos:1008355417428:1', '2026-10-20T07:28:36', 'buy', 1, 29874, 2.61, 'BUY_TO_CLOSE'],
-    ['tos:1008365952276:1', '2026-10-20T09:20:47', 'sell', 1, 29716.75, 2.61, 'SELL_TO_OPEN'],
-    ['tos:1008372347329:1', '2026-10-20T15:07:08', 'sell', 1, 29946, 2.61, 'SELL_TO_OPEN'],
-    ['tos:1008372347392:1', '2026-10-20T15:27:05', 'sell', 2, 29972.75, 5.22, 'SELL_TO_OPEN'],
-    ['tos:1008372347527:1', '2026-10-20T16:21:47', 'buy', 1, 29885, 2.61, 'BUY_TO_CLOSE'],
-    ['tos:1008372347527:2', '2026-10-20T16:21:47', 'buy', 1, 29885, 2.61, 'BUY_TO_CLOSE'],
-    ['tos:1008372347553:1', '2026-10-20T16:22:49', 'buy', 1, 29872, 2.61, 'BUY_TO_CLOSE'],
-    ['tos:1008372347555:1', '2026-10-20T16:23:49', 'buy', 1, 29870.5, 2.61, 'BUY_TO_CLOSE'],
+    ['tos:5052155417428:1', '2026-10-20T07:28:36', 'buy', 1, 27874, 2.61, 'BUY_TO_CLOSE'],
+    ['tos:5052165952276:1', '2026-10-20T09:20:47', 'sell', 1, 27716.75, 2.61, 'SELL_TO_OPEN'],
+    ['tos:5052172347329:1', '2026-10-20T15:07:08', 'sell', 1, 27946, 2.61, 'SELL_TO_OPEN'],
+    ['tos:5052172347392:1', '2026-10-20T15:27:05', 'sell', 2, 27972.75, 5.22, 'SELL_TO_OPEN'],
+    ['tos:5052172347527:1', '2026-10-20T16:21:47', 'buy', 1, 27885, 2.61, 'BUY_TO_CLOSE'],
+    ['tos:5052172347527:2', '2026-10-20T16:21:47', 'buy', 1, 27885, 2.61, 'BUY_TO_CLOSE'],
+    ['tos:5052172347553:1', '2026-10-20T16:22:49', 'buy', 1, 27872, 2.61, 'BUY_TO_CLOSE'],
+    ['tos:5052172347555:1', '2026-10-20T16:23:49', 'buy', 1, 27870.5, 2.61, 'BUY_TO_CLOSE'],
   ]);
   assert.ok(p.fills.every(f => f.symbol === '/MNQZ26'), 'the exchange suffix is dropped');
   assert.deepEqual(p.skipped.map(s => s.why), ['no point value for /ZBZ26 yet']);
-  assert.deepEqual(p.stockFills, [{ orderId: '1008368285530', wall: '2026-10-20T10:47:48' }]);
+  assert.deepEqual(p.stockFills, [{ orderId: '5052168285530', wall: '2026-10-20T10:47:48' }]);
 
   // without Account Trade History, nothing says opened or closed: buys and sells stay free to open either way
   const bare = parseTosStatement(STATEMENT.split('Account Trade History')[0]);
@@ -122,8 +122,8 @@ test("the trades they make: four MNQ shorts covered at the statement's own reali
   const p = parseTosStatement(STATEMENT);
   const records = statementRecords(p.fills, p.account, 'America/Los_Angeles');
   assert.deepEqual(records[0], {
-    kind: 'statement_fill', record_id: 'tos:1008355417428:1', account: '5678', entered_at: '2026-10-20T14:28:36.000Z',
-    data: { id: 'tos:1008355417428:1', orderId: 'tos:1008355417428', symbol: '/MNQZ26', label: '/MNQZ26', side: 'buy', qty: 1, price: 29874, fee: 2.61,
+    kind: 'statement_fill', record_id: 'tos:5052155417428:1', account: '5678', entered_at: '2026-10-20T14:28:36.000Z',
+    data: { id: 'tos:5052155417428:1', orderId: 'tos:5052155417428', symbol: '/MNQZ26', label: '/MNQZ26', side: 'buy', qty: 1, price: 27874, fee: 2.61,
       instruction: 'BUY_TO_CLOSE', account: '5678', time: '2026-10-20T14:28:36.000Z', assetType: 'FUTURE', source: 'thinkorswim' },
   });
   assert.equal(recordsSummary(records).statementFills, 8);
@@ -147,8 +147,8 @@ test("the trades they make: four MNQ shorts covered at the statement's own reali
   assert.equal(net.pnl, 170.62);
 
   // your stop makes the risk and R, at $2 a point
-  const [withStop] = journalTrades(fills, records, { [short.key]: { stop: 30000 } }, { now: Date.parse('2026-10-21T00:00:00Z') });
-  assert.equal(withStop.risk, Math.round((30000 - short.avgEntry) * 4 * 2 * 100) / 100);
+  const [withStop] = journalTrades(fills, records, { [short.key]: { stop: 28000 } }, { now: Date.parse('2026-10-21T00:00:00Z') });
+  assert.equal(withStop.risk, Math.round((28000 - short.avgEntry) * 4 * 2 * 100) / 100);
   assert.equal(withStop.r, Math.round(191.5 / withStop.risk * 100) / 100);
 });
 
@@ -226,7 +226,7 @@ test('Fills tab: a futures fill is valued at its point value, and the side filte
   run("setJournalTab('fills')");
   const rows = () => [...elements.get('journalSection').innerHTML.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td>[^<]*<\/td>\s*<td>[^<]*<\/td>\s*<td>([^<]*)<\/td>/g)]
     .map(m => `${m[1]} ${m[2]} ${m[3]}`);
-  assert.ok(rows().includes('/MNQZ26 Buy to close $59,748.00'), '1 MNQ at 29,874 is $2 a point, not $29,874: ' + rows().join(' | '));
+  assert.ok(rows().includes('/MNQZ26 Buy to close $55,748.00'), '1 MNQ at 27,874 is $2 a point, not $27,874: ' + rows().join(' | '));
   run("setJournalSide('short')");
   assert.equal(rows().filter(r => / Sell to open /.test(r)).length, 3, 'sold to open is short, as its trade is');
   assert.equal(rows().filter(r => / Buy to close /.test(r)).length, 5, 'and so are the covers');
