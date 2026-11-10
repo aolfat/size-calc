@@ -59,7 +59,7 @@ function network({ bars = BARS, fiveFails = false } = {}) {
   return { fetch, tradier, schwab };
 }
 
-const event = e => ({ button: 0, preventDefault() { this.prevented = true; }, stopImmediatePropagation() {}, ...e });
+const event = e => ({ button: 0, preventDefault() { this.prevented = true; }, stopImmediatePropagation() { this.stopped = true; }, ...e });
 // the chart canvas: a 458px box (400px of plot between the gutters), 260 tall, listeners recorded
 function fakeCanvas(el) {
   const on = {};
@@ -68,7 +68,7 @@ function fakeCanvas(el) {
     addEventListener: (type, fn) => { (on[type] ||= []).push(fn); },
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 458, height: 260, right: 458, bottom: 260 }),
   });
-  return (type, e) => { e = event(e); for (const fn of on[type] || []) fn(e); return e; };
+  return (type, e) => { e = event(e); for (const fn of on[type] || []) { fn(e); if (e.stopped) break; } return e; };
 }
 
 async function chartApp({ key = true, ...opts } = {}) {
@@ -737,4 +737,190 @@ test('Move breakeven: hovering says how many to add for a stop right there', asy
   canvas('mousemove', { clientX: g.x(200), clientY: g.y(43) });
   assert.doesNotMatch(elements.get('posChartOhlc').innerHTML, /· add/, 'over the price: no add');
   delete globalThis.getComputedStyle;
+});
+
+// ---------- indicators, dragging your orders, and the Close tool ----------
+
+test('ema, sma and movingAverage: warmed up on the bars before the ones shown', async () => {
+  const { run } = await app({});
+  const near = (a, b) => a.every((v, i) => v === null ? b[i] === null : Math.abs(v - b[i]) < 1e-9);
+  assert.ok(near(run('ema([10, 10, 10], 8)'), [10, 10, 10]), 'flat closes, flat average');
+  assert.ok(near(run('ema([10, 19], 2)'), [10, 16]), 'k = 2/3: 19 × 2/3 + 10 × 1/3');
+  assert.ok(near(run('sma([1, 2, 3, 4], 3)'), [null, null, 2, 3]), 'null until there are n closes');
+  assert.ok(near(run('movingAverage([1, 2], [3, 4], "sma", 3)'), [2, 3]), 'the warm-up fills the first values shown');
+  assert.equal(run('movingAverage([5, 5, 5], [5], "ema", 21)').length, 1, 'one value per bar shown');
+});
+
+test('indicator chips: VWAP, 8 and 21 EMA, 50 and 200 SMA and volume, each kept on or off on this device', async () => {
+  const { run, elements, storage } = await chartApp();
+  run(`togglePositionChart('${OPT}')`);
+  await settle();
+  const chips = () => elements.get('posChartInd').innerHTML;
+  for (const id of ['vwap', 'ema8', 'ema21', 'sma50', 'sma200', 'vol']) assert.match(chips(), new RegExp(`class="filter-btn pos-ind active" aria-pressed="true" data-action="togglePosChartInd" data-arg="${id}"`), id + ' starts on');
+  assert.match(chips(), /<i style="background:var\(--amber\)"><\/i>21 EMA/);
+  // the 5-minute averages run over the two weeks fetched, so today's first bar already has its 21 EMA from the days before
+  assert.equal(run('posChart.five.mas.ema21.length'), 10);
+  assert.equal(run('posChart.five.mas.sma50[0]'), null, 'only 30 bars: no 50 SMA yet');
+  assert.ok(run('posChart.five.mas.sma8 === undefined && posChart.five.mas.ema8.length === 10'));
+  assert.equal(run('posChart.daily.mas.sma200.length'), 260);
+  assert.equal(run('posChart.daily.mas.sma200[198]'), null);
+  assert.ok(Math.abs(run('posChart.daily.mas.sma200[259]') - 43) < 1e-9, 'every close is 43');
+
+  // what the painter is asked to draw
+  const calls = [];
+  for (const id of ['posChart5', 'posChartD']) {
+    elements.get(id).clientWidth = 458;
+    elements.get(id).getContext = () => new Proxy({ measureText: () => ({ width: 40 }), strokeStyle: '', stroke() { calls.push(id + ':' + this.strokeStyle); } }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  }
+  globalThis.getComputedStyle = () => ({ getPropertyValue: name => name });
+  run('drawPositionChart()');
+  for (const c of ['--teal', '--purple', '--amber', '--pink', '--text']) assert.ok(calls.includes('posChart5:' + c), c + ' on the 5-minute');
+  assert.ok(!calls.includes('posChartD:--teal'), 'VWAP is the 5-minute pane\'s only');
+  calls.length = 0;
+  run("actions.togglePosChartInd({ dataset: { arg: 'ema21' } })");
+  assert.ok(!calls.some(c => c.endsWith(':--amber')), 'the 21 EMA is gone from both panes');
+  assert.ok(calls.includes('posChart5:--purple'), 'the others stay');
+  assert.match(chips(), /class="filter-btn pos-ind" aria-pressed="false" data-action="togglePosChartInd" data-arg="ema21"/);
+  assert.equal(storage.get('pos_chart_ind_off'), '["ema21"]');
+  run("togglePosChartInd('vwap')");
+  assert.equal(storage.get('pos_chart_ind_off'), '["ema21","vwap"]');
+  run("togglePosChartInd('ema21')");
+  assert.equal(storage.get('pos_chart_ind_off'), '["vwap"]');
+  run("togglePosChartInd('nope')");
+  assert.equal(storage.get('pos_chart_ind_off'), '["vwap"]', 'an unknown chip changes nothing');
+  delete globalThis.getComputedStyle;
+
+  const again = await app({ fetch: async () => json({}), storage });
+  assert.deepEqual([...again.run('posChartIndOff')], ['vwap']);
+  storage.set('pos_chart_ind_off', 'not json');
+  assert.deepEqual([...(await app({ fetch: async () => json({}), storage })).run('posChartIndOff')], [], 'a bad value hides nothing');
+});
+
+test('orderLines and lineMove: the one order on a line, and the change a drag makes', async () => {
+  const { run } = await app({});
+  const row = (stops, closers) => JSON.stringify({ stopOrders: stops, closers: [...stops, ...closers] });
+  const stop = (orderId, price, qty, extra = {}) => ({ orderId, orderType: 'STOP', stop: price, price: null, qty, oco: null, ...extra });
+  const limit = (orderId, price, qty) => ({ orderId, orderType: 'LIMIT', stop: null, price, qty, oco: null });
+  const lines = run(`orderLines(${row([stop(1, 35.5, 200), stop(2, 35.5, 100)], [limit(3, 45, 100)])})`);
+  assert.deepEqual(lines.map(l => [l.kind, l.price, l.qty, l.orders.map(o => o.orderId).join()]), [['stop', 35.5, 300, '1,2'], ['target', 45, 100, '3']]);
+
+  const line = (o, kind) => JSON.stringify({ kind, price: o.stop ?? o.price, orders: [o] });
+  const plain = r => JSON.parse(JSON.stringify(r));
+  assert.deepEqual(plain(run(`lineMove(${line(stop(1, 35.5, 200), 'stop')}, 36.204)`)), { error: '', orderId: 1, edit: { stop: 36.2 }, price: 36.2 });
+  assert.deepEqual(plain(run(`lineMove(${line(limit(3, 45, 100), 'target')}, 47.007)`)), { error: '', orderId: 3, edit: { price: 47.01 }, price: 47.01 });
+  const sl = plain(run(`lineMove(${line(stop(4, 35.5, 200, { orderType: 'STOP_LIMIT', price: 35.3 }), 'stop')}, 36)`));
+  assert.equal(sl.edit.stop, 36);
+  assert.ok(Math.abs(sl.edit.price - 35.8) < 1e-9, 'a stop limit keeps its 20¢ gap');
+  assert.deepEqual(plain(run(`lineMove(${line(stop(1, 35.5, 200), 'stop')}, 35.501)`)).edit, {}, 'back where it was: nothing to change');
+  assert.equal(run(`lineMove(${line(stop(5, 2, 2), 'stop')}, 2.32, 'OPTION')`).edit.stop, 2.3, 'an option on its grid');
+  assert.equal(run(`lineMove(${JSON.stringify({ kind: 'stop', price: 35.5, orders: [stop(1, 35.5, 200), stop(2, 35.5, 100)] })}, 36)`).error, '2 orders are at $35.50. Change each one under Working orders.');
+  assert.match(run(`lineMove(${line(stop(null, 35.5, 200), 'stop')}, 36)`).error, /did not send this order's id/);
+});
+
+test('dragging a stop line opens Edit with the new stop; a tap on a line still sets the tool\'s price', async () => {
+  const { run, elements, canvas } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  const x = g.x(200), touch = y => ({ touches: [{ clientX: x, clientY: y }] });
+  canvas('mousemove', { clientX: x, clientY: g.y(35.5) + 3 });
+  assert.equal(elements.get('posChartD').style.cursor, 'ns-resize', 'a line under the mouse says it can move');
+  canvas('mousemove', { clientX: x, clientY: g.y(40) });
+  assert.equal(elements.get('posChartD').style.cursor, '');
+
+  // a finger on the stop picks it up at once, and the scale holds still while it moves
+  const down = canvas('touchstart', touch(g.y(35.5) + 8));
+  assert.ok(down.stopped, 'the crosshair and the pan never see it');
+  assert.equal(run('posChart.drag.line.orders[0].orderId'), 101);
+  const moved = canvas('touchmove', touch(g.y(37.02)));
+  assert.ok(moved.prevented, 'the page holds still');
+  assert.ok(Math.abs(run('posChart.drag.at') - 37.02) <= 0.01);
+  assert.equal(run('posChart.drag.at'), run('priceTick(posChart.drag.at)'));
+  assert.equal(run('posChart.drag.g.lo'), g.lo, 'the dragged pane keeps the scale it was picked up on');
+  const to = run('posChart.drag.at');
+  canvas('touchend', { touches: [] });
+  assert.equal(run('posChart.drag'), null);
+  await settle();
+  assert.equal(run('state.openSheetName'), 'edit');
+  assert.equal(run('editTicket.orderId'), 101);
+  assert.equal(run('editTicket.edit.stop'), to);
+  assert.equal(run('editTicket.stop'), to, 'Edit plans the move');
+  assert.match(elements.get('editBody').innerHTML, new RegExp(`id="editStop"[^>]*value="${to.toFixed(2)}"`));
+  assert.equal(run('posChart.price'), null, 'a drag sets no target');
+  run('closeSheet()');
+
+  // a tap on the target line without moving is a tap: Profit target takes its price there
+  canvas('touchstart', touch(g.y(45)));
+  canvas('touchend', { touches: [] });
+  await settle();
+  assert.equal(run('state.openSheetName'), null, 'no Edit');
+  assert.ok(Math.abs(run('posChart.price') - 45) <= 0.03);
+});
+
+test('dragging a target line opens Edit with the new limit; two orders on one line say to edit each', async () => {
+  const { run, canvas } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  const touch = y => ({ touches: [{ clientX: g.x(200), clientY: y }] });
+  canvas('touchstart', touch(g.y(45)));
+  canvas('touchmove', touch(g.y(44)));
+  canvas('touchend', { touches: [] });
+  await settle();
+  assert.equal(run('editTicket.orderId'), 103);
+  assert.ok(Math.abs(run('editTicket.edit.price') - 44) <= 0.01);
+  run('closeSheet()');
+
+  // a second stop at $35.50: the line can't say which one to move
+  run("positions.rows.find(r => r.symbol === 'HOOD').stopOrders.push({ orderId: 999, symbol: 'HOOD', closes: 'long', orderType: 'STOP', stop: 35.5, price: null, qty: 100, oco: null, duration: 'DAY', session: 'NORMAL' })");
+  canvas('touchstart', touch(g.y(35.5)));
+  canvas('touchmove', touch(g.y(37)));
+  canvas('touchend', { touches: [] });
+  await settle();
+  assert.equal(run('state.openSheetName'), null);
+  assert.match(run("document.getElementById('errorBox').textContent"), /^2 orders are at \$35\.50\. Change each one under Working orders\.$/);
+});
+
+test('the Close tool: a tap sets the limit for every share, a portion trims it, and Review opens the close ticket at that limit', async () => {
+  const { run, elements, canvas } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  run("actions.setPosChartTool({ dataset: { arg: 'close' } })");
+  assert.equal(elements.get('posChartCloseForm').style.display, '');
+  assert.equal(elements.get('posTargetForm').style.display, 'none');
+  assert.equal(elements.get('posToolClose').getAttribute('aria-pressed'), 'true');
+  assert.equal(elements.get('posChartTapHint').textContent, 'Tap the chart to set the close limit');
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /Tap the chart where you want to sell, or type a limit\./);
+  assert.equal(elements.get('posChartCloseReview').disabled, true);
+
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  canvas('click', { clientX: g.x(259), clientY: g.y(43) });
+  assert.ok(Math.abs(run('posChart.closePrice') - 43) <= 0.01);
+  assert.equal(run('posChart.closeQty'), 300, 'every share to start');
+  assert.equal(elements.get('posChartCloseQty').value, '300');
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /<strong>Sell 300 of 300 shares at \$4[23]\.\d\d<\/strong>/);
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /the review cancels your stops and targets on it first/);
+  assert.equal(elements.get('posChartCloseReview').disabled, false);
+
+  run("actions.setPosClosePortion({ dataset: { arg: '0.5' } })");
+  assert.equal(elements.get('posChartCloseQty').value, '150');
+  assert.match(elements.get('posChartClosePortions').innerHTML, /class="filter-btn active" aria-pressed="true" data-action="setPosClosePortion" data-arg="0\.5"/);
+  elements.get('posChartClosePrice').value = '40';
+  run('actions.posChartCloseChanged()');
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /<strong>Sell 150 of 300 shares at \$40\.00<\/strong> · <span class="pos-locked">\+\$270\.00<\/span>/);
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /At or below the price \$41\.10: it likely fills right away\./);
+
+  await run("actions.openPositionTrade({ dataset: { arg: 'HOOD', arg2: 'chartClose' } })");
+  await settle();
+  assert.equal(run('state.openSheetName'), 'posTrade');
+  assert.equal(run('posTicket.kind'), 'close');
+  assert.deepEqual([run('posTicket.close.type'), run('posTicket.close.price'), run('posTicket.close.qty')], ['LIMIT', 40, 150]);
+  run('closeSheet()');
+  // the row's own Close button still starts at market for all of it
+  await run("openPositionTrade('HOOD', 'close')");
+  await settle();
+  assert.deepEqual([run('posTicket.close.type'), run('posTicket.close.qty')], ['MARKET', 300]);
+  run('positionClosePlaced("HOOD")');
+  assert.equal(run('posChart.closePrice'), null);
+  assert.equal(elements.get('posChartClosePrice').value, '');
 });

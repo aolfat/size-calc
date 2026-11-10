@@ -37,6 +37,7 @@ button, input, select, textarea { font-family: inherit; } /* controls default to
   --blue-bd: #22406b;
   --teal: #2dd4bf;
   --purple: #b47aff;
+  --pink: #f472b6; /* the position chart's 50 SMA */
   --radius: 8px;
   --radius-lg: 14px;
   --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;

@@ -986,6 +986,47 @@ export function breakevenAdd(row, { stop, price = null }) {
   return { error: '', qty, stop: level, price: at, newQty, avg, cost: qty * at * row.mult, value: newQty * at * row.mult, locked: side * (level - avg) * newQty * row.mult };
 }
 
+/**
+ * The order lines a position's chart lets you drag: its stops and limit targets, one per price like positionLevels,
+ * each with the orders on it.
+ * @param {Row} row
+ * @returns {{ kind: 'stop' | 'target', price: number, qty: number, orders: Resting[] }[]}
+ */
+export function orderLines(row) {
+  /** @type {{ kind: 'stop' | 'target', price: number, qty: number, orders: Resting[] }[]} */
+  const out = [];
+  /** @param {'stop' | 'target'} kind @param {number} price @param {Resting} o */
+  const add = (kind, price, o) => {
+    const same = out.find(l => l.kind === kind && l.price === price);
+    if (same) { same.qty += o.qty; same.orders.push(o); } else out.push({ kind, price, qty: o.qty, orders: [o] });
+  };
+  for (const o of row.stopOrders) add('stop', Number(o.stop), o);
+  for (const o of row.closers) if (!isStop(o) && o.price !== null) add('target', o.price, o);
+  return out;
+}
+
+/**
+ * A line dragged to a new price: the one order on it and the change Edit reviews. A stop moves its stop (a stop limit
+ * takes its limit along by the same amount, so the gap between them stays); a target moves its limit. Prices go on the
+ * tick (options on their grid). Two or more orders on one line can't be told apart, so that says to edit them one by one.
+ * @param {{ kind: 'stop' | 'target', price: number, orders: Resting[] }} line @param {number} to @param {TradeAs | null} [tradeAs]
+ * @returns {{ error: string, orderId: number | string | null, edit: { stop?: number, price?: number }, price: number }}
+ */
+export function lineMove(line, to, tradeAs = null) {
+  const option = tradeAs === 'OPTION', at = option ? optionPriceTick(to) : priceTick(to);
+  const fail = (/** @type {string} */ error) => ({ error, orderId: null, edit: {}, price: at });
+  if (!(at > 0)) return fail('Drag the line onto a price.');
+  if (line.orders.length !== 1) return fail(`${line.orders.length} orders are at ${fmtPositionPrice(line.price, tradeAs)}. Change each one under Working orders.`);
+  const o = line.orders[0];
+  if (o.orderId === null) return fail('Schwab did not send this order\'s id. Change it in Schwab.');
+  if (at === line.price) return { error: '', orderId: o.orderId, edit: {}, price: at };
+  if (line.kind === 'target') return { error: '', orderId: o.orderId, edit: { price: at }, price: at };
+  /** @type {{ stop: number, price?: number }} */
+  const edit = { stop: at };
+  if (o.orderType === 'STOP_LIMIT' && o.price !== null) edit.price = o.price + (at - Number(o.stop));
+  return { error: '', orderId: o.orderId, edit, price: at };
+}
+
 /** The lines a position's chart draws: average cost, then its stops and limit targets, one line per price with the sizes added up. @param {Row} row */
 export function positionLevels(row) {
   /** @type {Level[]} */

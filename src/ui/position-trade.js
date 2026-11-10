@@ -10,7 +10,7 @@ import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { marketSource } from '../services/market-source.js';
 import { showError, showToast } from './feedback.js';
-import { positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
+import { positionClosePlaced, positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { originalStopBlock } from './position-original.js';
 import { positionOriginal, positionRUnit, positionTrade, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
@@ -82,6 +82,12 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
     const all = closePlan(row); // what blocks any close of it
     if (all.error) { t.error = all.error; return t; }
     t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, r: null, at: null, step: 0, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
+    // from the chart's Close tool: a limit at the tapped price, for the count picked there
+    if (target && target.price > 0) {
+      Object.assign(t.close, { type: 'LIMIT', price: row.tradeAs === 'OPTION' ? optionPriceTick(target.price) : priceTick(target.price) });
+      if (Number.isInteger(target.qty) && target.qty >= 1 && target.qty <= Math.abs(row.qty)) t.close.qty = target.qty;
+    }
+    t.target = null;
     t.original = positionOriginal(row, now); // what the percent chips are of: the most held since flat, or (null) what's held
     planClose(t);
   } else if (kind === 'target') planTarget(t);
@@ -403,10 +409,13 @@ const sendsSame = (a, b) => JSON.stringify([a.hash, a.steps.map(s => [s.kind, s.
 
 export async function openPositionTrade(symbol, kind) {
   if (state.posTradeBusy) return;
-  // a target (and a stop picked on the chart) is frozen from the chart's form as it is now
-  const c = state.posChart;
-  const target = kind === 'target' ? (c && c.symbol === symbol ? { price: c.price || 0, qty: c.qty || 0 } : { price: 0, qty: 0 })
-    : kind === 'stop' && c && c.symbol === symbol && c.stop > 0 ? { price: c.stop, qty: 0 } : null;
+  // a target (and a stop or a close limit picked on the chart) is frozen from the chart's form as it is now
+  const c = state.posChart, chart = c && c.symbol === symbol ? c : null;
+  const fromChart = kind === 'chartClose';
+  if (fromChart) kind = 'close'; // the chart's Close tool: the close ticket at its limit and count
+  const target = kind === 'target' ? (chart ? { price: chart.price || 0, qty: chart.qty || 0 } : { price: 0, qty: 0 })
+    : kind === 'stop' && chart && chart.stop > 0 ? { price: chart.stop, qty: 0 }
+    : fromChart && chart && chart.closePrice > 0 ? { price: chart.closePrice, qty: chart.closeQty || 0 } : null;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
   // the plan is built from what Schwab shows now; a close also waits for the Journal's older fills, for its original size
@@ -514,6 +523,7 @@ export async function placePositionTrade() {
       state.posLast = { hash: t.hash, symbol: t.row.symbol, at: Date.now(), confirmed: t.confirmed };
       if (t.kind === 'target' && t.confirmed) positionTargetPlaced(t.row.symbol);
       if (t.kind === 'stop' && t.confirmed) positionStopPlaced(t.row.symbol);
+      if (t.kind === 'close' && t.confirmed) positionClosePlaced(t.row.symbol);
     }
   } finally {
     state.posTradeBusy = false;

@@ -18,7 +18,7 @@ import { effects } from './effects.js';
 import { setFuturesFees } from './futures.js';
 import { setLiveDefault, toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { closePositionChart, posAddChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosTargetPortion, setPosTargetR, setRPreset, togglePosChartAvg, togglePositionChart } from './position-chart.js';
+import { closePositionChart, posAddChanged, posChartCloseChanged, posChartStopChanged, posChartToday, posTargetChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosClosePortion, setPosTargetPortion, setPosTargetR, setRPreset, togglePosChartAvg, togglePosChartInd, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
@@ -509,6 +509,9 @@ export const actions = {
   setPosChartRange: el => setPosChartRange(num(el)),
   posChartToday: el => posChartToday(arg(el)),
   togglePosChartAvg: () => togglePosChartAvg(),
+  togglePosChartInd: el => togglePosChartInd(arg(el)),
+  posChartCloseChanged: () => posChartCloseChanged(),
+  setPosClosePortion: el => setPosClosePortion(num(el)),
   posTargetChanged: () => posTargetChanged(),
   posTargetRChanged: () => posTargetRChanged(),
   posChartStopChanged: () => posChartStopChanged(),

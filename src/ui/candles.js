@@ -1,10 +1,10 @@
 // Candle canvas shared by the calculator's daily pane and the position chart (daily bars, or an option's 5-minute bars,
 // which carry a time) and the Journal's trade page: the fitted scale, the painting (candles, 8 EMA, VWAP when given, level lines, fill marks, crosshair)
-// and the gestures (zoom, pan, hover, tap to pick a price).
+// and the gestures (zoom, pan, hover, tap to pick a price, and dragging a line when the caller offers one).
 import { panView, viewRange, zoomView } from '../core/chart-view.js';
 import { SANS_FONT } from '../lib/media.js';
 import { zoneClock } from '../lib/zone.js';
-import { attachTouchCrosshair } from './chart.js';
+import { GRAB_PX, attachTouchCrosshair } from './chart.js';
 
 export const CANDLE_H = 260;
 
@@ -43,7 +43,9 @@ export function snapToBar(g, bar, yy, px = 6) {
  */
 // marks: [{ index, side }] fills, a buy as an up triangle under its bar's low, a sell as a down triangle over its high
 // vwap: a value per bar (core/trade-page.js sessionVwap), drawn teal and broken where the day changes
-export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks = [], vwap = null, price = v => '$' + v.toFixed(2) } = {}) {
+// ema8: the 8 EMA every chart draws (false leaves it out); mas: [{ values, color }] more moving averages, a value (or null) per bar
+// volume: each bar's volume as a faint bar along the bottom fifth of the plot, scaled to the window's biggest
+export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks = [], vwap = null, ema8 = true, mas = [], volume = false, price = v => '$' + v.toFixed(2) } = {}) {
   const { w, h, padL, padR, padT, padB, plotW, plotH, start, end, slot, lo, hi, x, y } = g;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr; canvas.height = h * dpr;
@@ -79,6 +81,24 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
     tickDay = b.date;
   }
 
+  if (volume) {
+    let top = 0;
+    for (let i = start; i < end; i++) top = Math.max(top, bars[i].volume || 0);
+    if (top > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      const base = padT + plotH, tall = plotH * 0.2;
+      for (let i = start; i < end; i++) {
+        const v = bars[i].volume || 0, b = bars[i];
+        if (!(v > 0)) continue;
+        ctx.fillStyle = b.close >= b.open ? cGreen : cRed;
+        const vh = Math.max(1, v / top * tall);
+        ctx.fillRect(x(i) - bw / 2, base - vh, bw, vh);
+      }
+      ctx.restore();
+    }
+  }
+
   const drawn = lines.filter(l => l.price > 0 && (!l.faint || (l.price >= lo && l.price <= hi)));
   for (const l of drawn) {
     ctx.save();
@@ -98,17 +118,34 @@ export function paintCandles(canvas, g, bars, { lines = [], hover = null, marks 
   }
 
   // 8 EMA of the closes, warmed up on the full history and clipped to the plot (it can lag outside the window's range)
-  const k = 2 / 9;
-  let e = bars[0].close;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(padL, padT, plotW, plotH); ctx.clip();
-  ctx.strokeStyle = cPurple; ctx.lineWidth = 1.25; ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  for (let i = 0; i < end; i++) {
-    e = bars[i].close * k + e * (1 - k);
-    if (i > start) ctx.lineTo(x(i), y(e)); else if (i === start) ctx.moveTo(x(i), y(e));
+  if (ema8) {
+    const k = 2 / 9;
+    let e = bars[0].close;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(padL, padT, plotW, plotH); ctx.clip();
+    ctx.strokeStyle = cPurple; ctx.lineWidth = 1.25; ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    for (let i = 0; i < end; i++) {
+      e = bars[i].close * k + e * (1 - k);
+      if (i > start) ctx.lineTo(x(i), y(e)); else if (i === start) ctx.moveTo(x(i), y(e));
+    }
+    ctx.stroke(); ctx.restore();
   }
-  ctx.stroke(); ctx.restore();
+  // more moving averages, already warmed up by the caller; a gap (null) breaks the line
+  for (const m of mas) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(padL, padT, plotW, plotH); ctx.clip();
+    ctx.strokeStyle = m.color; ctx.lineWidth = 1.25; ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    let on = false;
+    for (let i = start; i < end; i++) {
+      const v = m.values[i];
+      if (v == null || !Number.isFinite(v)) { on = false; continue; }
+      if (on) ctx.lineTo(x(i), y(v)); else ctx.moveTo(x(i), y(v));
+      on = true;
+    }
+    ctx.stroke(); ctx.restore();
+  }
 
   if (vwap?.length) {
     ctx.save();
@@ -184,8 +221,40 @@ export function ohlcText(b) {
  * A trackpad pinch (ctrl+wheel in Chrome and Firefox, gesture events in Safari) or ctrl/cmd+scroll zooms, sideways swipes,
  * shift+scroll and mouse drags pan, a plain vertical scroll is left to the page. On touch: long-press crosshair (release picks),
  * sideways swipe pans, two fingers pinch. A drag is not a click, so letting go never picks.
+ * Lines you can move (optional): o.grab(clientX, clientY, px) picks one up when the pointer is within px of it (mouse, or one
+ * finger at once, no long-press), o.dragTo(clientY) moves it, o.drop() lets go; o.grabbable(clientX, clientY, px) turns the cursor.
  */
 export function attachCandleGestures(canvas, o) {
+  // a held line takes the pointer before the pan, the crosshair and the tap
+  let held = false, dropped = 0;
+  const letGo = () => { held = false; dropped = Date.now() + 350; canvas.style.cursor = ''; o.drop(); };
+  if (o.grab) {
+    canvas.addEventListener('mousedown', e => {
+      if (e.button !== 0 || !o.count() || !o.grab(e.clientX, e.clientY, GRAB_PX.mouse)) return;
+      held = true;
+      e.preventDefault();
+      e.stopImmediatePropagation(); // not a pan
+      canvas.style.cursor = 'ns-resize';
+    });
+    window.addEventListener('mousemove', e => {
+      if (!held) return;
+      if (e.buttons === 0) { letGo(); return; } // released outside the window
+      o.dragTo(e.clientY);
+    });
+    window.addEventListener('mouseup', () => { if (held) letGo(); });
+    canvas.addEventListener('touchstart', e => {
+      if (e.touches.length === 1 && o.count() && o.grab(e.touches[0].clientX, e.touches[0].clientY, GRAB_PX.touch)) { held = true; e.stopImmediatePropagation(); }
+    }, { passive: true });
+    canvas.addEventListener('touchmove', e => {
+      if (!held) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (e.touches.length === 1) o.dragTo(e.touches[0].clientY);
+    }, { passive: false });
+    const touchEnd = e => { if (held) { e.stopImmediatePropagation(); letGo(); } };
+    canvas.addEventListener('touchend', touchEnd);
+    canvas.addEventListener('touchcancel', touchEnd);
+    canvas.addEventListener('mousemove', e => { if (!held && o.count()) canvas.style.cursor = o.grabbable(e.clientX, e.clientY, GRAB_PX.mouse) ? 'ns-resize' : ''; });
+  }
   const localX = clientX => clientX - canvas.getBoundingClientRect().left;
   // where a zoom pivots: 0 = the plot's left edge, 1 = its right (today's side)
   const anchorAt = clientX => { const g = o.geom(), a = (localX(clientX) - g.padL) / g.plotW; return Number.isFinite(a) ? a : 1; };
@@ -257,6 +326,7 @@ export function attachCandleGestures(canvas, o) {
   });
 
   canvas.addEventListener('click', e => {
+    if (Date.now() < dropped) return; // the click that ends a line drag is not a tap
     if (dragged) { dragged = false; return; }
     if (o.count()) o.pick(e.clientX, e.clientY);
   });

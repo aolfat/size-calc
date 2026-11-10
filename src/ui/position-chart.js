@@ -3,19 +3,24 @@
 // contract's own. And the profit-target form: tap either chart (or type it, or
 // set it in R) for the price, pick a portion, review it in the position sheet. Or Stop: tap (or type) the stop, see what it covers and risks,
 // review it in the position sheet. Or Move breakeven: tap where you want the stop, and it says how many to add so your average
-// cost lands there (a calculator; nothing goes to Schwab).
+// cost lands there (a calculator; nothing goes to Schwab). Or Close: tap the limit, pick how much, review it in the close ticket.
+// Your working stops and targets are lines you can drag: let go and Edit reviews the order at the new price.
+// Indicators (VWAP, 8 and 21 EMA, 50 and 200 SMA, volume) are chips, each kept on or off on this device.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
 import { clampView, viewRange } from '../core/chart-view.js';
 import { fmt$, marketEscape as esc, nyDateStr } from '../core/format.js';
 import { optionPriceTick, priceTick } from '../core/orders.js';
-import { breakevenAdd, closersInTheWay, fmtPositionPrice, positionLevels, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
+import { movingAverage } from '../core/indicators.js';
+import { breakevenAdd, closePlan, closersInTheWay, fmtPositionPrice, lineMove, orderLines, positionLevels, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
 import { sessionVwap } from '../core/trade-page.js';
 import { schwabStopDuration } from '../services/schwab.js';
 import { dailyHistory } from '../services/tradier.js';
 import { marketSource } from '../services/market-source.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles, snapToBar } from './candles.js';
 import { fetchFiveMinuteBars } from './chart.js';
+import { showError } from './feedback.js';
+import { openOrderEdit } from './order-edit.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
 import { positionChartInCards, positionRUnit, renderPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
@@ -26,6 +31,16 @@ const R_DEFAULT = [1, 2, 3, 5];
 const R_MAX = 5;
 // range chips on the daily, in sessions (the 5-minute pane is the latest session only)
 const DAILY_CHIPS = [[21, '1M'], [63, '3M'], [126, '6M'], [252, '1Y']];
+// the indicator chips, in order: a moving average has its kind and length; VWAP is the 5-minute pane's only; Vol is both panes' volume
+export const INDICATORS = [
+  { id: 'vwap', label: 'VWAP', color: '--teal' },
+  { id: 'ema8', label: '8 EMA', color: '--purple', kind: 'ema', n: 8 },
+  { id: 'ema21', label: '21 EMA', color: '--amber', kind: 'ema', n: 21 },
+  { id: 'sma50', label: '50 SMA', color: '--pink', kind: 'sma', n: 50 },
+  { id: 'sma200', label: '200 SMA', color: '--text', kind: 'sma', n: 200 },
+  { id: 'vol', label: 'Vol', color: '--text3' },
+];
+const indicatorOn = id => !state.posChartIndOff.includes(id);
 const units = (option, n) => `${n.toLocaleString('en-US')} ${option ? (n === 1 ? 'contract' : 'contracts') : (n === 1 ? 'share' : 'shares')}`;
 
 /** your R chips, smallest first: the chart's target and the close ticket share them */
@@ -82,7 +97,7 @@ const SUFFIX = { five: '5', daily: 'D' };
 // a pane: one timeframe's bars, VWAP (5-minute only), view, range chip (daily only), hover and load state
 function newPane(kind) {
   const range = kind === 'five' ? 0 : state.dailyRange; // the daily starts at the daily_range preference
-  return { kind, bars: [], vwap: [], view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1 };
+  return { kind, bars: [], vwap: [], mas: {}, view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1 };
 }
 
 // the pane's whole view: the whole session on the 5-minute, the range chip's sessions back from now on the daily
@@ -98,7 +113,8 @@ function chartRow() {
 export function togglePositionChart(symbol) {
   if (state.posChart && state.posChart.symbol === symbol) { closePositionChart(); return; }
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
-  const c = { symbol, option: !!(row && row.tradeAs === 'OPTION'), label: row ? row.label : symbol, five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null };
+  const c = { symbol, option: !!(row && row.tradeAs === 'OPTION'), label: row ? row.label : symbol, five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null,
+    closePrice: null, closeQty: null, drag: null };
   state.posChart = c;
   setTargetInputs();
   renderPositions(); // the button lights, and the chart renders with the table
@@ -120,11 +136,12 @@ function loadBars(c) {
 
 async function loadPane(c, kind) {
   const five = kind === 'five', sym = tradierSymbol(c.symbol);
-  let bars = [], error = '';
+  let bars = [], all = [], error = '';
   try {
-    bars = five
-      ? latestSession((await fetchFiveMinuteBars(sym)).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 })))
+    all = five
+      ? (await fetchFiveMinuteBars(sym)).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }))
       : await dailyHistory(sym);
+    bars = five ? latestSession(all) : all;
     error = bars.length ? '' : c.option ? (five ? `Tradier shows no trades in ${c.label} in the last two weeks.` : `Tradier has no daily history for ${c.label}.`)
       : five ? `Tradier shows no 5-minute bars for ${c.symbol} in the last two weeks.` : `Tradier has no daily history for ${c.symbol}.`;
   } catch(e) {
@@ -132,9 +149,34 @@ async function loadPane(c, kind) {
   }
   if (state.posChart !== c) return; // closed while it loaded
   const p = c[kind];
-  Object.assign(p, { bars, error, loading: false, vwap: five ? sessionVwap(bars) : [] });
+  Object.assign(p, { bars, error, loading: false, vwap: five ? sessionVwap(bars) : [], mas: paneAverages(all.slice(0, all.length - bars.length), bars) });
   p.view = rangeView(p);
   renderPositionChart();
+}
+
+/** each moving average over the pane's bars, warmed up on the bars before them (the 5-minute pane's earlier days) */
+export function paneAverages(before, bars) {
+  const warm = before.map(b => b.close), closes = bars.map(b => b.close), out = {};
+  for (const i of INDICATORS) if (i.n) out[i.id] = movingAverage(warm, closes, i.kind, i.n);
+  return out;
+}
+
+/** an indicator chip: shows or hides it on both panes; what's hidden stays hidden on this device */
+export function togglePosChartInd(id) {
+  if (!INDICATORS.some(i => i.id === id)) return;
+  state.posChartIndOff = indicatorOn(id) ? [...state.posChartIndOff, id] : state.posChartIndOff.filter(x => x !== id);
+  store.set('pos_chart_ind_off', JSON.stringify(state.posChartIndOff));
+  renderIndicatorChips();
+  drawPositionChart();
+}
+
+function renderIndicatorChips() {
+  const html = INDICATORS.map(i => {
+    const on = indicatorOn(i.id);
+    return `<button class="filter-btn pos-ind${on ? ' active' : ''}" aria-pressed="${on}" data-action="togglePosChartInd" data-arg="${i.id}" title="${on ? 'Hide' : 'Show'} ${i.label}${i.id === 'vwap' ? ' (5 min)' : ''}"><i style="background:var(${i.color})"></i>${i.label}</button>`;
+  }).join('');
+  const el = document.getElementById('posChartInd');
+  if (el.innerHTML !== html) el.innerHTML = html;
 }
 
 const priceText = (c, p) => c && p > 0 ? p.toFixed(p >= 1 || c.option ? 2 : 4) : '';
@@ -159,7 +201,30 @@ function setTargetInputs() {
   document.getElementById('posAddStop').value = priceText(c, c && c.addStop);
   document.getElementById('posAddPrice').value = priceText(c, c && c.addPrice);
   document.getElementById('posChartStopPrice').value = priceText(c, c && c.stop);
+  document.getElementById('posChartClosePrice').value = priceText(c, c && c.closePrice);
+  document.getElementById('posChartCloseQty').value = c && c.closeQty >= 1 ? String(c.closeQty) : '';
 }
+
+/** typing in the Close tool's limit or count; the inputs keep what was typed */
+export function posChartCloseChanged() {
+  const c = state.posChart;
+  if (!c) return;
+  const price = parseFloat(document.getElementById('posChartClosePrice').value), qty = Number(document.getElementById('posChartCloseQty').value);
+  c.closePrice = price > 0 ? price : null;
+  c.closeQty = qty > 0 ? qty : null;
+  renderPositionChart();
+}
+
+/** a Close portion chip: that share of what you hold, at least one; All is every share (the review makes room for it) */
+export function setPosClosePortion(fraction) {
+  const c = state.posChart, row = chartRow();
+  if (!c || !row) return;
+  c.closeQty = closeQty(row, fraction);
+  setTargetInputs();
+  renderPositionChart();
+}
+
+const closeQty = (row, fraction) => { const held = Math.abs(row.qty); return fraction >= 1 ? held : Math.min(held, Math.max(1, Math.floor(held * fraction))); };
 
 /** typing in the stop price; the input keeps what was typed */
 export function posChartStopChanged() {
@@ -205,9 +270,9 @@ export function setPosTargetR(r) {
   renderPositionChart();
 }
 
-/** Profit target | Stop | Move breakeven: which form shows, and what a tap on the chart sets */
+/** Profit target | Stop | Close | Move breakeven: which form shows, and what a tap on the chart sets */
 export function setPosChartTool(tool) {
-  state.posChartTool = tool === 'add' || tool === 'stop' ? tool : 'target';
+  state.posChartTool = ['add', 'stop', 'close'].includes(tool) ? tool : 'target';
   renderPositionChart();
 }
 
@@ -239,7 +304,10 @@ function pickTarget(price) {
   const c = state.posChart;
   if (!c || !(price > 0)) return;
   const ticked = c.option ? optionPriceTick(price) : priceTick(price);
-  if (state.posChartTool === 'add') c.addStop = ticked; else if (state.posChartTool === 'stop') c.stop = ticked; else { c.price = ticked; c.r = null; }
+  const tool = state.posChartTool;
+  if (tool === 'add') c.addStop = ticked; else if (tool === 'stop') c.stop = ticked;
+  else if (tool === 'close') { c.closePrice = ticked; if (!(c.closeQty > 0) && chartRow()) c.closeQty = Math.abs(chartRow().qty); }
+  else { c.price = ticked; c.r = null; }
   setTargetInputs();
   renderPositionChart();
 }
@@ -260,6 +328,16 @@ export function positionStopPlaced(symbol) {
   const c = state.posChart;
   if (!c || c.symbol !== symbol) return;
   c.stop = null;
+  setTargetInputs();
+  renderPositionChart();
+}
+
+/** after Schwab shows the close: the Close form clears */
+export function positionClosePlaced(symbol) {
+  const c = state.posChart;
+  if (!c || c.symbol !== symbol) return;
+  c.closePrice = null;
+  c.closeQty = null;
   setTargetInputs();
   renderPositionChart();
 }
@@ -327,6 +405,25 @@ function stopStatus(c, row) {
   return { text: `<strong>Stop at ${px(plan.stop)} for ${units(c.option, held)}</strong>${risk}${notes ? `<span class="shares-detail">${esc(notes)}</span>` : ''}`, ok: true, html: true };
 }
 
+/** what the Close tool says under its inputs, and whether the close can go to review: the same plan the close ticket makes */
+function closeStatus(c, row) {
+  const p = state.positions;
+  if (!p) return { text: state.positionsBusy ? 'Reading Schwab…' : 'Positions are not loaded.', ok: false };
+  if (!row) return { text: `Schwab no longer shows a ${c.symbol} position.`, ok: false, warn: true };
+  if (p.stopsMissing) return { text: 'Stops unavailable: Schwab did not return this account\'s orders. Try again in a moment.', ok: false, warn: true };
+  const long = row.qty > 0, verb = long ? 'sell' : 'buy back', px = v => fmtPositionPrice(v, row.tradeAs), held = Math.abs(row.qty);
+  if (!(c.closePrice > 0)) return { text: `Tap the chart where you want to ${verb}, or type a limit.`, ok: false };
+  if (!(c.closeQty > 0)) return { text: `Pick how much to ${verb}: a portion or a count.`, ok: false };
+  const plan = closePlan(row, { type: 'LIMIT', qty: c.closeQty, price: c.closePrice, duration: schwabStopDuration() });
+  if (plan.error) return { text: plan.error, ok: false, warn: true };
+  const unit = unitFor(row), g = targetGain(row, plan.price, c.closeQty, unit.per);
+  const gain = g.gain === null ? '' : ` · <span class="${g.gain >= 0 ? 'pos-locked' : 'pos-loss'}">${g.gain >= 0 ? '+' : '−'}${fmt$(Math.abs(g.gain))}</span> (${g.pct >= 0 ? '+' : '−'}${Math.abs(g.pct).toFixed(1)}%) over cost${g.r === null ? '' : ` · ${g.r.toFixed(1)}R`}`;
+  const through = long ? plan.price <= row.price : plan.price >= row.price;
+  const notes = [through ? `At or ${long ? 'below' : 'above'} the price ${px(row.price)}: it likely fills right away.` : '',
+    c.closeQty === held ? 'All of it: the review cancels your stops and targets on it first.' : row.closers.length ? 'The review shows what it cuts or pairs to make room.' : ''].filter(Boolean).join(' ');
+  return { text: `<strong>${long ? 'Sell' : 'Buy back'} ${c.closeQty.toLocaleString('en-US')} of ${units(c.option, held)} at ${px(plan.price)}</strong>${gain}${notes ? `<span class="shares-detail">${esc(notes)}</span>` : ''}`, ok: true, html: true };
+}
+
 /** what Move breakeven says: how many to add, at what, and what the position looks like after */
 function addStatus(c, row) {
   const p = state.positions;
@@ -360,6 +457,12 @@ export function renderPositionChart() {
   for (const k of PANES) document.getElementById('posCol' + SUFFIX[k]).style.display = c[k].bars.length ? '' : 'none';
   document.getElementById('posChartPlot').style.display = c.five.bars.length || c.daily.bars.length ? '' : 'none';
   document.getElementById('posTargetQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
+  document.getElementById('posChartCloseQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
+  renderIndicatorChips();
+  document.getElementById('posChartClosePortions').innerHTML = PORTIONS.map(([f, label]) => {
+    const qty = row ? closeQty(row, f) : 0, on = qty > 0 && c.closeQty === qty;
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosClosePortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
+  }).join('');
 
   const room = row ? targetRoom(row) : null;
   document.getElementById('posTargetPortions').innerHTML = PORTIONS.map(([f, label]) => {
@@ -377,7 +480,7 @@ export function renderPositionChart() {
   if (!originalEditingIn('chart')) document.getElementById('posTargetOrig').innerHTML = originalStopBlock(row, 'chart');
 
   const tool = state.posChartTool, adding = tool === 'add';
-  for (const [id, on] of [['posToolTarget', tool === 'target'], ['posToolStop', tool === 'stop'], ['posToolAdd', adding]]) {
+  for (const [id, on] of [['posToolTarget', tool === 'target'], ['posToolStop', tool === 'stop'], ['posToolClose', tool === 'close'], ['posToolAdd', adding]]) {
     const b = document.getElementById(id);
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
@@ -385,7 +488,9 @@ export function renderPositionChart() {
   document.getElementById('posTargetForm').style.display = tool === 'target' ? '' : 'none';
   document.getElementById('posStopForm').style.display = tool === 'stop' ? '' : 'none';
   document.getElementById('posAddForm').style.display = adding ? '' : 'none';
-  document.getElementById('posChartTapHint').textContent = adding ? 'Tap the chart where you want your stop' : tool === 'stop' ? 'Tap the chart to set the stop' : 'Tap the chart to set the target';
+  document.getElementById('posChartCloseForm').style.display = tool === 'close' ? '' : 'none';
+  document.getElementById('posChartTapHint').textContent = adding ? 'Tap the chart where you want your stop' : tool === 'stop' ? 'Tap the chart to set the stop'
+    : tool === 'close' ? 'Tap the chart to set the close limit' : 'Tap the chart to set the target';
   document.getElementById('posAddPrice').placeholder = row && row.price > 0 ? `now ${row.price.toFixed(2)}` : 'now';
   const add = addStatus(c, row), addSum = document.getElementById('posAddSummary');
   addSum.className = 'pos-target-sum' + (add.warn ? ' warn' : '');
@@ -405,16 +510,26 @@ export function renderPositionChart() {
   const stopReview = document.getElementById('posStopReview');
   stopReview.dataset.arg = c.symbol;
   stopReview.disabled = !stop.ok || state.posTradeBusy;
+  const close = closeStatus(c, row), closeSum = document.getElementById('posChartCloseSummary');
+  closeSum.className = 'pos-target-sum' + (close.warn ? ' warn' : '');
+  closeSum.innerHTML = close.html ? close.text : esc(close.text);
+  const closeReview = document.getElementById('posChartCloseReview');
+  closeReview.dataset.arg = c.symbol;
+  closeReview.disabled = !close.ok || state.posTradeBusy;
   drawPositionChart();
 }
 
 // the levels drawn: your average cost only while Avg is on
 const levels = row => row ? positionLevels(row).filter(l => l.kind !== 'avg' || state.posChartAvg) : [];
 
+/** the price the picked tool has set: the target, the stop, the close limit or Move breakeven's stop */
+const toolPrice = c => ({ add: c.addStop, stop: c.stop, close: c.closePrice })[state.posChartTool] ?? (state.posChartTool === 'target' ? c.price : null);
+
 function chartGeom(p, w) {
-  const c = state.posChart, row = chartRow();
-  const tool = state.posChartTool, add = tool === 'add';
-  return candleGeom(p.bars, p.view, w, [...levels(row).map(l => l.price), (add ? c.addStop : tool === 'stop' ? c.stop : c.price) || 0, (add && c.addPrice) || 0]);
+  const c = state.posChart, row = chartRow(), d = c.drag;
+  // the pane a line is dragged on holds its scale still, so the line stays under the pointer; the other pane fits it in
+  if (d && d.pane === p.kind && d.g.w === w) return d.g;
+  return candleGeom(p.bars, p.view, w, [...levels(row).map(l => l.price), toolPrice(c) || 0, (state.posChartTool === 'add' && c.addPrice) || 0, (d && d.moved && d.at) || 0]);
 }
 
 /** the session before the 5-minute chart's latest, from the daily bars: its high, low and close, or null */
@@ -437,7 +552,12 @@ function chartLines(c, row) {
     if (c.addPrice > 0) lines.push({ price: c.addPrice, color: color('--blue'), label: `add ${c.addPrice.toFixed(2)}${a && !a.error ? size(a.qty) : ''}`, solid: true });
   } else if (state.posChartTool === 'stop') {
     if (c.stop > 0) lines.push({ price: c.stop, color: color('--red'), label: `new stop ${c.stop.toFixed(2)}`, solid: true });
+  } else if (state.posChartTool === 'close') {
+    if (c.closePrice > 0) lines.push({ price: c.closePrice, color: color('--amber'), label: `close ${c.closePrice.toFixed(2)}${c.closeQty > 0 ? size(c.closeQty) : ''}`, solid: true });
   } else if (c.price > 0) lines.push({ price: c.price, color: color('--green'), label: `new target ${c.price.toFixed(2)}${c.qty > 0 ? size(c.qty) : ''}${c.r > 0 ? ` · ${c.r}R` : ''}`, solid: true });
+  // a line being dragged: solid at where it would go, the order's own line still dashed where it is
+  const d = c.drag;
+  if (d && d.moved && d.at > 0) lines.push({ price: d.at, color: color(d.line.kind === 'stop' ? '--red' : '--green'), label: `${d.line.kind} → ${d.at.toFixed(2)}${size(d.line.qty)}`, solid: true });
   return lines;
 }
 
@@ -468,7 +588,9 @@ function drawPane(c, p, row) {
   if (!w) return null; // hidden: painting now would wipe the canvas to zero width
   const g = chartGeom(p, w), five = p.kind === 'five';
   const lines = [...(five ? priorDayLines(c) : []), ...chartLines(c, row)];
-  paintCandles(canvas, g, p.bars, { lines, hover: { index: p.hover, y: p.hoverY }, vwap: five ? p.vwap : null });
+  const css = getComputedStyle(document.documentElement);
+  const mas = INDICATORS.filter(i => i.n && indicatorOn(i.id) && p.mas[i.id]).map(i => ({ values: p.mas[i.id], color: css.getPropertyValue(i.color).trim() }));
+  paintCandles(canvas, g, p.bars, { lines, hover: { index: p.hover, y: p.hoverY }, vwap: five && indicatorOn('vwap') ? p.vwap : null, ema8: false, mas, volume: indicatorOn('vol') });
   return g;
 }
 
@@ -492,7 +614,13 @@ export function drawPositionChart() {
   // Profit target: the price counted in R
   const per = onPlot && row && state.posChartTool === 'target' ? unitFor(row).per : null, gain = per ? targetGain(row, at, 1, per) : null;
   const rs = gain && gain.r !== null ? ` · ${gain.r >= 0 ? '' : '−'}${Math.abs(gain.r).toFixed(1)}R` : '';
-  const vw = p.vwap[p.hover] > 0 ? ` &nbsp; VWAP ${p.vwap[p.hover].toFixed(2)}` : '';
+  const vw = p.vwap[p.hover] > 0 && indicatorOn('vwap') ? ` &nbsp; VWAP ${p.vwap[p.hover].toFixed(2)}` : '';
+  // dragging a line: where it goes, and what letting go does
+  if (c.drag && c.drag.moved) {
+    const d = c.drag, m = row ? lineMove(d.line, d.at, row.tradeAs) : null;
+    readout.innerHTML = esc(m && m.error ? m.error : `Let go to review the ${d.line.kind} at ${fmtPositionPrice(d.at, row && row.tradeAs)}`);
+    return;
+  }
   readout.innerHTML = (onPlot && now > 0 ? `$${at.toFixed(2)} (${at >= now ? '+' : '−'}${Math.abs(at / now * 100 - 100).toFixed(1)}% from now)${adds}${rs} &nbsp; ` : '') + ohlcText(b) + vw;
 }
 
@@ -507,6 +635,19 @@ export function initPositionChartEvents() {
       const index = g.index(clientX - rect.left);
       if (yy < g.padT || yy > g.h - g.padB) return { index, price: null, yy };
       return { index, price: snapToBar(g, pane().bars[index], yy), yy };
+    };
+    // the order line within px of the pointer, nearest first, with the scale it was found on; none while orders are unknown
+    const lineNear = (clientY, px) => {
+      const p = pane(), row = chartRow();
+      if (!p || !p.bars.length || !row || !state.positions || state.positions.stopsMissing) return null;
+      const g = geom(), yy = clientY - canvas.getBoundingClientRect().top;
+      if (yy < g.padT || yy > g.h - g.padB) return null;
+      let best = null;
+      for (const line of orderLines(row)) {
+        const dist = Math.abs(g.y(line.price) - yy);
+        if (dist <= px && (!best || dist < best.dist)) best = { line, dist };
+      }
+      return best && { line: best.line, g };
     };
     attachCandleGestures(canvas, {
       count: () => pane() ? pane().bars.length : 0,
@@ -527,6 +668,36 @@ export function initPositionChartEvents() {
         drawPositionChart();
       },
       pick: (clientX, clientY) => pickTarget(priceAt(clientX, clientY).price),
+      // your stops and targets: pick one up, move it, let go to review the order at the new price in Edit
+      grabbable: (clientX, clientY, px) => !!lineNear(clientY, px),
+      grab: (clientX, clientY, px) => {
+        const c = state.posChart, hit = lineNear(clientY, px);
+        if (!hit) return false;
+        c.drag = { pane: kind, line: hit.line, g: hit.g, at: hit.line.price, moved: false, x: clientX, y: clientY };
+        return true;
+      },
+      dragTo: clientY => {
+        const c = state.posChart, d = c && c.drag;
+        if (!d || d.pane !== kind) return;
+        if (!d.moved && Math.abs(clientY - d.y) < 3) return;
+        const yy = Math.min(d.g.h - d.g.padB, Math.max(d.g.padT, clientY - canvas.getBoundingClientRect().top));
+        const at = d.g.price(yy);
+        d.at = c.option ? optionPriceTick(at) : priceTick(at);
+        d.moved = true;
+        drawPositionChart();
+      },
+      drop: () => {
+        const c = state.posChart, d = c && c.drag;
+        if (!d || d.pane !== kind) return;
+        c.drag = null;
+        // a tap on a line is a tap: it sets the picked tool's price there, like anywhere else on the plot
+        if (!d.moved) { pickTarget(priceAt(d.x, d.y).price); return; }
+        const row = chartRow(), m = row ? lineMove(d.line, d.at, row.tradeAs) : null;
+        drawPositionChart();
+        if (!m) return;
+        if (m.error) { showError(m.error); return; }
+        if (m.edit.stop !== undefined || m.edit.price !== undefined) openOrderEdit(m.orderId, m.edit);
+      },
     });
   }
   window.addEventListener('resize', () => { if (state.positionsView) drawPositionChart(); });

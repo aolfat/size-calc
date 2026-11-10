@@ -4,6 +4,14 @@ import { store } from './lib/store.js';
 
 export const DAILY_RANGES = [21, 63, 126, 252]; // 1M / 3M / 6M / 1Y range chips, in sessions
 
+/** the position chart's indicators turned off, from pos_chart_ind_off; a bad or missing value is none */
+function indicatorsOff() {
+  try {
+    const a = JSON.parse(store.get('pos_chart_ind_off') || '[]');
+    return Array.isArray(a) ? a.filter(x => typeof x === 'string') : [];
+  } catch (e) { return []; }
+}
+
 export function createState() {
   const dailyRange = DAILY_RANGES.includes(+store.get('daily_range')) ? +store.get('daily_range') : 63;
   let posCols = [];
@@ -252,8 +260,9 @@ export function createState() {
     posOrig: null, // the original stop editor while open: { symbol, host: 'actions' | 'close' | 'chart', text, busy, error }
     posHideValue: store.get('positions_hide_value') === '1', // account value and cash masked in the Positions header
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
-    posChart: null, // the open position chart: { symbol, option, label, five, daily, error, price, qty, addStop, addPrice } (five and daily: a pane each, { kind, bars, vwap, view, range, loading, error, hover, hoverY }, range in sessions; price and qty = the target form, addStop and addPrice = Move breakeven's)
-    posChartTool: 'target', // what a tap on the position chart sets: 'target' (profit target), 'stop' (a stop to review) or 'add' (Move breakeven's stop); kept while charts open and close
+    posChartIndOff: indicatorsOff(), // the position chart's indicator chips turned off, by id (pos_chart_ind_off, this device only; a new indicator starts on)
+    posChart: null, // the open position chart: { symbol, option, label, five, daily, error, price, qty, addStop, addPrice } (five and daily: a pane each, { kind, bars, vwap, view, range, loading, error, hover, hoverY }, range in sessions; price and qty = the target form, addStop and addPrice = Move breakeven's, closePrice and closeQty = the Close tool's, drag = the order line being dragged: { pane, line, g, at, moved, x, y })
+    posChartTool: 'target', // what a tap on the position chart sets: 'target' (profit target), 'stop' (a stop to review), 'close' (a close limit to review) or 'add' (Move breakeven's stop); kept while charts open and close
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,
     spreadPendingCredit: false,

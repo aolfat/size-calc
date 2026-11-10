@@ -60,12 +60,13 @@ function buildWarnings(t) {
   return out;
 }
 
-export async function openOrderEdit(orderId) {
+/** Edit from the Working orders list, or from a line dragged on the position chart: edit is the change it starts with ({ stop } or { price }) */
+export async function openOrderEdit(orderId, edit = {}) {
   if (state.posTradeBusy) return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
   try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
-  state.editTicket = buildEditTicket(orderId);
+  state.editTicket = buildEditTicket(orderId, edit);
   if (state.positionsError && !state.editTicket.error) state.editTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   renderEditSheet();
   openSheet('edit');
