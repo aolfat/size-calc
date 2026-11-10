@@ -23,7 +23,7 @@ import { dailyPnl, nyParts } from '../core/journal-stats.js';
 import { saveJournalDay, saveLibraryItem } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { showError, showToast } from './feedback.js';
-import { newSetupFor, onSetupAdded, reviewedMark } from './journal-review.js';
+import { newSetupFor, onSetupAdded, reviewedMark, tacticGroupsHtml } from './journal-review.js';
 import { closeSheet } from './sheets.js';
 import { journalTradeList, renderJournal } from './journal.js';
 import { loadMissedChart, missedChartHtml } from './missed-chart.js';
@@ -713,7 +713,7 @@ function missedSection(day) {
       ${missedChartHtml(m.symbol, day)}
       ${row('Side', MISSED_SIDES.map(([v, w]) => chip(w, m.side === v, `data-action="setMissedSide" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
       ${row('Daily setups', `${setups.map(k => chip(setupName(k, m.side), onSetups.includes(k), `data-action="toggleMissedSetup" data-arg="${esc(m.id)}" data-arg2="${esc(k)}"`)).join('')}<button class="pos-link jr-new" data-action="newMissedSetup" data-arg="${esc(m.id)}">+ New setup</button>`)}
-      ${row('Entry tactics', `${tactics.map(i => chip(i.name, m.tactics.some(k => lib.resolve('tactic', k) === i.key), `data-action="toggleMissedTactic" data-arg="${esc(m.id)}" data-arg2="${esc(i.key)}"`)).join('')}${state.missedNewTactic === m.id
+      ${row('Entry tactics', `<div class="jr-setup-pick">${tacticGroupsHtml(tactics, i => chip(i.label, m.tactics.some(k => lib.resolve('tactic', k) === i.key), `data-action="toggleMissedTactic" data-arg="${esc(m.id)}" data-arg2="${esc(i.key)}" title="${esc(i.name)}"`))}</div>${state.missedNewTactic === m.id
         ? `<span class="jr-newbox"><input type="text" id="nbMissedTactic" maxlength="80" placeholder="Name" autocomplete="off" value="${esc(state.missedTacticDraft)}" data-input="missedTacticInput" data-enter="addMissedTactic" data-arg="${esc(m.id)}" aria-label="New entry tactic" /><button class="btn" data-action="addMissedTactic" data-arg="${esc(m.id)}">Add</button><button class="pos-link" data-action="cancelMissedTactic">Cancel</button></span>`
         : `<button class="pos-link jr-new" data-action="startMissedTactic" data-arg="${esc(m.id)}">+ New</button>`}`)}
       ${row('Why you missed it', MISSED_WHY.map(([v, w]) => chip(w, m.why === v, `data-action="setMissedWhy" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}

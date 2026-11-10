@@ -599,7 +599,7 @@ test('a missed trade makes a new setup or entry tactic on the spot', async () =>
   const tactic = lib().find(r => r.kind === 'tactic');
   assert.equal(tactic.name, 'ORB 5');
   assert.deepEqual(saved().tactics, [`mine:${tactic.id}`]);
-  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="mine:${tactic.id}">ORB 5<`));
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="mine:${tactic.id}" title="ORB 5">ORB 5<`));
   run(`startMissedTactic('${id}')`);
   await run(`addMissedTactic('${id}', '15-MINUTE pivot')`);
   await settle();
@@ -644,7 +644,8 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   assert.equal(saved()[0].symbol, 'NVDA');
   assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>[\s\S]*The day, 5 minutes[\s\S]*Daily setups[\s\S]*Entry tactics[\s\S]*Why you missed it/, 'open to fill in: the charts first, then the setup and tactic');
   assert.match(out(), /Add a Tradier key or log in to Schwab in Settings for NVDA&#39;s 5-minute chart\./, 'no key: the charts say why');
-  assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15">15m pivot<`));
+  assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15" title="15m pivot">Pivot<`));
+  assert.match(out(), /Entry tactics[\s\S]*<span class="jr-group-name">15m<\/span>[\s\S]*<span class="jr-group-name">30m<\/span>[\s\S]*<span class="jr-group-name">Other<\/span>[\s\S]*Why you missed it/, 'grouped by timeframe, as the Trade at Schwab sheet and a trade\'s review pick them');
   run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); toggleMissedSetup('${id}', 'ema8_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedTactic('${id}', 'pivot15'); toggleMissedTactic('${id}', 'nope')`);
   run(`toggleMissedTactic('${id}', 'six20'); toggleMissedTactic('${id}', 'pivot30')`);
   await settle();
