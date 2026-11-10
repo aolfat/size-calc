@@ -76,6 +76,17 @@ test('a limit entry is the same trigger with a price: buy at the limit or better
   assert.equal(run("limitEntryError({ isLong: true, stop: 98, limit: 0 })"), 'Set a limit price.');
 });
 
+test('a limit entry can work outside regular hours; the stop and every other entry stay in regular hours', async () => {
+  const { run } = await app();
+  const order = JSON.parse(JSON.stringify(run("sharesStopOrder({ symbol: 'TEST', qty: 250, isLong: true, stop: 98, stopDuration: 'GOOD_TILL_CANCEL', entryType: 'LIMIT', entryLimit: 99.5, session: 'SEAMLESS' })")));
+  assert.deepEqual([order.orderType, order.session, order.childOrderStrategies[0].session], ['LIMIT', 'SEAMLESS', 'NORMAL']);
+  for (const entryType of ['MARKET', 'STOP', 'STOP_LIMIT']) {
+    const o = run(`sharesStopOrder({ symbol: 'TEST', qty: 250, isLong: true, stop: 98, stopDuration: 'DAY', entryType: '${entryType}', entryStop: 101, entryLimit: 101.2, session: 'PM' })`);
+    assert.equal(o.session, 'NORMAL', entryType + ' works in regular hours only');
+  }
+  assert.equal(run("sharesStopOrder({ symbol: 'TEST', qty: 1, isLong: true, stop: 98, stopDuration: 'DAY', entryType: 'LIMIT', entryLimit: 99, session: 'OVERNIGHT' })").session, 'NORMAL', 'an unknown session is regular hours');
+});
+
 test('the stop snaps to the tick toward the entry, never looser than the plan', async () => {
   const { run } = await app();
   assert.equal(run('stopTick(45.973, true)'), 45.98);
@@ -623,6 +634,60 @@ test('a limit entry takes Mid, Ask or Bid from the live quote, the mid rounded t
   run('sheetQuote.bid = 100.01; sheetQuote.ask = 100.04; sheetQuote.at = Date.now()');
   run("setTradeLimitAt('mid')");
   assert.equal(state.tradeTicket.limitPrice, 100.02, 'down a cent for a short');
+});
+
+test('a limit entry picks when it works: Regular, Pre, After or Ext', async () => {
+  const net = network(async (path, init) => init.method === 'POST' ? new Response('', { status: 201, headers: { Location: 'https://api.schwabapi.com/trader/v1/accounts/HASH/orders/42' } }) : json({}, 404));
+  const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  await run('openTrade()');
+  const body = () => elements.get('tradeBody').innerHTML;
+  assert.doesNotMatch(body(), /data-action="setTradeSession"/, 'a market entry works in regular hours only');
+  run("actions.setTradeSession({ dataset: { arg: 'PM' } })");
+  assert.equal(state.tradeTicket.session, 'NORMAL', 'no session on a market entry');
+  run("actions.setTradeEntryType({ dataset: { arg: 'LIMIT' } })");
+  assert.match(body(), /Works in<\/dt><dd><div class="seg" role="group" aria-label="Works in"><button class="active" aria-pressed="true" data-action="setTradeSession" data-arg="NORMAL"/);
+  assert.match(body(), /data-arg="AM" title="Pre-market only"[^>]*>Pre<.*data-arg="PM" title="After hours only"[^>]*>After<.*data-arg="SEAMLESS"[^>]*>Ext</);
+  run("actions.setTradeSession({ dataset: { arg: 'PM' } })");
+  let t = state.tradeTicket;
+  assert.deepEqual([t.session, t.order.session, t.order.childOrderStrategies[0].session], ['PM', 'PM', 'NORMAL']);
+  assert.match(body(), /aria-pressed="true" data-action="setTradeSession" data-arg="PM"/);
+  assert.match(body(), /Today only, after hours\./);
+  assert.match(body(), /by the end of after hours/);
+  assert.match(body(), /The stop only triggers in regular hours\. If the limit fills outside them, nothing stops the shares until the open\./);
+  assert.match(elements.get('tradePlace').textContent || body(), /Buy 250 TEST at \$[\d.]+ \(after hours\)/);
+  run("actions.setTradeSession({ dataset: { arg: 'OVERNIGHT' } })");
+  assert.equal(state.tradeTicket.session, 'PM', 'an unknown session changes nothing');
+  run("setTradeLimit('99.9')");
+  assert.equal(state.tradeTicket.order.session, 'PM', 'a typed price keeps the session');
+  run("setTradeEntryType('MARKET')");
+  assert.equal(state.tradeTicket.order.session, 'NORMAL', 'market goes in regular hours');
+  assert.doesNotMatch(body(), /data-action="setTradeSession"/);
+  run("setTradeEntryType('LIMIT')");
+  assert.equal(state.tradeTicket.order.session, 'PM', 'back on Limit, the session picked stands');
+  run("setTradeSession('SEAMLESS')");
+  const flags = state.tradeTicket.flags;
+  await run('placeTrade()');
+  const post = net.schwabCalls().find(c => c.method === 'POST');
+  assert.ok(post, 'the order went');
+  assert.equal(JSON.parse(post.body).session, 'SEAMLESS', 'the order sent works in extended hours');
+  assert.ok(flags.includes('session'));
+  await run('openTrade()');
+  run("setTradeEntryType('LIMIT')");
+  assert.equal(state.tradeTicket.session, 'NORMAL', 'a new review starts in regular hours');
+});
+
+test('a limit entry outside its session says when it starts working', async () => {
+  const { run } = await app();
+  const at = (session, ms) => run(`entryHoursWarnings('LIMIT', '${session}', ${ms})`).map(w => w.text).join(' ');
+  const sat = Date.UTC(2026, 9, 3, 15, 0), preOpen = Date.UTC(2026, 9, 5, 12, 0), noon = Date.UTC(2026, 9, 5, 16, 0);
+  assert.match(at('SEAMLESS', sat), /Outside extended and regular hours\. The limit starts working when pre-market opens\./);
+  assert.doesNotMatch(at('SEAMLESS', preOpen), /Outside/, '8:00 New York is pre-market');
+  assert.doesNotMatch(at('AM', preOpen), /Outside/);
+  assert.match(at('PM', preOpen), /Outside after hours\. The limit starts working at the next after hours session\./);
+  assert.match(at('AM', noon), /Outside pre-market\./);
+  assert.match(at('AM', noon), /The stop only triggers in regular hours/, 'any session but regular warns about the stop');
+  assert.deepEqual(run(`entryHoursWarnings('LIMIT', 'NORMAL', ${noon})`), []);
+  assert.match(run(`entryHoursWarnings('MARKET', 'SEAMLESS', ${preOpen})`)[0].text, /A market order waits for the next open/, 'only a limit takes the session');
 });
 
 test('a lost answer is never retried and the next review warns about a repeat', async () => {

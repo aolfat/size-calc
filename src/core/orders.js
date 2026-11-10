@@ -1,5 +1,5 @@
 // @ts-check
-// Schwab orders: the shares entry (market, limit, stop or stop limit) that triggers a stop, a bought option's limit entry that triggers its stop, stops and market closes for held positions, price ticks, limits at the quote, and ticket checks.
+// Schwab orders: the shares entry (market, limit, stop or stop limit; a limit can work outside regular hours) that triggers a stop, a bought option's limit entry that triggers its stop, stops and market closes for held positions, price ticks, limits at the quote, and ticket checks.
 
 /** @typedef {'DAY' | 'GOOD_TILL_CANCEL'} StopDuration */
 /** @typedef {'NORMAL' | 'AM' | 'PM' | 'SEAMLESS'} OrderSession when a limit works: regular hours, pre-market, after hours, or Ext (all three) */
@@ -32,13 +32,15 @@ export function fmtTick(p) { return '$' + Number(p).toFixed(p >= 1 ? 2 : 4); }
  * One order that triggers another: buy (or sell short), and once it fills, a stop for the same shares. The entry is at
  * market, or a limit (at entryLimit or better), or a stop (a buy stop over the market, a sell-short stop under it: market
  * once it trades there), or a stop limit (once it trades at the stop, a limit at entryLimit or better). The entry lasts today.
- * @param {{ symbol: string, qty: number, isLong: boolean, stop: number, stopDuration: StopDuration, entryType?: EntryType, entryStop?: number, entryLimit?: number }} t
+ * session: when a limit entry works (pre-market, after hours or Ext); every other entry, and the stop, stay in regular hours,
+ * the only time Schwab's market and stop orders work.
+ * @param {{ symbol: string, qty: number, isLong: boolean, stop: number, stopDuration: StopDuration, entryType?: EntryType, entryStop?: number, entryLimit?: number, session?: OrderSession }} t
  */
-export function sharesStopOrder({ symbol, qty, isLong, stop, stopDuration, entryType = 'MARKET', entryStop = 0, entryLimit = 0 }) {
+export function sharesStopOrder({ symbol, qty, isLong, stop, stopDuration, entryType = 'MARKET', entryStop = 0, entryLimit = 0, session = 'NORMAL' }) {
   const leg = (/** @type {string} */ instruction) => ({ instruction, quantity: qty, instrument: { symbol, assetType: 'EQUITY' } });
   return {
     orderType: entryType,
-    session: 'NORMAL',
+    session: entryType === 'LIMIT' && SESSION_WORDS[session] ? session : 'NORMAL',
     duration: 'DAY',
     ...(entryType === 'STOP_LIMIT' || entryType === 'LIMIT' ? { price: entryLimit } : {}),
     ...(entryType === 'STOP' || entryType === 'STOP_LIMIT' ? { stopPrice: entryStop } : {}),
@@ -302,4 +304,21 @@ export function inOrderSession(ms, session) {
   const mins = (Number(part('hour')) % 24) * 60 + Number(part('minute'));
   const [from, to] = session === 'AM' ? [7 * 60, 9 * 60 + 25] : session === 'PM' ? [16 * 60 + 5, 20 * 60] : [7 * 60, 20 * 60];
   return mins >= from && mins < to;
+}
+
+/**
+ * What the hours mean for a shares entry placed at ms: outside its session it waits ('hours'), and a limit working outside regular
+ * hours can fill while the stop it triggers can't work yet ('session'; Schwab's stops trigger in regular hours only).
+ * @param {EntryType} entryType @param {OrderSession} session @param {number} ms @returns {{ flag: string, text: string }[]}
+ */
+export function entryHoursWarnings(entryType, session, ms) {
+  if (entryType === 'LIMIT' && session !== 'NORMAL' && SESSION_WORDS[session]) {
+    const out = [];
+    if (!inOrderSession(ms, session)) out.push({ flag: 'hours', text: session === 'SEAMLESS' ? 'Outside extended and regular hours. The limit starts working when pre-market opens.' : `Outside ${SESSION_WORDS[session]}. The limit starts working at the next ${SESSION_WORDS[session]} session.` });
+    out.push({ flag: 'session', text: 'The stop only triggers in regular hours. If the limit fills outside them, nothing stops the shares until the open.' });
+    return out;
+  }
+  if (inRegularHours(ms)) return [];
+  return [{ flag: 'hours', text: entryType === 'MARKET' ? 'Outside regular hours. A market order waits for the next open and can fill far from here.'
+    : entryType === 'LIMIT' ? 'Outside regular hours. The limit waits for the next open.' : 'Outside regular hours. The stop entry waits for the next regular session.' }];
 }
