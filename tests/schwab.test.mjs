@@ -600,29 +600,39 @@ test('a limit entry starts at the planned entry, moves as you type and caps the 
   assert.equal(state.tradeTicket.entryType, 'MARKET', 'the next review starts at market again');
 });
 
-test('a limit entry takes Mid, Ask or Bid from the live quote, the mid rounded toward a fill', async () => {
+test('a limit entry starts on Mid, lit, follows the live quote while a pick is lit, and stops once a price is typed', async () => {
   const { run, elements, state } = await sharesCard({ fetch: network(async () => json({}, 404)).fetch, storage: connected() });
   await run('openTrade()');
   run("actions.setTradeEntryType({ dataset: { arg: 'LIMIT' } })");
-  assert.match(elements.get('tradeBody').innerHTML, /id="tradeLimitPicks"[^>]*><button class="" aria-pressed="false" data-action="setTradeLimitAt" data-arg="mid"[^>]*>Mid<\/button><button[^>]*data-arg="ask"[^>]*>Ask<\/button><button[^>]*data-arg="bid"[^>]*>Bid</);
-  run('sheetQuote.bid = 100.01; sheetQuote.ask = 100.04; sheetQuote.at = Date.now()');
-  run("actions.setTradeLimitAt({ dataset: { arg: 'mid' } })");
+  const body = () => elements.get('tradeBody').innerHTML;
+  assert.match(body(), /id="tradeLimitPicks"[^>]*><button class="active" aria-pressed="true" data-action="setTradeLimitAt" data-arg="mid"[^>]*>Mid<\/button><button[^>]*data-arg="ask"[^>]*>Ask<\/button><button[^>]*data-arg="bid"[^>]*>Bid</, 'Mid is the default, lit');
+  assert.deepEqual([state.tradeTicket.limitPrice, state.tradeTicket.limitAt], [100, 'mid'], 'the mid of 99.98 x 100.02');
+
+  // the strip's next read moves the limit (and the ticket) with it; the shares stay
+  elements.set('tradePlace', { disabled: false, textContent: '' });
+  run("showSheetQuote('trade', { last: 100.02, bid: 100.01, ask: 100.04 })");
   let t = state.tradeTicket;
-  assert.deepEqual([t.limitPrice, t.order.price, t.qty, t.limitAt], [100.03, 100.03, 250, 'mid'], 'the mid of 100.01 x 100.04, up a cent for a buy; the shares stay');
-  assert.match(elements.get('tradeBody').innerHTML, /id="tradeLimit"[^>]*value="100.03"/);
-  assert.match(elements.get('tradeBody').innerHTML, /class="active" aria-pressed="true" data-action="setTradeLimitAt" data-arg="mid"/);
-  assert.match(elements.get('tradeBody').innerHTML, /Reviewed at<\/dt><dd>Bid \$100\.01 · ask \$100\.04/, 'the ticket moves to the quote it priced from');
-  run("setTradeLimitAt('ask')");
+  assert.deepEqual([t.limitPrice, t.order.price, t.qty, t.limitAt], [100.03, 100.03, 250, 'mid'], 'the mid of 100.01 x 100.04, up a cent for a buy');
+  assert.equal(elements.get('tradeLimit').value, '100.03');
+  assert.equal(elements.get('tradePlace').textContent, 'Buy 250 TEST at $100.03');
+  assert.match(elements.get('tradeDetail').innerHTML, /Reviewed at<\/dt><dd>Bid \$100\.01 · ask \$100\.04/, 'the ticket moves to the quote it priced from');
+
+  run("actions.setTradeLimitAt({ dataset: { arg: 'ask' } })");
   assert.equal(state.tradeTicket.limitPrice, 100.04);
+  run("showSheetQuote('trade', { last: 100.05, bid: 100.03, ask: 100.06 })");
+  assert.equal(state.tradeTicket.limitPrice, 100.06, 'Ask follows the ask');
+
   run("setTradeLimit('99.9')");
   assert.equal(state.tradeTicket.limitAt, '', 'a typed price is your own');
   assert.doesNotMatch(elements.get('tradeLimitPicks').innerHTML, /class="active"/);
+  run("showSheetQuote('trade', { last: 100.2, bid: 100.19, ask: 100.21 })");
+  assert.equal(state.tradeTicket.limitPrice, 99.9, 'and stays put as the quote moves');
+
   run("setDirection('short')");
   await run('openTrade()');
-  run("setTradeEntryType('LIMIT')");
   run('sheetQuote.bid = 100.01; sheetQuote.ask = 100.04; sheetQuote.at = Date.now()');
-  run("setTradeLimitAt('mid')");
-  assert.equal(state.tradeTicket.limitPrice, 100.02, 'down a cent for a short');
+  run("setTradeEntryType('LIMIT')");
+  assert.deepEqual([state.tradeTicket.limitPrice, state.tradeTicket.limitAt], [100.02, 'mid'], 'down a cent for a short, from the live quote');
 });
 
 test('a lost answer is never retried and the next review warns about a repeat', async () => {

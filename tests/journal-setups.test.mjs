@@ -65,7 +65,7 @@ test('the Setups tab: every setup with its numbers, unused ones too, then the re
   assert.match(html, /<b>8 EMA bounce \/ rejection<\/b><\/button><span class="pos-sub">Bounce \/ rejection at 8 EMA · not used yet<\/span>/, 'the ones not used yet are listed too');
   assert.ok(html.indexOf('<b>21 EMA bounce / rejection</b>') < html.indexOf('<b>8 EMA bounce / rejection</b>'), 'used ones first');
   assert.match(html, /By setup grade[\s\S]*<b>B<\/b>[\s\S]*<td>−1\.00R<\/td>/, 'the grade ladder, with average R');
-  assert.match(html, /By entry tactic[\s\S]*<b>30-minute pivot<\/b>/);
+  assert.match(html, /By entry tactic[\s\S]*<b>30m pivot<\/b>/);
   assert.match(html, /By mistake[\s\S]*<b>Chased the entry<\/b>/);
   assert.doesNotMatch(html, /id="journalSetupFilter"/, 'no setup filter on the setups themselves');
 

@@ -354,7 +354,7 @@ test("missed trades that can't be: not an object, a bad ticker, side, why or not
 
 test("a day's missed trades in words", () => {
   const j = journalFrom({ ...MISSED_DATA, days: [{ day: NEXT, missed: [MISSED_KEPT_ROW, { id: 'm2', symbol: 'SDGR', side: 'long', setups: ['mine:s2'], tactics: ['pivot15'], why: 'hesitated', note: null }] }] });
-  assert.equal(missedDetail(j, NEXT), ['2026-10-26 (Mon) missed trades (2):', '  AMD · short · Away · Faded the open.', '  SDGR · long · EMA 21 bounce · 15-minute pivot · Hesitated'].join('\n'));
+  assert.equal(missedDetail(j, NEXT), ['2026-10-26 (Mon) missed trades (2):', '  AMD · short · Away · Faded the open.', '  SDGR · long · EMA 21 bounce · 15m pivot · Hesitated'].join('\n'));
   assert.equal(missedDetail(journalFrom(DATA), NEXT), '2026-10-26 (Mon) missed trades (0):\n  —');
 });
 

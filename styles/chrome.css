@@ -103,15 +103,22 @@
 .trade-json { font:11px/1.45 var(--mono); color:var(--text2); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:8px; margin-top:6px; overflow:auto; max-height:220px; }
 /* the setup and entry tactic picks kept with the order (ui/order-plan.js) */
 .trade-plan { border-top:1px solid var(--border); padding-top:12px; margin-top:4px; }
-.trade-plan .trade-legs { margin-bottom:6px; }
-.trade-plan .trade-legs dd { align-items:stretch; width:100%; min-width:0; font-family:var(--sans); }
-.trade-plan .jr-search { width:100%; max-width:320px; flex:none; }
-.trade-plan .trade-chips { margin-top:6px; }
+/* Setup and Entry tactic: a title row (Setup with its search), then named rows of chips on the same 92px column as the legs above */
+.trade-plan-picks { margin-bottom:8px; }
+.tp-head { display:flex; align-items:center; gap:10px; margin:2px 0 4px; }
+.tp-head + .tp-groups { margin-bottom:10px; }
+.tp-title { flex:0 0 92px; font-size:12px; font-weight:600; color:var(--text); }
+.trade-plan .jr-search { flex:1 1 auto; max-width:320px; }
+.trade-plan .jr-group { grid-template-columns:92px 1fr; padding:5px 0; }
+.trade-plan .jr-group-name { padding-top:5px; font-weight:500; color:var(--text2); }
+.trade-plan .jr-group-chips .filter-btn { padding:5px 10px; }
+.trade-plan .jr-none { margin:6px 0 0; font-size:12px; color:var(--text3); }
 .trade-plan .hint { margin:0; }
 .jr-plan .hint { margin:0 0 2px; }
-/* phones: each label over its chips, so the chips get the sheet's width */
+/* phones: a narrower name column, so the chips keep most of the sheet's width */
 @media (max-width: 600px) {
-  .trade-plan .trade-legs > div { grid-template-columns:1fr; gap:6px; }
+  .tp-title { flex-basis:76px; }
+  .trade-plan .jr-group { grid-template-columns:76px 1fr; gap:6px 8px; }
   .trade-plan .jr-search { max-width:none; }
 }
 .trade-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
