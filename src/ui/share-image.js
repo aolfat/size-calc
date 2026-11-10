@@ -138,9 +138,9 @@ export function drawShareCard(spec) {
   x.font = `700 12px ${SANS_FONT}`;
   x.textAlign = 'right';
   x.fillStyle = SC.text3;
-  x.fillText('BRACKET', W - 40, H - 30);
+  x.fillText('TRADEFORGE', W - 40, H - 30);
   x.fillStyle = SC.green;
-  x.fillText('●', W - 40 - x.measureText('BRACKET').width - 8, H - 30);
+  x.fillText('●', W - 40 - x.measureText('TRADEFORGE').width - 8, H - 30);
   x.textAlign = 'left';
   return c;
 }

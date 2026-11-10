@@ -33,7 +33,7 @@ import { setView, startView } from './ui/views.js';
 import { loadWeekRules, paintWeekRulesSetting } from './ui/week-rules.js';
 
 // framed by another site: nothing to click (GitHub Pages can't send frame-ancestors, so this is the clickjacking guard)
-if (framedCrossOrigin()) { document.documentElement.replaceChildren(); throw new Error('Bracket does not run inside another site.'); }
+if (framedCrossOrigin()) { document.documentElement.replaceChildren(); throw new Error('Tradeforge does not run inside another site.'); }
 
 // the Schwab code leaves the address bar now, not after the Google session loads
 const bootHref = location.href;

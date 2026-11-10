@@ -1,8 +1,8 @@
-# Bracket
+# Tradeforge
 
 Trading software: sizing off a max loss, options, positions, Trade at Schwab, the journal and the market.
-It was the Size Calculator; Bracket is its name (owner request: a bracket order is entry, stop and target, the core of the app).
-The name shows in the page title, the home-screen name (manifest.json, apple-mobile-web-app-title) and the share cards' wordmark ('● BRACKET', drawShareCard).
+It was the Size Calculator, briefly Bracket; Tradeforge is its name (owner request: trading software that forges discipline, trade by trade).
+The name shows in the page title, the home-screen name (manifest.json, apple-mobile-web-app-title) and the share cards' wordmark ('● TRADEFORGE', drawShareCard).
 Addresses keep size-calc (the repo, the Pages URL, the Schwab workers and callback, the service worker's cache, the history download's app field): renaming them would break sign-in and the Schwab login.
 No build step, no dependencies, no framework: `index.html` markup, `styles/*.css`, and native ES modules in `src/`, served as-is.
 Keep it that way.

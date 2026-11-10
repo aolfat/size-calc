@@ -1,6 +1,6 @@
 {
-  "name": "Bracket",
-  "short_name": "Bracket",
+  "name": "Tradeforge",
+  "short_name": "Tradeforge",
   "description": "Trading software: size every trade off your max loss, trade at Schwab, journal every trade",
   "start_url": "./",
   "scope": "./",
