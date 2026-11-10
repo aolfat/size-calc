@@ -156,7 +156,7 @@ test('tapping Journal on a trade page goes back to the list', async () => {
 });
 
 test('a button elsewhere that opens a view still just opens it', async () => {
-  const { run, elements } = await app({ width: 390 });
+  const { run, elements } = await app({ width: 390, signedIn: true });
   const scrolls = [];
   globalThis.window.scrollTo = o => scrolls.push(o);
   run("setView('utils')");
@@ -194,7 +194,7 @@ function pullTarget() {
 const flush = () => new Promise(r => setImmediate(r));
 
 test('pull to refresh: past the line a release refreshes, with a tap you can feel and a spinner until it answers', async () => {
-  const { run, elements } = await app({ width: 390 });
+  const { run, elements } = await app({ width: 390, signedIn: true });
   const { attachPullRefresh, PULL_TRIGGER } = await import('../src/ui/native-feel.js');
   const { effects } = await import('../src/ui/effects.js');
   const { target, fire } = pullTarget();
@@ -226,7 +226,7 @@ test('pull to refresh: past the line a release refreshes, with a tap you can fee
 });
 
 test('pull to refresh leaves other gestures alone', async () => {
-  const { run, elements } = await app({ width: 390 });
+  const { run, elements } = await app({ width: 390, signedIn: true });
   const { attachPullRefresh } = await import('../src/ui/native-feel.js');
   const { target, fire } = pullTarget();
   run("setView('positions')");
@@ -257,19 +257,22 @@ test('pull to refresh leaves other gestures alone', async () => {
 
 test('pull to refresh refreshes what the view you are on refreshes', async () => {
   const { run } = await app({ width: 390 });
-  run("setView('utils')");
-  assert.equal(run('pullRefreshAction()'), null, 'Tools has nothing to refresh');
   run("setView('calc')");
   assert.equal(run('pullRefreshAction()'), null, 'no ticker loaded yet');
   run("quoteData = { symbol: 'AAPL', last: 200 }");
   assert.equal(typeof run('pullRefreshAction()'), 'function', 'Size: the quote, as ↻ does');
+  for (const view of ['positions', 'market', 'journal', 'utils']) {
+    run(`setView('${view}')`);
+    assert.equal(run('pullRefreshAction()'), null, `signed out, ${view} sits behind the sign-in gate: nothing to refresh`);
+  }
+  run('session = { user: { id: "u" } }; supabase = { from: () => { throw new Error("no reads here"); } }');
+  run("setView('utils')");
+  assert.equal(run('pullRefreshAction()'), null, 'Tools has nothing to refresh');
   run("setView('positions')");
   assert.equal(typeof run('pullRefreshAction()'), 'function');
   run("setView('market')");
   assert.equal(typeof run('pullRefreshAction()'), 'function');
   run("setView('journal')");
-  assert.equal(run('pullRefreshAction()'), null, 'signed out, the journal has nothing to read');
-  run('session = { user: { id: "u" } }');
   assert.equal(typeof run('pullRefreshAction()'), 'function');
   run('journalTrade = { key: "t1" }');
   assert.equal(run('pullRefreshAction()'), null, 'not on a trade page');

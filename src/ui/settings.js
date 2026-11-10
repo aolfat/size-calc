@@ -10,8 +10,10 @@ import { marketSource } from '../services/market-source.js';
 import { renderClaudeAccess } from './claude-access.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
-import { loadJournal, renderJournal } from './journal.js';
-import { refreshPositions, renderPositions } from './positions.js';
+import { renderJournal } from './journal.js';
+import { renderSignInGate } from './sign-in-gate.js';
+import { refreshLockedView } from './views.js';
+import { renderPositions } from './positions.js';
 import { drawChart } from './chart.js';
 import { drawDailyChart } from './daily.js';
 import { renderOrb } from './orb.js';
@@ -133,8 +135,8 @@ async function startSession(session) {
   // Legacy, anonymous, or another user's broker tokens must never follow a new Google account.
   // the callback page runs this before finishing its login: the attempt stays, and its tokens get this user
   if (!schwabSession()) schwabDisconnect({ keepAttempt: true });
-  if (state.journalView) loadJournal(); // a reload on the Journal: its records, now that there's a session to read them
-  if (state.positionsView) refreshPositions(); // a reload on Positions: the Schwab login is this user's, so it only counts now
+  // the sign-in gate opens: the tab behind it loads now (the Journal's records, Positions' Schwab login, now this user's)
+  refreshLockedView();
   setCloudUi('Syncing…');
   if (store.get('cloud_user') !== session.user.id) {
     let m;
@@ -155,15 +157,20 @@ async function startSession(session) {
 }
 
 async function resumeSession() {
-  state.sessionResuming = true; // the Journal says loading, not 'sign in', while the stored session comes back
-  if (state.journalView && !state.session) renderJournal();
+  state.sessionResuming = true; // the sign-in gate says loading, not 'sign in', while the stored session comes back
+  renderSignInGate();
   try {
     const session = await currentSession();
+    state.sessionOffline = false;
     if (session) await startSession(session);
     else setCloudUi('');
+  } catch(e) {
+    state.sessionOffline = !state.session; // still stored but couldn't come back (offline): the gate says so, the poll retries
+    throw e;
   } finally {
     state.sessionResuming = false;
-    if (state.journalView && !state.session) renderJournal();
+    state.sessionTried = true;
+    renderSignInGate();
   }
 }
 
@@ -183,14 +190,14 @@ export function setCloudUi(status) {
   renderClaudeAccess();
   document.getElementById('accountHint').textContent = !allowed ? CREDENTIAL_ORIGIN_MESSAGE : s
     ? 'Your settings and Tradier key sync across your devices. Signing out disconnects Schwab on this device.'
-    : 'Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. The calculator works without signing in.';
+    : 'Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. Size works without signing in; the other tabs need it.';
   document.getElementById('apiNotice').innerHTML = !allowed ? 'API keys are disabled on this address.'
     : (s ? 'Saved to your account, encrypted. The app administrator can decrypt synced keys. ' : 'Stored in this browser. ')
       + 'Requests go straight to Tradier. Get a free key at <a href="https://developer.tradier.com" target="_blank" rel="noopener">developer.tradier.com</a>. Optional when you log in to Schwab below.';
 }
 
 export async function initCloud(href = location.href) {
-  if (!credentialOriginAllowed()) { clearUnsafeCredentials(); setCloudUi('Credentials disabled on this address'); return; }
+  if (!credentialOriginAllowed()) { clearUnsafeCredentials(); setCloudUi('Credentials disabled on this address'); state.sessionTried = true; renderSignInGate(); return; }
   loadPending();
   setCloudUi('');
   if (isGoogleReturn(href)) {
@@ -217,6 +224,8 @@ export async function initCloud(href = location.href) {
   } else if (hasStoredSession()) {
     await resumeSession().catch(() => setCloudUi('Offline, will retry'));
   }
+  state.sessionTried = true;
+  renderSignInGate(); // no saved sign-in, or it didn't come back: the gate asks for one
   // Supabase broadcasts auth changes between tabs. Never await Supabase work inside this callback.
   if (!state.authSubscription && state.supabase?.auth.onAuthStateChange) {
     state.authSubscription = state.supabase.auth.onAuthStateChange((event, next) => {

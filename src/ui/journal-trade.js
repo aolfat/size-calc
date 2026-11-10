@@ -31,6 +31,7 @@ import { dropTradeExample, modelTradeRowHtml, onModelTradeChange, openModelImage
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
+import { viewLocked } from './sign-in-gate.js';
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -163,8 +164,8 @@ export function openTradeExample(id) {
 
 /** the list or the page (a trade, or the review deck's end): one shows at a time inside the Journal */
 export function syncJournalPage() {
-  const page = (!!state.journalTrade || !!state.journalDeck?.finished) && state.journalView;
-  document.getElementById('journalSection').style.display = state.journalView && !page ? '' : 'none';
+  const page = (!!state.journalTrade || !!state.journalDeck?.finished) && state.journalView && !viewLocked();
+  document.getElementById('journalSection').style.display = state.journalView && !page && !viewLocked() ? '' : 'none';
   document.getElementById('journalTradeSection').style.display = page ? '' : 'none';
 }
 

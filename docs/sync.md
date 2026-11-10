@@ -2,7 +2,7 @@
 
 Google sign-in through Supabase, which settings sync, the Tradier key in Vault, and what happens on sign-in, sign-out and account switches.
 
-- **Account and sync** (optional; the calculator works signed out, on this device only): Settings → Account → **Sign in with Google**, through Supabase Auth (project `dhohfavttsxwutanvcuj`, PKCE).
+- **Account and sync** (Size works signed out, on this device only; every other tab needs it: docs/tools.md, The sign-in gate): Settings → Account → **Sign in with Google**, through Supabase Auth (project `dhohfavttsxwutanvcuj`, PKCE).
   Design: `docs/journal-step-1-supabase.md`.
   The redirect comes back to the app's own address with `?login=google&code=…`; `initCloud` swaps the code (`detectSessionInUrl` is off) and strips the query; an old return address opened again (Chrome's history or autocomplete bring it back, its code already spent) resumes the session already on the device instead of showing signed out, and `initSchwab` ignores any address carrying `login=google` (both callbacks use `?code`).
   The session lives in the library's own localStorage key (`sb-<ref>-auth-token`; `hasStoredSession()` checks it without loading the library).

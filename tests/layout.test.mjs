@@ -226,7 +226,7 @@ test('the shares answer is its own card in the rail and follows the quote surfac
 });
 
 test('Positions in the header reflects the active view', async () => {
-  const { run, elements } = await app();
+  const { run, elements } = await app({ signedIn: true });
   run("setView('positions')");
   assert.equal(elements.get('brandPositions').getAttribute('aria-current'), 'page');
   assert.equal(elements.get('brandSize').getAttribute('aria-current'), null);

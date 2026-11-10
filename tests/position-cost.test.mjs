@@ -47,7 +47,7 @@ const fill = (id, side, qty, price, t, instruction = side === 'buy' ? 'BUY' : 'S
   ({ id, orderId: String(id), account: '6789', time: `2026-10-0${t}T14:00:00Z`, symbol: 'TEST', label: 'TEST', assetType: 'EQUITY', instruction, side, qty, price });
 
 test('a Journal trade keeps the whole position\'s average through a trim, and the lots left oldest-sold-first', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const [t] = run(`buildTrades(${JSON.stringify([fill(1, 'buy', 100, 10, 1), fill(2, 'buy', 100, 12, 2), fill(3, 'sell', 100, 13, 3)])})`);
   assert.equal(t.status, 'open');
   assert.equal(t.costAvg, 11, 'the add averages in, the trim leaves it');
@@ -61,7 +61,7 @@ test('a Journal trade keeps the whole position\'s average through a trim, and th
 });
 
 test('journalCost: the average, the lots and the whole-trade-even price, only when the Journal holds what Schwab does', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const trade = { costAvg: 11, lotsAvg: 12, avgEntry: 11, entryQty: 200, openQty: 100, avgExit: 13 };
   assert.deepEqual(run(`journalCost(${JSON.stringify(trade)}, 100)`), { avg: 11, lots: 12, net: 9, trimmed: true });
   assert.equal(run(`journalCost(${JSON.stringify(trade)}, 150)`), null, 'another quantity: Schwab\'s figure stays');
@@ -70,7 +70,7 @@ test('journalCost: the average, the lots and the whole-trade-even price, only wh
 });
 
 test('Positions shows the whole position\'s average with Schwab\'s figure under it, and counts P/L and the breakeven from it', async () => {
-  const { run, elements, state } = await app({ fetch: broker().fetch, storage: connected() });
+  const { run, elements, state } = await app({ signedIn: true, fetch: broker().fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const row = state.positions.rows.find(r => r.symbol === 'TEST');
@@ -83,7 +83,7 @@ test('Positions shows the whole position\'s average with Schwab\'s figure under 
 
 test('without a matching Journal trade the row keeps Schwab\'s average', async () => {
   // the orders only hold the add and the trim: the first 100 is older than Schwab's 59 days
-  const { run, state } = await app({ fetch: broker(FILLS.slice(1)).fetch, storage: connected() });
+  const { run, state } = await app({ signedIn: true, fetch: broker(FILLS.slice(1)).fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const row = state.positions.rows.find(r => r.symbol === 'TEST');
@@ -94,7 +94,7 @@ test('without a matching Journal trade the row keeps Schwab\'s average', async (
 
 test('after a trim the breakeven stop asks which breakeven: the average, the last lots or the whole trade even', async () => {
   const b = broker();
-  const { run, elements, state } = await app({ fetch: b.fetch, storage: connected() });
+  const { run, elements, state } = await app({ signedIn: true, fetch: b.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const choices = run(`breakevenChoices(state.positions.rows[0])`);
@@ -115,7 +115,7 @@ test('after a trim the breakeven stop asks which breakeven: the average, the las
 });
 
 test('the Stop sheet offers a chip for each breakeven after a trim', async () => {
-  const { run, elements } = await app({ fetch: broker().fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: broker().fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   await run("openPositionTrade('TEST', 'stop')");
@@ -126,7 +126,7 @@ test('the Stop sheet offers a chip for each breakeven after a trim', async () =>
 });
 
 test('with the price under the average, the breakeven stop starts on the one that can still work', async () => {
-  const { run, elements, state } = await app({ fetch: broker(FILLS, held(10.5)).fetch, storage: connected() });
+  const { run, elements, state } = await app({ signedIn: true, fetch: broker(FILLS, held(10.5)).fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   await run("openPositionTrade('TEST', 'breakeven')");
@@ -139,7 +139,7 @@ test('with the price under the average, the breakeven stop starts on the one tha
 });
 
 test('a stop at the average leaves the BE stop button while Last lots is tighter', async () => {
-  const { run, elements } = await app({ fetch: broker([...FILLS, stopAt(9, 11.2)], held(14)).fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: broker([...FILLS, stopAt(9, 11.2)], held(14)).fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const row = elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
@@ -148,14 +148,14 @@ test('a stop at the average leaves the BE stop button while Last lots is tighter
   assert.equal(run('posTicket.beAt'), 'lots', 'the average and the scratch are already covered');
   assert.equal(run('posTicket.stop'), 12);
   // a stop at the last lots covers every breakeven: nothing left to move
-  const done = await app({ fetch: broker([...FILLS, stopAt(9, 12)], held(14)).fetch, storage: connected() });
+  const done = await app({ signedIn: true, fetch: broker([...FILLS, stopAt(9, 12)], held(14)).fetch, storage: connected() });
   done.run("setView('positions')");
   await settle();
   assert.doesNotMatch(done.elements.get('positionsSection').innerHTML, /data-arg2="breakeven"/);
 });
 
 test('a spread\'s legs keep Schwab\'s cost', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const C = 'TEST  261218C00050000', P = 'TEST  261218C00060000';
   const leg = (symbol, instruction, price, time, id) => ({ id: String(id), orderId: String(id), account: '6789', time, symbol, label: symbol, assetType: 'OPTION', instruction, side: /BUY/.test(instruction) ? 'buy' : 'sell', qty: 1, price });
   const trades = run(`buildTrades(${JSON.stringify([leg(C, 'BUY_TO_OPEN', 3, '2026-10-01T14:00:00Z', 1), leg(P, 'SELL_TO_OPEN', 1, '2026-10-02T14:00:00Z', 2)])})`);

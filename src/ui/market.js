@@ -14,6 +14,7 @@ import { openSheet } from './sheets.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { fetchQuote } from './ticker.js';
 import { setView } from './views.js';
+import { viewLocked } from './sign-in-gate.js';
 
 export const MARKET_FILE = 'data/market-universe-2026-09-16.csv';
 
@@ -300,6 +301,7 @@ export function marketRefreshDue(scope = marketRefreshScope()) {
 // background (MARKET_BACKGROUND_MS, batches spaced wider); daily history loads only in Market. A hidden app or no network stops both.
 export function marketScheduleRefresh() {
   clearTimeout(state.marketState.timer); state.marketState.timer = null;
+  if (viewLocked()) { marketAbortRefresh(); return; } // the sign-in gate: no quotes behind it
   const background = !state.marketView;
   if (document.hidden || navigator.onLine === false || (background && !state.marketState.stocks.length)) {
     marketAbortRefresh();

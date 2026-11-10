@@ -55,7 +55,7 @@ After the Schwab login, Schwab sends the browser to your callback URL with a
 `code` in the address.
 
 - **Callback is the app's own URL** (recommended, for example
-  `https://size-calc-app.<your-account>.workers.dev/`): the app finishes the login by itself.
+  `https://app.<your-account>.workers.dev/`): the app finishes the login by itself.
   The worker reports its callback at `/callback`, and when it's the app's own
   page, Settings hides the paste box. The portal takes one HTTPS address (a
   comma list was rejected). Changing the callback can put the app back into

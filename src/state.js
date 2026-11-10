@@ -39,6 +39,8 @@ export function createState() {
     simReg: {}, // chain detail rows park their sim params here by option symbol
     session: null, // the signed-in Supabase session, or null
     sessionResuming: false, // a stored session is being read back (boot, or the poll's retry)
+    sessionTried: false, // boot has tried to read back a stored session (the sign-in gate says loading until then)
+    sessionOffline: false, // a stored session couldn't be read back (offline): the sign-in gate says so instead of asking to sign in
     authSubscription: null, // observes sign-out and user changes from other tabs
     signingOut: false, // the explicit sign-out owns cleanup and reload while Supabase emits SIGNED_OUT
     supabase: null, // the Supabase client, created on first use (tests put a fake here)

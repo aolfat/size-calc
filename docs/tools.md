@@ -5,6 +5,12 @@ The top-level tabs and the Tools view: the % gain card, the leveraged ETF finder
 - **Tools**: the header tabs ARE the top-level nav — 'Market / Size / Positions / Journal / Tools', keyboard-accessible buttons with aria-current on the active one.
   The open tab rides in the address (#market, #positions, #journal, #tools; Size has none; history.replaceState, so no back-button entries), and boot opens it (startView), so a reload stays on the tab; an address with no tab (the home-screen app always opens the bare start_url) opens the tab last open on this device (`last_view`, device-local); a reload on the Journal says 'Loading your journal…' while the stored session comes back (state.sessionResuming), then reads the records (startSession calls loadJournal).
   An open trade page isn't in the address: a reload lands on the trades list.
+  **The sign-in gate** (owner request: the site will need an account, so sign-in is required for anything but Size): signed out, Market, Positions, Journal and Tools show one card (#signInGate, ui/sign-in-gate.js) in place of the tab, with Sign in with Google and Back to Size.
+  Size works signed out as before, quotes, chain, chart, stops, the answer and Trade at Schwab included.
+  The tab stays selected (its flags, the address and `last_view`), but nothing behind the gate loads or refreshes: no Market quotes, Positions reads, Journal reads, pull to refresh or r key (viewLocked guards each).
+  A saved session being read back at boot says 'Signing you in…' instead of asking; one that can't come back (offline) says 'Can't reach your account' and the minute poll retries it.
+  Signing in opens the tab behind the gate (startSession calls refreshLockedView, which runs setView again).
+  A session that ends with a tab open leaves it open until the next tab switch, which shows the gate.
   On phones (≤600px) the same buttons become a fixed BOTTOM tab bar (five slots) with icons (.tab-icon, hidden elsewhere), clear of the home indicator via env(safe-area-inset-bottom) (viewport-fit=cover), hidden while a field has focus so the keyboard owns the bottom; the header then shows the screen title (#viewTitle, set by setView) and the settings button.
   Tapping the tab you're on does what an iOS app does (owner request: feel native): on a Journal trade page it goes back to the list, anywhere else it scrolls back to the top (smooth unless the device asks for less motion).
   Only the tab buttons do this; other buttons that open a view (data-action setView without .brand-nav) just open it.

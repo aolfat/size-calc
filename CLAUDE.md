@@ -50,6 +50,7 @@ Keys - and = (or +) step risk through one ladder of every preset (riskLadder: % 
 The same ladder is one tap on a phone: − and + buttons either side of the risk $ input (#riskDown, #riskUp, owner request), greyed out at the ladder's ends.
 In the risk $ input, ↑ ↓ step the ladder too instead of the input's fixed $50 (the - and = keys stay off while typing).
 There is no header risk pill (it was removed: two extra taps per change). risk_open is an orphan key from the old collapsible card.
+Signed out, only Size works: Market, Positions, Journal and Tools show the sign-in gate instead (#signInGate, ui/sign-in-gate.js; docs/tools.md).
 Your rules and goals (#weekRulesCard: the rules last week's review set, your standing rules and your goals from the Journal) sit right under the strip while signed in; Settings can hide them (docs/calculator.md).
 
 ## Where the details live

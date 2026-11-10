@@ -73,7 +73,7 @@ function fakeCanvas(el) {
 
 async function chartApp({ key = true, ...opts } = {}) {
   const net = network(opts);
-  const h = await app({ fetch: net.fetch, storage: connected(key ? [['tradier_key', 'tk']] : []) });
+  const h = await app({ signedIn: true, fetch: net.fetch, storage: connected(key ? [['tradier_key', 'tk']] : []) });
   if (key) h.elements.get('apiKey').value = 'tk';
   // canvas: the daily pane, canvas5: the 5-minute pane
   const canvas5 = fakeCanvas(h.elements.get('posChart5')), canvas = fakeCanvas(h.elements.get('posChartD'));
@@ -412,7 +412,7 @@ test('while they load the note says so, and a chart closed meanwhile stays close
   let release;
   const gate = new Promise(r => { release = r; });
   const net = network();
-  const h = await app({ fetch: async url => { if (url.includes('/markets/')) await gate; return net.fetch(url); }, storage: connected([['tradier_key', 'tk']]) });
+  const h = await app({ signedIn: true, fetch: async url => { if (url.includes('/markets/')) await gate; return net.fetch(url); }, storage: connected([['tradier_key', 'tk']]) });
   h.elements.get('apiKey').value = 'tk';
   h.run("setView('positions')");
   await settle();
@@ -570,7 +570,7 @@ test('Avg hides the average cost line and lets the scale fit without it; the cho
   run('actions.togglePosChartAvg()'); // off again: a new visit starts with it hidden
   delete globalThis.getComputedStyle;
 
-  const again = await app({ fetch: async () => json({}), storage });
+  const again = await app({ signedIn: true, fetch: async () => json({}), storage });
   assert.equal(again.run('posChartAvg'), false);
 });
 

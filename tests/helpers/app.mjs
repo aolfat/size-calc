@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { fakeCharts } from './charts.mjs';
+import { fakeRecords } from './supabase.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
@@ -57,11 +58,21 @@ export function makeElement(id = '') {
 /**
  * Fresh app per test: new fake page, storage and globals, and a reset state object.
  * `supabase` is a fake client for the cloud module (it never loads the real library); `session` signs it in.
+ * `signedIn` signs in as user-1 with an empty fake client unless those are given, and binds stored Schwab tokens to that user:
+ * every tab but Size sits behind the sign-in gate, so tests of those tabs that aren't about signing in use it.
  * `clock` swaps in a Date whose now only moves with advance(), starting at `now` (default: the real time).
  * `charts` is a fake Lightweight Charts (helpers/charts.mjs), or a loader function; the real library never loads either.
- * @param {{ width?: number | null, fetch?: Function, lenient?: boolean, timers?: 'noop' | 'fake', clock?: boolean, now?: number, storage?: Map<string,string>, supabase?: object, session?: object, charts?: object | Function }} [opts]
+ * @param {{ width?: number | null, fetch?: Function, lenient?: boolean, timers?: 'noop' | 'fake', clock?: boolean, now?: number, storage?: Map<string,string>, supabase?: object, session?: object, signedIn?: boolean, charts?: object | Function }} [opts]
  */
-export async function app({ width = null, fetch, lenient = false, timers = 'noop', clock = false, now: startAt = Date.now(), storage = new Map(), supabase = null, session = null, charts = fakeCharts() } = {}) {
+export async function app({ width = null, fetch, lenient = false, timers = 'noop', clock = false, now: startAt = Date.now(), storage = new Map(), supabase = null, session = null, signedIn = false, charts = fakeCharts() } = {}) {
+  if (signedIn) {
+    session ??= { user: { id: 'user-1', email: 'me@example.com' } };
+    supabase ??= fakeRecords();
+    try { // broker tokens follow their Google owner: a signed-out login becomes this user's
+      const tokens = JSON.parse(storage.get('schwab_tokens') || 'null');
+      if (tokens && !tokens.userId) storage.set('schwab_tokens', JSON.stringify({ ...tokens, userId: session.user.id }));
+    } catch(e) {}
+  }
   const elements = new Map();
   const listeners = new Map();
   const element = id => {

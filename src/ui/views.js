@@ -22,6 +22,7 @@ import { updateStickyBar } from './sticky-bar.js';
 import { updateStopVisibility } from './stops.js';
 import { renderGain } from './tools.js';
 import { renderWeekRulesCard } from './week-rules.js';
+import { openTab, renderSignInGate, viewLocked } from './sign-in-gate.js';
 
 // the open tab rides in the address, so a reload opens it again (Size has none)
 const VIEW_HASH = { market: '#market', positions: '#positions', journal: '#journal', utils: '#tools' };
@@ -84,20 +85,28 @@ export function setView(v) {
   updateChartVisibility();
   // the window may have resized while the charts were hidden: repaint at the current size on the way back
   if (calc && document.getElementById('chartWrap').clientWidth > 0) { if (state.chartBars.length) drawChart(); else if (state.dailyBars.length) drawDailyChart(); }
-  document.getElementById('positionsSection').style.display = state.positionsView ? '' : 'none';
-  document.getElementById('posChartSection').style.display = state.positionsView && state.posChart ? '' : 'none';
-  document.getElementById('utilsSection').style.display = state.utilsView ? '' : 'none';
-  document.getElementById('journalSection').style.display = state.journalView && !state.journalTrade ? '' : 'none';
-  document.getElementById('journalTradeSection').style.display = state.journalView && state.journalTrade ? '' : 'none';
-  document.getElementById('marketSection').style.display = state.marketView ? '' : 'none';
+  // signed out, every tab but Size shows the sign-in gate instead, and nothing behind it loads
+  const open = !viewLocked();
+  renderSignInGate();
+  document.getElementById('positionsSection').style.display = open && state.positionsView ? '' : 'none';
+  document.getElementById('posChartSection').style.display = open && state.positionsView && state.posChart ? '' : 'none';
+  document.getElementById('utilsSection').style.display = open && state.utilsView ? '' : 'none';
+  document.getElementById('journalSection').style.display = open && state.journalView && !state.journalTrade ? '' : 'none';
+  document.getElementById('journalTradeSection').style.display = open && state.journalView && state.journalTrade ? '' : 'none';
+  document.getElementById('marketSection').style.display = open && state.marketView ? '' : 'none';
   marketScheduleRefresh();
-  if (state.marketView) { pauseLive(); loadMarket(); }
+  if (state.marketView) { pauseLive(); if (open) loadMarket(); }
   else if (calc && !document.hidden) resumeLive();
   else if (!calc && state.liveAlways) pauseLive(); // always-on Live rests outside the calculator
-  if (state.utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
-  if (state.positionsView) refreshPositions(); else stopPositions();
-  if (state.journalView) openJournal();
+  if (open && state.utilsView) renderGain(); // no auto-focus: it swallowed the next t/u keypress, wedging the toggle
+  if (open && state.positionsView) refreshPositions(); else stopPositions();
+  if (open && state.journalView) openJournal();
   updateStickyBar();
+}
+
+/** a sign-in or sign-out changed what the open tab may show: open it again (Size never changes) */
+export function refreshLockedView() {
+  if (openTab() !== 'calc') setView(openTab());
 }
 
 export async function setMode(mode) {
