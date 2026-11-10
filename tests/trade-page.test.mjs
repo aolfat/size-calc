@@ -227,6 +227,57 @@ test("Share: a card image with the entry, the stop, the exit, the result, the se
   assert.equal(run('text'), 'Long $AAPL @ 100.02 · stop 95.00 (5.0% away, stop order) · exit 94.98 · −1.00R (−5.04%) · setup 21 EMA bounce · entry tactic 15-minute pivot');
 });
 
+test('Share on an open trade: where it stands now in R against the stop, the part already closed, or just open', async () => {
+  const { run } = await app();
+  const AT = Date.parse('2026-10-16T18:00:00Z');
+  const open = { key: 'k', label: 'AAPL', symbol: 'AAPL', assetType: 'EQUITY', direction: 'long', status: 'open', avgEntry: 100, avgExit: null, exits: 0, entryQty: 100, openQty: 100, stop: 95, stopSource: 'schwab', movedTo: null, r: null, rBasis: 'stop', openedAt: '2026-10-16T14:00:00.000Z', holdMs: null, pnl: 0 };
+  const spec = (t, now) => json(run, `tradeShareSpec(${JSON.stringify(t)}, ${JSON.stringify(now)})`);
+  let s = spec(open, { price: 103, at: AT });
+  assert.match(s.sub, /^Open trade · opened 10\/16\/2026 10:00 AM ET · held .+ so far$/);
+  assert.deepEqual(s.stats.map(x => [x.label, x.value, x.sub]), [
+    ['Entry', '$100.00', ''], ['Stop', '$95.00', '5.0% away · stop order'], ['Now', '+0.60R', 'at $103.00 · +3.00% · 2:00 PM ET'],
+  ], 'no exit yet: no exit tile, and now in place of a result');
+  s = spec({ ...open, avgExit: 102, exits: 2, openQty: 40, pnl: 120 }, { price: 99, at: AT });
+  assert.deepEqual(s.stats.slice(2).map(x => [x.label, x.value, x.sub]), [['Avg exit', '$102.00', '+0.40R · part closed'], ['Now', '−0.20R', 'at $99.00 · −1.00% · 2:00 PM ET']]);
+  s = spec({ ...open, direction: 'short', avgEntry: 50, stop: 52 }, { price: 49, at: AT });
+  assert.equal(s.title[1].t, 'SHORT');
+  assert.deepEqual([s.stats[2].value, s.stats[2].sub], ['+0.50R', 'at $49.00 · +2.00% · 2:00 PM ET'], 'a short gains as it falls');
+  assert.deepEqual(spec(open, null).stats[2], { label: 'Status', value: 'Open', sub: 'no live price' });
+  assert.deepEqual([spec({ ...open, stop: null, stopSource: null, rBasis: null }, { price: 103, at: AT }).stats[2].value], ['+3.00%'], 'no stop: the move in percent');
+  assert.equal(run(`tradeShareText(${JSON.stringify({ ...open, avgExit: 102, exits: 2, openQty: 40 })}, { price: 103, at: ${AT} })`),
+    'Long $AAPL @ 100.00 · stop 95.00 (5.0% away, stop order) · avg exit 102.00 (part closed, +0.40R) · still open, now 103.00 (+0.60R, +3.00%)');
+  assert.equal(run(`tradeShareText(${JSON.stringify(open)})`), 'Long $AAPL @ 100.00 · stop 95.00 (5.0% away, stop order) · still open');
+  assert.equal(run(`sharePriceSymbol(${JSON.stringify({ ...open, assetType: 'OPTION', symbol: 'AAPL  261120C00200000' })})`), 'AAPL261120C00200000', "a contract's own price");
+  assert.equal(run(`sharePriceSymbol(${JSON.stringify({ ...open, assetType: 'SPREAD', legs: [] })})`), '', 'none for a spread');
+  assert.equal(run(`sharePriceSymbol(${JSON.stringify({ ...open, status: 'win' })})`), '', 'none once closed');
+});
+
+test('Share on an open trade reads its price as it opens, and the card shows it', async t => {
+  const supabase = fakeRecords([{ kind: 'order', record_id: '601', account: '6789', entered_at: '2026-10-01T14:30:00Z', data: { ...ENTRY, orderId: 601, childOrderStrategies: [] } }]);
+  const fetch = async url => String(url).includes('/markets/quotes')
+    ? new Response(JSON.stringify({ quotes: { quote: { symbol: 'AAPL', last: 104, bid: 103.98, ask: 104.02 } } }), { status: 200 })
+    : new Response(JSON.stringify({}), { status: 200 });
+  globalThis.getComputedStyle = () => ({ getPropertyValue: n => n });
+  t.after(() => { delete globalThis.getComputedStyle; });
+  const a = await app({ supabase, session: SESSION, fetch, charts: fakeCharts() });
+  a.elements.get('apiKey').value = 'test-key';
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  a.run(`openJournalTrade('${KEY}')`);
+  await settle();
+  const head = () => a.elements.get('jtHead').innerHTML;
+  const reading = a.run('toggleJournalShare()');
+  assert.match(head(), /Getting the price now…/);
+  await reading;
+  assert.match(head(), /Still open: the card shows where it stands at \$104\.00, in R against the stop/);
+  a.run('var spec; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = () => {}; shareJournalTrade()');
+  const spec = json(a.run, 'spec');
+  assert.match(spec.sub, /^Open trade · /);
+  assert.deepEqual(spec.stats.map(x => x.label), ['Entry', 'Stop', 'Now']);
+  assert.equal(spec.stats[2].value, '+3.98%', 'no stop on this one: the move in percent');
+  assert.match(spec.stats[2].sub, /^at \$104\.00 · \d+:\d\d [AP]M ET$/);
+});
+
 test('the 5-minute chart: candles, 8 EMA and volume, the fills marked, entry, exit and stop drawn, the readout', async t => {
   const { run, chart, charts, elements } = await page({}, t);
   run(`openJournalTrade('${KEY}')`);

@@ -293,12 +293,22 @@ function navHtml(p) {
     <button class="jt-arrow" data-action="stepJournalTrade" data-arg="1" aria-label="Next trade" title="Next trade (→)"${at >= p.nav.length - 1 ? ' disabled' : ''}>${CHEVRON('M6 3.5 10.5 8 6 12.5')}</button></div>`;
 }
 
-/** Share's choices under the head (ui/journal-share.js): the card image, the text, or never mind */
-const shareChoicesHtml = () => `<div class="jt-share" role="group" aria-label="Share this trade">
+/**
+ * Share's choices under the head (ui/journal-share.js): the card image, the text, or never mind; an open trade says where its
+ * price stands (read as Share opened: p.shareQuote), since the card shows it in place of a result
+ */
+function shareChoicesHtml(p, t) {
+  const q = p.shareQuote;
+  const note = t.status !== 'open' ? 'Entry, stop, exit, R, setup and entry tactic. No dollars or size.'
+    : q?.loading ? 'Getting the price now…'
+    : q?.price ? `Still open: the card shows where it stands at ${px(q.price, t.assetType)}, in R against the stop. No dollars or size.`
+    : 'Still open, and no live price here: the card shows the entry, the stop and that it\'s open. No dollars or size.';
+  return `<div class="jt-share" role="group" aria-label="Share this trade">
     <button class="filter-btn" data-action="shareJournalTrade">Card image</button>
     <button class="filter-btn" data-action="copyJournalTrade">Copy text</button>
     <button class="pos-link" data-action="toggleJournalShare">Cancel</button>
-    <span class="jt-share-note">Entry, stop, exit, R, setup and entry tactic. No dollars or size.</span></div>`;
+    <span class="jt-share-note" role="status">${esc(note)}</span></div>`;
+}
 
 function fillsHtml(t, fills) {
   if (!fills.length) return '';
@@ -340,7 +350,7 @@ export function renderJournalTrade() {
         <span class="positions-meta">${side}${t.setupOn ? ` ${esc(t.setupOn)} ·` : ''} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button>${t.status === 'history' ? '' : ` · <button class="pos-link" data-action="toggleJournalShare" aria-expanded="${!!p.shareOpen}" title="A card image or a line of text">Share</button>`}</span></div>
       ${headStatsHtml(t)}
       ${navHtml(p)}
-      ${p.shareOpen && t.status !== 'history' ? shareChoicesHtml() : ''}
+      ${p.shareOpen && t.status !== 'history' ? shareChoicesHtml(p, t) : ''}
     </div>${deckBarHtml(t)}`;
   const fills = tradeFills(t);
   const ex = excursions(t, p.five);
