@@ -314,6 +314,32 @@ test('an option bought with no stop draws its ladder from zero: the premium is t
   assert.ok(left > 60, 'the bar starts at zero, so $2.50 sits most of the way along');
 });
 
+test('the card ladder draws every working stop and limit target, the note names the nearest target', async () => {
+  const { run } = await app();
+  const account = { currentBalances: { liquidationValue: 50000 }, positions: [ACCOUNT.securitiesAccount.positions[0]] };
+  const orders = [
+    { orderType: 'STOP', status: 'WORKING', stopPrice: 45, quantity: 50, orderLegCollection: [leg('SELL', 50, 'TEST')] },
+    { orderType: 'STOP', status: 'WORKING', stopPrice: 49, quantity: 50, orderLegCollection: [leg('SELL', 50, 'TEST')] },
+    { orderType: 'LIMIT', status: 'WORKING', price: 65, quantity: 25, orderLegCollection: [leg('SELL', 25, 'TEST')] },
+    { orderType: 'LIMIT', status: 'WORKING', price: 60, quantity: 25, orderLegCollection: [leg('SELL', 25, 'TEST')] },
+    { orderType: 'LIMIT', status: 'WORKING', price: 52, quantity: 100, orderLegCollection: [leg('BUY', 100, 'TEST')] }, // an add, not a target
+  ];
+  const html = run(`(() => { const p = positionRows(${JSON.stringify(account)}, ${JSON.stringify(orders)}); return positionCard(p.rows[0]); })()`);
+  const left = kind => [...html.matchAll(new RegExp(`pc-tick pc-${kind}" style="left:([\\d.]+)%`, 'g'))].map(m => Number(m[1]));
+  const stops = left('stop'), targets = left('target'), [cost] = left('cost');
+  assert.equal(stops.length, 2, 'both stops');
+  assert.equal(targets.length, 2, 'both targets; the buy limit adds, so it is no target');
+  assert.ok(Math.max(...stops) < cost && cost < Math.min(...targets), 'stops under the cost, targets over it');
+  assert.ok(Math.max(...targets) < 100, 'the farthest target fits on the line');
+  assert.match(html, /title="Target \$60\.00 · 25 sh"/, 'hover gives the price and size');
+  assert.match(html, /title="Stop \$45\.00 · 50 sh"/);
+  assert.match(html, /Stop \$49\.00 · \+1 more/);
+  assert.match(html, /Target \$60\.00<\/span> · \+1 more/, 'the nearest target leads');
+
+  const bare = run(`(() => { const p = positionRows(${JSON.stringify(account)}, []); return positionCard(p.rows[0]); })()`);
+  assert.doesNotMatch(bare, /pc-target|Target/, 'no targets, nothing extra');
+});
+
 test('P/L columns are off until picked from Columns; picks and hiding the account value stay on this device', async () => {
   const day = path => path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json({ securitiesAccount: WITH_DAY }) : json({}, 404);
   const storage = connected();

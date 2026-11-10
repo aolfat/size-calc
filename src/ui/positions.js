@@ -11,7 +11,7 @@ import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { originalSize } from '../core/journal.js';
-import { INSTRUCTION_WORDS, atBreakeven, breakevenDone, cancelAllPlan, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
+import { INSTRUCTION_WORDS, atBreakeven, breakevenDone, cancelAllPlan, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionLevels, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
 import { applyAccountValue } from './account-size.js';
@@ -396,11 +396,11 @@ function cardName(label) {
 }
 
 /**
- * the stop ladder: the stop, your cost and the price on one line, the stretch from cost to price tinted by the P/L.
- * A long option with no stop starts at zero, its premium being the risk
+ * the stop ladder: your working stops and targets, your cost and the price on one line, the stretch from cost to price tinted by the P/L.
+ * A long option with no stop starts at zero, its premium being the risk. levels are positionLevels' stops and targets, hovered for their size
  */
-function ladder({ stop, cost, price, floor, pnl }) {
-  const pts = [stop, cost, price, floor].filter(v => v !== null && Number.isFinite(v));
+function ladder({ cost, price, floor, pnl, levels = [], fmt = fmt$, unit = 'sh' }) {
+  const pts = [...levels.map(l => l.price), cost, price, floor].filter(v => v !== null && Number.isFinite(v));
   let lo = Math.min(...pts), hi = Math.max(...pts);
   const span = hi - lo;
   const pad = span * 0.12;
@@ -408,8 +408,9 @@ function ladder({ stop, cost, price, floor, pnl }) {
   const at = v => ((v - lo) / (hi - lo) * 100).toFixed(1) + '%';
   const cls = tone(pnl);
   const fill = cost !== null && cls ? `<span class="pc-fill ${cls}" style="left:${at(Math.min(cost, price))};right:calc(100% - ${at(Math.max(cost, price))})"></span>` : '';
+  const tick = l => `<span class="pc-tick pc-${l.kind}" style="left:${at(l.price)}" title="${l.kind === 'stop' ? 'Stop' : 'Target'} ${esc(fmt(l.price))} · ${count(l.qty)} ${unit}"></span>`;
   return `<div class="pc-ladder" aria-hidden="true"><span class="pc-track"></span>${fill}`
-    + (stop !== null ? `<span class="pc-tick pc-stop" style="left:${at(stop)}"></span>` : '')
+    + levels.map(tick).join('')
     + (cost !== null ? `<span class="pc-tick pc-cost" style="left:${at(cost)}"></span>` : '')
     + `<span class="pc-dot ${cls}" style="left:${at(price)}"></span></div>`;
 }
@@ -424,9 +425,19 @@ function stopNote(r) {
   return `<span class="pc-note">Stop ${px(r.stop)}${r.stops > 1 ? ` · +${r.stops - 1} more` : ''}${covers}</span>`;
 }
 
-const rowLadder = r => ladder({ stop: r.stop, cost: r.avg > 0 ? r.avg : null, price: r.price, floor: r.option && r.qty > 0 && r.stop === null ? 0 : null, pnl: r.pnl });
+/** a position's working limit targets, the one nearest the price first, sizes added per price */
+const rowTargets = r => positionLevels(r).filter(l => l.kind === 'target').sort((a, b) => r.qty > 0 ? a.price - b.price : b.price - a.price);
+
+/** the line under the stop line: the nearest target, and how many more */
+function targetNote(r) {
+  const t = rowTargets(r);
+  return t.length ? `<span class="pc-note pc-targets"><span class="pc-target-word">Target ${fmtPositionPrice(t[0].price, r.tradeAs)}</span>${t.length > 1 ? ` · +${t.length - 1} more` : ''}</span>` : '';
+}
+
+const rowLadder = r => ladder({ cost: r.avg > 0 ? r.avg : null, price: r.price, floor: r.option && r.qty > 0 && r.stop === null ? 0 : null, pnl: r.pnl,
+  levels: positionLevels(r).filter(l => l.kind !== 'avg'), fmt: v => fmtPositionPrice(v, r.tradeAs), unit: r.option ? 'ct' : 'sh' });
 // a debit spread is worth zero at worst; a credit's mark runs the other way, so no bar
-const spreadLadder = s => s.kind === 'debit' && s.avg > 0 ? ladder({ stop: null, cost: s.avg, price: s.price, floor: 0, pnl: s.pnl }) : '';
+const spreadLadder = s => s.kind === 'debit' && s.avg > 0 ? ladder({ cost: s.avg, price: s.price, floor: 0, pnl: s.pnl }) : '';
 const spreadNote = s => `<span class="pc-note">${esc(s.structure.charAt(0).toUpperCase() + s.structure.slice(1))}${s.maxLoss === null ? '' : ` · max loss ${fmt$(s.maxLoss)}`}</span>`;
 
 /** R on the card: the R column's, once the Journal is in when signed in */
@@ -468,7 +479,7 @@ export function positionCard(r, leg = false) {
     sub: `${r.avg > 0 ? `${px(r.avg)} → ` : ''}<b>${px(r.price)}</b> · ${count(r.qty)} ${unit}`,
     figures: figuresOf(r.pnlPct, R),
     bar: rowLadder(r),
-    note: stopNote(r),
+    note: stopNote(r) + targetNote(r),
   });
   const more = open ? `<div class="pc-more"><dl class="pc-stats">${stat('Mkt val', money(r.value))}${stat('Stop', r.stop === null ? '—' : px(r.stop))}${stat('Risk @ stop', cardRisk(r))}</dl>${tradeButtons(r)}</div>` : '';
   return `<article class="pc${open ? ' pc-open' : ''}${leg ? ' pc-leg' : ''}">${top}${more}</article>`;
@@ -505,7 +516,7 @@ function cardTiles(p) {
   return `<dl class="pc-tiles">${tile('Account', account)}${tile('Invested', money(p.total))}${tile('Open P/L', headline(p.pnl, p.pnlPct), tone(p.pnl))}</dl>`;
 }
 
-const CARD_LEGEND = '<div class="pc-legend" aria-hidden="true"><span><i class="pc-key pc-stop"></i>Stop</span><span><i class="pc-key pc-cost"></i>Cost</span><span><i class="pc-key pc-price"></i>Price</span></div>';
+const CARD_LEGEND = '<div class="pc-legend" aria-hidden="true"><span><i class="pc-key pc-stop"></i>Stop</span><span><i class="pc-key pc-target"></i>Target</span><span><i class="pc-key pc-cost"></i>Cost</span><span><i class="pc-key pc-price"></i>Price</span></div>';
 
 // ---------- phones, the table layout: the symbol pinned, the rest a swipe away, a tap for the actions sheet ----------
 
@@ -601,7 +612,7 @@ function renderPosActions() {
     <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(row.pnl)}">${headline(row.pnl, row.pnlPct)}</span><span class="${tone(row.pnl)}">${figuresOf(row.pnlPct, R)}</span></div>
     <div class="pc-sub">${row.avg > 0 ? `${px(row.avg)} → ` : ''}<b>${px(row.price)}</b> · ${count(row.qty)} ${row.option ? 'ct' : 'sh'}</div>
     ${avgNote(row) ? `<div class="pc-sub">Whole position's average · ${avgNote(row)}</div>` : ''}
-    ${rowLadder(row)}${stopNote(row)}
+    ${rowLadder(row)}${stopNote(row)}${targetNote(row)}
     <div class="pa-orig">${rUnitLine(row)}${originalStopBlock(row, 'actions')}</div>
     <dl class="pc-stats">${stat('Mkt val', money(row.value))}${stat('Stop', row.stop === null ? '—' : px(row.stop))}${stat('Risk @ stop', cardRisk(row))}</dl>
     ${acts ? `<div class="pa-acts">${acts}</div>` : '<p class="hint">Schwab trades for this kind of position aren\'t offered here.</p>'}

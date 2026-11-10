@@ -55,10 +55,13 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
 
   **Phone cards** (≤600px, PHONE_MQ, checked at each render and again when the width crosses it): a card per position instead of the sideways table, no Columns.
   Over them, three tiles: Account (the liquidation value in whole dollars, 'Hidden' with Hide), Invested (the market values added up) and Open P/L; the head line keeps cash, Hide, the time and Refresh.
+  The legend over the cards keys the ladder: Stop, Target, Cost, Price.
   Each card: the symbol (an option's strike before its expiry, '335C 6/20/26', so the strike survives the ellipsis) and its P/L top right, then 'avg → price · qty sh' (ct for options) with P/L % and R beside it.
   R is the R column's (positionR); while the Journal's read is out the card leaves R off.
-  The ladder under it puts the nearest stop (amber tick), your average cost (grey tick) and the price (dot) on one line, padded at both ends, the stretch from cost to price red or green with the P/L; a long option with no stop starts the line at zero, its premium being the risk.
+  The ladder under it puts your working orders, your average cost (grey tick) and the price (dot) on one line, padded at both ends, the stretch from cost to price red or green with the P/L; a long option with no stop starts the line at zero, its premium being the risk.
+  The working orders on it are every stop (amber tick) and every limit target (green tick) closing the position, one tick per price with the sizes added (positionLevels, the same lines the position chart draws), each hovered for its price and size ('Target $60.00 · 25 sh'; owner request).
   The line under the ladder: 'Stop $19.50' (+N more, covers X of Y), 'At breakeven' or 'Stops past breakeven · +$X locked' in green, 'No stop · max loss is premium' on a long option, 'No stop' in amber otherwise.
+  With limit targets working, a line under that names the nearest to the price in green ('Target $60.00 · +1 more').
   A tap on the card (togglePosCard, state.posCardsOpen, not kept) opens Mkt val, Stop and Risk @ stop and the row's buttons (Chart, Simulate, Stop, BE stop, Close in red).
   A spread's card shows its net cost → net mark in spreads, its structure and max loss, a ladder from zero for a debit spread (none for a credit), and opens to Mkt val, Max loss, the legs and Legs / Close; Legs lists each leg as its own card under it.
   Working orders stay a table that scrolls sideways.

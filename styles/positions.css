@@ -64,6 +64,7 @@
 .pc-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .pc-key { display: inline-block; width: 3px; height: 10px; border-radius: 1px; }
 .pc-key.pc-stop { background: var(--amber); }
+.pc-key.pc-target { background: var(--green); }
 .pc-key.pc-cost { background: var(--text); }
 .pc-key.pc-price { width: 9px; height: 9px; border-radius: 50%; background: var(--text2); }
 .pc-list { display: grid; gap: 10px; }
@@ -94,6 +95,9 @@
 .pc-fill.pos-locked { background: var(--green); }
 .pc-tick { position: absolute; top: 1px; width: 2px; height: 16px; margin-left: -1px; border-radius: 1px; }
 .pc-tick.pc-stop { background: var(--amber); }
+.pc-tick.pc-target { background: var(--green); }
+.pc-targets { display: block; margin-top: 2px; } /* working limit targets, their own line under the stop's */
+.pc-target-word { color: var(--green); }
 .pc-tick.pc-cost { background: var(--text2); }
 .pc-dot { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); }
 .pc-dot.pos-loss { background: var(--red); }
