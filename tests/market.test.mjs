@@ -110,7 +110,7 @@ async function appContext(fetchImpl = async () => { throw new Error('Unexpected 
     if (skipMarketLoad && /data\/market-.*\.csv$/.test(url)) return { ok: true, text: async () => url.includes('market-etfs') ? realEtfCsv : csv };
     return null;
   };
-  const app = await harness({ lenient: true, timers: 'fake', clock: true, ...(now ? { now } : {}), fetch: (url, options) => side(String(url)) || fetchImpl(url, options) });
+  const app = await harness({ signedIn: true, lenient: true, timers: 'fake', clock: true, ...(now ? { now } : {}), fetch: (url, options) => side(String(url)) || fetchImpl(url, options) });
   app.element('apiEnv').value = 'production';
   app.element('ticker').value = 'A';
   return app;

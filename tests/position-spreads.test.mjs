@@ -35,7 +35,7 @@ const ORDERS = [{ orderId: 7, orderType: 'NET_DEBIT', status: 'FILLED', price: 3
   orderLegCollection: [leg('BUY_TO_OPEN', 3, LONG), leg('SELL_TO_OPEN', 3, SHORT)] }];
 
 test('legs opened in one order make one spread: net cost and mark per spread, P/L added up, the debit its max loss', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const p = run(`positionRows(${JSON.stringify(ACCOUNT)}, ${JSON.stringify(ORDERS)})`);
   assert.equal(p.rows.length, 5, 'the legs stay rows, so the chart, simulator and orders still find them');
   const [debit, credit] = p.spreads;
@@ -68,7 +68,7 @@ test('legs opened in one order make one spread: net cost and mark per spread, P/
 });
 
 test('legs that don\'t read as one spread stay single', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const spreads = (positions, orders = []) => run(`positionRows(${JSON.stringify({ ...ACCOUNT, positions })}, ${JSON.stringify(orders)}).spreads`);
   assert.equal(spreads([opt(LONG, 3, 6, 7), opt(SHORT, 3, 2.5, 3)]).length, 0, 'both bought');
   assert.equal(spreads([opt(LONG, 3, 6, 7), opt(SHORT, -2, 2.5, 3)]).length, 0, 'different sizes, with no order saying so');
@@ -85,7 +85,7 @@ test('legs that don\'t read as one spread stay single', async () => {
 });
 
 test('calendars and diagonals by expiry; a mixed-type order is a spread with no defined max loss', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const spreads = (positions, orders = []) => run(`positionRows(${JSON.stringify({ ...ACCOUNT, positions })}, ${JSON.stringify(orders)}).spreads`);
   const [cal] = spreads([opt('RBRK  260918C00105000', 1, 8, 8), opt(LONG, -1, 5, 5)]);
   assert.equal(cal.structure, 'time spread');
@@ -110,7 +110,7 @@ test('the Positions tab shows a spread as one row, its legs a tap away', async (
     const path = url.slice(PROXY.length);
     return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json({ securitiesAccount: ACCOUNT }) : json({}, 404);
   };
-  const { run, elements, state } = await app({ fetch, storage: connected() });
+  const { run, elements, state } = await app({ signedIn: true, fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const html = () => elements.get('positionsSection').innerHTML;
@@ -147,7 +147,7 @@ test('on a phone a spread is one card: net cost to mark, its max loss, the legs 
     return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json({ securitiesAccount: ACCOUNT }) : json({}, 404);
   };
   const key = `${LONG},${SHORT}`;
-  const { run, elements } = await app({ width: 390, fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, width: 390, fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const html = () => elements.get('positionsSection').innerHTML;
@@ -172,7 +172,7 @@ const spreadOf = (positions, orders = ORDERS) => `positionRows(${JSON.stringify(
 const planFor = (positions, opts, orders = ORDERS) => plain(globalThis.__run(`spreadClosePlan(${spreadOf(positions, orders)}, ${JSON.stringify(orders)}, ${JSON.stringify(opts)})`));
 
 test('a spread closes as one order: every leg to close in its ratio, for a net credit or debit on the option grid', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   globalThis.__run = run;
   const debit = [opt(LONG, 3, 6, 7), opt(SHORT, -3, 2.5, 3)];
   const all = planFor(debit, { type: 'LIMIT', price: 4.02, duration: 'GOOD_TILL_CANCEL' });
@@ -202,7 +202,7 @@ test('a spread closes as one order: every leg to close in its ratio, for a net c
 });
 
 test('closing all of a spread cancels whatever else closes a leg first; a trim fits in what they leave', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   globalThis.__run = run;
   const debit = [opt(LONG, 3, 6, 7), opt(SHORT, -3, 2.5, 3)];
   const working = [...ORDERS,
@@ -248,7 +248,7 @@ const KEY = `${LONG},${SHORT}`;
 
 test('Close on a spread trims it as one order at market, and the re-read confirms every leg went', async () => {
   const b = broker();
-  const { run, elements, state } = await app({ fetch: b.fetch, storage: connected() });
+  const { run, elements, state } = await app({ signedIn: true, fetch: b.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   assert.match(elements.get('positionsSection').innerHTML, new RegExp(`data-action="openSpreadClose" data-arg="${KEY}"`));
@@ -279,7 +279,7 @@ test('Close on a spread trims it as one order at market, and the re-read confirm
 
 test('a net limit close goes on Schwab\'s list and is confirmed there; Schwab changing first sends nothing', async () => {
   const b = broker();
-  const { run, state } = await app({ fetch: b.fetch, storage: connected() });
+  const { run, state } = await app({ signedIn: true, fetch: b.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   await run(`openSpreadClose('${KEY}')`);
@@ -300,7 +300,7 @@ test('a net limit close goes on Schwab\'s list and is confirmed there; Schwab ch
 });
 
 test('a spread\'s net bid and ask come from its legs: bought legs at the bid and sold ones at the ask to sell it', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const legs = [{ symbol: 'L', n: 1 }, { symbol: 'S', n: -1 }];
   const quotes = { L: { last: 7, bid: 6.9, ask: 7.1 }, S: { last: 3, bid: 2.95, ask: 3.05 } };
   const q = run(`netQuote(${JSON.stringify(legs)}, ${JSON.stringify(quotes)})`);
@@ -323,7 +323,7 @@ test('Close on a spread shows its net bid, mid and ask, lighting the side it clo
     const asked = decodeURIComponent(url.split('symbols=')[1]).split(',');
     return json({ quotes: { quote: asked.map(s => ({ symbol: s, ...quotes[s] })) } });
   };
-  const { run, elements } = await app({ fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch, storage: connected() });
   run("document.getElementById('apiKey').value = 'tradier-test'");
   const strip = () => elements.get('spreadCloseQuote').innerHTML;
   await run('refreshPositions()');

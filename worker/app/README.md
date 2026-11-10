@@ -6,7 +6,7 @@ Deploy the static app to its own HTTPS origin without buying a domain:
 npx wrangler deploy --config worker/app/wrangler.toml
 ```
 
-Wrangler prints `https://size-calc-app.<your-account>.workers.dev`. Use that
+Wrangler prints `https://app.<your-account>.workers.dev` (the account subdomain picked for this: `sizecalc`, so `https://app.sizecalc.workers.dev`). Use that
 address as the app's home. This worker serves static files only. Keep using
 the existing Schwab API worker URL in Settings.
 

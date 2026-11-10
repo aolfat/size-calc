@@ -339,6 +339,15 @@
     <div class="chart-hint"><span id="chartClickHint">click to set a stop: below price = long, above = short</span> &nbsp;·&nbsp; dashed lines: <span style="color:var(--red);">LOD / long stop</span> · <span style="color:var(--green);">HOD / short stop</span> · <span style="color:var(--amber);">entry</span> · <span style="color:var(--text3);">PDH / PDL / PDC</span> &nbsp;·&nbsp; <span style="color:var(--blue);">VWAP</span> / <span style="color:var(--purple);">8 EMA</span> &nbsp;·&nbsp; daily: pinch or ctrl+scroll to zoom, drag to pan</div>
   </div>
 
+  <div class="card setup-card" id="signInGate" style="display:none;" role="status">
+    <div class="setup-title" id="signInGateTitle">Sign in</div>
+    <p id="signInGateText"></p>
+    <div class="setup-actions">
+      <button class="btn primary" id="signInGateBtn" data-action="signIn">Sign in with Google</button>
+      <button class="btn" data-action="setView" data-arg="calc">Back to Size</button>
+    </div>
+  </div>
+
   <div class="positions-split" id="positionsSplit">
   <section id="positionsSection" style="display:none;" aria-label="Schwab positions"></section>
 
@@ -584,7 +593,7 @@
           <button class="btn" id="signInBtn" data-action="signIn">Sign in with Google</button>
           <button class="btn" id="signOutBtn" data-action="signOut" style="display:none;">Sign out</button>
         </div>
-        <p class="hint" id="accountHint">Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. The calculator works without signing in.</p>
+        <p class="hint" id="accountHint">Sync your settings and Tradier key across devices. The app administrator can decrypt synced keys. Size works without signing in; the other tabs need it.</p>
       </div>
       <div class="sheet-section">
         <div class="sheet-label">Times</div>

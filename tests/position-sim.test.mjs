@@ -53,7 +53,7 @@ function network({ quotes = QUOTES } = {}) {
 
 async function simApp({ key = true, ...opts } = {}) {
   const net = network(opts);
-  const h = await app({ fetch: net.fetch, storage: connected(key ? [['tradier_key', 'tk']] : []), clock: true });
+  const h = await app({ signedIn: true, fetch: net.fetch, storage: connected(key ? [['tradier_key', 'tk']] : []), clock: true });
   await h.advance(NOW - h.run('Date.now()'));
   if (key) h.elements.get('apiKey').value = 'tk';
   h.run("setView('positions')");

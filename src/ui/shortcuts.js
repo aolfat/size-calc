@@ -18,6 +18,7 @@ import { cancelSpread } from './spreads.js';
 import { setDirection } from './stops.js';
 import { refreshQuote } from './ticker.js';
 import { setMode, setView } from './views.js';
+import { viewLocked } from './sign-in-gate.js';
 
 export function toggleKbdHelp() {
   const h = document.getElementById('kbdHelp');
@@ -68,7 +69,7 @@ export function initShortcuts() {
       case 't':
       case 'u': setView(state.utilsView ? 'calc' : 'utils'); break;
       case 'm': setView(state.marketView ? 'calc' : 'market'); break;
-      case 'r': if (state.marketView) marketRefreshToday(); else if (state.positionsView) refreshPositions(true); else refreshQuote(); break;
+      case 'r': if (viewLocked()) break; if (state.marketView) marketRefreshToday(); else if (state.positionsView) refreshPositions(true); else refreshQuote(); break;
       case 'l': toggleLive(); break;
       case '-': stepRisk(-1); break;
       case '=':

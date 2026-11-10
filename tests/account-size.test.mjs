@@ -39,9 +39,9 @@ function network() {
 }
 
 // starts every test at noon New York time, so "later today" never crosses midnight there
-async function setup(storage = connected()) {
+async function setup(storage = connected(), signedIn = false) {
   const net = network();
-  const h = await app({ fetch: net.fetch, storage, clock: true, timers: 'fake' });
+  const h = await app({ fetch: net.fetch, storage, clock: true, timers: 'fake', signedIn });
   const ny = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(h.run('Date.now()')));
   const mins = +ny.find(p => p.type === 'hour').value * 60 + +ny.find(p => p.type === 'minute').value;
   await h.advance(((12 * 60 - mins + 24 * 60) % (24 * 60)) * 60000);
@@ -99,7 +99,7 @@ test('a lit $ chip keeps its dollars when the account size changes', async () =>
 });
 
 test('Positions reads the account anyway: its first read of the day sets the size with no extra call', async () => {
-  const { run, elements, net } = await setup();
+  const { run, elements, net } = await setup(connected(), true);
   run("setView('positions')");
   await settle();
   assert.equal(net.balances(), 0);

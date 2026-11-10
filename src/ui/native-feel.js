@@ -7,6 +7,7 @@ import { loadJournal } from './journal.js';
 import { marketRefreshToday } from './market.js';
 import { refreshPositions } from './positions.js';
 import { refreshQuote } from './ticker.js';
+import { viewLocked } from './sign-in-gate.js';
 
 const EASE = 'cubic-bezier(.32,.72,0,1)'; // iOS's own curve, as the sheets use
 const still = () => mq('(prefers-reduced-motion: reduce)');
@@ -32,6 +33,7 @@ const PULL_MAX = 80;
 
 /** what a pull refreshes in the view you're on: the same as that view's own refresh button; null where there's nothing to refresh */
 export function pullRefreshAction() {
+  if (viewLocked()) return null; // the sign-in gate: nothing behind it to refresh
   if (state.positionsView) return () => refreshPositions(true);
   if (state.marketView) return () => marketRefreshToday();
   if (state.journalView) return state.journalTrade || !state.session ? null : () => loadJournal();

@@ -56,7 +56,7 @@ const schwabOk = path => path.includes('/orders?') ? json(ORDERS) : path.endsWit
 // ---------- the rows ----------
 
 test('Schwab option symbols read as root, expiry, strike and type', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   assert.deepEqual({ ...run(`parseSchwabOption('${OPT}')`) }, { root: 'TEST', exp: '2026-12-18', type: 'C', strike: 55 });
   assert.equal(run("parseSchwabOption('BRKB  270115P00512500')").strike, 512.5);
   assert.equal(run("parseSchwabOption('TEST')"), null);
@@ -65,7 +65,7 @@ test('Schwab option symbols read as root, expiry, strike and type', async () => 
 });
 
 test('positions become rows with price, value and share of the account, shorts negative', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const p = run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, [])`);
   assert.equal(p.value, 100000);
   assert.equal(p.cash, 25000);
@@ -79,7 +79,7 @@ test('positions become rows with price, value and share of the account, shorts n
 });
 
 test('working stops that close a position set its stop and the risk from average cost', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const p = run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(ORDERS)})`);
   const [acat, shrt, stock, opt] = p.rows;
   assert.equal(stock.stop, 48, 'the stop inside a filled trigger order; canceled and opening stops ignored');
@@ -95,7 +95,7 @@ test('working stops that close a position set its stop and the risk from average
 });
 
 test('several stops on one position: the nearest leads and each covers its own shares', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const account = { currentBalances: { liquidationValue: 50000 }, positions: [ACCOUNT.securitiesAccount.positions[0]] };
   const orders = [
     { orderType: 'STOP', status: 'WORKING', stopPrice: 45, quantity: 50, orderLegCollection: [leg('SELL', 50, 'TEST')] },
@@ -113,7 +113,7 @@ const WITH_DAY = { ...ACCOUNT.securitiesAccount, positions: ACCOUNT.securitiesAc
 const near = (a, b) => Math.abs(a - b) < 1e-9;
 
 test('each row has its P/L from average cost and today\'s P/L from Schwab, both in dollars and percent, with totals', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const p = run(`positionRows(${JSON.stringify(WITH_DAY)}, [])`);
   const [acat, shrt, stock, opt] = p.rows;
   assert.equal(stock.pnl, 500); assert.equal(stock.pnlPct, 10);
@@ -132,7 +132,7 @@ test('each row has its P/L from average cost and today\'s P/L from Schwab, both 
 
 test('without a Schwab login the tab asks to connect and calls nothing', async () => {
   const net = network(async () => json({}, 500));
-  const { run, elements } = await app({ fetch: net.fetch });
+  const { run, elements } = await app({ signedIn: true, fetch: net.fetch });
   run("setView('positions')");
   await settle();
   assert.equal(net.calls.length, 0);
@@ -143,7 +143,7 @@ test('without a Schwab login the tab asks to connect and calls nothing', async (
 
 test('opening the tab loads the selected account live from Schwab, no Tradier key needed', async () => {
   const net = network(schwabOk);
-  const { run, elements } = await app({ fetch: net.fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: net.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const [account, orders] = [...net.calls].sort((a, b) => a.url.length - b.url.length);
@@ -172,7 +172,7 @@ test('opening the tab loads the selected account live from Schwab, no Tradier ke
 
 test('phones get a card per position: P/L and R up top, a stop ladder, a tap for the figures and buttons', async () => {
   const net = network(schwabOk);
-  const { run, elements, state } = await app({ width: 390, fetch: net.fetch, storage: connected() });
+  const { run, elements, state } = await app({ signedIn: true, width: 390, fetch: net.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   const html = () => elements.get('positionsSection').innerHTML;
@@ -215,7 +215,7 @@ test('phones get a card per position: P/L and R up top, a stop ladder, a tap for
 test('Settings can put a phone on the table instead: the symbol pinned, P/L first, a tap for the actions sheet', async () => {
   const net = network(schwabOk);
   const storage = connected();
-  const { run, elements, state } = await app({ width: 390, fetch: net.fetch, storage });
+  const { run, elements, state } = await app({ signedIn: true, width: 390, fetch: net.fetch, storage });
   run("setView('positions')");
   await settle();
   const html = () => elements.get('positionsSection').innerHTML;
@@ -253,7 +253,7 @@ test('Settings can put a phone on the table instead: the symbol pinned, P/L firs
 test('Settings Cards works on the desktop too: the table until picked, then the cards in a grid', async () => {
   const net = network(schwabOk);
   const storage = connected();
-  const { run, elements } = await app({ width: 1280, fetch: net.fetch, storage });
+  const { run, elements } = await app({ signedIn: true, width: 1280, fetch: net.fetch, storage });
   run("setView('positions')");
   await settle();
   const html = () => elements.get('positionsSection').innerHTML;
@@ -277,7 +277,7 @@ test('Settings Cards works on the desktop too: the table until picked, then the 
 test('% only hides the dollar P/L of open positions on the cards, the phone table and the desktop columns', async () => {
   const net = network(schwabOk);
   const storage = connected();
-  const phone = await app({ width: 390, fetch: net.fetch, storage });
+  const phone = await app({ signedIn: true, width: 390, fetch: net.fetch, storage });
   phone.run("setView('positions')");
   await settle();
   const html = () => phone.elements.get('positionsSection').innerHTML;
@@ -294,7 +294,7 @@ test('% only hides the dollar P/L of open positions on the cards, the phone tabl
   assert.match(html(), /<th scope="col">P\/L %<\/th>/);
   assert.doesNotMatch(html(), /\$500\.00/);
 
-  const desk = await app({ fetch: net.fetch, storage: connected([['positions_pnl_pct', '1'], ['positions_cols', '["pnl","pnlPct","day"]']]) });
+  const desk = await app({ signedIn: true, fetch: net.fetch, storage: connected([['positions_pnl_pct', '1'], ['positions_cols', '["pnl","pnlPct","day"]']]) });
   desk.run("setView('positions')");
   await settle();
   const dh = desk.elements.get('positionsSection').innerHTML;
@@ -305,7 +305,7 @@ test('% only hides the dollar P/L of open positions on the cards, the phone tabl
 });
 
 test('an option bought with no stop draws its ladder from zero: the premium is the risk', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const html = run(`(() => { const p = positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, []); return positionCard(p.rows.find(r => r.option)); })()`);
   assert.match(html, /No stop · max loss is premium/);
   assert.match(html, /pc-cost" style="left:(\d+\.\d)%/);
@@ -317,7 +317,7 @@ test('an option bought with no stop draws its ladder from zero: the premium is t
 test('P/L columns are off until picked from Columns; picks and hiding the account value stay on this device', async () => {
   const day = path => path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json({ securitiesAccount: WITH_DAY }) : json({}, 404);
   const storage = connected();
-  const { run, elements } = await app({ fetch: network(day).fetch, storage });
+  const { run, elements } = await app({ signedIn: true, fetch: network(day).fetch, storage });
   run("setView('positions')");
   await settle();
   const html = () => elements.get('positionsSection').innerHTML;
@@ -350,7 +350,7 @@ test('P/L columns are off until picked from Columns; picks and hiding the accoun
   assert.equal(storage.get('positions_hide_value'), '1');
 
   // a new visit keeps both
-  const again = await app({ fetch: network(day).fetch, storage });
+  const again = await app({ signedIn: true, fetch: network(day).fetch, storage });
   again.run("setView('positions')");
   await settle();
   const next = again.elements.get('positionsSection').innerHTML;
@@ -360,7 +360,7 @@ test('P/L columns are off until picked from Columns; picks and hiding the accoun
 
 test('the table refreshes every 30 seconds while it is open and visible, one call at a time', async () => {
   const net = network(schwabOk);
-  const { run, advance } = await app({ fetch: net.fetch, storage: connected(), timers: 'fake' });
+  const { run, advance } = await app({ signedIn: true, fetch: net.fetch, storage: connected(), timers: 'fake' });
   run("setView('positions')");
   await settle();
   assert.equal(net.calls.length, 2);
@@ -384,7 +384,7 @@ test('the table refreshes every 30 seconds while it is open and visible, one cal
 test('a stop exactly at cost reads as breakeven, never a negative zero', async () => {
   const atCost = [...ORDERS.slice(1), { orderType: 'STOP', status: 'WORKING', stopPrice: 50, quantity: 100, orderLegCollection: [leg('SELL', 100, 'TEST')] }];
   const net = network(path => path.includes('/orders?') ? json(atCost) : schwabOk(path));
-  const { run, elements } = await app({ fetch: net.fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: net.fetch, storage: connected() });
   await run('refreshPositions()');
   const row = elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
   assert.match(row, /\$0\.00<\/span><span class="pos-sub">at breakeven/);
@@ -395,7 +395,7 @@ test('Refresh shows it is working and confirms when it lands; the 30s refresh st
   let gate = null;
   const net = network(async path => { if (gate) await gate.promise; return schwabOk(path); });
   // the account size stays typed in, so the day's first read has nothing to say either
-  const { run, elements, advance } = await app({ fetch: net.fetch, storage: connected([['schwab_acct_source', 'manual']]), timers: 'fake' });
+  const { run, elements, advance } = await app({ signedIn: true, fetch: net.fetch, storage: connected([['schwab_acct_source', 'manual']]), timers: 'fake' });
   run("setView('positions')");
   await settle();
   assert.equal(elements.get('errorBox').textContent, '', 'opening the tab says nothing extra');
@@ -423,7 +423,7 @@ test('a Schwab read that never answers gives up after 15 seconds, and Refresh wo
   const fetch = async (url, init = {}) => hang
     ? new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
     : ok.fetch(url, init);
-  const { run, elements, advance } = await app({ fetch, storage: connected(), timers: 'fake' });
+  const { run, elements, advance } = await app({ signedIn: true, fetch, storage: connected(), timers: 'fake' });
   await run('refreshPositions()');
   hang = true;
   run('refreshPositions(true)');
@@ -439,7 +439,7 @@ test('a Schwab read that never answers gives up after 15 seconds, and Refresh wo
 
 test('without orders the positions still show, with stops marked unavailable', async () => {
   const net = network(path => path.includes('/orders?') ? json({ message: 'down' }, 500) : schwabOk(path));
-  const { run, elements } = await app({ fetch: net.fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: net.fetch, storage: connected() });
   await run('refreshPositions()');
   const html = elements.get('positionsSection').innerHTML;
   assert.match(html, /TEST 12\/18\/26 55C/);
@@ -450,7 +450,7 @@ test('without orders the positions still show, with stops marked unavailable', a
 test('a failed refresh keeps the last table and says so', async () => {
   let fail = false;
   const net = network(path => fail && !path.includes('/orders?') ? json({ message: 'Service unavailable' }, 503) : schwabOk(path));
-  const { run, elements } = await app({ fetch: net.fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: net.fetch, storage: connected() });
   await run('refreshPositions()');
   fail = true;
   await run('refreshPositions()');
@@ -461,7 +461,7 @@ test('a failed refresh keeps the last table and says so', async () => {
 
 test('switching accounts or logging out drops the old account\'s table', async () => {
   const net = network(schwabOk);
-  const { run, elements, storage } = await app({ fetch: net.fetch, storage: connected() });
+  const { run, elements, storage } = await app({ signedIn: true, fetch: net.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   elements.get('schwabAccount').value = 'HASH2';
@@ -493,7 +493,7 @@ const BOOK = [
 ];
 
 test('working orders list everything still in play, entries included, pairs and waiting stops marked', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const list = JSON.parse(run(`JSON.stringify(workingOrders(${JSON.stringify(BOOK)}))`));
   assert.deepEqual(list.map(o => o.orderId), [7, 5, 6, 3, 4, 1, 8], 'by underlying, newest first, children after their order; done orders gone');
   const by = id => list.find(o => o.orderId === id);
@@ -512,7 +512,7 @@ test('working orders list everything still in play, entries included, pairs and 
 
 test('the Positions tab lists working orders under the table', async () => {
   const net = network(path => path.includes('/orders?') ? json(BOOK) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404));
-  const { run, elements } = await app({ fetch: net.fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: net.fetch, storage: connected() });
   await run('refreshPositions()');
   const html = elements.get('positionsSection').innerHTML;
   const card = html.slice(html.indexOf('orders-card'));
@@ -527,11 +527,11 @@ test('the Positions tab lists working orders under the table', async () => {
   assert.doesNotMatch(card, /\$40\.00|\$55\.00/, 'cancelled and filled orders are gone');
 
   const none = network(path => path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404));
-  const empty = await app({ fetch: none.fetch, storage: connected() });
+  const empty = await app({ signedIn: true, fetch: none.fetch, storage: connected() });
   await empty.run('refreshPositions()');
   assert.match(empty.elements.get('positionsSection').innerHTML, /Working orders<\/span><span class="positions-meta">None<\/span>[\s\S]*Nothing working in the last 59 days/);
   const down = network(path => path.includes('/orders?') ? json({ message: 'down' }, 500) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404));
-  const blind = await app({ fetch: down.fetch, storage: connected() });
+  const blind = await app({ signedIn: true, fetch: down.fetch, storage: connected() });
   await blind.run('refreshPositions()');
   assert.match(blind.elements.get('positionsSection').innerHTML, /Orders unavailable: Schwab did not return this account's orders/);
 });
@@ -544,7 +544,7 @@ test('a refresh overtaken by a newer one resolves once the newer read is in', as
     if (path.endsWith('?fields=positions') && ++n === 2) await gate; // the newer read is the slow one
     return schwabOk(path);
   };
-  const { run, state } = await app({ fetch, storage: connected() });
+  const { run, state } = await app({ signedIn: true, fetch, storage: connected() });
   const older = run('refreshPositions()');
   run('refreshPositions()');
   let done = false;
@@ -565,7 +565,7 @@ const openTrade = (extra = {}) => ({ key: '6789|TEST|long|t', account: '6789', s
   openQty: 100, entryQty: 100, avgEntry: 50, multiplier: 1, risk: 300, rBasis: 'stop', stop: 47, stopSource: 'schwab', exits: 0, pnl: 0, grossPnl: 0, ...extra });
 
 test('R is the move from your cost in the Journal trade\'s 1R: its first stop, not the stop working now; trims don\'t dilute it', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const rows = run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(ORDERS)}).rows`);
   const stock = [...rows].find(r => r.label === 'TEST');
   const r = (trades, row = stock) => run(`positionR(${JSON.stringify(row)}, ${JSON.stringify(trades)}, '6789')`);
@@ -596,7 +596,7 @@ test('R is the move from your cost in the Journal trade\'s 1R: its first stop, n
 });
 
 test('R without a Journal trade: the nearest stop, a long option\'s premium, nothing past breakeven', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const rows = orders => [...run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(orders)}).rows`)];
   const r = row => run(`positionR(${JSON.stringify(row)}, null, '6789')`);
   const [acat, shrt, , opt] = rows(ORDERS);
@@ -616,7 +616,7 @@ test('R without a Journal trade: the nearest stop, a long option\'s premium, not
 });
 
 test('1R in the position\'s price sets a target in R: the Journal trade\'s risk per share at entry, else the nearest stop or the premium', async () => {
-  const { run } = await app();
+  const { run } = await app({ signedIn: true });
   const rows = orders => [...run(`positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, ${JSON.stringify(orders)}).rows`)];
   const unit = (row, trades = null) => run(`rUnit(${JSON.stringify(row)}, ${JSON.stringify(trades)}, '6789')`);
   const price = (row, r, per) => run(`rTargetPrice(${JSON.stringify(row)}, ${r}, ${per})`);
@@ -665,7 +665,7 @@ function signedIn(extra = []) {
 
 test('the R column reads the Journal when signed in, and counts from the stop now when signed out', async () => {
   const supabase = fakeRecords([TEST_BUY]);
-  const { run, elements } = await app({ fetch: network(schwabOk).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase, session: SESSION });
+  const { run, elements } = await app({ signedIn: true, fetch: network(schwabOk).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase, session: SESSION });
   run("setView('positions')");
   await settle();
   const html = () => elements.get('positionsSection').innerHTML;
@@ -677,7 +677,7 @@ test('the R column reads the Journal when signed in, and counts from the stop no
   assert.match(row('TEST 12/18/26 55C'), /title="The stop is at or past breakeven/);
   assert.match(html(), /R is open P\/L over the risk at entry/);
 
-  const out = await app({ fetch: network(schwabOk).fetch, storage: connected([['positions_cols', JSON.stringify(['r'])]]) });
+  const out = await app({ signedIn: true, fetch: network(schwabOk).fetch, storage: connected([['positions_cols', JSON.stringify(['r'])]]) });
   out.run("setView('positions')");
   await settle();
   const stock = out.elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
@@ -691,7 +691,7 @@ const MOVED_TO_BE = [TEST_BUY.data,
 const movedSchwab = path => path.includes('/orders?') ? json(MOVED_TO_BE) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
 
 test('a stop moved to breakeven keeps R: the first stop comes from Schwab\'s own orders, before any import and signed out', async () => {
-  const { run, elements } = await app({ fetch: network(movedSchwab).fetch, storage: connected([['positions_cols', JSON.stringify(['r'])]]) });
+  const { run, elements } = await app({ signedIn: true, fetch: network(movedSchwab).fetch, storage: connected([['positions_cols', JSON.stringify(['r'])]]) });
   run("setView('positions')");
   await settle();
   const stock = elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>'));
@@ -703,13 +703,14 @@ test('a stop moved to breakeven keeps R: the first stop comes from Schwab\'s own
   assert.match(body, /id="posClosePrice"[^>]*value="59.00"/, '3R = $50 + 3 × $3');
   assert.match(body, /1R is \$3\.00 a share, from the first stop \$47\.00/);
   assert.match(body, /data-action="openOriginalStop" data-arg="TEST" data-arg2="close"[^>]*>Set original stop/);
+  run('session = null'); // the session ended with the tab open (the gate only stops a signed-out open)
   await run("openOriginalStop('TEST', 'close')");
   assert.match(elements.get('posTradeBody').innerHTML, /Sign in to set your original stop/);
 });
 
 test('your original stop: set from the close ticket, kept with the Journal trade, and every R counts from it', async () => {
   const supabase = fakeRecords([]);
-  const { run, elements, state } = await app({ fetch: network(movedSchwab).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase, session: SESSION });
+  const { run, elements, state } = await app({ signedIn: true, fetch: network(movedSchwab).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase, session: SESSION });
   run("setView('positions')");
   await settle();
   await run("openPositionTrade('TEST', 'close')");
@@ -737,7 +738,7 @@ test('your original stop: set from the close ticket, kept with the Journal trade
   assert.match(body(), /from the first stop \$47\.00/, 'back to Schwab\'s first');
 
   // another device: the same orders and the saved stop give the same 1R
-  const other = await app({ fetch: network(movedSchwab).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase: fakeRecords([], [{ trade_key: saved.trade_key, stop: 46, deleted: false }]), session: SESSION });
+  const other = await app({ signedIn: true, fetch: network(movedSchwab).fetch, storage: signedIn([['positions_cols', JSON.stringify(['r'])]]), supabase: fakeRecords([], [{ trade_key: saved.trade_key, stop: 46, deleted: false }]), session: SESSION });
   other.run("setView('positions')");
   await settle();
   assert.match(other.elements.get('positionsSection').innerHTML.split('<tr>').find(r => r.includes('<b>TEST</b>')), /\+1\.25R[\s\S]*your stop \$46\.00/);
@@ -757,7 +758,7 @@ test('a close ticket reads the Journal for the original size: older fills kept t
   const live = [exec(812, 'SELL', 100, 52, '2026-10-26T14:00:00+0000'),
     { orderId: 813, orderType: 'STOP', status: 'WORKING', orderStrategyType: 'SINGLE', stopPrice: 48, quantity: 100, remainingQuantity: 100, orderLegCollection: [leg('SELL', 100, 'TEST')] }];
   const schwab = path => path.includes('/orders?') ? json(live) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
-  const { run, elements, state } = await app({ fetch: network(schwab).fetch, storage: signedIn(), supabase, session: SESSION });
+  const { run, elements, state } = await app({ signedIn: true, fetch: network(schwab).fetch, storage: signedIn(), supabase, session: SESSION });
   run("setView('positions')");
   await settle();
   assert.equal(state.journalRecords.length, 2, 'signed in, Positions reads the Journal for the average cost');
@@ -766,15 +767,10 @@ test('a close ticket reads the Journal for the original size: older fills kept t
   run('setClosePortion(0.25)');
   assert.match(elements.get('posTradeBody').innerHTML, /id="posCloseQty"[^>]*value="50"/);
 
-  const out = await app({ fetch: network(schwab).fetch, storage: connected() });
-  out.run("setView('positions')");
-  await settle();
-  await out.run("openPositionTrade('TEST', 'close')");
-  assert.match(out.elements.get('posTradeBody').innerHTML, /the original size is unknown\. No fills in Schwab&#39;s last 59 days of orders \(sign in for the Journal&#39;s older ones\) open this position\./,
-    'signed out, only the sell shows: nothing open to measure from');
+  // signed out there is no close ticket to read: Positions sits behind the sign-in gate, and a Schwab login follows its Google owner
 
   // a ticket opened before anything read the Journal waits for it
-  const early = await app({ fetch: network(schwab).fetch, storage: signedIn(), supabase, session: SESSION });
+  const early = await app({ signedIn: true, fetch: network(schwab).fetch, storage: signedIn(), supabase, session: SESSION });
   early.run('positionsAccountChanged()');
   await settle();
   assert.equal(early.state.journalRecords, null, 'Positions isn\'t open: nothing read');
@@ -784,7 +780,7 @@ test('a close ticket reads the Journal for the original size: older fills kept t
 
 test('the R column is in the Columns picker; signed in, the Journal is read on opening Positions', async () => {
   const supabase = fakeRecords([TEST_BUY]);
-  const { run, elements, state } = await app({ fetch: network(schwabOk).fetch, storage: signedIn(), supabase, session: SESSION });
+  const { run, elements, state } = await app({ signedIn: true, fetch: network(schwabOk).fetch, storage: signedIn(), supabase, session: SESSION });
   run("setView('positions')");
   await settle();
   assert.equal(state.journalRecords.length, 1, 'read for the average cost, R column or not');
@@ -801,7 +797,7 @@ test('a reload on Positions while signed in reads the account once the stored se
   supabase.auth = { getSession: async () => ({ data: { session: SESSION } }) };
   const storage = signedIn([['positions_cols', JSON.stringify(['r'])], ['cloud_user', SESSION.user.id], ['sb-dhohfavttsxwutanvcuj-auth-token', '{"access_token":"jwt"}']]);
   const net = network(schwabOk);
-  const { run, elements } = await app({ fetch: net.fetch, storage, supabase });
+  const { run, elements } = await app({ signedIn: true, fetch: net.fetch, storage, supabase });
   run("setView('positions')"); // what main.js does on load, before the session is back
   assert.equal(net.calls.length, 0, 'the Schwab login is this user\'s: nothing to read without the session');
   run("initCloud('https://size-calc.example/#positions')");
@@ -815,7 +811,7 @@ test('Stop asks first: a stop at a price, or reset to the original stop, which c
   const withTarget = [...MOVED_TO_BE,
     { orderId: 804, enteredTime: '2026-10-06T15:00:00+0000', orderType: 'LIMIT', status: 'WORKING', orderStrategyType: 'SINGLE', price: 60, quantity: 50, remainingQuantity: 50, duration: 'DAY', orderLegCollection: [leg('SELL', 50, 'TEST')] }];
   const schwab = path => path.includes('/orders?') ? json(withTarget) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
-  const { run, elements } = await app({ fetch: network(schwab).fetch, storage: connected() });
+  const { run, elements } = await app({ signedIn: true, fetch: network(schwab).fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   await run("openPositionTrade('TEST', 'stop')");
@@ -836,7 +832,7 @@ test('Stop asks first: a stop at a price, or reset to the original stop, which c
   assert.match(body(), /id="posStopPrice"[^>]*value="47.00"/, 'back to the price you had');
 
   // no Journal trade to read an original stop from: the reset is there, greyed out with why
-  const bare = await app({ fetch: network(schwabOk).fetch, storage: connected() });
+  const bare = await app({ signedIn: true, fetch: network(schwabOk).fetch, storage: connected() });
   bare.run("setView('positions')");
   await settle();
   await bare.run("openPositionTrade('SHRT', 'stop')");

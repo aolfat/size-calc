@@ -21,6 +21,7 @@ import { onCaptureChange } from './schwab-capture.js';
 import { openSheet } from './sheets.js';
 import { renderPositionChart } from './position-chart.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
+import { viewLocked } from './sign-in-gate.js';
 
 const POLL_MS = 30000;
 const money = v => (v < 0 ? '−' : '') + fmt$(Math.abs(v));
@@ -274,7 +275,7 @@ export function stopPositions() {
 }
 
 export function positionsVisibilityChanged() {
-  if (state.positionsView && !document.hidden) refreshPositions(); else stopPositions();
+  if (state.positionsView && !document.hidden && !viewLocked()) refreshPositions(); else stopPositions();
 }
 
 /** a login, logout or account switch: the old account's table goes, and the tab reloads if it's open */
@@ -282,7 +283,7 @@ export function positionsAccountChanged() {
   state.positions = null;
   state.posChart = null;
   state.positionsError = '';
-  if (state.positionsView) { refreshPositions(); return; }
+  if (state.positionsView && !viewLocked()) { refreshPositions(); return; }
   state.positionsRequest++;
   state.positionsBusy = false;
   renderPositions();

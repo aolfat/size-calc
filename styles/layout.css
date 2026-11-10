@@ -13,7 +13,7 @@
 #modeCard { order: 4; } #quoteCard { order: 5; } #chartWrap { order: 6; } #stopsCard { order: 7; } #sharesSection { order: 8; }
 #optionTicket { order: 9; }
 #quickCard { order: 10; } #pinnedBar { order: 11; } #pinnedSection { order: 12; } #positionsSection { order: 13; }
-#optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection, #journalTradeSection { order: 15; }
+#signInGate { order: 13; width: 100%; max-width: 560px; margin-inline: auto; } #optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection, #journalTradeSection { order: 15; }
 
 /* Desktop shell (calculator and positions): the page holds still and each pane scrolls on its own.
    Rail = the ticket (inputs + answer), main = quote, charts, chain. Nothing is position:sticky. */

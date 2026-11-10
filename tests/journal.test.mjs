@@ -54,7 +54,7 @@ test('Journal is a header tab between Positions and Tools, with an icon for the 
   assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), 'Market / Size / Positions / Journal / Tools');
   assert.match(nav.match(/<button[^>]*id="brandJournal"[\s\S]*?<\/button>/)[0], /<svg class="tab-icon"/);
 
-  const { run, elements, dispatch } = await app();
+  const { run, elements, dispatch } = await app({ signedIn: true });
   run("setView('journal')");
   assert.ok(shown(elements.get('journalSection')));
   assert.ok(!shown(elements.get('modeCard')) && !shown(elements.get('riskStrip')), 'sizing surfaces hide');
@@ -82,9 +82,12 @@ test('the open tab rides in the address, so a reload on the Journal opens it aga
   run('setView(viewFromHash(location.hash))'); // what main.js does on load
   assert.equal(run('journalView'), true);
   assert.deepEqual(urls, [], 'already the address');
+  assert.equal(elements.get('signInGateTitle').textContent, 'Signing you in…', "the gate says loading, not 'sign in', before the stored session is read");
   run('initCloud(location.href)');
-  assert.match(elements.get('journalSection').innerHTML, /Loading your journal/, "not 'sign in' while the stored session comes back");
+  assert.equal(elements.get('signInGateTitle').textContent, 'Signing you in…', "not 'sign in' while the stored session comes back");
+  assert.ok(!shown(elements.get('journalSection')), 'nothing behind the gate yet');
   await settle();
+  assert.ok(!shown(elements.get('signInGate')) && shown(elements.get('journalSection')), 'the gate opens once it does');
   assert.match(elements.get('journalSection').innerHTML, /3 orders and 1 trades kept/, 'the records load once it does');
 
   run("setView('positions')");
@@ -102,13 +105,54 @@ test('a stored session that is gone leaves the Journal asking you to sign in', a
   const { run, elements } = await app({ storage, supabase });
   run("setView('journal')");
   await run("initCloud('https://size-calc.example.workers.dev/size-calc/#journal')");
-  assert.match(elements.get('journalSection').innerHTML, /Sign in to keep your journal/);
+  assert.ok(shown(elements.get('signInGate')) && !shown(elements.get('journalSection')));
+  assert.equal(elements.get('signInGateTitle').textContent, 'Sign in to use Journal');
+  assert.notEqual(elements.get('signInGateBtn').style.display, 'none', 'the button to sign in');
 });
 
-test('signed out, the Journal asks you to sign in', async () => {
-  const { run, elements } = await app();
+test('a stored session that can\'t come back (offline) says so instead of asking to sign in', async () => {
+  const supabase = fakeSupabase();
+  supabase.auth = { getSession: async () => ({ data: { session: null }, error: new Error('Failed to fetch') }) };
+  const storage = new Map([['sb-dhohfavttsxwutanvcuj-auth-token', '{"access_token":"old"}']]);
+  const { run, elements } = await app({ storage, supabase });
+  run("setView('market')");
+  await run("initCloud('https://size-calc.example.workers.dev/size-calc/#market')");
+  assert.equal(elements.get('signInGateTitle').textContent, "Can't reach your account");
+  assert.match(elements.get('signInGateText').textContent, /tries again every minute/);
+  assert.equal(elements.get('signInGateBtn').style.display, 'none', 'no sign-in button: the saved one comes back');
+});
+
+test('signed out, every tab but Size asks you to sign in, and nothing behind the gate loads', async () => {
+  const requests = [];
+  const { run, elements } = await app({ storage: connected([['tradier_key', 'tk']]), fetch: async url => { requests.push(String(url)); throw new Error('offline'); } });
+  for (const [view, section, name] of [['journal', 'journalSection', 'Journal'], ['positions', 'positionsSection', 'Positions'], ['market', 'marketSection', 'Market'], ['utils', 'utilsSection', 'Tools']]) {
+    run(`setView('${view}')`);
+    assert.ok(shown(elements.get('signInGate')), `${name} shows the gate`);
+    assert.ok(!shown(elements.get(section)), `${name} itself stays hidden`);
+    assert.equal(elements.get('signInGateTitle').textContent, `Sign in to use ${name}`);
+    assert.match(elements.get('signInGateText').textContent, /Size works without an account/);
+    assert.equal(run('pullRefreshAction()'), null, `nothing behind the ${name} gate to pull to refresh`);
+  }
+  await settle();
+  assert.deepEqual(requests, [], 'no quotes, positions or journal reads behind the gate');
+  assert.equal(elements.get('journalSection').innerHTML, '', 'the Journal never drew');
+  run("setView('calc')");
+  assert.ok(!shown(elements.get('signInGate')), 'Size needs no account');
+  assert.ok(shown(elements.get('modeCard')) && shown(elements.get('riskStrip')));
+  assert.match(html, /<button class="btn primary" id="signInGateBtn" data-action="signIn">Sign in with Google<\/button>/);
+  assert.match(html, /<button class="btn" data-action="setView" data-arg="calc">Back to Size<\/button>/);
+});
+
+test('signing in opens the tab behind the gate', async () => {
+  const supabase = fakeSupabase();
+  const { run, elements } = await app({ storage: connected(), supabase });
   run("setView('journal')");
-  assert.match(elements.get('journalSection').innerHTML, /Sign in to keep your journal/);
+  assert.ok(shown(elements.get('signInGate')));
+  run('session = ' + JSON.stringify(SESSION));
+  run('refreshLockedView()');
+  await settle();
+  assert.ok(!shown(elements.get('signInGate')) && shown(elements.get('journalSection')));
+  assert.match(elements.get('journalSection').innerHTML, /3 orders and 1 trades kept/, 'the records load');
 });
 
 test('signed in, it shows what is kept and the fills inside your orders, newest first', async () => {
