@@ -1,4 +1,4 @@
-// Sharing a Journal trade (the trade page's Share, one tap): a card image (drawShareCard) with the entry, the stop, the exit,
+// Sharing a Journal trade (the share icon on its card or row, or the trade page's Share; one tap): a card image (drawShareCard) with the entry, the stop, the exit,
 // the result, the setup and the entry tactic, copied. No dollars and no size, like the other share cards.
 // An open trade has no result yet: the tap reads its price (a stock's or one contract's), and the card says where it stands
 // now, in R against the stop, and how long it's been held so far.
@@ -12,6 +12,7 @@ import { state } from '../state.js';
 import { effects } from './effects.js';
 import { showError } from './feedback.js';
 import { labelNames, setupsOf } from './journal-review.js';
+import { journalTradeList } from './journal.js';
 import { journalPageTrade } from './journal-trade.js';
 import { SC } from './share-image.js';
 import { readLegQuotes, tradierSymbol } from './sheet-quote.js';
@@ -115,11 +116,11 @@ async function readSharePrice(t) {
 }
 
 /**
- * Share: the card image, copied (or downloaded where the clipboard can't take it). An open trade's card waits for its price;
+ * Share (a trade's key from its card or row, else the trade page's): the card image, copied (or downloaded where the clipboard can't take it). An open trade's card waits for its price;
  * the clipboard write starts inside the tap all the same. Returns the drawn card (tests wait on it).
  */
-export function shareJournalTrade() {
-  const t = journalPageTrade();
+export function shareJournalTrade(key = '') {
+  const t = key ? journalTradeList().find(x => x.key === key) || null : journalPageTrade();
   if (!t) return null;
   if (t.status === 'history' || !(t.avgEntry > 0)) { showError('Bought before your history: there\'s no entry to share.'); return null; }
   const draw = now => effects.drawShareCard(tradeShareSpec(t, now));

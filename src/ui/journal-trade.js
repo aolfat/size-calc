@@ -25,12 +25,13 @@ import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
-import { clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal, setJournalTab } from './journal.js';
+import { SHARE_ICON, clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal, setJournalTab } from './journal.js';
 import { onReviewChange, reviewChecklist, reviewSectionHtml, setupsOf, toReview, tradeNotes, tradeReviewState } from './journal-review.js';
 import { dropTradeExample, modelTradeRowHtml, onModelTradeChange, openModelImage, startTradeExample } from './model-books.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
+
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -329,7 +330,7 @@ export function renderJournalTrade() {
   head.innerHTML = `<div class="jt-head">
       ${backBtn}
       <div class="jt-id"><span class="section-title" id="jtTitle">${esc(t.label)}</span>
-        <span class="positions-meta">${side}${t.setupOn ? ` ${esc(t.setupOn)} ·` : ''} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button>${t.status === 'history' ? '' : ` · <button class="pos-link" data-action="shareJournalTrade" title="Copy a card image of this trade">Share</button>`}</span></div>
+        <span class="positions-meta">${side}${t.setupOn ? ` ${esc(t.setupOn)} ·` : ''} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button>${t.status === 'history' ? '' : ` · <button class="pos-link jt-share-link" data-action="shareJournalTrade" title="Copy a card image of this trade">${SHARE_ICON}Share</button>`}</span></div>
       ${headStatsHtml(t)}
       ${navHtml(p)}
     </div>${deckBarHtml(t)}`;

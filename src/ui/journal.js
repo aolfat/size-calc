@@ -160,6 +160,11 @@ export const nameOf = t => t.deleted ? `<b>${esc(t.label)}</b>`
   : `<button class="journal-name" data-action="openTradeReview" data-arg="${esc(t.key)}" aria-label="Open the ${esc(t.label)} trade"><b>${esc(t.label)}</b></button>`;
 export const restoreLink = t => t.deleted ? `<span class="pos-sub journal-row-acts"><button class="pos-link" data-action="restoreTrade" data-arg="${esc(t.key)}" aria-label="Restore the ${esc(t.label)} trade">Restore</button></span>` : '';
 /** a row opens its trade wherever it's tapped, except the tick box and the stop link (they have their own jobs) */
+/** the share icon (a box with an arrow up out of it), on every trade's card and row and the trade page's Share */
+export const SHARE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M8 10.5H6.5A1.5 1.5 0 0 0 5 12v7.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V12a1.5 1.5 0 0 0-1.5-1.5H16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+/** a trade's share button: copies its card image (ui/journal-share.js); none for a deleted or before-history trade */
+export const shareButton = t => t.deleted || t.status === 'history' || !(t.avgEntry > 0) ? ''
+  : `<button class="journal-share-btn" data-action="shareJournalTrade" data-arg="${esc(t.key)}" aria-label="Share ${esc(t.label)} as an image" title="Share: copy a card image">${SHARE_ICON}</button>`;
 export const rowOpen = t => t.deleted ? '' : ` data-action="openTradeRow" data-arg="${esc(t.key)}"`;
 
 /** a setup's chip in its parts, the action first and the level second ('Bounce | 8 EMA'), its name in the title; a pattern is its own name */
@@ -240,7 +245,7 @@ function tradeRow(t) {
   const open = t.status === 'open';
   const cls = [open ? 'journal-open' : '', t.deleted ? 'journal-deleted' : ''].filter(Boolean).join(' ');
   return `<tr${cls ? ` class="${cls}"` : ''}${rowOpen(t)}>
-    ${symCell(t, `${nameOf(t)}${reviewedMark(t)}${t.legs ? ` <span class="journal-tag journal-tag-quiet">${esc(t.structure || `${t.spreadKind} spread`)}</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.via ? ` <span class="journal-tag journal-tag-quiet" title="${esc(VIA_TITLE[t.via])}">${t.via}</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : t.kind === 'merged' ? `<span class="pos-sub journal-legs">${t.parts.length} trades merged</span>` : ''}${restoreLink(t)}`)}
+    ${symCell(t, `${nameOf(t)}${shareButton(t)}${reviewedMark(t)}${t.legs ? ` <span class="journal-tag journal-tag-quiet">${esc(t.structure || `${t.spreadKind} spread`)}</span>` : ''}${open ? ' <span class="journal-tag">open</span>' : ''}${t.expired ? ` <span class="journal-tag journal-tag-quiet" title="${esc(EXPIRED_TITLE)}">expired</span>` : ''}${t.via ? ` <span class="journal-tag journal-tag-quiet" title="${esc(VIA_TITLE[t.via])}">${t.via}</span>` : ''}${t.deleted ? ' <span class="journal-tag">deleted</span>' : ''}${t.legs ? `<span class="pos-sub journal-legs">${esc(legWords(t.legs))}</span>` : t.kind === 'merged' ? `<span class="pos-sub journal-legs">${t.parts.length} trades merged</span>` : ''}${restoreLink(t)}`)}
     ${colCells({
       pnlPct: pctCell(t),
       pnl: `<td class="${open && !t.exits ? '' : pnlClass(t.pnl)}"${pnlTitle(t)}>${open && !t.exits ? '—' : signed$(t.pnl)}${pnlSub(t)}</td>`,

@@ -154,7 +154,7 @@ test('Trades is the default view: fills grouped into trades, with P&L, R, hold t
   const rows = [...out.matchAll(/<tr( class="journal-open")? data-action="openTradeRow" data-arg="[^"]*">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name"[^>]*><b>([^<]*)<\/b>/g)].map(m => [m[2], !!m[1]]);
   assert.deepEqual(rows, [['AAPL 12/18/26 245C', true], ['AAPL', false]], 'the open call first (newest), then the stopped-out stock');
   assert.match(out, /<th scope="col">Symbol<\/th><th scope="col">P&amp;L %<\/th><th scope="col">P&amp;L<\/th><th scope="col">R<\/th>/, 'P&L %, P&L and R lead, so phones see them before scrolling');
-  assert.match(out, /<tr data-action="openTradeRow" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><\/div><\/div><\/td>\s*<td class="journal-sell" title="Of the \$10,002\.00 paid">−5\.04%<\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-setups-none">—<\/td>\s*<td class="journal-buy">Long<\/td>/);
+  assert.match(out, /<tr data-action="openTradeRow" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z">\s*<td><div class="journal-sym"><label class="journal-pick">[\s\S]*?<\/label><div class="journal-sym-main"><button class="journal-name" data-action="openTradeReview" data-arg="6789\|AAPL\|long\|2026-10-01T14:30:01\.000Z" aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><button class="journal-share-btn" data-action="shareJournalTrade"[^>]*><svg[^]*?<\/button><\/div><\/div><\/td>\s*<td class="journal-sell" title="Of the \$10,002\.00 paid">−5\.04%<\/td>\s*<td class="journal-sell">−\$504\.00<\/td>\s*<td title="Initial stop \$95\.00, risk \$502\.00">−1\.00R<\/td>\s*<td><button class="pos-link" data-action="openTradeReview"[^>]*>\$95\.00<\/button><\/td>\s*<td class="journal-setups-none">—<\/td>\s*<td class="journal-buy">Long<\/td>/);
   assert.match(out, /<th scope="col">R<\/th><th scope="col">Stop<\/th><th scope="col">Setups<\/th><th scope="col">Side<\/th>/);
   assert.match(out, /aria-label="Set a stop for AAPL 12\/18\/26 245C">Set<\/button><span class="pos-sub">premium<\/span>/, 'the call has no stop: Set, and the premium is its risk');
   assert.match(out, /<td>2d 0h<\/td>/);
@@ -177,7 +177,7 @@ test('Columns: hide the ones you don\'t want, kept on this device; one always st
   run("toggleJournalColumn('setups')");
   assert.match(out(), /data-action="toggleJournalColumn" data-arg="pnl" aria-pressed="false"/);
   assert.deepEqual(heads(), ['Symbol', 'P&amp;L %', 'R', 'Stop', 'Side', 'Qty', 'Entry', 'Exit', 'Hold', 'Opened (ET)']);
-  assert.match(out(), /aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><\/div><\/div><\/td>\s*<td class="journal-sell" title="Of the \$10,002\.00 paid">−5\.04%<\/td>\s*<td title="Initial stop/, 'the cells follow the headers');
+  assert.match(out(), /aria-label="Open the AAPL trade"><b>AAPL<\/b><\/button><button class="journal-share-btn" data-action="shareJournalTrade"[^>]*><svg[^]*?<\/button><\/div><\/div><\/td>\s*<td class="journal-sell" title="Of the \$10,002\.00 paid">−5\.04%<\/td>\s*<td title="Initial stop/, 'the cells follow the headers');
   assert.match(out(), /class="journal-buy">Long<\/td>\s*<td>100<\/td>/, 'no setups cell either');
   assert.equal(storage.get('journal_hidden_cols'), JSON.stringify(['pnl', 'setups']));
 
@@ -523,7 +523,7 @@ test('a sell whose purchase is older than the history: marked, kept out of the s
   assert.doesNotMatch(out(), /Short<\/td>\s*<td>40</, 'no made-up short');
   assert.match(out(), /2 closed · 0 won \(0%\) · <span class="journal-sell">−\$744\.00<\/span> before fees/, 'the stock and the expired call count; the history sell doesn\'t');
   assert.match(out(), /1 from before your history/);
-  assert.match(out(), /MSFT 9\/18\/26 520C<\/b><\/button> <span class="journal-tag journal-tag-quiet" title="Closed at \$0 at the 4pm close on expiry/);
+  assert.match(out(), /MSFT 9\/18\/26 520C<\/b><\/button><button class="journal-share-btn" data-action="shareJournalTrade"[^>]*><svg[^]*?<\/button> <span class="journal-tag journal-tag-quiet" title="Closed at \$0 at the 4pm close on expiry/);
   assert.match(out(), /−\$240\.00/, 'the whole premium');
   assert.match(out(), /Options still open after expiry close at \$0/);
 
@@ -551,7 +551,7 @@ test('spreads: a multi-leg order is one row; Split writes solo; Combine joins le
   const out = () => elements.get('journalSection').innerHTML;
   const sheet = () => elements.get('tradeReviewBody').innerHTML;
   const SPREAD = '6789|AAPL|spread|2026-10-08T14:00:01.000Z';
-  assert.match(out(), /<b>AAPL 12\/18\/26 250\/260C<\/b><\/button> <span class="journal-tag journal-tag-quiet">call debit<\/span> <span class="journal-tag">open<\/span><span class="pos-sub journal-legs">\+2 250C −2 260C<\/span>/);
+  assert.match(out(), /<b>AAPL 12\/18\/26 250\/260C<\/b><\/button><button class="journal-share-btn" data-action="shareJournalTrade"[^>]*><svg[^]*?<\/button> <span class="journal-tag journal-tag-quiet">call debit<\/span> <span class="journal-tag">open<\/span><span class="pos-sub journal-legs">\+2 250C −2 260C<\/span>/);
   assert.match(out(), /journal-buy">Long<\/td>\s*<td>2<\/td>\s*<td>\$3\.50<\/td>/, 'a call debit spread is long; net debit per spread');
   assert.doesNotMatch(out(), /data-action="separateTrade"/, 'no Separate on the row: it is in the sheet');
 

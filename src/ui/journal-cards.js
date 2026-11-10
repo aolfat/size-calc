@@ -12,7 +12,7 @@ import { dayReviewLink } from './journal-notebook.js';
 import { reviewFrom, reviewQueue, savedForWeekly, setupGradeOf, setupsOf, toReview, tradePass } from './journal-review.js';
 import {
   EXPIRED_TITLE, HISTORY_TITLE, VIA_TITLE, feeSubs, feeWords, isReviewed, journalAfterFees, journalTradeList, nameOf, onWords, pctTitleOf, pickBox,
-  pnlClass, pnlTitle, px, renderJournal, restoreLink, reviewsRead, rowOpen, rTitleOf, setupChip, signed$, signedPct, signedR, untagged,
+  pnlClass, pnlTitle, px, renderJournal, restoreLink, reviewsRead, rowOpen, rTitleOf, setupChip, shareButton, signed$, signedPct, signedR, untagged,
 } from './journal.js';
 
 const nyDay = iso => new Date(iso).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
@@ -269,7 +269,7 @@ export function closedCard(t) {
     : nowrap([`${t.entryQty} ${unitWord(t)}`, nyDay(t.openedAt) === nyDay(t.closedAt) ? nyDay(t.openedAt) : `${nyDay(t.openedAt)} → ${nyDay(t.closedAt)}`, holdWords(t.holdMs)]);
   return `<article class="jtc${reviewed ? ' jtc-reviewed' : todo ? ' jtc-todo' : ''}${pop}${t.deleted ? ' journal-deleted' : ''}"${rowOpen(t)}${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
     <div class="jtc-head">${state.journalSelecting || state.journalPicked.length ? pickBox(t) : ''}<div class="jtc-id">
-      <div class="jtc-name">${nameOf(t)}${sideTags(t)}</div>
+      <div class="jtc-name">${nameOf(t)}${sideTags(t)}${shareButton(t)}</div>
       <div class="jtc-sub">${sub}</div>${extraSub(t) ? `<div class="jtc-sub">${extraSub(t)}</div>` : ''}
     </div>${pnlBlock(t, history ? '' : pctOf(t) + feeSubs(t))}</div>
     ${setupTags(t)}
@@ -291,7 +291,7 @@ export function openCard(t) {
   const stopTitle = stop.up ? `Initial stop ${px(t.stop, t.assetType)}, moved to ${px(t.movedTo, t.assetType)}` : '';
   return `<article class="jtc jtc-is-open${t.deleted ? ' journal-deleted' : ''}"${rowOpen(t)}>
     <div class="jtc-head">${state.journalSelecting || state.journalPicked.length ? pickBox(t) : ''}<div class="jtc-id">
-      <div class="jtc-name">${nameOf(t)}${sideTags(t)}</div>
+      <div class="jtc-name">${nameOf(t)}${sideTags(t)}${shareButton(t)}</div>
       <div class="jtc-sub">${nowrap([sold ? `${t.openQty}/${t.entryQty} open` : `${t.entryQty} ${unitWord(t)}`, holdWords(Date.now() - Date.parse(t.openedAt))])}</div>${extraSub(t) ? `<div class="jtc-sub">${extraSub(t)}</div>` : ''}
     </div>${pnlBlock(t, under)}</div>
     ${setupTags(t)}

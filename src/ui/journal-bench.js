@@ -15,7 +15,7 @@ import {
 } from './journal-cards.js';
 import {
   HISTORY_TITLE, clockTime, isReviewed, journalAfterFees, journalTradeList, pctTitleOf, pickBox, pnlClass, pnlTitle, px, renderJournal,
-  restoreLink, reviewsRead, rTitleOf, setupChip, signed$, signedPct, signedR,
+  restoreLink, reviewsRead, rTitleOf, setupChip, shareButton, signed$, signedPct, signedR,
 } from './journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { openJournalTrade } from './journal-trade.js';
@@ -148,7 +148,7 @@ function benchRow(t, cols) {
   const pick = state.journalSelecting || state.journalPicked.length ? pickBox(t) : '';
   const review = reviewBadge(t);
   return `<tr class="jb-row${sel ? ' jb-sel' : ''}${t.deleted ? ' journal-deleted' : ''}" data-action="selectJournalTrade" data-arg="${esc(t.key)}" aria-selected="${sel}"${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
-    <td><div class="journal-sym">${pick}<div class="journal-sym-main"><div class="jb-name"><b>${esc(t.label)}</b>${sideTags(t)}${live}${review ? `<span class="jb-rv-inline">${review}</span>` : ''}</div><div class="jb-sub">${rowSub(t)}</div>${restoreLink(t)}</div></div></td>
+    <td><div class="journal-sym">${pick}<div class="journal-sym-main"><div class="jb-name"><b>${esc(t.label)}</b>${sideTags(t)}${live}${shareButton(t)}${review ? `<span class="jb-rv-inline">${review}</span>` : ''}</div><div class="jb-sub">${rowSub(t)}</div>${restoreLink(t)}</div></div></td>
     ${cols.map(([k]) => cells[k]).join('')}
     <td class="jb-rv-cell">${review || '<span class="jb-rv-none">—</span>'}</td>
   </tr>`;

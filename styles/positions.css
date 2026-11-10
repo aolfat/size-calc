@@ -830,6 +830,13 @@ span.journal-pick { cursor: default; }
 .jtc-head .journal-pick { margin-top: 3px; }
 .jtc-id { flex: 1 1 auto; min-width: 0; }
 .jtc-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* a trade's share icon, beside its side tags on the cards, the desktop table and the trade page (ui/journal-share.js) */
+.journal-share-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--text2); background: transparent; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.journal-share-btn:focus-visible { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; }
+.journal-share-btn:active { color: var(--blue); background: var(--blue-bg); }
+@media (hover: hover) { .journal-share-btn:hover { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); } }
+.jt-share-link { display: inline-flex; align-items: center; gap: 4px; }
+.jt-share-link svg { width: 14px; height: 14px; }
 .jtc-name .journal-name, .jtc-name > b { font-size: 17px; font-weight: 700; margin-right: 2px; }
 @media (hover: none) { .jtc-name .journal-name::after { content: none; } } /* the whole card opens */
 .jtc-sub { margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--text2); }
