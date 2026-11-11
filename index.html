@@ -385,7 +385,11 @@
           <label for="posTargetQty" id="posTargetQtyLabel">Shares to sell</label>
           <input type="number" id="posTargetQty" step="1" min="1" inputmode="numeric" autocomplete="off" data-input="posTargetChanged" />
         </div>
-        <div class="chip-row pos-portions" id="posTargetPortions" role="group" aria-label="Portion of the position"></div>
+        <div class="field pos-target-pct">
+          <label for="posTargetPct">Percent</label>
+          <div class="suffix-wrap"><input type="number" id="posTargetPct" step="1" min="0" inputmode="decimal" placeholder="e.g. 20" autocomplete="off" data-input="posTargetPctChanged" /><span class="suffix">%</span></div>
+        </div>
+        <div class="chip-row pos-portions" id="posTargetPortions" role="group" aria-label="Percent of the position"></div>
       </div>
       <div class="pos-target-sum" id="posTargetSummary" role="status"></div>
       <div class="trade-actions"><button class="btn trade-confirm" id="posTargetReview" data-action="openPositionTrade" data-arg="" data-arg2="target" disabled>Review target</button></div>
@@ -410,7 +414,11 @@
             <label for="posChartCloseQty" id="posChartCloseQtyLabel">Shares to sell</label>
             <input type="number" id="posChartCloseQty" step="1" min="1" inputmode="numeric" autocomplete="off" data-input="posChartCloseChanged" />
           </div>
-          <div class="chip-row pos-portions" id="posChartClosePortions" role="group" aria-label="Portion of the position"></div>
+          <div class="field pos-target-pct">
+            <label for="posChartClosePct">Percent</label>
+            <div class="suffix-wrap"><input type="number" id="posChartClosePct" step="1" min="0" inputmode="decimal" placeholder="e.g. 20" autocomplete="off" data-input="posChartClosePctChanged" /><span class="suffix">%</span></div>
+          </div>
+          <div class="chip-row pos-portions" id="posChartClosePortions" role="group" aria-label="Percent of the position"></div>
         </div>
         <div class="pos-target-sum" id="posChartCloseSummary" role="status"></div>
         <div class="trade-actions"><button class="btn trade-confirm" id="posChartCloseReview" data-action="openPositionTrade" data-arg="" data-arg2="chartClose" disabled>Review close</button></div>

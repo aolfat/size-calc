@@ -25,7 +25,8 @@ import { originalEditingIn, originalStopBlock } from './position-original.js';
 import { positionChartInCards, positionRUnit, renderPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 
-export const PORTIONS = [[0.1, '10%'], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [1, 'All']];
+// how much to sell, in percent of what you hold; the % box beside the count takes any other percent
+export const PORTIONS = [[0.1, '10%'], [0.25, '25%'], [1 / 3, '33%'], [0.5, '50%'], [1, 'All']];
 // target chips in R: that many times the risk per share above your cost (below on a short); ✎ makes them your own (r_presets)
 const R_DEFAULT = [1, 2, 3, 5];
 const R_MAX = 5;
@@ -198,11 +199,22 @@ function setTargetInputs() {
   document.getElementById('posTargetPrice').value = priceText(c, c && c.price);
   document.getElementById('posTargetR').value = rText(c);
   document.getElementById('posTargetQty').value = c && c.qty >= 1 ? String(c.qty) : '';
+  document.getElementById('posTargetPct').value = pctText(c && c.qty, c && c.pct);
   document.getElementById('posAddStop').value = priceText(c, c && c.addStop);
   document.getElementById('posAddPrice').value = priceText(c, c && c.addPrice);
   document.getElementById('posChartStopPrice').value = priceText(c, c && c.stop);
   document.getElementById('posChartClosePrice').value = priceText(c, c && c.closePrice);
   document.getElementById('posChartCloseQty').value = c && c.closeQty >= 1 ? String(c.closeQty) : '';
+  document.getElementById('posChartClosePct').value = pctText(c && c.closeQty, c && c.closePct);
+}
+
+/** the % box: what was typed, else the count as a percent of what you hold (one decimal, none when whole) */
+function pctText(qty, typed) {
+  if (typed > 0) return String(typed);
+  const row = chartRow(), held = row ? Math.abs(row.qty) : 0;
+  if (!(qty > 0) || !(held > 0)) return '';
+  const pct = Math.round(qty / held * 1000) / 10;
+  return String(pct);
 }
 
 /** typing in the Close tool's limit or count; the inputs keep what was typed */
@@ -211,7 +223,20 @@ export function posChartCloseChanged() {
   if (!c) return;
   const price = parseFloat(document.getElementById('posChartClosePrice').value), qty = Number(document.getElementById('posChartCloseQty').value);
   c.closePrice = price > 0 ? price : null;
+  if ((qty > 0 ? qty : null) !== c.closeQty) c.closePct = null; // a typed count is a count; the % box follows it
   c.closeQty = qty > 0 ? qty : null;
+  document.getElementById('posChartClosePct').value = pctText(c.closeQty, c.closePct);
+  renderPositionChart();
+}
+
+/** typing the Close tool's percent: that share of what you hold, at least one; 100 or more is every share */
+export function posChartClosePctChanged() {
+  const c = state.posChart, row = chartRow();
+  if (!c) return;
+  const pct = parseFloat(document.getElementById('posChartClosePct').value);
+  c.closePct = pct > 0 ? pct : null;
+  c.closeQty = c.closePct && row ? closeQty(row, c.closePct / 100) : null;
+  document.getElementById('posChartCloseQty').value = c.closeQty >= 1 ? String(c.closeQty) : '';
   renderPositionChart();
 }
 
@@ -220,6 +245,7 @@ export function setPosClosePortion(fraction) {
   const c = state.posChart, row = chartRow();
   if (!c || !row) return;
   c.closeQty = closeQty(row, fraction);
+  c.closePct = null;
   setTargetInputs();
   renderPositionChart();
 }
@@ -242,9 +268,23 @@ export function posTargetChanged() {
   const price = parseFloat(document.getElementById('posTargetPrice').value);
   const qty = Number(document.getElementById('posTargetQty').value);
   c.price = price > 0 ? price : null;
+  if ((qty > 0 ? qty : null) !== c.qty) c.pct = null; // a typed count is a count; the % box follows it
   c.qty = qty > 0 ? qty : null;
   c.r = null; // a typed price is a price; the R box follows it
   document.getElementById('posTargetR').value = rText(c);
+  document.getElementById('posTargetPct').value = pctText(c.qty, c.pct);
+  renderPositionChart();
+}
+
+/** typing the target's percent: that share of what you hold, at least one, never more than the other targets leave */
+export function posTargetPctChanged() {
+  const c = state.posChart, row = chartRow();
+  if (!c) return;
+  const pct = parseFloat(document.getElementById('posTargetPct').value);
+  c.pct = pct > 0 ? pct : null;
+  const room = row ? targetRoom(row) : null;
+  c.qty = c.pct && room && room.free > 0 ? portionQty(room, c.pct / 100) : null;
+  document.getElementById('posTargetQty').value = c.qty >= 1 ? String(c.qty) : '';
   renderPositionChart();
 }
 
@@ -293,6 +333,7 @@ export function setPosTargetPortion(fraction) {
   const room = targetRoom(row);
   if (!(room.free > 0)) return;
   c.qty = portionQty(room, fraction);
+  c.pct = null;
   setTargetInputs();
   renderPositionChart();
 }

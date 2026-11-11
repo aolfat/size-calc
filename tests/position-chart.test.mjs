@@ -185,16 +185,54 @@ test('portion chips take a share of the position, never more than the other targ
   await settle();
   const chips = () => elements.get('posTargetPortions').innerHTML;
   assert.match(chips(), /data-arg="0\.1" title="30 shares">10%</);
-  assert.match(chips(), /data-arg="0\.25" title="75 shares">¼</);
-  assert.match(chips(), /data-arg="0\.3333333333333333" title="100 shares">⅓</);
-  assert.match(chips(), /data-arg="0\.5" title="150 shares">½</);
+  assert.match(chips(), /data-arg="0\.25" title="75 shares">25%</);
+  assert.match(chips(), /data-arg="0\.3333333333333333" title="100 shares">33%</);
+  assert.match(chips(), /data-arg="0\.5" title="150 shares">50%</);
   assert.match(chips(), /data-arg="1" title="200 shares">All</, 'the limit for 100 already holds a third');
   run("actions.setPosTargetPortion({ dataset: { arg: String(1 / 3) } })");
   assert.equal(elements.get('posTargetQty').value, '100');
   assert.match(chips(), /class="filter-btn active" aria-pressed="true" data-action="setPosTargetPortion" data-arg="0\.3333333333333333"/);
   assert.match(elements.get('posTargetSummary').innerHTML, /Tap the chart or type a target price/);
+  assert.equal(elements.get('posTargetPct').value, '33.3', 'the % box follows the chip');
   run("setPosTargetPortion(1)");
   assert.equal(run('posChart.qty'), 200);
+  assert.equal(elements.get('posTargetPct').value, '66.7');
+});
+
+test('the % box takes any percent of the position: the count follows, a typed count moves it back', async () => {
+  const { run, elements } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  // HOOD: 300 held, a limit for 100 already, so 200 left for targets
+  elements.get('posTargetPct').value = '20';
+  run('actions.posTargetPctChanged()');
+  assert.equal(run('posChart.qty'), 60);
+  assert.equal(elements.get('posTargetQty').value, '60');
+  assert.equal(elements.get('posTargetPct').value, '20', 'what was typed stays');
+  elements.get('posTargetPct').value = '0.1';
+  run('actions.posTargetPctChanged()');
+  assert.equal(run('posChart.qty'), 1, 'at least one');
+  elements.get('posTargetPct').value = '90';
+  run('actions.posTargetPctChanged()');
+  assert.equal(run('posChart.qty'), 200, 'never more than the other targets leave');
+  elements.get('posTargetPct').value = '';
+  run('actions.posTargetPctChanged()');
+  assert.equal(run('posChart.qty'), null);
+  assert.equal(elements.get('posTargetQty').value, '');
+  elements.get('posTargetQty').value = '45';
+  run('actions.posTargetChanged()');
+  assert.equal(elements.get('posTargetPct').value, '15', 'a typed count reads back in percent');
+
+  run("actions.setPosChartTool({ dataset: { arg: 'close' } })");
+  elements.get('posChartClosePct').value = '40';
+  run('actions.posChartClosePctChanged()');
+  assert.equal(run('posChart.closeQty'), 120, 'the close takes a percent of all you hold');
+  assert.equal(elements.get('posChartCloseQty').value, '120');
+  elements.get('posChartClosePct').value = '100';
+  run('actions.posChartClosePctChanged()');
+  assert.equal(run('posChart.closeQty'), 300);
+  run("actions.setPosClosePortion({ dataset: { arg: '0.25' } })");
+  assert.equal(elements.get('posChartClosePct').value, '25');
 });
 
 test('a target in R: the chips and the R box set the price from your cost and the nearest stop, and a price reads back in R', async () => {
