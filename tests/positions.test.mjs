@@ -350,10 +350,14 @@ test('the card ladder draws every working stop and limit target, the note names 
   assert.equal(targets.length, 2, 'both targets; the buy limit adds, so it is no target');
   assert.ok(Math.max(...stops) < cost && cost < Math.min(...targets), 'stops under the cost, targets over it');
   assert.ok(Math.max(...targets) < 100, 'the farthest target fits on the line');
-  assert.match(html, /title="Target \$60\.00 · 25 sh"/, 'hover gives the price and size');
+  assert.match(html, /title="Target \$60\.00 · 10R · 25 sh"/, 'hover gives the price, its R and size');
   assert.match(html, /title="Stop \$45\.00 · 50 sh"/);
   assert.match(html, /Stop \$49\.00 · \+1 more/);
-  assert.match(html, /Target \$60\.00<\/span> · \+1 more/, 'the nearest target leads');
+  assert.match(html, /Target \$60\.00 · 10R<\/span> · \+1 more/, 'the nearest target leads, with its R');
+  const labels = [...html.matchAll(/class="pc-rlabel" style="left:([\d.]+)%">([^<]+)</g)].map(m => [Number(m[1]), m[2]]);
+  assert.deepEqual(labels.map(l => l[1]), ['10R', '15R'], 'each target\'s R under its tick: 1R is the $1 to the nearest stop');
+  assert.deepEqual(labels.map(l => l[0]), targets.slice().sort((a, b) => a - b), 'under the ticks');
+  assert.match(html, /class="pc-ladder pc-has-r"/);
 
   const bare = run(`(() => { const p = positionRows(${JSON.stringify(account)}, []); return positionCard(p.rows[0]); })()`);
   assert.doesNotMatch(bare, /pc-target|Target/, 'no targets, nothing extra');

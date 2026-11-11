@@ -408,9 +408,17 @@ function ladder({ cost, price, floor, pnl, levels = [], fmt = fmt$, unit = 'sh' 
   const at = v => ((v - lo) / (hi - lo) * 100).toFixed(1) + '%';
   const cls = tone(pnl);
   const fill = cost !== null && cls ? `<span class="pc-fill ${cls}" style="left:${at(Math.min(cost, price))};right:calc(100% - ${at(Math.max(cost, price))})"></span>` : '';
-  const tick = l => `<span class="pc-tick pc-${l.kind}" style="left:${at(l.price)}" title="${l.kind === 'stop' ? 'Stop' : 'Target'} ${esc(fmt(l.price))} · ${count(l.qty)} ${unit}"></span>`;
-  return `<div class="pc-ladder" aria-hidden="true"><span class="pc-track"></span>${fill}`
-    + levels.map(tick).join('')
+  const tick = l => `<span class="pc-tick pc-${l.kind}" style="left:${at(l.price)}" title="${l.kind === 'stop' ? 'Stop' : 'Target'} ${esc(fmt(l.price))}${l.r == null ? '' : ` · ${rShort(l.r)}`} · ${count(l.qty)} ${unit}"></span>`;
+  // each target's R under its tick, skipping one that would sit on the last label drawn
+  let last = -Infinity;
+  const labels = levels.filter(l => l.kind === 'target' && l.r != null).sort((a, b) => a.price - b.price).map(l => {
+    const x = (l.price - lo) / (hi - lo) * 100;
+    if (x - last < 9) return '';
+    last = x;
+    return `<span class="pc-rlabel" style="left:${at(l.price)}">${rShort(l.r)}</span>`;
+  }).join('');
+  return `<div class="pc-ladder${labels ? ' pc-has-r' : ''}" aria-hidden="true"><span class="pc-track"></span>${fill}`
+    + levels.map(tick).join('') + labels
     + (cost !== null ? `<span class="pc-tick pc-cost" style="left:${at(cost)}"></span>` : '')
     + `<span class="pc-dot ${cls}" style="left:${at(price)}"></span></div>`;
 }
@@ -425,17 +433,31 @@ function stopNote(r) {
   return `<span class="pc-note">Stop ${px(r.stop)}${r.stops > 1 ? ` · +${r.stops - 1} more` : ''}${covers}</span>`;
 }
 
-/** a position's working limit targets, the one nearest the price first, sizes added per price */
-const rowTargets = r => positionLevels(r).filter(l => l.kind === 'target').sort((a, b) => r.qty > 0 ? a.price - b.price : b.price - a.price);
+/** '2R', '1.5R', '−0.5R' */
+const rShort = v => `${v < 0 ? '−' : ''}${+Math.abs(v).toFixed(1)}R`;
 
-/** the line under the stop line: the nearest target, and how many more */
+/**
+ * a position's stops and working limit targets, each target with the R it exits at from your cost (1R counted as the card's R
+ * counts it, positionRUnit; none until the Journal is in when signed in, or with nothing to count R from)
+ */
+function rowLevels(r) {
+  const per = r.avg > 0 && cardR(r) !== null ? positionRUnit(r).per : null;
+  const side = r.qty > 0 ? 1 : -1;
+  return positionLevels(r).filter(l => l.kind !== 'avg')
+    .map(l => l.kind === 'target' && per ? { ...l, r: side * (l.price - r.avg) / per } : l);
+}
+
+/** a position's working limit targets, the one nearest the price first, sizes added per price */
+const rowTargets = r => rowLevels(r).filter(l => l.kind === 'target').sort((a, b) => r.qty > 0 ? a.price - b.price : b.price - a.price);
+
+/** the line under the stop line: the nearest target and its R, and how many more */
 function targetNote(r) {
   const t = rowTargets(r);
-  return t.length ? `<span class="pc-note pc-targets"><span class="pc-target-word">Target ${fmtPositionPrice(t[0].price, r.tradeAs)}</span>${t.length > 1 ? ` · +${t.length - 1} more` : ''}</span>` : '';
+  return t.length ? `<span class="pc-note pc-targets"><span class="pc-target-word">Target ${fmtPositionPrice(t[0].price, r.tradeAs)}${t[0].r == null ? '' : ` · ${rShort(t[0].r)}`}</span>${t.length > 1 ? ` · +${t.length - 1} more` : ''}</span>` : '';
 }
 
 const rowLadder = r => ladder({ cost: r.avg > 0 ? r.avg : null, price: r.price, floor: r.option && r.qty > 0 && r.stop === null ? 0 : null, pnl: r.pnl,
-  levels: positionLevels(r).filter(l => l.kind !== 'avg'), fmt: v => fmtPositionPrice(v, r.tradeAs), unit: r.option ? 'ct' : 'sh' });
+  levels: rowLevels(r), fmt: v => fmtPositionPrice(v, r.tradeAs), unit: r.option ? 'ct' : 'sh' });
 // a debit spread is worth zero at worst; a credit's mark runs the other way, so no bar
 const spreadLadder = s => s.kind === 'debit' && s.avg > 0 ? ladder({ cost: s.avg, price: s.price, floor: 0, pnl: s.pnl }) : '';
 const spreadNote = s => `<span class="pc-note">${esc(s.structure.charAt(0).toUpperCase() + s.structure.slice(1))}${s.maxLoss === null ? '' : ` · max loss ${fmt$(s.maxLoss)}`}</span>`;
