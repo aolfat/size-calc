@@ -541,11 +541,75 @@ export function spreadCard(s) {
   return legs ? `<div class="pc-group">${card}${legs}</div>` : card; // the legs stay under their spread in the desktop's grid
 }
 
-/** a tap on a phone card: opens or closes its figures and buttons */
+/** the cards that go with one: itself, the spread it's a leg of (and that spread's other legs), or a spread's legs */
+function cardFamily(key) {
+  const out = new Set([key]);
+  for (const s of state.positions?.spreads || []) {
+    const legs = s.legs.map(l => l.symbol);
+    if (s.key === key || legs.includes(key)) { out.add(s.key); legs.forEach(l => out.add(l)); }
+  }
+  return out;
+}
+
+/**
+ * A tap on a card: opens or closes its figures and buttons. One position at a time (owner request): opening a card closes the
+ * others, their legs and a chart that isn't this position's; closing one closes its chart. The card tapped holds its place on
+ * the screen while the ones above it shrink.
+ */
 export function togglePosCard(key) {
-  const open = state.posCardsOpen.includes(key);
-  state.posCardsOpen = open ? state.posCardsOpen.filter(k => k !== key) : [...state.posCardsOpen, key];
-  renderPositionsTable();
+  const family = cardFamily(key);
+  if (state.posCardsOpen.includes(key)) {
+    state.posCardsOpen = state.posCardsOpen.filter(k => k !== key);
+    if (state.posChart && family.has(state.posChart.symbol)) state.posChart = null;
+  } else {
+    state.posCardsOpen = [...state.posCardsOpen.filter(k => family.has(k)), key];
+    state.posLegsOpen = state.posLegsOpen.filter(k => family.has(k));
+    if (state.posChart && !family.has(state.posChart.symbol)) state.posChart = null;
+  }
+  holdInPlace(key, renderPositions);
+}
+
+/** a tap on the Positions page outside the open card, its chart and every control: the card closes, its chart too (owner request) */
+export function posOutsideTap(target) {
+  if (!state.positionsView || posLayoutNow() !== 'cards' || !target || !target.closest) return;
+  if (!state.posCardsOpen.length && !state.posLegsOpen.length && !state.posChart) return;
+  if (!target.closest('#positionsSection') && target !== document.body && !target.classList?.contains('app')) return; // sheets, the header, the tab bar
+  if (target.closest('.pc-open, .pc-group, #posChartSection, .pc-top, button, a, input, select, textarea, label, [data-action]')) return;
+  const first = state.posCardsOpen[0];
+  state.posCardsOpen = [];
+  state.posLegsOpen = [];
+  state.posChart = null;
+  holdInPlace(first, renderPositions);
+}
+
+let outsideWatched = false;
+/** boot: a tap anywhere outside the open card closes it */
+export function initPositionCards() {
+  if (outsideWatched) return;
+  outsideWatched = true;
+  document.addEventListener('click', e => posOutsideTap(e.target));
+}
+
+/** redraws, then scrolls by however far key's card moved, so it stays under your finger */
+function holdInPlace(key, redraw) {
+  const find = () => key ? document.querySelector(`.pc-top[data-arg="${String(key).replace(/["\\]/g, '\\$&')}"]`) : null;
+  const before = find()?.getBoundingClientRect().top;
+  redraw();
+  const el = find();
+  if (before === undefined || !el) return;
+  const shift = el.getBoundingClientRect().top - before;
+  if (Math.abs(shift) < 1) return;
+  const pane = scrollParent(el);
+  if (pane) pane.scrollTop += shift; else window.scrollBy(0, shift);
+}
+
+/** the pane that scrolls a card: one of the desktop shell's, or null for the page */
+function scrollParent(el) {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const y = getComputedStyle(p).overflowY;
+    if ((y === 'auto' || y === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
 }
 
 /** the account in three tiles over the cards: its value, what's in positions, the open P/L */

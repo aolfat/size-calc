@@ -5,6 +5,7 @@ import { panView, viewRange, zoomView } from '../core/chart-view.js';
 import { SANS_FONT } from '../lib/media.js';
 import { zoneClock } from '../lib/zone.js';
 import { GRAB_PX, attachTouchCrosshair } from './chart.js';
+import { effects } from './effects.js';
 
 export const CANDLE_H = 260;
 
@@ -222,12 +223,14 @@ export function ohlcText(b) {
  * shift+scroll and mouse drags pan, a plain vertical scroll is left to the page. On touch: long-press crosshair (release picks),
  * sideways swipe pans, two fingers pinch. A drag is not a click, so letting go never picks.
  * Lines you can move (optional): o.grab(clientX, clientY, px) picks one up when the pointer is within px of it (mouse, or one
- * finger at once, no long-press), o.dragTo(clientY) moves it, o.drop() lets go; o.grabbable(clientX, clientY, px) turns the cursor.
+ * finger at once, no long-press), o.dragTo(clientY) moves it, o.drop({ touch }) lets go; o.grabbable(clientX, clientY, px) turns the cursor.
+ * Options: o.holdMs, how long a finger rests before the crosshair (220ms); o.onArm, as it starts aiming; o.touchTaps false, a
+ * finger's quick tap picks nothing; o.grabHoldMs, a finger rests on a line that long before it moves it (else at once).
  */
 export function attachCandleGestures(canvas, o) {
   // a held line takes the pointer before the pan, the crosshair and the tap
-  let held = false, dropped = 0;
-  const letGo = () => { held = false; dropped = Date.now() + 350; canvas.style.cursor = ''; o.drop(); };
+  let held = false, dropped = 0, touchedAt = 0; // touchedAt: when a finger last left the chart
+  const letGo = (touch = false) => { held = false; dropped = Date.now() + 350; canvas.style.cursor = ''; o.drop({ touch }); };
   if (o.grab) {
     canvas.addEventListener('mousedown', e => {
       if (e.button !== 0 || !o.count() || !o.grab(e.clientX, e.clientY, GRAB_PX.mouse)) return;
@@ -242,15 +245,39 @@ export function attachCandleGestures(canvas, o) {
       o.dragTo(e.clientY);
     });
     window.addEventListener('mouseup', () => { if (held) letGo(); });
+    // o.grabHoldMs: a finger has to rest on a line that long before it moves it (a swipe from a line still scrolls the page,
+    // a quick tap does nothing); without it a finger on a line takes it at once
+    let waiting = null;
     canvas.addEventListener('touchstart', e => {
-      if (e.touches.length === 1 && o.count() && o.grab(e.touches[0].clientX, e.touches[0].clientY, GRAB_PX.touch)) { held = true; e.stopImmediatePropagation(); }
+      if (e.touches.length !== 1 || !o.count()) { if (waiting) { clearTimeout(waiting.timer); waiting = null; } return; }
+      const { clientX, clientY } = e.touches[0];
+      if (!o.grabHoldMs) {
+        if (o.grab(clientX, clientY, GRAB_PX.touch)) { held = true; e.stopImmediatePropagation(); }
+        return;
+      }
+      if (!o.grabbable(clientX, clientY, GRAB_PX.touch)) return;
+      e.stopImmediatePropagation(); // the line's, not the crosshair's
+      waiting = { x: clientX, y: clientY, timer: setTimeout(() => {
+        const w = waiting;
+        waiting = null;
+        if (w && o.grab(w.x, w.y, GRAB_PX.touch)) { held = true; effects.haptic(); }
+      }, o.grabHoldMs) };
     }, { passive: true });
     canvas.addEventListener('touchmove', e => {
+      if (waiting) {
+        e.stopImmediatePropagation();
+        const t = e.touches[0];
+        if (t && Math.hypot(t.clientX - waiting.x, t.clientY - waiting.y) > 8) { clearTimeout(waiting.timer); waiting = null; } // a scroll
+        return;
+      }
       if (!held) return;
       e.preventDefault(); e.stopImmediatePropagation();
       if (e.touches.length === 1) o.dragTo(e.touches[0].clientY);
     }, { passive: false });
-    const touchEnd = e => { if (held) { e.stopImmediatePropagation(); letGo(); } };
+    const touchEnd = e => {
+      if (waiting) { clearTimeout(waiting.timer); waiting = null; e.stopImmediatePropagation(); touchedAt = Date.now(); return; } // a tap on a line: nothing
+      if (held) { e.stopImmediatePropagation(); touchedAt = Date.now(); letGo(true); }
+    };
     canvas.addEventListener('touchend', touchEnd);
     canvas.addEventListener('touchcancel', touchEnd);
     canvas.addEventListener('mousemove', e => { if (!held && o.count()) canvas.style.cursor = o.grabbable(e.clientX, e.clientY, GRAB_PX.mouse) ? 'ns-resize' : ''; });
@@ -312,7 +339,9 @@ export function attachCandleGestures(canvas, o) {
       const { start, end } = viewRange(z, n);
       show(panView(z, n, dMid / (o.geom().plotW / Math.max(1, end - start))));
     },
-  });
+  }, { holdMs: o.holdMs, onArm: o.onArm });
+  // touchTaps false: a finger's quick tap picks nothing (only a hold, let go, does), so a stray tap never sets a price
+  if (o.touchTaps === false) canvas.addEventListener('touchend', () => { touchedAt = Date.now(); });
   // Safari sends a trackpad pinch as gesture events instead of ctrl+wheel. On iOS the touch pinch above is
   // already zooming, so there they only stop the page from zooming too
   const fingers = e => { touching = e.touches.length > 0; };
@@ -328,6 +357,7 @@ export function attachCandleGestures(canvas, o) {
   canvas.addEventListener('click', e => {
     if (Date.now() < dropped) return; // the click that ends a line drag is not a tap
     if (dragged) { dragged = false; return; }
+    if (o.touchTaps === false && Date.now() - touchedAt < 800) return; // the click a finger's tap sends after its touchend
     if (o.count()) o.pick(e.clientX, e.clientY);
   });
 }

@@ -426,7 +426,11 @@ function lineDrag(canvas) {
 
 // gestures (optional): { start(), pan(dx), pinch(scale, mid0X, dMidX) } — a quick horizontal swipe pans
 // and two fingers pinch, both measured from where the gesture began; vertical swipes still scroll the page
-export function attachTouchCrosshair(canvas, onMove, onEnd, gestures = null) {
+/**
+ * opts.holdMs: how long a finger rests before it aims (220ms by default); opts.onArm: called as it starts aiming
+ */
+export function attachTouchCrosshair(canvas, onMove, onEnd, gestures = null, opts = {}) {
+  const holdMs = opts.holdMs || 220;
   let armed = false, suppressClick = false, timer = null, sx = 0, sy = 0, last = null;
   let moved = false, mode = null, d0 = 0, m0 = 0;
   canvas.style.touchAction = 'pan-y';
@@ -445,7 +449,7 @@ export function attachTouchCrosshair(canvas, onMove, onEnd, gestures = null) {
     sx = e.touches[0].clientX; sy = e.touches[0].clientY;
     armed = false; moved = false; mode = null;
     clearTimeout(timer);
-    timer = setTimeout(() => { armed = true; last = { clientX: sx, clientY: sy }; onMove(last); }, 220);
+    timer = setTimeout(() => { armed = true; last = { clientX: sx, clientY: sy }; opts.onArm?.(); onMove(last); }, holdMs);
   }, { passive: true });
   canvas.addEventListener('touchmove', e => {
     if (mode === 'pinch') {

@@ -322,6 +322,40 @@ test('every card says Long or Short beside the name', async () => {
   assert.doesNotMatch(card('SHRT'), /pc-long/);
 });
 
+test('one card open at a time: opening another closes the first and its chart; a tap outside closes it', async () => {
+  const net = network(schwabOk);
+  const { run, elements, state } = await app({ width: 390, fetch: net.fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  const html = () => elements.get('positionsSection').innerHTML;
+  run("togglePosCard('TEST')");
+  run("posChart = { symbol: 'TEST' }");
+  assert.deepEqual([...state.posCardsOpen], ['TEST']);
+  run("togglePosCard('SHRT')");
+  assert.deepEqual([...state.posCardsOpen], ['SHRT'], 'TEST closes as SHRT opens');
+  assert.equal(state.posChart, null, "TEST's chart closes with it");
+  assert.equal((html().match(/class="pc pc-open"/g) || []).length, 1);
+
+  const tap = inside => ({ closest: sel => sel === '#positionsSection' ? {} : inside.some(x => sel.includes(x)) ? {} : null, classList: { contains: () => false } });
+  run("posChart = { symbol: 'SHRT' }");
+  run('posOutsideTap')(tap(['.pc-open']));
+  assert.deepEqual([...state.posCardsOpen], ['SHRT'], 'a tap inside the open card keeps it');
+  run('posOutsideTap')(tap(['#posChartSection']));
+  assert.ok(state.posChart, 'a tap on its chart keeps it');
+  run('posOutsideTap')(tap(['button']));
+  assert.deepEqual([...state.posCardsOpen], ['SHRT'], 'a control does its own thing');
+  run('posOutsideTap')({ closest: () => null, classList: { contains: () => false } });
+  assert.deepEqual([...state.posCardsOpen], ['SHRT'], 'a sheet or the header is not the page');
+  run('posOutsideTap')(tap([]));
+  assert.deepEqual([...state.posCardsOpen], [], 'a tap on the page around it closes it');
+  assert.equal(state.posChart, null, 'and its chart');
+
+  run("togglePosCard('TEST')");
+  run("posChart = { symbol: 'TEST' }");
+  run("togglePosCard('TEST')");
+  assert.equal(state.posChart, null, 'closing a card closes its chart');
+});
+
 test('a leveraged or inverse fund says which way it bets on its underlying: long SQQQ is short QQQ', async () => {
   const { run } = await app({ storage: new Map([['journal_funds', JSON.stringify({ MYINV: '-NVDA' })]]) });
   const pos = (symbol, q) => ({ longQuantity: Math.max(q, 0), shortQuantity: Math.max(-q, 0), averagePrice: 10, averageLongPrice: 10, averageShortPrice: 10, marketValue: q * 11, instrument: { assetType: 'EQUITY', symbol } });

@@ -71,9 +71,9 @@ function fakeCanvas(el) {
   return (type, e) => { e = event(e); for (const fn of on[type] || []) { fn(e); if (e.stopped) break; } return e; };
 }
 
-async function chartApp({ key = true, ...opts } = {}) {
+async function chartApp({ key = true, timers, clock, ...opts } = {}) {
   const net = network(opts);
-  const h = await app({ fetch: net.fetch, storage: connected(key ? [['tradier_key', 'tk']] : []) });
+  const h = await app({ fetch: net.fetch, storage: connected(key ? [['tradier_key', 'tk']] : []), timers, clock });
   if (key) h.elements.get('apiKey').value = 'tk';
   // canvas: the daily pane, canvas5: the 5-minute pane
   const canvas5 = fakeCanvas(h.elements.get('posChart5')), canvas = fakeCanvas(h.elements.get('posChartD'));
@@ -881,8 +881,8 @@ test('orderLines and lineMove: the one order on a line, and the change a drag ma
   assert.match(run(`lineMove(${line(stop(null, 35.5, 200), 'stop')}, 36)`).error, /did not send this order's id/);
 });
 
-test('dragging a stop line opens Edit with the new stop; a tap on a line still sets the tool\'s price', async () => {
-  const { run, elements, canvas } = await chartApp();
+test('dragging a stop line opens Edit with the new stop; a finger rests on the line first, and a tap on it changes nothing', async () => {
+  const { run, elements, canvas, advance } = await chartApp({ timers: 'fake' });
   run("togglePositionChart('HOOD')");
   await settle();
   const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
@@ -892,9 +892,11 @@ test('dragging a stop line opens Edit with the new stop; a tap on a line still s
   canvas('mousemove', { clientX: x, clientY: g.y(40) });
   assert.equal(elements.get('posChartD').style.cursor, '');
 
-  // a finger on the stop picks it up at once, and the scale holds still while it moves
+  // a finger resting on the stop picks it up once it has held, and the scale holds still while it moves
   const down = canvas('touchstart', touch(g.y(35.5) + 8));
   assert.ok(down.stopped, 'the crosshair and the pan never see it');
+  assert.equal(run('posChart.drag'), null, 'not yet: a finger only passing over a line must not move it');
+  await advance(350);
   assert.equal(run('posChart.drag.line.orders[0].orderId'), 101);
   const moved = canvas('touchmove', touch(g.y(37.02)));
   assert.ok(moved.prevented, 'the page holds still');
@@ -913,21 +915,64 @@ test('dragging a stop line opens Edit with the new stop; a tap on a line still s
   assert.equal(run('posChart.price'), null, 'a drag sets no target');
   run('closeSheet()');
 
-  // a tap on the target line without moving is a tap: Profit target takes its price there
+  // a quick tap on the target line changes nothing: no Edit, no target, and the click after it doesn't pick either
   canvas('touchstart', touch(g.y(45)));
   canvas('touchend', { touches: [] });
+  canvas('click', { clientX: x, clientY: g.y(45) });
   await settle();
   assert.equal(run('state.openSheetName'), null, 'no Edit');
-  assert.ok(Math.abs(run('posChart.price') - 45) <= 0.03);
+  assert.equal(run('posChart.price'), null, 'no target from a tap');
+
+  // a swipe that starts on a line scrolls the page: the line stays put
+  canvas('touchstart', touch(g.y(45)));
+  const swipe = canvas('touchmove', touch(g.y(45) + 40));
+  assert.ok(!swipe.prevented, 'the page scrolls');
+  await advance(350);
+  assert.equal(run('posChart.drag'), null);
+  canvas('touchend', { touches: [] });
+
+  // held on a line and let go without moving: still nothing
+  canvas('touchstart', touch(g.y(45)));
+  await advance(350);
+  canvas('touchend', { touches: [] });
+  await settle();
+  assert.equal(run('state.openSheetName'), null);
+  assert.equal(run('posChart.price'), null);
+});
+
+test('on a phone a quick tap on the chart only looks; a finger held, then let go, sets the target', async () => {
+  const { run, canvas, advance } = await chartApp({ timers: 'fake', clock: true });
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
+  const x = g.x(150), y = g.y(41), touch = { touches: [{ clientX: x, clientY: y }] };
+  canvas('touchstart', touch);
+  canvas('touchend', { touches: [] });
+  canvas('click', { clientX: x, clientY: y });
+  assert.equal(run('posChart.price'), null, 'a tap sets nothing');
+  await advance(1000);
+  canvas('touchstart', touch);
+  await advance(200);
+  canvas('touchend', { touches: [] });
+  assert.equal(run('posChart.price'), null, 'too short a hold sets nothing');
+  canvas('touchstart', touch);
+  await advance(350);
+  canvas('touchend', { touches: [] });
+  assert.ok(Math.abs(run('posChart.price') - 41) <= 0.05, 'held, then let go: the target');
+  await advance(1000);
+  run('posChart.price = null');
+  canvas('click', { clientX: x, clientY: y });
+  assert.ok(run('posChart.price') > 0, 'a mouse click still picks');
 });
 
 test('dragging a target line opens Edit with the new limit; two orders on one line say to edit each', async () => {
-  const { run, canvas } = await chartApp();
+  const { run, canvas, advance } = await chartApp({ timers: 'fake' });
   run("togglePositionChart('HOOD')");
   await settle();
   const g = run('candleGeom(posChart.daily.bars, posChart.daily.view, 458, positionLevels(positions.rows.find(r => r.symbol === "HOOD")).map(l => l.price))');
   const touch = y => ({ touches: [{ clientX: g.x(200), clientY: y }] });
   canvas('touchstart', touch(g.y(45)));
+  await advance(350);
   canvas('touchmove', touch(g.y(44)));
   canvas('touchend', { touches: [] });
   await settle();
@@ -938,6 +983,7 @@ test('dragging a target line opens Edit with the new limit; two orders on one li
   // a second stop at $35.50: the line can't say which one to move
   run("positions.rows.find(r => r.symbol === 'HOOD').stopOrders.push({ orderId: 999, symbol: 'HOOD', closes: 'long', orderType: 'STOP', stop: 35.5, price: null, qty: 100, oco: null, duration: 'DAY', session: 'NORMAL' })");
   canvas('touchstart', touch(g.y(35.5)));
+  await advance(350);
   canvas('touchmove', touch(g.y(37)));
   canvas('touchend', { touches: [] });
   await settle();

@@ -19,6 +19,7 @@ import { dailyHistory } from '../services/tradier.js';
 import { marketSource } from '../services/market-source.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles, snapToBar } from './candles.js';
 import { fetchFiveMinuteBars } from './chart.js';
+import { effects } from './effects.js';
 import { showError } from './feedback.js';
 import { openOrderEdit } from './order-edit.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
@@ -155,8 +156,22 @@ export function togglePositionChart(symbol) {
   state.posChart = c;
   setTargetInputs();
   renderPositions(); // the button lights, and the chart renders with the table
-  document.getElementById('posChartSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  revealChart();
   loadBars(c);
+}
+
+/**
+ * Brings a just-opened chart into sight without throwing its card off the screen: under a card, nothing moves while the chart's
+ * top is already in the upper part of the screen, else the card scrolls to the top with the chart under it. Beside the table
+ * (the desktop) it scrolls only as far as it must.
+ */
+function revealChart() {
+  const chart = document.getElementById('posChartSection');
+  if (!positionChartInCards()) { chart.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+  const top = chart.getBoundingClientRect().top, view = window.innerHeight || 0;
+  if (top >= 0 && top < view * 0.6) return;
+  const card = chart.parentElement && chart.parentElement.previousElementSibling;
+  (card || chart).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 export function closePositionChart() {
@@ -745,6 +760,8 @@ export function initPositionChartEvents() {
         drawPositionChart();
       },
       pick: (clientX, clientY) => pickTarget(priceAt(clientX, clientY).price),
+      // on a phone a price is picked by holding a finger on the chart, then letting go; a quick tap only looks
+      touchTaps: false, holdMs: 350, grabHoldMs: 350, onArm: () => effects.haptic(),
       // your stops and targets: pick one up, move it, let go to review the order at the new price in Edit
       grabbable: (clientX, clientY, px) => !!lineNear(clientY, px),
       grab: (clientX, clientY, px) => {
@@ -763,12 +780,13 @@ export function initPositionChartEvents() {
         d.moved = true;
         drawPositionChart();
       },
-      drop: () => {
+      drop: ({ touch = false } = {}) => {
         const c = state.posChart, d = c && c.drag;
         if (!d || d.pane !== kind) return;
         c.drag = null;
-        // a tap on a line is a tap: it sets the picked tool's price there, like anywhere else on the plot
-        if (!d.moved) { pickTarget(priceAt(d.x, d.y).price); return; }
+        // a click on a line is a click: it sets the picked tool's price there, like anywhere else on the plot; a finger held
+        // on a line and let go without moving it leaves everything as it was
+        if (!d.moved) { if (touch) drawPositionChart(); else pickTarget(priceAt(d.x, d.y).price); return; }
         const row = chartRow(), m = row ? lineMove(d.line, d.at, row.tradeAs) : null;
         drawPositionChart();
         if (!m) return;
