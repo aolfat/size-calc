@@ -626,7 +626,7 @@ test('a missed trade makes a new setup or entry tactic on the spot', async () =>
   assert.deepEqual([setup.name, setup.settings], ['9 WK EMA undercut & rally', { action: 'undercut', levels: ['ema9w'] }]);
   assert.deepEqual(saved().setups, ['ema9w_bounce', `mine:${setup.id}`], 'a new one goes on, beside the first');
   assert.equal(state.openSheetName, null);
-  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="mine:${setup.id}">9 WK EMA undercut &amp; rally<`));
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="mine:${setup.id}" title="9 WK EMA undercut &amp; rally">9 WK EMA<`), 'under its action, named for its level');
 });
 
 test('a missed trade: added by ticker, filled in, on the calendar, removed with Undo', async () => {
@@ -654,7 +654,8 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   run(`missedNoteInput('${id}', 'Saw the rejection')`);
   run('renderJournal()');
   assert.match(out(), /id="nbMissedNote-[^"]*"[^>]*>Saw the rejection<\/textarea>/, 'a redraw keeps the draft');
-  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="ema8_bounce">8 EMA rejection<`), 'setups in the side\'s words');
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="ema8_bounce" title="8 EMA rejection">8 EMA<`), 'setups in the side\'s words');
+  assert.match(out(), /Daily setups[\s\S]*<span class="jr-group-name">Rejection<\/span>[\s\S]*<span class="jr-group-name">Patterns<\/span>[\s\S]*Entry tactics/, 'grouped by what happened, then the patterns, as a trade\'s review and the Trade at Schwab sheet pick them');
   run(`missedNoteSave('${id}', ' Saw the rejection, waited ')`);
   await settle();
   assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setups: ['ema8_bounce'], tactics: ['pivot15'], why: 'hesitated', note: 'Saw the rejection, waited' }], 'tapped again: off');
