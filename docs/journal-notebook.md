@@ -61,7 +61,7 @@ Type the ticker and + Add (or Enter); it opens with its charts, and the rest is 
 |---|---|
 | Charts | The missed trades' charts: the ticker's 5 minutes that day and its daily, the day marked 'focus' |
 | Side | Long, Short |
-| Setups | My setups as chips, the ones on first, then most used; any number on at once (six at most), named in the side's words; + New setup makes one ('New setup for QCOM on your focus list') |
+| Setups | My setups as chips grouped by what happened (Bounce, Undercut & rally), then Patterns, as a trade's review, a missed trade and the Trade at Schwab sheet group them (setupPickGroups), each chip named for its level; any number on at once (six at most), named in the side's words; + New setup makes one ('New setup for QCOM on your focus list') |
 | Note | One line, up to 500 characters: levels, the trigger, what you're waiting for |
 | Screenshots | Like a missed trade's: Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most |
 | How it played | Worked, Failed, Triggered (it triggered but whether it worked isn't known), Didn't trigger; for after the close, but there any time |

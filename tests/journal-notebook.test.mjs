@@ -405,6 +405,8 @@ test('a focus list: tickers added before the open with their setups, reviewed af
   assert.equal(state.missedChart.mark, 'focus', 'the daily marks the day as focus');
   assert.match(out(), /<li class="nb-miss-open" id="nbFocusOpen">\s*<div class="nb-miss-head"><b>QCOM<\/b>[\s\S]*The day, 5 minutes[\s\S]*Side[\s\S]*Setups[\s\S]*Note[\s\S]*Screenshots[\s\S]*How it played/, 'open: the charts, side, setups, note, screenshots, then how it played');
   run(`setFocusSide('${id}', 'long'); toggleFocusSetup('${id}', 'flag_breakout'); toggleFocusSetup('${id}', 'ema21_unr'); toggleFocusSetup('${id}', 'nope')`);
+  assert.match(out(), /<span class="jr-group-name">Undercut &amp; rally<\/span>[\s\S]*<span class="jr-group-name">Patterns<\/span>/, 'setups grouped by what happened, then the patterns, as a trade\'s review picks them');
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleFocusSetup" data-arg="${id}" data-arg2="ema21_unr" title="21 EMA undercut &amp; rally">21 EMA<`), 'each chip named for its level, its title the whole name');
   run(`focusNoteInput('${id}', 'note', 'Over 170')`);
   run('renderJournal()');
   assert.match(out(), /id="nbFocusNote-[^"]*"[^>]*>Over 170<\/textarea>/, 'a redraw keeps the draft');
