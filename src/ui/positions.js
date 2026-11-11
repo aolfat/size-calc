@@ -10,7 +10,7 @@ import { inZone } from '../lib/zone.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom } from '../core/journal-records.js';
-import { originalSize } from '../core/journal.js';
+import { fundOf, originalSize, parseFunds } from '../core/journal.js';
 import { INSTRUCTION_WORDS, atBreakeven, breakevenDone, cancelAllPlan, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionLevels, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
@@ -458,8 +458,19 @@ const headline = (pnl, pct) => state.posPnlPct ? (pct === null ? '—' : pct1(pc
 /** what sits beside cost → price: P/L % and R, or R alone when the percent already leads */
 const figuresOf = (pct, r) => [state.posPnlPct || pct === null ? '' : pct1(pct), r === null ? '' : rWords(r)].filter(Boolean).join(' · ');
 
-/** Long or Short beside the name: shares or contracts held, or sold (a credit spread is short, like any credit) */
-const sideTag = qty => qty < 0 ? '<span class="pc-side pc-short">Short</span>' : '<span class="pc-side pc-long">Long</span>';
+/**
+ * Long or Short beside the name: shares or contracts held, or sold (a credit spread is short, like any credit).
+ * A leveraged or inverse fund's shares are a bet on its underlying, so they name it, and an inverse one flips (long SQQQ reads 'Short QQQ'):
+ * your funds (journal_funds) first, then the built-in list, as in the Journal (fundOf).
+ * @param {number} qty @param {{ symbol: string, assetType: string, legs?: unknown }} [t] a stock row; spreads and options pass none
+ */
+function sideTag(qty, t) {
+  const fund = t ? fundOf(t, parseFunds(store.get('journal_funds'))) : null;
+  const short = (qty < 0) !== (!!fund && fund.lev < 0);
+  const how = !fund ? '' : fund.mine ? `moves ${fund.lev < 0 ? 'against' : 'with'}` : `is ${Math.abs(fund.lev)}×${fund.lev < 0 ? ' inverse' : ''}`;
+  const title = fund ? ` title="${esc(t?.symbol)} ${how} ${esc(fund.under)}"` : '';
+  return `<span class="pc-side ${short ? 'pc-short' : 'pc-long'}"${title}>${short ? 'Short' : 'Long'}${fund ? ` ${esc(fund.under)}` : ''}</span>`;
+}
 
 function cardTop(key, open, { name, side, pnl, pct, sub, figures, bar, note }) {
   return `<div class="pc-top" data-action="togglePosCard" data-arg="${esc(key)}" role="button" tabindex="0" aria-expanded="${open}">
@@ -478,7 +489,7 @@ export function positionCard(r, leg = false) {
   const unit = r.option ? 'ct' : 'sh';
   const R = r.pnl === null ? null : cardR(r);
   const top = cardTop(r.symbol, open, {
-    name: cardName(r.label), side: sideTag(r.qty), pnl: r.pnl, pct: r.pnlPct,
+    name: cardName(r.label), side: sideTag(r.qty, r.option ? undefined : { symbol: r.symbol, assetType: 'EQUITY' }), pnl: r.pnl, pct: r.pnlPct,
     sub: `${r.avg > 0 ? `${px(r.avg)} → ` : ''}<b>${px(r.price)}</b> · ${count(r.qty)} ${unit}`,
     figures: figuresOf(r.pnlPct, R),
     bar: rowLadder(r),

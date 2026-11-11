@@ -322,6 +322,17 @@ test('every card says Long or Short beside the name', async () => {
   assert.doesNotMatch(card('SHRT'), /pc-long/);
 });
 
+test('a leveraged or inverse fund says which way it bets on its underlying: long SQQQ is short QQQ', async () => {
+  const { run } = await app({ storage: new Map([['journal_funds', JSON.stringify({ MYINV: '-NVDA' })]]) });
+  const pos = (symbol, q) => ({ longQuantity: Math.max(q, 0), shortQuantity: Math.max(-q, 0), averagePrice: 10, averageLongPrice: 10, averageShortPrice: 10, marketValue: q * 11, instrument: { assetType: 'EQUITY', symbol } });
+  const account = { currentBalances: { liquidationValue: 100000 }, positions: [pos('TQQQ', 100), pos('SQQQ', 100), pos('SOXS', -100), pos('MYINV', 100)] };
+  const card = sym => run(`(() => { const p = positionRows(${JSON.stringify(account)}, []); return positionCard(p.rows.find(r => r.symbol === ${JSON.stringify(sym)})); })()`);
+  assert.match(card('TQQQ'), /class="pc-side pc-long" title="TQQQ is 3× QQQ">Long QQQ</);
+  assert.match(card('SQQQ'), /class="pc-side pc-short" title="SQQQ is 3× inverse QQQ">Short QQQ</);
+  assert.match(card('SOXS'), /class="pc-side pc-long"[^>]*>Long SMH</, 'shorting an inverse fund is long its underlying');
+  assert.match(card('MYINV'), /class="pc-side pc-short" title="MYINV moves against NVDA">Short NVDA</, 'your own funds count too');
+});
+
 test('the card ladder draws every working stop and limit target, the note names the nearest target', async () => {
   const { run } = await app();
   const account = { currentBalances: { liquidationValue: 50000 }, positions: [ACCOUNT.securitiesAccount.positions[0]] };
