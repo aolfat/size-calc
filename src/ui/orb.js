@@ -60,7 +60,8 @@ export function renderOrb() {
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setOrb" data-arg="${m}" title="Entry a tick past the first ${m} minutes' range, stop at its other side"${busy ? ' disabled' : ''}>${m}m</button>`;
   }).join('');
   const hint = document.getElementById('orbHint');
-  hint.className = 'orb-hint' + (state.orbNote && !busy ? ' warn' : '');
+  const idle = !busy && !state.orbNote && !o; // the general line the chips' titles repeat: the desktop rail drops it for room
+  hint.className = 'orb-hint' + (state.orbNote && !busy ? ' warn' : '') + (idle ? ' idle' : '');
   hint.textContent = busy ? 'Reading today\'s 5-minute bars…'
     : state.orbNote ? state.orbNote
     : o ? `${o.minutes}m range ${fmt$(o.low)} to ${fmt$(o.high)}, ${zoneDial(nyDateStr(new Date()), '09:30')} to ${zoneWords(nyDateStr(new Date()), o.end)}. Entry a tick ${o.isLong ? 'over the high' : 'under the low'}, stop at the ${o.isLong ? 'low' : 'high'}.`

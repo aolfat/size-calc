@@ -18,7 +18,8 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   The Schwab app needs Market Data Production, and the worker must relay `/marketdata/v1` (a worker deployed before futures answers 404).
   A refused read says which (schwabRefusal: 404 the worker, 401 or 403 Market Data Production) on a Load and in the chain's status, instead of 'Symbol not found'.
   Schwab has no price history for options, so a contract's own 5-minute bars (the journal's option bars, the position chart's option pane) need a Tradier key.
-- **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip (same phone `order` as the strip, after it in the markup; under it in the desktop rail) listing the rules last week's review set (docs/journal.md, Rules for next week).
+- **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip on phones (same `order` as the strip, after it in the markup) listing the rules last week's review set (docs/journal.md, Rules for next week).
+  On desktop it heads the main pane, over the ticker card, its groups side by side in one short band, so the rail keeps only the ticket and fits a laptop screen (owner request).
   It also lists your standing rules and your goals, the notebook's lists (docs/journal.md, Goals and rules), in your order and without the retired ones (owner request: all the rules and the goals, not only the week's).
   Three groups, each titled and shown only when it has items: This week's rules (#weekRulesGroup), Rules (#myRulesGroup), Goals (#myGoalsGroup); a standing rule with the same words as one of this week's shows once, under the week.
   Shown in Stocks & futures and Options while signed in and any group has items; a weekend shows the coming week's rules (notebookToday).
@@ -163,6 +164,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Refused with a line under the chips (state.orbNote): before the range closes ('The 15m range closes at 9:45 ET.'), when its last bar isn't in yet and no later one is (allowed five minutes on, since a thin stock may not trade every bar), with no bars from today's open, or when Tradier won't send bars (they need a brokerage-linked key).
   state.orb remembers what the chip set; while the ticket still holds it (same symbol, direction, entry and stop) the chip stays lit, the line says the range, and the card names the entry '15m range high' and the stop '15m range low' instead of planned and Custom stop.
   Changing either input, the direction or the ticker makes them yours again.
+  With no range set the line is the general one (Breakout entry: ...); the desktop rail hides that one for room (.orb-hint.idle), since each chip's title says it.
 - **Loss/ct cells** show dollar loss with % of premium lost stacked below, color coded (green <25%, amber 25–60%, red >60%)
 - **Vol/OI**: bold columns with blue tint, resting in muted gold (--gold #d9b968); BOTH turn full amber together when vol > OI (the signal is about the pair — they're always read together).
   This emphasis is intentional — don't tone it down

@@ -48,14 +48,30 @@
   #entryStopsRow > div:not(.field) { flex: 0 0 100%; }
   #quickInput { padding-right: 12px !important; }
   #quickParsed { position: static !important; display: block; margin-top: 5px; text-align: left; }
+  /* the rail is the ticket and fits a laptop screen (MacBook Pro, about 1512 by 860 inside the browser):
+     max loss, entry and stops, then the answer down to Trade at Schwab, with no scrolling */
+  #railPane > .card { padding: 12px 16px; margin-bottom: 10px; }
   #riskStrip .risk-chip { min-height: 40px; }
+  #entryStopsTitle { display: none !important; } /* as on phones: the direction switch and the tiles label themselves */
+  #stopsCard .dir-row { margin-bottom: 10px; }
+  #stopsCard .seg.dir-big button { min-height: 38px; }
+  #stopsCard .stops-hint { padding-bottom: 8px; }
+  #stopsCard .orb-hint.idle { display: none; } /* the general line; each chip's title says it, a live range still shows */
+  #stopsCard .stop-buffer { margin-top: 10px; padding-top: 10px; }
+  #stopsCard .hint-details { margin-top: 6px; }
   #sharesSection .shares-primary { gap: 16px; }
   #sharesSection .shares-stop { padding-left: 16px; }
-  #sharesSection .shares-primary .s-val { font-size: 30px; }
-  #sharesSection .shares-metrics { grid-template-columns: 1fr; gap: 10px; }
-  #sharesSection .shares-metrics > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-  #sharesSection .shares-metrics dt { margin: 0; }
-  #sharesSection .shares-metrics dd { text-align: right; font-size: 16px; }
+  #sharesSection .shares-label { margin-bottom: 4px; }
+  #sharesSection .shares-primary .s-val { font-size: 30px; margin-bottom: 4px; }
+  #sharesSection .shares-metrics { gap: 10px; margin-top: 14px; padding-top: 12px; }
+  #sharesSection .shares-metrics dt { margin-bottom: 4px; }
+  #sharesSection .shares-metrics dd { font-size: 16px; }
+  #sharesSection .shares-actions { margin-top: 14px; padding-top: 12px; }
+  /* rules and goals: a short band over the ticker card, the groups side by side, so the rail keeps only the ticket */
+  #mainPane #weekRulesCard { flex-direction: row; align-items: flex-start; gap: 28px; padding: 12px 18px; }
+  #mainPane .week-rules-group { flex: 1 1 0; min-width: 0; }
+  #mainPane #weekRulesGroup { flex-grow: 1.6; } /* this week's rules run longest */
+  #mainPane .week-rules-list { font-size: 13px; line-height: 1.45; margin-top: 4px; }
   #sidePane .stat-grid, #trayPane .stat-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
   #sidePane .stat, #trayPane .stat { padding: 10px 12px; }
   #sidePane .stat .s-val, #trayPane .stat .s-val { font-size: 18px; }

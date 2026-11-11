@@ -53,7 +53,7 @@ Keys - and = (or +) step risk through one ladder of every preset (riskLadder: % 
 The same ladder is one tap on a phone: − and + buttons either side of the risk $ input (#riskDown, #riskUp, owner request), greyed out at the ladder's ends.
 In the risk $ input, ↑ ↓ step the ladder too instead of the input's fixed $50 (the - and = keys stay off while typing).
 There is no header risk pill (it was removed: two extra taps per change). risk_open is an orphan key from the old collapsible card.
-Your rules and goals (#weekRulesCard: the rules last week's review set, your standing rules and your goals from the Journal) sit right under the strip while signed in; Settings can hide them (docs/calculator.md).
+Your rules and goals (#weekRulesCard: the rules last week's review set, your standing rules and your goals from the Journal) sit right under the strip on phones while signed in, and as a band over the ticker card on desktop; Settings can hide them (docs/calculator.md).
 
 ## Where the details live
 Each area's behavior is written down in its own file under `docs/`.
@@ -104,8 +104,10 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Never infer the source from price equality.
   Image and summary actions sit in the footer.
 - Desktop shell (≥1100px, calculator and Positions only, media-only — no toggle): .app becomes a 100vh grid and the PAGE HOLDS STILL; each pane scrolls on its own (no position:sticky anywhere — sticky charts once shifted against the page; don't re-add).
-  Panes: #sidePane = #railPane (setup notice, #riskStrip, week rules, entry and stops #stopsCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, the ticker card #modeCard (instrument switch and ticker row side by side, stacked in the 1100–1439 tier), quote card, charts, chain (and the positions table in Positions, which spans the full width).
+  Panes: #sidePane = #railPane (setup notice, #riskStrip, entry and stops #stopsCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, rules and goals (#weekRulesCard, its groups side by side), the ticker card #modeCard (instrument switch and ticker row side by side, stacked in the 1100–1439 tier), quote card, charts, chain (and the positions table in Positions, which spans the full width).
   The ticket was split in two so the rail reads max loss, entry and stops, then the answer, which starts above the fold at 900px tall.
+  The rail fits a MacBook Pro browser window (1512 by about 830) down to Trade at Schwab with no scrolling (owner request): tighter rail cards, no Entry & stops title (as on phones), the answer's three figures in one row, the idle opening-range line hidden (its chips' titles say it).
+  That's why the rules card lives in the main pane: in the rail it pushed the answer below the fold.
   Tools and Market scroll as a normal page at ≥1100 but keep the shell's full-width header at the same position and height (`.app > .header`), so switching views never moves the tabs; their content is a centered column (888px; Market 1468px).
   The Journal at ≥1100 holds still like the shell (its panes scroll on their own, up to 1680px wide: the Workbench rail, list and panel, the Review desk, the full review, the calendar; styles/journal-desktop.css, docs/journal.md The desktop). ≥1800px: #sidePane goes display:contents and the tray becomes its own right column (360 / 1fr / 340).
   Below 1100 every pane wrapper is display:contents and .app is a flex column, so the cards are flex items placed by `order` (setupNotice, riskStrip, weekRulesCard, modeCard, quoteCard, chartWrap, stopsCard, sharesSection, optionTicket, quick lookup, pinned, positions, then optionsSection).

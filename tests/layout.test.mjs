@@ -70,6 +70,10 @@ test('the chart sets the stop: phones run ticker, quote, chart, entry and stops,
   assert.ok(main.indexOf('id="modeCard"') >= 0 && main.indexOf('id="modeCard"') < main.indexOf('id="quoteSection"'), 'desktop: the ticker card heads the main pane');
   for (const id of ['dirField', 'entryStopsRow', 'orbRow', 'stopAdjustment']) assert.match(block('stopsCard'), new RegExp(`id="${id}"`), id);
   assert.ok(rail.indexOf('id="stopsCard"') < rail.indexOf('id="sharesSection"'), 'rail: entry and stops, then the answer');
+  // the rail is the ticket alone, so a laptop screen shows it down to Trade at Schwab; rules and goals head the main pane
+  assert.doesNotMatch(rail, /id="weekRulesCard"/);
+  assert.ok(main.indexOf('id="weekRulesCard"') >= 0 && main.indexOf('id="weekRulesCard"') < main.indexOf('id="modeCard"'), 'desktop: rules and goals over the ticker card');
+  assert.ok(html.indexOf('id="riskStrip"') < html.indexOf('id="weekRulesCard"'), 'phones: same order as the strip and later in the markup, so right under it');
   assert.doesNotMatch(block('modeCard'), /id="entryStopsRow"/, 'one copy');
   const { run, elements } = await app();
   run("setView('positions')");
