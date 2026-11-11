@@ -35,6 +35,10 @@ Week, Month, 3M, 6M and Year to Today, 1W, 1M, 3M, 6M and 1Y. The additional
 `performance_open` field is Change from Open. ETF `performance_ytd` is blank;
 the source's Perf Year is kept separately in `performance_1y`.
 
+The Journal reads the stock CSV's ticker and group to label each trade with its
+industry group and sector (`src/core/industries.js` maps every group to a sector;
+a new group in a fresh snapshot needs a line there, and a test says which).
+
 The Market tab loads both CSVs on first open, with a retry if either fails.
 Its five tabs offer equal-weight industry
 averages, a sortable table, a heatmap, and ticker/company/group search. Searching

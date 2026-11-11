@@ -6,6 +6,7 @@ import { MarketData } from '../core/market-data.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { marketFetch, marketKey, marketSource } from '../services/market-source.js';
+import { UNIVERSE_FILE } from '../services/industries.js';
 import { updateChartVisibility } from './daily.js';
 import { showToast } from './feedback.js';
 import { stopLive } from './live.js';
@@ -15,7 +16,7 @@ import { updateStickyBar } from './sticky-bar.js';
 import { fetchQuote } from './ticker.js';
 import { setView } from './views.js';
 
-export const MARKET_FILE = 'data/market-universe-2026-09-16.csv';
+export const MARKET_FILE = UNIVERSE_FILE;
 
 export const MARKET_ETF_FILE = 'data/market-etfs-2026-09-16.csv';
 

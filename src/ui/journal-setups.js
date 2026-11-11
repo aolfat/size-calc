@@ -93,7 +93,7 @@ function overview(trades, lib) {
     ${statTable('By entry tactic', tactics.rows, noneNote(tactics.none, 'a tactic'), 'Tactic', { withR: true })}
     ${statTable('Followed the plan', plans.rows, noneNote(plans.none, 'an answer'), 'Plan', { withR: true })}
     ${statTable('By market', markets.rows, noneNote(markets.none, 'a market'), 'Market', { withR: true })}
-    ${statTable('By sector', sectors.rows, noneNote(sectors.none, 'a sector'), 'Sector', { withR: true })}
+    ${statTable('By sector strength', sectors.rows, noneNote(sectors.none, 'a sector strength'), 'Sector', { withR: true })}
     ${statTable('By mistake', mistakes.rows, 'A trade with two mistakes counts in both.', 'Mistake', { withR: true })}
     ${statTable('By tag', tags.rows, '', 'Tag', { withR: true })}
     <p class="hint">Closed trades only, from your reviews. Deleted trades and trades from before your history don't count. Groups under 10 trades are marked thin.</p>`;

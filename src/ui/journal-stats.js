@@ -10,7 +10,8 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { featureBreakdown, FEATURE_GROUP_MODES } from '../core/feature-stats.js';
 import { FEATURE_FAMILIES, FEATURES } from '../core/features/index.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, activePeriods, breakdowns, byPlan, calendarMonth, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, stepPeriod, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, byPlan, calendarMonth, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, stepPeriod, statsByLabel, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
+import { SECTORS } from '../core/industries.js';
 import { DESKTOP_MQ, mq, SANS_FONT } from '../lib/media.js';
 import { zoneAbbr, zoneClock, zoneDial } from '../lib/zone.js';
 import { state } from '../state.js';
@@ -19,6 +20,7 @@ import { dayFlags, dayMark, openJournalDay } from './journal-notebook.js';
 import { econDot, econPopHtml, econTag, econWords } from './econ-events.js';
 import { setupGradeOf } from './journal-review.js';
 import { renderJournal } from './journal.js';
+import { tradeIndustry } from './journal-industry.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -426,6 +428,19 @@ function featureSection(list) {
     <p class="hint">With ${FEATURES.length} features, some splits will look meaningful by chance. Trust a pattern with plenty of trades in each group, one that holds in both your older and newer trades.</p>`;
 }
 
+/** By sector and By industry group: each closed trade under its stock's (an option's underlying, a fund's underlying), read from the universe */
+function industryTables(list) {
+  if (state.industriesError) return `<div class="section-title js-sub">By sector</div><p class="hint" style="color:var(--amber)">Industry groups couldn't load: ${esc(state.industriesError)}</p>`;
+  if (!state.industries) return '';
+  const of = t => tradeIndustry(t);
+  const sectors = statsByLabel(list, t => { const s = of(t)?.sector; return s ? [s] : []; }, SECTORS);
+  const groups = statsByLabel(list, t => { const g = of(t)?.industry; return g ? [g] : []; });
+  const left = n => n ? ` ${n} closed trade${n === 1 ? '' : 's'} on a ticker the universe doesn't list (an ETF, an index, a future, a new listing) ${n === 1 ? "isn't" : "aren't"} in it.` : '';
+  const rows = r => r.rows.map(x => ({ ...x, group: esc(x.group) }));
+  return `${statTable('By sector', rows(sectors), `The stock's sector; options and funds count under their underlying.${left(sectors.none)}`, 'Sector')}
+    ${statTable('By industry group', rows(groups), `The Market tab's industry groups.${left(groups.none)}`, 'Industry group')}`;
+}
+
 export function statsView(trades) {
   if (!countedTrades(trades).length && !activePeriods(trades, 'day').length) return '<p class="hint">No closed trades match yet.</p>';
   const scope = statsScope(trades), { unit, key, list } = scope;
@@ -439,6 +454,7 @@ export function statsView(trades) {
     <p class="hint">P&amp;L added up trade by trade as they closed; the red is the drawdown from the running peak.</p>
     ${overTime(unit, key, list)}
     ${statTable('By symbol', b.bySymbol, b.concentration ? `<span style="color:var(--amber)">${esc(b.concentration.group)} made ${b.concentration.share}% of your gross gains: one name is carrying the results.</span>` : 'Options and spreads count under their underlying.')}
+    ${industryTables(list)}
     ${statTable('By side', b.bySide)}
     ${statTable('By instrument', b.byInstrument)}
     ${statTable('By time of day', b.byTimeOfDay.map(r => ({ ...r, group: bucketWords(r.group) })), `When the trade opened (${zoneAbbr()}).`)}

@@ -86,6 +86,8 @@ export function createState() {
     featuresProgress: null, // { done, total, features } while it goes
     featuresLast: null, // the last run here: { user, at, value, unknown, waiting, error, sig (what was still due) }
     featureWaits: {}, // trade key → { feature key → what it waits for }, from the last run
+    industries: null, // ticker → industry group (services/industries.js, the Market tab's universe), once read for the Journal
+    industriesError: '', // the universe couldn't be read: the Journal shows no industry groups
     journalReview: null, // reviews once read: { reviews: key → { setup_grade, plan_followed, note (the exit note), entry_note, market, reviewed_at }, labels: key → [{ kind, value, set_by }], days: day → { market, note }, library: rows }
     journalReviewError: '', // the review tables couldn't be read (the migration not pushed yet, say)
     journalSetupKey: '', // the setup whose page the Setups tab shows ('' = every setup)

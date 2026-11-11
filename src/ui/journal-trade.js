@@ -16,6 +16,7 @@ import { holdWords, pnlPct } from '../core/journal.js';
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBetween } from '../core/bars.js';
 import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
+import { industryWords } from '../core/industries.js';
 import { viewRange } from '../core/chart-view.js';
 import { fetchTradeBars, loadTradeBars, saveTradeBars, marketDataHere } from '../services/bars.js';
 import { store } from '../lib/store.js';
@@ -31,6 +32,7 @@ import { dropTradeExample, modelTradeRowHtml, onModelTradeChange, openModelImage
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
+import { tradeIndustry } from './journal-industry.js';
 
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
@@ -307,6 +309,15 @@ function stopsHtml(t) {
     <div class="positions-wrap"><table class="positions-table journal-table jt-table"><thead><tr><th scope="col">Entered (${zoneAbbr()})</th><th scope="col">Stop</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+/** the stock's industry group and sector, read from the universe ('Semiconductors · Technology'); nothing when it isn't listed */
+function industryLine(t) {
+  const info = tradeIndustry(t), words = industryWords(info);
+  if (!words) return '';
+  // a fund that reads on another ticker names it: NVDL's line is NVDA's
+  const on = String(t.label || t.symbol).split(' ')[0] !== info.ticker ? `${esc(info.ticker)}: ` : '';
+  return `<span class="jt-industry" title="Industry group · sector, from the Market tab's stock universe">${on}${esc(words)}</span>`;
+}
+
 export function renderJournalTrade() {
   const p = state.journalTrade;
   const head = document.getElementById('jtHead'), body = document.getElementById('jtBody');
@@ -330,6 +341,7 @@ export function renderJournalTrade() {
   head.innerHTML = `<div class="jt-head">
       ${backBtn}
       <div class="jt-id"><span class="section-title" id="jtTitle">${esc(t.label)}</span>
+        ${industryLine(t)}
         <span class="positions-meta">${side}${t.setupOn ? ` ${esc(t.setupOn)} ·` : ''} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button>${t.status === 'history' ? '' : ` · <button class="pos-link jt-share-link" data-action="shareJournalTrade" title="Copy a card image of this trade">${SHARE_ICON}Share</button>`}</span></div>
       ${headStatsHtml(t)}
       ${navHtml(p)}
