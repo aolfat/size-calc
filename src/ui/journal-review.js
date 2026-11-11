@@ -7,6 +7,7 @@ import { marketEscape as esc } from '../core/format.js';
 import { buildLibrary, cleanLink, goesBy, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tacticPickGroups, tradeSide } from '../core/journal-labels.js';
 import { fundOf, listedFund, parseFunds } from '../core/journal.js';
 import { nyParts } from '../core/journal-stats.js';
+import { industryWords } from '../core/industries.js';
 import { planLines } from '../core/order-plans.js';
 import { store } from '../lib/store.js';
 import { addTradeLabel, deleteLibraryItem, loadReviewData, removeTradeLabel, saveJournalDay, saveLabelLinks, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
@@ -14,6 +15,7 @@ import { state } from '../state.js';
 import { showError } from './feedback.js';
 import { openSheet } from './sheets.js';
 import { shotsRowHtml } from './journal-shots.js';
+import { tradeIndustry } from './journal-industry.js';
 
 const EMPTY = { reviews: {}, labels: {}, days: {}, library: [], weekly: {}, weeklyError: '', entryNoteError: '', notebookError: '', missedError: '', wokeError: '' };
 const data = () => state.journalReview || EMPTY;
@@ -423,6 +425,8 @@ export function reviewSectionHtml(t, after = '') {
     : `To review: missing ${esc(missingWords(st.missing))}`;
   const later = open && !rv.plan_followed && !rv.note?.trim();
   const entryOff = d.entryNoteError ? ' disabled' : '';
+  // how its sector did, with the stock's own group and sector beside it to judge by (read from the universe, never typed)
+  const sectorWords = industryWords(tradeIndustry(t));
   const mistakesRow = row('Mistakes <span class="jr-sub">optional</span>', pick('mistake') + newBox('mistake'), false, 'jr-mistakes');
   // the form's parts, numbered, each saying how many of its items are still missing (the titles show on the desktop's full review)
   const groupTitle = (n, name, keys) => { const left = keys.filter(k => miss.has(k)).length; return `<div class="jr-group-title">${n} · ${name}${left ? ` <span class="jr-group-left">${left} missing</span>` : ''}</div>`; };
@@ -432,7 +436,7 @@ export function reviewSectionHtml(t, after = '') {
       ${fundLink(t)}<button class="pos-link" data-action="openJournalLibrary">Edit choices</button></div>
     ${groupTitle('1', 'Context', ['market', 'sector'])}
     ${row(`Market <span class="jr-sub">${marketNote}</span>`, market + newBox('market'), miss.has('market'))}
-    ${row('Sector', pick('sector') + newBox('sector'), miss.has('sector'))}
+    ${row(`Sector${sectorWords ? ` <span class="jr-sub">${esc(sectorWords)}</span>` : ''}`, pick('sector') + newBox('sector'), miss.has('sector'))}
     ${groupTitle('2', 'Setup', ['setup', 'tactic'])}
     ${setupOnRow(t)}
     ${row('My setups', `${setupSearch}${fitNote}<div class="jr-setup-pick" id="jrSetupPick">${setupPickHtml(t)}</div>${builder}${partsLine}`, miss.has('setup'), 'jr-setup-row')}

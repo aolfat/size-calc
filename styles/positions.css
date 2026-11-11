@@ -591,6 +591,7 @@ span.journal-pick { cursor: default; }
 @media (hover: hover) { .jt-arrow:hover:not(:disabled) { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; } }
 .jt-arrow:disabled { opacity: .35; cursor: default; }
 .jt-id .pos-link { font-size: inherit; }
+.jt-industry { font-size: 12px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .jt-head-stats { order: 5; flex-basis: 100%; margin: 0; } }
 /* phones: back and the arrows on top, the trade and Edit, then its numbers four across */
 @media (max-width: 600px) {

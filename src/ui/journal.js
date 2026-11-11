@@ -24,6 +24,7 @@ import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
 import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
+import { loadIndustries } from './journal-industry.js';
 import { openJournalTrade, reloadJournalCharts, renderJournalTrade, syncJournalPage } from './journal-trade.js';
 import { applyOrderPlans } from './order-plan.js';
 import { loadJournalReview, myFunds, reviewFrom, reviewedMark, setupMatches, setupMenu, setupsOf, toReview, tradeReviewState } from './journal-review.js';
@@ -743,7 +744,7 @@ export async function loadJournal() {
   state.journalLoading = true;
   renderJournal();
   // your stops and deletes come from their own table: if it can't be read, the trades still show
-  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), loadPeriodReviewRows(), loadFeatureRows(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
+  const [records, reviews, saved] = await Promise.allSettled([loadSavedRecords(), loadTradeReviews(), loadSavedTrades(), loadJournalReview(), loadJournalShots(), loadPeriodReviewRows(), loadFeatureRows(), loadIndustries(), ...(state.journalTab === 'books' ? [loadModelBooks()] : [])]);
   let bars = null;
   try {
     if (records.status === 'rejected') throw records.reason;

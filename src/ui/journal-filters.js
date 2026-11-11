@@ -12,6 +12,7 @@ import { marketEscape as esc } from '../core/format.js';
 import { state } from '../state.js';
 import { myFunds, reviewLibrary, setupGradeOf, shownSide, tradeReviewState } from './journal-review.js';
 import { renderJournal, reviewsRead } from './journal.js';
+import { industriesReady, tradeIndustry } from './journal-industry.js';
 
 /** the tabs the filters narrow: the same ones the setup filter does */
 export const moreFiltersTab = () => ['trades', 'calendar', 'stats'].includes(state.journalTab);
@@ -26,6 +27,7 @@ function context() {
     labels: (t, kind) => d ? [...new Set((d.labels[t.key] || []).filter(l => l.kind === kind).map(l => lib.resolve(kind, l.value)))] : [],
     nameOf: (kind, key) => lib.nameOf(kind, key, side),
     funds: myFunds(),
+    industryOf: t => tradeIndustry(t),
     featureValue: (t, f) => { const s = state.featureStamps?.[t.key]?.[f.key]; return s && s.v === featureVersion(f) && s.value !== undefined ? s.value : null; },
   };
 }
@@ -37,7 +39,7 @@ const UNIT_WORDS = { atr: 'ATR', adr: 'ADR', '%': '%', x: '×', $: '$' };
 const OP_WORDS = { atleast: 'at least', atmost: 'at most', between: 'between' };
 
 /** the filters in force: a review field only once the reviews are read (else every trade would read as not graded) */
-const active = () => state.journalFilters.filter(f => { const field = filterField(f.field); return !!field && (!field.review || reviewsRead()) && (!field.feature || featuresReady()); });
+const active = () => state.journalFilters.filter(f => { const field = filterField(f.field); return !!field && (!field.review || reviewsRead()) && (!field.feature || featuresReady()) && (!field.industry || industriesReady()); });
 /** the trades that fit every filter */
 export const onMoreFilters = list => filtersOn(active()) ? applyFilters(list, active(), context()) : list;
 /** how many narrow the list, for the phones' Filters count */
@@ -51,7 +53,7 @@ export const moreFiltersOn = () => filtersOn(active());
 export function moreFiltersHtml(base) {
   if (!moreFiltersTab()) return '';
   const ctx = context(), list = active(), used = new Set(list.map(f => f.field));
-  const fields = FILTER_FIELDS.filter(f => !used.has(f.key) && (!f.review || reviewsRead()));
+  const fields = FILTER_FIELDS.filter(f => !used.has(f.key) && (!f.review || reviewsRead()) && (!f.industry || industriesReady()));
   const block = f => {
     const field = filterField(f.field), choices = filterChoices(base, list, f.field, ctx);
     const is = (v, label) => `<button class="${!!f.not === (v === 'not') ? 'active' : ''}" aria-pressed="${!!f.not === (v === 'not')}" data-action="setJournalFilterNot" data-arg="${f.field}" data-arg2="${v}">${label}</button>`;
