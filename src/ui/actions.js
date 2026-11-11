@@ -18,7 +18,7 @@ import { effects } from './effects.js';
 import { setFuturesFees } from './futures.js';
 import { setLiveDefault, toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { closePositionChart, posAddChanged, posChartCloseChanged, posChartStopChanged, posChartClosePctChanged, posChartToday, posTargetChanged, posTargetPctChanged, posTargetRChanged, setPosChartRange, setPosChartTool, setPosClosePortion, setPosTargetPortion, setPosTargetR, setRPreset, togglePosChartAvg, togglePosChartInd, togglePositionChart } from './position-chart.js';
+import { closePositionChart, posAddChanged, posChartCloseChanged, posChartStopChanged, posChartClosePctChanged, posChartToday, posTargetChanged, posTargetPctChanged, posTargetRChanged, setPctPreset, setPosChartRange, setPosChartTool, setPosClosePortion, setPosTargetPortion, setPosTargetR, setRPreset, togglePctEdit, togglePosChartAvg, togglePosChartInd, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
@@ -522,6 +522,8 @@ export const actions = {
   setPosTargetPortion: el => setPosTargetPortion(num(el)),
   setPosTargetR: el => setPosTargetR(num(el)),
   setRPreset: el => setRPreset(num(el), el.value),
+  setPctPreset: el => setPctPreset(num(el), el.value),
+  togglePctEdit: () => togglePctEdit(),
   toggleREdit: () => toggleREdit(),
   setPosChartTool: el => setPosChartTool(arg(el)),
   posAddChanged: () => posAddChanged(),

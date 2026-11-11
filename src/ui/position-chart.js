@@ -25,8 +25,9 @@ import { originalEditingIn, originalStopBlock } from './position-original.js';
 import { positionChartInCards, positionRUnit, renderPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 
-// how much to sell, in percent of what you hold; the % box beside the count takes any other percent
-export const PORTIONS = [[0.1, '10%'], [0.25, '25%'], [1 / 3, '33%'], [0.5, '50%'], [1, 'All']];
+// how much to sell, in percent of what you hold, then All; ✎ makes them your own (sell_pct_presets), the % box takes any other
+const PCT_DEFAULT = [10, 25, 50, 75];
+const PCT_MAX = 5;
 // target chips in R: that many times the risk per share above your cost (below on a short); ✎ makes them your own (r_presets)
 const R_DEFAULT = [1, 2, 3, 5];
 const R_MAX = 5;
@@ -76,6 +77,41 @@ export function rEditToggled() {
     if (vals.length) store.set('r_presets', JSON.stringify(vals));
     state.rEdit = null;
   } else state.rEdit = [...rPresets().map(String), ''];
+}
+
+/** your percent chips, smallest first: the target's and the Close tool's share them */
+export function pctPresets() {
+  try {
+    const a = JSON.parse(store.get('sell_pct_presets') || '[]');
+    if (Array.isArray(a) && a.length && a.every(v => v > 0 && v < 100)) return a;
+  } catch (e) {}
+  return PCT_DEFAULT;
+}
+
+/** a percent chip row: chip(fraction, label) for each preset and All, or while ✎ is on a box each (blank deletes it) and a '+' box; the ✎ / ✓ chip last */
+function pctChipRow(chip) {
+  const draft = state.pctEdit;
+  const body = draft
+    ? draft.map((v, i) => `<input type="number" class="usd-edit-box r-edit-box" value="${esc(v)}"${i === draft.length - 1 ? ' placeholder="+"' : ''} min="0" max="99" step="1" inputmode="decimal" aria-label="Percent preset" data-input="setPctPreset" data-arg="${i}" data-enter="togglePctEdit" />`).join('')
+    : [...pctPresets().map(p => chip(p / 100, `${p}%`)), chip(1, 'All')].join('');
+  return body + `<button class="filter-btn${draft ? ' active' : ''}" aria-pressed="${!!draft}" data-action="togglePctEdit" title="${draft ? 'Save the percent presets' : 'Edit the percent presets'}">${draft ? '✓' : '✎'}</button>`;
+}
+
+/** typing in a percent preset box; the box keeps what was typed, the ✓ saves it */
+export function setPctPreset(i, value) {
+  const draft = state.pctEdit;
+  if (!draft || !(i >= 0 && i < draft.length)) return;
+  draft[i] = value;
+}
+
+/** ✎ turns the percent chips into boxes; ✓ keeps those over 0 and under 100 (deduped, smallest first, at most PCT_MAX) and leaves the old ones if none */
+export function togglePctEdit() {
+  if (state.pctEdit) {
+    const vals = [...new Set(state.pctEdit.map(v => Math.round(parseFloat(v) * 100) / 100).filter(v => v > 0 && v < 100))].sort((a, b) => a - b).slice(0, PCT_MAX);
+    if (vals.length) store.set('sell_pct_presets', JSON.stringify(vals));
+    state.pctEdit = null;
+  } else state.pctEdit = [...pctPresets().map(String), ''];
+  renderPositionChart();
 }
 
 /** the latest session's bars: today's once the market has traded, else the last day the symbol traded */
@@ -250,7 +286,7 @@ export function setPosClosePortion(fraction) {
   renderPositionChart();
 }
 
-const closeQty = (row, fraction) => { const held = Math.abs(row.qty); return fraction >= 1 ? held : Math.min(held, Math.max(1, Math.floor(held * fraction))); };
+const closeQty = (row, fraction) => { const held = Math.abs(row.qty); return fraction >= 1 ? held : Math.min(held, Math.max(1, Math.floor(held * fraction + 1e-9))); };
 
 /** typing in the stop price; the input keeps what was typed */
 export function posChartStopChanged() {
@@ -338,7 +374,7 @@ export function setPosTargetPortion(fraction) {
   renderPositionChart();
 }
 
-const portionQty = (room, fraction) => fraction >= 1 ? room.free : Math.min(room.free, Math.max(1, Math.floor(room.held * fraction)));
+const portionQty = (room, fraction) => fraction >= 1 ? room.free : Math.min(room.free, Math.max(1, Math.floor(room.held * fraction + 1e-9)));
 
 /** a price picked on the chart: the target, the stop, or Move breakeven's stop */
 function pickTarget(price) {
@@ -500,17 +536,17 @@ export function renderPositionChart() {
   document.getElementById('posTargetQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
   document.getElementById('posChartCloseQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
   renderIndicatorChips();
-  document.getElementById('posChartClosePortions').innerHTML = PORTIONS.map(([f, label]) => {
+  document.getElementById('posChartClosePortions').innerHTML = pctChipRow((f, label) => {
     const qty = row ? closeQty(row, f) : 0, on = qty > 0 && c.closeQty === qty;
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosClosePortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
-  }).join('');
+  });
 
   const room = row ? targetRoom(row) : null;
-  document.getElementById('posTargetPortions').innerHTML = PORTIONS.map(([f, label]) => {
+  document.getElementById('posTargetPortions').innerHTML = pctChipRow((f, label) => {
     const qty = room && room.free > 0 ? portionQty(room, f) : 0;
     const on = qty > 0 && c.qty === qty;
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosTargetPortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
-  }).join('');
+  });
   const unit = unitFor(row);
   document.getElementById('posTargetRChips').innerHTML = rChipRow(r => {
     const at = row && unit.per ? rTargetPrice(row, r, unit.per) : 0, on = at > 0 && c.r === r;

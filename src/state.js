@@ -57,6 +57,7 @@ export function createState() {
     editingRisk: false, // the max loss chips' Edit: a × on each chip and the add box
     riskAddUnit: 'usd', // what a bare number in the add box means: 'usd' or 'pct' (a typed % wins)
     riskAddNote: '', // the add box's last word: added, already there, or what to type
+    pctEdit: null, // the position chart's percent chips while ✎ is on: one typed value per box, the last the '+' box
     rEdit: null, // the R chips while ✎ is on: one typed value per box, the last the '+' box
     stopStrategy: 'none',
     stopPercent: 0.05,

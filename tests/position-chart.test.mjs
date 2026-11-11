@@ -186,17 +186,43 @@ test('portion chips take a share of the position, never more than the other targ
   const chips = () => elements.get('posTargetPortions').innerHTML;
   assert.match(chips(), /data-arg="0\.1" title="30 shares">10%</);
   assert.match(chips(), /data-arg="0\.25" title="75 shares">25%</);
-  assert.match(chips(), /data-arg="0\.3333333333333333" title="100 shares">33%</);
   assert.match(chips(), /data-arg="0\.5" title="150 shares">50%</);
+  assert.match(chips(), /data-arg="0\.75" title="200 shares">75%</, 'capped at what the other targets leave');
   assert.match(chips(), /data-arg="1" title="200 shares">All</, 'the limit for 100 already holds a third');
-  run("actions.setPosTargetPortion({ dataset: { arg: String(1 / 3) } })");
-  assert.equal(elements.get('posTargetQty').value, '100');
-  assert.match(chips(), /class="filter-btn active" aria-pressed="true" data-action="setPosTargetPortion" data-arg="0\.3333333333333333"/);
+  run("actions.setPosTargetPortion({ dataset: { arg: '0.5' } })");
+  assert.equal(elements.get('posTargetQty').value, '150');
+  assert.match(chips(), /class="filter-btn active" aria-pressed="true" data-action="setPosTargetPortion" data-arg="0\.5"/);
   assert.match(elements.get('posTargetSummary').innerHTML, /Tap the chart or type a target price/);
-  assert.equal(elements.get('posTargetPct').value, '33.3', 'the % box follows the chip');
+  assert.equal(elements.get('posTargetPct').value, '50', 'the % box follows the chip');
   run("setPosTargetPortion(1)");
   assert.equal(run('posChart.qty'), 200);
   assert.equal(elements.get('posTargetPct').value, '66.7');
+});
+
+test('your own percent chips: ✎ turns them into boxes, ✓ keeps those under 100 smallest first, All stays, and both forms share them', async () => {
+  const { run, elements, storage } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const chips = () => elements.get('posTargetPortions').innerHTML;
+  assert.match(chips(), /data-action="togglePctEdit" title="Edit the percent presets">✎</);
+  run('actions.togglePctEdit()');
+  assert.match(chips(), /class="usd-edit-box r-edit-box" value="75"[^>]*data-input="setPctPreset" data-arg="3"/);
+  assert.match(chips(), /value="" placeholder="\+"[^>]*data-arg="4"/, 'a + box adds one');
+  assert.match(elements.get('posChartClosePortions').innerHTML, /data-input="setPctPreset"/, 'the Close tool edits the same list');
+  run("actions.setPctPreset({ dataset: { arg: '0' }, value: '' })"); // blank deletes the 10%
+  run("actions.setPctPreset({ dataset: { arg: '3' }, value: '33' })");
+  run("actions.setPctPreset({ dataset: { arg: '4' }, value: '100' })"); // All is always there
+  run('actions.togglePctEdit()');
+  assert.equal(storage.get('sell_pct_presets'), '[25,33,50]');
+  assert.match(chips(), /data-arg="0\.33" title="99 shares">33%<\/button><button[^>]*data-arg="0\.5"/);
+  assert.match(chips(), /data-arg="1" title="200 shares">All</);
+  assert.doesNotMatch(chips(), /10%|75%|r-edit-box/);
+  assert.match(elements.get('posChartClosePortions').innerHTML, /data-action="setPosClosePortion" data-arg="0\.33" title="99 shares">33%</);
+
+  run('actions.togglePctEdit()');
+  for (const i of [0, 1, 2]) run(`actions.setPctPreset({ dataset: { arg: '${i}' }, value: '' })`);
+  run('actions.togglePctEdit()');
+  assert.equal(storage.get('sell_pct_presets'), '[25,33,50]', 'all blank keeps the old ones');
 });
 
 test('the % box takes any percent of the position: the count follows, a typed count moves it back', async () => {
