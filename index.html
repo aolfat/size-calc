@@ -119,7 +119,7 @@
     </div>
     <div class="stop-buffer" id="stopAdjustment">
       <div class="stop-buffer-controls">
-        <span class="stop-buffer-label" id="stopStrategyLabel">Stop adjustment</span>
+        <span class="stop-buffer-label" id="stopStrategyLabel" title="Moves the stop below the LOD for longs and above the HOD for shorts. A stop you type or set on the chart overrides it. It's a price trigger with no 5m close confirmation, and the presets are untested.">Stop adjustment</span>
         <div class="seg stop-strategy" id="stopStrategy" role="group" aria-labelledby="stopStrategyLabel" aria-describedby="stopBufferInfo">
           <button type="button" data-strategy="none" aria-pressed="true" class="active" data-action="setStopStrategy" data-arg="none">None</button>
           <button type="button" data-strategy="atr" aria-pressed="false" data-action="setStopStrategy" data-arg="atr">5m ATR</button>

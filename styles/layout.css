@@ -72,6 +72,8 @@
   #mainPane .week-rules-group { flex: 1 1 0; min-width: 0; }
   #mainPane #weekRulesGroup { flex-grow: 1.6; } /* this week's rules run longest */
   #mainPane .week-rules-list { font-size: 13px; line-height: 1.45; margin-top: 4px; }
+  /* the main pane is wide: the chart's day and bar count (the hover readout) share the title's line */
+  #chartWrap .chart-head .ohlc { flex: 1 1 0; flex-basis: 0; min-width: 0; }
   #sidePane .stat-grid, #trayPane .stat-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
   #sidePane .stat, #trayPane .stat { padding: 10px 12px; }
   #sidePane .stat .s-val, #trayPane .stat .s-val { font-size: 18px; }
@@ -80,6 +82,20 @@
   #sidePane .pinned-header .pinned-badge, #trayPane .pinned-header .pinned-badge { display: none; }
   #sidePane .pinned-header .pinned-meta, #trayPane .pinned-header .pinned-meta { flex-basis: 100%; order: 2; margin-left: 0 !important; white-space: normal; overflow: visible; }
   #sidePane .pinned-header .card-act, #trayPane .pinned-header .card-act { order: 3; }
+}
+
+/* a laptop screen (MacBook Pro 14": about 860 tall inside the browser, less where the Dock covers the window):
+   the rail reaches Trade at Schwab and the main pane the whole intraday chart without scrolling. Helper lines the
+   chart and the inputs already say step aside: the stops hint (the chart's own hint says it), the shares edit hint
+   (the input's title), the adjustments disclosure (the label's title) */
+@media (min-width: 1100px) and (max-height: 920px) {
+  #stopsCard .stops-hint, #stopAdjustment .hint-details, #sharesSection .shares-edit-hint { display: none; }
+  #riskStrip .risk-chip { min-height: 36px; padding-top: 3px; padding-bottom: 3px; }
+  #mainPane > .card, #mainPane #quoteSection > .card { margin-bottom: 10px; }
+  #mainPane #modeCard { padding-top: 10px; padding-bottom: 10px; }
+  #mainPane #recentTickers { margin-top: 6px !important; }
+  #mainPane #weekRulesCard { padding-top: 10px; padding-bottom: 10px; }
+  #quoteCard { padding-top: 12px; padding-bottom: 12px; }
 }
 
 /* the compact desktop tier: the main pane is too narrow for the switch and the ticker row side by side */
