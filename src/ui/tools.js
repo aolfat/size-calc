@@ -2,7 +2,7 @@
 import { state } from '../state.js';
 import { hv20At } from '../core/bars.js';
 import { fmt$, fmtDayVol, fmtLev, nyDateStr } from '../core/format.js';
-import { LEV_ALIASES, LEV_ETFS, LEV_NAMES, LEV_REVERSE } from '../core/lev-etfs.js';
+import { LEV_ALIASES, LEV_ETFS, LEV_NAMES, LEV_REVERSE, fundPriceAt } from '../core/lev-etfs.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { marketFetch, marketSource } from '../services/market-source.js';
 import { showError } from './feedback.js';
@@ -156,7 +156,7 @@ export async function levTarget() {
     const gross = target / underNow;
     let expected, noDrag = 0, hvNote = '';
     if (days <= 1) {
-      expected = Math.max(0, etfNow * (1 + r.lev * (gross - 1)));
+      expected = fundPriceAt(target, r.lev, etfNow, underNow);
     } else {
       noDrag = etfNow * Math.pow(gross, r.lev);
       let hv = 0;

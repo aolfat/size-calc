@@ -265,6 +265,7 @@ export function createState() {
     posChartAvg: store.get('pos_chart_avg') !== '0', // the position chart draws your average cost (pos_chart_avg, this device only)
     posChartIndOff: indicatorsOff(), // the position chart's indicator chips turned off, by id (pos_chart_ind_off, this device only; a new indicator starts on)
     posChart: null, // the open position chart: { symbol, option, label, five, daily, error, price, qty, addStop, addPrice } (five and daily: a pane each, { kind, bars, vwap, view, range, loading, error, hover, hoverY }, range in sessions; price and qty = the target form, addStop and addPrice = Move breakeven's, closePrice and closeQty = the Close tool's, drag = the order line being dragged: { pane, line, g, at, moved, x, y })
+    fundRead: null, // a leveraged fund and its underlying read at one moment, so a price on one converts to the other: { symbol, under, lev, fundNow, underNow, at, busy, failed } (ui/fund-link.js)
     posChartTool: 'target', // what a tap on the position chart sets: 'target' (profit target), 'stop' (a stop to review), 'close' (a close limit to review) or 'add' (Move breakeven's stop); kept while charts open and close
     detailReg: {}, // full calcOpt results by OCC symbol, for spread legs
     spreadPending: null,

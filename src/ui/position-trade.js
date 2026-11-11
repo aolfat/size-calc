@@ -2,6 +2,7 @@
 // Schwab is re-read right before sending, and the steps go only if they are still the ones reviewed, to the account they
 // were read from. Steps run in order and stop at the first failure; nothing retries. Schwab is re-read afterwards to say
 // what it now shows, and until it shows the last result, that symbol in that account takes no new order from here.
+import { anchorWords, fundLink, fundPriceFor, onFundAnchor, underPriceFor } from './fund-link.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick, quoteLimit } from '../core/orders.js';
@@ -243,6 +244,25 @@ export function setClosePrice(value) {
   closeChanged(false);
 }
 
+/** typing 'When QQQ is at' on a leveraged fund's close: the limit is the fund's price then (fund-link.js), on its grid */
+export function setCloseUnder(value) {
+  const t = closeOpen();
+  if (!t) return;
+  const u = parseFloat(value);
+  t.close.price = u > 0 ? fundPriceFor(t.row, u) : 0;
+  t.close.r = null;
+  quotePickOff(t);
+  closeRSync(t, 'posClosePrice');
+  closeRSync(t, 'posCloseR');
+  closeChanged(false);
+}
+
+/** the underlying's price that puts the fund at the limit, for its box */
+function closeUnderText(t) {
+  const u = t.close.price > 0 ? underPriceFor(t.row, t.close.price) : 0;
+  return u > 0 ? u.toFixed(2) : '';
+}
+
 /** typing the limit in R: the price follows, on the order grid; the input keeps what was typed */
 export function setCloseRText(value) {
   const t = closeOpen();
@@ -308,7 +328,9 @@ function closeRText(t) {
 /** typing redraws only the detail, so the other box and the lit R chip are set here */
 function closeRSync(t, id) {
   const input = /** @type {HTMLInputElement | null} */ (document.getElementById(id));
-  if (input) input.value = id === 'posCloseR' ? closeRText(t) : closePriceText(t);
+  if (input && document.activeElement !== input) input.value = id === 'posCloseR' ? closeRText(t) : closePriceText(t);
+  const under = /** @type {HTMLInputElement | null} */ (document.getElementById('posCloseUnder'));
+  if (under && document.activeElement !== under) under.value = closeUnderText(t);
   const chips = document.getElementById('posCloseRChips');
   if (chips) chips.innerHTML = closeRChips(t, positionRUnit(t.row));
 }
@@ -720,10 +742,28 @@ function closeForm(t, duration) {
   return `<div><dt>Order</dt><dd><div class="pos-close-qty"><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}</div>${atChips}</div></dd></div>
     <div><dt><label for="posCloseQty">${what}</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseQty" step="1" min="1" max="${held}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions pos-close-tens" role="group" aria-label="${t.original && t.original.qty > held ? 'Percent of the original position' : 'Percent of the position'}">${chips}</div></div>${portionLine(t) ? `<span class="shares-detail">${esc(portionLine(t))}</span>` : ''}</dd></div>
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">${esc(limitSource(t))}</span></dd></div>
+    ${closeUnderRow(t, off)}
     <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span>${t.sent ? '' : originalStopBlock(row, 'close')}</dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
     ${sessionRow(t)}` : ''}`;
 }
+
+/** a leveraged fund's limit set off its underlying: 'When QQQ is at', and what that converts with */
+function closeUnderRow(t, off) {
+  const link = fundLink(t.row);
+  if (!link) return '';
+  return `<div><dt><label for="posCloseUnder">When ${esc(link.under)} is at</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posCloseUnder" step="0.01" min="0" inputmode="decimal" placeholder="its price" autocomplete="off" value="${closeUnderText(t)}" data-input="setCloseUnder"${off} /></div><span class="shares-detail" id="posCloseUnderNote">${esc(anchorWords(t.row))}</span></dd></div>`;
+}
+
+/** a new read of the fund and its underlying: the open close ticket's box and note follow it */
+onFundAnchor(symbol => {
+  const t = state.posTicket;
+  if (!t || t.kind !== 'close' || t.row.symbol !== symbol) return;
+  const note = document.getElementById('posCloseUnderNote');
+  if (note) note.textContent = anchorWords(t.row);
+  const under = /** @type {HTMLInputElement | null} */ (document.getElementById('posCloseUnder'));
+  if (under && document.activeElement !== under) under.value = closeUnderText(t);
+});
 
 /** where the limit came from: the quote it was picked at ('At the mid of $41.08 × $41.12, rounded down toward a fill'), else the mark now */
 function limitSource(t) {

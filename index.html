@@ -346,6 +346,7 @@
     <div class="chart-head">
       <span class="section-title" id="posChartTitle" style="margin-bottom:0;">Chart</span>
       <span class="pos-chart-meta" id="posChartMeta"></span>
+      <div class="seg pos-chart-on" id="posChartOn" role="group" aria-label="Chart of" style="display:none;"></div>
       <button class="filter-btn active pos-chart-avg" id="posChartAvgBtn" data-action="togglePosChartAvg" aria-pressed="true" title="Show or hide your average cost on the charts">Avg</button>
       <button class="sheet-close" data-action="closePositionChart" aria-label="Close the chart" title="Close the chart">×</button>
       <span class="ohlc" id="posChartOhlc"></span>
@@ -367,11 +368,16 @@
     </div>
     <div class="pos-target">
       <div class="seg pos-tool" aria-label="What a tap on the chart sets"><button id="posToolTarget" class="active" aria-pressed="true" data-action="setPosChartTool" data-arg="target">Profit target</button><button id="posToolStop" aria-pressed="false" data-action="setPosChartTool" data-arg="stop" title="Tap where you want the stop, then review it">Stop</button><button id="posToolClose" aria-pressed="false" data-action="setPosChartTool" data-arg="close" title="Tap where you want to close, pick how much, then review it">Close</button><button id="posToolAdd" aria-pressed="false" data-action="setPosChartTool" data-arg="add" title="Tap where you want your stop: it works out how many to add so your breakeven moves there">Move breakeven</button></div>
+      <p class="hint pos-under-note" id="posUnderNote" style="display:none;"></p>
       <div id="posTargetForm">
       <div class="pos-target-row">
         <div class="field">
           <label for="posTargetPrice">Target price</label>
           <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posTargetPrice" step="0.01" min="0" inputmode="decimal" placeholder="tap the chart" autocomplete="off" data-input="posTargetChanged" /></div>
+        </div>
+        <div class="field pos-under-field" id="posTargetUnderField" style="display:none;">
+          <label for="posTargetUnder" id="posTargetUnderLabel">When the underlying is at</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posTargetUnder" step="0.01" min="0" inputmode="decimal" placeholder="its price" autocomplete="off" data-input="posUnderChanged" data-arg="target" /></div>
         </div>
         <div class="field pos-target-r">
           <label for="posTargetR">Target in R</label>
@@ -400,6 +406,10 @@
             <label for="posChartStopPrice">Stop price</label>
             <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posChartStopPrice" step="0.01" min="0" inputmode="decimal" placeholder="tap the chart" autocomplete="off" data-input="posChartStopChanged" /></div>
           </div>
+          <div class="field pos-under-field" id="posChartStopUnderField" style="display:none;">
+          <label for="posChartStopUnder" id="posChartStopUnderLabel">When the underlying is at</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posChartStopUnder" step="0.01" min="0" inputmode="decimal" placeholder="its price" autocomplete="off" data-input="posUnderChanged" data-arg="stop" /></div>
+        </div>
         </div>
         <div class="pos-target-sum" id="posStopSummary" role="status"></div>
         <div class="trade-actions"><button class="btn trade-confirm" id="posStopReview" data-action="openPositionTrade" data-arg="" data-arg2="stop" disabled>Review stop</button></div>
@@ -410,6 +420,10 @@
             <label for="posChartClosePrice">Limit price</label>
             <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posChartClosePrice" step="0.01" min="0" inputmode="decimal" placeholder="tap the chart" autocomplete="off" data-input="posChartCloseChanged" /></div>
           </div>
+        <div class="field pos-under-field" id="posChartCloseUnderField" style="display:none;">
+          <label for="posChartCloseUnder" id="posChartCloseUnderLabel">When the underlying is at</label>
+          <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posChartCloseUnder" step="0.01" min="0" inputmode="decimal" placeholder="its price" autocomplete="off" data-input="posUnderChanged" data-arg="close" /></div>
+        </div>
           <div class="field">
             <label for="posChartCloseQty" id="posChartCloseQtyLabel">Shares to sell</label>
             <input type="number" id="posChartCloseQty" step="1" min="1" inputmode="numeric" autocomplete="off" data-input="posChartCloseChanged" />

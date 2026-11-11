@@ -214,3 +214,25 @@ export const LEV_ALIASES = {
 export const LEV_REVERSE = {};
 
 for (const [u, list] of Object.entries(LEV_ETFS)) for (const [s, l] of list) LEV_REVERSE[s] = { under: u, lev: l };
+
+/**
+ * A leveraged fund's price when its underlying is at under, within today: the fund resets daily, so from the same moment it
+ * moves lev times the underlying's percent move (TQQQ at 3×: QQQ up 1% is TQQQ up 3%). Exact for one session; across days
+ * compounding drifts it. 0 when it can't be (an inverse fund past a 100% move). @param {number} under the underlying's price
+ * @param {number} lev @param {number} fundNow @param {number} underNow the two prices read at the same moment
+ */
+export function fundPriceAt(under, lev, fundNow, underNow) {
+  if (!(under > 0) || !(fundNow > 0) || !(underNow > 0) || !lev) return 0;
+  const p = fundNow * (1 + lev * (under / underNow - 1));
+  return p > 0 ? p : 0;
+}
+
+/**
+ * The other way: the underlying's price that puts the fund at fund, within today (fundPriceAt's inverse); 0 when it can't be.
+ * @param {number} fund @param {number} lev @param {number} fundNow @param {number} underNow
+ */
+export function underPriceAt(fund, lev, fundNow, underNow) {
+  if (!(fund > 0) || !(fundNow > 0) || !(underNow > 0) || !lev) return 0;
+  const p = underNow * (1 + (fund / fundNow - 1) / lev);
+  return p > 0 ? p : 0;
+}

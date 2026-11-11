@@ -18,14 +18,14 @@ import { effects } from './effects.js';
 import { setFuturesFees } from './futures.js';
 import { setLiveDefault, toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { closePositionChart, posAddChanged, posChartCloseChanged, posChartStopChanged, posChartClosePctChanged, posChartToday, posTargetChanged, posTargetPctChanged, posTargetRChanged, setPctPreset, setPosChartRange, setPosChartTool, setPosClosePortion, setPosTargetPortion, setPosTargetR, setRPreset, togglePctEdit, togglePosChartAvg, togglePosChartInd, togglePositionChart } from './position-chart.js';
+import { closePositionChart, posUnderChanged, setPosChartOn, posAddChanged, posChartCloseChanged, posChartStopChanged, posChartClosePctChanged, posChartToday, posTargetChanged, posTargetPctChanged, posTargetRChanged, setPctPreset, setPosChartRange, setPosChartTool, setPosClosePortion, setPosTargetPortion, setPosTargetR, setRPreset, togglePctEdit, togglePosChartAvg, togglePosChartInd, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
-import { openPositionTrade, placePositionTrade, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setCloseUnder, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -478,6 +478,7 @@ export const actions = {
   setCloseR: el => setCloseR(num(el)),
   setCloseAt: el => setCloseAt(arg(el)),
   setCloseRText: el => setCloseRText(el.value),
+  setCloseUnder: el => setCloseUnder(el.value),
   openOriginalStop: el => openOriginalStop(arg(el), el.dataset.arg2),
   setOriginalStopText: el => setOriginalStopText(el.value),
   saveOriginalStop: () => saveOriginalStop(),
@@ -516,6 +517,8 @@ export const actions = {
   posChartClosePctChanged: () => posChartClosePctChanged(),
   setPosClosePortion: el => setPosClosePortion(num(el)),
   posTargetChanged: () => posTargetChanged(),
+  posUnderChanged: el => posUnderChanged(el.dataset.arg, el.value),
+  setPosChartOn: el => setPosChartOn(arg(el)),
   posTargetRChanged: () => posTargetRChanged(),
   posTargetPctChanged: () => posTargetPctChanged(),
   posChartStopChanged: () => posChartStopChanged(),

@@ -25,6 +25,7 @@ The top-level tabs and the Tools view: the % gain card, the leveraged ETF finder
   Rows are tap-to-load: levLoad puts the symbol in the ticker field, jumps to the calculator, fetches when a key exists.
   Leverage labels are static and can drift when issuers change factors — quotes are live, labels aren't; a delisted map entry just quotes empty and sinks to the bottom
 - **Lev ETF price target** (tools view): type a mapped leveraged ETF + a target price on its underlying + days → expected ETF price.
+  The one-day case is core/lev-etfs.js fundPriceAt, which the Positions tab's fund link uses too (docs/positions.md, Off the underlying).
   Requires a key and a LEV_REVERSE symbol (typed underlying hints its family instead, no manual fallbacks by request).
   One quotes call for both symbols; days ≤ 1 is the exact daily reset (etfNow × (1 + lev·move), floored at 0); days > 1 applies GBM vol drag `gross^lev × exp((lev − lev²)/2·σ²·days/252)` with σ = underlying HV20 from a 60d /markets/history fetch (hv20At, extracted from applyDailyHistory and shared; too little history = drag skipped and noted).
   Stat grid: ETF at target (good/danger), ETF move %, underlying move %, and a Decay cost stat (vs the no-drag number) when days > 1.
