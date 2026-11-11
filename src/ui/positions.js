@@ -10,7 +10,7 @@ import { inZone } from '../lib/zone.js';
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillsFrom } from '../core/journal-records.js';
-import { fundOf, originalSize, parseFunds } from '../core/journal.js';
+import { fundOf, originalSize, parseFunds, positionBias } from '../core/journal.js';
 import { INSTRUCTION_WORDS, atBreakeven, breakevenDone, cancelAllPlan, editable, fmtPositionPrice, orderTypeWord, positionJournalTrade, positionLevels, positionR, positionRows, rUnit, schwabTime, spreadR, workingOrders, workingPrice } from '../core/positions.js';
 import { loadSavedRecords, loadSavedTrades, loadTradeReviews } from '../services/journal.js';
 import { schwabAccount, schwabConnected, schwabPositions, schwabRecentOrders } from '../services/schwab.js';
@@ -459,17 +459,20 @@ const headline = (pnl, pct) => state.posPnlPct ? (pct === null ? '—' : pct1(pc
 const figuresOf = (pct, r) => [state.posPnlPct || pct === null ? '' : pct1(pct), r === null ? '' : rWords(r)].filter(Boolean).join(' · ');
 
 /**
- * Long or Short beside the name: shares or contracts held, or sold (a credit spread is short, like any credit).
- * A leveraged or inverse fund's shares are a bet on its underlying, so they name it, and an inverse one flips (long SQQQ reads 'Short QQQ'):
- * your funds (journal_funds) first, then the built-in list, as in the Journal (fundOf).
- * @param {number} qty @param {{ symbol: string, assetType: string, legs?: unknown }} [t] a stock row; spreads and options pass none
+ * Long, Short or Neutral beside the name: the bet on the stock, by the Journal's rules (positionBias). A put bought reads Short and
+ * a put sold Long; a spread reads off its legs together, so a put credit spread is Long and a call credit spread Short.
+ * A leveraged or inverse fund (or an option on one) is a bet on its underlying, so it names it, and an inverse one flips
+ * (long SQQQ reads 'Short QQQ'): your funds (journal_funds) first, then the built-in list, as in the Journal (fundOf).
+ * @param {{ symbol: string, qty: number, option?: unknown }[]} legs @param {string} under the stock they're on
  */
-function sideTag(qty, t) {
-  const fund = t ? fundOf(t, parseFunds(store.get('journal_funds'))) : null;
-  const short = (qty < 0) !== (!!fund && fund.lev < 0);
+function sideTag(legs, under) {
+  const fund = fundOf({ symbol: under, assetType: 'EQUITY' }, parseFunds(store.get('journal_funds')));
+  const own = positionBias(legs);
+  const side = fund && fund.lev < 0 ? ({ long: 'short', short: 'long', neutral: 'neutral' })[own] : own;
   const how = !fund ? '' : fund.mine ? `moves ${fund.lev < 0 ? 'against' : 'with'}` : `is ${Math.abs(fund.lev)}×${fund.lev < 0 ? ' inverse' : ''}`;
-  const title = fund ? ` title="${esc(t?.symbol)} ${how} ${esc(fund.under)}"` : '';
-  return `<span class="pc-side ${short ? 'pc-short' : 'pc-long'}"${title}>${short ? 'Short' : 'Long'}${fund ? ` ${esc(fund.under)}` : ''}</span>`;
+  const title = fund ? ` title="${esc(under)} ${how} ${esc(fund.under)}"` : '';
+  const word = { long: 'Long', short: 'Short', neutral: 'Neutral' }[side];
+  return `<span class="pc-side pc-${side}"${title}>${word}${fund ? ` ${esc(fund.under)}` : ''}</span>`;
 }
 
 function cardTop(key, open, { name, side, pnl, pct, sub, figures, bar, note }) {
@@ -489,7 +492,7 @@ export function positionCard(r, leg = false) {
   const unit = r.option ? 'ct' : 'sh';
   const R = r.pnl === null ? null : cardR(r);
   const top = cardTop(r.symbol, open, {
-    name: cardName(r.label), side: sideTag(r.qty, r.option ? undefined : { symbol: r.symbol, assetType: 'EQUITY' }), pnl: r.pnl, pct: r.pnlPct,
+    name: cardName(r.label), side: sideTag([r], r.under), pnl: r.pnl, pct: r.pnlPct,
     sub: `${r.avg > 0 ? `${px(r.avg)} → ` : ''}<b>${px(r.price)}</b> · ${count(r.qty)} ${unit}`,
     figures: figuresOf(r.pnlPct, R),
     bar: rowLadder(r),
@@ -499,12 +502,12 @@ export function positionCard(r, leg = false) {
   return `<article class="pc${open ? ' pc-open' : ''}${leg ? ' pc-leg' : ''}">${top}${more}</article>`;
 }
 
-function spreadCard(s) {
+export function spreadCard(s) {
   const open = state.posCardsOpen.includes(s.key);
   const { r } = spreadR(s);
   const units = Math.abs(s.qty) === 1 ? 'spread' : 'spreads';
   const top = cardTop(s.key, open, {
-    name: cardName(s.label), side: sideTag(s.qty), pnl: s.pnl, pct: s.pnlPct,
+    name: cardName(s.label), side: sideTag(s.legs, s.under), pnl: s.pnl, pct: s.pnlPct,
     sub: `${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${units}`,
     figures: figuresOf(s.pnlPct, r),
     bar: spreadLadder(s),

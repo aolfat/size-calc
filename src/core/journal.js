@@ -652,6 +652,17 @@ function spreadBias(t) {
   return { bias: lean > EPS ? 'long' : lean < -EPS ? 'short' : 'neutral', structure: '' };
 }
 
+/**
+ * A Schwab position's bet on the stock, by the same rules as the Journal's Side: a stock or one option alone (a put bought
+ * is short, a put sold long), or a spread's legs together (a put credit spread is long, a call credit spread short).
+ * @param {{ symbol: string, qty: number, option?: unknown }[]} legs signed: sold is negative
+ * @returns {'long' | 'short' | 'neutral'}
+ */
+export function positionBias(legs) {
+  const trades = legs.map(l => /** @type {Trade} */ ({ symbol: l.symbol, assetType: l.option ? 'OPTION' : 'EQUITY', direction: l.qty < 0 ? 'short' : 'long', entryQty: Math.abs(l.qty) }));
+  return trades.length === 1 ? legBias(trades[0]) : spreadBias(/** @type {Trade} */ (/** @type {unknown} */ ({ legs: trades, spreadKind: '' }))).bias;
+}
+
 /** @param {Trade} t @returns {Trade} */
 const withBias = t => t.legs ? { ...t, ...spreadBias(t) } : { ...t, bias: legBias(t), structure: '' };
 

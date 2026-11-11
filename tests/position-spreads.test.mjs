@@ -337,3 +337,27 @@ test('Close on a spread shows its net bid, mid and ask, lighting the side it clo
   assert.match(strip(), /<div class="tq-cell"><span class="tq-label">Bid<\/span><span class="tq-val">\$1\.40</);
   assert.match(strip(), /<div class="tq-cell fills"><span class="tq-label">Ask<\/span><span class="tq-val">\$1\.60</, 'a credit spread closes by buying it back, at the ask');
 });
+
+test('a card\'s side is the bet on the stock: puts bought short, puts sold long, a spread by its legs together', async () => {
+  const { run } = await app();
+  const P = (k, t = 'P') => `XYZ   270115${t}${String(k * 1000).padStart(8, '0')}`;
+  const side = (positions, orders = []) => run(`(() => {
+    const p = positionRows(${JSON.stringify({ currentBalances: { liquidationValue: 100000 }, positions })}, ${JSON.stringify(orders)});
+    const html = p.spreads.length ? spreadCard(p.spreads[0]) : positionCard(p.rows[0]);
+    return html.match(/class="pc-side pc-(\\w+)"[^>]*>([^<]*)</).slice(1).join(' ');
+  })()`);
+  assert.equal(side([opt(P(90, 'C'), 1, 2, 2)]), 'long Long', 'a call bought');
+  assert.equal(side([opt(P(90, 'C'), -1, 2, 2)]), 'short Short', 'a call sold');
+  assert.equal(side([opt(P(90), 1, 2, 2)]), 'short Short', 'a put bought');
+  assert.equal(side([opt(P(90), -1, 2, 2)]), 'long Long', 'a put sold');
+  const vertical = (type, buy, sell) => side([opt(P(buy, type), 2, 2, 2), opt(P(sell, type), -2, 1, 1)]);
+  assert.equal(vertical('P', 85, 90), 'long Long', 'put credit');
+  assert.equal(vertical('P', 90, 85), 'short Short', 'put debit');
+  assert.equal(vertical('C', 85, 90), 'long Long', 'call debit');
+  assert.equal(vertical('C', 90, 85), 'short Short', 'call credit');
+  const condor = [opt(P(80), 1, 1, 1), opt(P(85), -1, 2, 2), opt(P(95, 'C'), -1, 2, 2), opt(P(100, 'C'), 1, 1, 1)];
+  const legs = condor.map(c => ({ instruction: c.longQuantity ? 'BUY_TO_OPEN' : 'SELL_TO_OPEN', quantity: 1, instrument: { symbol: c.instrument.symbol, assetType: 'OPTION' } }));
+  assert.equal(side(condor, [{ orderId: 9, orderType: 'NET_CREDIT', status: 'FILLED', quantity: 1, enteredTime: '2026-10-01T14:00:00+0000', orderLegCollection: legs }]), 'neutral Neutral', 'an iron condor');
+  const sqqq = 'SQQQ  270115C00020000';
+  assert.equal(side([opt(sqqq, 1, 2, 2)]), 'short Short QQQ', 'a call on an inverse fund is short its underlying');
+});

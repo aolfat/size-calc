@@ -58,8 +58,10 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   The legend over the cards keys the ladder: Stop, Target, Cost, Price.
   Each card: the symbol (an option's strike before its expiry, '335C 6/20/26', so the strike survives the ellipsis) and its P/L top right, then 'avg → price · qty sh' (ct for options) with P/L % and R beside it.
   R is the R column's (positionR); while the Journal's read is out the card leaves R off.
-  A Long or Short tag sits beside the symbol (green or red; sideTag, from the quantity's sign), on every card: a sold option or a credit spread reads Short (owner request).
-  A leveraged or inverse fund's shares name the underlying they bet on, and an inverse fund flips the side: long TQQQ reads 'Long QQQ', long SQQQ 'Short QQQ' (owner request); your funds from the Journal (journal_funds) first, then the built-in list (fundOf), the tag's title saying how ('SQQQ is 3× inverse QQQ').
+  A Long, Short or Neutral tag sits beside the symbol (green, red or grey; sideTag), on every card: the bet on the stock, by the Journal's Side rules (positionBias, owner request).
+  A put bought reads Short and a put sold Long; a call bought Long and a call sold Short.
+  A spread reads off its legs together: a put credit spread or a call debit spread is Long, a put debit or call credit spread Short, an iron condor or a time spread Neutral.
+  A leveraged or inverse fund's shares, and options on it, name the underlying they bet on, and an inverse fund flips the side: long TQQQ reads 'Long QQQ', long SQQQ 'Short QQQ' (owner request); your funds from the Journal (journal_funds) first, then the built-in list (fundOf), the tag's title saying how ('SQQQ is 3× inverse QQQ').
   The ladder under it puts your working orders, your average cost (grey tick) and the price (dot) on one line, padded at both ends, the stretch from cost to price red or green with the P/L; a long option with no stop starts the line at zero, its premium being the risk.
   The working orders on it are every stop (amber tick) and every limit target (green tick) closing the position, one tick per price with the sizes added (positionLevels, the same lines the position chart draws), each hovered for its price and size ('Target $60.00 · 25 sh'; owner request).
   The line under the ladder: 'Stop $19.50' (+N more, covers X of Y), 'At breakeven' or 'Stops past breakeven · +$X locked' in green, 'No stop · max loss is premium' on a long option, 'No stop' in amber otherwise.
