@@ -322,6 +322,21 @@ test('every card says Long or Short beside the name', async () => {
   assert.doesNotMatch(card('SHRT'), /pc-long/);
 });
 
+test('the first read shows placeholder cards, not a spinner', async () => {
+  const { run, elements } = await app({ width: 390, fetch: () => new Promise(() => {}), storage: connected() });
+  run("setView('positions')");
+  await settle();
+  const html = elements.get('positionsSection').innerHTML;
+  assert.match(html, /class="pos-skeleton" role="status" aria-busy="true"/);
+  assert.equal((html.match(/class="pc sk-card"/g) || []).length, 3);
+  assert.match(html, /Loading positions…/, 'said to a screen reader');
+  assert.doesNotMatch(html, /spinner|Refreshing/);
+  const wide = await app({ width: 1400, fetch: () => new Promise(() => {}), storage: connected() });
+  wide.run("setView('positions')");
+  await settle();
+  assert.match(wide.elements.get('positionsSection').innerHTML, /pos-skeleton[\s\S]*sk-trow/, 'the table gets rows');
+});
+
 test('one card open at a time: opening another closes the first and its chart; a tap outside closes it', async () => {
   const net = network(schwabOk);
   const { run, elements, state } = await app({ width: 390, fetch: net.fetch, storage: connected() });

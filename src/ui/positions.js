@@ -836,11 +836,35 @@ function renderPositionsTable() {
   try { drawPositionsTable(el); } finally { placePositionChart(el, parked); }
 }
 
+/**
+ * The first read's placeholder: grey shapes where the account tiles and the cards (or the table's rows) will be, a soft shimmer
+ * running over them (still with reduced motion), shown only after a beat so a quick read never flashes it.
+ */
+function positionsSkeleton(cards) {
+  const bar = (w, h = 12, cls = '') => `<span class="sk${cls}" style="width:${w};height:${h}px"></span>`;
+  const label = '<span class="sk-label">Loading positions…</span>';
+  if (!cards) {
+    const row = w => `<div class="sk-trow">${bar(`${w}px`, 14)}${bar('18%', 12, ' sk-push')}${bar('14%')}${bar('16%')}</div>`;
+    return `<div class="card positions-card pos-skeleton" role="status" aria-busy="true">${label}<div aria-hidden="true">${bar('40%', 14)}${[64, 52, 72, 58, 46].map(row).join('')}</div></div>`;
+  }
+  const tile = w => `<div>${bar('48px', 10)}${bar(w, 16, ' sk-gap')}</div>`;
+  const card = ([name, pnl, sub]) => `<div class="pc sk-card"><div class="pc-top">
+      <div class="pc-row">${bar(`${name}px`, 18)}${bar(`${pnl}px`, 18)}</div>
+      <div class="pc-row">${bar(`${sub}px`, 12)}${bar('64px', 12)}</div>
+      ${bar('100%', 4, ' sk-track')}${bar('96px', 12)}
+    </div></div>`;
+  return `<div class="pos-skeleton" role="status" aria-busy="true">${label}<div aria-hidden="true">
+    <dl class="pc-tiles">${tile('80%')}${tile('70%')}${tile('60%')}</dl>
+    <div class="pc-list">${[[64, 92, 150], [52, 80, 128], [72, 70, 140]].map(card).join('')}</div>
+  </div></div>`;
+}
+
 function drawPositionsTable(el) {
   const p = state.positions;
   const items = p ? tableRows(p) : [];
   document.getElementById('posCount').textContent = items.length ? String(items.length) : '';
   const refresh = `<button class="btn" data-action="refreshPositions"${state.positionsBusy ? ' disabled' : ''} title="Read positions from Schwab now (r)">${state.positionsBusy ? '<span class="spinner" style="width:12px;height:12px;"></span> Refreshing…' : '↻ Refresh'}</button>`;
+  if (!p && state.positionsBusy && !state.positionsError && schwabConnected()) { el.innerHTML = positionsSkeleton(posLayoutNow() === 'cards'); return; }
   if (!p) {
     el.innerHTML = !schwabConnected()
       ? `<div class="card empty-card"><div class="setup-title">Connect Schwab to see your positions</div><p>${state.positionsError ? esc(state.positionsError) : 'Positions come live from your Schwab account. Log in under Settings, Schwab.'}</p><button class="btn primary" data-action="openSheet" data-arg="settings">Open settings</button></div>`

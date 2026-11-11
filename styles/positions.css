@@ -937,3 +937,18 @@ span.journal-pick { cursor: default; }
 .pa-orig { display: flex; flex-direction: column; margin: 6px 0; }
 /* the close ticket's Bid / Mid / Ask: a limit at the live quote in one tap, beside Market | Limit */
 .pos-close-qty .pos-close-at { grid-template-columns: repeat(3, 1fr); }
+
+/* the first read's placeholder: the tiles and cards in grey, a shimmer passing over them, faded in after a beat */
+.pos-skeleton { animation: sk-in .3s ease .2s both; }
+.pos-skeleton .sk-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read aloud, not shown */
+.sk { display: block; flex: 0 0 auto; max-width: 100%; border-radius: 6px; background: linear-gradient(100deg, var(--bg3) 30%, var(--bg4) 50%, var(--bg3) 70%) 0 0 / 300% 100%; animation: sk-shimmer 1.6s linear infinite; }
+.sk-gap { margin-top: 6px; }
+.sk-track { margin: 10px 0 6px; border-radius: 2px; }
+.sk-card .pc-top { cursor: default; gap: 8px; }
+.sk-card .pc-row { align-items: center; }
+.sk-trow { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--border); }
+.positions-card.pos-skeleton > div > .sk:first-child { margin-bottom: 14px; }
+.sk-trow .sk-push { margin-left: auto; }
+@keyframes sk-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes sk-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sk, .pos-skeleton { animation: none; } }
