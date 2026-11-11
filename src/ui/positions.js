@@ -458,9 +458,12 @@ const headline = (pnl, pct) => state.posPnlPct ? (pct === null ? '—' : pct1(pc
 /** what sits beside cost → price: P/L % and R, or R alone when the percent already leads */
 const figuresOf = (pct, r) => [state.posPnlPct || pct === null ? '' : pct1(pct), r === null ? '' : rWords(r)].filter(Boolean).join(' · ');
 
-function cardTop(key, open, { name, pnl, pct, sub, figures, bar, note }) {
+/** Long or Short beside the name: shares or contracts held, or sold (a credit spread is short, like any credit) */
+const sideTag = qty => qty < 0 ? '<span class="pc-side pc-short">Short</span>' : '<span class="pc-side pc-long">Long</span>';
+
+function cardTop(key, open, { name, side, pnl, pct, sub, figures, bar, note }) {
   return `<div class="pc-top" data-action="togglePosCard" data-arg="${esc(key)}" role="button" tabindex="0" aria-expanded="${open}">
-    <div class="pc-row"><span class="pc-name">${name}</span><span class="pc-pnl ${tone(pnl)}">${headline(pnl, pct)}</span></div>
+    <div class="pc-row"><span class="pc-id"><span class="pc-name">${name}</span>${side}</span><span class="pc-pnl ${tone(pnl)}">${headline(pnl, pct)}</span></div>
     <div class="pc-row pc-sub"><span>${sub}</span><span class="${tone(pnl)}">${figures}</span></div>
     ${bar}${note}
   </div>`;
@@ -475,7 +478,7 @@ export function positionCard(r, leg = false) {
   const unit = r.option ? 'ct' : 'sh';
   const R = r.pnl === null ? null : cardR(r);
   const top = cardTop(r.symbol, open, {
-    name: cardName(r.label), pnl: r.pnl, pct: r.pnlPct,
+    name: cardName(r.label), side: sideTag(r.qty), pnl: r.pnl, pct: r.pnlPct,
     sub: `${r.avg > 0 ? `${px(r.avg)} → ` : ''}<b>${px(r.price)}</b> · ${count(r.qty)} ${unit}`,
     figures: figuresOf(r.pnlPct, R),
     bar: rowLadder(r),
@@ -490,7 +493,7 @@ function spreadCard(s) {
   const { r } = spreadR(s);
   const units = Math.abs(s.qty) === 1 ? 'spread' : 'spreads';
   const top = cardTop(s.key, open, {
-    name: cardName(s.label), pnl: s.pnl, pct: s.pnlPct,
+    name: cardName(s.label), side: sideTag(s.qty), pnl: s.pnl, pct: s.pnlPct,
     sub: `${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${units}`,
     figures: figuresOf(s.pnlPct, r),
     bar: spreadLadder(s),

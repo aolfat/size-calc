@@ -186,7 +186,7 @@ test('phones get a card per position: P/L and R up top, a stop ladder, a tap for
   assert.equal((html().match(/<article class="pc/g) || []).length, 4);
 
   const stock = card('TEST');
-  assert.match(stock, /<b>TEST<\/b><\/span><span class="pc-pnl pos-locked">\+\$500\.00/);
+  assert.match(stock, /<b>TEST<\/b><\/span><span class="pc-side pc-long">Long<\/span><\/span><span class="pc-pnl pos-locked">\+\$500\.00/);
   assert.match(stock, /\$50\.00 → <b>\$55\.00<\/b> · 100 sh/);
   assert.match(stock, /\+10\.0% · \+2\.50R/, 'R off the stop now, signed out');
   assert.match(stock, /pc-tick pc-stop/);
@@ -312,6 +312,14 @@ test('an option bought with no stop draws its ladder from zero: the premium is t
   const left = Number(html.match(/pc-cost" style="left:([\d.]+)%/)[1]), dot = Number(html.match(/pc-dot[^"]*" style="left:([\d.]+)%/)[1]);
   assert.ok(left < dot, 'cost $2.50 left of the price $3.00');
   assert.ok(left > 60, 'the bar starts at zero, so $2.50 sits most of the way along');
+});
+
+test('every card says Long or Short beside the name', async () => {
+  const { run } = await app();
+  const card = sym => run(`(() => { const p = positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, []); return positionCard(p.rows.find(r => r.symbol === ${JSON.stringify(sym)})); })()`);
+  assert.match(card('TEST'), /class="pc-side pc-long">Long</);
+  assert.match(card('SHRT'), /class="pc-side pc-short">Short</);
+  assert.doesNotMatch(card('SHRT'), /pc-long/);
 });
 
 test('the card ladder draws every working stop and limit target, the note names the nearest target', async () => {
