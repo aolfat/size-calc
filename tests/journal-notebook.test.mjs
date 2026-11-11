@@ -405,6 +405,8 @@ test('a focus list: tickers added before the open with their setups, reviewed af
   assert.equal(state.missedChart.mark, 'focus', 'the daily marks the day as focus');
   assert.match(out(), /<li class="nb-miss-open" id="nbFocusOpen">\s*<div class="nb-miss-head"><b>QCOM<\/b>[\s\S]*The day, 5 minutes[\s\S]*Side[\s\S]*Setups[\s\S]*Note[\s\S]*Screenshots[\s\S]*How it played/, 'open: the charts, side, setups, note, screenshots, then how it played');
   run(`setFocusSide('${id}', 'long'); toggleFocusSetup('${id}', 'flag_breakout'); toggleFocusSetup('${id}', 'ema21_unr'); toggleFocusSetup('${id}', 'nope')`);
+  assert.match(out(), /<span class="jr-group-name">Undercut &amp; rally<\/span>[\s\S]*<span class="jr-group-name">Patterns<\/span>/, 'setups grouped by what happened, then the patterns, as a trade\'s review picks them');
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleFocusSetup" data-arg="${id}" data-arg2="ema21_unr" title="21 EMA undercut &amp; rally">21 EMA<`), 'each chip named for its level, its title the whole name');
   run(`focusNoteInput('${id}', 'note', 'Over 170')`);
   run('renderJournal()');
   assert.match(out(), /id="nbFocusNote-[^"]*"[^>]*>Over 170<\/textarea>/, 'a redraw keeps the draft');
@@ -599,7 +601,7 @@ test('a missed trade makes a new setup or entry tactic on the spot', async () =>
   const tactic = lib().find(r => r.kind === 'tactic');
   assert.equal(tactic.name, 'ORB 5');
   assert.deepEqual(saved().tactics, [`mine:${tactic.id}`]);
-  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="mine:${tactic.id}">ORB 5<`));
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="mine:${tactic.id}" title="ORB 5">ORB 5<`));
   run(`startMissedTactic('${id}')`);
   await run(`addMissedTactic('${id}', '15-MINUTE pivot')`);
   await settle();
@@ -626,7 +628,7 @@ test('a missed trade makes a new setup or entry tactic on the spot', async () =>
   assert.deepEqual([setup.name, setup.settings], ['9 WK EMA undercut & rally', { action: 'undercut', levels: ['ema9w'] }]);
   assert.deepEqual(saved().setups, ['ema9w_bounce', `mine:${setup.id}`], 'a new one goes on, beside the first');
   assert.equal(state.openSheetName, null);
-  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="mine:${setup.id}">9 WK EMA undercut &amp; rally<`));
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="mine:${setup.id}" title="9 WK EMA undercut &amp; rally">9 WK EMA<`), 'under its action, named for its level');
 });
 
 test('a missed trade: added by ticker, filled in, on the calendar, removed with Undo', async () => {
@@ -644,7 +646,8 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   assert.equal(saved()[0].symbol, 'NVDA');
   assert.match(out(), /<div class="nb-miss-head"><b>NVDA<\/b>[\s\S]*The day, 5 minutes[\s\S]*Daily setups[\s\S]*Entry tactics[\s\S]*Why you missed it/, 'open to fill in: the charts first, then the setup and tactic');
   assert.match(out(), /Add a Tradier key or log in to Schwab in Settings for NVDA&#39;s 5-minute chart\./, 'no key: the charts say why');
-  assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15">15m pivot<`));
+  assert.match(out(), new RegExp(`aria-pressed="false" data-action="toggleMissedTactic" data-arg="${id}" data-arg2="pivot15" title="15m pivot">Pivot<`));
+  assert.match(out(), /Entry tactics[\s\S]*<span class="jr-group-name">15m<\/span>[\s\S]*<span class="jr-group-name">30m<\/span>[\s\S]*<span class="jr-group-name">Other<\/span>[\s\S]*Why you missed it/, 'grouped by timeframe, as the Trade at Schwab sheet and a trade\'s review pick them');
   run(`setMissedSide('${id}', 'short'); setMissedWhy('${id}', 'hesitated'); toggleMissedSetup('${id}', 'ema8_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedSetup('${id}', 'sma50_bounce'); toggleMissedTactic('${id}', 'pivot15'); toggleMissedTactic('${id}', 'nope')`);
   run(`toggleMissedTactic('${id}', 'six20'); toggleMissedTactic('${id}', 'pivot30')`);
   await settle();
@@ -653,7 +656,8 @@ test('a missed trade: added by ticker, filled in, on the calendar, removed with 
   run(`missedNoteInput('${id}', 'Saw the rejection')`);
   run('renderJournal()');
   assert.match(out(), /id="nbMissedNote-[^"]*"[^>]*>Saw the rejection<\/textarea>/, 'a redraw keeps the draft');
-  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="ema8_bounce">8 EMA rejection<`), 'setups in the side\'s words');
+  assert.match(out(), new RegExp(`aria-pressed="true" data-action="toggleMissedSetup" data-arg="${id}" data-arg2="ema8_bounce" title="8 EMA rejection">8 EMA<`), 'setups in the side\'s words');
+  assert.match(out(), /Daily setups[\s\S]*<span class="jr-group-name">Rejection<\/span>[\s\S]*<span class="jr-group-name">Patterns<\/span>[\s\S]*Entry tactics/, 'grouped by what happened, then the patterns, as a trade\'s review and the Trade at Schwab sheet pick them');
   run(`missedNoteSave('${id}', ' Saw the rejection, waited ')`);
   await settle();
   assert.deepEqual(saved(), [{ id, symbol: 'NVDA', side: 'short', setups: ['ema8_bounce'], tactics: ['pivot15'], why: 'hesitated', note: 'Saw the rejection, waited' }], 'tapped again: off');

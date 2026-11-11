@@ -197,6 +197,9 @@ The Journal tab: imports, trades and spreads, fees, your stops and deletes, bars
   **Search** above them (#setupSearch, state.reviewSearch.setup; matchesQuery and setupSearchNames, pure): every word typed starts one of the setup's words, either side's, its parts' or its action's, or their initials with '&' kept, read as 'n' or dropped, so '9 unr', 'u&r', 'rej 21' and '21 bounce' all find theirs; three letters or more also match run together ('21ema').
   Typing redraws only the chips (reviewSearchInput), Enter puts the first match not on the trade on and clears the box for the next (reviewSearchPick; the page keeps the box focused across the redraw); no match says so; the box hides while + New setup is open (the builder narrows them there) and every trade opens with it empty.
   Entry tactic has the same search (#tacticSearch, state.reviewSearch.tactic) over its chips.
+  Entry tactics are grouped the same everywhere they're picked (owner request): the review, a missed trade and the Trade at Schwab sheet all draw them with tacticGroupsHtml (ui/journal-review.js), under the timeframe their names start with ('5m', '15m', '30m', shortest first; tacticPickGroups), each chip the rest of the name ('Pivot'), then Other; a chip's title is its whole name.
+  The search narrows the chips and the groups follow.
+  A missed trade's daily setups and a focus list ticker's setups are grouped the same as the review's too (setupPickGroups, by what happened, then the patterns).
 
   **Order plans** (docs/schwab.md; applyOrderPlans in ui/order-plan.js, matchPlans and planLabels in core/order-plans.js): after loadJournal reads everything, the plans the Trade at Schwab sheet saved are matched to the trades (state.orderPlanMatch).
   A plan goes with the trades whose opening orders (entryOrderIds) include any id it has had, on its account and side, so a reversal's order counts for the side it was sent for and a trade with adds gets each order's plan, oldest first.

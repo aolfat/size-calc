@@ -52,6 +52,7 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   The setup chips keep one order for the whole review (ticket.setupOrder, set the first time they show): a tap lights a chip where it is, and a search only hides the ones that don't match.
   Both show in named rows on the sheet's label column (owner request: better organized): setups grouped as the journal's review groups them (setupPickGroups: Bounce, Undercut & rally, each chip its level, then Patterns), with '8 more. Search to find them.' under them when some are past the 12.
   Tactics group by the timeframe their names start with (tacticPickGroups, tacticTimeframe: '5m', '15m', '30m', shortest first, however it's written, '15-minute ORB' too), each chip the rest of the name ('ORB', 'Pivot'), then Other in the library's order; a chip's title is its whole name.
+  A journal trade's review and a missed trade group them the same way (tacticGroupsHtml, docs/journal.md).
   They start from today's focus list when this ticker is on it (its side or no side: its setups) and from the opening range (a 15m or 30m chip: the 15m or 30m pivot tactic; 5m has none); once, and never over a pick you made.
   Signed out, the rows say that signing in with Google keeps the setup, tactic and plan with the order.
   The plan is saved only after the send: with the order id on a 201, with no id when the answer was lost (it may have gone through), never on a rejection or a send that never left; beside the status check, so it never delays or blocks the order.

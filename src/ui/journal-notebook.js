@@ -15,7 +15,7 @@
 // The calendar's marks: plan written, reviewed, review due, how many you missed.
 // Premarket opens with the day's economic releases (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
-import { buildLibrary, goesBy, setupsByUse } from '../core/journal-labels.js';
+import { buildLibrary, goesBy, setupPickGroups, setupsByUse } from '../core/journal-labels.js';
 import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, standingRuleFor, stepWeekday } from '../core/journal-notebook.js';
 import { tradeUnderlying } from '../core/journal.js';
 import { LEGACY_RULE_ID, weekRulesFor } from '../core/journal-week.js';
@@ -23,7 +23,7 @@ import { dailyPnl, nyParts } from '../core/journal-stats.js';
 import { saveJournalDay, saveLibraryItem } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { showError, showToast } from './feedback.js';
-import { newSetupFor, onSetupAdded, reviewedMark } from './journal-review.js';
+import { newSetupFor, onSetupAdded, pickGroupsHtml, reviewedMark, tacticGroupsHtml } from './journal-review.js';
 import { closeSheet } from './sheets.js';
 import { journalTradeList, renderJournal } from './journal.js';
 import { loadMissedChart, missedChartHtml } from './missed-chart.js';
@@ -525,14 +525,14 @@ function focusSection(day, trades, off) {
     const side = [played ? `<span class="nb-played nb-played-${f.played}">${esc(played)}</span>` : '', shots ? `${shots} screenshot${shots === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
     const summary = `<span class="nb-trade-name"><b>${esc(f.symbol)}</b>${what ? ` ${what}` : ''}${tradedTag(traded.has(f.id), false)}${f.note ? `<span class="nb-miss-note">${esc(f.note)}</span>` : ''}</span>${side ? `<span class="nb-miss-shots">${side}</span>` : ''}`;
     if (state.focusOpen !== f.id || off) return `<li><button class="nb-trade nb-miss" data-action="openFocusTicker" data-arg="${esc(f.id)}" aria-label="${esc(`${f.symbol} on your focus list. Edit`)}"${off}>${summary}</button></li>`;
-    // My setups: the ones on (even hidden), then the rest, most used first; names in the side's words
+    // My setups: the ones on (even hidden) and the rest, grouped as the review and the Trade at Schwab sheet group them; names in the side's words
     const onSetups = [...new Set(f.setups.map(k => lib.resolve('setup', k)))];
     const setups = [...onSetups, ...setupsByUse(lib, data()?.labels || {}).map(i => i.key).filter(k => !onSetups.includes(k))];
     return `<li class="nb-miss-open" id="nbFocusOpen">
       <div class="nb-miss-head"><b>${esc(f.symbol)}</b>${tradedTag(traded.has(f.id), over)}<span class="nb-links"><button class="pos-link" data-action="removeFocusTicker" data-arg="${esc(f.id)}">Remove</button><button class="pos-link" data-action="openFocusTicker" data-arg="${esc(f.id)}">Done</button></span></div>
       ${missedChartHtml(f.symbol, day)}
       ${row('Side', MISSED_SIDES.map(([v, w]) => chip(w, f.side === v, `data-action="setFocusSide" data-arg="${esc(f.id)}" data-arg2="${v}"`)).join(''))}
-      ${row('Setups', `${setups.map(k => chip(lib.nameOf('setup', k, f.side || 'long'), onSetups.includes(k), `data-action="toggleFocusSetup" data-arg="${esc(f.id)}" data-arg2="${esc(k)}"`)).join('')}<button class="pos-link jr-new" data-action="newFocusSetup" data-arg="${esc(f.id)}">+ New setup</button>`)}
+      ${row('Setups', `<div class="jr-setup-pick">${pickGroupsHtml(setupPickGroups(lib, setups, f.side || 'long'), i => chip(i.label, onSetups.includes(i.key), `data-action="toggleFocusSetup" data-arg="${esc(f.id)}" data-arg2="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, f.side || 'long'))}"`))}</div><button class="pos-link jr-new" data-action="newFocusSetup" data-arg="${esc(f.id)}">+ New setup</button>`)}
       ${focusNoteRow(day, f, 'note', 'Note <span class="jr-sub">optional</span>', 'Levels, the trigger, what you\'re waiting for')}
       ${focusShotsRowHtml(f.id)}
       ${row(`How it played <span class="jr-sub">${over ? 'after the close' : 'for after the close'}</span>`, playedChips(f))}
@@ -704,7 +704,7 @@ function missedSection(day) {
     const shots = missedShotCount(m.id);
     const summary = `<span class="nb-trade-name"><b>${esc(m.symbol)}</b>${what ? ` ${what}` : ''}${m.note ? `<span class="nb-miss-note">${esc(m.note)}</span>` : ''}</span>${shots ? `<span class="nb-miss-shots">${shots} screenshot${shots === 1 ? '' : 's'}</span>` : ''}`;
     if (state.missedOpen !== m.id || off) return `<li><button class="nb-trade nb-miss" data-action="openMissedTrade" data-arg="${esc(m.id)}" aria-label="${esc(`${m.symbol} missed. Edit`)}"${off}>${summary}</button></li>`;
-    // My setups: the ones on (even hidden), then the rest, most used first; names in the side's words
+    // My setups: the ones on (even hidden) and the rest, grouped as the review and the Trade at Schwab sheet group them; names in the side's words
     const onSetups = [...new Set(m.setups.map(k => lib.resolve('setup', k)))];
     const setups = [...onSetups, ...setupsByUse(lib, data()?.labels || {}).map(i => i.key).filter(k => !onSetups.includes(k))], tactics = lib.choices('tactic');
     const note = (() => { const d = state.notebookDraft; return d && d.day === day && d.field === `missed:${m.id}` ? d.text : m.note || ''; })();
@@ -712,8 +712,8 @@ function missedSection(day) {
       <div class="nb-miss-head"><b>${esc(m.symbol)}</b><span class="nb-links"><button class="pos-link" data-action="removeMissedTrade" data-arg="${esc(m.id)}">Remove</button><button class="pos-link" data-action="openMissedTrade" data-arg="${esc(m.id)}">Done</button></span></div>
       ${missedChartHtml(m.symbol, day)}
       ${row('Side', MISSED_SIDES.map(([v, w]) => chip(w, m.side === v, `data-action="setMissedSide" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}
-      ${row('Daily setups', `${setups.map(k => chip(setupName(k, m.side), onSetups.includes(k), `data-action="toggleMissedSetup" data-arg="${esc(m.id)}" data-arg2="${esc(k)}"`)).join('')}<button class="pos-link jr-new" data-action="newMissedSetup" data-arg="${esc(m.id)}">+ New setup</button>`)}
-      ${row('Entry tactics', `${tactics.map(i => chip(i.name, m.tactics.some(k => lib.resolve('tactic', k) === i.key), `data-action="toggleMissedTactic" data-arg="${esc(m.id)}" data-arg2="${esc(i.key)}"`)).join('')}${state.missedNewTactic === m.id
+      ${row('Daily setups', `<div class="jr-setup-pick">${pickGroupsHtml(setupPickGroups(lib, setups, m.side || 'long'), i => chip(i.label, onSetups.includes(i.key), `data-action="toggleMissedSetup" data-arg="${esc(m.id)}" data-arg2="${esc(i.key)}" title="${esc(setupName(i.key, m.side))}"`))}</div><button class="pos-link jr-new" data-action="newMissedSetup" data-arg="${esc(m.id)}">+ New setup</button>`)}
+      ${row('Entry tactics', `<div class="jr-setup-pick">${tacticGroupsHtml(tactics, i => chip(i.label, m.tactics.some(k => lib.resolve('tactic', k) === i.key), `data-action="toggleMissedTactic" data-arg="${esc(m.id)}" data-arg2="${esc(i.key)}" title="${esc(i.name)}"`))}</div>${state.missedNewTactic === m.id
         ? `<span class="jr-newbox"><input type="text" id="nbMissedTactic" maxlength="80" placeholder="Name" autocomplete="off" value="${esc(state.missedTacticDraft)}" data-input="missedTacticInput" data-enter="addMissedTactic" data-arg="${esc(m.id)}" aria-label="New entry tactic" /><button class="btn" data-action="addMissedTactic" data-arg="${esc(m.id)}">Add</button><button class="pos-link" data-action="cancelMissedTactic">Cancel</button></span>`
         : `<button class="pos-link jr-new" data-action="startMissedTactic" data-arg="${esc(m.id)}">+ New</button>`}`)}
       ${row('Why you missed it', MISSED_WHY.map(([v, w]) => chip(w, m.why === v, `data-action="setMissedWhy" data-arg="${esc(m.id)}" data-arg2="${v}"`)).join(''))}

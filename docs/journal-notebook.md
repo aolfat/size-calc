@@ -61,7 +61,7 @@ Type the ticker and + Add (or Enter); it opens with its charts, and the rest is 
 |---|---|
 | Charts | The missed trades' charts: the ticker's 5 minutes that day and its daily, the day marked 'focus' |
 | Side | Long, Short |
-| Setups | My setups as chips, the ones on first, then most used; any number on at once (six at most), named in the side's words; + New setup makes one ('New setup for QCOM on your focus list') |
+| Setups | My setups as chips grouped by what happened (Bounce, Undercut & rally), then Patterns, as a trade's review, a missed trade and the Trade at Schwab sheet group them (setupPickGroups), each chip named for its level; any number on at once (six at most), named in the side's words; + New setup makes one ('New setup for QCOM on your focus list') |
 | Note | One line, up to 500 characters: levels, the trigger, what you're waiting for |
 | Screenshots | Like a missed trade's: Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most |
 | How it played | Worked, Failed, Triggered (it triggered but whether it worked isn't known), Didn't trigger; for after the close, but there any time |
@@ -90,8 +90,8 @@ Type the ticker and + Add (or Enter); it opens with its charts, and the rest is 
 |---|---|
 | Charts | The ticker's 5 minutes that day (regular hours, 8 EMA and VWAP) and its daily (8 EMA, framed 40 sessions before the day through 10 after, the day marked 'missed'), like the trade page's |
 | Side | Long, Short |
-| Daily setups | My setups as chips, the ones on first, then most used; any number on at once (six at most), named in the side's words; + New setup makes one |
-| Entry tactics | The review's entry tactics (6/20, 15m pivot, 30m pivot and yours) as chips, any number on at once (six at most), like a trade's review; + New adds one |
+| Daily setups | My setups as chips grouped by what happened (Bounce, Undercut & rally), then Patterns, as a trade's review and the Trade at Schwab sheet group them (setupPickGroups), each chip named for its level; any number on at once (six at most), in the side's words; + New setup makes one |
+| Entry tactics | The review's entry tactics (6/20, 15m pivot, 30m pivot and yours) as chips grouped by timeframe (15m Pivot, 30m Pivot, Other 6/20), any number on at once (six at most), like a trade's review; + New adds one |
 | Why you missed it | Hesitated, Didn't see it, Away, Too late, Didn't trust it, At my limit |
 | Note | One line, up to 500 characters |
 | Screenshots | Paste from clipboard, + Add screenshot, or paste or drop one anywhere on the page while it's open; ten at most; the × on one deletes it |

@@ -4,14 +4,14 @@
 // journal putting each plan's labels on its trade once (services/order-plans.js).
 import { state } from '../state.js';
 import { marketEscape as esc, nyDateStr } from '../core/format.js';
-import { buildLibrary, matchesQuery, setupPickGroups, setupsByUse, setupSearchNames, tacticPickGroups } from '../core/journal-labels.js';
+import { buildLibrary, matchesQuery, setupPickGroups, setupsByUse, setupSearchNames } from '../core/journal-labels.js';
 import { matchPlans, planLabels } from '../core/order-plans.js';
 import { addAppLabels } from '../services/journal-review.js';
 import { loadOrderPlans, saveOrderPlan, updateOrderPlan } from '../services/order-plans.js';
 import { schwabAccounts, schwabBalances } from '../services/schwab.js';
 import { accountSizeFromSchwab, todaysAccountValue } from './account-size.js';
 import { showError } from './feedback.js';
-import { loadJournalReview } from './journal-review.js';
+import { loadJournalReview, pickGroupsHtml, tacticGroupsHtml } from './journal-review.js';
 import { orbActive, orbStopName } from './orb.js';
 import { riskDollars } from './risk.js';
 import { currentAtr5, dayRange, rawStop } from './stops.js';
@@ -85,8 +85,6 @@ function prefillPicks(t) {
 }
 
 const chip = (label, on, attrs) => `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" ${attrs}>${esc(label)}</button>`;
-/** chips in named rows, as the journal's review picks them: the group's name, then its chips */
-const groupsHtml = (groups, chipOf) => groups.map(g => `<div class="jr-group"><span class="jr-group-name">${esc(g.name)}</span><span class="jr-group-chips">${g.items.map(chipOf).join('')}</span></div>`).join('');
 /** picks can change until the order goes, and after it while its plan is kept */
 const picksOff = t => t.sent && !t.planId ? ' disabled' : '';
 
@@ -103,7 +101,7 @@ function setupChipsHtml(t) {
   const shown = t.setupOrder.filter((k, i) => t.setups.includes(k) || (q ? matchesQuery(setupSearchNames(lib, k), q) && room-- > 0 : i < SETUP_CHIPS));
   if (q && !shown.length) return `<p class="jr-none">No setup matches “${esc(q)}”.</p>`;
   const more = q ? 0 : t.setupOrder.length - shown.length;
-  return groupsHtml(setupPickGroups(lib, shown, side), i => chip(i.label, t.setups.includes(i.key), `data-action="toggleTradeSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}"${picksOff(t)}`))
+  return pickGroupsHtml(setupPickGroups(lib, shown, side), i => chip(i.label, t.setups.includes(i.key), `data-action="toggleTradeSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}"${picksOff(t)}`))
     + (more > 0 ? `<p class="jr-none">${more} more. Search to find them.</p>` : '');
 }
 
@@ -113,8 +111,8 @@ export function tradePlanHtml(t) {
   if (state.journalReviewError) return `<p class="hint" style="color:var(--amber)">Your setups couldn't load: ${esc(state.journalReviewError)}. The plan's numbers are still saved with the order.</p>`;
   if (!state.journalReview) return '<p class="hint">Loading your setups…</p>';
   const lib = library();
-  // tactics by the timeframe their names start with ('5m', '15m', '30m'), then the rest
-  const tactics = groupsHtml(tacticPickGroups(lib.choices('tactic')), i => chip(i.label, t.tactics.includes(i.key), `data-action="toggleTradeTactic" data-arg="${esc(i.key)}" title="${esc(i.name)}"${picksOff(t)}`));
+  // tactics by the timeframe their names start with ('5m', '15m', '30m'), then the rest, as the journal picks them
+  const tactics = tacticGroupsHtml(lib.choices('tactic'), i => chip(i.label, t.tactics.includes(i.key), `data-action="toggleTradeTactic" data-arg="${esc(i.key)}" title="${esc(i.name)}"${picksOff(t)}`));
   return `<div class="trade-plan-picks">
       <div class="tp-head"><span class="tp-title">Setup</span><input type="search" class="jr-search" id="tradeSetupSearch" placeholder="Search setups" autocomplete="off" spellcheck="false" value="${esc(state.tradeSetupQuery || '')}" data-input="tradeSetupSearch" aria-label="Search My setups" /></div>
       <div class="tp-groups" id="tradeSetupPick">${setupChipsHtml(t)}</div>

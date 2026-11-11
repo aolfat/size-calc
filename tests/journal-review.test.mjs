@@ -136,7 +136,7 @@ test('the Review section: market for the day or this trade, sector, My setups (o
   await run(`toggleReviewLabel(${t}, 'sector', 'weak')`);
   assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'sector').map(r => r.value), ['weak'], 'one sector: the new one replaces the old');
   assert.match(body(), /<div class="jr-label">My setups<\/div>[\s\S]*<span class="jr-group-name">Bounce<\/span><span class="jr-group-chips">[^]*?data-action="toggleSetup" data-arg="ema8_bounce" title="8 EMA bounce: Bounce at 8 EMA">8 EMA</, 'the starting setups, one tap each, grouped by what happened and named for their level');
-  assert.deepEqual([...body().matchAll(/<span class="jr-group-name">([^<]+)</g)].map(m => m[1]), ['Bounce', 'Undercut &amp; rally', 'Patterns'], 'every bounce together, every undercut & rally, then the patterns');
+  assert.deepEqual([...body().matchAll(/<span class="jr-group-name">([^<]+)</g)].map(m => m[1]), ['Bounce', 'Undercut &amp; rally', 'Patterns', '15m', '30m', 'Other'], 'every bounce together, every undercut & rally, then the patterns; the tactics after them by timeframe');
   assert.deepEqual([...body().matchAll(/data-action="toggleSetup" data-arg="([^"]+)"/g)].map(m => m[1]),
     ['ema8_bounce', 'ema21_bounce', 'ema9w_bounce', 'sma50_bounce', 'ema21_unr', 'sma50_unr', 'base_breakout', 'flag_breakout', 'earnings_gap'], 'in a fixed order: levels by length, patterns as listed');
   await run(`toggleSetup(${t}, 'ema21_bounce')`);
@@ -404,6 +404,8 @@ test('the setup and tactic searches narrow the chips in place; Enter puts the fi
 
   run(`reviewSearchInput(${t}, 'tactic', 'piv')`);
   assert.deepEqual([...elements.get('jrTacticPick').innerHTML.matchAll(/data-arg2="([^"]+)"/g)].map(m => m[1]), ['pivot15', 'pivot30']);
+  assert.deepEqual([...elements.get('jrTacticPick').innerHTML.matchAll(/class="jr-group-name">([^<]+)</g)].map(m => m[1]), ['15m', '30m'], 'grouped by timeframe, as the Trade at Schwab sheet picks them');
+  assert.match(elements.get('jrTacticPick').innerHTML, /data-arg2="pivot15" title="15m pivot">Pivot</, 'each chip the rest of its name, its title the whole');
   await run(`reviewSearchPick(${t}, 'tactic')`);
   assert.deepEqual(rows('trade_labels').filter(r => r.kind === 'tactic').map(r => r.value), ['pivot15']);
 

@@ -4,7 +4,7 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, goesBy, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tradeSide } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, goesBy, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tacticPickGroups, tradeSide } from '../core/journal-labels.js';
 import { fundOf, listedFund, parseFunds } from '../core/journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { planLines } from '../core/order-plans.js';
@@ -330,20 +330,30 @@ function setupChoices(t) {
   return { lib, on, offered, picking, q, shown };
 }
 
+/** chips in named rows, the way every setup and tactic picker shows them: the group's name, then its chips (chipOf draws one) */
+export const pickGroupsHtml = (groups, chipOf) => groups.map(g => `<div class="jr-group"><span class="jr-group-name">${esc(g.name)}</span><span class="jr-group-chips">${g.items.map(chipOf).join('')}</span></div>`).join('');
+
+/**
+ * Entry tactics as every place that picks them shows them (the trade's review, a missed trade, the Trade at Schwab sheet):
+ * under the timeframe their names start with ('5m', '15m', '30m'), each chip the rest of its name, then Other
+ * (tacticPickGroups); chipOf draws one from { key, label, name }, its title the whole name.
+ */
+export const tacticGroupsHtml = (items, chipOf) => pickGroupsHtml(tacticPickGroups(items), chipOf);
+
 /** My setups grouped by what happened (every bounce together, every undercut & rally), then the patterns; a lit chip is on the trade */
 function setupPickHtml(t) {
   const { lib, on, q, shown } = setupChoices(t), side = tradeSide(t);
   if (q && !shown.length) return `<p class="jr-none">No setup matches “${esc(q)}”. Make it with + New setup.</p>`;
-  return setupPickGroups(lib, shown, side).map(g => `<div class="jr-group"><span class="jr-group-name">${esc(g.name)}</span><span class="jr-group-chips">${g.items.map(i =>
-    chip(i.label, on.includes(i.key), `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}: ${esc(lib.partsWords(lib.parts(i.key), side))}"`)).join('')}</span></div>`).join('');
+  return pickGroupsHtml(setupPickGroups(lib, shown, side), i =>
+    chip(i.label, on.includes(i.key), `data-action="toggleSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}: ${esc(lib.partsWords(lib.parts(i.key), side))}"`));
 }
 
-/** the entry tactics the search lets through */
+/** the entry tactics the search lets through, grouped by timeframe */
 function tacticPickHtml(t) {
   const lib = library(), q = searchOf('tactic'), has = key => labelsOf(t, 'tactic').some(l => l.value === key);
   const shown = lib.choices('tactic').filter(i => matchesQuery([i.name], q));
   if (q && !shown.length) return `<p class="jr-none">No tactic matches “${esc(q)}”.</p>`;
-  return shown.map(i => chip(i.name, has(i.key), `data-action="toggleReviewLabel" data-arg="tactic" data-arg2="${esc(i.key)}"`)).join('');
+  return tacticGroupsHtml(shown, i => chip(i.label, has(i.key), `data-action="toggleReviewLabel" data-arg="tactic" data-arg2="${esc(i.key)}" title="${esc(i.name)}"`));
 }
 
 /** typing in a search: only the chips under it redraw, so the cursor stays */
@@ -426,7 +436,7 @@ export function reviewSectionHtml(t, after = '') {
     ${groupTitle('2', 'Setup', ['setup', 'tactic'])}
     ${setupOnRow(t)}
     ${row('My setups', `${setupSearch}${fitNote}<div class="jr-setup-pick" id="jrSetupPick">${setupPickHtml(t)}</div>${builder}${partsLine}`, miss.has('setup'), 'jr-setup-row')}
-    ${row('Entry tactic', `${searchBox('tactic', 'Search tactics', 'Search entry tactics')}<span class="jr-tactic-pick" id="jrTacticPick">${tacticPickHtml(t)}</span>${newBox('tactic')}`, miss.has('tactic'))}
+    ${row('Entry tactic', `${searchBox('tactic', 'Search tactics', 'Search entry tactics')}<div class="jr-setup-pick" id="jrTacticPick">${tacticPickHtml(t)}</div>${newBox('tactic')}`, miss.has('tactic'), 'jr-setup-row')}
     ${orderPlanRow(t)}
     ${row('Tags', pick('tag') + newBox('tag') + linksHtml(t, lib))}
     <div class="jr-row"><label class="jr-label" for="entryNote">Entry note <span class="jr-sub">optional</span></label>
