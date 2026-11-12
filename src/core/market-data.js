@@ -131,6 +131,14 @@ export const MarketData = (() => {
     first.setUTCDate(Math.min(d, lastOfMonth) - days);
     return first.toISOString().slice(0, 10);
   }
+  /**
+   * The session day the longer periods are read for: today, or Friday on a weekend (no new close since, so Friday's
+   * references hold and a weekend visit loads nothing again). Holidays count as days. @param {string} day YYYY-MM-DD
+   */
+  function historyDay(day) {
+    const weekday = new Date(day + 'T12:00:00Z').getUTCDay();
+    return weekday === 6 ? dayBefore(day, { days: 1 }) : weekday === 0 ? dayBefore(day, { days: 2 }) : day;
+  }
   /** The day each longer period measures from, in HISTORY_PERIODS order (calendar, not session counts). @param {string} today */
   function referenceDays(today) {
     return [dayBefore(today, { days: 7 }), dayBefore(today, { months: 1 }), dayBefore(today, { months: 3 }),
@@ -169,12 +177,14 @@ export const MarketData = (() => {
     });
   }
   /**
-   * GET each symbol's daily history one at a time, spaced for Tradier's per-minute limit, retrying timeouts, 429s and 5xx.
+   * GET each symbol's daily history one at a time, spaced for Tradier's per-minute limit (ms, or read before each wait),
+   * retrying timeouts, 429s and 5xx.
    * A symbol Tradier refuses (4xx) answers no days; auth failures and exhausted retries throw, keeping what onSymbol already got.
    * @param {string[]} symbols
    * @param {{ base: string, auth: Record<string, string>, start: string, end: string, signal?: AbortSignal,
    *   onSymbol: (symbol: string, days: any[]) => void, onRetry?: (info: { delay: number, status?: number, attempt: number }) => void,
-   *   fetchImpl?: typeof fetch, retries?: number, spacing?: number, pause?: (ms: number, signal?: AbortSignal) => Promise<unknown> }} options
+   *   fetchImpl?: typeof fetch, retries?: number, spacing?: number | (() => number),
+   *   pause?: (ms: number, signal?: AbortSignal) => Promise<unknown> }} options
    */
   async function fetchHistories(symbols, { base, auth, start, end, signal, onSymbol, onRetry = () => {}, fetchImpl = fetch,
     retries = 2, spacing = 600, pause = waitForRefresh }) {
@@ -222,7 +232,7 @@ export const MarketData = (() => {
         onRetry({delay, status:failure.status, attempt:attempt + 1});
         await pause(delay, signal);
       }
-      if (i + 1 < symbols.length) await pause(spacing, signal);
+      if (i + 1 < symbols.length) await pause(typeof spacing === 'function' ? spacing() : spacing, signal);
     }
     if (signal?.aborted) throw new Error('Refresh cancelled.');
   }
@@ -301,5 +311,5 @@ export const MarketData = (() => {
     if (signal?.aborted) throw new Error('Refresh cancelled.');
     return result;
   }
-  return { HISTORY_PERIODS, HISTORY_INDEX, dayBefore, parseCsv, groups, filter, sort, quoteRows, withQuotes, referenceDays, historyRefs, withHistory, fetchHistories, fetchQuotes };
+  return { HISTORY_PERIODS, HISTORY_INDEX, dayBefore, historyDay, parseCsv, groups, filter, sort, quoteRows, withQuotes, referenceDays, historyRefs, withHistory, fetchHistories, fetchQuotes };
 })();

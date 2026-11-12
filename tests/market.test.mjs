@@ -669,12 +669,12 @@ test('history loads one symbol at a time, spaced, skipping refused symbols and r
     fetchImpl: async () => ({ ok: false, status: 401 }), onSymbol: () => assert.fail('no symbol after a 401') }), /api key/i);
 });
 
-test('an ETF tab and an opened group load daily history once a day; the overview stays on the snapshot', async () => {
-  const historyCalls = [];
+test('every scope, the overview too, loads daily history once a session day and keeps it', async () => {
+  const historyCalls = [], ends = new Set();
   const now = Date.UTC(2026, 9, 19, 15); // Mon Oct 19, 2026, 11am New York
   const app = await appContext(async (url, options) => ({ ok: true, json: async () => ({ quotes: { quote:
     new URLSearchParams(options.body).get('symbols').split(',').map(symbol => ({ symbol, last: 102, open: 100, change_percentage: 2 })) } }) }), true, {
-    now, history: url => { historyCalls.push(new URL(url).searchParams.get('symbol')); return { ok: true, json: async () => ({ history: { day: historyDays } }) }; },
+    now, history: url => { const params = new URL(url).searchParams; historyCalls.push(params.get('symbol')); ends.add(params.get('end')); return { ok: true, json: async () => ({ history: { day: historyDays } }) }; },
   });
   seedMarket(app);
   await app.run('marketRefreshToday()');
@@ -692,18 +692,36 @@ test('an ETF tab and an opened group load daily history once a day; the overview
   assert.equal(app.run('marketState.history.XLK.day'), '2026-10-19');
   await app.advance(5000);
   assert.deepEqual(historyCalls, ['XLK', 'RSP']);
-  // The overview keeps Sep 16 for its longer periods and says so in the headers; an opened group reads its stocks' closes.
+  // The overview reads every stock's closes too (once, in the universe's order), so its 1W–YTD are current, not Sep 16.
   app.run("marketSetCategory('themes');");
   await app.run('marketRefreshToday()');
-  await app.advance(5000);
-  assert.deepEqual(historyCalls, ['XLK', 'RSP']);
-  assert.equal(app.run('marketRows()[0].returns[2]'), 4);
-  assert.ok(!app.run('marketPeriodLive(2)'));
-  assert.match(app.element('marketContent').innerHTML, /market-asof">Sep 16/);
-  app.run("marketOpenGroup('Tech');");
-  await app.advance(5000);
-  await app.advance(1000);
-  assert.deepEqual(historyCalls, ['XLK', 'RSP', 'A', 'B']);
+  for (let i = 0; i < 5; i++) await app.advance(600);
+  assert.deepEqual(historyCalls, ['XLK', 'RSP', 'A', 'B', 'C']);
   assert.ok(app.run('marketPeriodLive(2)'));
-  assert.ok(Math.abs(app.run('marketRows()[0].returns[2]') - (102 / closeOn('2026-09-18') - 1) * 100) < 1e-9);
+  assert.ok(!app.element('marketContent').innerHTML.includes('market-asof'));
+  assert.ok(Math.abs(app.run("marketRows().find(r => r.ticker === 'A').returns[2]") - (102 / closeOn('2026-09-18') - 1) * 100) < 1e-9);
+  assert.ok(Math.abs(app.run("MarketData.groups(marketRows()).find(g => g.name === 'Energy').returns[1]") - (102 / closeOn('2026-10-12') - 1) * 100) < 1e-9);
+  // An opened group already has its stocks' closes: nothing to read.
+  app.run("marketOpenGroup('Tech');");
+  await app.advance(6000);
+  assert.deepEqual(historyCalls, ['XLK', 'RSP', 'A', 'B', 'C']);
+  // Every reference is an earlier close, so a read ends the day before.
+  assert.deepEqual([...ends], ['2026-10-18']);
+  // A load keeps going from the other tabs once Market has loaded, spaced wider, and keeps what lands.
+  app.run("marketSetScope('groups'); marketState.history = {}; setView('calc');");
+  await app.advance(0);
+  assert.deepEqual(historyCalls.slice(5), ['A']);
+  await app.advance(1000);
+  assert.deepEqual(historyCalls.slice(5), ['A']);
+  for (let i = 0; i < 8; i++) await app.advance(1000);
+  assert.deepEqual(historyCalls.slice(5), ['A', 'B', 'C']);
+  app.run('marketState.history = {}; marketReadHistory();');
+  assert.deepEqual(app.run('Object.keys(marketState.history).sort()'), ['A', 'B', 'C']);
+});
+
+test('a weekend reads the longer periods for Friday, so it loads nothing again', () => {
+  assert.equal(data.historyDay('2026-10-17'), '2026-10-16');
+  assert.equal(data.historyDay('2026-10-18'), '2026-10-16');
+  assert.equal(data.historyDay('2026-10-19'), '2026-10-19');
+  assert.equal(data.historyDay('2026-11-01'), '2026-10-30');
 });

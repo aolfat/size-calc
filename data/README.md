@@ -75,19 +75,18 @@ off or pressing Cancel pauses automatic requests. **Use snapshot** also pauses
 Auto and displays the imported CSV values. Turning Auto on restores cached
 quotes and resumes the schedule.
 
-**Longer periods from daily closes.** In an opened group and on the ETF tabs,
-1W, 1M, 3M, 6M, YTD and 1Y come from Tradier's daily history instead of the
+**Longer periods from daily closes.** In every tab, the Theme Tracker overview
+included, 1W, 1M, 3M, 6M, YTD and 1Y come from daily history instead of the
 snapshot: the latest quote over the last daily close on or before the same day
 a week, a month, three, six or twelve months back (YTD: the last close of the
 previous year). A close more than 10 days before that day counts as no close (a
-new listing). History is read one symbol at a time (0.6 seconds apart, 1.1 in the
-sandbox, under Tradier's per-minute limit), once a New York day per symbol, and
-kept in `market_history_v1_<environment>` in local storage for a week,
+new listing). History is read one symbol at a time (0.6 seconds apart in Market,
+1.1 in the sandbox, 2 from other tabs, under Tradier's per-minute limit), once a
+New York session day per symbol (a weekend reuses Friday's), and kept in
+`market_history_v1_<environment>` in local storage for a week, saved as it lands,
 so yesterday's references show while today's load. A symbol still loading or
-without history shows a dash, never the snapshot's figure. The full Theme Tracker
-overview (all groups, all stocks) keeps the snapshot for these periods: 2,860
-history calls would take about 25 minutes at the limit. Its column headers say
-Sep 16.
+without history shows a dash, never the snapshot's figure. The overview's 2,860
+stocks take about half an hour of reads the first time each day.
 
 Network errors, timeouts, HTTP 429 and server errors retry only the failed batch
 up to twice. Rate limits honor Retry-After or X-Ratelimit-Expiry when available,
@@ -99,8 +98,7 @@ the previous data. Missing quotes become unavailable, and group averages
 exclude them with a coverage marker.
 
 ETF From open is calculated as `(last / open - 1) * 100`; an absent or invalid
-open stays unavailable. Longer periods (1W–YTD for stocks, 1W–1Y for ETFs) remain
-explicitly labeled imported values. Fetch age is not an exchange timestamp, and
+open stays unavailable. Fetch age is not an exchange timestamp, and
 provider prices may be delayed. Historical-price ingestion remains a future
 backend concern; no server or new data service is required for these refreshes.
 

@@ -67,14 +67,9 @@ export function marketCachedSnapshot(scope = marketRefreshScope()) {
 
 export function marketColumns() { return state.marketState.category === 'themes' ? [0,1,2,3,4,5] : [6,0,1,2,3,4,7]; }
 
-// An opened group or an ETF tab reads 1W–1Y from daily closes; the full overview (2,860 stocks, ~25 minutes of
-// history calls at Tradier's limit) keeps the snapshot.
-export function marketHistoryScope(scope = marketRefreshScope()) { return scope.id !== 'themes'; }
-
-/** whether this column shows fetched data (quotes, or daily closes) rather than the Sep 16 snapshot */
+/** whether this column shows fetched data (quotes, or daily closes for 1W–1Y, every scope) rather than the Sep 16 snapshot */
 export function marketPeriodLive(period, scope = marketRefreshScope()) {
-  const live = state.marketState.quoteMode && !!marketCachedSnapshot(scope);
-  return live && (period === 0 || period === 6 || marketHistoryScope(scope));
+  return state.marketState.quoteMode && !!marketCachedSnapshot(scope);
 }
 
 export function marketPeriodHelp(period) {
@@ -82,7 +77,7 @@ export function marketPeriodHelp(period) {
     'Six-month return', 'Year-to-date return', 'Change from the session open', 'One-year return, separate from year to date'];
   const quotePeriod = period === 0 || period === 6;
   const source = !marketPeriodLive(period) ? 'Uses the imported Sep 16, 2026 snapshot.'
-    + (quotePeriod ? '' : marketHistoryScope() ? ' Refreshing quotes loads it from daily closes.' : ' Open a group for this period from daily closes.')
+    + (quotePeriod ? '' : ' Refreshing quotes loads it from daily closes.')
     : quotePeriod ? 'Uses the latest fetched Tradier quotes; prices may be delayed.'
     : 'The latest price over the last daily close on or before ' + (period === 5 ? 'the end of last year' : 'that day') + ', from Tradier, read once a day.';
   return meanings[period] + '. ' + source;
@@ -91,11 +86,11 @@ export function marketPeriodHelp(period) {
 export function marketRows() {
   const scope = marketRefreshScope(), cached = marketCachedSnapshot(scope);
   if (!state.marketState.quoteMode || !cached) return scope.rows;
-  const rows = MarketData.withQuotes(scope.rows, cached.quotes);
-  return marketHistoryScope(scope) ? MarketData.withHistory(rows, state.marketState.history) : rows;
+  return MarketData.withHistory(MarketData.withQuotes(scope.rows, cached.quotes), state.marketState.history);
 }
 
-export function marketToday() { return nyDateStr(new Date()); }
+/** the New York session day the daily-close references are read for (Friday on a weekend) */
+export function marketToday() { return MarketData.historyDay(nyDateStr(new Date())); }
 
 export function marketHistoryKey() { return 'market_history_v1_' + document.getElementById('apiEnv').value; }
 
@@ -125,7 +120,9 @@ export function marketHistoryMissing(scope = marketRefreshScope()) {
   return [...new Set(scope.rows.map(row => row.ticker))].filter(ticker => state.marketState.history[ticker]?.day !== today);
 }
 
-// Loads the scope's missing daily histories one symbol at a time, committing each as it lands. Once a New York day.
+// Loads the scope's missing daily histories one symbol at a time, committing each as it lands. Once a New York session day.
+// The overview is every stock (~2,860 reads, about half an hour in Market); like the quotes, a load keeps going from the
+// other tabs once Market has loaded, spaced wider, and what landed is kept, so a reload picks up where it stopped.
 export async function marketLoadHistory(manual = false) {
   const ms = state.marketState, scope = marketRefreshScope();
   if (ms.historyJob) {
@@ -133,8 +130,8 @@ export async function marketLoadHistory(manual = false) {
     ms.historyJob.controller.abort();
   }
   const key = marketKey();
-  if (!state.marketView || document.hidden || navigator.onLine === false || !key || !ms.quoteMode || ms.authBlocked
-    || !(ms.auto || manual) || !marketHistoryScope(scope) || ms.historyRetryAt > Date.now()) return;
+  if (!ms.stocks.length || document.hidden || navigator.onLine === false || !key || !ms.quoteMode || ms.authBlocked
+    || !(ms.auto || manual) || ms.historyRetryAt > Date.now()) return;
   const missing = marketHistoryMissing(scope);
   if (!missing.length) return;
   const today = marketToday(), environment = document.getElementById('apiEnv').value;
@@ -145,14 +142,17 @@ export async function marketLoadHistory(manual = false) {
     && key === marketKey();
   try {
     await MarketData.fetchHistories(missing, {
-      base:baseUrl(), auth:headers(), fetchImpl:marketFetch, start:MarketData.dayBefore(today, { days:380 }), end:today, signal:context.controller.signal,
-      spacing:environment === 'sandbox' ? 1100 : 600, // Tradier allows ~120 market-data calls a minute (60 in the sandbox)
+      // Every reference is an earlier close, so the read ends the day before (a Schwab read then needs no quote for today).
+      base:baseUrl(), auth:headers(), fetchImpl:marketFetch, start:MarketData.dayBefore(today, { days:380 }),
+      end:MarketData.dayBefore(today, { days:1 }), signal:context.controller.signal, spacing:marketBatchSpacing,
       onSymbol(symbol, days) {
         if (!current()) return;
         ms.history[symbol] = MarketData.historyRefs(days, today);
         context.done++;
-        if (context.done % 5 && context.done < context.total) marketRenderRefreshStatus();
-        else { marketSaveHistory(); renderMarket(true); }
+        const last = context.done === context.total;
+        if (last || context.done % 25 === 0) marketSaveHistory();
+        if (!state.marketView) return;
+        if (last || context.done % 5 === 0) renderMarket(true); else marketRenderRefreshStatus();
       },
     });
   } catch(error) {
@@ -163,7 +163,7 @@ export async function marketLoadHistory(manual = false) {
     }
   } finally {
     if (ms.historyJob === context) ms.historyJob = null;
-    if (current()) { marketSaveHistory(); renderMarket(true); }
+    if (current()) { marketSaveHistory(); if (state.marketView) renderMarket(true); }
     marketScheduleRefresh();
   }
 }
@@ -298,7 +298,7 @@ export function marketRefreshDue(scope = marketRefreshScope()) {
 }
 
 // In Market, the scope refreshes on its interval. Elsewhere, once Market has loaded, the same scope keeps refreshing in the
-// background (MARKET_BACKGROUND_MS, batches spaced wider); daily history loads only in Market. A hidden app or no network stops both.
+// background (MARKET_BACKGROUND_MS, batches spaced wider), and its daily history keeps loading. A hidden app or no network stops both.
 export function marketScheduleRefresh() {
   clearTimeout(state.marketState.timer); state.marketState.timer = null;
   const background = !state.marketView;
@@ -307,7 +307,6 @@ export function marketScheduleRefresh() {
     if (state.marketView) marketRenderRefreshStatus();
     return;
   }
-  if (background) state.marketState.historyJob?.controller.abort();
   const key = marketKey();
   if (state.marketState.environment !== document.getElementById('apiEnv').value || state.marketState.key !== key) {
     marketAbortRefresh(); marketReadCache();
@@ -315,10 +314,8 @@ export function marketScheduleRefresh() {
   }
   const scope = marketRefreshScope();
   if (state.marketState.refresh && state.marketState.refresh.scope.id !== scope.id) marketAbortRefresh();
-  if (!background) {
-    if (!state.marketState.loading && scope.rows.length) marketLoadHistory();
-    marketRenderRefreshStatus();
-  }
+  if (!state.marketState.loading && scope.rows.length) marketLoadHistory();
+  if (!background) marketRenderRefreshStatus();
   if (state.marketState.refresh || state.marketState.loading || !scope.rows.length) return;
   const canRefresh = state.marketState.auto && key && !state.marketState.authBlocked;
   const delay = canRefresh ? Math.min(5000, Math.max(0, marketRefreshDue(scope) - Date.now())) : 5000;
@@ -337,7 +334,7 @@ export function marketRenderRefreshStatus() {
   refresh.textContent = ms.refresh ? ms.refresh.status : '↻ Refresh quotes';
   refresh.title = 'Fetch quotes for ' + scope.label + ' (' + scope.rows.length.toLocaleString() + ' symbols). Updates Today'
     + (ms.category === 'themes' ? '' : ' and From open')
-    + (marketHistoryScope(scope) ? '; longer periods come from daily closes, read once a day.' : '; longer periods stay at the Sep 16, 2026 snapshot. Open a group for them from daily closes.');
+    + '; longer periods come from daily closes, read once a day.';
   document.getElementById('marketCancelBtn').hidden = !ms.refresh;
   document.getElementById('marketSnapshotBtn').hidden = !usingQuotes;
   const auto = document.getElementById('marketAutoBtn');
@@ -367,13 +364,12 @@ export function marketRenderRefreshStatus() {
     source.innerHTML = '<b>Today' + (ms.category === 'themes' ? '' : ' / from open') + ': ' + (ms.key === 'schwab' ? 'Schwab' : 'Tradier ' + marketEscape(ms.environment))
       + '</b> · fetched ' + marketEscape(ageText) + (Date.now() - cached.fetchedAt >= scope.interval ? ' · <b>stale cache</b>' : '')
       + ' · ' + count.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' quotes available. Prices may be delayed. '
-      + (!marketHistoryScope(scope) ? '<b>' + history + ': snapshot Sep 16, 2026.</b> Open a group for them from daily closes.'
-        : '<b>' + history + ': ' + (ms.key === 'schwab' ? 'Schwab' : 'Tradier') + ' daily closes</b> · ' + (job ? 'loading ' + job.done + '/' + job.total
-          : loaded.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' symbols')
-          + (ms.historyError && !job ? ' · ' + marketEscape(ms.historyError) : '') + '.');
+      + '<b>' + history + ': ' + (ms.key === 'schwab' ? 'Schwab' : 'Tradier') + ' daily closes</b> · ' + (job ? 'loading ' + job.done.toLocaleString() + '/' + job.total.toLocaleString()
+          + (job.total > 200 ? ' (kept as it loads, so this happens once a day)' : '') : loaded.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' symbols')
+          + (ms.historyError && !job ? ' · ' + marketEscape(ms.historyError) : '') + '.';
   } else {
     source.innerHTML = '<b>Imported snapshot · Sep 16, 2026</b> · All periods are from the reference '
-      + (ms.category === 'themes' ? 'export' : 'ETF tables') + '; quote timestamps were not provided. Longer periods stay imported when quotes refresh.';
+      + (ms.category === 'themes' ? 'export' : 'ETF tables') + '; quote timestamps were not provided. Refreshing quotes also reads the longer periods from daily closes.';
   }
 }
 
