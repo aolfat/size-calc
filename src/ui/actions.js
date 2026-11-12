@@ -18,7 +18,7 @@ import { effects } from './effects.js';
 import { setFuturesFees } from './futures.js';
 import { setLiveDefault, toggleLive } from './live.js';
 import { marketCancelRefresh, marketClearSearch, marketRefreshToday, marketSearchChanged, marketSetDisplay, marketSetScope, marketShowMore, marketToggleAuto, marketUseSnapshot } from './market.js';
-import { closePositionChart, posUnderChanged, setPosChartOn, posAddChanged, posChartCloseChanged, posChartStopChanged, posChartClosePctChanged, posChartToday, posTargetChanged, posTargetPctChanged, posTargetRChanged, setPctPreset, setPosChartRange, setPosChartTool, setPosClosePortion, setPosTargetPortion, setPosTargetR, setRPreset, togglePctEdit, togglePosChartAvg, togglePosChartInd, togglePositionChart } from './position-chart.js';
+import { closePositionChart, posUnderChanged, setPosChartOn, posAddChanged, posChartCloseChanged, posChartStopChanged, posChartClosePctChanged, posChartCloseGainChanged, posChartToday, posTargetChanged, posTargetPctChanged, posTargetRChanged, setPctPreset, setPosChartRange, setPosChartTool, setPosClosePortion, setPosCloseGain, setPosTargetPortion, setPosTargetR, setRPreset, togglePctEdit, togglePosChartAvg, togglePosChartInd, togglePositionChart } from './position-chart.js';
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
@@ -518,6 +518,8 @@ export const actions = {
   posChartCloseChanged: () => posChartCloseChanged(),
   posChartClosePctChanged: () => posChartClosePctChanged(),
   setPosClosePortion: el => setPosClosePortion(num(el)),
+  posChartCloseGainChanged: () => posChartCloseGainChanged(),
+  setPosCloseGain: el => setPosCloseGain(num(el)),
   posTargetChanged: () => posTargetChanged(),
   posUnderChanged: el => posUnderChanged(el.dataset.arg, el.value),
   setPosChartOn: el => setPosChartOn(arg(el)),

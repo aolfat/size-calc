@@ -11,7 +11,7 @@ import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { marketSource } from '../services/market-source.js';
 import { showError, showToast } from './feedback.js';
-import { positionClosePlaced, positionStopPlaced, positionTargetPlaced, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
+import { positionClosePlaced, positionStopPlaced, positionTargetPlaced, profitPcts, profitTitle, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { originalStopBlock } from './position-original.js';
 import { positionOriginal, positionRUnit, positionTrade, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
@@ -87,6 +87,8 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
     if (target && target.price > 0) {
       Object.assign(t.close, { type: 'LIMIT', price: row.tradeAs === 'OPTION' ? optionPriceTick(target.price) : priceTick(target.price) });
       if (Number.isInteger(target.qty) && target.qty >= 1 && target.qty <= Math.abs(row.qty)) t.close.qty = target.qty;
+      // a % profit picked there stays lit while the re-read cost still puts it at that price
+      if (target.pct > 0 && pctTargetPrice(row, target.pct) === t.close.price) t.close.pct = target.pct;
     }
     t.target = null;
     t.original = positionOriginal(row, now); // what the percent chips are of: the most held since flat, or (null) what's held
@@ -371,14 +373,10 @@ function closePctText(t) {
   return g && g.pct !== null && g.pct > 0 ? g.pct.toFixed(1) : '';
 }
 
-// percent profit chips: options move in bigger steps than stocks
-const CLOSE_PCTS = { stock: [5, 10, 20, 30, 50], option: [25, 50, 75, 100, 200] };
-
 function closePctChips(t) {
-  const row = t.row, list = CLOSE_PCTS[row.tradeAs === 'OPTION' ? 'option' : 'stock'];
-  return list.map(p => {
-    const at = pctTargetPrice(row, p), ok = at > 0 && !t.sent, on = ok && t.close.pct === p;
-    const title = at > 0 ? fmtPositionPrice(at, row.tradeAs) : row.avg > 0 ? 'Past zero' : 'Schwab shows no cost basis for this position.';
+  const row = t.row;
+  return profitPcts(row).map(p => {
+    const at = pctTargetPrice(row, p), ok = at > 0 && !t.sent, on = ok && t.close.pct === p, title = profitTitle(row, at);
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setClosePct" data-arg="${p}" title="${esc(title)}"${ok ? '' : ' disabled'}>+${p}%</button>`;
   }).join('');
 }
@@ -485,7 +483,7 @@ export async function openPositionTrade(symbol, kind) {
   if (fromChart) kind = 'close'; // the chart's Close tool: the close ticket at its limit and count
   const target = kind === 'target' ? (chart ? { price: chart.price || 0, qty: chart.qty || 0 } : { price: 0, qty: 0 })
     : kind === 'stop' && chart && chart.stop > 0 ? { price: chart.stop, qty: 0 }
-    : fromChart && chart && chart.closePrice > 0 ? { price: chart.closePrice, qty: chart.closeQty || 0 } : null;
+    : fromChart && chart && chart.closePrice > 0 ? { price: chart.closePrice, qty: chart.closeQty || 0, pct: chart.closeGain || 0 } : null;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   state.posTradeBusy = true;
   // the plan is built from what Schwab shows now; a close also waits for the Journal's older fills, for its original size

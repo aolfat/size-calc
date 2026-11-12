@@ -1034,3 +1034,41 @@ test('the Close tool: a tap sets the limit for every share, a portion trims it, 
   assert.equal(run('posChart.closePrice'), null);
   assert.equal(elements.get('posChartClosePrice').value, '');
 });
+
+test('the Close tool sets its limit as a percent profit on your cost', async () => {
+  const { run, elements } = await chartApp();
+  run("togglePositionChart('HOOD')");
+  await settle();
+  run("actions.setPosChartTool({ dataset: { arg: 'close' } })");
+  const chips = () => elements.get('posChartCloseGainChips').innerHTML;
+  assert.match(chips(), /data-action="setPosCloseGain" data-arg="10" title="\$42\.02">\+10%</, '10% over the $38.20 cost');
+  run("actions.setPosCloseGain({ dataset: { arg: '20' } })");
+  assert.equal(run('posChart.closePrice'), 45.84);
+  assert.equal(run('posChart.closeQty'), 300, 'every share when no count is set');
+  assert.equal(elements.get('posChartClosePrice').value, '45.84');
+  assert.equal(elements.get('posChartCloseGain').value, '20');
+  assert.match(chips(), /class="filter-btn active" aria-pressed="true" data-action="setPosCloseGain" data-arg="20"/);
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /<strong>Sell 300 of 300 shares at \$45\.84<\/strong>.*\+20\.0%/);
+
+  run("actions.setPosClosePortion({ dataset: { arg: '0.5' } })");
+  elements.get('posChartCloseGain').value = '15';
+  run('actions.posChartCloseGainChanged()');
+  assert.equal(elements.get('posChartClosePrice').value, '43.93', 'typing a percent moves the limit');
+  assert.equal(run('posChart.closeQty'), 150, 'and leaves the count alone');
+  assert.doesNotMatch(chips(), /active/);
+
+  elements.get('posChartClosePrice').value = '42.02';
+  run('actions.posChartCloseChanged()');
+  assert.equal(run('posChart.closeGain'), null, 'a typed price is a price');
+  assert.equal(elements.get('posChartCloseGain').value, '10.0', 'and the profit box reads it back');
+
+  run("actions.setPosCloseGain({ dataset: { arg: '30' } })");
+  await run("actions.openPositionTrade({ dataset: { arg: 'HOOD', arg2: 'chartClose' } })");
+  await settle();
+  assert.deepEqual([run('posTicket.close.type'), run('posTicket.close.price'), run('posTicket.close.qty'), run('posTicket.close.pct')], ['LIMIT', 49.66, 150, 30]);
+  assert.match(elements.get('posTradeBody').innerHTML, /class="filter-btn active" aria-pressed="true" data-action="setClosePct" data-arg="30"/, 'the ticket lights the same chip');
+  run('closeSheet()');
+  run('positionClosePlaced("HOOD")');
+  assert.equal(run('posChart.closeGain'), null);
+  assert.equal(elements.get('posChartCloseGain').value, '');
+});

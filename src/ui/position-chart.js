@@ -12,7 +12,7 @@ import { clampView, viewRange } from '../core/chart-view.js';
 import { fmt$, marketEscape as esc, nyDateStr } from '../core/format.js';
 import { optionPriceTick, priceTick } from '../core/orders.js';
 import { movingAverage } from '../core/indicators.js';
-import { breakevenAdd, closePlan, closersInTheWay, fmtPositionPrice, lineMove, orderLines, positionLevels, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
+import { breakevenAdd, closePlan, pctTargetPrice, closersInTheWay, fmtPositionPrice, lineMove, orderLines, positionLevels, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
 import { sessionVwap } from '../core/trade-page.js';
 import { schwabStopDuration } from '../services/schwab.js';
 import { dailyHistory } from '../services/tradier.js';
@@ -153,7 +153,7 @@ export function togglePositionChart(symbol) {
   if (state.posChart && state.posChart.symbol === symbol) { closePositionChart(); return; }
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
   const c = { symbol, option: !!(row && row.tradeAs === 'OPTION'), label: row ? row.label : symbol, five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null,
-    closePrice: null, closeQty: null, drag: null, on: 'fund', under: '' };
+    closePrice: null, closeQty: null, closeGain: null, drag: null, on: 'fund', under: '' };
   c.sets = { fund: { five: c.five, daily: c.daily } };
   state.posChart = c;
   setTargetInputs();
@@ -215,7 +215,7 @@ export function posUnderChanged(tool, value) {
   if (!c || !row) return;
   const u = parseFloat(value), p = u > 0 ? fundPriceFor(row, u) : 0;
   if (tool === 'stop') c.stop = p || null;
-  else if (tool === 'close') { c.closePrice = p || null; if (p && !(c.closeQty > 0)) c.closeQty = Math.abs(row.qty); }
+  else if (tool === 'close') { c.closePrice = p || null; c.closeGain = null; if (p && !(c.closeQty > 0)) c.closeQty = Math.abs(row.qty); }
   else { c.price = p || null; c.r = null; }
   setTargetInputs();
   renderPositionChart();
@@ -299,6 +299,48 @@ function setTargetInputs() {
   document.getElementById('posChartClosePrice').value = priceText(c, c && c.closePrice);
   document.getElementById('posChartCloseQty').value = c && c.closeQty >= 1 ? String(c.closeQty) : '';
   document.getElementById('posChartClosePct').value = pctText(c && c.closeQty, c && c.closePct);
+  document.getElementById('posChartCloseGain').value = gainText(c);
+}
+
+/** the Close tool's profit: what was typed or picked, else the limit counted as a percent over your cost */
+function gainText(c) {
+  if (!c) return '';
+  if (c.closeGain > 0) return String(c.closeGain);
+  const row = chartRow(), g = row && c.closePrice > 0 ? targetGain(row, c.closePrice, 1) : null;
+  return g && g.pct !== null && g.pct > 0 ? g.pct.toFixed(1) : '';
+}
+
+// percent profit chips, shared with the close ticket: options move in bigger steps than stocks
+const PROFIT_PCTS = { stock: [5, 10, 20, 30, 50], option: [25, 50, 75, 100, 200] };
+export const profitPcts = row => PROFIT_PCTS[row && row.tradeAs === 'OPTION' ? 'option' : 'stock'];
+
+/** what a % profit chip's title says: its price, or why it can't be */
+export const profitTitle = (row, at) => at > 0 ? fmtPositionPrice(at, row.tradeAs) : row && row.avg > 0 ? 'Past zero' : 'Schwab shows no cost basis for this position.';
+
+/** typing the Close tool's profit: the limit follows, that percent over your cost on the order grid; the input keeps what was typed */
+export function posChartCloseGainChanged() {
+  const c = state.posChart, row = chartRow();
+  if (!c) return;
+  const pct = parseFloat(document.getElementById('posChartCloseGain').value), price = row && pct > 0 ? pctTargetPrice(row, pct) : 0;
+  c.closeGain = price ? pct : null;
+  if (price) {
+    c.closePrice = price;
+    if (!(c.closeQty > 0)) { c.closeQty = Math.abs(row.qty); document.getElementById('posChartCloseQty').value = String(c.closeQty); }
+  }
+  document.getElementById('posChartClosePrice').value = priceText(c, c.closePrice);
+  renderPositionChart();
+}
+
+/** a % profit chip on the Close tool: the limit that far over your cost (under it on a short), every share when no count is set */
+export function setPosCloseGain(pct) {
+  const c = state.posChart, row = chartRow();
+  const price = c && row && pct > 0 ? pctTargetPrice(row, pct) : 0;
+  if (!price) return;
+  c.closeGain = pct;
+  c.closePrice = price;
+  if (!(c.closeQty > 0)) c.closeQty = Math.abs(row.qty);
+  setTargetInputs();
+  renderPositionChart();
 }
 
 /** the % box: what was typed, else the count as a percent of what you hold (one decimal, none when whole) */
@@ -315,10 +357,12 @@ export function posChartCloseChanged() {
   const c = state.posChart;
   if (!c) return;
   const price = parseFloat(document.getElementById('posChartClosePrice').value), qty = Number(document.getElementById('posChartCloseQty').value);
+  if ((price > 0 ? price : null) !== c.closePrice) c.closeGain = null; // a typed price is a price; the profit box follows it
   c.closePrice = price > 0 ? price : null;
   if ((qty > 0 ? qty : null) !== c.closeQty) c.closePct = null; // a typed count is a count; the % box follows it
   c.closeQty = qty > 0 ? qty : null;
   document.getElementById('posChartClosePct').value = pctText(c.closeQty, c.closePct);
+  document.getElementById('posChartCloseGain').value = gainText(c);
   renderPositionChart();
 }
 
@@ -440,7 +484,7 @@ function pickTarget(price) {
   const ticked = c.option ? optionPriceTick(price) : priceTick(price);
   const tool = state.posChartTool;
   if (tool === 'add') c.addStop = ticked; else if (tool === 'stop') c.stop = ticked;
-  else if (tool === 'close') { c.closePrice = ticked; if (!(c.closeQty > 0) && chartRow()) c.closeQty = Math.abs(chartRow().qty); }
+  else if (tool === 'close') { c.closePrice = ticked; c.closeGain = null; if (!(c.closeQty > 0) && chartRow()) c.closeQty = Math.abs(chartRow().qty); }
   else { c.price = ticked; c.r = null; }
   setTargetInputs();
   renderPositionChart();
@@ -481,6 +525,7 @@ export function positionClosePlaced(symbol) {
   if (!c || c.symbol !== symbol) return;
   c.closePrice = null;
   c.closeQty = null;
+  c.closeGain = null;
   setTargetInputs();
   renderPositionChart();
 }
@@ -631,6 +676,11 @@ export function renderPositionChart() {
     const qty = row ? closeQty(row, f) : 0, on = qty > 0 && c.closeQty === qty;
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosClosePortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
   });
+  document.getElementById('posChartCloseGainChips').innerHTML = profitPcts(row).map(p => {
+    const at = row ? pctTargetPrice(row, p) : 0, on = at > 0 && c.closeGain === p;
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosCloseGain" data-arg="${p}" title="${esc(profitTitle(row, at))}"${at > 0 ? '' : ' disabled'}>+${p}%</button>`;
+  }).join('');
+  document.getElementById('posChartCloseGain').disabled = !(row && row.avg > 0);
 
   const room = row ? targetRoom(row) : null;
   document.getElementById('posTargetPortions').innerHTML = pctChipRow((f, label) => {
@@ -725,7 +775,7 @@ function chartLines(c, row) {
   } else if (state.posChartTool === 'stop') {
     if (c.stop > 0) lines.push({ price: at(c.stop), color: color('--red'), label: `${tag}new stop ${c.stop.toFixed(2)}`, solid: true });
   } else if (state.posChartTool === 'close') {
-    if (c.closePrice > 0) lines.push({ price: at(c.closePrice), color: color('--amber'), label: `${tag}close ${c.closePrice.toFixed(2)}${c.closeQty > 0 ? size(c.closeQty) : ''}`, solid: true });
+    if (c.closePrice > 0) lines.push({ price: at(c.closePrice), color: color('--amber'), label: `${tag}close ${c.closePrice.toFixed(2)}${c.closeQty > 0 ? size(c.closeQty) : ''}${c.closeGain > 0 ? ` · +${c.closeGain}%` : ''}`, solid: true });
   } else if (c.price > 0) lines.push({ price: at(c.price), color: color('--green'), label: `${tag}new target ${c.price.toFixed(2)}${c.qty > 0 ? size(c.qty) : ''}${c.r > 0 ? ` · ${c.r}R` : ''}`, solid: true });
   // a line being dragged: solid at where it would go, the order's own line still dashed where it is
   const d = c.drag;

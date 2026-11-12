@@ -424,6 +424,13 @@
           <label for="posChartCloseUnder" id="posChartCloseUnderLabel">When the underlying is at</label>
           <div class="prefix-wrap"><span class="prefix">$</span><input type="number" id="posChartCloseUnder" step="0.01" min="0" inputmode="decimal" placeholder="its price" autocomplete="off" data-input="posUnderChanged" data-arg="close" /></div>
         </div>
+          <div class="field pos-target-pct">
+            <label for="posChartCloseGain">Profit</label>
+            <div class="suffix-wrap"><input type="number" id="posChartCloseGain" step="1" min="0" inputmode="decimal" placeholder="e.g. 20" autocomplete="off" data-input="posChartCloseGainChanged" /><span class="suffix">%</span></div>
+          </div>
+          <div class="chip-row pos-portions" id="posChartCloseGainChips" role="group" aria-label="Limit in percent profit"></div>
+        </div>
+        <div class="pos-target-row">
           <div class="field">
             <label for="posChartCloseQty" id="posChartCloseQtyLabel">Shares to sell</label>
             <input type="number" id="posChartCloseQty" step="1" min="1" inputmode="numeric" autocomplete="off" data-input="posChartCloseChanged" />
