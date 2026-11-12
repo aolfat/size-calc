@@ -707,16 +707,20 @@ test('every scope, the overview too, loads daily history once a session day and 
   assert.deepEqual(historyCalls, ['XLK', 'RSP', 'A', 'B', 'C']);
   // Every reference is an earlier close, so a read ends the day before.
   assert.deepEqual([...ends], ['2026-10-18']);
-  // A load keeps going from the other tabs once Market has loaded, spaced wider, and keeps what lands.
-  app.run("marketSetScope('groups'); marketState.history = {}; setView('calc');");
-  await app.advance(0);
+  // Daily history loads only in Market: leaving stops it, what landed is saved, and coming back reads only the rest.
+  app.run("marketState.history = {}; marketSetScope('groups');");
+  await app.advance(300);
+  await new Promise(resolve => setImmediate(resolve)); // A's answer lands; B waits for its spacing
   assert.deepEqual(historyCalls.slice(5), ['A']);
-  await app.advance(1000);
-  assert.deepEqual(historyCalls.slice(5), ['A']);
+  assert.equal(app.run('marketState.history.A.day'), '2026-10-19');
+  app.run("setView('calc');");
   for (let i = 0; i < 8; i++) await app.advance(1000);
-  assert.deepEqual(historyCalls.slice(5), ['A', 'B', 'C']);
+  assert.deepEqual(historyCalls.slice(5), ['A']);
   app.run('marketState.history = {}; marketReadHistory();');
-  assert.deepEqual(app.run('Object.keys(marketState.history).sort()'), ['A', 'B', 'C']);
+  assert.deepEqual(app.run('Object.keys(marketState.history)'), ['A']);
+  app.run("setView('market');");
+  for (let i = 0; i < 5; i++) await app.advance(600);
+  assert.deepEqual(historyCalls.slice(5), ['A', 'B', 'C']);
 });
 
 test('a weekend reads the longer periods for Friday, so it loads nothing again', () => {

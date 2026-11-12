@@ -121,8 +121,8 @@ export function marketHistoryMissing(scope = marketRefreshScope()) {
 }
 
 // Loads the scope's missing daily histories one symbol at a time, committing each as it lands. Once a New York session day.
-// The overview is every stock (~2,860 reads, about half an hour in Market); like the quotes, a load keeps going from the
-// other tabs once Market has loaded, spaced wider, and what landed is kept, so a reload picks up where it stopped.
+// The overview is every stock (~2,860 reads, about half an hour). It loads only while Market is open (owner request); what
+// landed is saved as it goes and when it stops, so coming back or a reload reads only what's still missing.
 export async function marketLoadHistory(manual = false) {
   const ms = state.marketState, scope = marketRefreshScope();
   if (ms.historyJob) {
@@ -130,7 +130,7 @@ export async function marketLoadHistory(manual = false) {
     ms.historyJob.controller.abort();
   }
   const key = marketKey();
-  if (!ms.stocks.length || document.hidden || navigator.onLine === false || !key || !ms.quoteMode || ms.authBlocked
+  if (!state.marketView || !ms.stocks.length || document.hidden || navigator.onLine === false || !key || !ms.quoteMode || ms.authBlocked
     || !(ms.auto || manual) || ms.historyRetryAt > Date.now()) return;
   const missing = marketHistoryMissing(scope);
   if (!missing.length) return;
@@ -149,10 +149,8 @@ export async function marketLoadHistory(manual = false) {
         if (!current()) return;
         ms.history[symbol] = MarketData.historyRefs(days, today);
         context.done++;
-        const last = context.done === context.total;
-        if (last || context.done % 25 === 0) marketSaveHistory();
-        if (!state.marketView) return;
-        if (last || context.done % 5 === 0) renderMarket(true); else marketRenderRefreshStatus();
+        if (context.done % 5 && context.done < context.total) marketRenderRefreshStatus();
+        else { marketSaveHistory(); renderMarket(true); }
       },
     });
   } catch(error) {
@@ -163,7 +161,9 @@ export async function marketLoadHistory(manual = false) {
     }
   } finally {
     if (ms.historyJob === context) ms.historyJob = null;
-    if (current()) { marketSaveHistory(); if (state.marketView) renderMarket(true); }
+    // Saved even when it was stopped (leaving Market, a hidden app): every symbol that landed stays read for the day.
+    if (environment === document.getElementById('apiEnv').value) marketSaveHistory();
+    if (current() && state.marketView) renderMarket(true);
     marketScheduleRefresh();
   }
 }
@@ -298,7 +298,7 @@ export function marketRefreshDue(scope = marketRefreshScope()) {
 }
 
 // In Market, the scope refreshes on its interval. Elsewhere, once Market has loaded, the same scope keeps refreshing in the
-// background (MARKET_BACKGROUND_MS, batches spaced wider), and its daily history keeps loading. A hidden app or no network stops both.
+// background (MARKET_BACKGROUND_MS, batches spaced wider); daily history loads only in Market. A hidden app or no network stops both.
 export function marketScheduleRefresh() {
   clearTimeout(state.marketState.timer); state.marketState.timer = null;
   const background = !state.marketView;
@@ -307,6 +307,7 @@ export function marketScheduleRefresh() {
     if (state.marketView) marketRenderRefreshStatus();
     return;
   }
+  if (background) state.marketState.historyJob?.controller.abort();
   const key = marketKey();
   if (state.marketState.environment !== document.getElementById('apiEnv').value || state.marketState.key !== key) {
     marketAbortRefresh(); marketReadCache();
@@ -314,8 +315,10 @@ export function marketScheduleRefresh() {
   }
   const scope = marketRefreshScope();
   if (state.marketState.refresh && state.marketState.refresh.scope.id !== scope.id) marketAbortRefresh();
-  if (!state.marketState.loading && scope.rows.length) marketLoadHistory();
-  if (!background) marketRenderRefreshStatus();
+  if (!background) {
+    if (!state.marketState.loading && scope.rows.length) marketLoadHistory();
+    marketRenderRefreshStatus();
+  }
   if (state.marketState.refresh || state.marketState.loading || !scope.rows.length) return;
   const canRefresh = state.marketState.auto && key && !state.marketState.authBlocked;
   const delay = canRefresh ? Math.min(5000, Math.max(0, marketRefreshDue(scope) - Date.now())) : 5000;
@@ -365,7 +368,7 @@ export function marketRenderRefreshStatus() {
       + '</b> · fetched ' + marketEscape(ageText) + (Date.now() - cached.fetchedAt >= scope.interval ? ' · <b>stale cache</b>' : '')
       + ' · ' + count.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' quotes available. Prices may be delayed. '
       + '<b>' + history + ': ' + (ms.key === 'schwab' ? 'Schwab' : 'Tradier') + ' daily closes</b> · ' + (job ? 'loading ' + job.done.toLocaleString() + '/' + job.total.toLocaleString()
-          + (job.total > 200 ? ' (kept as it loads, so this happens once a day)' : '') : loaded.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' symbols')
+          + (job.total > 200 ? ' (saved as it loads; leaving Market pauses it)' : '') : loaded.toLocaleString() + '/' + scope.rows.length.toLocaleString() + ' symbols')
           + (ms.historyError && !job ? ' · ' + marketEscape(ms.historyError) : '') + '.';
   } else {
     source.innerHTML = '<b>Imported snapshot · Sep 16, 2026</b> · All periods are from the reference '

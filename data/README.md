@@ -80,11 +80,12 @@ included, 1W, 1M, 3M, 6M, YTD and 1Y come from daily history instead of the
 snapshot: the latest quote over the last daily close on or before the same day
 a week, a month, three, six or twelve months back (YTD: the last close of the
 previous year). A close more than 10 days before that day counts as no close (a
-new listing). History is read one symbol at a time (0.6 seconds apart in Market,
-1.1 in the sandbox, 2 from other tabs, under Tradier's per-minute limit), once a
+new listing). History is read only while Market is open, one symbol at a time (0.6
+seconds apart, 1.1 in the sandbox, under Tradier's per-minute limit), once a
 New York session day per symbol (a weekend reuses Friday's), and kept in
-`market_history_v1_<environment>` in local storage for a week, saved as it lands,
-so yesterday's references show while today's load. A symbol still loading or
+`market_history_v1_<environment>` in local storage for a week. It is saved as it
+lands and when a load stops, so leaving Market and coming back reads only what's
+still missing, and yesterday's references show while today's load. A symbol still loading or
 without history shows a dash, never the snapshot's figure. The overview's 2,860
 stocks take about half an hour of reads the first time each day.
 
