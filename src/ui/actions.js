@@ -25,7 +25,7 @@ import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
-import { openPositionTrade, placePositionTrade, setCloseUnder, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
+import { openPositionTrade, placePositionTrade, setCloseUnder, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setClosePct, setClosePctText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
@@ -478,6 +478,8 @@ export const actions = {
   setCloseR: el => setCloseR(num(el)),
   setCloseAt: el => setCloseAt(arg(el)),
   setCloseRText: el => setCloseRText(el.value),
+  setClosePct: el => setClosePct(num(el)),
+  setClosePctText: el => setClosePctText(el.value),
   setCloseUnder: el => setCloseUnder(el.value),
   openOriginalStop: el => openOriginalStop(arg(el), el.dataset.arg2),
   setOriginalStopText: el => setOriginalStopText(el.value),

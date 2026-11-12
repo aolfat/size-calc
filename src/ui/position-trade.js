@@ -6,7 +6,7 @@ import { anchorWords, fundLink, fundPriceFor, onFundAnchor, underPriceFor } from
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { SESSION_WORDS, closingInstruction, inOrderSession, inRegularHours, optionPriceTick, priceTick, quoteLimit } from '../core/orders.js';
-import { INSTRUCTION_WORDS, breakevenBlocked, breakevenChoices, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
+import { INSTRUCTION_WORDS, breakevenBlocked, breakevenChoices, breakevenPlan, originalStopPlan, closePlan, closersInTheWay, fmtPositionPrice, orderGone, orderTypeWord, ordersFor, pctTargetPrice, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabReplaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { marketSource } from '../services/market-source.js';
@@ -82,7 +82,7 @@ export function buildPositionTicket(row, kind, symbol, now = Date.now(), target 
   if (kind === 'close') {
     const all = closePlan(row); // what blocks any close of it
     if (all.error) { t.error = all.error; return t; }
-    t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, r: null, at: null, step: 0, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
+    t.close = { type: 'MARKET', qty: Math.abs(row.qty), portion: null, r: null, pct: null, at: null, step: 0, price: row.tradeAs === 'OPTION' ? optionPriceTick(row.price) : priceTick(row.price) };
     // from the chart's Close tool: a limit at the tapped price, for the count picked there
     if (target && target.price > 0) {
       Object.assign(t.close, { type: 'LIMIT', price: row.tradeAs === 'OPTION' ? optionPriceTick(target.price) : priceTick(target.price) });
@@ -238,9 +238,11 @@ export function setClosePrice(value) {
   const t = closeOpen();
   if (!t) return;
   t.close.price = parseFloat(value) || 0;
-  t.close.r = null; // a typed price is a price; the R box follows it
+  t.close.r = null; // a typed price is a price; the R and % boxes follow it
+  t.close.pct = null;
   quotePickOff(t);
   closeRSync(t, 'posCloseR');
+  closeRSync(t, 'posClosePct');
   closeChanged(false);
 }
 
@@ -251,9 +253,11 @@ export function setCloseUnder(value) {
   const u = parseFloat(value);
   t.close.price = u > 0 ? fundPriceFor(t.row, u) : 0;
   t.close.r = null;
+  t.close.pct = null;
   quotePickOff(t);
   closeRSync(t, 'posClosePrice');
   closeRSync(t, 'posCloseR');
+  closeRSync(t, 'posClosePct');
   closeChanged(false);
 }
 
@@ -269,8 +273,9 @@ export function setCloseRText(value) {
   if (!t) return;
   const r = parseFloat(value), per = positionRUnit(t.row).per;
   t.close.r = r > 0 ? r : null;
-  if (t.close.r && per) { t.close.price = rTargetPrice(t.row, t.close.r, per); quotePickOff(t); }
+  if (t.close.r && per) { t.close.price = rTargetPrice(t.row, t.close.r, per); t.close.pct = null; quotePickOff(t); }
   closeRSync(t, 'posClosePrice');
+  closeRSync(t, 'posClosePct');
   closeChanged(false);
 }
 
@@ -279,7 +284,28 @@ export function setCloseR(r) {
   const t = closeOpen(), per = t && positionRUnit(t.row).per;
   const price = per && r > 0 ? rTargetPrice(t.row, r, per) : 0;
   if (!price) return;
-  Object.assign(t.close, { type: 'LIMIT', r, price, at: null, step: 0 });
+  Object.assign(t.close, { type: 'LIMIT', r, pct: null, price, at: null, step: 0 });
+  closeChanged(true);
+}
+
+/** typing the limit as a percent profit on your cost: the price follows, on the order grid; the input keeps what was typed */
+export function setClosePctText(value) {
+  const t = closeOpen();
+  if (!t) return;
+  const pct = parseFloat(value), price = pct > 0 ? pctTargetPrice(t.row, pct) : 0;
+  t.close.pct = price ? pct : null;
+  if (price) { t.close.price = price; t.close.r = null; quotePickOff(t); }
+  closeRSync(t, 'posClosePrice');
+  closeRSync(t, 'posCloseR');
+  closeChanged(false);
+}
+
+/** a % profit chip: the limit that far over your cost (under it on a short) */
+export function setClosePct(pct) {
+  const t = closeOpen();
+  const price = t && pct > 0 ? pctTargetPrice(t.row, pct) : 0;
+  if (!price) return;
+  Object.assign(t.close, { type: 'LIMIT', pct, r: null, price, at: null, step: 0 });
   closeChanged(true);
 }
 
@@ -304,7 +330,7 @@ export function setCloseAt(at) {
   const q = closeQuote(t);
   const { price, step } = q ? quoteLimit(at, q, { buy: t.row.qty < 0, option: t.row.tradeAs === 'OPTION' }) : { price: 0, step: 0 };
   if (!(price > 0)) { showError(q ? `No ${at === 'mid' ? 'bid and ask' : at} to price at right now.` : 'No live quote yet. Try again in a moment.'); return; }
-  Object.assign(t.close, { type: 'LIMIT', price, step, at, r: null, quote: { bid: q.bid, ask: q.ask } });
+  Object.assign(t.close, { type: 'LIMIT', price, step, at, r: null, pct: null, quote: { bid: q.bid, ask: q.ask } });
   closeChanged(true);
 }
 
@@ -328,11 +354,33 @@ function closeRText(t) {
 /** typing redraws only the detail, so the other box and the lit R chip are set here */
 function closeRSync(t, id) {
   const input = /** @type {HTMLInputElement | null} */ (document.getElementById(id));
-  if (input && document.activeElement !== input) input.value = id === 'posCloseR' ? closeRText(t) : closePriceText(t);
+  if (input && document.activeElement !== input) input.value = id === 'posCloseR' ? closeRText(t) : id === 'posClosePct' ? closePctText(t) : closePriceText(t);
   const under = /** @type {HTMLInputElement | null} */ (document.getElementById('posCloseUnder'));
   if (under && document.activeElement !== under) under.value = closeUnderText(t);
   const chips = document.getElementById('posCloseRChips');
   if (chips) chips.innerHTML = closeRChips(t, positionRUnit(t.row));
+  const pcts = document.getElementById('posClosePctChips');
+  if (pcts) pcts.innerHTML = closePctChips(t);
+}
+
+/** the close limit's percent profit: what was typed or picked, else the limit counted as a percent of your cost */
+function closePctText(t) {
+  const c = t.close;
+  if (c.pct > 0) return String(c.pct);
+  const g = c.price > 0 ? targetGain(t.row, c.price, 1) : null;
+  return g && g.pct !== null && g.pct > 0 ? g.pct.toFixed(1) : '';
+}
+
+// percent profit chips: options move in bigger steps than stocks
+const CLOSE_PCTS = { stock: [5, 10, 20, 30, 50], option: [25, 50, 75, 100, 200] };
+
+function closePctChips(t) {
+  const row = t.row, list = CLOSE_PCTS[row.tradeAs === 'OPTION' ? 'option' : 'stock'];
+  return list.map(p => {
+    const at = pctTargetPrice(row, p), ok = at > 0 && !t.sent, on = ok && t.close.pct === p;
+    const title = at > 0 ? fmtPositionPrice(at, row.tradeAs) : row.avg > 0 ? 'Past zero' : 'Schwab shows no cost basis for this position.';
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setClosePct" data-arg="${p}" title="${esc(title)}"${ok ? '' : ' disabled'}>+${p}%</button>`;
+  }).join('');
 }
 
 const closePriceText = t => t.close.price > 0 ? t.close.price.toFixed(t.row.tradeAs === 'OPTION' || t.close.price >= 1 ? 2 : 4) : '';
@@ -744,6 +792,7 @@ function closeForm(t, duration) {
     ${limit ? `<div><dt><label for="posClosePrice">Limit price</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="posClosePrice" step="0.01" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setClosePrice"${off} /></div><span class="shares-detail">${esc(limitSource(t))}</span></dd></div>
     ${closeUnderRow(t, off)}
     <div><dt><label for="posCloseR">Limit in R</label></dt><dd><div class="pos-close-qty"><input type="number" id="posCloseR" step="0.5" min="0" inputmode="decimal" placeholder="e.g. 3" autocomplete="off" value="${closeRText(t)}" data-input="setCloseRText"${unit.per ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="posCloseRChips" role="group" aria-label="Limit in R">${closeRChips(t, unit)}</div></div><span class="shares-detail">${esc(per)}</span>${t.sent ? '' : originalStopBlock(row, 'close')}</dd></div>
+    <div><dt><label for="posClosePct">Limit in % profit</label></dt><dd><div class="pos-close-qty"><input type="number" id="posClosePct" step="1" min="0" inputmode="decimal" placeholder="e.g. 20" autocomplete="off" value="${closePctText(t)}" data-input="setClosePctText"${row.avg > 0 ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="posClosePctChips" role="group" aria-label="Limit in percent profit">${closePctChips(t)}</div></div><span class="shares-detail">${esc(row.avg > 0 ? `Over your cost of ${fmtPositionPrice(row.avg, row.tradeAs)}${row.qty < 0 ? ', the price falling that much' : ''}` : 'Schwab shows no cost basis for this position.')}</span></dd></div>
     <div><dt>Orders last</dt><dd><div class="seg" role="group" aria-label="Orders last">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>
     ${sessionRow(t)}` : ''}`;
 }

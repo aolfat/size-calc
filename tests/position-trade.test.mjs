@@ -555,6 +555,48 @@ test('the close ticket sets its limit in R, like the chart\'s target', async () 
   assert.match(body(), />Sell 150 HOOD, limit \$51\.70</);
 });
 
+test('the close ticket sets its limit as a percent profit on your cost', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  assert.doesNotMatch(body(), /data-action="setClosePct"/, 'a market order has no limit in percent');
+  run("setCloseType('LIMIT')");
+  assert.match(body(), /data-action="setClosePct" data-arg="10" title="\$42\.02">\+10%</, '10% over the $38.20 cost');
+  assert.match(body(), /Over your cost of \$38\.20/);
+  assert.match(body(), /id="posClosePct"[^>]*value="7\.6"/, 'the mark counted as a percent');
+  run('setClosePct(20)');
+  assert.match(body(), /id="posClosePrice"[^>]*value="45.84"/);
+  assert.match(body(), /class="filter-btn active" aria-pressed="true" data-action="setClosePct" data-arg="20"/);
+  assert.match(body(), />Sell 300 HOOD, limit \$45\.84</);
+  assert.match(body(), /\(\+20\.0%\) on your cost/);
+  assert.doesNotMatch(elements.get('posCloseRChips').innerHTML, /active/, 'a percent is not an R chip');
+  run("setClosePctText('15')");
+  assert.equal(elements.get('posClosePrice').value, '43.93', 'typing a percent moves the price');
+  assert.equal(elements.get('posCloseR').value, '2.1', 'and the R box follows it');
+  run('setCloseR(2)');
+  assert.match(body(), /id="posClosePct"[^>]*value="14\.1"/, 'an R chip reads back as a percent');
+  assert.doesNotMatch(body(), /data-action="setClosePct"[^>]*class="filter-btn active"|class="filter-btn active"[^>]*data-action="setClosePct"/);
+  run("setClosePrice('42.02')");
+  assert.equal(elements.get('posClosePct').value, '10.0', 'a typed price reads back too');
+  run('setClosePortion(0.5)');
+  run('setClosePct(30)');
+  assert.match(body(), />Sell 150 HOOD, limit \$49\.66</, 'the percent leaves the quantity alone');
+});
+
+test('a short closes its percent profit under its cost', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('TSLA', 'close')");
+  run("setCloseType('LIMIT')");
+  const avg = run('posTicket.row.avg');
+  run('setClosePct(10)');
+  const want = run(`priceTick(${avg} * 0.9)`);
+  assert.equal(run('posTicket.close.price'), want);
+  assert.match(elements.get('posTradeBody').innerHTML, /Buy to cover 40 TSLA, limit/);
+  assert.match(elements.get('posTradeBody').innerHTML, /the price falling that much/);
+});
+
 test('the close ticket uses your own R chips and edits them in place', async () => {
   const b = broker();
   const storage = connected();

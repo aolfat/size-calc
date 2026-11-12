@@ -961,6 +961,17 @@ export function rTargetPrice(row, r, per) {
 }
 
 /**
+ * The price that makes pct percent over your cost (above on a long, below on a short), on the order grid; 0 when it can't be
+ * (no cost basis, a short's 100% or more). @param {Row} row @param {number} pct
+ */
+export function pctTargetPrice(row, pct) {
+  if (!(row.avg > 0) || !(pct > 0)) return 0;
+  const price = row.avg * (1 + (row.qty > 0 ? 1 : -1) * pct / 100);
+  if (!(price > 0)) return 0;
+  return row.tradeAs === 'OPTION' ? optionPriceTick(price) : priceTick(price);
+}
+
+/**
  * How many shares to add so your average cost lands on a stop: a stop there then risks nothing. Adding at a price only pulls
  * the average toward that price, so the stop has to sit between your cost and it (above the cost and under the price on a
  * long, the other way on a short). Whole shares, rounded down, so the average stops just short of the stop and the stop
