@@ -118,6 +118,24 @@ test('each part of the week gets its own numbers, the good and the worrying ones
   ], 'your own mistakes go under consistency');
 });
 
+test('how good the exits were: the average exit score, early and late by name, what was left on the table', async () => {
+  const { run } = await app();
+  const after = `{ ...${CTX}, afterExit: t => ({ aapl: { score: 0.4, verdict: 'early', left: 600, leftR: 3 }, nvda: { score: 0.9, verdict: 'good', left: 0, leftR: 0 },
+    amd: { score: 0.1, verdict: 'stopped', left: 200, leftR: 1 }, tsla: { score: 0.3, verdict: 'late', left: 0, leftR: 0 } })[t.key] ?? null }`;
+  const exit = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${after})`).categories.find(c => c.key === 'exit').facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
+  const at = exit.indexOf('[bad] 1 loser was up 1R or more first: AMD') + 1;
+  assert.deepEqual(exit.slice(at, at + 4), [
+    "[bad] Exit score 43% on average over 4 trades (1 good, 1 early, 1 late, 1 stopped out): where you got out in the day's range from the entry",
+    '[bad] Out early, and it ran on: AAPL',
+    '[bad] Out late, after giving it back: TSLA',
+    'Left $800.00 on the table at best after the exits (+2.0R a trade), most on AAPL',
+  ]);
+  const good = `{ ...${CTX}, afterExit: t => t.key === 'nvda' ? { score: 0.8, verdict: 'good', left: 0, leftR: 0 } : null }`;
+  const g = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${good})`).categories.find(c => c.key === 'exit').facts;
+  assert.ok(g.some(f => f.tone === 'good' && f.text.startsWith('Exit score 80% on average over 1 trade (1 good)')));
+  assert.ok(!json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${CTX})`).categories.find(c => c.key === 'exit').facts.some(f => /Exit score/.test(f.text)), 'nothing read yet: no line');
+});
+
 test('an empty week has no facts, a month counts its weeks together, bars still loading say so', async () => {
   const { run } = await app();
   const empty = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-09-21', ${CTX})`);
@@ -194,6 +212,9 @@ test('a week\'s total on the calendar opens its review under the grid, with exit
   assert.match(panel, /Worst: <button[^>]*>MSFT<\/button> <span class="journal-sell">−\$100\.00/);
   assert.match(panel, /<div class="jw-cat-name">Exit discipline<\/div><select[^>]*>[\s\S]*?<\/select><\/div><ul class="jw-facts"><li class="jw-bad">Kept 43% of the best move on 1 winner<\/li>/, '$300 of the $700 it reached');
   assert.match(panel, /Gave back over half the best move on 1 winner: AAPL/);
+  // out at 103 after the 107 high, nothing after it that day: 47% up the 99.50 to 107 range, late
+  assert.match(panel, /<li class="jw-bad">Exit score 47% on average over 1 trade \(1 late\): where you got out in the day&#39;s range from the entry<\/li>/, 'from the same bars, with the exit fills');
+  assert.match(panel, /Out late, after giving it back: AAPL/);
   assert.match(panel, /No 5-minute bars for 1 trade \(MSFT\)/);
   assert.match(panel, /<li class="jw-bad">2 trades with no stop: AAPL and MSFT<\/li>/, 'named in the order they opened');
   assert.match(panel, /<li class="">No more than 1 trade opened a day<\/li>/);

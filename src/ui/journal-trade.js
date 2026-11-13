@@ -6,7 +6,8 @@
 // each with its toolbar (intervals 5m to 65m, kept on this device as journal_chart_iv; daily ranges; log scale). While the
 // library is on trial, a TradingView | Ours switch (journal_chart_kind, device-local) puts our canvas charts (ui/candles.js)
 // in the same place, on the same bars and framing; ours never loads the library; the
-// excursions (core/trade-page.js: MFE, MAE, exit efficiency); then two tabs: Review (your review, the fills, and the stop
+// excursions (core/trade-page.js: MFE, MAE, exit efficiency) and After the exit (afterExit: the exit score, what the rest of
+// the day and the sessions after did); then two tabs: Review (your review, the fills, and the stop
 // orders over time) and Features (every stamped feature, ui/journal-features.js). Edit opens the
 // trade sheet (your stop, separate, delete). The Review section ends with Model books: Add to model book keeps one of the
 // trade's screenshots as an example (ui/model-books.js), filled in from the review.
@@ -14,14 +15,14 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords, pnlPct } from '../core/journal.js';
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBetween } from '../core/bars.js';
-import { contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
+import { afterExit, contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { industryWords } from '../core/industries.js';
 import { viewRange } from '../core/chart-view.js';
 import { fetchTradeBars, loadTradeBars, saveTradeBars, marketDataHere } from '../services/bars.js';
 import { store } from '../lib/store.js';
 import { DESKTOP_MQ, mq } from '../lib/media.js';
-import { zoneAbbr } from '../lib/zone.js';
+import { zoneAbbr, zoneWords } from '../lib/zone.js';
 import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
@@ -266,6 +267,54 @@ function statsHtml(t, ex) {
   return `<dl class="jt-stats">${cells.join('')}</dl>`;
 }
 
+/** the fills that closed it: a long's sells, a short's buys */
+const exitFills = (t, fills) => fills.filter(f => f.side === (t.direction === 'short' ? 'buy' : 'sell'));
+
+/** what the price did after the exit: the trade's own 5-minute bars, and a stock's daily (not an option's or a fund's underlying) */
+export function pageAfterExit(t, p, fills) {
+  if (t.legs) return null;
+  const sym = chartSymbols(t);
+  return afterExit(t, exitFills(t, fills), p.five, sym.daily === t.symbol && t.assetType !== 'OPTION' ? p.daily : []);
+}
+
+const VERDICT = {
+  good: ['Good exit', 'journal-tag-done', 'out near the best the day offered'],
+  early: ['Early', 'journal-tag-history', 'it ran on after you got out'],
+  late: ['Late', 'journal-tag-history', 'you gave back more than it ran after'],
+  stopped: ['Stopped out', 'journal-tag-quiet', 'out at your stop'],
+};
+
+/**
+ * After the exit: the exit score with its verdict, what was left on the table and what getting out avoided (to the exit
+ * day's close), holding to the close instead, and a stock's next sessions; in the review deck it waits for the grade
+ */
+function afterExitHtml(t, a, p) {
+  if (t.legs || t.status === 'history' || !t.exits) return '';
+  const title = `<div class="section-title jt-after-title">After the exit</div>`;
+  if (!a) return p.loading5 ? '' : `${title}<p class="hint">${t.assetType === 'FUTURE' ? 'No 5-minute bars for futures, so nothing after the exit to measure.' : 'No 5-minute bars for the exit\'s day, so nothing after it to measure.'}</p>`;
+  if (deckHidesPnl(t)) return `${title}<p class="hint">After grading: how good the exit was waits for the setup grade, like the result.</p>`;
+  const cell = (label, value, sub = '', cls = '', tip = '') => `<div${tip ? ` title="${esc(tip)}"` : ''}><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
+  const inR = v => (v !== null ? signedR(v) : '');
+  const when = x => x && x.time ? ` at ${esc(zoneWords(x.date, x.time))}` : '';
+  const v = a.verdict && VERDICT[a.verdict];
+  const cells = [
+    cell('Exit score', a.score === null ? '—' : `${Math.round(a.score * 100)}%${v ? ` <span class="journal-tag ${v[1]}">${v[0]}</span>` : ''}`,
+      v ? v[2] : 'of the day\'s range from your entry', '',
+      'Where you got out in the range from your entry to that day\'s close: 100% is the best price, 0% the worst. Each exit counts for what it closed.'),
+    cell('Left on the table', a.best ? signed$(a.left) : '—', a.best ? [inR(a.leftR), `best ${px(a.best.price, t.assetType)}${when(a.best)}`].filter(Boolean).join(' · ') : 'no bars after it',
+      a.left > 0 ? 'journal-sell' : '', 'The most staying in could have added: the best price after each exit, to that day\'s close.'),
+    cell('Avoided', a.worst ? signed$(a.against) : '—', a.worst ? [inR(a.againstR), `${t.direction === 'short' ? 'high' : 'low'} ${px(a.worst.price, t.assetType)}${when(a.worst)}`, a.stopHit ? 'would have hit your stop' : ''].filter(Boolean).join(' · ') : '',
+      a.against < 0 ? 'journal-buy' : '', 'How far it went against where you got out, to that day\'s close: what getting out kept you from.'),
+    cell('Held to the close', a.best ? signed$(a.toClose) : '—', a.best ? [inR(a.toCloseR), a.toClose > 0 ? 'more than your exit' : a.toClose < 0 ? 'your exit beat it' : 'the same'].filter(Boolean).join(' · ') : '',
+      '', 'Holding each exit to that day\'s close instead.'),
+    ...a.sessions.map(s => cell(s.n === 1 ? 'Next day' : `Next ${s.n} days`, signedPct(s.bestPct),
+      [`best ${px(s.best, t.assetType)}`, `close ${signedPct(s.closePct)}`, s.closeR !== null ? inR(s.closeR) : ''].filter(Boolean).join(' · '), '',
+      `The best ${t.direction === 'short' ? 'low' : 'high'} over the next ${s.n === 1 ? 'session' : `${s.n} sessions`} against your ${px(a.avgExit, t.assetType)} average exit, and where it closed.`)),
+  ];
+  return `${title}<dl class="jt-stats jt-after">${cells.join('')}</dl>
+    <p class="hint">From the 5-minute bars to the close of the exit's day${a.sessions.length ? ', then the daily bars' : ''}; ${a.qty === t.entryQty ? 'all' : `the ${a.qty} closed of`} ${t.entryQty} against where each got out.</p>`;
+}
+
 /**
  * The head's numbers, the way a trade journal shows them: average entry and exit, then the P&L % and P&L (in the review deck
  * they wait for the grade, with Show)
@@ -370,7 +419,8 @@ export function renderJournalTrade() {
   const stats = `${statsHtml(t, ex)}
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
-      : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}`;
+      : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
+    ${afterExitHtml(t, pageAfterExit(t, p, fills), p)}`;
   // the desktop's full review: the chart, the numbers and Fills | Stop orders | Features on the left, the review on the
   // right with what's still missing under it; narrower screens keep one column, the review between the stats and the fills
   const wide = mq(DESKTOP_MQ);

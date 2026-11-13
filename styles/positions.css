@@ -641,6 +641,7 @@ span.journal-pick { cursor: default; }
 .jt-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-family: var(--num); }
 .jt-stats dd .pos-sub { font-size: 11.5px; font-weight: 400; }
 .jt-sub { margin-top: 14px; }
+.jt-after-title { margin-top: 6px; } /* After the exit, under the stats; not a .jt-sub, which the desktop's tabs hide */
 .jt-table { min-width: 0; width: 100%; }
 /* trade features: the Features tab (what each reads, how far it's stamped) and the trade page's At entry table */
 .jf-table { min-width: 680px; table-layout: fixed; }

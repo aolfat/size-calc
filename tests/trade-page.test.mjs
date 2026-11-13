@@ -126,6 +126,70 @@ test('excursions: the best and worst while it was open, in dollars and R, and th
   assert.equal(run(`excursions(${JSON.stringify(long)}, [])`), null, 'no bars, no numbers');
 });
 
+test('after the exit: where it sat in the day, what the rest of the day and the next sessions did', async () => {
+  const { run } = await app();
+  // long 100 from 09:40, sold 100 at 102 at 10:31 (the 10:30 bar); then 10:35 runs to 110, the day closes 108
+  const day = [...BARS, bar('2026-10-13', '15:55', 109, 109, 106, 108), bar('2026-10-13', '16:05', 108, 120, 108, 120)];
+  const t = { ...long, stop: 98 };
+  const sold = [{ time: '2026-10-13T14:31:00.000Z', qty: 100, price: 102 }];
+  const a = json(run, `afterExit(${JSON.stringify(t)}, ${JSON.stringify(sold)}, ${JSON.stringify(day)})`);
+  // the range from the entry's bar to the close: 99 to 110, 102 sits 3 of 11 up
+  assert.equal(a.score, 0.273);
+  assert.equal(a.verdict, 'early', 'it ran 8 past the exit, more than the 1 given back from 103');
+  assert.deepEqual([a.left, a.leftR, a.best], [800, 4, { price: 110, date: '2026-10-13', time: '10:35' }], 'the best after it, to the close; after hours left out');
+  assert.deepEqual([a.against, a.againstR, a.stopHit], [-100, -0.5, false], 'down to 101 in the 10:35 bar, nowhere near the stop');
+  assert.deepEqual([a.toClose, a.toCloseR], [600, 3], 'holding to the 108 close');
+  assert.deepEqual(a.sessions, [], 'no daily bars, no sessions');
+
+  // sold at 109 in the 10:35 bar: a good exit
+  const top = json(run, `afterExit(${JSON.stringify(t)}, ${JSON.stringify([{ time: '2026-10-13T14:36:00.000Z', qty: 100, price: 109 }])}, ${JSON.stringify(day)})`);
+  assert.equal(top.verdict, 'good');
+  assert.equal(top.score, 0.909);
+  assert.deepEqual([top.left, top.against, top.toClose], [0, -300, -100], 'the 15:55 bar: down to 106, closed 108');
+
+  // a trim and the rest: each weighted by what it closed
+  const two = json(run, `afterExit(${JSON.stringify(t)}, ${JSON.stringify([{ time: '2026-10-13T14:31:00.000Z', qty: 50, price: 102 }, { time: '2026-10-13T14:36:00.000Z', qty: 50, price: 109 }])}, ${JSON.stringify(day)})`);
+  assert.equal(two.score, 0.591);
+  assert.equal(two.left, 400, 'only the trim missed the run');
+  assert.equal(two.avgExit, 105.5);
+
+  // gave it back: sold at 101 after a 103 high, and it never went higher
+  const flat = [...BARS.slice(0, 4), bar('2026-10-13', '10:35', 101, 101.5, 100.5, 101)];
+  const late = json(run, `afterExit(${JSON.stringify(t)}, ${JSON.stringify([{ time: '2026-10-13T14:36:00.000Z', qty: 100, price: 101 }])}, ${JSON.stringify(flat)})`);
+  assert.equal(late.verdict, 'late');
+
+  // stopped at 98, then it ran: a stop, not an early exit
+  const stopBars = [bar('2026-10-13', '09:40', 100, 100.5, 97.5, 98), bar('2026-10-13', '09:45', 98, 104, 98, 104)];
+  const st = json(run, `afterExit(${JSON.stringify(t)}, ${JSON.stringify([{ time: '2026-10-13T13:43:00.000Z', qty: 100, price: 98 }])}, ${JSON.stringify(stopBars)})`);
+  assert.equal(st.verdict, 'stopped');
+  assert.equal(st.leftR, 3);
+
+  // out above the stop, then it fell through it: getting out saved the stop
+  const fell = [bar('2026-10-13', '09:40', 100, 101, 99.5, 100.5), bar('2026-10-13', '09:45', 100.5, 100.5, 97, 97)];
+  const saved = json(run, `afterExit(${JSON.stringify(t)}, ${JSON.stringify([{ time: '2026-10-13T13:43:00.000Z', qty: 100, price: 100.5 }])}, ${JSON.stringify(fell)})`);
+  assert.deepEqual([saved.stopHit, saved.against, saved.againstR], [true, -350, -1.75]);
+
+  // a short: lows for, highs against
+  const sh = json(run, `afterExit(${JSON.stringify({ ...t, direction: 'short', stop: 104 })}, ${JSON.stringify([{ time: '2026-10-13T14:31:00.000Z', qty: 100, price: 102 }])}, ${JSON.stringify(day)})`);
+  assert.deepEqual([sh.score, sh.left, sh.against, sh.toClose, sh.stopHit], [0.727, 100, -800, -600, true]);
+
+  // the sessions after, from the daily bars: best and close against the average exit
+  const daily = [
+    { date: '2026-10-13', open: 1, high: 200, low: 1, close: 1 }, // the exit's day: not after it
+    { date: '2026-10-14', open: 102, high: 105, low: 101, close: 104 },
+    { date: '2026-10-15', open: 104, high: 107, low: 103, close: 103 },
+    { date: '2026-10-16', open: 103, high: 104, low: 99, close: 100 },
+  ];
+  const s = json(run, `afterExit(${JSON.stringify(t)}, ${JSON.stringify(sold)}, ${JSON.stringify(day)}, ${JSON.stringify(daily)})`).sessions;
+  assert.deepEqual(s.map(x => x.n), [1, 3], 'ten sessions aren\'t there yet');
+  assert.deepEqual(s[0], { n: 1, best: 105, close: 104, bestPct: 2.94, closePct: 1.96, bestR: 1.5, closeR: 1 });
+  assert.deepEqual([s[1].best, s[1].close, s[1].closeR], [107, 100, -1]);
+
+  assert.equal(run(`afterExit(${JSON.stringify({ ...t, legs: [] })}, ${JSON.stringify(sold)}, ${JSON.stringify(day)})`), null, 'spreads');
+  assert.equal(run(`afterExit(${JSON.stringify(t)}, [], ${JSON.stringify(day)})`), null, 'no exits yet');
+  assert.equal(run(`afterExit(${JSON.stringify(t)}, ${JSON.stringify(sold)}, [])`), null, 'no bars');
+});
+
 test('the exit in words: one price or the average of several, and how much is closed while it\'s open', async () => {
   const { run } = await app();
   const t = { avgExit: 0.71, exits: 3, entryQty: 100, openQty: 40, direction: 'long', status: 'open' };
@@ -189,6 +253,10 @@ test('a row opens the trade page: its saved bars, MFE and MAE, the fills and sto
   assert.match(body(), /<dt>MAE<\/dt><dd class="journal-sell">−\$552\.00<span class="pos-sub">−1\.10R · worst \$94\.50<\/span>/);
   assert.match(body(), /<dt>Exit efficiency<\/dt><dd class="">—<span class="pos-sub">winners only<\/span>/);
   assert.match(body(), /From 4 five-minute bars while it was open/);
+  // After the exit: stopped at 94.98 on 10/2 in the 11:00 bar, 5% up the 94.50 to 104 range from the entry, no bars after
+  assert.match(body(), /After the exit<\/div><dl class="jt-stats jt-after">/);
+  assert.match(body(), /<dt>Exit score<\/dt><dd class="">5% <span class="journal-tag journal-tag-quiet">Stopped out<\/span><span class="pos-sub">out at your stop<\/span>/);
+  assert.match(body(), /<dt>Left on the table<\/dt><dd class="">—<span class="pos-sub">no bars after it<\/span>/);
   assert.match(body(), /<td>10\/1, 10:30 AM<\/td><td class="journal-buy">Buy<\/td><td>100<\/td><td>\$100\.02<\/td>/, 'the fills, in New York time');
   assert.match(body(), /\$95\.00 <span class="journal-tag journal-tag-quiet">first<\/span><\/td><td>filled<\/td>/, 'the stop orders');
   assert.match(elements.get('jtStatusD').textContent, /Add a Tradier key or log in to Schwab in Settings for the daily chart/);
@@ -409,6 +477,10 @@ test('with a key: the daily chart from Tradier, framed on the trade', async t =>
   await settle();
   assert.equal(state.journalTrade.daily.length, 80);
   assert.equal(elements.get('jtStatusD').textContent, '');
+  // the sessions after the 94.98 stop-out, from the daily bars: highs of 101, closes of 100
+  assert.match(elements.get('jtBody').innerHTML, /<dt>Next day<\/dt><dd class="">\+6\.34%<span class="pos-sub">best \$101\.00 · close \+5\.29% · \+1\.00R<\/span>/);
+  assert.match(elements.get('jtBody').innerHTML, /<dt>Next 10 days<\/dt>/);
+  assert.match(elements.get('jtBody').innerHTML, /then the daily bars/);
   const c = chart('jtChartD');
   assert.equal(c.series[0].data[0].time, '2026-08-01', 'a daily bar is its day');
   assert.equal(c.series[2].data[0].value, 1, 'with its volume');

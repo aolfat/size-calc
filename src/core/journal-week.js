@@ -12,6 +12,7 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
 /** @typedef {import('./journal-stats.js').StatTrade & { avgEntry?: number, entryQty?: number, multiplier?: number,
  *   schwabStop?: number | null, movedTo?: number | null, rBasis?: string | null }} WeekTrade
  * @typedef {{ mfe: number, mae: number, mfeR: number | null, maeR: number | null, efficiency: number | null }} Excursion
+ * @typedef {{ score: number | null, verdict: 'good' | 'early' | 'late' | 'stopped' | null, left: number, leftR: number | null }} AfterExit
  * @typedef {{ text: string, tone?: 'good' | 'bad' | '' }} Fact
  * @typedef {{ key: string, name: string, facts: Fact[] }} Category
  * @typedef {{
@@ -21,6 +22,7 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
  *   nameOf: (kind: string, value: string) => string,
  *   kinds?: (key: string) => string[],
  *   excursion: (t: WeekTrade) => Excursion | null | undefined,
+ *   afterExit?: (t: WeekTrade) => AfterExit | null | undefined,
  *   reviewed: (t: WeekTrade) => boolean,
  *   saved: (key: string) => boolean,
  *   barsPending?: boolean,
@@ -359,6 +361,24 @@ export function periodReview(trades, unit, key, ctx) {
     }
     const turned = closedHere.filter(t => t.pnl < 0).filter(t => { const ex = ctx.excursion(t); return ex && ex.mfeR !== null && ex.mfeR >= 1; });
     if (turned.length) add('exit', `${plural(turned.length, 'loser')} ${turned.length === 1 ? 'was' : 'were'} up 1R or more first: ${names(turned)}`, 'bad');
+    // --- how good the exits were: where they sat in the day, and what the rest of the day did (core/trade-page.js afterExit)
+    const judged = closedHere.map(t => ({ t, a: ctx.afterExit?.(t) })).filter(x => x.a && x.a.score !== null);
+    if (judged.length) {
+      const score = /** @type {number} */ (avg(judged.map(x => /** @type {number} */ (x.a?.score))));
+      const count = (/** @type {string} */ v) => judged.filter(x => x.a?.verdict === v).length;
+      const split = /** @type {[string, string][]} */ ([['good', 'good'], ['early', 'early'], ['late', 'late'], ['stopped', 'stopped out']])
+        .filter(([v]) => count(v)).map(([v, w]) => `${count(v)} ${w}`).join(', ');
+      add('exit', `Exit score ${Math.round(score * 100)}% on average over ${plural(judged.length, 'trade')} (${split}): where you got out in the day's range from the entry`, score >= 0.7 ? 'good' : score < 0.5 ? 'bad' : '');
+      const early = judged.filter(x => x.a?.verdict === 'early').map(x => x.t), late = judged.filter(x => x.a?.verdict === 'late').map(x => x.t);
+      if (early.length) add('exit', `Out early, and it ran on: ${names(early)}`, 'bad');
+      if (late.length) add('exit', `Out late, after giving it back: ${names(late)}`, 'bad');
+      const left = judged.filter(x => x.a && x.a.left > 0);
+      if (left.length) {
+        const most = left.reduce((m, x) => (/** @type {number} */ (x.a?.left) > /** @type {number} */ (m.a?.left) ? x : m));
+        const rs = left.map(x => x.a?.leftR).filter(r => r !== null && r !== undefined);
+        add('exit', `Left ${fmt$(round2(sum(left.map(x => /** @type {number} */ (x.a?.left)))))} on the table at best after the exits${rs.length === left.length ? ` (${signedR(/** @type {number} */ (avg(/** @type {number[]} */ (rs))))} a trade)` : ''}, most on ${underlyingOf(most.t)}`);
+      }
+    }
     const noBars = closedHere.filter(t => !t.legs && ctx.excursion(t) === null);
     if (ctx.barsPending) add('exit', 'Loading the 5-minute bars for the best and worst of each trade…');
     else if (noBars.length) add('exit', `No 5-minute bars for ${plural(noBars.length, 'trade')} (${names(noBars)}), so they're left out of the excursions`);
