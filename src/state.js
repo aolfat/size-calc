@@ -160,6 +160,7 @@ export function createState() {
     journalExcursions: {}, // trade key → { sig, ex, after }: each closed trade's MFE, MAE and exit efficiency, and what it did after the exits (afterExit), from its saved bars, for the reviews
     periodTradeSort: { by: 'pnl', dir: -1 }, // the week or month review's trade list: 'pnl' | 'pct' | 'r' | 'opened', -1 biggest (newest) first
     periodBarsBusy: false, // a review is reading its trades' bars
+    setupBarsBusy: false, // the Setups tab's Exits and stops is reading its trades' bars (ui/trade-reads.js)
     periodReviews: null, // 'week|2026-10-12' or 'month|2026-10' → its period_reviews row (grades, notes, the rules); null until read
     periodReviewsError: '', // why they couldn't be read (the table not pushed yet): the numbers still show, nothing saves
     periodOverallError: '', // why the overall notes (went_well, work_on, note) couldn't be read (their columns not pushed yet): those boxes are off, the rest saves

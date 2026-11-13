@@ -960,3 +960,4 @@ span.journal-pick { cursor: default; }
 .jt-say b { font-weight: 600; }
 .jt-say-bad b { color: var(--amber); }
 .jt-say-good b { color: var(--green); }
+.journal-amber { color: var(--amber); }

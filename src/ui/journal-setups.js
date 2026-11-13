@@ -5,13 +5,18 @@
 // it's made of, its headline numbers, its grades and tactics, and its trades; from there its trades, stats or model book
 // examples. The Journal's side, symbol and fee choices apply. A trade counts in each of its setups. Names read by the
 // side filter (a short's bounce is a rejection; every side shows both, '9 EMA bounce / rejection'), and with every side shown
-// a setup traded both ways gets a row per side under it.
+// a setup traded both ways gets a row per side under it. Exits and stops (owner request: by setup) adds each setup's and
+// kind's exit score, winners sold too early, holding on against the exits, shakeouts and how deep winners dip, from each
+// trade's saved bars (ui/trade-reads.js, read once; core/exit-stats.js); a setup's page cuts them by entry tactic.
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { GRADES, PLAN_FOLLOWED } from '../core/journal-labels.js';
 import { countedTrades, groupStats, statsByLabel } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { state } from '../state.js';
 import { headline, statTable } from './journal-stats.js';
+import { exitStats, exitStatsByLabel } from '../core/exit-stats.js';
+import { readTrades, tradeRead } from './trade-reads.js';
+import { renderJournal } from './journal.js';
 import { labelKeys, reviewLibrary, reviewOf, setupsOf, shownSide } from './journal-review.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
@@ -44,6 +49,42 @@ function cut(trades, keysOf, nameOf, order = []) {
 }
 const noneNote = (none, what) => none ? `${plural(none, 'closed trade')} without ${what} ${none === 1 ? "isn't" : "aren't"} in it.` : '';
 
+/** read the shown trades' bars for Exits and stops, once at a time; the tab redraws when they're in */
+function readForExits(trades) {
+  if (state.setupBarsBusy) return;
+  readTrades(trades, () => { state.setupBarsBusy = true; })
+    .then(any => { state.setupBarsBusy = false; if (any && state.journalTab === 'setups') renderJournal(); })
+    .catch(() => { state.setupBarsBusy = false; });
+}
+
+const pct = v => `${Math.round(v * 100)}%`;
+/** one row of Exits and stops */
+function exitRow(group, x, cls = '') {
+  const dash = '<td>—</td>';
+  const score = x.score === null ? dash : `<td class="${x.score >= 0.7 ? 'journal-buy' : x.score < 0.5 ? 'journal-amber' : ''}">${pct(x.score)}</td>`;
+  const split = x.judged ? `<td>${x.good} · ${x.early} · ${x.late}${x.stopped ? ` · ${x.stopped}` : ''}</td>` : dash;
+  const cut = x.winners ? `<td class="${x.cut ? 'journal-amber' : ''}">${x.cut} of ${x.winners}${x.cut ? `<span class="pos-sub">${signed$(x.cutMore)}${x.cutR !== null ? ` · ${signedR(x.cutR)}` : ''}</span>` : ''}</td>` : dash;
+  const held = x.held === null ? dash : `<td class="${x.held > 0 ? 'journal-sell' : x.held < 0 ? 'journal-buy' : ''}">${signed$(x.held)}${x.heldR !== null ? `<span class="pos-sub">${signedR(x.heldR)}</span>` : ''}</td>`;
+  const shaken = x.stopOuts ? `<td class="${x.shaken * 2 >= x.stopOuts && x.shaken ? 'journal-amber' : ''}">${x.shaken} of ${x.stopOuts}</td>` : dash;
+  const dip = x.dip80 === null ? dash : `<td>${signedR(x.dip80)}</td>`;
+  return `<tr${cls ? ` class="${cls}"` : ''}><td>${group}</td><td>${x.trades}${x.pending ? '<span class="pos-sub">reading…</span>' : ''}</td>${score}${split}${cut}${held}${shaken}${dip}</tr>`;
+}
+/** Exits and stops: the rows' groups are markup (already escaped) */
+function exitTable(title, rows, note, first = 'Setup') {
+  if (!rows.length) return '';
+  const pending = rows.reduce((n, r) => Math.max(n, r.stats.pending), 0);
+  return `<div class="section-title js-sub">${title}</div><p class="hint">${note}${pending ? ' Reading the 5-minute bars…' : ''}</p>
+    <div class="positions-wrap"><table class="positions-table journal-table js-table js-exits"><thead><tr><th scope="col">${first}</th><th scope="col">Trades</th>
+      <th scope="col" title="Where you got out in the range from the entry to the end of holding on with your stop: the average">Exit score</th>
+      <th scope="col" title="Good · too early · too late (· stopped out)">Good · early · late</th>
+      <th scope="col" title="Winners sold too early, and what holding on with the stop would have added on them">Sold too early</th>
+      <th scope="col" title="Holding on with your stops against your exits, over every trade: plus means holding would have made more">If held</th>
+      <th scope="col" title="Stop-outs that came back to the entry">Shaken out</th>
+      <th scope="col" title="80% of winners went no further than this against you (three winners or more)">Winners' dip</th></tr></thead>
+    <tbody>${rows.map(r => exitRow(r.group, r.stats, r.cls)).join('')}</tbody></table></div>`;
+}
+const EXITS_NOTE = 'From each trade\'s 5-minute bars, holding on from the exit with your stop in, the way its trade page does. Tap a trade for its After the exit and Stop check.';
+
 function overview(trades, lib) {
   const live = trades.filter(reviewable), side = shownSide();
   const { rows, none } = statsByLabel(live, t => labelKeys(t, 'setup'));
@@ -72,6 +113,7 @@ function overview(trades, lib) {
       return { group: `${esc(SIDE_WORDS[b.group] || b.group)}${words !== name ? ` · ${esc(words)}` : ''}`, stats: b.stats, cls: 'js-side-row' };
     })];
   });
+  readForExits(countedTrades(live).filter(t => labelKeys(t, 'setup').length));
   const counted = countedTrades(live).length;
   const withSetup = counted - none;
   const named = kind => key => lib.nameOf(kind, key, side);
@@ -89,6 +131,8 @@ function overview(trades, lib) {
     ${statTable('My setups', setupRows, `Tap a setup for its page. A trade counts in each of its setups, so the rows can add up to more than your total.${side === 'both' ? ' One traded both ways shows its long and short rows under it; pick Long or Short above for one side.' : ''}`, 'Setup', { withR: true, html: true })}
     ${statTable('By setup kind', kinds.rows, 'Every bounce together, whatever it bounced off (a rejection is a bounce on a short); the same for undercut &amp; rally. A pattern is its own kind. A trade with two kinds counts in both.', 'Kind', { withR: true })}
     ${statTable('By level', levels.rows, 'Any setup at that level, whatever happened there. A trade at two levels counts in both.', 'Level', { withR: true })}
+    ${exitTable('Exits and stops by setup', exitStatsByLabel(live, t => labelKeys(t, 'setup'), tradeRead).map(r => ({ group: `<button class="journal-name" data-action="openJournalSetup" data-arg="${esc(r.group)}"><b>${esc(lib.nameOf('setup', r.group, side))}</b></button>`, stats: r.stats })), EXITS_NOTE)}
+    ${exitTable('Exits and stops by setup kind', exitStatsByLabel(live, t => setupsOf(t, side).map(s => s.kind?.name || s.name), tradeRead).map(r => ({ group: esc(r.group), stats: r.stats })), 'Every bounce together, the same way as By setup kind.', 'Kind')}
     ${statTable('By setup grade', grades.rows, "If A trades don't beat C trades, the grade isn't telling you anything yet.", 'Grade', { withR: true })}
     ${statTable('By entry tactic', tactics.rows, noneNote(tactics.none, 'a tactic'), 'Tactic', { withR: true })}
     ${statTable('Followed the plan', plans.rows, noneNote(plans.none, 'an answer'), 'Plan', { withR: true })}
@@ -129,6 +173,7 @@ function setupPage(trades, lib, key) {
   const sides = cut(mine, t => [SIDE_WORDS[t.bias] || 'Long'], s => s, ['Long', 'Short', 'Neutral']);
   const mistakes = cut(mine, t => labelKeys(t, 'mistake'), named('mistake'));
   const others = cut(mine, t => labelKeys(t, 'setup').filter(k => k !== key), named('setup'));
+  readForExits(closed);
   const shown = mine.slice(0, 100);
   return `<div class="jc-head">
       <button class="btn" data-action="closeJournalSetup">← All setups</button>
@@ -142,6 +187,8 @@ function setupPage(trades, lib, key) {
       · <button class="pos-link" data-action="showSetupIn" data-arg="books">Model book examples</button></p>
     ${closed.length ? headline(closed) : '<p class="hint">No closed trades with this setup yet.</p>'}
     ${statTable('By setup grade', grades.rows, '', 'Grade', { withR: true })}
+    ${closed.length ? exitTable('Exits and stops', [{ group: '<b>All</b>', stats: exitStats(closed, tradeRead) },
+      ...exitStatsByLabel(mine, t => labelKeys(t, 'tactic'), tradeRead).map(r => ({ group: esc(named('tactic')(r.group)), stats: r.stats, cls: 'js-side-row' }))], `${EXITS_NOTE} Then by entry tactic.`, 'Entry tactic') : ''}
     ${statTable('By entry tactic', tactics.rows, noneNote(tactics.none, 'a tactic'), 'Tactic', { withR: true })}
     ${statTable('By market', markets.rows, noneNote(markets.none, 'a market'), 'Market', { withR: true })}
     ${statTable('By side', sides.rows, '', 'Side', { withR: true })}

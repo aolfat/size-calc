@@ -12,12 +12,7 @@ import { buildLibrary } from '../core/journal-labels.js';
 import { MISSED_WHY, notebookLists, periodMissed, standingRuleFor } from '../core/journal-notebook.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
 import { gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodRules, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, ruleKeptOf, sortPeriodTrades, weekRuleTally } from '../core/journal-week.js';
-import { afterExit, excursions, stopCheck, unpackBars } from '../core/trade-page.js';
-import { fillsFrom } from '../core/journal-records.js';
-import { nyDay, weekdaysBetween } from '../core/bars.js';
-import { parseSchwabOption } from '../core/positions.js';
-import { loadTradeBars, marketDataHere } from '../services/bars.js';
-import { dailyHistory } from '../services/tradier.js';
+import { nyDay } from '../core/bars.js';
 import { savePeriodFields } from '../services/journal-review.js';
 import { zoneWords } from '../lib/zone.js';
 import { state } from '../state.js';
@@ -25,6 +20,7 @@ import { showError, showToast } from './feedback.js';
 import { periodReviewContext, reviewedMark } from './journal-review.js';
 import { makeRuleStanding, missedWords } from './journal-notebook.js';
 import { periodName } from './journal-stats.js';
+import { afterExitOf, excursionOf, readTrades, stopCheckOf } from './trade-reads.js';
 import { journalTradeList, renderJournal } from './journal.js';
 import { loadPeriodReviewRows, renderWeekRulesCard } from './week-rules.js';
 
@@ -33,61 +29,12 @@ const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 const validKey = (unit, key) => unit === 'month' ? /^\d{4}-\d{2}$/.test(key) : /^\d{4}-\d{2}-\d{2}$/.test(key);
 
-/** what a trade's excursions were read from: a change (a late fill, a re-close) reads them again */
-const signature = t => `${t.closedAt}|${t.entryQty}|${t.avgEntry}`;
-/** the 5-minute bars a trade's excursions come from: an option contract's own, a stock's; spreads have none */
-const barsSymbol = t => t.legs ? '' : t.assetType === 'OPTION' && parseSchwabOption(t.symbol) ? t.symbol.replace(/\s+/g, '') : t.symbol;
-
-/** a trade whose daily chart is its own symbol's (a stock or a fund; not an option, a future, or a fund read on its underlying) */
-const onOwnDaily = t => !t.legs && !t.setupOn && !['OPTION', 'FUTURE', 'SPREAD'].includes(t.assetType);
-/** a trade's excursions: undefined until read, null when there are no bars for it */
-function excursionOf(t) {
-  const c = state.journalExcursions[t.key];
-  return c && c.sig === signature(t) ? c.ex : undefined;
-}
-/** what the price did after a trade's exits (afterExit): undefined until read, null without bars or exit fills */
-function afterExitOf(t) {
-  const c = state.journalExcursions[t.key];
-  return c && c.sig === signature(t) ? c.after ?? null : undefined;
-}
-/** whether a trade's stop was too tight (stopCheck): undefined until read, null without bars or a stop */
-function stopCheckOf(t) {
-  const c = state.journalExcursions[t.key];
-  return c && c.sig === signature(t) ? c.stop ?? null : undefined;
-}
-
-/** read the saved bars for the period's closed trades that haven't been read yet, one query per symbol */
+/** read the saved bars for the period's closed trades that haven't been read yet (ui/trade-reads.js) */
 async function loadExcursions(unit, key) {
   const { closedHere } = reviewTrades(journalTradeList(), unit, key);
-  const todo = closedHere.filter(t => barsSymbol(t) && excursionOf(t) === undefined);
-  for (const t of closedHere) if (!barsSymbol(t)) state.journalExcursions[t.key] = { sig: signature(t), ex: null, after: null, stop: null };
-  if (!todo.length) return;
-  state.periodBarsBusy = true;
-  renderJournal();
-  const bySymbol = new Map(), fills = fillsFrom(state.journalRecords || []);
-  for (const t of todo) {
-    const days = weekdaysBetween(nyDay(t.openedAt), nyDay(t.closedAt));
-    const s = bySymbol.get(barsSymbol(t)) || { days: new Set(), trades: [] };
-    days.forEach(d => s.days.add(d));
-    s.trades.push(t);
-    bySymbol.set(barsSymbol(t), s);
-  }
-  await Promise.all([...bySymbol].map(async ([symbol, { days, trades }]) => {
-    let bars = [], daily = [];
-    // a stock held overnight is held on past its exit on the daily bars (afterExit), as on its trade page
-    const overnight = trades.some(t => onOwnDaily(t) && nyDay(t.openedAt) < nyDay(t.closedAt));
-    const dailyBars = overnight && marketDataHere() ? dailyHistory(symbol).then(ds => ds.map(d => ({ date: d.date, open: +d.open, high: +d.high, low: +d.low, close: +d.close }))).catch(() => []) : Promise.resolve([]);
-    try { bars = unpackBars(await loadTradeBars(symbol, [...days].sort())); } catch(e) { bars = []; }
-    daily = await dailyBars;
-    for (const t of trades) {
-      const ids = new Set(t.fillIds), exits = fills.filter(f => ids.has(f.id) && f.side === (t.direction === 'short' ? 'buy' : 'sell'));
-      const own = onOwnDaily(t) ? daily : [];
-      state.journalExcursions[t.key] = { sig: signature(t), ex: bars.length ? excursions(t, bars) : null,
-        after: bars.length ? afterExit(t, exits, bars, own) : null, stop: bars.length ? stopCheck(t, exits, bars, own) : null };
-    }
-  }));
+  const any = await readTrades(closedHere, () => { state.periodBarsBusy = true; renderJournal(); });
   state.periodBarsBusy = false;
-  if (state.journalReviewPeriod?.unit === unit && state.journalReviewPeriod?.key === key) renderJournal();
+  if (any && state.journalReviewPeriod?.unit === unit && state.journalReviewPeriod?.key === key) renderJournal();
 }
 
 /** a week's total or Review the month: its review under the calendar (tapping the one open closes it) */
