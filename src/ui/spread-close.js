@@ -9,7 +9,7 @@ import { orderGone, spreadClosePlan, spreadClosers, spreadPctPrice } from '../co
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
-import { profitPcts } from './position-chart.js';
+import { positionClosePlaced, profitPcts } from './position-chart.js';
 import { failureText } from './position-trade.js';
 import { refreshPositions } from './positions.js';
 import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
@@ -70,12 +70,14 @@ function buildWarnings(t, now) {
   return out;
 }
 
-export async function openSpreadClose(key) {
+/** the sheet for one spread; start: the chart's Close tool's net limit, count and % profit, frozen as they are now */
+export async function openSpreadClose(key, start = null) {
   if (state.posTradeBusy) return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
+  const from = start && start.price > 0 ? { close: { type: 'LIMIT', qty: start.qty || 0, portion: start.qty ? null : 1, price: start.price, pct: start.pct || null } } : null;
   state.posTradeBusy = true;
   try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
-  state.spreadTicket = fresh(key);
+  state.spreadTicket = fresh(key, from);
   renderSpreadCloseSheet();
   openSheet('spreadClose');
   const sc = state.spreadTicket; // ready the send while you review: the closers it may cancel, and the close
@@ -257,7 +259,7 @@ export async function placeSpreadClose() {
     state.posTradeBusy = false;
     if (state.spreadTicket === t) renderSpreadCloseSheet();
   }
-  if (t.confirmed) showToast(t.done);
+  if (t.confirmed) { positionClosePlaced(t.key); showToast(t.done); }
 }
 
 /** confirmed when every leg is smaller by its share of the close, or (a limit) Schwab lists a new spread close for it */

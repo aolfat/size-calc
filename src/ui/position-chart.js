@@ -5,6 +5,8 @@
 // review it in the position sheet. Or Move breakeven: tap where you want the stop, and it says how many to add so your average
 // cost lands there (a calculator; nothing goes to Schwab). Or Close: tap the limit, pick how much, review it in the close ticket.
 // Your working stops and targets are lines you can drag: let go and Edit reviews the order at the new price.
+// A spread's chart is its net price from the legs' bars, with its net cost and working spread closes on it, and only the
+// Close tool: tap the net limit, pick how many spreads, review it in the spread close sheet.
 // Indicators (VWAP, 8 and 21 EMA, 50 and 200 SMA, volume) are chips, each kept on or off on this device.
 import { store } from '../lib/store.js';
 import { state } from '../state.js';
@@ -12,7 +14,7 @@ import { clampView, viewRange } from '../core/chart-view.js';
 import { fmt$, marketEscape as esc, nyDateStr } from '../core/format.js';
 import { optionPriceTick, priceTick } from '../core/orders.js';
 import { movingAverage } from '../core/indicators.js';
-import { breakevenAdd, closePlan, pctTargetPrice, closersInTheWay, fmtPositionPrice, lineMove, orderLines, positionLevels, rTargetPrice, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
+import { breakevenAdd, closePlan, pctTargetPrice, closersInTheWay, fmtPositionPrice, lineMove, orderLines, positionLevels, rTargetPrice, spreadBars, spreadClosePlan, spreadClosers, spreadPctPrice, spreadWeights, stopLocked, stopPlan, targetGain, targetPlan, targetRoom, tradierSymbol } from '../core/positions.js';
 import { sessionVwap } from '../core/trade-page.js';
 import { schwabStopDuration } from '../services/schwab.js';
 import { dailyHistory } from '../services/tradier.js';
@@ -148,11 +150,21 @@ function chartRow() {
   return c && p ? p.rows.find(r => r.symbol === c.symbol) || null : null;
 }
 
-/** the Chart button on a row: opens that position's chart, or closes it when it's the one showing */
+/** the open chart's spread in the last Schwab read, or null (a spread's chart is keyed by the spread's key) */
+function chartSpread() {
+  const c = state.posChart, p = state.positions;
+  return c && c.spread && p ? (p.spreads || []).find(s => s.key === c.symbol) || null : null;
+}
+
+const spreadWords = n => `${n.toLocaleString('en-US')} ${n === 1 ? 'spread' : 'spreads'}`;
+
+/** the Chart button on a row or a spread: opens that position's chart, or closes it when it's the one showing */
 export function togglePositionChart(symbol) {
   if (state.posChart && state.posChart.symbol === symbol) { closePositionChart(); return; }
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
-  const c = { symbol, option: !!(row && row.tradeAs === 'OPTION'), label: row ? row.label : symbol, five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null,
+  const spread = !row && state.positions ? (state.positions.spreads || []).find(s => s.key === symbol) || null : null;
+  const c = { symbol, option: !!(row && row.tradeAs === 'OPTION') || !!spread, label: row ? row.label : spread ? spread.label : symbol,
+    spread: !!spread, legs: spread ? spread.legs.map(l => l.symbol) : [], weights: spread ? spreadWeights(spread) : [], five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null,
     closePrice: null, closeQty: null, closeGain: null, drag: null, on: 'fund', under: '' };
   c.sets = { fund: { five: c.five, daily: c.daily } };
   state.posChart = c;
@@ -228,22 +240,29 @@ function loadBars(c) {
   for (const kind of PANES) loadPane(c, kind); // both at once, each drawn when it lands
 }
 
+/** one symbol's bars for a pane: the last two weeks of 5-minute bars, or about a year of daily ones */
+async function paneBars(sym, five) {
+  return five
+    ? (await fetchFiveMinuteBars(sym)).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }))
+    : await dailyHistory(sym);
+}
+
 async function loadPane(c, kind) {
   const on = c.on, five = kind === 'five', sym = tradierSymbol(on === 'under' ? c.under : c.symbol), name = on === 'under' ? c.under : '';
   let bars = [], all = [], error = '';
   try {
-    all = five
-      ? (await fetchFiveMinuteBars(sym)).map(b => ({ date: (b.t || '').slice(0, 10), time: (b.t || '').slice(11, 16), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }))
-      : await dailyHistory(sym);
+    // a spread: the legs' bars netted in ratio, at every bar any leg traded
+    all = c.spread ? spreadBars(await Promise.all(c.legs.map(l => paneBars(tradierSymbol(l), five))), c.weights) : await paneBars(sym, five);
     bars = five ? latestSession(all) : all;
-    error = bars.length ? '' : c.option && !name ? (five ? `Tradier shows no trades in ${c.label} in the last two weeks.` : `Tradier has no daily history for ${c.label}.`)
+    error = bars.length ? '' : c.spread ? (five ? `Tradier shows no 5-minute bars where every leg of ${c.label} has traded in the last two weeks.` : `Tradier has no daily history for every leg of ${c.label}.`)
+      : c.option && !name ? (five ? `Tradier shows no trades in ${c.label} in the last two weeks.` : `Tradier has no daily history for ${c.label}.`)
       : five ? `Tradier shows no 5-minute bars for ${name || c.symbol} in the last two weeks.` : `Tradier has no daily history for ${name || c.symbol}.`;
   } catch(e) {
-    error = five ? `Tradier would not send ${name || (c.option ? 'this contract' : c.symbol)}'s 5-minute bars. They need a brokerage-linked key.` : 'Could not load the daily chart from Tradier.';
+    error = five ? `Tradier would not send ${name || (c.spread ? 'the legs' : c.option ? 'this contract' : c.symbol)}'s 5-minute bars. They need a brokerage-linked key.` : 'Could not load the daily chart from Tradier.';
   }
   if (state.posChart !== c) return; // closed while it loaded
   const p = c.sets[on][kind];
-  Object.assign(p, { bars, error, loading: false, vwap: five ? sessionVwap(bars) : [], mas: paneAverages(all.slice(0, all.length - bars.length), bars) });
+  Object.assign(p, { bars, error, loading: false, vwap: five && !c.spread ? sessionVwap(bars) : [], mas: paneAverages(all.slice(0, all.length - bars.length), bars) });
   p.view = rangeView(p);
   renderPositionChart();
 }
@@ -265,7 +284,8 @@ export function togglePosChartInd(id) {
 }
 
 function renderIndicatorChips() {
-  const html = INDICATORS.map(i => {
+  const spread = !!(state.posChart && state.posChart.spread); // a spread's net bars have no volume of their own, so no VWAP or Vol
+  const html = INDICATORS.filter(i => !spread || (i.id !== 'vwap' && i.id !== 'vol')).map(i => {
     const on = indicatorOn(i.id);
     return `<button class="filter-btn pos-ind${on ? ' active' : ''}" aria-pressed="${on}" data-action="togglePosChartInd" data-arg="${i.id}" title="${on ? 'Hide' : 'Show'} ${i.label}${i.id === 'vwap' ? ' (5 min)' : ''}"><i style="background:var(${i.color})"></i>${i.label}</button>`;
   }).join('');
@@ -306,9 +326,36 @@ function setTargetInputs() {
 function gainText(c) {
   if (!c) return '';
   if (c.closeGain > 0) return String(c.closeGain);
-  const row = chartRow(), g = row && c.closePrice > 0 ? targetGain(row, c.closePrice, 1) : null;
-  return g && g.pct !== null && g.pct > 0 ? g.pct.toFixed(1) : '';
+  const g = c.closePrice > 0 ? gainPctAt(c, c.closePrice) : null;
+  return g !== null && g > 0 ? g.toFixed(1) : '';
 }
+
+/** how much the Close tool can close: the shares or contracts held, or a spread's spreads */
+function heldOf(c) {
+  if (c && c.spread) { const s = chartSpread(); return s ? s.units : 0; }
+  const row = chartRow();
+  return row ? Math.abs(row.qty) : 0;
+}
+
+/** the close limit that's pct percent of profit: over your cost (under it on a short or a credit spread), 0 when it can't be */
+function gainPrice(c, pct) {
+  if (c && c.spread) { const s = chartSpread(); return s && pct > 0 ? spreadPctPrice(s, pct) : 0; }
+  const row = chartRow();
+  return row && pct > 0 ? pctTargetPrice(row, pct) : 0;
+}
+
+/** a close limit as a percent of profit on your cost, or null without one */
+function gainPctAt(c, price) {
+  if (c && c.spread) {
+    const s = chartSpread();
+    return s && s.avg > 0 ? (s.kind === 'debit' ? price - s.avg : s.avg - price) / s.avg * 100 : null;
+  }
+  const row = chartRow(), g = row ? targetGain(row, price, 1) : null;
+  return g ? g.pct : null;
+}
+
+/** whether there's a cost to count a percent profit from */
+const hasCost = c => { const base = c && c.spread ? chartSpread() : chartRow(); return !!(base && base.avg > 0); };
 
 // percent profit chips, shared with the close ticket: options move in bigger steps than stocks
 const PROFIT_PCTS = { stock: [5, 10, 20, 30, 50], option: [25, 50, 75, 100, 200] };
@@ -319,13 +366,13 @@ export const profitTitle = (row, at) => at > 0 ? fmtPositionPrice(at, row.tradeA
 
 /** typing the Close tool's profit: the limit follows, that percent over your cost on the order grid; the input keeps what was typed */
 export function posChartCloseGainChanged() {
-  const c = state.posChart, row = chartRow();
+  const c = state.posChart;
   if (!c) return;
-  const pct = parseFloat(document.getElementById('posChartCloseGain').value), price = row && pct > 0 ? pctTargetPrice(row, pct) : 0;
+  const pct = parseFloat(document.getElementById('posChartCloseGain').value), price = gainPrice(c, pct);
   c.closeGain = price ? pct : null;
   if (price) {
     c.closePrice = price;
-    if (!(c.closeQty > 0)) { c.closeQty = Math.abs(row.qty); document.getElementById('posChartCloseQty').value = String(c.closeQty); }
+    if (!(c.closeQty > 0)) { c.closeQty = heldOf(c); document.getElementById('posChartCloseQty').value = String(c.closeQty); }
   }
   document.getElementById('posChartClosePrice').value = priceText(c, c.closePrice);
   renderPositionChart();
@@ -333,12 +380,12 @@ export function posChartCloseGainChanged() {
 
 /** a % profit chip on the Close tool: the limit that far over your cost (under it on a short), every share when no count is set */
 export function setPosCloseGain(pct) {
-  const c = state.posChart, row = chartRow();
-  const price = c && row && pct > 0 ? pctTargetPrice(row, pct) : 0;
+  const c = state.posChart;
+  const price = c ? gainPrice(c, pct) : 0;
   if (!price) return;
   c.closeGain = pct;
   c.closePrice = price;
-  if (!(c.closeQty > 0)) c.closeQty = Math.abs(row.qty);
+  if (!(c.closeQty > 0)) c.closeQty = heldOf(c);
   setTargetInputs();
   renderPositionChart();
 }
@@ -346,7 +393,7 @@ export function setPosCloseGain(pct) {
 /** the % box: what was typed, else the count as a percent of what you hold (one decimal, none when whole) */
 function pctText(qty, typed) {
   if (typed > 0) return String(typed);
-  const row = chartRow(), held = row ? Math.abs(row.qty) : 0;
+  const held = heldOf(state.posChart);
   if (!(qty > 0) || !(held > 0)) return '';
   const pct = Math.round(qty / held * 1000) / 10;
   return String(pct);
@@ -368,26 +415,26 @@ export function posChartCloseChanged() {
 
 /** typing the Close tool's percent: that share of what you hold, at least one; 100 or more is every share */
 export function posChartClosePctChanged() {
-  const c = state.posChart, row = chartRow();
+  const c = state.posChart;
   if (!c) return;
-  const pct = parseFloat(document.getElementById('posChartClosePct').value);
+  const pct = parseFloat(document.getElementById('posChartClosePct').value), held = heldOf(c);
   c.closePct = pct > 0 ? pct : null;
-  c.closeQty = c.closePct && row ? closeQty(row, c.closePct / 100) : null;
+  c.closeQty = c.closePct && held ? closeQty(held, c.closePct / 100) : null;
   document.getElementById('posChartCloseQty').value = c.closeQty >= 1 ? String(c.closeQty) : '';
   renderPositionChart();
 }
 
 /** a Close portion chip: that share of what you hold, at least one; All is every share (the review makes room for it) */
 export function setPosClosePortion(fraction) {
-  const c = state.posChart, row = chartRow();
-  if (!c || !row) return;
-  c.closeQty = closeQty(row, fraction);
+  const c = state.posChart, held = heldOf(c);
+  if (!c || !held) return;
+  c.closeQty = closeQty(held, fraction);
   c.closePct = null;
   setTargetInputs();
   renderPositionChart();
 }
 
-const closeQty = (row, fraction) => { const held = Math.abs(row.qty); return fraction >= 1 ? held : Math.min(held, Math.max(1, Math.floor(held * fraction + 1e-9))); };
+const closeQty = (held, fraction) => fraction >= 1 ? held : Math.min(held, Math.max(1, Math.floor(held * fraction + 1e-9)));
 
 /** typing in the stop price; the input keeps what was typed */
 export function posChartStopChanged() {
@@ -482,9 +529,9 @@ function pickTarget(price) {
   const c = state.posChart;
   if (!c || !(price > 0)) return;
   const ticked = c.option ? optionPriceTick(price) : priceTick(price);
-  const tool = state.posChartTool;
+  const tool = toolOf(c);
   if (tool === 'add') c.addStop = ticked; else if (tool === 'stop') c.stop = ticked;
-  else if (tool === 'close') { c.closePrice = ticked; c.closeGain = null; if (!(c.closeQty > 0) && chartRow()) c.closeQty = Math.abs(chartRow().qty); }
+  else if (tool === 'close') { c.closePrice = ticked; c.closeGain = null; if (!(c.closeQty > 0) && heldOf(c)) c.closeQty = heldOf(c); }
   else { c.price = ticked; c.r = null; }
   setTargetInputs();
   renderPositionChart();
@@ -653,34 +700,74 @@ function renderFundLink(c, row) {
   }
 }
 
+/** what a spread's Close tool says under its inputs, and whether it can go to review: the plan the spread close sheet makes */
+function spreadCloseStatus(c, s) {
+  const p = state.positions;
+  if (!p) return { text: state.positionsBusy ? 'Reading Schwab…' : 'Positions are not loaded.', ok: false };
+  if (!s) return { text: `Schwab no longer shows the ${c.label} spread.`, ok: false, warn: true };
+  if (p.stopsMissing) return { text: 'Orders unavailable: Schwab did not return this account\'s orders. Try again in a moment.', ok: false, warn: true };
+  const debit = s.kind === 'debit', net = debit ? 'credit' : 'debit', px = v => fmtPositionPrice(v, 'OPTION');
+  if (!(c.closePrice > 0)) return { text: `Tap the chart where you want to close, or type a net ${net}.`, ok: false };
+  if (!(c.closeQty > 0)) return { text: 'Pick how many spreads to close: a portion or a count.', ok: false };
+  const plan = spreadClosePlan(s, p.orders, { type: 'LIMIT', qty: c.closeQty, price: c.closePrice, duration: schwabStopDuration() });
+  if (plan.error) return { text: plan.error, ok: false, warn: true };
+  const each = s.avg > 0 ? (debit ? plan.price - s.avg : s.avg - plan.price) : null, gain = each === null ? null : each * plan.qty * s.mult;
+  const r = gain !== null && s.maxLoss ? gain / (s.maxLoss / s.units * plan.qty) : null;
+  const g = gain === null ? '' : ` · <span class="${gain >= 0 ? 'pos-locked' : 'pos-loss'}">${gain >= 0 ? '+' : '−'}${fmt$(Math.abs(gain))}</span> (${each >= 0 ? '+' : '−'}${Math.abs(each / s.avg * 100).toFixed(1)}%) on the ${s.kind}${r === null ? '' : ` · ${r.toFixed(1)}R`}`;
+  const through = debit ? plan.price <= s.price : plan.price >= s.price;
+  const notes = [through ? `At or ${debit ? 'below' : 'above'} the mark ${px(s.price)}: it likely fills right away.` : '',
+    plan.steps.some(st => st.kind === 'cancel') ? 'All of it: the review cancels the orders that close its legs first.' : ''].filter(Boolean).join(' ');
+  return { text: `<strong>Close ${plan.qty.toLocaleString('en-US')} of ${spreadWords(s.units)} for a net ${net} of ${px(plan.price)}</strong>${g}${notes ? `<span class="shares-detail">${esc(notes)}</span>` : ''}`, ok: true, html: true };
+}
+
+/** a spread's chart has one tool, Close: its form, summary and review (the spread close sheet) */
+function renderSpreadClose(c, spread) {
+  for (const [id, show] of [['posTargetForm', false], ['posStopForm', false], ['posAddForm', false], ['posChartCloseForm', true]]) document.getElementById(id).style.display = show ? '' : 'none';
+  document.getElementById('posChartTapHint').textContent = `Tap the chart to set the net ${spread && spread.kind === 'credit' ? 'debit' : 'credit'}`;
+  const close = spreadCloseStatus(c, spread), sum = document.getElementById('posChartCloseSummary');
+  sum.className = 'pos-target-sum' + (close.warn ? ' warn' : '');
+  sum.innerHTML = close.html ? close.text : esc(close.text);
+  const review = document.getElementById('posChartCloseReview');
+  review.dataset.arg = c.symbol;
+  review.disabled = !close.ok || state.posTradeBusy;
+  drawPositionChart();
+}
+
 export function renderPositionChart() {
   const c = state.posChart, open = !!c && state.positionsView;
   document.getElementById('posChartSection').style.display = open ? '' : 'none';
   document.getElementById('positionsSplit').classList.toggle('open', open && !positionChartInCards()); // beside the table; the cards hold it under its card
   if (!c) return;
-  const row = chartRow();
+  const row = chartRow(), spread = chartSpread();
   document.getElementById('posChartTitle').textContent = c.label;
   document.getElementById('posChartMeta').textContent = row
     ? `${row.qty > 0 ? 'Long' : 'Short'} ${units(c.option, Math.abs(row.qty))} · avg ${row.avg > 0 ? fmt$(row.avg) : '—'} · now ${fmt$(row.price)}`
-    : '';
+    : spread ? `${spread.kind === 'debit' ? 'Long' : 'Short'} ${spreadWords(spread.units)} · ${spread.kind} ${spread.avg > 0 ? fmt$(spread.avg) : '—'} · now ${fmt$(spread.price)}` : '';
   // a pane without bars hides, and says why here: still loading, or what Tradier answered
   const notes = c.error ? [c.error] : PANES.filter(k => !c[k].bars.length).map(k => c[k].loading ? `Loading the ${chartName(c)} ${k === 'five' ? '5-minute' : 'daily'} chart…` : c[k].error);
   document.getElementById('posChartStatus').textContent = notes.filter(Boolean).join(' ');
   for (const k of PANES) document.getElementById('posCol' + SUFFIX[k]).style.display = c[k].bars.length ? '' : 'none';
   document.getElementById('posChartPlot').style.display = c.five.bars.length || c.daily.bars.length ? '' : 'none';
   document.getElementById('posTargetQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
-  document.getElementById('posChartCloseQtyLabel').textContent = `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
+  document.getElementById('posChartCloseQtyLabel').textContent = c.spread ? 'Spreads to close' : `${c.option ? 'Contracts' : 'Shares'} to ${row && row.qty < 0 ? 'buy back' : 'sell'}`;
+  // a spread closes for a net credit (a debit spread) or a net debit (a credit spread)
+  document.getElementById('posChartClosePriceLabel').textContent = c.spread ? `Net ${spread && spread.kind === 'credit' ? 'debit' : 'credit'}` : 'Limit price';
   renderIndicatorChips();
   renderFundLink(c, row);
+  const held = heldOf(c), many = n => c.spread ? spreadWords(n) : units(c.option, n);
   document.getElementById('posChartClosePortions').innerHTML = pctChipRow((f, label) => {
-    const qty = row ? closeQty(row, f) : 0, on = qty > 0 && c.closeQty === qty;
-    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosClosePortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
+    const qty = held ? closeQty(held, f) : 0, on = qty > 0 && c.closeQty === qty;
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosClosePortion" data-arg="${f}"${qty ? ` title="${many(qty)}"` : ' disabled'}>${label}</button>`;
   });
-  document.getElementById('posChartCloseGainChips').innerHTML = profitPcts(row).map(p => {
-    const at = row ? pctTargetPrice(row, p) : 0, on = at > 0 && c.closeGain === p;
-    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosCloseGain" data-arg="${p}" title="${esc(profitTitle(row, at))}"${at > 0 ? '' : ' disabled'}>+${p}%</button>`;
+  document.getElementById('posChartCloseGainChips').innerHTML = profitPcts(c.spread ? { tradeAs: 'OPTION' } : row).map(p => {
+    const at = gainPrice(c, p), on = at > 0 && c.closeGain === p;
+    const title = !c.spread ? profitTitle(row, at) : at > 0 ? fmtPositionPrice(at, 'OPTION') : !spread || !(spread.avg > 0) ? 'Schwab shows no cost basis for this spread.'
+      : spread.kind === 'credit' ? 'Past zero' : "Past the spread's width";
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosCloseGain" data-arg="${p}" title="${esc(title)}"${at > 0 ? '' : ' disabled'}>+${p}%</button>`;
   }).join('');
-  document.getElementById('posChartCloseGain').disabled = !(row && row.avg > 0);
+  document.getElementById('posChartCloseGain').disabled = !hasCost(c);
+  document.getElementById('posToolSeg').style.display = c.spread ? 'none' : '';
+  if (c.spread) { renderSpreadClose(c, spread); return; }
 
   const room = row ? targetRoom(row) : null;
   document.getElementById('posTargetPortions').innerHTML = pctChipRow((f, label) => {
@@ -738,18 +825,28 @@ export function renderPositionChart() {
   drawPositionChart();
 }
 
-// the levels drawn: your average cost only while Avg is on
+// the levels drawn: your average cost only while Avg is on; a spread's net cost and the spread closes working on it
 const levels = row => row ? positionLevels(row).filter(l => l.kind !== 'avg' || state.posChartAvg) : [];
+function levelsOf(c, row) {
+  if (!c || !c.spread) return levels(row);
+  const s = chartSpread(), p = state.positions;
+  if (!s) return [];
+  const avg = s.avg > 0 && state.posChartAvg ? [{ kind: 'avg', price: s.avg, qty: s.units }] : [];
+  return [...avg, ...spreadClosers(s, p ? p.orders : []).filter(x => x.price > 0).map(x => ({ kind: 'target', name: 'close', price: x.price, qty: x.qty }))];
+}
+
+/** what a tap on the chart sets: the picked tool, or on a spread's chart its close limit (the one tool it has) */
+const toolOf = c => c && c.spread ? 'close' : state.posChartTool;
 
 /** the price the picked tool has set: the target, the stop, the close limit or Move breakeven's stop */
-const toolPrice = c => ({ add: c.addStop, stop: c.stop, close: c.closePrice })[state.posChartTool] ?? (state.posChartTool === 'target' ? c.price : null);
+const toolPrice = c => ({ add: c.addStop, stop: c.stop, close: c.closePrice })[toolOf(c)] ?? (toolOf(c) === 'target' ? c.price : null);
 
 function chartGeom(p, w) {
   const c = state.posChart, row = chartRow(), d = c.drag;
   // the pane a line is dragged on holds its scale still, so the line stays under the pointer; the other pane fits it in
   if (d && d.pane === p.kind && d.g.w === w) return d.g;
   const at = v => toChart(c, row, v || 0) || 0;
-  return candleGeom(p.bars, p.view, w, [...levels(row).map(l => at(l.price)), at(toolPrice(c)), at(state.posChartTool === 'add' && c.addPrice), (d && d.moved && d.at) || 0]);
+  return candleGeom(p.bars, p.view, w, [...levelsOf(c, row).map(l => at(l.price)), at(toolPrice(c)), at(toolOf(c) === 'add' && c.addPrice), (d && d.moved && d.at) || 0]);
 }
 
 /** the session before the 5-minute chart's latest, from the daily bars: its high, low and close, or null */
@@ -765,16 +862,17 @@ function chartLines(c, row) {
   const size = q => ' ×' + q.toLocaleString('en-US');
   // on the underlying's chart every line of the fund's sits where the underlying puts the fund at it, labelled with the fund's price
   const tag = onUnder(c) ? c.symbol + ' ' : '', at = v => toChart(c, row, v);
-  const lines = levels(row).map(l => l.kind === 'avg'
+  const lines = levelsOf(c, row).map(l => l.kind === 'avg'
     ? { price: at(l.price), color: color('--blue'), label: tag + 'avg ' + l.price.toFixed(2), left: true }
-    : { price: at(l.price), color: color(l.kind === 'stop' ? '--red' : '--green'), label: `${tag}${l.kind} ${l.price.toFixed(2)}${size(l.qty)}` });
-  if (state.posChartTool === 'add') {
+    : { price: at(l.price), color: color(l.kind === 'stop' ? '--red' : '--green'), label: `${tag}${l.name || l.kind} ${l.price.toFixed(2)}${size(l.qty)}` });
+  const tool = toolOf(c);
+  if (tool === 'add') {
     const a = row && c.addStop > 0 ? breakevenAdd(row, { stop: c.addStop, price: c.addPrice }) : null;
     if (c.addStop > 0) lines.push({ price: at(c.addStop), color: color('--red'), label: `${tag}BE stop ${c.addStop.toFixed(2)}${a && !a.error ? size(a.newQty) : ''}`, solid: true });
     if (c.addPrice > 0) lines.push({ price: at(c.addPrice), color: color('--blue'), label: `${tag}add ${c.addPrice.toFixed(2)}${a && !a.error ? size(a.qty) : ''}`, solid: true });
-  } else if (state.posChartTool === 'stop') {
+  } else if (tool === 'stop') {
     if (c.stop > 0) lines.push({ price: at(c.stop), color: color('--red'), label: `${tag}new stop ${c.stop.toFixed(2)}`, solid: true });
-  } else if (state.posChartTool === 'close') {
+  } else if (tool === 'close') {
     if (c.closePrice > 0) lines.push({ price: at(c.closePrice), color: color('--amber'), label: `${tag}close ${c.closePrice.toFixed(2)}${c.closeQty > 0 ? size(c.closeQty) : ''}${c.closeGain > 0 ? ` · +${c.closeGain}%` : ''}`, solid: true });
   } else if (c.price > 0) lines.push({ price: at(c.price), color: color('--green'), label: `${tag}new target ${c.price.toFixed(2)}${c.qty > 0 ? size(c.qty) : ''}${c.r > 0 ? ` · ${c.r}R` : ''}`, solid: true });
   // a line being dragged: solid at where it would go, the order's own line still dashed where it is
@@ -812,7 +910,7 @@ function drawPane(c, p, row) {
   const lines = [...(five ? priorDayLines(c) : []), ...chartLines(c, row)];
   const css = getComputedStyle(document.documentElement);
   const mas = INDICATORS.filter(i => i.n && indicatorOn(i.id) && p.mas[i.id]).map(i => ({ values: p.mas[i.id], color: css.getPropertyValue(i.color).trim() }));
-  paintCandles(canvas, g, p.bars, { lines, hover: { index: p.hover, y: p.hoverY }, vwap: five && indicatorOn('vwap') ? p.vwap : null, ema8: false, mas, volume: indicatorOn('vol') });
+  paintCandles(canvas, g, p.bars, { lines, hover: { index: p.hover, y: p.hoverY }, vwap: five && indicatorOn('vwap') ? p.vwap : null, ema8: false, mas, volume: indicatorOn('vol') && !c.spread });
   return g;
 }
 
@@ -829,7 +927,7 @@ export function drawPositionChart() {
   const b = p && p.bars[p.hover];
   if (!b || !g || p.hover < g.start || p.hover >= g.end) { readout.textContent = ''; return; }
   const onPlot = p.hoverY >= g.padT && p.hoverY <= g.h - g.padB;
-  const at = g.price(p.hoverY), under = onUnder(c), now = under ? (p.bars[p.bars.length - 1]?.close || 0) : row ? row.price : 0;
+  const sp = c.spread ? chartSpread() : null, at = g.price(p.hoverY), under = onUnder(c), now = under ? (p.bars[p.bars.length - 1]?.close || 0) : row ? row.price : sp ? sp.price : 0;
   const mine = row ? fromChart(c, row, at) : 0; // the position's price there: itself, or the fund's when the underlying is at it
   // Move breakeven: how many to add for a stop right here
   const add = onPlot && row && mine > 0 && state.posChartTool === 'add' ? breakevenAdd(row, { stop: mine, price: c.addPrice }) : null;
