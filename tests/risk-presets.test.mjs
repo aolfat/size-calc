@@ -1,7 +1,7 @@
 // Run with: node --test
 // The risk strip's preset chips: one row, every chip its dollars over its percent of the account (owner request), smallest
 // first. Each keeps the unit it was added in (a % chip follows the account size). Edit puts a × on each chip and an add
-// box that takes dollars or a percent; at most 6 of each, synced with your account.
+// box that takes dollars or a percent; as many as you like of either, synced with your account.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from './helpers/app.mjs';
@@ -93,18 +93,28 @@ test('add a preset in dollars or in percent; a typed % wins over the $ unit; sav
   assert.equal(storage.get('risk_usd_presets'), '[75,100,250,500,1000]');
   assert.equal(state.riskAddNote, 'Added $75.');
   assert.equal(elements.get('riskAddInput').value, '', 'the box clears for the next one');
-  add(run, elements, '0.1', 'pct');
-  assert.equal(storage.get('risk_pct_presets'), undefined, 'the % list already has six');
-  assert.equal(state.riskAddNote, 'Six percent presets at most. Remove one first.');
+  add(run, elements, '0.1', 'pct'); // a 7th percent preset: no cap on either kind (owner request)
+  assert.equal(storage.get('risk_pct_presets'), '[0.1,0.125,0.25,0.5,1,2,3]');
+  assert.equal(state.riskAddNote, 'Added .10%.');
   run("removeRiskPreset('pct', 3)");
-  add(run, elements, '0.1', 'pct');
-  assert.equal(storage.get('risk_pct_presets'), '[0.1,0.125,0.25,0.5,1,2]');
   run("removeRiskPreset('pct', 2)");
   add(run, elements, '1.5%'); // the $ unit is picked, the % sign says otherwise
   assert.equal(storage.get('risk_pct_presets'), '[0.1,0.125,0.25,0.5,1,1.5]');
   add(run, elements, '$1,200');
   assert.equal(storage.get('risk_usd_presets'), '[75,100,250,500,1000,1200]');
   assert.deepEqual(chips(elements).map(c => c.split(' ')[2]), ['$50', '$62.50', '$75', '$100', '$125', '$250', '$500', '$750', '$1,000', '$1,200']);
+});
+
+test('no cap on presets: past 6 chips they wrap into even rows of 6 at most', async () => {
+  const storage = new Map();
+  const { run, elements } = await account({ storage });
+  for (const v of ['10', '20', '30', '40', '60', '70', '80']) add(run, elements, v);
+  assert.equal(JSON.parse(storage.get('risk_usd_presets')).length, 11);
+  assert.equal(chips(elements).length, 14);
+  assert.equal(elements.get('riskPresets').style.gridTemplateColumns, 'repeat(5, minmax(0, 1fr))', '14 chips: three even rows of 5');
+  for (const v of [10, 20]) run(`removeRiskPreset('usd', ${v})`);
+  assert.equal(chips(elements).length, 12);
+  assert.equal(elements.get('riskPresets').style.gridTemplateColumns, 'repeat(6, minmax(0, 1fr))', '12 chips: two rows of 6');
 });
 
 test('add refuses what isn\'t a preset and what is already there', async () => {

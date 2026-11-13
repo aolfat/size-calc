@@ -1,16 +1,16 @@
 // Model books as a Claude session sees them (docs/claude-access.md), pure: what claude_model_books_read returns, books
-// and examples in words, and a book or example you describe ({ book: 'Best longs', setups: ['EMA 21 bounce'] }) turned
+// and examples in words, and a book or example you describe ({ book: 'Best longs', setups: ['EMA 21 bounce'], tactics: ['5m ORB'] }) turned
 // into the changes claude_model_books_save and the claude-model-example function take: the book is optional (by name,
-// a new name makes the book), setups matched to My setups or added to your library, as the review's names are. Nothing here reads the
+// a new name makes the book), setups and entry tactics matched to your choices or added to your library, as the review's names are. Nothing here reads the
 // network or a file.
 import { randomUUID } from 'node:crypto';
 import { buildLibrary } from '../src/core/journal-labels.js';
-import { modelExamplesFor, modelSetupKeys } from '../src/core/model-books.js';
+import { modelExamplesFor, modelSetupKeys, modelTacticKeys } from '../src/core/model-books.js';
 import { librarian } from './journal-lib.mjs';
 
 /** everything a book and an example may say */
 export const BOOK_FIELDS = ['name', 'description'];
-export const EXAMPLE_FIELDS = ['book', 'title', 'notes', 'setups'];
+export const EXAMPLE_FIELDS = ['book', 'title', 'notes', 'setups', 'tactics'];
 
 /** a short handle for a book or an example: the first 8 of its id */
 export const shortId = id => String(id).slice(0, 8);
@@ -37,11 +37,12 @@ export const bookBy = (m, ref) => byId(m.books, ref) || m.books.find(b => norm(b
 export const exampleBy = (m, ref) => byId(m.examples, ref);
 
 const clip = (s, n) => s.length > n ? `${s.slice(0, n - 1)}…` : s;
-/** an example's line: handle, title, its setups, the start of its notes */
+/** an example's line: handle, title, its setups, its entry tactics, the start of its notes */
 export function exampleLine(m, e) {
   const setups = modelSetupKeys(e.setup_keys, m.lib).map(k => m.lib.nameOf('setup', k, 'both'));
+  const tactics = modelTacticKeys(e.tactic_keys, m.lib).map(k => m.lib.nameOf('tactic', k));
   const notes = String(e.notes || '').replace(/\s+/g, ' ').trim();
-  return [shortId(e.id), e.title, setups.join(', '), notes && clip(notes, 80)].filter(Boolean).join(' · ');
+  return [shortId(e.id), e.title, setups.join(', '), tactics.length && `tactics: ${tactics.join(', ')}`, notes && clip(notes, 80)].filter(Boolean).join(' · ');
 }
 
 /** every book (or one) with its examples, newest first, then the examples in no book */
@@ -87,8 +88,9 @@ export function planBook(m, book, input, opts = {}) {
 /**
  * A new example (example null: what the claude-model-example function takes, as add) or a change to one (the changes
  * claude_model_books_save takes). book: optional, a name or handle, a new name makes the book; null (or left out of a
- * new example) is no book. setups: names or keys of My setups, each one new added as + New setup does; the list given replaces the
- * example's. Fields left out stay; null clears notes or setups. library is for claude_journal_save, saved first.
+ * new example) is no book. setups: names or keys of My setups, each one new added as + New setup does; tactics: names or
+ * keys of entry tactics, each one new added to your choices; the list given replaces the example's. Fields left out stay;
+ * null clears notes, setups or tactics. library is for claude_journal_save, saved first.
  * @param {ReturnType<typeof booksFrom>} m @param {any} example @param {Record<string, any>} input @param {{ newId?: () => string }} [opts]
  * @returns {{ library: any[], changes: { books: any[], examples: any[] }, add: any, said: string[] }}
  */
@@ -114,15 +116,16 @@ export function planExample(m, example, input, opts = {}) {
     const notes = text(input, 'notes', 4000);
     if (notes !== (example?.notes || '')) fields.notes = notes;
   }
-  if ('setups' in input) {
-    const raw = input.setups;
+  for (const [field, kind, column, keysOf] of /** @type {const} */ ([['setups', 'setup', 'setup_keys', modelSetupKeys], ['tactics', 'tactic', 'tactic_keys', modelTacticKeys]])) {
+    if (!(field in input)) continue;
+    const raw = input[field];
     const list = raw === null || raw === '' ? [] : Array.isArray(raw) ? raw : [raw];
-    const keys = [...new Set(list.map(ref => names.itemKey('setup', ref)))];
-    if (keys.length > 100) throw new Error('setups: 100 at most');
-    const had = modelSetupKeys(example?.setup_keys, m.lib);
-    if (keys.length !== had.length || keys.some(k => !had.includes(k))) fields.setup_keys = keys;
+    const keys = [...new Set(list.map(ref => names.itemKey(kind, ref)))];
+    if (keys.length > 100) throw new Error(`${field}: 100 at most`);
+    const had = keysOf(example?.[column], m.lib);
+    if (keys.length !== had.length || keys.some(k => !had.includes(k))) fields[column] = keys;
   }
-  const add = example ? null : { book_id: bookId, title: fields.title, notes: fields.notes || '', setup_keys: fields.setup_keys || [] };
+  const add = example ? null : { book_id: bookId, title: fields.title, notes: fields.notes || '', setup_keys: fields.setup_keys || [], tactic_keys: fields.tactic_keys || [] };
   const examples = example && Object.keys(fields).length ? [{ id: example.id, fields }] : [];
   return { library: names.library, changes: { books, examples }, add, said: names.said };
 }

@@ -739,6 +739,13 @@ export function setupsOf(t, side = tradeSide(t)) {
     .filter(k => !seen.has(k) && seen.add(k)).map(key => ({ key, name: lib.nameOf('setup', key, side), ...setupGroups(lib, key, side) }));
 }
 
+/** a trade's entry tactics' keys, merges followed, once each, in the order they were added */
+export function tacticKeysOf(t) {
+  if (!state.journalReview) return [];
+  const lib = library();
+  return [...new Set(labelsOf(t, 'tactic').map(l => lib.resolve('tactic', l.value)))];
+}
+
 /** whether a trade fits the setup filter: a kind ('action:bounce': any bounce), a level ('level:ema21'), or one setup's key */
 export function setupMatches(t, filter) {
   if (!filter) return true;

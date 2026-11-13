@@ -32,6 +32,7 @@ The rest of the notebook (the check-in, planned_at) stays out of reach, and so d
 Rule answers merge one rule at a time, and a null answer clears that rule's.
 `claude_model_books_read` (migration 20261108000000_claude_model_books.sql) returns that owner's books, examples (no image links) and library.
 `claude_model_books_save` makes and renames books and edits an example's title, notes, setups and book; it can't delete either, and a new example only comes with its screenshot, below.
+Migration 20261122000000_model_example_tactics.sql makes all three again with an example's entry tactics (tactic_keys): the read returns them, the save edits them, and the add takes them.
 `claude_features_read` (migration 20261118000000_claude_features_read.sql) returns that owner's trade feature stamps (trade_features, docs/journal-features.md), read only; it's its own function because stamps run a few KB a trade and only `features` needs them.
 Every row it touches is the key owner's; the tables' own checks still apply.
 
@@ -92,8 +93,8 @@ Logic is in `scripts/journal-lib.mjs`, pure, tested in tests/claude-access.test.
 - `node scripts/journal.mjs week <any day of it> ['<json>'] [--dry-run]` and `month <YYYY-MM> ...`: without JSON, the week (by its Monday) or month: its P&L from the exits taken in it, its trades, the rules the last one set (numbered, how the days checked each, Kept it?, how they went), each part's grade and note and the rules for next one with what's missing; with it, saves the review and prints it after.
 - `node scripts/journal.mjs books [book]`: every book (or one) with its examples, newest first, each with its handle (the first 8 of its id), then the examples in no book.
 - `node scripts/journal.mjs book [book] '<json>' [--dry-run]`: makes a book (`name`, `description`), or changes the one named.
-- `node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]`: adds an example with its screenshot (`title`, `notes`, `setups`, and `book` if you want one).
-- `node scripts/journal.mjs example <handle> '<json>' [--dry-run]`: changes an example's `book`, `title`, `notes` or `setups`.
+- `node scripts/journal.mjs add-example <image file> '<json>' [--dry-run]`: adds an example with its screenshot (`title`, `notes`, `setups`, `tactics`, and `book` if you want one).
+- `node scripts/journal.mjs example <handle> '<json>' [--dry-run]`: changes an example's `book`, `title`, `notes`, `setups` or `tactics`.
 
 A review's JSON takes `market`, `marketFor` ('day' or 'trade'), `sector`, `setups`, `tactics`, `tags`, `mistakes`, `grade` (A to F), `plan` (yes, partly, no), `entryNote`, `exitNote` and `stop`; fields left out stay, null clears one.
 Names match your choices in either side's words ("N/A", "Didn't take the stop", "Pennant or flag breakdown") or by key.
@@ -127,6 +128,7 @@ Model books logic is in `scripts/model-books-lib.mjs`, pure, tested in tests/cla
 A book is optional: left out, a new example goes in no book, and `"book": null` takes an example out of its book.
 A book is named by its name or handle; an example's `book` that isn't one of yours is made.
 `setups` are matched the way a review's are, a new one added to My setups (saved first, through claude_journal_save); the list given replaces the example's, and null clears it.
+`tactics` (entry tactics) work the same way, a new one added to your choices; an example's line in `books` lists them after its setups.
 An example's title is 1 to 120 characters and its notes 4000 at most, as in the app.
 The script checks the image before sending it (the function's own reader), and a screenshot over 2 MB has to be shrunk first (`sips -Z 2000 -s format jpeg in.png --out out.jpg` on a Mac).
 If the upload fails after a new book or setup was saved, those stay.

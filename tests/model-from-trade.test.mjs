@@ -48,6 +48,7 @@ test('Add to model book fills the form from the trade, and saving copies its scr
   assert.match(p.body(), /<div class="jr-label">Model books<span class="jr-sub">keep a chart of this trade to study<\/span><\/div>/);
   assert.match(p.body(), /data-action="addTradeToModelBook">\+ Add to model book<\/button>/);
   await p.run(`toggleReviewLabel(${p.t}, 'setup', 'base_breakout')`);
+  await p.run(`toggleReviewLabel(${p.t}, 'tactic', 'pivot15')`);
   await p.run(`reviewNoteSave(${p.t}, 'Bought the break of the base', 'entry')`);
   await p.run(`reviewNoteSave(${p.t}, 'Stopped on the flush', 'exit')`);
 
@@ -58,6 +59,8 @@ test('Add to model book fills the form from the trade, and saving copies its scr
   assert.equal(d.title, 'AAPL · Base breakout · 10/1');
   assert.equal(d.notes, 'Bought the break of the base\n\nStopped on the flush');
   assert.deepEqual([...d.setup_keys], ['base_breakout']);
+  assert.deepEqual([...d.tactic_keys], ['pivot15'], 'the trade\'s entry tactics too');
+  assert.match(p.body(), /class="filter-btn active" aria-pressed="true" data-action="toggleModelTactic" data-arg="pivot15"/);
   assert.match(p.body(), /<input id="modelTradeTitle"[^>]*value="AAPL · Base breakout · 10\/1"/);
   assert.match(p.body(), /<textarea id="modelTradeNotes"[^>]*>Bought the break of the base\n\nStopped on the flush<\/textarea>/);
   assert.match(p.body(), /class="filter-btn active" aria-pressed="true" data-action="toggleModelSetup" data-arg="base_breakout"/);
@@ -79,6 +82,7 @@ test('Add to model book fills the form from the trade, and saving copies its scr
   const [row] = p.examples();
   assert.deepEqual([row.trade_key, row.path, row.width, row.height, row.bytes, row.book_id, row.title], [KEY, copy.to, 1600, 900, 180000, null, 'AAPL base breakout that failed']);
   assert.deepEqual([...row.setup_keys], ['base_breakout']);
+  assert.deepEqual([...row.tactic_keys], ['pivot15']);
   assert.equal(row.notes, 'Bought the break of the base\n\nStopped on the flush');
   assert.equal(p.run('modelBooks.draft'), null);
   assert.match(p.toast(), /Added to Model books\./);

@@ -226,3 +226,59 @@ test('an example moves out of its book to No book, and the book can then be dele
   await a.run('saveModelExample()');
   assert.match(a.body(), /That book is gone/);
 });
+
+test('entry tactics: picked by timeframe in the editor, saved with the example, shown on its card, and browsed By tactic', async () => {
+  const a = await books();
+  await a.run("pasteModelImages([{ type: 'image/png', size: 1200 }])");
+  const picker = a.body().split('mb-tactic-picker')[1].split('</fieldset>')[0];
+  assert.match(picker, /<legend>Entry tactics <span>optional<\/span><\/legend>/);
+  assert.match(picker, /<span class="jr-group-name">15m<\/span><span class="jr-group-chips"><button class="filter-btn" aria-pressed="false" data-action="toggleModelTactic" data-arg="pivot15" title="15m pivot">Pivot<\/button>/, 'grouped by timeframe like every tactic picker');
+  a.run("modelExampleField('title', 'AMD 15m pivot'); toggleModelSetup('base_breakout'); toggleModelTactic('pivot15'); toggleModelTactic('six20'); toggleModelTactic('six20')");
+  await a.run('saveModelExample()');
+  await settle();
+  const row = [...a.supabase.tables.model_examples.values()][0];
+  assert.deepEqual([...row.tactic_keys], ['pivot15']);
+  assert.match(a.body(), /<button class="filter-btn mb-tactic" data-action="selectModelTactic" data-arg="pivot15" title="Entry tactic">15m pivot<\/button>/);
+
+  a.run("setModelBrowse('tactics')");
+  assert.match(a.body(), /aria-pressed="true" data-action="setModelBrowse" data-arg="tactics">By tactic/);
+  const nav = a.body().split('mb-nav-list')[1].split('</aside>')[0];
+  assert.match(nav, /data-action="selectModelTactic" data-arg="pivot15"><span>15m pivot<\/span><small>1<\/small>/);
+  assert.match(nav, /data-arg="pivot30"><span>30m pivot<\/span><small>0<\/small>/, 'every entry tactic, so the first example can start from one');
+  a.run("selectModelTactic('pivot30')");
+  assert.doesNotMatch(a.body(), /AMD 15m pivot/);
+  assert.match(a.body(), /comes tagged with this tactic/);
+  await a.run("pasteModelImages([{ type: 'image/png', size: 1200 }])");
+  assert.deepEqual([...a.run('modelBooks.draft.tactic_keys')], ['pivot30'], 'a chart added from a tactic comes tagged with it');
+  a.run('cancelModelDraft()');
+  a.run("selectModelTactic('pivot15')");
+  assert.match(a.body(), /AMD 15m pivot/);
+
+  a.run(`editModelExample('${row.id}'); toggleModelTactic('pivot15'); toggleModelTactic('pivot30')`);
+  await a.run('saveModelExample()');
+  assert.deepEqual([...[...a.supabase.tables.model_examples.values()][0].tactic_keys], ['pivot30']);
+  assert.equal(a.run('modelBooks.tacticKey'), '', 'the tactic it no longer carries lets go');
+});
+
+test('before the tactics migration: examples read and save without tactic_keys, and the editor says to db push', async () => {
+  const supabase = fakeRecords(); supabase.failColumn('model_examples', 'tactic_keys');
+  const a = await app({ supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  a.run("setJournalTab('books')");
+  await a.run('loadModelBooks()');
+  a.api.effects.prepareImage = async () => ({ blob: new Blob(['chart']), type: 'image/webp', width: 1600, height: 900 });
+  const body = () => a.elements.get('modelBooksBody').innerHTML;
+  assert.equal(a.run('modelBooks.loaded'), true);
+  assert.equal(a.run('modelBooks.noTactics'), true);
+  assert.equal(a.run('modelBooks.noTradeLink'), false, 'the trade link is still there');
+  assert.doesNotMatch(body(), /data-arg="tactics"/, 'no By tactic yet');
+  await a.run("pasteModelImages([{ type: 'image/png', size: 1200 }])");
+  assert.match(body(), /Entry tactics on examples need a database update: npx supabase db push/);
+  a.run("modelExampleField('title', 'NVDA base')");
+  await a.run('saveModelExample()');
+  await settle();
+  const row = [...supabase.tables.model_examples.values()][0];
+  assert.ok(row, 'saved');
+  assert.equal('tactic_keys' in row, false);
+});

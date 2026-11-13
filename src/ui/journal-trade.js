@@ -28,7 +28,7 @@ import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
 import { SHARE_ICON, clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal, setJournalTab } from './journal.js';
-import { onReviewChange, reviewChecklist, reviewSectionHtml, setupsOf, toReview, tradeNotes, tradeReviewState } from './journal-review.js';
+import { onReviewChange, reviewChecklist, reviewSectionHtml, setupsOf, tacticKeysOf, toReview, tradeNotes, tradeReviewState } from './journal-review.js';
 import { dropTradeExample, modelTradeRowHtml, onModelTradeChange, openModelImage, startTradeExample } from './model-books.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
@@ -156,6 +156,7 @@ export function addTradeToModelBook() {
     title: [t.label, setups.map(s => s.name).join(', '), openedDay(t)].filter(Boolean).join(' · '),
     notes: [notes.entry, notes.exit].map(n => n.trim()).filter(Boolean).join('\n\n'),
     setupKeys: setups.map(s => s.key),
+    tacticKeys: tacticKeysOf(t),
   });
 }
 /** an example in the Model books row: Model books, with it open full size (this page closes, the review deck with it) */

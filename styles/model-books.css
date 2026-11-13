@@ -40,6 +40,8 @@
 .mb-example-body .mb-meta { margin-top: -.375rem; }
 .mb-tags { display: flex; flex-wrap: wrap; gap: .375rem; }
 .mb-tags .filter-btn { text-align: left; white-space: normal; font-size: .75rem; }
+.mb-tags .mb-tactic { border-style: dashed; } /* an entry tactic, beside the setups */
+.mb-tactic-picker .jr-group { grid-template-columns: 48px 1fr; }
 .mb-notes { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8125rem; line-height: 1.55; color: var(--text2); }
 .mb-example .mb-notes { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .mb-example-foot { padding: .5rem .875rem .75rem; gap: 1rem; }

@@ -972,6 +972,20 @@ export function pctTargetPrice(row, pct) {
 }
 
 /**
+ * A spread's net limit that makes pct percent profit on what it cost: a debit spread sells for that much more than it paid, a
+ * credit spread buys back for that much less than it took in, on the option grid. 0 when it can't be: no cost basis, a credit's
+ * 100% or more (past zero), or a vertical debit spread past its width (it can never be worth more).
+ * @param {SpreadRow} s @param {number} pct
+ */
+export function spreadPctPrice(s, pct) {
+  const price = pctTargetPrice(/** @type {Row} */ (/** @type {unknown} */ ({ avg: s.avg, qty: s.kind === 'debit' ? 1 : -1, tradeAs: 'OPTION' })), pct);
+  const opts = s.legs.map(l => l.option);
+  if (price && s.kind === 'debit' && s.legs.length === 2 && opts.every(Boolean) && opts[0]?.type === opts[1]?.type && opts[0]?.exp === opts[1]?.exp
+    && s.legs[0].qty === -s.legs[1].qty && price >= Math.abs(Number(opts[0]?.strike) - Number(opts[1]?.strike))) return 0;
+  return price;
+}
+
+/**
  * How many shares to add so your average cost lands on a stop: a stop there then risks nothing. Adding at a price only pulls
  * the average toward that price, so the stop has to sit between your cost and it (above the cost and under the price on a
  * long, the other way on a short). Whole shares, rounded down, so the average stops just short of the stop and the stop

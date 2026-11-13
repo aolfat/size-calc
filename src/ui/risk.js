@@ -64,14 +64,15 @@ export function updateRiskPresets() {
 
 // the preset chips: your standard bets, one row of chips each showing its dollars over its percent of the account
 // (owner request), smallest first. Each keeps the unit it was added in: a % chip follows the account size, a $ chip
-// stays put. Edit puts a × on every chip and an add box that takes either. Two synced lists underneath, up to 6 each
-// (risk_pct_presets, risk_usd_presets).
+// stays put. Edit puts a × on every chip and an add box that takes either. Two synced lists underneath, as many as
+// you like in either unit (owner request; risk_pct_presets, risk_usd_presets).
 
 const PRESETS = {
-  pct: { key: 'risk_pct_presets', fallback: [0.125, 0.25, 0.5, 1, 2, 3], max: 100, what: 'percent' },
-  usd: { key: 'risk_usd_presets', fallback: [100, 250, 500, 1000], max: Infinity, what: 'dollar' },
+  pct: { key: 'risk_pct_presets', fallback: [0.125, 0.25, 0.5, 1, 2, 3], max: 100 },
+  usd: { key: 'risk_usd_presets', fallback: [100, 250, 500, 1000], max: Infinity },
 };
-const MAX_PRESETS = 6;
+/** chips per row at most: more wrap into even rows */
+const ROW_MAX = 6;
 const byValue = (a, b) => a - b;
 
 /** a kind's saved presets, smallest first (a list saved before sorting, or synced, too); the defaults until one is saved */
@@ -114,7 +115,7 @@ export function riskChips(acct = accountSize()) {
 export function renderRiskPresets() {
   const el = document.getElementById('riskPresets'), acct = accountSize(), editing = state.editingRisk;
   const chips = riskChips(acct);
-  const cols = chips.length <= 6 ? chips.length : Math.ceil(chips.length / 2);
+  const rows = Math.ceil(chips.length / ROW_MAX), cols = rows ? Math.ceil(chips.length / rows) : 1;
   el.style.gridTemplateColumns = `repeat(${Math.max(cols, 1)}, minmax(0, 1fr))`;
   el.innerHTML = chips.map(c => {
     const isUsd = c.kind === 'usd';
@@ -176,7 +177,6 @@ export function addRiskPreset() {
     const usd = p.kind === 'pct' ? cents(acct * p.v / 100) : p.v;
     const label = p.kind === 'pct' ? pctLabel(p.v) : usdChipLabel(p.v);
     if (list.includes(p.v) || riskChips(acct).some(c => Math.abs(c.usd - usd) < 0.005)) state.riskAddNote = `${label} is already there.`;
-    else if (list.length >= MAX_PRESETS) state.riskAddNote = `Six ${PRESETS[p.kind].what} presets at most. Remove one first.`;
     else {
       savePresets(p.kind, [...list, p.v]);
       state.riskAddNote = `Added ${label}.`;

@@ -107,12 +107,19 @@ By setup lists every one of My setups, those with no examples yet too (0), so a 
 A hidden setup shows only while an example carries it.
 On phones the books or setups are a sideways chip row, and the selected one scrolls into view.
 
+**Entry tactics** (owner request; migration 20261122000000_model_example_tactics.sql adds model_examples.tactic_keys, the library's tactic keys as setup_keys holds setups').
+The editor has an Entry tactics picker under My setups, grouped by timeframe as every tactic picker is (tacticPickGroups: 5m, 15m, 30m, Other); a hidden tactic shows only while the example carries it.
+A card and the viewer show an example's tactics after its setups, dashed and titled Entry tactic, and tapping one browses by it.
+The browse switch adds By tactic (By book | By setup | By tactic; selectModelTactic, state.modelBooks.tacticKey): every entry tactic with its count, those with none too, so + Add example there comes tagged with it.
+Renames and merges follow the library (modelTacticKeys), and after a save a tactic you're on stays while the example still carries it.
+Before the migration is pushed, Model books reads without the column (readModelBooks' noTactics): no By tactic, the editor says it needs npx supabase db push, and examples save with their setups alone.
+
 Images use the existing shrinker (up to 2000px, WebP/JPEG, 2 MB) and the private `model-books` bucket. Metadata lives in
 `model_books` and `model_examples`, with owner rules and an owner-scoped book foreign key. Apply
 `20261024000000_model_books.sql` with `npx supabase db push`. This version uses screenshots from a charting platform;
 interactive chart snapshots, preset content, sharing, and chat are later work.
 A Claude Code session can add examples too, with your Claude key (docs/claude-access.md).
-A trade page adds one from the trade (Add to model book, docs/journal.md): one of its screenshots, its setups and notes, and a link back to it (model_examples.trade_key).
+A trade page adds one from the trade (Add to model book, docs/journal.md): one of its screenshots, its setups, entry tactics and notes, and a link back to it (model_examples.trade_key).
 
 ### 2. The review deck (built)
 
