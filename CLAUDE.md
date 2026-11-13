@@ -186,6 +186,8 @@ A Pages deploy that fails or sticks in queued during a GitHub Actions outage may
 The Schwab worker deploys separately with wrangler (`worker/schwab/README.md`).
 The one Edge Function, `supabase/functions/claude-model-example` (Claude adding Model books screenshots), deploys with `npx supabase functions deploy claude-model-example --no-verify-jwt`.
 Database changes are SQL files in `supabase/migrations/`, applied with `npx supabase db push` after `npx supabase link --project-ref dhohfavttsxwutanvcuj` (it asks for the database password; never commit it).
+A Claude Code cloud session can't run db push: it only gets out through an HTTPS proxy, which carries no Postgres connection.
+There, `node scripts/migrate.mjs` lists applied and pending migrations and `--apply` runs the pending ones over the Management API's SQL endpoint (HTTPS, SUPABASE_ACCESS_TOKEN), recording them in schema_migrations the way db push does.
 The schema is one baseline, `20261018000000_baseline.sql` (the step 1 and 2 migrations squashed; safe to run over any older state: tables if not exists, functions and triggers replaced, policies dropped and made again, an up-to-date section for older databases); tests/rls.test.mjs keeps it one file and checks every synced setting is a key the settings table accepts.
 Later changes go in new files after it.
 `vendor/` deploys beside `src/`.
