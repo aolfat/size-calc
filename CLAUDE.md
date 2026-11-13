@@ -39,9 +39,10 @@ Risk $ (labelled "Max loss per trade") is styled as the loud number (big, bold, 
 Risk % preset chips (default .125/.25/.50/1/2/3%, persisted as risk_pct_presets) and fixed dollar chips (default 100/250/500/1000, persisted as risk_usd_presets).
 Both show as ONE row of chips (#riskPresets, riskChips), smallest dollars first, every chip its dollars on top and its percent of the account under (owner request: the same order on every chip, never mixed).
 A % chip's dollars follow the account size; a $ chip shows what it is of the account (pctOfAccountLabel); a $ preset that lands on a % chip's dollars shows once, as the % chip.
-The column count is set inline: all in one row up to 6, else two even rows (12 at most: 6 of each).
+The column count is set inline: all in one row up to 6, else even rows of 6 at most.
 Edit (#riskEditBtn, next to the summary link) puts a × on every chip and opens the add box (#riskAddRow): a number plus a $ / % unit, and a typed % sign wins (parseRiskPreset), so a preset can be added in either unit (owner request).
-The add box refuses duplicates (by dollars), a 7th of a kind and a percent of 100 or more, and says so in #riskAddNote; × removes from that chip's own list, and an emptied list stays empty (a saved '[]' is not the defaults).
+There is no cap on how many, in either unit (owner request).
+The add box refuses duplicates (by dollars) and a percent of 100 or more, and says so in #riskAddNote; × removes from that chip's own list, and an emptied list stays empty (a saved '[]' is not the defaults).
 Both lists always show smallest first (owner request): saving sorts them, and getPctPresets / getUsdPresets sort what was saved before.
 Both are account settings (CLOUD_KEYS), so signed in they follow you to every device.
 Active chips track whatever the current values resolve to — a $ tap can light its matching % chip too.
