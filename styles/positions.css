@@ -955,3 +955,8 @@ span.journal-pick { cursor: default; }
 @keyframes sk-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @keyframes sk-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sk, .pos-skeleton { animation: none; } }
+/* After the exit and Stop check: the answer in one sentence over the numbers */
+.jt-say { margin: 4px 0 10px; font-size: 14px; line-height: 1.45; color: var(--text); }
+.jt-say b { font-weight: 600; }
+.jt-say-bad b { color: var(--amber); }
+.jt-say-good b { color: var(--green); }

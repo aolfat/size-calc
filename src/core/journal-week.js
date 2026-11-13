@@ -13,6 +13,7 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
  *   schwabStop?: number | null, movedTo?: number | null, rBasis?: string | null }} WeekTrade
  * @typedef {{ mfe: number, mae: number, mfeR: number | null, maeR: number | null, efficiency: number | null }} Excursion
  * @typedef {{ score: number | null, verdict: 'good' | 'early' | 'late' | 'stopped' | null, left: number, leftR: number | null, held?: number | null, heldR?: number | null }} AfterExit
+ * @typedef {{ verdict: 'shaken' | 'right' | 'room' | 'close' | 'fine', stopped: boolean, swept: boolean, overshootR: number, heldPnl: number, heldR: number }} StopCheck
  * @typedef {{ text: string, tone?: 'good' | 'bad' | '' }} Fact
  * @typedef {{ key: string, name: string, facts: Fact[] }} Category
  * @typedef {{
@@ -23,6 +24,7 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
  *   kinds?: (key: string) => string[],
  *   excursion: (t: WeekTrade) => Excursion | null | undefined,
  *   afterExit?: (t: WeekTrade) => AfterExit | null | undefined,
+ *   stopCheck?: (t: WeekTrade) => StopCheck | null | undefined,
  *   reviewed: (t: WeekTrade) => boolean,
  *   saved: (key: string) => boolean,
  *   barsPending?: boolean,
@@ -372,6 +374,12 @@ export function periodReview(trades, unit, key, ctx) {
       const early = judged.filter(x => x.a?.verdict === 'early').map(x => x.t), late = judged.filter(x => x.a?.verdict === 'late').map(x => x.t);
       if (early.length) add('exit', `Out early, and it ran on: ${names(early)}`, 'bad');
       if (late.length) add('exit', `Out late, after giving it back: ${names(late)}`, 'bad');
+      // owner request: winners sold too early, and what holding on with the stop would have added on them
+      const winners = judged.filter(x => x.t.pnl > 0), cut = winners.filter(x => x.a?.verdict === 'early' && /** @type {number} */ (x.a?.held) > 0);
+      if (cut.length) {
+        const more = round2(sum(cut.map(x => /** @type {number} */ (x.a?.held)))), rs = cut.map(x => x.a?.heldR).filter(r => r !== null && r !== undefined);
+        add('exit', `Winners sold too early: ${cut.length} of ${winners.length} (${names(cut.map(x => x.t))}); holding on with your stops would have made ${fmt$(more)}${rs.length === cut.length ? ` (${signedR(sum(/** @type {number[]} */ (rs)))})` : ''} more on them`, 'bad');
+      } else if (winners.length) add('exit', `No winner sold too early (${plural(winners.length, 'winner')})`, 'good');
       // holding on with the stops in (afterExit's hold): the realistic answer, beside the best-tick ceiling under it
       const holds = judged.filter(x => x.a?.held !== null && x.a?.held !== undefined);
       if (holds.length) {
@@ -397,6 +405,24 @@ export function periodReview(trades, unit, key, ctx) {
     if (losers.length) {
       const big = losers.reduce((a, b) => (b.pnl < a.pnl ? b : a));
       add('risk', `Biggest loss: ${signed$(big.pnl)}${big.r !== null && big.r !== undefined ? ` (${signedR(big.r)})` : ''} on ${underlyingOf(big)}`);
+    }
+    // was the stop too tight (core/trade-page.js stopCheck): stop-outs that came back, sweeps, how deep winners went
+    const checks = closedHere.map(t => ({ t, c: ctx.stopCheck?.(t) })).filter(x => x.c);
+    const outs = checks.filter(x => x.c?.stopped);
+    if (outs.length) {
+      const shaken = outs.filter(x => x.c?.verdict === 'shaken');
+      add('risk', `Stopped out ${outs.length === 1 ? 'once' : `${outs.length} times`}: ${shaken.length ? `${shaken.length} came back to your entry after (${names(shaken.map(x => x.t))})` : 'none came back to your entry after'}`, shaken.length * 2 >= outs.length && shaken.length ? 'bad' : !shaken.length ? 'good' : '');
+      const swept = outs.filter(x => x.c?.swept);
+      if (swept.length) add('risk', `${swept.length} of ${plural(outs.length, 'stop-out')} went under a quarter R past the stop before turning: a sweep, stops at an obvious level`, swept.length * 2 >= outs.length ? 'bad' : '');
+      if (shaken.length) {
+        const wider = round2(sum(shaken.map(x => /** @type {number} */ (x.c?.heldPnl))));
+        add('risk', `With the stops that would have held, at the same risk, the ${plural(shaken.length, 'shakeout')} would have made ${signed$(wider)} (${signedR(sum(shaken.map(x => /** @type {number} */ (x.c?.heldR))))}), against ${signedR(sum(shaken.map(x => /** @type {number} */ (x.t.r ?? -1))))} taken`);
+      }
+    }
+    const depths = closedHere.filter(t => t.pnl > 0).map(t => ctx.excursion(t)?.maeR).filter(r => r !== null && r !== undefined).map(r => /** @type {number} */ (r)).sort((a, b) => b - a);
+    if (depths.length >= 3) {
+      const at80 = depths[Math.ceil(depths.length * 0.8) - 1];
+      add('risk', `80% of winners went no further than ${signedR(at80)} against you (${plural(depths.length, 'winner')}): how deep a trade that works dips`);
     }
     if (stats.bigLosses) add('risk', `${plural(stats.bigLosses, 'loss')} worse than −1.5R`, 'bad');
     else if (closed.some(t => t.r !== null && t.r !== undefined)) add('risk', 'No loss worse than −1.5R', 'good');

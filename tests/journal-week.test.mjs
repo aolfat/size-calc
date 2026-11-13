@@ -124,10 +124,11 @@ test('how good the exits were: the average exit score, early and late by name, w
     amd: { score: 0.1, verdict: 'stopped', left: 200, leftR: 1, held: 0, heldR: 0 }, tsla: { score: 0.3, verdict: 'late', left: 0, leftR: 0, held: null, heldR: null } })[t.key] ?? null }`;
   const exit = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${after})`).categories.find(c => c.key === 'exit').facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
   const at = exit.indexOf('[bad] 1 loser was up 1R or more first: AMD') + 1;
-  assert.deepEqual(exit.slice(at, at + 5), [
+  assert.deepEqual(exit.slice(at, at + 6), [
     "[bad] Exit score 43% on average over 4 trades (1 good, 1 early, 1 late, 1 stopped out): where you got out in the range from the entry",
     '[bad] Out early, and it ran on: AAPL',
     '[bad] Out late, after giving it back: TSLA',
+    '[bad] Winners sold too early: 1 of 2 (AAPL); holding on with your stops would have made $300.00 (+1.5R) more on them',
     '[bad] Holding on with your stops would have made $100.00 (+0.8R) more than your exits, over 3 trades',
     'Left $800.00 on the table at best after the exits (+2.0R a trade), most on AAPL',
   ]);
@@ -138,6 +139,29 @@ test('how good the exits were: the average exit score, early and late by name, w
   const g = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${good})`).categories.find(c => c.key === 'exit').facts;
   assert.ok(g.some(f => f.tone === 'good' && f.text.startsWith('Exit score 80% on average over 1 trade (1 good)')));
   assert.ok(!json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${CTX})`).categories.find(c => c.key === 'exit').facts.some(f => /Exit score/.test(f.text)), 'nothing read yet: no line');
+  assert.ok(g.some(f => f.tone === 'good' && f.text === 'No winner sold too early (1 winner)'));
+});
+
+test('was the stop too tight: stop-outs that came back, sweeps, what the stops that would have held made, how deep winners dip', async () => {
+  const { run } = await app();
+  const checks = `{ ...${CTX}, stopCheck: t => ({
+    amd: { verdict: 'shaken', stopped: true, swept: true, overshootR: 0.1, heldPnl: 260, heldR: 1.3 },
+    tsla: { verdict: 'right', stopped: true, swept: false, overshootR: 1.2, heldPnl: -150, heldR: -0.75 },
+    aapl: { verdict: 'room', stopped: false, swept: false, overshootR: 0, heldPnl: 900, heldR: 4.5 } })[t.key] ?? null }`;
+  const risk = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${checks})`).categories.find(c => c.key === 'risk').facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
+  assert.deepEqual(risk.slice(1, 4), [
+    '[bad] Stopped out 2 times: 1 came back to your entry after (AMD)',
+    '[bad] 1 of 2 stop-outs went under a quarter R past the stop before turning: a sweep, stops at an obvious level',
+    'With the stops that would have held, at the same risk, the 1 shakeout would have made +$260.00 (+1.3R), against −1.8R taken',
+  ]);
+  const right = `{ ...${CTX}, stopCheck: t => t.key === 'tsla' ? { verdict: 'right', stopped: true, swept: false, overshootR: 1.2, heldPnl: -150, heldR: -0.75 } : null }`;
+  assert.ok(json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${right})`).categories.find(c => c.key === 'risk').facts
+    .some(f => f.tone === 'good' && f.text === 'Stopped out once: none came back to your entry after'));
+  // how deep winners dip: the 80th percentile of their heat, with three or more
+  const wins = `[...${JSON.stringify(TRADES)}, ${JSON.stringify({ ...TRADES[1], key: 'msft', symbol: 'MSFT', label: 'MSFT' })}, ${JSON.stringify({ ...TRADES[1], key: 'goog', symbol: 'GOOG', label: 'GOOG' })}]`;
+  const heat = `{ ...${CTX}, excursion: t => ({ aapl: { maeR: -0.25 }, nvda: { maeR: -0.5 }, msft: { maeR: -0.1 }, goog: { maeR: -0.9 } })[t.key] ?? null }`;
+  assert.ok(json(run, `periodReview(${wins}, 'week', '2026-10-12', ${heat})`).categories.find(c => c.key === 'risk').facts
+    .some(f => f.text === '80% of winners went no further than −0.9R against you (4 winners): how deep a trade that works dips'));
 });
 
 test('an empty week has no facts, a month counts its weeks together, bars still loading say so', async () => {

@@ -12,7 +12,7 @@ import { buildLibrary } from '../core/journal-labels.js';
 import { MISSED_WHY, notebookLists, periodMissed, standingRuleFor } from '../core/journal-notebook.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
 import { gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodRules, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, ruleKeptOf, sortPeriodTrades, weekRuleTally } from '../core/journal-week.js';
-import { afterExit, excursions, unpackBars } from '../core/trade-page.js';
+import { afterExit, excursions, stopCheck, unpackBars } from '../core/trade-page.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { nyDay, weekdaysBetween } from '../core/bars.js';
 import { parseSchwabOption } from '../core/positions.js';
@@ -50,12 +50,17 @@ function afterExitOf(t) {
   const c = state.journalExcursions[t.key];
   return c && c.sig === signature(t) ? c.after ?? null : undefined;
 }
+/** whether a trade's stop was too tight (stopCheck): undefined until read, null without bars or a stop */
+function stopCheckOf(t) {
+  const c = state.journalExcursions[t.key];
+  return c && c.sig === signature(t) ? c.stop ?? null : undefined;
+}
 
 /** read the saved bars for the period's closed trades that haven't been read yet, one query per symbol */
 async function loadExcursions(unit, key) {
   const { closedHere } = reviewTrades(journalTradeList(), unit, key);
   const todo = closedHere.filter(t => barsSymbol(t) && excursionOf(t) === undefined);
-  for (const t of closedHere) if (!barsSymbol(t)) state.journalExcursions[t.key] = { sig: signature(t), ex: null, after: null };
+  for (const t of closedHere) if (!barsSymbol(t)) state.journalExcursions[t.key] = { sig: signature(t), ex: null, after: null, stop: null };
   if (!todo.length) return;
   state.periodBarsBusy = true;
   renderJournal();
@@ -76,7 +81,9 @@ async function loadExcursions(unit, key) {
     daily = await dailyBars;
     for (const t of trades) {
       const ids = new Set(t.fillIds), exits = fills.filter(f => ids.has(f.id) && f.side === (t.direction === 'short' ? 'buy' : 'sell'));
-      state.journalExcursions[t.key] = { sig: signature(t), ex: bars.length ? excursions(t, bars) : null, after: bars.length ? afterExit(t, exits, bars, onOwnDaily(t) ? daily : []) : null };
+      const own = onOwnDaily(t) ? daily : [];
+      state.journalExcursions[t.key] = { sig: signature(t), ex: bars.length ? excursions(t, bars) : null,
+        after: bars.length ? afterExit(t, exits, bars, own) : null, stop: bars.length ? stopCheck(t, exits, bars, own) : null };
     }
   }));
   state.periodBarsBusy = false;
@@ -448,7 +455,7 @@ function ruleNext(p, off) {
 export function periodReviewHtml(trades) {
   const p = state.journalReviewPeriod;
   if (!p) return '';
-  const r = periodReview(trades, p.unit, p.key, { ...periodReviewContext(), excursion: excursionOf, afterExit: afterExitOf, barsPending: state.periodBarsBusy, clock: hhmm => zoneWords(nyDay(Date.now()), hhmm) });
+  const r = periodReview(trades, p.unit, p.key, { ...periodReviewContext(), excursion: excursionOf, afterExit: afterExitOf, stopCheck: stopCheckOf, barsPending: state.periodBarsBusy, clock: hhmm => zoneWords(nyDay(Date.now()), hhmm) });
   const word = p.unit === 'month' ? 'month' : 'week';
   const lock = state.periodReviews && !state.periodReviewsError ? '' : ' disabled';
   const active = activePeriods(trades, p.unit);

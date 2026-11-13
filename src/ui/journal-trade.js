@@ -15,7 +15,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords, pnlPct } from '../core/journal.js';
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBetween } from '../core/bars.js';
-import { afterExit, SWING_SESSIONS, contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
+import { afterExit, stopCheck, SWING_SESSIONS, contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { industryWords } from '../core/industries.js';
 import { viewRange } from '../core/chart-view.js';
@@ -270,11 +270,16 @@ function statsHtml(t, ex) {
 /** the fills that closed it: a long's sells, a short's buys */
 const exitFills = (t, fills) => fills.filter(f => f.side === (t.direction === 'short' ? 'buy' : 'sell'));
 
-/** what the price did after the exit: the trade's own 5-minute bars, and a stock's daily (not an option's or a fund's underlying) */
+/** the daily bars that are the trade's own: a stock's or a fund's (not an option's, nor a fund read on its underlying) */
+const ownDaily = (t, p) => (chartSymbols(t).daily === t.symbol && t.assetType !== 'OPTION' ? p.daily : []);
+
+/** what the price did after the exit: the trade's own 5-minute bars, and its own daily */
 export function pageAfterExit(t, p, fills) {
-  if (t.legs) return null;
-  const sym = chartSymbols(t);
-  return afterExit(t, exitFills(t, fills), p.five, sym.daily === t.symbol && t.assetType !== 'OPTION' ? p.daily : []);
+  return t.legs ? null : afterExit(t, exitFills(t, fills), p.five, ownDaily(t, p));
+}
+/** was the stop too tight: the same bars */
+export function pageStopCheck(t, p, fills) {
+  return t.legs ? null : stopCheck(t, exitFills(t, fills), p.five, ownDaily(t, p));
 }
 
 /** where holding on would have ended: 'stopped 98.00 at 2:15 ET', 'to the 108.00 close', '5 sessions on, 112.00 on 10/20' */
@@ -287,11 +292,28 @@ function heldWords(t, a) {
 }
 
 const VERDICT = {
-  good: ['Good exit', 'journal-tag-done', 'out near the best the day offered'],
-  early: ['Early', 'journal-tag-history', 'it ran on after you got out'],
-  late: ['Late', 'journal-tag-history', 'you gave back more than it ran after'],
+  good: ['Good exit', 'journal-tag-done', 'out near the best holding offered'],
+  early: ['Too early', 'journal-tag-history', 'it ran on after you got out'],
+  late: ['Too late', 'journal-tag-history', 'you gave back more than it ran after'],
   stopped: ['Stopped out', 'journal-tag-quiet', 'out at your stop'],
 };
+const money = (v, r) => `${signed$(v)}${r !== null && r !== undefined ? ` (${signedR(r)})` : ''}`;
+/** an amount with no sign, for words that say which way: 'gave back $300.00 (1.50R)' */
+const amount = (v, r) => `${fmt$(Math.abs(v))}${r !== null && r !== undefined ? ` (${Math.abs(r).toFixed(2)}R)` : ''}`;
+
+/** the exit in one sentence (owner request: did I sell too early?), from the verdict and the hold */
+export function exitSay(t, a) {
+  const held = a.held, more = held !== null && held > 0, less = held !== null && held < 0;
+  const hold = held === null ? '' : more ? `holding on with your stop would have made <b>${money(held, a.heldR)}</b> more` : less ? `holding on with your stop would have made ${amount(held, a.heldR)} less` : 'holding on with your stop would have come out the same';
+  const best = a.best ? ` (it reached ${px(a.best.price, t.assetType)})` : '';
+  switch (a.verdict) {
+    case 'early': return more ? ['bad', `Sold too early: ${hold}${best}.`] : ['', `Out before the best of the move${best}, but ${hold}: it came back to your stop.`];
+    case 'late': return ['bad', `Out late: you gave back <b>${amount(a.gave, a.gaveR)}</b> from the best while you held${hold ? `, and ${hold}` : ''}.`];
+    case 'good': return [more ? '' : 'good', `Good exit${hold ? `: ${hold}` : ''}.`];
+    case 'stopped': return ['', 'Out at your stop: the stop check below says whether it was too tight.'];
+    default: return ['', ''];
+  }
+}
 
 /**
  * After the exit: the exit score with its verdict, what was left on the table and what getting out avoided (to the exit
@@ -321,8 +343,56 @@ function afterExitHtml(t, a, p) {
       [`best ${px(s.best, t.assetType)}`, `close ${signedPct(s.closePct)}`, s.closeR !== null ? inR(s.closeR) : ''].filter(Boolean).join(' · '), '',
       `The best ${t.direction === 'short' ? 'low' : 'high'} over the next ${s.n === 1 ? 'session' : `${s.n} sessions`} against your ${px(a.avgExit, t.assetType)} average exit, and where it closed.`)),
   ];
-  return `${title}<dl class="jt-stats jt-after">${cells.join('')}</dl>
+  const [tone, say] = exitSay(t, a);
+  return `${title}${say ? `<p class="jt-say${tone ? ` jt-say-${tone}` : ''}">${say}</p>` : ''}<dl class="jt-stats jt-after">${cells.join('')}</dl>
     <p class="hint">${a.out?.how === 'stop' && !a.best ? 'Out at the stop, where holding on would have ended too, so nothing after it counts' : `Held on from each exit with ${a.stop === null ? 'no stop (none set)' : `the ${px(a.stop, t.assetType)} stop in`}, ${a.out?.how === 'sessions' ? `then ${a.out.sessions} session${a.out.sessions === 1 ? '' : 's'} on the daily bars` : 'to the close of the exit\'s day'}${a.out?.how === 'close' && nyDay(t.openedAt) < a.out.date ? ' (no daily bars for it here, so not the sessions after)' : ''}`}; ${a.qty === t.entryQty ? 'all' : `the ${a.qty} closed of`} ${t.entryQty} against where each got out.${a.sessions.length ? ' Next day and on: the daily bars, no stop.' : ''}</p>`;
+}
+
+const STOP_VERDICT = {
+  shaken: ['Shaken out', 'journal-tag-history'],
+  right: ['Right to stop', 'journal-tag-done'],
+  room: ['Room to spare', 'journal-tag-quiet'],
+  close: ['Close call', 'journal-tag-history'],
+  fine: ['Had room', 'journal-tag-quiet'],
+};
+
+/** the stop check in one sentence: what the stop did, and what the stop that would have held would have made */
+export function stopSay(t, c) {
+  const units = t.assetType === 'OPTION' ? 'contracts' : 'shares';
+  const wider = c.heldDistance > 1 ? `${Math.round((c.heldDistance - 1) * 100)}% wider` : c.heldDistance < 1 ? `${Math.round((1 - c.heldDistance) * 100)}% tighter` : 'the same distance';
+  const instead = `<b>${money(c.heldPnl, c.heldR)}</b>${c.r !== null ? ` instead of ${signedR(c.r)}` : ''}`;
+  const held = `A ${px(c.heldStop, t.assetType)} stop (${wider}) would have held: ${c.heldSize} ${units} at the same risk, ${instead}`;
+  const past = `${amount(c.overshoot, c.overshootR)} past your ${px(c.stop, t.assetType)} stop`;
+  switch (c.verdict) {
+    case 'shaken': return ['bad', `Shaken out: it went ${c.swept ? 'only ' : ''}${past}, then came back to ${signedR(c.bestAfterR)}. ${held}${c.end.how === 'close' ? ' by the close' : c.end.how === 'sessions' ? ' by the end of the hold' : ''}.`];
+    case 'right': return ['good', `Right to stop: it went ${past} and never came back to your entry.`];
+    case 'room': return ['', `Room to spare: it came no closer than ${signedR(c.heatR)} to your stop. ${held} at your exit.`];
+    case 'close': return ['', `Close call: it came within ${signedR(c.heatR)} of your stop before it worked.`];
+    default: return ['', `Your stop had room: it came within ${signedR(c.heatR)} of it.`];
+  }
+}
+
+/** Stop check (owner request: was my stop too tight?): how far past it, whether it came back, the stop that would have held */
+function stopCheckHtml(t, c, p) {
+  if (t.legs || t.status === 'history' || t.status === 'open') return '';
+  const title = '<div class="section-title jt-after-title">Stop check</div>';
+  if (!t.stop) return `${title}<p class="hint">No stop on this trade, so there's nothing to check. Edit sets one.</p>`;
+  if (!c) return '';
+  if (deckHidesPnl(t)) return `${title}<p class="hint">After grading, like the result.</p>`;
+  const cell = (label, value, sub = '', cls = '', tip = '') => `<div${tip ? ` title="${esc(tip)}"` : ''}><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
+  const when = x => x.time ? ` at ${esc(zoneWords(x.date, x.time))}` : ` on ${+x.date.slice(5, 7)}/${+x.date.slice(8)}`;
+  const v = STOP_VERDICT[c.verdict], [tone, say] = stopSay(t, c), units = t.assetType === 'OPTION' ? 'contracts' : 'shares';
+  const low = t.direction === 'short' ? 'high' : 'low';
+  const cells = [
+    cell('Stop', `${px(c.stop, t.assetType)} <span class="journal-tag ${v[1]}">${v[0]}</span>`, `heat ${signedR(c.heatR)} while open`, '', 'Your first stop, the one the risk was set on; heat is the furthest it went against you while you were in.'),
+    cell('Past your stop', c.overshoot > 0 ? fmt$(c.overshoot) : 'never', c.overshoot > 0 ? `${signedR(c.overshootR).replace('+', '')} · ${low} ${px(c.worst.price, t.assetType)}${when(c.worst)}` : `closest ${px(c.worst.price, t.assetType)}${when(c.worst)}`,
+      c.swept ? 'journal-sell' : '', 'How far past the stop price went before it turned. A few cents is a sweep: stops under an obvious level.'),
+    ...(c.stopped ? [cell('Came back', c.cameBack ? 'Yes' : 'No', c.bestAfterR !== null ? `best ${signedR(c.bestAfterR)} from your entry` : '', c.cameBack ? 'journal-sell' : 'journal-buy', 'Whether price got back to your entry after the stop-out.')] : []),
+    cell('Would have held', px(c.heldStop, t.assetType), `${c.heldSize} ${units} at the same risk`, '', 'A cent past the worst price: the stop that would have stayed in. The same dollar risk buys fewer shares with a wider stop.'),
+    cell('With that stop', signed$(c.heldPnl), `${signedR(c.heldR)}${c.r !== null ? ` vs ${signedR(c.r)}` : ''}`, c.heldR > (c.r ?? 0) ? 'journal-sell' : '', c.stopped ? 'That size held with that stop to the end of the hold.' : 'That size, out at your own exit.'),
+  ];
+  return `${title}${say ? `<p class="jt-say${tone ? ` jt-say-${tone}` : ''}">${say}</p>` : ''}<dl class="jt-stats jt-after">${cells.join('')}</dl>
+    <p class="hint">A stop picked after the fact always fits: one trade shows what happened, the pattern across trades (the week review) says where your stop belongs.</p>`;
 }
 
 /**
@@ -430,7 +500,8 @@ export function renderJournalTrade() {
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}
-    ${afterExitHtml(t, pageAfterExit(t, p, fills), p)}`;
+    ${afterExitHtml(t, pageAfterExit(t, p, fills), p)}
+    ${stopCheckHtml(t, pageStopCheck(t, p, fills), p)}`;
   // the desktop's full review: the chart, the numbers and Fills | Stop orders | Features on the left, the review on the
   // right with what's still missing under it; narrower screens keep one column, the review between the stats and the fills
   const wide = mq(DESKTOP_MQ);
