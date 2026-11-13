@@ -133,3 +133,32 @@ test('a setup closed long with a short still open is not "long only"', async () 
   run("setJournalTab('setups')");
   assert.match(list(), /<b>Pennant or flag breakout \/ breakdown<\/b><\/button>[^]*?<span class="pos-sub">1 open<\/span>/, 'both words, no "long only"');
 });
+
+test('Exits and stops by setup: each setup\'s exit score, sold too early, holding on, shakeouts, read from the saved bars', async t => {
+  // the trade page draws its charts from the bars; canvases read their colors from the stylesheet
+  globalThis.getComputedStyle = () => ({ getPropertyValue: n => n });
+  t.after(() => { delete globalThis.getComputedStyle; });
+  const day = (d, rows) => ({ user_id: 'user-1', symbol: 'AAPL', day: d, bars: rows });
+  const { run, state, list } = await journal(s => {
+    s.bars.set('user-1:AAPL:2026-10-01', day('2026-10-01', [['10:30', 100, 101.5, 99, 101, 1], ['15:55', 101, 103, 100.5, 102, 1]]));
+    s.bars.set('user-1:AAPL:2026-10-02', day('2026-10-02', [['09:30', 102, 104, 97, 98, 1], ['11:00', 96, 96.5, 94.5, 95, 1]]));
+  });
+  run(`openJournalTrade('${KEY}')`);
+  await settle();
+  await run(`toggleSetup(journalPageTrade(), 'ema21_bounce')`);
+  await run(`toggleReviewLabel(journalPageTrade(), 'tactic', 'pivot30')`);
+  run('closeJournalTrade()');
+  state.journalExcursions = {};
+  run("setJournalTab('setups')");
+  assert.match(list(), /Exits and stops by setup<\/div><p class="hint">[^<]*Reading the 5-minute bars…/, 'the bars are read once the tab opens');
+  await settle();
+  const html = list();
+  // stopped at 94.98, 5% up the 94.50 to 104 range from the entry, nothing after it to come back on
+  assert.match(html, /Exits and stops by setup<\/div>[\s\S]*?data-action="openJournalSetup" data-arg="ema21_bounce"><b>21 EMA bounce \/ rejection<\/b><\/button><\/td><td>1<\/td><td class="journal-amber">5%<\/td><td>0 · 0 · 0 · 1<\/td><td>—<\/td><td class="">\$0\.00<span class="pos-sub">0\.00R<\/span><\/td><td class="">0 of 1<\/td><td>—<\/td>/);
+  assert.match(html, /Exits and stops by setup kind<\/div>[\s\S]*?<th scope="col">Kind<\/th>[\s\S]*?<td>Bounce \/ rejection<\/td><td>1<\/td>/);
+  const reads = Object.keys(state.journalExcursions).length;
+  run("openJournalSetup('ema21_bounce')");
+  await settle();
+  assert.match(list(), /Exits and stops<\/div>[\s\S]*?<th scope="col">Entry tactic<\/th>[\s\S]*?<td><b>All<\/b><\/td><td>1<\/td><td class="journal-amber">5%<\/td>[\s\S]*?<tr class="js-side-row"><td>30m pivot<\/td><td>1<\/td>/, 'a setup\'s page: all of it, then by entry tactic');
+  assert.equal(Object.keys(state.journalExcursions).length, reads, 'read once');
+});

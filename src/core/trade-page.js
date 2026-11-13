@@ -241,3 +241,217 @@ export function exitLineLabel(/** @type {Parameters<typeof exitParts>[0] & { sta
   if (!x || trade.avgExit === null) return '';
   return `${x.avg ? 'avg exit' : 'exit'} ${trade.avgExit.toFixed(2)}${trade.status === 'open' ? ` · ${x.closed} of ${trade.entryQty}` : ''}`;
 }
+
+/** an exit score at or over this is a good exit: you got out in the top 30% of what holding offered from your entry */
+export const GOOD_EXIT = 0.7;
+/** a position held overnight is held this many sessions past the exit's day, on the daily bars, when judging its exit */
+export const SWING_SESSIONS = 5;
+/** the sessions after the exit the daily bars are read over for context (no stop) */
+export const AFTER_SESSIONS = [1, 3, 10];
+
+/** @typedef {{ price: number, date: string, time: string, how: 'stop' | 'close' | 'sessions', sessions: number }} HoldEnd */
+
+/**
+ * Holding on from an exit with the stop in: the rest of its day's 5-minute bars, then `days` (a swing's sessions), until a
+ * bar reaches the stop (out at the stop, or at the bar's open when it gapped through). The bars held through, the stop's
+ * bar included, and where it ended: the stop, the day's close, or the last session's close; null with nothing after.
+ * @param {Candle[]} rest @param {Candle[]} days @param {number | null} stop @param {boolean} long
+ * @returns {{ path: Candle[], end: HoldEnd | null }}
+ */
+function holdOn(rest, days, stop, long) {
+  /** @type {Candle[]} */
+  const path = [];
+  for (const b of [...rest, ...days]) {
+    path.push(b);
+    if (stop !== null && (long ? b.low <= stop : b.high >= stop)) {
+      const gapped = long ? b.open < stop : b.open > stop;
+      return { path, end: { price: gapped ? b.open : stop, date: b.date, time: b.time || '', how: 'stop', sessions: 0 } };
+    }
+  }
+  const last = path[path.length - 1];
+  if (!last) return { path, end: null };
+  return { path, end: days.length ? { price: last.close, date: last.date, time: '', how: 'sessions', sessions: days.length }
+    : { price: last.close, date: last.date, time: last.time || '', how: 'close', sessions: 0 } };
+}
+
+/**
+ * How good the exit was, against holding on with your stop in place (owner request: what holding would really have
+ * paid, not the best tick). Each exit fill is judged on its own and weighted by what it closed.
+ * - The hold: from each exit, your stop stays in: the one in force then (the last stop order entered by that exit; without
+ *   the stop orders, the last one you moved it to, else the first). A bar that reaches it
+ *   takes you out at the stop, or at its open when it gapped through. Otherwise a day trade is held to that day's close;
+ *   a position held overnight (opened before the exit's day) goes on SWING_SESSIONS sessions on the daily bars, or as
+ *   many as there are so far. An exit at or through the stop has nothing to hold.
+ * - held: what that hold would have made against your exit (plus: holding would have made more), and out, where it ended.
+ * - score: where the exit sat in the range from the entry's bar to the end of the hold (long: 0 = the low, 1 = the high;
+ *   short the other way), so getting out too soon and too late both pull it down. GOOD_EXIT and up is a good exit.
+ * - left: the best price during the hold after each exit, in your favor (a ceiling: the best tick). against: the worst,
+ *   against you (what getting out kept you from); stopHit when the hold reached the stop.
+ * - gave: what you gave back before getting out, from the best price while you held to each exit.
+ * - verdict: 'stopped' (out at or through the stop), 'good' (score ≥ GOOD_EXIT), else 'early' when the move after the exit
+ *   ran farther past it than the best while you held had (the move went on without you), 'late' when you gave back more.
+ * - sessions: context with no stop: for each of AFTER_SESSIONS the daily bars after the last exit's day have, the best high
+ *   (a short's low) and the close that many sessions on, against the average exit, as % and R.
+ * Dollars on what each exit closed (quantity × multiplier), R against the trade's risk. Times are New York's. Regular
+ * hours unless the exit was outside them. Null for spreads, trades before the history, and with no exits or bars.
+ * @param {{ direction: 'long' | 'short', multiplier: number, openedAt: string, status: string, risk: number | null,
+ *   stop?: number | null, movedTo?: number | null, stopTrail?: { stopPrice: number, entered: string }[], legs?: any[] }} trade
+ * @param {{ time: string, qty: number, price: number }[]} exits the fills that closed it
+ * @param {Candle[]} bars 5-minute bars @param {Candle[]} [daily] the same symbol's daily bars, oldest first
+ */
+export function afterExit(trade, exits, bars, daily = []) {
+  if (trade.legs || trade.status === 'history' || !trade.openedAt || !exits.length || !bars.length) return null;
+  const long = trade.direction === 'long', sign = long ? 1 : -1, mult = trade.multiplier || 1;
+  const fav = (/** @type {Candle} */ b) => (long ? b.high : b.low), adv = (/** @type {Candle} */ b) => (long ? b.low : b.high);
+  const better = (/** @type {number} */ a, /** @type {number} */ b) => (a - b) * sign > 0; // a is further in your favor than b
+  const firstStop = trade.stop && trade.stop > 0 ? trade.stop : null;
+  // the stop in force at an exit: the last stop order entered by then (a trim before the stop was raised keeps the lower
+  // one); without the stop orders, where it was last moved, else the first
+  const trail = (trade.stopTrail || []).filter(o => o.stopPrice > 0 && o.entered).sort((a, b) => (a.entered < b.entered ? -1 : a.entered > b.entered ? 1 : 0));
+  const stopAt = (/** @type {string} */ time) => {
+    if (!trail.length) return trade.movedTo && trade.movedTo > 0 ? trade.movedTo : firstStop;
+    const ms = Date.parse(time), before = trail.filter(o => Date.parse(o.entered) <= ms);
+    return before.length ? before[before.length - 1].stopPrice : firstStop;
+  };
+  let stop = firstStop;
+  const from = barStart(nyStamp(trade.openedAt)), openDay = from.slice(0, 10);
+  const round = (/** @type {number} */ v) => Math.round(v * 100) / 100;
+  const r = (/** @type {number} */ v) => (trade.risk && trade.risk > 0 ? Math.round((v / trade.risk) * 100) / 100 : null);
+  let qty = 0, scored = 0, scoreSum = 0, left = 0, against = 0, held = 0, gave = 0, pxSum = 0, lastDay = '', judged = 0;
+  /** @type {Candle | null} */ let best = null;
+  /** @type {Candle | null} */ let worst = null;
+  /** @type {HoldEnd | null} */ let out = null;
+  let stopHit = false;
+  for (const e of [...exits].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0))) {
+    const s = nyStamp(e.time);
+    if (!s || !(e.qty > 0) || !(e.price > 0)) continue;
+    const day = s.slice(0, 10), at = barStart(s), regular = s.slice(11) >= '09:30' && s.slice(11) < '16:00';
+    const window = bars.filter(b => { const st = stampOf(b); return st >= from && b.date <= day && (!regular || REGULAR(b)); });
+    if (!window.length) continue;
+    const p = e.price, size = e.qty * mult;
+    stop = stopAt(e.time);
+    qty += e.qty; pxSum += p * e.qty; lastDay = day > lastDay ? day : lastDay;
+    const heldBest = window.filter(b => stampOf(b) <= at).reduce((m, b) => (better(fav(b), m) ? fav(b) : m), p);
+    gave += Math.max(0, (heldBest - p) * sign) * size;
+    // the hold after this exit: the rest of the day, then a swing's sessions, until a bar reaches the stop
+    // (out at or through the stop already: the stop is where holding would have ended too)
+    const { path, end } = stop !== null && !better(p, stop) ? { path: [], end: /** @type {HoldEnd} */ ({ price: p, date: day, time: s.slice(11), how: 'stop', sessions: 0 }) }
+      : holdOn(window.filter(b => b.date === day && stampOf(b) > at), day > openDay ? daily.filter(b => b.date > day).slice(0, SWING_SESSIONS) : [], stop, long);
+    if (end) { held += (end.price - p) * sign * size; out = end; }
+    // the range the exit is scored in: the entry through the end of the hold, no worse than where the stop took you out
+    const stopPx = end?.how === 'stop' ? end.price : null;
+    const clamp = (/** @type {Candle} */ b) => (stopPx === null ? b : long ? { ...b, low: Math.max(b.low, stopPx) } : { ...b, high: Math.min(b.high, stopPx) });
+    const range = [...window.filter(b => stampOf(b) <= at), ...path.map(clamp)];
+    const hi = Math.max(p, ...range.map(b => b.high)), lo = Math.min(p, ...range.map(b => b.low));
+    if (hi > lo) { scoreSum += ((long ? p - lo : hi - p) / (hi - lo)) * e.qty; scored += e.qty; }
+    if (!path.length) continue;
+    judged += e.qty;
+    const bestAfter = path.reduce((m, b) => (better(fav(b), fav(m)) ? b : m));
+    const worstAfter = path.reduce((m, b) => (better(adv(m), adv(b)) ? b : m));
+    const ran = Math.max(0, (fav(bestAfter) - p) * sign) * size;
+    left += ran;
+    // against you, no further than where the stop would have taken you out
+    const worstPx = stopPx !== null && better(stopPx, adv(worstAfter)) ? stopPx : adv(worstAfter);
+    against += Math.min(0, (worstPx - p) * sign) * size;
+    if (!best || better(fav(bestAfter), fav(best))) best = bestAfter;
+    if (!worst || better(adv(worst), adv(worstAfter))) worst = worstAfter;
+    if (end?.how === 'stop') stopHit = true;
+  }
+  if (!qty) return null;
+  const avgExit = pxSum / qty, score = scored ? Math.round((scoreSum / scored) * 1000) / 1000 : null;
+  const stopped = !!(firstStop && !better(avgExit, firstStop + sign * firstStop * 0.001));
+  const verdict = stopped ? 'stopped' : score === null ? null : score >= GOOD_EXIT ? 'good' : left > gave ? 'early' : 'late';
+  const later = daily.filter(b => b.date > lastDay);
+  const sessions = AFTER_SESSIONS.filter(n => later.length >= n).map(n => {
+    const span = later.slice(0, n), top = span.reduce((m, b) => (better(fav(b), m) ? fav(b) : m), fav(span[0])), close = span[n - 1].close;
+    const pct = (/** @type {number} */ v) => Math.round(((v - avgExit) * sign / avgExit) * 10000) / 100;
+    return { n, best: top, close, bestPct: pct(top), closePct: pct(close), bestR: r((top - avgExit) * sign * qty * mult), closeR: r((close - avgExit) * sign * qty * mult) };
+  });
+  const at = (/** @type {Candle | null} */ b, /** @type {(b: Candle) => number} */ f) => (b ? { price: f(b), date: b.date, time: b.time || '' } : null);
+  return {
+    score, verdict, avgExit: Math.round(avgExit * 1e4) / 1e4, qty, stop,
+    held: out ? round(held) : null, heldR: out ? r(held) : null, out,
+    left: round(left), leftR: r(left), best: judged ? at(best, fav) : null,
+    against: round(against), againstR: r(against), worst: judged ? at(worst, adv) : null, stopHit,
+    gave: round(gave), gaveR: r(gave),
+    sessions,
+  };
+}
+
+/** a stop-out that went no further past the stop than this share of the stop distance was swept, not run over */
+export const SWEPT_R = 0.25;
+/** the stop that would have held is never tighter than this share of your own stop's distance */
+export const MIN_HELD_DISTANCE = 0.5;
+
+/**
+ * Was the stop too tight (owner request)? Over the same span as afterExit's hold (from the entry's bar to the close of the
+ * last exit's day, and SWING_SESSIONS daily bars after it for a position held overnight), against the first stop, the one
+ * the risk was set on.
+ * - worst: the furthest price against you; overshoot: how far past the stop it went (0 when it never got there), in
+ *   dollars a share and R.
+ * - stopped (out at or through the stop): cameBack when, after the stop-out, price got back to the entry; bestAfterR how
+ *   far your way it went from the entry after it.
+ * - heldStop: the stop that would have held, a cent past the worst (a stop-out: over the whole span; otherwise while it
+ *   was open, since you got out), never tighter than MIN_HELD_DISTANCE of your stop's distance; heldDistance: its distance from the entry in stop distances (1.4 = 40% wider; under 1,
+ *   tighter); heldSize: the size the same risk buys with it; heldPnl (and R): a stop-out held to the end of the span with
+ *   it, a trade you got out of out at your average exit with that size; against the R you got. swept: a stop-out that
+ *   went no further than SWEPT_R past the stop.
+ * - heatR: the furthest against you while it was open, in R.
+ * - verdict: 'shaken' (stopped, then it came back to the entry), 'right' (stopped, and it didn't), 'room' (never within
+ *   half the stop distance), 'close' (came within a fifth of it), 'fine' otherwise.
+ * Null for spreads, open trades, trades before the history, without a stop or risk, and with no bars.
+ * @param {{ direction: 'long' | 'short', avgEntry: number, entryQty: number, multiplier: number, openedAt: string,
+ *   closedAt: string | null, status: string, risk: number | null, r?: number | null, stop?: number | null, legs?: any[] }} trade
+ * @param {{ time: string, qty: number, price: number }[]} exits the fills that closed it
+ * @param {Candle[]} bars 5-minute bars @param {Candle[]} [daily] the same symbol's daily bars, oldest first
+ */
+export function stopCheck(trade, exits, bars, daily = []) {
+  const stop = trade.stop && trade.stop > 0 ? trade.stop : null;
+  if (trade.legs || trade.status === 'history' || trade.status === 'open' || !trade.closedAt || stop === null || !(trade.avgEntry > 0) || !(trade.risk && trade.risk > 0) || !bars.length) return null;
+  const long = trade.direction === 'long', sign = long ? 1 : -1, mult = trade.multiplier || 1, entry = trade.avgEntry, risk = trade.risk;
+  const fav = (/** @type {Candle} */ b) => (long ? b.high : b.low), adv = (/** @type {Candle} */ b) => (long ? b.low : b.high);
+  const better = (/** @type {number} */ a, /** @type {number} */ b) => (a - b) * sign > 0;
+  const distance = Math.abs(entry - stop);
+  if (!(distance > 0)) return null;
+  const from = barStart(nyStamp(trade.openedAt)), closed = nyStamp(trade.closedAt), endDay = closed.slice(0, 10);
+  const outside = [nyStamp(trade.openedAt), closed].some(st => st.slice(11) < '09:30' || st.slice(11) >= '16:00');
+  const five = bars.filter(b => { const st = stampOf(b); return st >= from && b.date <= endDay && (outside || REGULAR(b)); });
+  if (!five.length) return null;
+  const span = [...five, ...(endDay > from.slice(0, 10) ? daily.filter(b => b.date > endDay).slice(0, SWING_SESSIONS) : [])];
+  const R = (/** @type {number} */ v) => Math.round((v / risk) * 100) / 100;
+  const round = (/** @type {number} */ v) => Math.round(v * 100) / 100;
+  const qty = exits.reduce((n, e) => n + (e.qty > 0 ? e.qty : 0), 0);
+  const avgExit = qty ? exits.reduce((n, e) => n + (e.qty > 0 ? e.qty * e.price : 0), 0) / qty : null;
+  const stopped = avgExit !== null && !better(avgExit, stop + sign * stop * 0.001);
+  // stopped: the whole span (would a wider stop have ridden it out?); otherwise only while it was open, since you got out
+  const held = five.filter(b => stampOf(b) <= closed);
+  const judged = stopped || !held.length ? span : held;
+  const worstBar = judged.reduce((m, b) => (better(adv(m), adv(b)) ? b : m));
+  const worst = adv(worstBar), over = Math.max(0, (stop - worst) * sign);
+  // after the stop-out: the bars after the last exit's bar
+  const lastAt = barStart(closed);
+  const after = stopped ? span.filter(b => (b.time ? stampOf(b) > lastAt : b.date > endDay)) : [];
+  const bestAfter = after.length ? after.reduce((m, b) => (better(fav(b), m) ? fav(b) : m), fav(after[0])) : null;
+  const cameBack = bestAfter !== null && !better(entry, bestAfter);
+  // the stop that would have held, the size the same risk buys with it, and that size held to the end of the span
+  // never tighter than half your stop distance: a winner that barely dipped would otherwise get a stop a cent away and a
+  // size no one would trade (MIN_HELD_DISTANCE)
+  const floor = entry - sign * distance * MIN_HELD_DISTANCE, past = worst - sign * 0.01;
+  const heldStop = Math.round((better(past, floor) ? floor : past) * 100) / 100;
+  const heldDist = Math.abs(entry - heldStop), heldSize = heldDist > 0 ? Math.floor(risk / (heldDist * mult)) : 0;
+  // a stop-out held to the end of the span with it; a trade you got out of, out at the same price with the size it buys
+  const last = span[span.length - 1], endPx = stopped || avgExit === null ? last.close : avgExit;
+  const heldPnl = (endPx - entry) * sign * heldSize * mult;
+  const heatPx = held.length ? held.reduce((m, b) => (better(m, adv(b)) ? adv(b) : m), entry) : entry;
+  const heatR = R(Math.min(0, (heatPx - entry) * sign) * trade.entryQty * mult);
+  const verdict = stopped ? (cameBack ? 'shaken' : 'right') : heatR > -0.5 ? 'room' : heatR <= -0.8 ? 'close' : 'fine';
+  return {
+    stop, verdict, stopped, cameBack, heatR, swept: stopped && over * trade.entryQty * mult <= SWEPT_R * risk,
+    worst: { price: worst, date: worstBar.date, time: worstBar.time || '' },
+    overshoot: round(over), overshootR: R(over * trade.entryQty * mult),
+    bestAfterR: bestAfter === null ? null : R((bestAfter - entry) * sign * trade.entryQty * mult),
+    heldStop, heldDistance: Math.round((heldDist / distance) * 100) / 100, heldSize,
+    heldPnl: round(heldPnl), heldR: R(heldPnl), r: trade.r ?? null,
+    end: stopped ? { price: endPx, date: last.date, time: last.time || '', how: last.time ? 'close' : 'sessions' } : { price: endPx, date: endDay, time: closed.slice(11), how: 'exit' },
+  };
+}

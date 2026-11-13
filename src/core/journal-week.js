@@ -12,7 +12,10 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
 /** @typedef {import('./journal-stats.js').StatTrade & { avgEntry?: number, entryQty?: number, multiplier?: number,
  *   schwabStop?: number | null, movedTo?: number | null, rBasis?: string | null }} WeekTrade
  * @typedef {{ mfe: number, mae: number, mfeR: number | null, maeR: number | null, efficiency: number | null }} Excursion
- * @typedef {{ text: string, tone?: 'good' | 'bad' | '' }} Fact
+ * @typedef {{ score: number | null, verdict: 'good' | 'early' | 'late' | 'stopped' | null, left: number, leftR: number | null, held?: number | null, heldR?: number | null }} AfterExit
+ * @typedef {{ verdict: 'shaken' | 'right' | 'room' | 'close' | 'fine', stopped: boolean, swept: boolean, overshootR: number, heldPnl: number, heldR: number }} StopCheck
+ * @typedef {{ text: string, tone?: 'good' | 'bad' | '', named?: string, at?: number, trades?: { key: string, label: string }[] }} Fact
+ *   named: the words in text that name trades (names()), at: where they start, trades: each to link to its page, in the order they opened
  * @typedef {{ key: string, name: string, facts: Fact[] }} Category
  * @typedef {{
  *   review: (key: string) => { setup_grade?: string | null, plan_followed?: string | null, note?: string | null, entry_note?: string | null } | undefined,
@@ -21,6 +24,8 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
  *   nameOf: (kind: string, value: string) => string,
  *   kinds?: (key: string) => string[],
  *   excursion: (t: WeekTrade) => Excursion | null | undefined,
+ *   afterExit?: (t: WeekTrade) => AfterExit | null | undefined,
+ *   stopCheck?: (t: WeekTrade) => StopCheck | null | undefined,
  *   reviewed: (t: WeekTrade) => boolean,
  *   saved: (key: string) => boolean,
  *   barsPending?: boolean,
@@ -52,6 +57,15 @@ const names = (/** @type {WeekTrade[]} */ ts) => {
   const n = [...new Set([...ts].sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0)).map(underlyingOf))];
   return n.length > 3 ? `${n.slice(0, 3).join(', ')} and ${n.length - 3} more` : n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : n[0] || '';
 };
+/** each trade a fact names, to open its page: oldest first, the day added where one name is on two @param {WeekTrade[]} ts */
+function tradeLinks(ts) {
+  const sorted = [...new Map(ts.map(t => [t.key, t])).values()].sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0));
+  const count = /** @type {Map<string, number>} */ (new Map());
+  for (const t of sorted) count.set(underlyingOf(t), (count.get(underlyingOf(t)) || 0) + 1);
+  return sorted.map(t => { const n = underlyingOf(t), d = nyParts(t.openedAt).day; return { key: t.key, label: /** @type {number} */ (count.get(n)) > 1 ? `${n} ${+d.slice(5, 7)}/${+d.slice(8)}` : n }; });
+}
+/** where a fact's text names its trades (add() puts names() there) */
+const NAMES = '\u0000';
 /** the cost of the whole entry: price × quantity × multiplier. @param {WeekTrade} t */
 const costOf = t => (t.avgEntry || 0) * (t.entryQty || 0) * (t.multiplier || 1);
 
@@ -300,7 +314,15 @@ export function periodReview(trades, unit, key, ctx) {
   const has = (/** @type {WeekTrade} */ t, /** @type {string} */ kind) => label(t.key, kind).length > 0;
   /** @type {Record<string, Fact[]>} */
   const facts = Object.fromEntries(PERIOD_CATEGORIES.map(([k]) => [k, []]));
-  const add = (/** @type {string} */ cat, /** @type {string} */ text, /** @type {Fact['tone']} */ tone = '') => facts[cat].push({ text, tone });
+  /**
+   * a fact; ts: the trades it names, written NAMES in the text, so each can open its page: at is where the names start (a
+   * search for them could land on the same letters earlier in the line, 'Tagged "FOMO" on 1 trade: F')
+   */
+  const add = (/** @type {string} */ cat, /** @type {string} */ text, /** @type {Fact['tone']} */ tone = '', /** @type {WeekTrade[]} */ ts = []) => {
+    if (!ts.length) return facts[cat].push({ text, tone });
+    const named = names(ts), at = text.indexOf(NAMES);
+    facts[cat].push({ text: text.replace(NAMES, named), tone, named, at, trades: tradeLinks(ts) });
+  };
   const word = unit === 'month' ? 'month' : 'week';
 
   if (all.length) {
@@ -355,19 +377,70 @@ export function periodReview(trades, unit, key, ctx) {
       const priced = kept.filter(x => costOf(x.t) > 0);
       if (priced.length) add('exit', `Winners made ${pct(/** @type {number} */ (avg(priced.map(x => x.t.pnl / costOf(x.t)))))} of cost on average; the best they reached was ${pct(/** @type {number} */ (avg(priced.map(x => /** @type {number} */ (x.ex?.mfe) / costOf(x.t)))))}`);
       const gave = kept.filter(x => x.t.pnl < 0.5 * /** @type {number} */ (x.ex?.mfe)).map(x => x.t);
-      if (gave.length) add('exit', `Gave back over half the best move on ${plural(gave.length, 'winner')}: ${names(gave)}`, 'bad');
+      if (gave.length) add('exit', `Gave back over half the best move on ${plural(gave.length, 'winner')}: ${NAMES}`, 'bad', gave);
     }
     const turned = closedHere.filter(t => t.pnl < 0).filter(t => { const ex = ctx.excursion(t); return ex && ex.mfeR !== null && ex.mfeR >= 1; });
-    if (turned.length) add('exit', `${plural(turned.length, 'loser')} ${turned.length === 1 ? 'was' : 'were'} up 1R or more first: ${names(turned)}`, 'bad');
+    if (turned.length) add('exit', `${plural(turned.length, 'loser')} ${turned.length === 1 ? 'was' : 'were'} up 1R or more first: ${NAMES}`, 'bad', turned);
+    // --- how good the exits were: where they sat in the day, and what the rest of the day did (core/trade-page.js afterExit)
+    const judged = closedHere.map(t => ({ t, a: ctx.afterExit?.(t) })).filter(x => x.a && x.a.score !== null);
+    if (judged.length) {
+      const score = /** @type {number} */ (avg(judged.map(x => /** @type {number} */ (x.a?.score))));
+      const count = (/** @type {string} */ v) => judged.filter(x => x.a?.verdict === v).length;
+      const split = /** @type {[string, string][]} */ ([['good', 'good'], ['early', 'early'], ['late', 'late'], ['stopped', 'stopped out']])
+        .filter(([v]) => count(v)).map(([v, w]) => `${count(v)} ${w}`).join(', ');
+      add('exit', `Exit score ${Math.round(score * 100)}% on average over ${plural(judged.length, 'trade')} (${split}): where you got out in the range from the entry`, score >= 0.7 ? 'good' : score < 0.5 ? 'bad' : '');
+      const early = judged.filter(x => x.a?.verdict === 'early').map(x => x.t), late = judged.filter(x => x.a?.verdict === 'late').map(x => x.t);
+      if (early.length) add('exit', `Out early, and it ran on: ${NAMES}`, 'bad', early);
+      if (late.length) add('exit', `Out late, after giving it back: ${NAMES}`, 'bad', late);
+      // owner request: winners sold too early, and what holding on with the stop would have added on them
+      const winners = judged.filter(x => x.t.pnl > 0), cut = winners.filter(x => x.a?.verdict === 'early' && /** @type {number} */ (x.a?.held) > 0);
+      if (cut.length) {
+        const more = round2(sum(cut.map(x => /** @type {number} */ (x.a?.held)))), rs = cut.map(x => x.a?.heldR).filter(r => r !== null && r !== undefined);
+        add('exit', `Winners sold too early: ${cut.length} of ${winners.length} (${NAMES}); holding on with your stops would have made ${fmt$(more)}${rs.length === cut.length ? ` (${signedR(sum(/** @type {number[]} */ (rs)))})` : ''} more on them`, 'bad', cut.map(x => x.t));
+      } else if (winners.length) add('exit', `No winner sold too early (${plural(winners.length, 'winner')})`, 'good');
+      // holding on with the stops in (afterExit's hold): the realistic answer, beside the best-tick ceiling under it
+      const holds = judged.filter(x => x.a?.held !== null && x.a?.held !== undefined);
+      if (holds.length) {
+        const net = round2(sum(holds.map(x => /** @type {number} */ (x.a?.held)))), rs = holds.map(x => x.a?.heldR).filter(r => r !== null && r !== undefined);
+        const inR = rs.length === holds.length ? ` (${signedR(sum(/** @type {number[]} */ (rs)))})` : '';
+        if (net > 0) add('exit', `Holding on with your stops would have made ${fmt$(net)}${inR} more than your exits, over ${plural(holds.length, 'trade')}`, 'bad');
+        else if (net < 0) add('exit', `Your exits beat holding on with your stops by ${fmt$(-net)}${inR.replace('−', '+')}, over ${plural(holds.length, 'trade')}`, 'good');
+        else add('exit', `Your exits came out even with holding on with your stops, over ${plural(holds.length, 'trade')}`);
+      }
+      const left = judged.filter(x => x.a && x.a.left > 0);
+      if (left.length) {
+        const most = left.reduce((m, x) => (/** @type {number} */ (x.a?.left) > /** @type {number} */ (m.a?.left) ? x : m));
+        const rs = left.map(x => x.a?.leftR).filter(r => r !== null && r !== undefined);
+        add('exit', `Left ${fmt$(round2(sum(left.map(x => /** @type {number} */ (x.a?.left)))))} on the table at best after the exits${rs.length === left.length ? ` (${signedR(/** @type {number} */ (avg(/** @type {number[]} */ (rs))))} a trade)` : ''}, most on ${underlyingOf(most.t)}`);
+      }
+    }
     const noBars = closedHere.filter(t => !t.legs && ctx.excursion(t) === null);
     if (ctx.barsPending) add('exit', 'Loading the 5-minute bars for the best and worst of each trade…');
-    else if (noBars.length) add('exit', `No 5-minute bars for ${plural(noBars.length, 'trade')} (${names(noBars)}), so they're left out of the excursions`);
+    else if (noBars.length) add('exit', `No 5-minute bars for ${plural(noBars.length, 'trade')} (${NAMES}), so they're left out of the excursions`, '', noBars);
 
     // --- risk management: the size of the losses and of the risk taken
     const losers = closed.filter(t => t.pnl < 0);
     if (losers.length) {
       const big = losers.reduce((a, b) => (b.pnl < a.pnl ? b : a));
       add('risk', `Biggest loss: ${signed$(big.pnl)}${big.r !== null && big.r !== undefined ? ` (${signedR(big.r)})` : ''} on ${underlyingOf(big)}`);
+    }
+    // was the stop too tight (core/trade-page.js stopCheck): stop-outs that came back, sweeps, how deep winners went
+    const checks = closedHere.map(t => ({ t, c: ctx.stopCheck?.(t) })).filter(x => x.c);
+    const outs = checks.filter(x => x.c?.stopped);
+    if (outs.length) {
+      const shaken = outs.filter(x => x.c?.verdict === 'shaken');
+      add('risk', `Stopped out ${outs.length === 1 ? 'once' : `${outs.length} times`}: ${shaken.length ? `${shaken.length} came back to your entry after (${NAMES})` : 'none came back to your entry after'}`, shaken.length * 2 >= outs.length && shaken.length ? 'bad' : !shaken.length ? 'good' : '', shaken.map(x => x.t));
+      const swept = outs.filter(x => x.c?.swept);
+      if (swept.length) add('risk', `${swept.length} of ${plural(outs.length, 'stop-out')} went under a quarter R past the stop before turning: a sweep, stops at an obvious level`, swept.length * 2 >= outs.length ? 'bad' : '');
+      if (shaken.length) {
+        const wider = round2(sum(shaken.map(x => /** @type {number} */ (x.c?.heldPnl))));
+        add('risk', `With the stops that would have held, at the same risk, the ${plural(shaken.length, 'shakeout')} would have made ${signed$(wider)} (${signedR(sum(shaken.map(x => /** @type {number} */ (x.c?.heldR))))}), against ${signedR(sum(shaken.map(x => /** @type {number} */ (x.t.r ?? -1))))} taken`);
+      }
+    }
+    const depths = closedHere.filter(t => t.pnl > 0).map(t => ctx.excursion(t)?.maeR).filter(r => r !== null && r !== undefined).map(r => /** @type {number} */ (r)).sort((a, b) => b - a);
+    if (depths.length >= 3) {
+      const at80 = depths[Math.ceil(depths.length * 0.8) - 1];
+      add('risk', `80% of winners went no further than ${signedR(at80)} against you (${plural(depths.length, 'winner')}): how deep a trade that works dips`);
     }
     if (stats.bigLosses) add('risk', `${plural(stats.bigLosses, 'loss')} worse than −1.5R`, 'bad');
     else if (closed.some(t => t.r !== null && t.r !== undefined)) add('risk', 'No loss worse than −1.5R', 'good');
@@ -377,10 +450,10 @@ export function periodReview(trades, unit, key, ctx) {
       add('risk', `Risk per trade: ${fmt$(lo)} to ${fmt$(hi)}, ${fmt$(round2(mean))} on average`, hi > 2 * mean ? 'bad' : '');
     } else if (risks.length) add('risk', `Risk on the one trade with a stop: ${fmt$(/** @type {number} */ (risks[0]))}`);
     const noStop = opened.filter(t => !t.legs && !(t.risk && t.risk > 0));
-    if (noStop.length) add('risk', `${plural(noStop.length, 'trade')} with no stop: ${names(noStop)}`, 'bad');
+    if (noStop.length) add('risk', `${plural(noStop.length, 'trade')} with no stop: ${NAMES}`, 'bad', noStop);
     const loosened = all.filter(t => t.movedTo !== null && t.movedTo !== undefined && t.schwabStop !== null && t.schwabStop !== undefined
       && (t.direction === 'short' ? t.movedTo > t.schwabStop : t.movedTo < t.schwabStop));
-    if (loosened.length) add('risk', `Stop moved farther away on ${plural(loosened.length, 'trade')}: ${names(loosened)}`, 'bad');
+    if (loosened.length) add('risk', `Stop moved farther away on ${plural(loosened.length, 'trade')}: ${NAMES}`, 'bad', loosened);
 
     // --- emotional control: trades on the back of a loss, the busiest day
     const losses = countedTrades(trades.filter(t => !t.deleted)).filter(t => t.pnl < 0);
@@ -435,7 +508,7 @@ export function periodReview(trades, unit, key, ctx) {
     /** @type {Map<string, WeekTrade[]>} */
     const tagged = new Map();
     for (const t of all) for (const v of label(t.key, 'mistake')) { if (!tagged.has(v)) tagged.set(v, []); /** @type {WeekTrade[]} */ (tagged.get(v)).push(t); }
-    for (const [v, ts] of tagged) add(MISTAKE_CATEGORY[v] || 'consistency', `Tagged "${ctx.nameOf('mistake', v)}" on ${plural(ts.length, 'trade')}: ${names(ts)}`, 'bad');
+    for (const [v, ts] of tagged) add(MISTAKE_CATEGORY[v] || 'consistency', `Tagged "${ctx.nameOf('mistake', v)}" on ${plural(ts.length, 'trade')}: ${NAMES}`, 'bad', ts);
   }
 
   return {

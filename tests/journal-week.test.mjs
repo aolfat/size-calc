@@ -60,6 +60,16 @@ test('each part of the week gets its own numbers, the good and the worrying ones
   const { run } = await app();
   const r = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${CTX})`);
   const cat = key => r.categories.find(c => c.key === key).facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
+  // the trades a line names come with it, to link to: oldest first, every one of them
+  const named = r.categories.find(c => c.key === 'exit').facts.find(f => f.text.startsWith('Gave back'));
+  assert.deepEqual([named.named, named.trades.map(x => x.label)], ['AAPL', ['AAPL']]);
+  assert.deepEqual(json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', { ...${CTX}, labels: k => ['aapl', 'nvda', 'amd', 'tsla'].includes(k) ? [{ kind: 'mistake', value: 'chased' }] : [] })`)
+    .categories.find(c => c.key === 'entry').facts.find(f => f.text.startsWith('Tagged')).trades.map(x => x.label), ['AAPL', 'NVDA', 'AMD', 'TSLA'], "the words say 'and 1 more', the links name all four");
+  // the names' place is kept, not searched for: Ford's F isn't the F of FOMO
+  const ford = [...TRADES, T('f', '2026-10-13T14:00:00Z', '2026-10-13T15:00:00Z', -50)];
+  const fomo = json(run, `periodReview(${JSON.stringify(ford)}, 'week', '2026-10-12', { ...${CTX}, labels: k => k === 'f' ? [{ kind: 'mistake', value: 'mine:fomo' }] : [] })`)
+    .categories.find(c => c.key === 'consistency').facts.find(f => f.text.startsWith('Tagged'));
+  assert.deepEqual([fomo.text, fomo.named, fomo.at], ['Tagged "FOMO" on 1 trade: F', 'F', 26]);
   assert.deepEqual(cat('selection'), [
     '2 of 4 closed trades won (50%), 100% the week before',
     'Setup grades: 2 A, 1 B, 1 C',
@@ -116,6 +126,52 @@ test('each part of the week gets its own numbers, the good and the worrying ones
     'Reviewed 1 of 4 trades closed',
     '[bad] Tagged "FOMO" on 1 trade: TSLA',
   ], 'your own mistakes go under consistency');
+});
+
+test('how good the exits were: the average exit score, early and late by name, what was left on the table', async () => {
+  const { run } = await app();
+  const after = `{ ...${CTX}, afterExit: t => ({ aapl: { score: 0.4, verdict: 'early', left: 600, leftR: 3, held: 300, heldR: 1.5 }, nvda: { score: 0.9, verdict: 'good', left: 0, leftR: 0, held: -200, heldR: -0.67 },
+    amd: { score: 0.1, verdict: 'stopped', left: 200, leftR: 1, held: 0, heldR: 0 }, tsla: { score: 0.3, verdict: 'late', left: 0, leftR: 0, held: null, heldR: null } })[t.key] ?? null }`;
+  const exit = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${after})`).categories.find(c => c.key === 'exit').facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
+  const at = exit.indexOf('[bad] 1 loser was up 1R or more first: AMD') + 1;
+  assert.deepEqual(exit.slice(at, at + 6), [
+    "[bad] Exit score 43% on average over 4 trades (1 good, 1 early, 1 late, 1 stopped out): where you got out in the range from the entry",
+    '[bad] Out early, and it ran on: AAPL',
+    '[bad] Out late, after giving it back: TSLA',
+    '[bad] Winners sold too early: 1 of 2 (AAPL); holding on with your stops would have made $300.00 (+1.5R) more on them',
+    '[bad] Holding on with your stops would have made $100.00 (+0.8R) more than your exits, over 3 trades',
+    'Left $800.00 on the table at best after the exits (+2.0R a trade), most on AAPL',
+  ]);
+  const beat = `{ ...${CTX}, afterExit: t => t.key === 'nvda' ? { score: 0.9, verdict: 'good', left: 0, leftR: 0, held: -200, heldR: -0.67 } : null }`;
+  assert.ok(json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${beat})`).categories.find(c => c.key === 'exit').facts
+    .some(f => f.tone === 'good' && f.text === 'Your exits beat holding on with your stops by $200.00 (+0.7R), over 1 trade'));
+  const good = `{ ...${CTX}, afterExit: t => t.key === 'nvda' ? { score: 0.8, verdict: 'good', left: 0, leftR: 0 } : null }`;
+  const g = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${good})`).categories.find(c => c.key === 'exit').facts;
+  assert.ok(g.some(f => f.tone === 'good' && f.text.startsWith('Exit score 80% on average over 1 trade (1 good)')));
+  assert.ok(!json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${CTX})`).categories.find(c => c.key === 'exit').facts.some(f => /Exit score/.test(f.text)), 'nothing read yet: no line');
+  assert.ok(g.some(f => f.tone === 'good' && f.text === 'No winner sold too early (1 winner)'));
+});
+
+test('was the stop too tight: stop-outs that came back, sweeps, what the stops that would have held made, how deep winners dip', async () => {
+  const { run } = await app();
+  const checks = `{ ...${CTX}, stopCheck: t => ({
+    amd: { verdict: 'shaken', stopped: true, swept: true, overshootR: 0.1, heldPnl: 260, heldR: 1.3 },
+    tsla: { verdict: 'right', stopped: true, swept: false, overshootR: 1.2, heldPnl: -150, heldR: -0.75 },
+    aapl: { verdict: 'room', stopped: false, swept: false, overshootR: 0, heldPnl: 900, heldR: 4.5 } })[t.key] ?? null }`;
+  const risk = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${checks})`).categories.find(c => c.key === 'risk').facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
+  assert.deepEqual(risk.slice(1, 4), [
+    '[bad] Stopped out 2 times: 1 came back to your entry after (AMD)',
+    '[bad] 1 of 2 stop-outs went under a quarter R past the stop before turning: a sweep, stops at an obvious level',
+    'With the stops that would have held, at the same risk, the 1 shakeout would have made +$260.00 (+1.3R), against −1.8R taken',
+  ]);
+  const right = `{ ...${CTX}, stopCheck: t => t.key === 'tsla' ? { verdict: 'right', stopped: true, swept: false, overshootR: 1.2, heldPnl: -150, heldR: -0.75 } : null }`;
+  assert.ok(json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${right})`).categories.find(c => c.key === 'risk').facts
+    .some(f => f.tone === 'good' && f.text === 'Stopped out once: none came back to your entry after'));
+  // how deep winners dip: the 80th percentile of their heat, with three or more
+  const wins = `[...${JSON.stringify(TRADES)}, ${JSON.stringify({ ...TRADES[1], key: 'msft', symbol: 'MSFT', label: 'MSFT' })}, ${JSON.stringify({ ...TRADES[1], key: 'goog', symbol: 'GOOG', label: 'GOOG' })}]`;
+  const heat = `{ ...${CTX}, excursion: t => ({ aapl: { maeR: -0.25 }, nvda: { maeR: -0.5 }, msft: { maeR: -0.1 }, goog: { maeR: -0.9 } })[t.key] ?? null }`;
+  assert.ok(json(run, `periodReview(${wins}, 'week', '2026-10-12', ${heat})`).categories.find(c => c.key === 'risk').facts
+    .some(f => f.text === '80% of winners went no further than −0.9R against you (4 winners): how deep a trade that works dips'));
 });
 
 test('an empty week has no facts, a month counts its weeks together, bars still loading say so', async () => {
@@ -193,9 +249,12 @@ test('a week\'s total on the calendar opens its review under the grid, with exit
   assert.match(panel, /Best: <button class="pos-link" data-action="openTradeRow" data-arg="[^"]*AAPL[^"]*">AAPL<\/button> <span class="journal-buy">\+\$300\.00/);
   assert.match(panel, /Worst: <button[^>]*>MSFT<\/button> <span class="journal-sell">−\$100\.00/);
   assert.match(panel, /<div class="jw-cat-name">Exit discipline<\/div><select[^>]*>[\s\S]*?<\/select><\/div><ul class="jw-facts"><li class="jw-bad">Kept 43% of the best move on 1 winner<\/li>/, '$300 of the $700 it reached');
-  assert.match(panel, /Gave back over half the best move on 1 winner: AAPL/);
-  assert.match(panel, /No 5-minute bars for 1 trade \(MSFT\)/);
-  assert.match(panel, /<li class="jw-bad">2 trades with no stop: AAPL and MSFT<\/li>/, 'named in the order they opened');
+  assert.match(panel, /Gave back over half the best move on 1 winner: <button class="pos-link" data-action="openTradeRow"[^>]*>AAPL<\/button>/);
+  // out at 103 after the 107 high, nothing after it that day: 47% up the 99.50 to 107 range, late
+  assert.match(panel, /<li class="jw-bad">Exit score 47% on average over 1 trade \(1 late\): where you got out in the range from the entry<\/li>/, 'from the same bars, with the exit fills');
+  assert.match(panel, /Out late, after giving it back: <button class="pos-link" data-action="openTradeRow" data-arg="[^"]*AAPL[^"]*">AAPL<\/button><\/li>/, 'each trade a line names opens its page');
+  assert.match(panel, /No 5-minute bars for 1 trade \(<button class="pos-link" data-action="openTradeRow" data-arg="[^"]*MSFT[^"]*">MSFT<\/button>\)/);
+  assert.match(panel, /<li class="jw-bad">2 trades with no stop: <button[^>]*>AAPL<\/button> and <button[^>]*>MSFT<\/button><\/li>/, 'named in the order they opened, each a link');
   assert.match(panel, /<li class="">No more than 1 trade opened a day<\/li>/);
   assert.match(panel, /2 trades opened before 9:45 ET: 1 won, \+\$200\.00/);
   assert.match(panel, /Average heat: −0.5% of cost against you before the exit, worst −0.5% on AAPL/, 'no stops: heat as a share of the cost');
@@ -577,4 +636,31 @@ test('before the week rules\' columns are pushed: the one rule box, a hint, and 
   const row = sb.tables.period_reviews.get('user-1:week:2026-10-05');
   assert.deepEqual([row.rule_next, row.rule_kept], ['Wait for the pivot', 'yes']);
   assert.equal(sb.writes.filter(w => w.table === 'period_reviews' && 'rules_next' in w).length, 0, 'never the columns it lacks');
+});
+
+test('a stock held overnight: its exit is judged holding on past the exit on the daily bars, read for the symbol', async () => {
+  // NVDA bought Mon 10/5, sold Tue 10/6 at 110 with a 100 stop; the daily bars after: up to 118, then down through the stop
+  const records = [order(11, 'BUY', '2026-10-05T14:00:00+0000', 10, 105, 'NVDA'), order(12, 'SELL', '2026-10-06T15:00:00+0000', 10, 110, 'NVDA')];
+  const supabase = fakeRecords(records);
+  supabase.tables.trade_reviews.set('user-1:6789|NVDA|long|2026-10-05T14:00:00.000Z', { user_id: 'user-1', trade_key: '6789|NVDA|long|2026-10-05T14:00:00.000Z', stop: 100 });
+  supabase.bars.set('user-1:NVDA:2026-10-05', { user_id: 'user-1', symbol: 'NVDA', day: '2026-10-05', bars: [['10:00', 105, 108, 104, 107, 1]] });
+  supabase.bars.set('user-1:NVDA:2026-10-06', { user_id: 'user-1', symbol: 'NVDA', day: '2026-10-06', bars: [['11:00', 109, 111, 108, 110, 1], ['15:55', 110, 112, 109, 111, 1]] });
+  const daily = [['2026-10-07', 111, 118, 110, 116], ['2026-10-08', 116, 117, 99, 101]].map(([date, open, high, low, close]) => ({ date, open, high, low, close, volume: 1 }));
+  const calls = [];
+  const fetch = async url => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('/markets/history')) { calls.push(u.searchParams.get('symbol')); return new Response(JSON.stringify({ history: { day: daily } }), { status: 200 }); }
+    throw new Error('unexpected ' + url);
+  };
+  const a = await app({ supabase, session: SESSION, fetch });
+  a.elements.get('apiKey').value = 'test-key';
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  a.run("setJournalTab('calendar'); openPeriodReview('week', '2026-10-05')");
+  await settle();
+  assert.ok(calls.includes('NVDA'), 'its daily bars are read');
+  const after = a.state.journalExcursions['6789|NVDA|long|2026-10-05T14:00:00.000Z'].after;
+  assert.deepEqual([after.out.how, after.out.price, after.out.date, after.held], ['stop', 100, '2026-10-08', -100], 'up to 118 on 10/7, then stopped at 100 on 10/8: holding would have lost $100');
+  assert.deepEqual([after.score, after.left, after.verdict], [0.556, 80, 'early'], 'scored 100 (the stop) to 118: 110 sits 10 of 18 up; it ran 8 past the exit, 1 given back');
 });

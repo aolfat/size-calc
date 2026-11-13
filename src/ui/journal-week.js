@@ -12,10 +12,7 @@ import { buildLibrary } from '../core/journal-labels.js';
 import { MISSED_WHY, notebookLists, periodMissed, standingRuleFor } from '../core/journal-notebook.js';
 import { activePeriods, stepPeriod, underlyingOf } from '../core/journal-stats.js';
 import { gradeColumn, LEGACY_RULE_ID, MAX_PERIOD_NOTE, MAX_PERIOD_RULES, MAX_RULE, noteColumn, PERIOD_CATEGORIES, PERIOD_GRADES, PERIOD_OVERALL, PERIOD_OVERALL_COLUMNS, PERIOD_TRADE_SORTS, periodMissingWords, periodOver, periodReview, periodReviewState, periodRules, periodTradeRows, previousPeriod, reviewTrades, RULE_KEPT, ruleKeptOf, sortPeriodTrades, weekRuleTally } from '../core/journal-week.js';
-import { excursions, unpackBars } from '../core/trade-page.js';
-import { nyDay, weekdaysBetween } from '../core/bars.js';
-import { parseSchwabOption } from '../core/positions.js';
-import { loadTradeBars } from '../services/bars.js';
+import { nyDay } from '../core/bars.js';
 import { savePeriodFields } from '../services/journal-review.js';
 import { zoneWords } from '../lib/zone.js';
 import { state } from '../state.js';
@@ -23,6 +20,7 @@ import { showError, showToast } from './feedback.js';
 import { periodReviewContext, reviewedMark } from './journal-review.js';
 import { makeRuleStanding, missedWords } from './journal-notebook.js';
 import { periodName } from './journal-stats.js';
+import { afterExitOf, excursionOf, readTrades, stopCheckOf } from './trade-reads.js';
 import { journalTradeList, renderJournal } from './journal.js';
 import { loadPeriodReviewRows, renderWeekRulesCard } from './week-rules.js';
 
@@ -31,40 +29,13 @@ const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 const validKey = (unit, key) => unit === 'month' ? /^\d{4}-\d{2}$/.test(key) : /^\d{4}-\d{2}-\d{2}$/.test(key);
 
-/** what a trade's excursions were read from: a change (a late fill, a re-close) reads them again */
-const signature = t => `${t.closedAt}|${t.entryQty}|${t.avgEntry}`;
-/** the 5-minute bars a trade's excursions come from: an option contract's own, a stock's; spreads have none */
-const barsSymbol = t => t.legs ? '' : t.assetType === 'OPTION' && parseSchwabOption(t.symbol) ? t.symbol.replace(/\s+/g, '') : t.symbol;
-
-/** a trade's excursions: undefined until read, null when there are no bars for it */
-function excursionOf(t) {
-  const c = state.journalExcursions[t.key];
-  return c && c.sig === signature(t) ? c.ex : undefined;
-}
-
-/** read the saved bars for the period's closed trades that haven't been read yet, one query per symbol */
+/** read the saved bars for the period's closed trades that haven't been read yet (ui/trade-reads.js) */
 async function loadExcursions(unit, key) {
   const { closedHere } = reviewTrades(journalTradeList(), unit, key);
-  const todo = closedHere.filter(t => barsSymbol(t) && excursionOf(t) === undefined);
-  for (const t of closedHere) if (!barsSymbol(t)) state.journalExcursions[t.key] = { sig: signature(t), ex: null };
-  if (!todo.length) return;
-  state.periodBarsBusy = true;
-  renderJournal();
-  const bySymbol = new Map();
-  for (const t of todo) {
-    const days = weekdaysBetween(nyDay(t.openedAt), nyDay(t.closedAt));
-    const s = bySymbol.get(barsSymbol(t)) || { days: new Set(), trades: [] };
-    days.forEach(d => s.days.add(d));
-    s.trades.push(t);
-    bySymbol.set(barsSymbol(t), s);
-  }
-  await Promise.all([...bySymbol].map(async ([symbol, { days, trades }]) => {
-    let bars = [];
-    try { bars = unpackBars(await loadTradeBars(symbol, [...days].sort())); } catch(e) { bars = []; }
-    for (const t of trades) state.journalExcursions[t.key] = { sig: signature(t), ex: bars.length ? excursions(t, bars) : null };
-  }));
-  state.periodBarsBusy = false;
-  if (state.journalReviewPeriod?.unit === unit && state.journalReviewPeriod?.key === key) renderJournal();
+  let any = false;
+  try { any = await readTrades(closedHere, () => { state.periodBarsBusy = true; renderJournal(); }); } catch(e) { any = true; } // a failed read redraws without the loading line
+  finally { state.periodBarsBusy = false; }
+  if (any && state.journalReviewPeriod?.unit === unit && state.journalReviewPeriod?.key === key) renderJournal();
 }
 
 /** a week's total or Review the month: its review under the calendar (tapping the one open closes it) */
@@ -348,8 +319,20 @@ function headline(r, word) {
 
 const tradeLink = (t, extra = '') => `<button class="pos-link" data-action="openTradeRow" data-arg="${esc(t.key)}">${esc(underlyingOf(t))}</button>${extra}`;
 
+/** 'AAPL, NVDA and TSLA': each a button that opens its trade page */
+const linkList = links => {
+  const b = links.map(l => `<button class="pos-link" data-action="openTradeRow" data-arg="${esc(l.key)}">${esc(l.label)}</button>`);
+  return b.length > 1 ? `${b.slice(0, -1).join(', ')} and ${b[b.length - 1]}` : b[0] || '';
+};
+/** a fact's words, the trades it names as links to their pages (every one of them, where the words say 'and 2 more') */
+function factHtml(f) {
+  const at = f.named && Number.isInteger(f.at) ? f.at : -1;
+  if (at < 0 || !f.trades?.length) return esc(f.text);
+  return `${esc(f.text.slice(0, at))}${linkList(f.trades)}${esc(f.text.slice(at + f.named.length))}`;
+}
+
 function category(c, p, off) {
-  const facts = c.facts.length ? c.facts.map(f => `<li class="${f.tone === 'good' ? 'jw-good' : f.tone === 'bad' ? 'jw-bad' : ''}">${esc(f.text)}</li>`).join('')
+  const facts = c.facts.length ? c.facts.map(f => `<li class="${f.tone === 'good' ? 'jw-good' : f.tone === 'bad' ? 'jw-bad' : ''}">${factHtml(f)}</li>`).join('')
     : '<li class="jw-none">Nothing to go on yet.</li>';
   const g = gradeAndNote(c, p, off);
   const missing = !off && !rowOf(p.unit, p.key)?.[gradeColumn(c.key)];
@@ -432,7 +415,7 @@ function ruleNext(p, off) {
 export function periodReviewHtml(trades) {
   const p = state.journalReviewPeriod;
   if (!p) return '';
-  const r = periodReview(trades, p.unit, p.key, { ...periodReviewContext(), excursion: excursionOf, barsPending: state.periodBarsBusy, clock: hhmm => zoneWords(nyDay(Date.now()), hhmm) });
+  const r = periodReview(trades, p.unit, p.key, { ...periodReviewContext(), excursion: excursionOf, afterExit: afterExitOf, stopCheck: stopCheckOf, barsPending: state.periodBarsBusy, clock: hhmm => zoneWords(nyDay(Date.now()), hhmm) });
   const word = p.unit === 'month' ? 'month' : 'week';
   const lock = state.periodReviews && !state.periodReviewsError ? '' : ' disabled';
   const active = activePeriods(trades, p.unit);
