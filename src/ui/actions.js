@@ -3,7 +3,7 @@
 import { store } from '../lib/store.js';
 import { growBox } from '../lib/grow.js';
 import { state } from '../state.js';
-import { cancelModelDraft, closeModelImage, deleteModelBook, deleteModelExample, editModelBook, editModelExample, loadModelBooks, modelBookField, modelExampleField, openModelImage, pasteModelImages, pickModelImage, pickTradeExampleShot, refreshModelImages, saveModelBook, saveModelExample, selectModelBook, selectModelSetup, setModelBrowse, toggleModelSetup } from './model-books.js';
+import { cancelModelDraft, closeModelImage, deleteModelBook, deleteModelExample, editModelBook, editModelExample, loadModelBooks, modelBookField, modelExampleField, openModelImage, pasteModelImages, pickModelImage, pickTradeExampleShot, refreshModelImages, saveModelBook, saveModelExample, selectModelBook, selectModelSetup, selectModelTactic, setModelBrowse, toggleModelSetup, toggleModelTactic } from './model-books.js';
 import { addMissedShots, addTradeShots, closeShotViewer, deleteTradeShot, openShot, removeTradeShot, undoRemoveShot, pasteMissedShot, pasteTradeShot, pickMissedShots, pickTradeShots, saveTradeShotCaption } from './journal-shots.js';
 import { setAccountSizeSource } from './account-size.js';
 import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPct, setOptionTradeSide, setSizingMode } from './allocation.js';
@@ -108,6 +108,7 @@ export const actions = {
   loadModelBooks: () => loadModelBooks(),
   selectModelBook: el => selectModelBook(arg(el)),
   selectModelSetup: el => selectModelSetup(arg(el)),
+  selectModelTactic: el => selectModelTactic(arg(el)),
   setModelBrowse: el => setModelBrowse(arg(el)),
   editModelBook: el => editModelBook(arg(el)),
   modelBookField: el => modelBookField(arg(el), /** @type {HTMLInputElement} */ (el).value),
@@ -119,6 +120,7 @@ export const actions = {
   editModelExample: el => editModelExample(arg(el)),
   modelExampleField: el => modelExampleField(arg(el), /** @type {HTMLInputElement} */ (el).value),
   toggleModelSetup: el => toggleModelSetup(arg(el)),
+  toggleModelTactic: el => toggleModelTactic(arg(el)),
   saveModelExample: () => saveModelExample(),
   deleteModelExample: el => deleteModelExample(arg(el)),
   refreshModelImages: () => refreshModelImages(),

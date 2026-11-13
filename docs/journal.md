@@ -242,6 +242,7 @@ The Journal tab: imports, trades and spreads, fees, your stops and deletes, bars
   **Add to model book** (migration 20261113000000_model_example_trade.sql adds model_examples.trade_key; modelTradeRowHtml, startTradeExample in ui/model-books.js; addTradeToModelBook in ui/journal-trade.js): a Model books row after Screenshots, at the end of the Review section, signed in only.
   It lists the examples kept from this trade (title and book; tapping one closes the page and opens it full size in Model books, openTradeExample) and offers + Add to model book.
   That opens the form in the row, filled in from the trade: the title is its name, setups and day ('AAPL · Base breakout · 10/1'), the notes its entry and exit notes, the setups its own; all of it editable, the book starting at No book.
+  Its entry tactics come along too (tacticKeysOf in ui/journal-review.js), in the form's Entry tactics picker (docs/journal-step-3.md, Model books).
   The example keeps a copy of one of the trade's screenshots: the first is picked, a tap picks another, and with none the row says to add one above first (a paste on the page adds it there, and it's picked).
   Save copies the file inside Storage, from your folder of trade-shots to your folder of model-books (no download, no shrinking again), then inserts the row with the trade's key; a refused row takes the copy back out.
   Leaving the trade drops an unsaved form (dropTradeExample); an example open in the Books tab's editor keeps the button off until it's saved or cancelled.

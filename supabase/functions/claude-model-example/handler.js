@@ -55,7 +55,7 @@ async function refusal(res) {
 }
 
 /**
- * POST { key, example: { book_id, title, notes, setup_keys }, image: base64 } → { id, path, type, width, height, bytes }.
+ * POST { key, example: { book_id, title, notes, setup_keys, tactic_keys }, image: base64 } → { id, path, type, width, height, bytes }.
  * @param {Request} req @param {{ env: (name: string) => string | undefined, fetch?: typeof fetch }} deps
  */
 export async function handle(req, { env, fetch: send = fetch }) {
@@ -74,7 +74,7 @@ export async function handle(req, { env, fetch: send = fetch }) {
   if (typeof info === 'string') return reply(400, { message: info });
 
   const headers = serviceHeaders(service);
-  const fields = { book_id: example.book_id, title: example.title, notes: example.notes ?? '', setup_keys: example.setup_keys ?? [] };
+  const fields = { book_id: example.book_id, title: example.title, notes: example.notes ?? '', setup_keys: example.setup_keys ?? [], tactic_keys: example.tactic_keys ?? [] };
   const added = await send(`${url}/rest/v1/rpc/claude_model_example_add`, {
     method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_key: key, p_example: { ...fields, ext: info.ext, width: info.width, height: info.height, bytes: bytes.length } }),

@@ -128,10 +128,11 @@ export function createState() {
     journalTab: 'trades', // trades | calendar | missed | stats | setups | books | features | fills
     modelBooks: {
       owner: '', loading: false, pending: null, loaded: false, error: '',
-      books: [], examples: [], urls: {}, bookId: '', setupKey: '', mode: 'setups', // By setup first: that's how charts are looked up
+      books: [], examples: [], urls: {}, bookId: '', setupKey: '', tacticKey: '', mode: 'setups', // books | setups | tactics; By setup first: that's how charts are looked up
       draft: null, bookDraft: null, busy: false, preparing: false, deleteKey: '',
       viewerId: '', signing: false, imageError: '',
       noTradeLink: false, // the database has no model_examples.trade_key yet: Add to model book waits for db push
+      noTactics: false, // the database has no model_examples.tactic_keys yet: examples keep setups only until db push
     },
     journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
     journalFrom: '', // the trades tab from this day ('YYYY-MM-DD', New York; '' = no start): opened or with an exit then

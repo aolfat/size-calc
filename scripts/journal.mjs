@@ -25,7 +25,7 @@
 // what's given, null takes it off); null clears. Missed trades': { TICKER: { side (long | short), setups, tactics, why
 // (Hesitated, Didn't see it, Away, Too late, Didn't trust it, At my limit), note } | null }, as a focus ticker. A week's
 // or month's: parts ({ name or key: { grade (A+ to F), note } }), wentWell, workOn, note, rulesNext (the whole list, up to
-// 5), rulesKept ({ last one's rule by its text or number: yes | partly | no | null }), rulesNote; null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups.
+// 5), rulesKept ({ last one's rule by its text or number: yes | partly | no | null }), rulesNote; null clears. A book's: name, description. An example's: book (optional: a name or handle; a new name makes the book), title, notes, setups, tactics.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { SUPABASE_KEY, SUPABASE_URL } from '../src/services/supabase.js';

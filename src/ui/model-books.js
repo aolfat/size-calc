@@ -1,8 +1,9 @@
-// Journal → Model Books: pasted chart screenshots with notes and references to My setups, found by setup or kept in books.
-// A trade page's Model books row makes one from the trade (Add to model book: one of its screenshots, its setups and notes).
+// Journal → Model Books: pasted chart screenshots with notes and references to My setups and entry tactics, found by setup
+// or tactic, or kept in books. A trade page's Model books row makes one from the trade (Add to model book: one of its
+// screenshots, its setups, tactics and notes).
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary } from '../core/journal-labels.js';
-import { chipScrollLeft, modelExampleProblem, modelExamplesFor, modelSetupKeys } from '../core/model-books.js';
+import { buildLibrary, tacticPickGroups } from '../core/journal-labels.js';
+import { chipScrollLeft, modelExampleProblem, modelExamplesFor, modelSetupKeys, modelTacticKeys } from '../core/model-books.js';
 import { checkModelOwner, keepModelBook, keepModelExample, modelImageLinks, MODEL_IMAGE_BYTES, readModelBooks, removeModelBook, removeModelExample } from '../services/model-books.js';
 import { createState, state } from '../state.js';
 import { effects } from './effects.js';
@@ -44,8 +45,9 @@ export async function loadModelBooks() {
     try {
       const data = await readModelBooks(uid);
       if (!owned(m)) return;
-      m.books = data.books; m.examples = data.examples; m.noTradeLink = data.noTradeLink; m.loaded = true;
+      m.books = data.books; m.examples = data.examples; m.noTradeLink = data.noTradeLink; m.noTactics = data.noTactics; m.loaded = true;
       if (m.bookId && !modelBookOf(m.bookId)) m.bookId = '';
+      if (m.noTactics && m.mode === 'tactics') { m.mode = 'setups'; m.tacticKey = ''; }
     } catch(e) { if (owned(m)) m.error = modelError(e); }
     finally { if (owned(m)) { m.loading = false; m.pending = null; rerender(); } }
   })();
@@ -54,15 +56,20 @@ export async function loadModelBooks() {
 
 export function selectModelBook(id = '') {
   const m = modelState();
-  m.mode = 'books'; m.setupKey = ''; m.bookId = id; m.deleteKey = ''; m.viewerId = '';
+  m.mode = 'books'; m.setupKey = ''; m.tacticKey = ''; m.bookId = id; m.deleteKey = ''; m.viewerId = '';
   renderModelBooks();
 }
 export function selectModelSetup(key = '') {
   const m = modelState();
-  m.mode = 'setups'; m.bookId = ''; m.setupKey = key; m.deleteKey = ''; m.viewerId = '';
+  m.mode = 'setups'; m.bookId = ''; m.setupKey = key; m.tacticKey = ''; m.deleteKey = ''; m.viewerId = '';
   renderModelBooks();
 }
-export function setModelBrowse(mode) { return mode === 'setups' ? selectModelSetup() : selectModelBook(); }
+export function selectModelTactic(key = '') {
+  const m = modelState(); if (m.noTactics) return;
+  m.mode = 'tactics'; m.bookId = ''; m.setupKey = ''; m.tacticKey = key; m.deleteKey = ''; m.viewerId = '';
+  renderModelBooks();
+}
+export function setModelBrowse(mode) { return mode === 'setups' ? selectModelSetup() : mode === 'tactics' ? selectModelTactic() : selectModelBook(); }
 
 export function editModelBook(id = '') {
   const m = modelState(); if (m.busy || !m.loaded) return;
@@ -83,6 +90,13 @@ export function toggleModelSetup(key) {
   d.setup_keys = d.setup_keys.includes(key) ? d.setup_keys.filter(k => k !== key) : [...d.setup_keys, key];
   rerender();
 }
+export function toggleModelTactic(key) {
+  const d = modelState().draft; if (!d || modelState().busy || modelState().noTactics) return;
+  const lib = modelLibrary(); key = lib.resolve('tactic', key);
+  d.tactic_keys = modelTacticKeys(d.tactic_keys, lib);
+  d.tactic_keys = d.tactic_keys.includes(key) ? d.tactic_keys.filter(k => k !== key) : [...d.tactic_keys, key];
+  rerender();
+}
 export function cancelModelDraft() {
   const m = modelState(); if (m.busy || m.preparing) return;
   if (m.draft?.preview) URL.revokeObjectURL(m.draft.preview);
@@ -91,9 +105,9 @@ export function cancelModelDraft() {
 }
 
 /**
- * Add to model book on a trade page: a draft example from the trade, filled in from it (title, notes, its setups), keeping
- * its first screenshot unless you pick another. Model books are read first if they haven't been, for the Book menu.
- * @param {{ key: string }} t @param {{ title: string, notes: string, setupKeys: string[] }} fill
+ * Add to model book on a trade page: a draft example from the trade, filled in from it (title, notes, its setups and entry
+ * tactics), keeping its first screenshot unless you pick another. Model books are read first if they haven't been, for the
+ * Book menu. @param {{ key: string }} t @param {{ title: string, notes: string, setupKeys: string[], tacticKeys?: string[] }} fill
  */
 export async function startTradeExample(t, fill) {
   const uid = state.session?.user?.id; if (!t || !uid) return;
@@ -104,7 +118,7 @@ export async function startTradeExample(t, fill) {
   m = modelState();
   if (!owned(m) || !m.loaded || m.draft || m.bookDraft || state.journalTrade?.key !== t.key) return;
   if (m.noTradeLink) { showError("Adding a trade to a model book needs a database update: npx supabase db push"); return; }
-  m.draft = { trade_key: t.key, shot_id: '', book_id: '', title: fill.title.slice(0, 120), notes: fill.notes.slice(0, 4000), setup_keys: fill.setupKeys };
+  m.draft = { trade_key: t.key, shot_id: '', book_id: '', title: fill.title.slice(0, 120), notes: fill.notes.slice(0, 4000), setup_keys: fill.setupKeys, tactic_keys: fill.tacticKeys || [] };
   m.error = ''; rerender();
   document.getElementById('modelTradeTitle')?.focus();
 }
@@ -151,14 +165,14 @@ export async function pasteModelImages(files) {
     checkModelOwner(m.owner);
     if (!owned(m)) return;
     if (image.blob.size > MODEL_IMAGE_BYTES) throw new Error('The screenshot is still over 2 MB after shrinking.');
-    m.draft = { book_id: m.bookId || '', title: '', notes: '', setup_keys: m.setupKey ? [m.setupKey] : [], image, preview: URL.createObjectURL(image.blob) };
+    m.draft = { book_id: m.bookId || '', title: '', notes: '', setup_keys: m.setupKey ? [m.setupKey] : [], tactic_keys: m.tacticKey ? [m.tacticKey] : [], image, preview: URL.createObjectURL(image.blob) };
   } catch(e) { if (owned(m)) m.error = modelError(e); }
   finally { if (owned(m)) { m.preparing = false; renderModelBooks(); document.getElementById('modelExampleTitle')?.focus(); } }
 }
 export function pickModelImage() { document.getElementById('modelImageInput')?.click(); }
 export function editModelExample(id) {
   const m = modelState(), row = modelExampleOf(id); if (!row || m.busy || m.draft || m.bookDraft) return;
-  m.draft = { ...row, setup_keys: modelSetupKeys(row.setup_keys, modelLibrary()) };
+  m.draft = { ...row, setup_keys: modelSetupKeys(row.setup_keys, modelLibrary()), tactic_keys: modelTacticKeys(row.tactic_keys, modelLibrary()) };
   m.error = ''; m.deleteKey = ''; renderModelBooks();
   document.getElementById('modelExampleTitle')?.focus();
 }
@@ -171,15 +185,18 @@ export async function saveModelExample() {
   if (state.journalReviewError) { m.error = 'Your setups could not load. Reopen Journal to retry before saving.'; rerender(); return; }
   m.busy = true; m.error = ''; rerender();
   try {
-    const saved = await keepModelExample(m.owner, { ...draft, setup_keys: modelSetupKeys(d.setup_keys, modelLibrary()) });
+    // tactics go only once the database has the column (before db push the example keeps its setups alone)
+    const tactics = m.noTactics ? undefined : modelTacticKeys(d.tactic_keys, modelLibrary());
+    const saved = await keepModelExample(m.owner, { ...draft, setup_keys: modelSetupKeys(d.setup_keys, modelLibrary()), tactic_keys: tactics });
     if (!owned(m)) return;
     const before = modelExampleOf(saved.id);
     m.examples = [...m.examples.filter(e => e.id !== saved.id), { ...before, ...saved }];
     if (d.preview) URL.revokeObjectURL(d.preview);
     // stay where you were: a book you're in follows the example to its book (All examples when it has none), and a
-    // setup you're in stays while the example still carries it; one from a trade page leaves the Books tab as it was
+    // setup or tactic you're in stays while the example still carries it; one from a trade page leaves the Books tab as it was
     if (fromTrade) { /* the trade page lists it */ }
     else if (m.mode === 'books') { if (m.bookId) m.bookId = saved.book_id || ''; }
+    else if (m.mode === 'tactics') { if (m.tacticKey && !modelTacticKeys(saved.tactic_keys, modelLibrary()).includes(modelLibrary().resolve('tactic', m.tacticKey))) m.tacticKey = ''; }
     else if (m.setupKey && !modelSetupKeys(saved.setup_keys, modelLibrary()).includes(modelLibrary().resolve('setup', m.setupKey))) m.setupKey = '';
     m.draft = null; m.imageError = '';
     showToast(fromTrade ? `Added to ${modelBookOf(saved.book_id)?.name || 'Model books'}.` : d.id ? 'Example updated.' : 'Example saved.');
@@ -232,7 +249,22 @@ function modelBookEditor() {
     <label for="modelBookDescription">Description <span>optional</span></label><textarea id="modelBookDescription" rows="4" maxlength="4000" placeholder="What belongs in this book?" data-input="modelBookField" data-arg="description"${m.busy ? ' disabled' : ''}>${esc(d.description)}</textarea>
     <div class="mb-actions"><button class="btn primary" data-action="saveModelBook"${m.busy ? ' disabled' : ''}>${m.busy ? 'Saving…' : 'Save book'}</button><button class="btn" data-action="cancelModelDraft"${m.busy ? ' disabled' : ''}>Cancel</button></div></div>`;
 }
-/** the editor's fields, title to setups, in the Books tab (modelExample… ids) or on a trade page (trade: modelTrade… ids) */
+/**
+ * Entry tactics to tag an example with, grouped by timeframe as every tactic picker shows them (tacticPickGroups): your
+ * entry tactics, then any hidden one the example still carries. Before db push, a line saying it's needed.
+ */
+function modelTacticPicker(d, lib) {
+  const m = modelState();
+  if (m.noTactics) return '<p class="hint mb-tactic-wait" style="color:var(--amber)">Entry tactics on examples need a database update: npx supabase db push</p>';
+  const selected = modelTacticKeys(d.tactic_keys, lib), choices = lib.choices('tactic');
+  const items = [...choices, ...selected.filter(k => !choices.some(i => i.key === k)).map(key => ({ key, name: lib.nameOf('tactic', key) }))];
+  const groups = tacticPickGroups(items).map(g => `<div class="jr-group"><span class="jr-group-name">${esc(g.name)}</span><span class="jr-group-chips">${g.items.map(i => {
+    const on = selected.includes(i.key);
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="toggleModelTactic" data-arg="${esc(i.key)}" title="${esc(i.name)}">${esc(i.label)}</button>`;
+  }).join('')}</span></div>`).join('');
+  return `<fieldset class="mb-setup-picker mb-tactic-picker"${m.busy || state.journalReviewError ? ' disabled' : ''}><legend>Entry tactics <span>optional</span></legend><p>How you got in, or would.</p>${groups || '<p>No entry tactics yet. Add them on a trade\'s review.</p>'}</fieldset>`;
+}
+/** the editor's fields, title to tactics, in the Books tab (modelExample… ids) or on a trade page (trade: modelTrade… ids) */
 function modelExampleFields(d, lib, trade = false) {
   const m = modelState(), off = m.busy ? ' disabled' : '', id = trade ? 'modelTrade' : 'modelExample';
   const selected = modelSetupKeys(d.setup_keys, lib);
@@ -245,7 +277,8 @@ function modelExampleFields(d, lib, trade = false) {
     <label for="${id}Book">Book <span>optional</span></label>${trade ? `<select id="modelTradeBook" ${book}>${books}</select>` : `<select id="modelExampleBook" ${book}>${books}</select>`}
     <label for="${id}Notes">Notes <span>optional</span></label>${trade ? `<textarea id="modelTradeNotes" ${notes}>${esc(d.notes)}</textarea>` : `<textarea id="modelExampleNotes" ${notes}>${esc(d.notes)}</textarea>`}
     ${state.journalReviewError ? '<p class="mb-error" role="status">Your setups could not load. Reopen Journal to retry before saving.</p>' : ''}
-    <fieldset class="mb-setup-picker"${m.busy || state.journalReviewError ? ' disabled' : ''}><legend>My setups <span>optional</span></legend><p>Tag this example with your existing setups.</p><div class="mb-tags">${choices.map(k => `<button class="filter-btn${selected.includes(k) ? ' active' : ''}" aria-pressed="${selected.includes(k)}" data-action="toggleModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k, 'both'))}</button>`).join('')}</div></fieldset>`;
+    <fieldset class="mb-setup-picker"${m.busy || state.journalReviewError ? ' disabled' : ''}><legend>My setups <span>optional</span></legend><p>Tag this example with your existing setups.</p><div class="mb-tags">${choices.map(k => `<button class="filter-btn${selected.includes(k) ? ' active' : ''}" aria-pressed="${selected.includes(k)}" data-action="toggleModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k, 'both'))}</button>`).join('')}</div></fieldset>
+    ${modelTacticPicker(d, lib)}`;
 }
 function modelExampleEditor(lib) {
   const m = modelState(), d = m.draft;
@@ -289,26 +322,31 @@ function modelTradeLink(e) {
   const words = e.trade_key ? tradeLabel(e.trade_key) : '';
   return words ? `<span class="mb-meta mb-trade-link">From <button class="pos-link" data-action="openModelTrade" data-arg="${esc(e.trade_key)}">${esc(words)}</button></span>` : '';
 }
-const modelTags = (keys, lib) => keys.length ? `<div class="mb-tags">${keys.map(k => `<button class="filter-btn" data-action="selectModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k, 'both'))}</button>`).join('')}</div>` : '';
+/** an example's setups, then its entry tactics (dashed, titled as one); each opens Model books by it */
+function modelTags(e, lib) {
+  const setups = modelSetupKeys(e.setup_keys, lib), tactics = modelState().noTactics ? [] : modelTacticKeys(e.tactic_keys, lib);
+  if (!setups.length && !tactics.length) return '';
+  return `<div class="mb-tags">${setups.map(k => `<button class="filter-btn" data-action="selectModelSetup" data-arg="${esc(k)}">${esc(lib.nameOf('setup', k, 'both'))}</button>`).join('')}${tactics.map(k => `<button class="filter-btn mb-tactic" data-action="selectModelTactic" data-arg="${esc(k)}" title="Entry tactic">${esc(lib.nameOf('tactic', k))}</button>`).join('')}</div>`;
+}
 /** A gallery tile: the chart first, then what it is. The book is named only where examples from several books mix. */
 function modelExampleCard(e, lib) {
-  const m = modelState(), url = modelUrl(e.path), keys = modelSetupKeys(e.setup_keys, lib);
+  const m = modelState(), url = modelUrl(e.path);
   const book = m.bookId ? '' : modelBookOf(e.book_id)?.name || '';
   return `<article class="mb-example" id="model-example-${esc(e.id)}">
     ${url ? `<button class="mb-image" data-action="openModelImage" data-arg="${esc(e.id)}" aria-label="Open screenshot: ${esc(e.title)}"><img src="${esc(url)}" alt="${esc(e.title)}" width="${e.width}" height="${e.height}" loading="lazy" /></button>` : '<div class="mb-image mb-image-wait">Loading screenshot…</div>'}
     <div class="mb-example-body"><h3>${esc(e.title)}</h3>${book ? `<span class="mb-meta">${esc(book)}</span>` : ''}
     ${modelTradeLink(e)}
-    ${modelTags(keys, lib)}
+    ${modelTags(e, lib)}
     ${e.notes ? `<p class="mb-notes">${esc(e.notes)}</p>` : ''}</div>
     <div class="mb-example-foot mb-actions"><button class="pos-link" data-action="editModelExample" data-arg="${esc(e.id)}"${m.busy ? ' disabled' : ''}>Edit</button><button class="pos-link journal-danger" data-action="deleteModelExample" data-arg="${esc(e.id)}"${m.busy ? ' disabled' : ''}>${m.deleteKey === e.id ? 'Delete for good?' : 'Delete'}</button>${m.deleteKey === e.id ? '<button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}</div></article>`;
 }
-/** Full size with everything the tile clamps: book, setups and the whole note. */
+/** Full size with everything the tile clamps: book, setups, tactics and the whole note. */
 function modelViewer(e, lib) {
-  const url = modelUrl(e.path), keys = modelSetupKeys(e.setup_keys, lib), book = modelBookOf(e.book_id)?.name || '';
+  const url = modelUrl(e.path), tags = modelTags(e, lib), book = modelBookOf(e.book_id)?.name || '';
   return `<dialog class="mb-viewer" id="modelImageViewer" aria-label="Chart screenshot: ${esc(e.title)}"><div class="mb-viewer-bar"><div><strong>${esc(e.title)}</strong>${book ? `<span class="mb-meta">${esc(book)}</span>` : ''}${modelTradeLink(e)}</div>
     <div class="mb-actions">${url ? `<a class="pos-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open full size</a>` : ''}<button class="btn" data-action="closeModelImage" autofocus>Close</button></div></div>
     ${url ? `<img src="${esc(url)}" alt="${esc(e.title)}" />` : ''}
-    ${keys.length || e.notes ? `<div class="mb-viewer-body">${modelTags(keys, lib)}${e.notes ? `<p class="mb-notes">${esc(e.notes)}</p>` : ''}</div>` : ''}</dialog>`;
+    ${tags || e.notes ? `<div class="mb-viewer-body">${tags}${e.notes ? `<p class="mb-notes">${esc(e.notes)}</p>` : ''}</div>` : ''}</dialog>`;
 }
 
 export function renderModelBooks() {
@@ -321,22 +359,28 @@ export function renderModelBooks() {
   const book = modelBookOf(m.bookId);
   // every one of My setups, so a setup's first example can start here, then any hidden one an example still carries
   const setupKeys = [...new Set([...lib.choices('setup').map(s => s.key), ...m.examples.flatMap(e => modelSetupKeys(e.setup_keys, lib))])];
-  const nav = (label, count, action, key, active) => `<button class="mb-nav${active ? ' active' : ''}" ${action === 'selectModelSetup' ? 'data-action="selectModelSetup"' : 'data-action="selectModelBook"'} data-arg="${esc(key)}"${active ? ' aria-current="true"' : ''}><span>${esc(label)}</span><small>${count}</small></button>`;
-  const title = m.setupKey ? lib.nameOf('setup', m.setupKey, 'both') : book?.name || 'All examples';
+  // the same for entry tactics, By tactic
+  const tacticKeys = [...new Set([...lib.choices('tactic').map(s => s.key), ...m.examples.flatMap(e => modelTacticKeys(e.tactic_keys, lib))])];
+  const navAction = { selectModelSetup: 'data-action="selectModelSetup"', selectModelTactic: 'data-action="selectModelTactic"', selectModelBook: 'data-action="selectModelBook"' };
+  const nav = (label, count, action, key, active) => `<button class="mb-nav${active ? ' active' : ''}" ${navAction[action]} data-arg="${esc(key)}"${active ? ' aria-current="true"' : ''}><span>${esc(label)}</span><small>${count}</small></button>`;
+  const allAction = m.mode === 'setups' ? 'selectModelSetup' : m.mode === 'tactics' ? 'selectModelTactic' : 'selectModelBook';
+  const title = m.setupKey ? lib.nameOf('setup', m.setupKey, 'both') : m.tacticKey ? lib.nameOf('tactic', m.tacticKey) : book?.name || 'All examples';
   const err = m.error ? `<p class="mb-error" role="alert">${esc(m.error)}</p>` : '';
   el.innerHTML = `<div class="mb-shell"><aside class="mb-sidebar" aria-label="Model book navigation">
     <div class="mb-sidebar-head"><h2>Model books</h2><button class="pos-link" data-action="editModelBook"${m.busy || m.draft || m.bookDraft || !m.loaded || m.loading ? ' disabled' : ''}>+ New book</button></div>
-    <div class="seg mb-browse" aria-label="Browse examples"><button class="${m.mode === 'books' ? 'active' : ''}" aria-pressed="${m.mode === 'books'}" data-action="setModelBrowse" data-arg="books">By book</button><button class="${m.mode === 'setups' ? 'active' : ''}" aria-pressed="${m.mode === 'setups'}" data-action="setModelBrowse" data-arg="setups">By setup</button></div>
-    <div class="mb-nav-list">${nav('All examples', m.examples.length, m.mode === 'setups' ? 'selectModelSetup' : 'selectModelBook', '', !m.bookId && !m.setupKey)}${m.mode === 'books'
+    <div class="seg mb-browse" aria-label="Browse examples"><button class="${m.mode === 'books' ? 'active' : ''}" aria-pressed="${m.mode === 'books'}" data-action="setModelBrowse" data-arg="books">By book</button><button class="${m.mode === 'setups' ? 'active' : ''}" aria-pressed="${m.mode === 'setups'}" data-action="setModelBrowse" data-arg="setups">By setup</button>${m.noTactics ? '' : `<button class="${m.mode === 'tactics' ? 'active' : ''}" aria-pressed="${m.mode === 'tactics'}" data-action="setModelBrowse" data-arg="tactics">By tactic</button>`}</div>
+    <div class="mb-nav-list">${nav('All examples', m.examples.length, allAction, '', !m.bookId && !m.setupKey && !m.tacticKey)}${m.mode === 'books'
       ? m.books.map(b => nav(b.name, m.examples.filter(e => e.book_id === b.id).length, 'selectModelBook', b.id, m.bookId === b.id)).join('')
-      : setupKeys.map(k => nav(lib.nameOf('setup', k, 'both'), modelExamplesFor(m.examples, { setupKey: k }, lib).length, 'selectModelSetup', k, m.setupKey === k)).join('')}</div>
-    <p class="mb-sidebar-hint">${m.mode === 'setups' ? 'Every chart tagged with a setup, in a book or not.' : 'Books are optional collections. A chart with no book is in All examples.'}</p></aside>
+      : m.mode === 'tactics'
+        ? tacticKeys.map(k => nav(lib.nameOf('tactic', k), modelExamplesFor(m.examples, { tacticKey: k }, lib).length, 'selectModelTactic', k, m.tacticKey === k)).join('')
+        : setupKeys.map(k => nav(lib.nameOf('setup', k, 'both'), modelExamplesFor(m.examples, { setupKey: k }, lib).length, 'selectModelSetup', k, m.setupKey === k)).join('')}</div>
+    <p class="mb-sidebar-hint">${m.mode === 'setups' ? 'Every chart tagged with a setup, in a book or not.' : m.mode === 'tactics' ? 'Every chart tagged with an entry tactic, in a book or not.' : 'Books are optional collections. A chart with no book is in All examples.'}</p></aside>
     <div class="mb-content">${err}${m.loading ? '<p class="hint" role="status">Loading model books…</p>' : ''}${m.error && !m.loaded ? '<button class="btn" data-action="loadModelBooks">Retry</button>' : ''}
-    ${m.bookDraft ? modelBookEditor() : m.draft ? modelExampleEditor(lib) : `<div class="mb-feed-head"><div><h2>${esc(title)}</h2><p class="mb-meta">${modelCount(list.length)}${m.setupKey && m.books.length ? ' across your books' : ''}${book ? ` · <button class="pos-link" data-action="editModelBook" data-arg="${esc(book.id)}">Edit book</button> · <button class="pos-link journal-danger" data-action="deleteModelBook" data-arg="${esc(book.id)}">${m.deleteKey === book.id ? 'Delete for good?' : 'Delete book'}</button>${m.deleteKey === book.id ? ' <button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}` : ''}</p></div>
+    ${m.bookDraft ? modelBookEditor() : m.draft ? modelExampleEditor(lib) : `<div class="mb-feed-head"><div><h2>${esc(title)}</h2><p class="mb-meta">${modelCount(list.length)}${(m.setupKey || m.tacticKey) && m.books.length ? ' across your books' : ''}${book ? ` · <button class="pos-link" data-action="editModelBook" data-arg="${esc(book.id)}">Edit book</button> · <button class="pos-link journal-danger" data-action="deleteModelBook" data-arg="${esc(book.id)}">${m.deleteKey === book.id ? 'Delete for good?' : 'Delete book'}</button>${m.deleteKey === book.id ? ' <button class="pos-link" data-action="cancelModelDraft">Cancel</button>' : ''}` : ''}</p></div>
       <div class="mb-add"><button class="btn primary" data-action="pickModelImage"${m.preparing || m.loading || !m.loaded ? ' disabled' : ''}>${m.preparing ? 'Preparing…' : '+ Add example'}</button>${touchOnly() ? '' : `<span class="mb-paste-hint">or press ${pasteKey()}, or drop an image</span>`}</div></div>
       ${book?.description ? `<p class="mb-description">${esc(book.description)}</p>` : ''}
       ${m.imageError ? `<p class="mb-error" role="status">${esc(m.imageError)} <button class="pos-link" data-action="refreshModelImages">Retry images</button></p>` : ''}
-      ${list.length ? `<div class="mb-grid">${list.map(e => modelExampleCard(e, lib)).join('')}</div>` : !m.loading && m.loaded ? `<div class="mb-empty"><span class="mb-empty-icon" aria-hidden="true">▧</span><h3>Your next model starts with a chart</h3><p>${m.setupKey ? 'Add a chart and it comes tagged with this setup.' : m.bookId ? 'Add a chart and it goes in this book.' : 'Paste a screenshot from your charting platform, add what you noticed, and tag it with My setups.'}</p></div>` : ''}`}
+      ${list.length ? `<div class="mb-grid">${list.map(e => modelExampleCard(e, lib)).join('')}</div>` : !m.loading && m.loaded ? `<div class="mb-empty"><span class="mb-empty-icon" aria-hidden="true">▧</span><h3>Your next model starts with a chart</h3><p>${m.setupKey ? 'Add a chart and it comes tagged with this setup.' : m.tacticKey ? 'Add a chart and it comes tagged with this tactic.' : m.bookId ? 'Add a chart and it goes in this book.' : 'Paste a screenshot from your charting platform, add what you noticed, and tag it with My setups and entry tactics.'}</p></div>` : ''}`}
     <input type="file" id="modelImageInput" accept="image/png,image/jpeg,image/webp" hidden data-change="modelImagePicked" />
     </div></div>${m.viewerId && modelExampleOf(m.viewerId) ? modelViewer(modelExampleOf(m.viewerId), lib) : ''}`;
   const row = el.querySelector?.('.mb-nav-list'), chip = row?.querySelector('.mb-nav.active');

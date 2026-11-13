@@ -40,7 +40,7 @@ test('an image is read from its own bytes: PNG, JPEG, the three WebP kinds; anyt
 const ENV = { SUPABASE_URL: 'https://db.example', SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_test' };
 const b64 = b => Buffer.from(b).toString('base64');
 const post = body => new Request('https://db.example/functions/v1/claude-model-example', { method: 'POST', body: JSON.stringify(body) });
-const EXAMPLE = { book_id: 'b1', title: 'EMA 21 reclaim', notes: 'held the 21', setup_keys: ['ema21_bounce'] };
+const EXAMPLE = { book_id: 'b1', title: 'EMA 21 reclaim', notes: 'held the 21', setup_keys: ['ema21_bounce'], tactic_keys: ['pivot15'] };
 /** a fetch that answers the add and the upload, and records every call */
 function server({ add = 200, upload = 200 } = {}) {
   const calls = [];
@@ -69,6 +69,10 @@ test('the function adds the row with the key check, then uploads the file to the
   assert.equal(upload.headers['Content-Type'], 'image/png');
   assert.equal(upload.headers['x-upsert'], 'false');
   assert.deepEqual([...upload.body], [...PNG(1600, 900)]);
+
+  const older = server(); // a caller that sends no tactics: none
+  await run({ key: 'scj_key', example: { ...EXAMPLE, tactic_keys: undefined }, image: b64(PNG(10, 10)) }, older);
+  assert.deepEqual(JSON.parse(older.calls[0].body).p_example.tactic_keys, []);
 
   const jwt = server();
   await run({ key: 'scj_key', example: EXAMPLE, image: b64(PNG(10, 10)) }, jwt, { ...ENV, SUPABASE_SERVICE_ROLE_KEY: 'eyJservice' });
@@ -159,6 +163,21 @@ test('an example\'s change: only the fields that differ, moved by book name, set
   assert.deepEqual(planExample(booksFrom({ ...BOOKS, examples: [loose] }), loose, { book: null, title: 'NVDA reclaim' }).changes.examples, [], 'already in no book');
 });
 
+test('an example\'s entry tactics: matched by name, a new one added to your choices, replaced or cleared, and in its line', () => {
+  const m = booksFrom(BOOKS);
+  n = 0;
+  const p = planExample(m, null, { title: 'AMD ORB', tactics: ['15m pivot', 'First pullback'] }, opts);
+  assert.deepEqual(p.add.tactic_keys, ['pivot15', `mine:${p.library[0].id}`]);
+  assert.deepEqual(p.library.map(r => [r.kind, r.name]), [['tactic', 'First pullback']]);
+  assert.deepEqual(planExample(m, null, { title: 'x' }).add.tactic_keys, [], 'none given: none');
+  const tagged = { ...EX, tactic_keys: ['pivot15'] };
+  const mt = booksFrom({ ...BOOKS, examples: [tagged] });
+  assert.deepEqual(planExample(mt, tagged, { tactics: ['15m pivot'] }).changes.examples, [], 'the same changes nothing');
+  assert.deepEqual(planExample(mt, tagged, { tactics: ['30m pivot'] }).changes.examples, [{ id: EX.id, fields: { tactic_keys: ['pivot30'] } }]);
+  assert.deepEqual(planExample(mt, tagged, { tactics: null }).changes.examples, [{ id: EX.id, fields: { tactic_keys: [] } }]);
+  assert.match(booksText(mt), /e1000000 · NVDA reclaim · 21 EMA bounce \/ rejection · tactics: 15m pivot · Held VWAP/);
+});
+
 test('books in words: examples in no book come last, under No book', () => {
   const m = booksFrom({ books: [OTHER], examples: [{ ...EX, book_id: null }], library: [] });
   assert.equal(booksText(m), 'b2000000 · Failed breakouts (0 examples)\nNo book (1 example)\n  e1000000 · NVDA reclaim · 21 EMA bounce / rejection · Held VWAP');
@@ -202,14 +221,14 @@ test('the script: lists books, makes a book, adds an example with its screenshot
   assert.equal(dry.fake().added, undefined);
   assert.match(dry.stdout, /image\/png 1600×900/);
 
-  const add = withImage(['add-example', '<png>', '{"book":"Best longs","title":"AMD reclaim","notes":"Second test held","setups":["21 EMA bounce","Opening range fade"]}']);
+  const add = withImage(['add-example', '<png>', '{"book":"Best longs","title":"AMD reclaim","notes":"Second test held","setups":["21 EMA bounce","Opening range fade"],"tactics":["15m pivot"]}']);
   assert.equal(add.status, 0, add.stderr);
   const fake = add.fake();
   assert.deepEqual(fake.saves.map(s => s.library?.map(r => r.kind)), [['pattern', 'setup']], 'the new setup saved first');
   assert.equal(fake.added.length, 1);
-  assert.deepEqual({ ...fake.added[0], image: undefined }, { book_id: BOOK.id, title: 'AMD reclaim', notes: 'Second test held', setup_keys: ['ema21_bounce', `mine:${fake.library[1].id}`], image: undefined });
+  assert.deepEqual({ ...fake.added[0], image: undefined }, { book_id: BOOK.id, title: 'AMD reclaim', notes: 'Second test held', setup_keys: ['ema21_bounce', `mine:${fake.library[1].id}`], tactic_keys: ['pivot15'], image: undefined });
   assert.equal(fake.added[0].image, Buffer.from(PNG(1600, 900)).toString('base64').length);
-  assert.match(add.stdout, /Saved\. e0000001 · AMD reclaim · 21 EMA bounce \/ rejection, Opening range fade · Second test held in Best longs\./);
+  assert.match(add.stdout, /Saved\. e0000001 · AMD reclaim · 21 EMA bounce \/ rejection, Opening range fade · tactics: 15m pivot · Second test held in Best longs\./);
 
   const edit = script(['example', 'e1000000', '{"title":"NVDA VWAP reclaim","book":"Failed breakouts"}']);
   assert.equal(edit.status, 0, edit.stderr);

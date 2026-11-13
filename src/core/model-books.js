@@ -1,15 +1,25 @@
 // @ts-check
-// Model Books: screenshot examples tagged with references to the existing setup library, and kept in a book if you like.
+// Model Books: screenshot examples tagged with references to the existing setup library (setups and entry tactics), and kept in a book if you like.
 
-/** Setup keys after library merges, once each. @param {string[]} keys @param {ReturnType<typeof import('./journal-labels.js').buildLibrary>} lib */
+/** @typedef {ReturnType<typeof import('./journal-labels.js').buildLibrary>} Library */
+
+/** Setup keys after library merges, once each. @param {string[]} keys @param {Library} lib */
 export function modelSetupKeys(keys, lib) {
   return [...new Set((keys || []).map(k => lib.resolve('setup', k)))];
 }
+/** Entry tactic keys after library merges, once each. @param {string[]} keys @param {Library} lib */
+export function modelTacticKeys(keys, lib) {
+  return [...new Set((keys || []).map(k => lib.resolve('tactic', k)))];
+}
 
-/** Examples for one book, or a setup across every book. @param {any[]} examples @param {{ bookId?: string, setupKey?: string }} filter @param {ReturnType<typeof import('./journal-labels.js').buildLibrary>} lib */
-export function modelExamplesFor(examples, { bookId = '', setupKey = '' }, lib) {
-  const key = lib.resolve('setup', setupKey);
-  return examples.filter(e => setupKey ? modelSetupKeys(e.setup_keys, lib).includes(key) : !bookId || e.book_id === bookId)
+/**
+ * Examples for one book, or a setup or an entry tactic across every book.
+ * @param {any[]} examples @param {{ bookId?: string, setupKey?: string, tacticKey?: string }} filter @param {Library} lib
+ */
+export function modelExamplesFor(examples, { bookId = '', setupKey = '', tacticKey = '' }, lib) {
+  const key = lib.resolve('setup', setupKey), tactic = lib.resolve('tactic', tacticKey);
+  return examples.filter(e => setupKey ? modelSetupKeys(e.setup_keys, lib).includes(key)
+    : tacticKey ? modelTacticKeys(e.tactic_keys, lib).includes(tactic) : !bookId || e.book_id === bookId)
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || a.id.localeCompare(b.id));
 }
 

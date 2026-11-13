@@ -23,20 +23,29 @@ async function modelClient(uid) {
 }
 
 const EXAMPLE_COLUMNS = 'id,book_id,title,notes,setup_keys,path,width,height,bytes,created_at';
+// columns later migrations add: trade_key (20261113000000), tactic_keys (20261122000000)
+const LATER_COLUMNS = ['trade_key', 'tactic_keys'];
 const readExamples = (c, uid, cols) => c.from('model_examples').select(cols).eq('user_id', uid).order('created_at', { ascending: false }).limit(10000);
 
-/** noTradeLink: the database doesn't have model_examples.trade_key yet, so examples read without it and none come from a trade */
+/**
+ * Before a migration is pushed its column isn't there yet, so examples read without it: noTradeLink (no trade_key: none
+ * come from a trade, and Add to model book waits) and noTactics (no tactic_keys: examples keep setups only).
+ */
 export async function readModelBooks(uid) {
   const c = await modelClient(uid);
+  const later = [...LATER_COLUMNS];
+  const read = () => readExamples(c, uid, [EXAMPLE_COLUMNS, ...later].join(','));
   let [books, examples] = await Promise.all([
     c.from('model_books').select('id,name,description,created_at').eq('user_id', uid).order('created_at', { ascending: true }).limit(1000),
-    readExamples(c, uid, `${EXAMPLE_COLUMNS},trade_key`),
+    read(),
   ]);
-  const noTradeLink = /trade_key/.test(examples?.error?.message || '');
-  if (noTradeLink) examples = await readExamples(c, uid, EXAMPLE_COLUMNS);
+  for (let missing; (missing = later.find(col => new RegExp(col).test(examples?.error?.message || ''))); ) {
+    later.splice(later.indexOf(missing), 1);
+    examples = await read();
+  }
   checkModelOwner(uid);
   modelRefused(books); modelRefused(examples);
-  return { books: books.data || [], examples: examples.data || [], noTradeLink };
+  return { books: books.data || [], examples: examples.data || [], noTradeLink: !later.includes('trade_key'), noTactics: !later.includes('tactic_keys') };
 }
 
 export async function keepModelBook(uid, row) {
@@ -48,12 +57,15 @@ export async function keepModelBook(uid, row) {
 /**
  * A failed row insert takes back its uploaded image. All writes pin the Google owner from before the upload. A draft from
  * a trade page carries one of the trade's screenshots (shot, a trade_shots row) instead of an image: Storage copies it
- * from your folder of trade-shots into your folder of model-books, and the row keeps the trade's key.
+ * from your folder of trade-shots into your folder of model-books, and the row keeps the trade's key. tactic_keys goes
+ * only when the draft has the list (the column is there).
  */
 export async function keepModelExample(uid, draft) {
   const c = await modelClient(uid);
   const id = draft.id || crypto.randomUUID();
   const row = { id, book_id: draft.book_id || null, title: draft.title.trim(), notes: draft.notes.trim(), setup_keys: draft.setup_keys };
+  // tactic_keys only where the database has the column (the caller leaves it out before the migration is pushed)
+  if (Array.isArray(draft.tactic_keys)) row.tactic_keys = draft.tactic_keys;
   if (draft.id) {
     modelRefused(await c.from('model_examples').update(row).eq('id', id).eq('user_id', uid));
     checkModelOwner(uid);
