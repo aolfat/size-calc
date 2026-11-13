@@ -60,6 +60,11 @@ test('each part of the week gets its own numbers, the good and the worrying ones
   const { run } = await app();
   const r = json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', ${CTX})`);
   const cat = key => r.categories.find(c => c.key === key).facts.map(f => `${f.tone ? `[${f.tone}] ` : ''}${f.text}`);
+  // the trades a line names come with it, to link to: oldest first, every one of them
+  const named = r.categories.find(c => c.key === 'exit').facts.find(f => f.text.startsWith('Gave back'));
+  assert.deepEqual([named.named, named.trades.map(x => x.label)], ['AAPL', ['AAPL']]);
+  assert.deepEqual(json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', { ...${CTX}, labels: k => ['aapl', 'nvda', 'amd', 'tsla'].includes(k) ? [{ kind: 'mistake', value: 'chased' }] : [] })`)
+    .categories.find(c => c.key === 'entry').facts.find(f => f.text.startsWith('Tagged')).trades.map(x => x.label), ['AAPL', 'NVDA', 'AMD', 'TSLA'], "the words say 'and 1 more', the links name all four");
   assert.deepEqual(cat('selection'), [
     '2 of 4 closed trades won (50%), 100% the week before',
     'Setup grades: 2 A, 1 B, 1 C',
@@ -239,12 +244,12 @@ test('a week\'s total on the calendar opens its review under the grid, with exit
   assert.match(panel, /Best: <button class="pos-link" data-action="openTradeRow" data-arg="[^"]*AAPL[^"]*">AAPL<\/button> <span class="journal-buy">\+\$300\.00/);
   assert.match(panel, /Worst: <button[^>]*>MSFT<\/button> <span class="journal-sell">−\$100\.00/);
   assert.match(panel, /<div class="jw-cat-name">Exit discipline<\/div><select[^>]*>[\s\S]*?<\/select><\/div><ul class="jw-facts"><li class="jw-bad">Kept 43% of the best move on 1 winner<\/li>/, '$300 of the $700 it reached');
-  assert.match(panel, /Gave back over half the best move on 1 winner: AAPL/);
+  assert.match(panel, /Gave back over half the best move on 1 winner: <button class="pos-link" data-action="openTradeRow"[^>]*>AAPL<\/button>/);
   // out at 103 after the 107 high, nothing after it that day: 47% up the 99.50 to 107 range, late
   assert.match(panel, /<li class="jw-bad">Exit score 47% on average over 1 trade \(1 late\): where you got out in the range from the entry<\/li>/, 'from the same bars, with the exit fills');
-  assert.match(panel, /Out late, after giving it back: AAPL/);
-  assert.match(panel, /No 5-minute bars for 1 trade \(MSFT\)/);
-  assert.match(panel, /<li class="jw-bad">2 trades with no stop: AAPL and MSFT<\/li>/, 'named in the order they opened');
+  assert.match(panel, /Out late, after giving it back: <button class="pos-link" data-action="openTradeRow" data-arg="[^"]*AAPL[^"]*">AAPL<\/button><\/li>/, 'each trade a line names opens its page');
+  assert.match(panel, /No 5-minute bars for 1 trade \(<button class="pos-link" data-action="openTradeRow" data-arg="[^"]*MSFT[^"]*">MSFT<\/button>\)/);
+  assert.match(panel, /<li class="jw-bad">2 trades with no stop: <button[^>]*>AAPL<\/button> and <button[^>]*>MSFT<\/button><\/li>/, 'named in the order they opened, each a link');
   assert.match(panel, /<li class="">No more than 1 trade opened a day<\/li>/);
   assert.match(panel, /2 trades opened before 9:45 ET: 1 won, \+\$200\.00/);
   assert.match(panel, /Average heat: −0.5% of cost against you before the exit, worst −0.5% on AAPL/, 'no stops: heat as a share of the cost');

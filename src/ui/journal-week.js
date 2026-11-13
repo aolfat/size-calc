@@ -371,8 +371,20 @@ function headline(r, word) {
 
 const tradeLink = (t, extra = '') => `<button class="pos-link" data-action="openTradeRow" data-arg="${esc(t.key)}">${esc(underlyingOf(t))}</button>${extra}`;
 
+/** 'AAPL, NVDA and TSLA': each a button that opens its trade page */
+const linkList = links => {
+  const b = links.map(l => `<button class="pos-link" data-action="openTradeRow" data-arg="${esc(l.key)}">${esc(l.label)}</button>`);
+  return b.length > 1 ? `${b.slice(0, -1).join(', ')} and ${b[b.length - 1]}` : b[0] || '';
+};
+/** a fact's words, the trades it names as links to their pages (every one of them, where the words say 'and 2 more') */
+function factHtml(f) {
+  const at = f.named ? f.text.indexOf(f.named) : -1;
+  if (at < 0 || !f.trades?.length) return esc(f.text);
+  return `${esc(f.text.slice(0, at))}${linkList(f.trades)}${esc(f.text.slice(at + f.named.length))}`;
+}
+
 function category(c, p, off) {
-  const facts = c.facts.length ? c.facts.map(f => `<li class="${f.tone === 'good' ? 'jw-good' : f.tone === 'bad' ? 'jw-bad' : ''}">${esc(f.text)}</li>`).join('')
+  const facts = c.facts.length ? c.facts.map(f => `<li class="${f.tone === 'good' ? 'jw-good' : f.tone === 'bad' ? 'jw-bad' : ''}">${factHtml(f)}</li>`).join('')
     : '<li class="jw-none">Nothing to go on yet.</li>';
   const g = gradeAndNote(c, p, off);
   const missing = !off && !rowOf(p.unit, p.key)?.[gradeColumn(c.key)];
