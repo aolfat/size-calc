@@ -986,6 +986,44 @@ export function spreadPctPrice(s, pct) {
 }
 
 /**
+ * A spread's bars from its legs' bars: at every bar time any leg traded, the net of the legs in ratio, signed like the spread's
+ * price (weights: each leg's contracts per spread, bought positive and sold negative, times −1 on a credit spread). A leg that
+ * didn't trade in that bar counts at its last close; bars before every leg has traded are left out. Only the open and the
+ * close are the spread's: the legs' highs and lows don't happen at the same moment, so each bar spans its open and close.
+ * @param {{ date: string, time?: string, open: number, high: number, low: number, close: number }[][]} series one per leg, oldest first
+ * @param {number[]} weights
+ * @returns {{ date: string, time: string, open: number, high: number, low: number, close: number, volume: number }[]}
+ */
+export function spreadBars(series, weights) {
+  const at = (/** @type {{ date: string, time?: string }} */ b) => `${b.date} ${b.time || ''}`;
+  const maps = series.map(bars => new Map(bars.map(b => [at(b), b])));
+  const keys = [...new Set(series.flatMap(bars => bars.map(at)))].sort();
+  /** @type {(number | null)[]} */
+  const last = series.map(() => null);
+  const out = [];
+  const round = (/** @type {number} */ v) => Math.round(v * 1e6) / 1e6;
+  for (const key of keys) {
+    let open = 0, close = 0, ready = true;
+    maps.forEach((m, i) => {
+      const b = m.get(key), o = b ? b.open : last[i], c = b ? b.close : last[i];
+      if (b) last[i] = b.close;
+      if (o === null || c === null) { ready = false; return; }
+      open += weights[i] * o;
+      close += weights[i] * c;
+    });
+    if (!ready) continue;
+    const [date, time] = key.split(' ');
+    open = round(open);
+    close = round(close);
+    out.push({ date, time, open, high: Math.max(open, close), low: Math.min(open, close), close, volume: 0 });
+  }
+  return out;
+}
+
+/** each leg's weight in a spread's net price (spreadBars): its contracts per spread, signed, flipped on a credit spread. @param {SpreadRow} s */
+export const spreadWeights = s => s.legs.map(l => (s.kind === 'debit' ? 1 : -1) * l.qty / s.units);
+
+/**
  * How many shares to add so your average cost lands on a stop: a stop there then risks nothing. Adding at a price only pulls
  * the average toward that price, so the stop has to sit between your cost and it (above the cost and under the price on a
  * long, the other way on a short). Whole shares, rounded down, so the average stops just short of the stop and the stop

@@ -467,7 +467,10 @@ export const actions = {
 
   // ---------- positions ----------
   refreshPositions: () => refreshPositions(true),
-  openPositionTrade: el => openPositionTrade(arg(el), el.dataset.arg2),
+  // the chart's Review close on a spread's chart is the spread close sheet, at the chart's net limit and count
+  openPositionTrade: el => el.dataset.arg2 === 'chartClose' && state.posChart && state.posChart.spread && state.posChart.symbol === arg(el)
+    ? openSpreadClose(arg(el), { price: state.posChart.closePrice || 0, qty: state.posChart.closeQty || 0, pct: state.posChart.closeGain || 0 })
+    : openPositionTrade(arg(el), el.dataset.arg2),
   setPositionStopDuration: el => setPositionStopDuration(arg(el)),
   setPositionSession: el => setPositionSession(arg(el)),
   setPositionBeMode: el => setPositionBeMode(arg(el)),

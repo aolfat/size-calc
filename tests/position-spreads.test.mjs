@@ -397,3 +397,62 @@ test('a spread close takes a % profit target: over the debit, under the credit, 
   assert.equal(b.sent[0].body.orderType, 'NET_CREDIT');
   assert.equal(b.sent[0].body.price, 7);
 });
+
+test("a spread's bars are its legs' net in ratio, a leg that didn't trade counted at its last close", async () => {
+  const { run } = await app();
+  const b = (time, open, close) => ({ date: '2026-10-12', time, open, high: Math.max(open, close) + 1, low: Math.min(open, close) - 1, close });
+  const long = [b('09:30', 6, 6.2), b('09:35', 6.2, 7), b('09:45', 7, 7.5)], short = [b('09:35', 2.5, 2.6), b('09:45', 2.6, 3)];
+  const bars = run(`spreadBars(${JSON.stringify([long, short])}, [1, -1])`);
+  assert.deepEqual(bars.map(x => [x.time, x.open, x.close, x.high, x.low]), [['09:35', 3.7, 4.4, 4.4, 3.7], ['09:45', 4.4, 4.5, 4.5, 4.4]],
+    'nothing until both legs have traded; the bodies only, no wicks the legs never made together');
+  const credit = run(`spreadWeights(${spreadOf([opt(SOLD, -2, 3, 2.5), opt(BOUGHT, 2, 1.2, 1)], [])})`);
+  assert.deepEqual(credit, [-1, 1], 'a credit spread is priced as what buying it back costs');
+});
+
+test("a spread's Chart draws its net price and closes it from a tap: the % profit chips, then the spread close sheet", async () => {
+  const b = broker(), tradier = [];
+  const five = { [LONG.replace(/\s+/g, '')]: [[6, 6.2], [6.2, 7]], [SHORT.replace(/\s+/g, '')]: [[2.5, 2.6], [2.6, 3]] };
+  const fetch = async (url, init) => {
+    if (url.startsWith(PROXY)) return b.fetch(url, init);
+    const sym = decodeURIComponent(url.split('symbol=')[1].split('&')[0]);
+    tradier.push(sym);
+    if (url.includes('/markets/timesales')) return json({ series: { data: five[sym].map(([open, close], i) => ({ time: `2026-10-12T09:${30 + i * 5}:00`, open, high: close, low: open, close, volume: 1 })) } });
+    return json({ history: { day: five[sym].map(([open, close], i) => ({ date: `2026-10-0${i + 1}`, open, high: close, low: open, close })) } });
+  };
+  const { run, elements, state } = await app({ fetch, storage: new Map([...connected(), ['tradier_key', 'tk']]) });
+  elements.get('apiKey').value = 'tk';
+  run("setView('positions')");
+  await settle();
+  assert.match(elements.get('positionsSection').innerHTML, new RegExp(`data-action="togglePositionChart" data-arg="${KEY}"`), 'a Chart button on the spread');
+  run(`actions.togglePositionChart({ dataset: { arg: '${KEY}' } })`);
+  await settle();
+  assert.equal(tradier.length, 4, "both legs' 5-minute and daily bars");
+  assert.deepEqual(plain(state.posChart.five.bars.map(x => [x.open, x.close])), [[3.5, 3.6], [3.6, 4]]);
+  assert.equal(state.posChart.daily.bars.length, 2);
+  assert.equal(elements.get('posChartTitle').textContent, 'RBRK 8/28/26 105/115C');
+  assert.doesNotMatch(elements.get('posChartInd').innerHTML, /data-arg="vwap"|data-arg="vol"/, 'no volume of its own');
+  assert.match(elements.get('posChartInd').innerHTML, /data-arg="ema8"|data-arg="sma50"/);
+  assert.equal(elements.get('posChartMeta').textContent, 'Long 3 spreads · debit $3.50 · now $4.00');
+  assert.equal(elements.get('posToolSeg').style.display, 'none', 'Close is its one tool');
+  assert.equal(elements.get('posChartCloseForm').style.display, '');
+  assert.equal(elements.get('posChartClosePriceLabel').textContent, 'Net credit');
+  assert.equal(elements.get('posChartCloseQtyLabel').textContent, 'Spreads to close');
+  assert.match(elements.get('posChartCloseGainChips').innerHTML, /data-action="setPosCloseGain" data-arg="200" title="Past the spread&#39;s width" disabled/);
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /Tap the chart where you want to close, or type a net credit/);
+
+  run('setPosCloseGain(100)');
+  assert.equal(state.posChart.closePrice, 7, 'the $3.50 debit doubled');
+  assert.equal(state.posChart.closeQty, 3, 'every spread when no count is set');
+  assert.match(elements.get('posChartCloseSummary').innerHTML, /Close 3 of 3 spreads for a net credit of \$7\.00<\/strong> · <span class="pos-locked">\+\$1,050\.00<\/span> \(\+100\.0%\) on the debit · 1\.0R/);
+  run('setPosClosePortion(0.5)');
+  assert.equal(state.posChart.closeQty, 1);
+  assert.equal(elements.get('posChartCloseReview').disabled, false);
+
+  await run(`actions.openPositionTrade({ dataset: { arg: '${KEY}', arg2: 'chartClose' } })`);
+  assert.equal(state.openSheetName, 'spreadClose', "the spread close sheet, not a leg's ticket");
+  assert.deepEqual([state.spreadTicket.close.type, state.spreadTicket.price, state.spreadTicket.qty, state.spreadTicket.close.pct], ['LIMIT', 7, 1, 100]);
+  await run('placeSpreadClose()');
+  assert.equal(b.sent[0].body.price, 7);
+  assert.equal(state.spreadTicket.confirmed, true);
+  assert.equal(state.posChart.closePrice, null, 'the chart form clears once Schwab shows it');
+});

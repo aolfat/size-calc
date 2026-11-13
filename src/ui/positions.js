@@ -347,8 +347,9 @@ function positionRow(r, leg = false) {
 
 /** a spread as one position: net cost and mark per spread, P/L added up, its max loss where the stop risk goes */
 function spreadButtons(s) {
-  const open = state.posLegsOpen.includes(s.key);
-  return `<button class="pos-act${open ? ' active' : ''}" data-action="togglePosLegs" data-arg="${esc(s.key)}" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the legs, each with its own chart, simulator and orders">Legs</button>`
+  const open = state.posLegsOpen.includes(s.key), chart = charted(s.key);
+  return `<button class="pos-act${chart ? ' active' : ''}" aria-pressed="${chart}" data-action="togglePositionChart" data-arg="${esc(s.key)}" title="The spread's net price from its legs' bars, with its cost and closes: close it at a price on the chart">Chart</button>`
+    + `<button class="pos-act${open ? ' active' : ''}" data-action="togglePosLegs" data-arg="${esc(s.key)}" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the legs, each with its own chart, simulator and orders">Legs</button>`
     + `<button class="pos-act pos-act-close" data-action="openSpreadClose" data-arg="${esc(s.key)}" title="Close all or part of the spread as one order, at a net limit or market">Close</button>`
     + cancelOrdersButton(s.key, s.legs.map(l => l.symbol));
 }
@@ -696,7 +697,7 @@ function renderPosActions() {
       <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(s.pnl)}">${headline(s.pnl, s.pnlPct)}</span><span class="${tone(s.pnl)}">${figuresOf(s.pnlPct, r)}</span></div>
       <div class="pc-sub">${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${Math.abs(s.qty) === 1 ? 'spread' : 'spreads'} · ${esc(s.legWords)}</div>
       ${spreadLadder(s)}${spreadNote(s)}
-      <div class="pa-acts">${actBtn(s.key, 'legs', open ? 'Hide legs' : 'Show legs')}${actBtn(s.key, 'spreadClose', 'Close spread', 'pos-act-close')}${(n => n ? actBtn(s.key, 'cancelOrders', cancelWords(n)) : '')(ordersOn(s.legs.map(l => l.symbol)))}</div>
+      <div class="pa-acts">${actBtn(s.key, 'chart', 'Chart')}${actBtn(s.key, 'legs', open ? 'Hide legs' : 'Show legs')}${actBtn(s.key, 'spreadClose', 'Close spread', 'pos-act-close')}${(n => n ? actBtn(s.key, 'cancelOrders', cancelWords(n)) : '')(ordersOn(s.legs.map(l => l.symbol)))}</div>
     </div>`;
     return;
   }
@@ -788,7 +789,7 @@ export function renderPositions() {
 /** where the open chart goes in the Cards layout: a slot right after the charted card (a spread's when it's one of its legs) */
 const CHART_SLOT = '<div class="pc-chart-slot" id="posChartSlot"></div>';
 const charted = sym => !!state.posChart && state.posChart.symbol === sym;
-const chartUnder = i => i.spread ? i.spread.legs.some(l => charted(l.symbol)) : charted(i.row.symbol);
+const chartUnder = i => i.spread ? charted(i.spread.key) || i.spread.legs.some(l => charted(l.symbol)) : charted(i.row.symbol);
 let chartInCards = false;
 /** whether the open chart sits in the card list (then it isn't put beside the list on the desktop shell) */
 export const positionChartInCards = () => chartInCards;
