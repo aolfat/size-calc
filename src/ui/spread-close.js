@@ -5,10 +5,11 @@
 import { state } from '../state.js';
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { inRegularHours, optionPriceTick } from '../core/orders.js';
-import { orderGone, spreadClosePlan, spreadClosers } from '../core/positions.js';
+import { orderGone, spreadClosePlan, spreadClosers, spreadPctPrice } from '../core/positions.js';
 import { store } from '../lib/store.js';
 import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabPlaceOrder, schwabStopDuration, schwabWarm } from '../services/schwab.js';
 import { showError, showToast } from './feedback.js';
+import { profitPcts } from './position-chart.js';
 import { failureText } from './position-trade.js';
 import { refreshPositions } from './positions.js';
 import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
@@ -40,7 +41,8 @@ export function buildSpreadTicket(spread, key, now = Date.now(), prev = null) {
   }
   const all = spreadClosePlan(spread, state.positions ? state.positions.orders : [], { type: 'MARKET' }); // what blocks any close of it
   if (all.error) { t.error = all.error; return t; }
-  t.close = prev ? { ...prev.close } : { type: 'LIMIT', qty: spread.units, portion: 1, price: optionPriceTick(Math.max(0, spread.price)) };
+  t.close = prev ? { ...prev.close } : { type: 'LIMIT', qty: spread.units, portion: 1, price: optionPriceTick(Math.max(0, spread.price)), pct: null };
+  if (t.close.pct > 0 && spreadPctPrice(spread, t.close.pct) !== t.close.price) t.close.pct = null; // the re-read cost moved it
   if (prev && prev.close.portion != null) t.close.qty = portionQty(t, prev.close.portion); // All (or ½) means of what's held now
   plan(t);
   t.warnings = buildWarnings(t, now);
@@ -131,7 +133,57 @@ export function setSpreadClosePrice(value) {
   const t = formOpen();
   if (!t) return;
   t.close.price = parseFloat(value) || 0;
+  t.close.pct = null;
+  pctSync(t);
   changed(false);
+}
+
+/** a % profit chip: the net limit that much over what the spread cost (under what it took in, on a credit) */
+export function setSpreadClosePct(pct) {
+  const t = formOpen(), p = Number(pct);
+  const price = t && p > 0 ? spreadPctPrice(t.spread, p) : 0;
+  if (!price) return;
+  Object.assign(t.close, { type: 'LIMIT', pct: p, price });
+  changed(true);
+}
+
+/** typing the limit as a percent profit: the price follows, on the option grid; the input keeps what was typed */
+export function setSpreadClosePctText(value) {
+  const t = formOpen();
+  if (!t) return;
+  const pct = parseFloat(value), price = pct > 0 ? spreadPctPrice(t.spread, pct) : 0;
+  t.close.pct = price ? pct : null;
+  if (price) t.close.price = price;
+  pctSync(t);
+  changed(false);
+}
+
+/** the limit's percent profit: what was typed or picked, else the limit counted as a percent of the cost */
+function pctText(t) {
+  const s = t.spread, c = t.close;
+  if (c.pct > 0) return String(c.pct);
+  if (!(s.avg > 0) || !(c.price > 0)) return '';
+  const g = (s.kind === 'debit' ? c.price - s.avg : s.avg - c.price) / s.avg * 100;
+  return g > 0 ? g.toFixed(1) : '';
+}
+
+function pctChips(t) {
+  const s = t.spread;
+  return profitPcts({ tradeAs: 'OPTION' }).map(p => {
+    const at = spreadPctPrice(s, p), ok = at > 0 && !t.sent, on = ok && t.close.pct === p;
+    const title = at > 0 ? px(at) : !(s.avg > 0) ? 'Schwab shows no cost basis for this spread.' : s.kind === 'credit' ? 'Past zero' : "Past the spread's width";
+    return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setSpreadClosePct" data-arg="${p}" title="${esc(title)}"${ok ? '' : ' disabled'}>+${p}%</button>`;
+  }).join('');
+}
+
+/** typing redraws only the detail, so the other box and the lit chip are set here */
+function pctSync(t) {
+  const price = /** @type {HTMLInputElement | null} */ (document.getElementById('spreadClosePrice'));
+  if (price && document.activeElement !== price) price.value = t.close.price > 0 ? t.close.price.toFixed(2) : '';
+  const pct = /** @type {HTMLInputElement | null} */ (document.getElementById('spreadClosePct'));
+  if (pct && document.activeElement !== pct) pct.value = pctText(t);
+  const chips = document.getElementById('spreadClosePctChips');
+  if (chips) chips.innerHTML = pctChips(t);
 }
 
 export function setSpreadCloseDuration(d) {
@@ -267,6 +319,7 @@ function form(t, duration) {
   return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('LIMIT', 'Net limit')}${type('MARKET', 'Market')}</div></dd></div>
     <div><dt><label for="spreadCloseQty">Spreads to close</label></dt><dd><div class="pos-close-qty"><input type="number" id="spreadCloseQty" step="1" min="1" max="${s.units}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setSpreadCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions" role="group" aria-label="Percent of the spreads held">${chips}</div></div></dd></div>
     ${limit ? `<div><dt><label for="spreadClosePrice">Net ${net}</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="spreadClosePrice" step="0.05" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setSpreadClosePrice"${off} /></div><span class="shares-detail">Per spread. Now ${px(s.price)} at Schwab's marks; $0.05 steps under $3, $0.10 from $3</span></dd></div>
+    <div><dt><label for="spreadClosePct">Limit in % profit</label></dt><dd><div class="pos-close-qty"><input type="number" id="spreadClosePct" step="1" min="0" inputmode="decimal" placeholder="e.g. 50" autocomplete="off" value="${pctText(t)}" data-input="setSpreadClosePctText"${s.avg > 0 ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="spreadClosePctChips" role="group" aria-label="Limit in percent profit">${pctChips(t)}</div></div><span class="shares-detail">${esc(s.avg > 0 ? (s.kind === 'debit' ? `Over the debit of ${px(s.avg)}` : `Of the credit of ${px(s.avg)}, bought back that much cheaper`) : 'Schwab shows no cost basis for this spread.')}</span></dd></div>
     <div><dt>Order lasts</dt><dd><div class="seg" role="group" aria-label="Order lasts">${duration('DAY', 'Today')}${duration('GOOD_TILL_CANCEL', 'Until canceled')}</div></dd></div>` : ''}`;
 }
 

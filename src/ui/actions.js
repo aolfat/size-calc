@@ -23,7 +23,7 @@ import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.
 import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
 import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
-import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
+import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePct, setSpreadClosePctText, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
 import { openPositionTrade, placePositionTrade, setCloseUnder, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setClosePct, setClosePctText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
 import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
@@ -497,6 +497,8 @@ export const actions = {
   setSpreadClosePortion: el => setSpreadClosePortion(num(el)),
   setSpreadCloseQty: el => setSpreadCloseQty(el.value),
   setSpreadClosePrice: el => setSpreadClosePrice(el.value),
+  setSpreadClosePct: el => setSpreadClosePct(num(el)),
+  setSpreadClosePctText: el => setSpreadClosePctText(el.value),
   setSpreadCloseDuration: el => setSpreadCloseDuration(arg(el)),
   placeSpreadClose: () => placeSpreadClose(),
   openOrderCancel: el => openOrderCancel(arg(el)),

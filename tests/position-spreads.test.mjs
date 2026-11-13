@@ -361,3 +361,39 @@ test('a card\'s side is the bet on the stock: puts bought short, puts sold long,
   const sqqq = 'SQQQ  270115C00020000';
   assert.equal(side([opt(sqqq, 1, 2, 2)]), 'short Short QQQ', 'a call on an inverse fund is short its underlying');
 });
+
+test('a spread close takes a % profit target: over the debit, under the credit, never past zero or the width', async () => {
+  const b = broker();
+  const { run, elements, state } = await app({ fetch: b.fetch, storage: connected() });
+  const debit = [opt(LONG, 3, 6, 7), opt(SHORT, -3, 2.5, 3)], credit = [opt(SOLD, -2, 3, 2.5), opt(BOUGHT, 2, 1.2, 1)];
+  const at = (positions, pct, orders = ORDERS) => run(`spreadPctPrice(${spreadOf(positions, orders)}, ${pct})`);
+  assert.equal(at(debit, 100), 7, 'a $3.50 debit doubled');
+  assert.equal(at(debit, 25), 4.4, 'on the $0.10 grid from $3');
+  assert.equal(at(debit, 200), 0, 'a 10 wide spread is never worth $10.50');
+  assert.equal(at(credit, 50, []), 0.9, 'half the $1.80 credit kept');
+  assert.equal(at(credit, 100, []), 0, 'past zero');
+
+  run("setView('positions')");
+  await settle();
+  await run(`openSpreadClose('${KEY}')`);
+  const html = () => elements.get('spreadCloseBody').innerHTML;
+  assert.match(html(), /Limit in % profit/);
+  assert.match(html(), /Over the debit of \$3\.50/);
+  assert.match(html(), /data-action="setSpreadClosePct" data-arg="200" title="Past the spread&#39;s width" disabled/);
+  run("setSpreadCloseType('MARKET')");
+  run('setSpreadClosePct(100)');
+  assert.equal(state.spreadTicket.close.type, 'LIMIT', 'a % chip makes it a limit');
+  assert.equal(state.spreadTicket.price, 7);
+  assert.equal(state.spreadTicket.close.pct, 100);
+  assert.match(html(), /aria-pressed="true" data-action="setSpreadClosePct" data-arg="100"/);
+  run('setSpreadClosePctText("50")');
+  assert.equal(state.spreadTicket.close.price, 5.3, '$5.25 on the $0.10 grid');
+  run('setSpreadClosePrice("6")');
+  assert.equal(state.spreadTicket.close.pct, null, 'a typed price clears the percent');
+  assert.equal(elements.get('spreadClosePct').value, '71.4', 'and the box reads the limit back as a percent');
+  run('setSpreadClosePct(100)');
+  await run('placeSpreadClose()');
+  assert.equal(b.sent.length, 1);
+  assert.equal(b.sent[0].body.orderType, 'NET_CREDIT');
+  assert.equal(b.sent[0].body.price, 7);
+});
