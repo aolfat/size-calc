@@ -15,7 +15,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom } from '../core/journal-records.js';
 import { holdWords, pnlPct } from '../core/journal.js';
 import { BARS_KEEP_DAYS, lastDoneDay, nyDay, weekdaysBetween } from '../core/bars.js';
-import { afterExit, contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
+import { afterExit, SWING_SESSIONS, contextDays, dailyWindow, excursions, exitLineLabel, exitParts, fillMarks, holdChartBars, holdView, rollUp, sessionVwap, unpackBars } from '../core/trade-page.js';
 import { fmtPositionPrice, parseSchwabOption } from '../core/positions.js';
 import { industryWords } from '../core/industries.js';
 import { viewRange } from '../core/chart-view.js';
@@ -277,6 +277,15 @@ export function pageAfterExit(t, p, fills) {
   return afterExit(t, exitFills(t, fills), p.five, sym.daily === t.symbol && t.assetType !== 'OPTION' ? p.daily : []);
 }
 
+/** where holding on would have ended: 'stopped 98.00 at 2:15 ET', 'to the 108.00 close', '5 sessions on, 112.00 on 10/20' */
+function heldWords(t, a) {
+  const o = a.out, price = px(o.price, t.assetType), md = d => `${+d.slice(5, 7)}/${+d.slice(8)}`;
+  // a 5-minute bar has a time (the exit's own day); a daily bar, only its day
+  if (o.how === 'stop') return o.time ? `stopped ${price} at ${esc(zoneWords(o.date, o.time))}` : `stopped ${price} on ${md(o.date)}`;
+  if (o.how === 'sessions') return `${o.sessions} session${o.sessions === 1 ? '' : 's'} on, ${price} on ${md(o.date)}`;
+  return `to the ${price} close`;
+}
+
 const VERDICT = {
   good: ['Good exit', 'journal-tag-done', 'out near the best the day offered'],
   early: ['Early', 'journal-tag-history', 'it ran on after you got out'],
@@ -301,18 +310,19 @@ function afterExitHtml(t, a, p) {
     cell('Exit score', a.score === null ? '—' : `${Math.round(a.score * 100)}%${v ? ` <span class="journal-tag ${v[1]}">${v[0]}</span>` : ''}`,
       v ? v[2] : 'of the day\'s range from your entry', '',
       'Where you got out in the range from your entry to that day\'s close: 100% is the best price, 0% the worst. Each exit counts for what it closed.'),
+    cell('If held', a.held === null ? '—' : signed$(a.held), a.out ? [inR(a.heldR), heldWords(t, a), a.held > 0 ? 'more than your exit' : a.held < 0 ? 'your exit beat it' : ''].filter(Boolean).join(' · ') : 'no bars after it',
+      a.held > 0 ? 'journal-sell' : a.held < 0 ? 'journal-buy' : '',
+      `Holding each exit with your stop in (${a.stop === null ? 'none here' : `${px(a.stop, t.assetType)}, where you last had it`}): out at the stop if a bar reached it, at its open if it gapped through; else a day trade to that day's close, and a position held overnight ${SWING_SESSIONS} more sessions on the daily bars.`),
     cell('Left on the table', a.best ? signed$(a.left) : '—', a.best ? [inR(a.leftR), `best ${px(a.best.price, t.assetType)}${when(a.best)}`].filter(Boolean).join(' · ') : 'no bars after it',
-      a.left > 0 ? 'journal-sell' : '', 'The most staying in could have added: the best price after each exit, to that day\'s close.'),
-    cell('Avoided', a.worst ? signed$(a.against) : '—', a.worst ? [inR(a.againstR), `${t.direction === 'short' ? 'high' : 'low'} ${px(a.worst.price, t.assetType)}${when(a.worst)}`, a.stopHit ? 'would have hit your stop' : ''].filter(Boolean).join(' · ') : '',
-      a.against < 0 ? 'journal-buy' : '', 'How far it went against where you got out, to that day\'s close: what getting out kept you from.'),
-    cell('Held to the close', a.best ? signed$(a.toClose) : '—', a.best ? [inR(a.toCloseR), a.toClose > 0 ? 'more than your exit' : a.toClose < 0 ? 'your exit beat it' : 'the same'].filter(Boolean).join(' · ') : '',
-      '', 'Holding each exit to that day\'s close instead.'),
+      a.left > 0 ? 'journal-sell' : '', 'The best tick while holding on (to the stop or the end of the hold) in your favor: a ceiling, since nobody sells the top.'),
+    cell('Avoided', a.worst ? signed$(a.against) : '—', a.worst ? [inR(a.againstR), `${t.direction === 'short' ? 'high' : 'low'} ${px(a.worst.price, t.assetType)}${when(a.worst)}`, a.stopHit ? 'reached your stop' : ''].filter(Boolean).join(' · ') : '',
+      a.against < 0 ? 'journal-buy' : '', 'How far it went against where you got out while holding on, no further than the stop: what getting out kept you from.'),
     ...a.sessions.map(s => cell(s.n === 1 ? 'Next day' : `Next ${s.n} days`, signedPct(s.bestPct),
       [`best ${px(s.best, t.assetType)}`, `close ${signedPct(s.closePct)}`, s.closeR !== null ? inR(s.closeR) : ''].filter(Boolean).join(' · '), '',
       `The best ${t.direction === 'short' ? 'low' : 'high'} over the next ${s.n === 1 ? 'session' : `${s.n} sessions`} against your ${px(a.avgExit, t.assetType)} average exit, and where it closed.`)),
   ];
   return `${title}<dl class="jt-stats jt-after">${cells.join('')}</dl>
-    <p class="hint">From the 5-minute bars to the close of the exit's day${a.sessions.length ? ', then the daily bars' : ''}; ${a.qty === t.entryQty ? 'all' : `the ${a.qty} closed of`} ${t.entryQty} against where each got out.</p>`;
+    <p class="hint">${a.out?.how === 'stop' && !a.best ? 'Out at the stop, where holding on would have ended too, so nothing after it counts' : `Held on from each exit with ${a.stop === null ? 'no stop (none set)' : `the ${px(a.stop, t.assetType)} stop in`}, ${a.out?.how === 'sessions' ? `then ${a.out.sessions} session${a.out.sessions === 1 ? '' : 's'} on the daily bars` : 'to the close of the exit\'s day'}${a.out?.how === 'close' && nyDay(t.openedAt) < a.out.date ? ' (no daily bars for it here, so not the sessions after)' : ''}`}; ${a.qty === t.entryQty ? 'all' : `the ${a.qty} closed of`} ${t.entryQty} against where each got out.${a.sessions.length ? ' Next day and on: the daily bars, no stop.' : ''}</p>`;
 }
 
 /**

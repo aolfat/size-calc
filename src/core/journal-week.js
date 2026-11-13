@@ -12,7 +12,7 @@ import { countedTrades, groupStats, inPeriod, nyParts, periodKey, underlyingOf }
 /** @typedef {import('./journal-stats.js').StatTrade & { avgEntry?: number, entryQty?: number, multiplier?: number,
  *   schwabStop?: number | null, movedTo?: number | null, rBasis?: string | null }} WeekTrade
  * @typedef {{ mfe: number, mae: number, mfeR: number | null, maeR: number | null, efficiency: number | null }} Excursion
- * @typedef {{ score: number | null, verdict: 'good' | 'early' | 'late' | 'stopped' | null, left: number, leftR: number | null }} AfterExit
+ * @typedef {{ score: number | null, verdict: 'good' | 'early' | 'late' | 'stopped' | null, left: number, leftR: number | null, held?: number | null, heldR?: number | null }} AfterExit
  * @typedef {{ text: string, tone?: 'good' | 'bad' | '' }} Fact
  * @typedef {{ key: string, name: string, facts: Fact[] }} Category
  * @typedef {{
@@ -368,10 +368,19 @@ export function periodReview(trades, unit, key, ctx) {
       const count = (/** @type {string} */ v) => judged.filter(x => x.a?.verdict === v).length;
       const split = /** @type {[string, string][]} */ ([['good', 'good'], ['early', 'early'], ['late', 'late'], ['stopped', 'stopped out']])
         .filter(([v]) => count(v)).map(([v, w]) => `${count(v)} ${w}`).join(', ');
-      add('exit', `Exit score ${Math.round(score * 100)}% on average over ${plural(judged.length, 'trade')} (${split}): where you got out in the day's range from the entry`, score >= 0.7 ? 'good' : score < 0.5 ? 'bad' : '');
+      add('exit', `Exit score ${Math.round(score * 100)}% on average over ${plural(judged.length, 'trade')} (${split}): where you got out in the range from the entry`, score >= 0.7 ? 'good' : score < 0.5 ? 'bad' : '');
       const early = judged.filter(x => x.a?.verdict === 'early').map(x => x.t), late = judged.filter(x => x.a?.verdict === 'late').map(x => x.t);
       if (early.length) add('exit', `Out early, and it ran on: ${names(early)}`, 'bad');
       if (late.length) add('exit', `Out late, after giving it back: ${names(late)}`, 'bad');
+      // holding on with the stops in (afterExit's hold): the realistic answer, beside the best-tick ceiling under it
+      const holds = judged.filter(x => x.a?.held !== null && x.a?.held !== undefined);
+      if (holds.length) {
+        const net = round2(sum(holds.map(x => /** @type {number} */ (x.a?.held)))), rs = holds.map(x => x.a?.heldR).filter(r => r !== null && r !== undefined);
+        const inR = rs.length === holds.length ? ` (${signedR(sum(/** @type {number[]} */ (rs)))})` : '';
+        if (net > 0) add('exit', `Holding on with your stops would have made ${fmt$(net)}${inR} more than your exits, over ${plural(holds.length, 'trade')}`, 'bad');
+        else if (net < 0) add('exit', `Your exits beat holding on with your stops by ${fmt$(-net)}${inR.replace('−', '+')}, over ${plural(holds.length, 'trade')}`, 'good');
+        else add('exit', `Your exits came out even with holding on with your stops, over ${plural(holds.length, 'trade')}`);
+      }
       const left = judged.filter(x => x.a && x.a.left > 0);
       if (left.length) {
         const most = left.reduce((m, x) => (/** @type {number} */ (x.a?.left) > /** @type {number} */ (m.a?.left) ? x : m));

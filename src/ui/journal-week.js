@@ -16,7 +16,8 @@ import { afterExit, excursions, unpackBars } from '../core/trade-page.js';
 import { fillsFrom } from '../core/journal-records.js';
 import { nyDay, weekdaysBetween } from '../core/bars.js';
 import { parseSchwabOption } from '../core/positions.js';
-import { loadTradeBars } from '../services/bars.js';
+import { loadTradeBars, marketDataHere } from '../services/bars.js';
+import { dailyHistory } from '../services/tradier.js';
 import { savePeriodFields } from '../services/journal-review.js';
 import { zoneWords } from '../lib/zone.js';
 import { state } from '../state.js';
@@ -37,6 +38,8 @@ const signature = t => `${t.closedAt}|${t.entryQty}|${t.avgEntry}`;
 /** the 5-minute bars a trade's excursions come from: an option contract's own, a stock's; spreads have none */
 const barsSymbol = t => t.legs ? '' : t.assetType === 'OPTION' && parseSchwabOption(t.symbol) ? t.symbol.replace(/\s+/g, '') : t.symbol;
 
+/** a trade whose daily chart is its own symbol's (a stock or a fund; not an option, a future, or a fund read on its underlying) */
+const onOwnDaily = t => !t.legs && !t.setupOn && !['OPTION', 'FUTURE', 'SPREAD'].includes(t.assetType);
 /** a trade's excursions: undefined until read, null when there are no bars for it */
 function excursionOf(t) {
   const c = state.journalExcursions[t.key];
@@ -65,11 +68,15 @@ async function loadExcursions(unit, key) {
     bySymbol.set(barsSymbol(t), s);
   }
   await Promise.all([...bySymbol].map(async ([symbol, { days, trades }]) => {
-    let bars = [];
+    let bars = [], daily = [];
+    // a stock held overnight is held on past its exit on the daily bars (afterExit), as on its trade page
+    const overnight = trades.some(t => onOwnDaily(t) && nyDay(t.openedAt) < nyDay(t.closedAt));
+    const dailyBars = overnight && marketDataHere() ? dailyHistory(symbol).then(ds => ds.map(d => ({ date: d.date, open: +d.open, high: +d.high, low: +d.low, close: +d.close }))).catch(() => []) : Promise.resolve([]);
     try { bars = unpackBars(await loadTradeBars(symbol, [...days].sort())); } catch(e) { bars = []; }
+    daily = await dailyBars;
     for (const t of trades) {
       const ids = new Set(t.fillIds), exits = fills.filter(f => ids.has(f.id) && f.side === (t.direction === 'short' ? 'buy' : 'sell'));
-      state.journalExcursions[t.key] = { sig: signature(t), ex: bars.length ? excursions(t, bars) : null, after: bars.length ? afterExit(t, exits, bars) : null };
+      state.journalExcursions[t.key] = { sig: signature(t), ex: bars.length ? excursions(t, bars) : null, after: bars.length ? afterExit(t, exits, bars, onOwnDaily(t) ? daily : []) : null };
     }
   }));
   state.periodBarsBusy = false;
