@@ -492,6 +492,54 @@ test('the close ticket picks market or limit, how many and the price, like a bro
   assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
 });
 
+test('the close ticket switches to a profit target in one tap: the form carries over and other targets stay', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  const body = () => elements.get('posTradeBody').innerHTML;
+  const detail = () => elements.get('posTradeDetail').innerHTML;
+  assert.match(body(), /data-action="setCloseType" data-arg="TARGET"[^>]*>Target</);
+  run("setCloseType('TARGET')");
+  assert.equal(elements.get('posTradeTitle').textContent, 'Profit target');
+  assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="TARGET"/);
+  assert.match(body(), /<label for="posClosePrice">Target price<\/label>/);
+  assert.match(body(), /id="posClosePrice"[^>]*value=""/, 'the mark is no target: the price starts empty');
+  assert.match(body(), /id="posCloseQty"[^>]*value="200"/, 'the $45 target holds 100 of 300, so 200 are free');
+  assert.doesNotMatch(body(), /data-action="setCloseAt"/, 'bid, mid and ask are a limit\'s');
+  assert.match(body(), /Set a target price\./);
+  assert.match(body(), /data-action="placePositionTrade" disabled/);
+  run("setClosePrice('41')");
+  assert.match(detail(), /The target \$41\.00 is at or below the price \$41\.10/);
+  run("setClosePrice('44')");
+  assert.match(detail(), />Place target \$44\.00</);
+  assert.match(detail(), /At target/);
+  assert.match(detail(), /\+\$1,160\.00/, '200 × ($44.00 − $38.20)');
+  assert.match(detail(), /100 shares left after it fills/);
+  run('setCloseR(2)');
+  assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="TARGET"/, 'an R chip keeps it a target');
+  run("setClosePrice('44')");
+  await run('placePositionTrade()');
+  assert.ok(!b.sent.some(c => c.path === '/orders/103'), 'the $45 target stays');
+  const last = b.sent.at(-1).body;
+  assert.equal(last.orderStrategyType, 'OCO');
+  assert.equal(last.childOrderStrategies[0].price, 44);
+  assert.equal(last.childOrderStrategies[0].orderLegCollection[0].quantity, 200);
+  assert.match(body(), /Schwab now shows a target at \$44\.00 for 200 shares/);
+});
+
+test('switching the close ticket back from Target is a close again', async () => {
+  const b = broker();
+  const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
+  await run("openPositionTrade('HOOD', 'close')");
+  run("setCloseType('LIMIT')");
+  run("setClosePrice('43')");
+  run("setCloseType('TARGET')");
+  assert.match(elements.get('posTradeBody').innerHTML, /id="posClosePrice"[^>]*value="43.00"/, 'a limit past the mark carries over');
+  run("setCloseType('MARKET')");
+  assert.equal(elements.get('posTradeTitle').textContent, 'Close position');
+  assert.match(elements.get('posTradeBody').innerHTML, />Sell 200 HOOD at market</);
+});
+
 test('the close ticket\'s limit works in regular hours, pre-market, after hours or Ext', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });
