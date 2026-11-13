@@ -34,6 +34,7 @@ import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-
 import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge } from './journal-deck.js';
 import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
 import { tradeIndustry } from './journal-industry.js';
+import { exitFillsOf, onOwnDaily } from './trade-reads.js';
 
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
@@ -269,10 +270,15 @@ function statsHtml(t, ex) {
 }
 
 /** the fills that closed it: a long's sells, a short's buys */
-const exitFills = (t, fills) => fills.filter(f => f.side === (t.direction === 'short' ? 'buy' : 'sell'));
+const exitFills = (t, fills) => exitFillsOf(t, fills);
 
-/** the daily bars that are the trade's own: a stock's or a fund's (not an option's, nor a fund read on its underlying) */
-const ownDaily = (t, p) => (chartSymbols(t).daily === t.symbol && t.assetType !== 'OPTION' ? p.daily : []);
+/** the daily bars that are the trade's own (onOwnDaily, the same rule the reviews and the Setups tab read by) */
+const ownDaily = (t, p) => (onOwnDaily(t) ? p.daily : []);
+/**
+ * a position held overnight on its own daily bars while they're still loading: its hold goes on past the exit day on them,
+ * so After the exit and Stop check wait rather than show a hold that changes when they land
+ */
+const waitsForDaily = (t, p) => p.loadingD && onOwnDaily(t) && !!t.openedAt && nyDay(t.openedAt) < nyDay(t.closedAt || Date.now());
 
 /** what the price did after the exit: the trade's own 5-minute bars, and its own daily */
 export function pageAfterExit(t, p, fills) {
@@ -302,13 +308,16 @@ const money = (v, r) => `${signed$(v)}${r !== null && r !== undefined ? ` (${sig
 /** an amount with no sign, for words that say which way: 'gave back $300.00 (1.50R)' */
 const amount = (v, r) => `${fmt$(Math.abs(v))}${r !== null && r !== undefined ? ` (${Math.abs(r).toFixed(2)}R)` : ''}`;
 
+/** how a run after the exit came back, by where the hold ended */
+const CAME_BACK = { stop: 'it came back to your stop', close: 'it gave it back by the close', sessions: 'it gave it back over the sessions after' };
+
 /** the exit in one sentence (owner request: did I sell too early?), from the verdict and the hold */
 export function exitSay(t, a) {
   const held = a.held, more = held !== null && held > 0, less = held !== null && held < 0;
   const hold = held === null ? '' : more ? `holding on with your stop would have made <b>${money(held, a.heldR)}</b> more` : less ? `holding on with your stop would have made ${amount(held, a.heldR)} less` : 'holding on with your stop would have come out the same';
   const best = a.best ? ` (it reached ${px(a.best.price, t.assetType)})` : '';
   switch (a.verdict) {
-    case 'early': return more ? ['bad', `Sold too early: ${hold}${best}.`] : ['', `Out before the best of the move${best}, but ${hold}: it came back to your stop.`];
+    case 'early': return more ? ['bad', `Sold too early: ${hold}${best}.`] : ['', `Out before the best of the move${best}, but ${hold}: ${CAME_BACK[a.out?.how] || 'it came back'}.`];
     case 'late': return ['bad', `Out late: you gave back <b>${amount(a.gave, a.gaveR)}</b> from the best while you held${hold ? `, and ${hold}` : ''}.`];
     case 'good': return [more ? '' : 'good', `Good exit${hold ? `: ${hold}` : ''}.`];
     case 'stopped': return ['', 'Out at your stop: the stop check below says whether it was too tight.'];
@@ -325,6 +334,7 @@ function afterExitHtml(t, a, p) {
   const title = `<div class="section-title jt-after-title">After the exit</div>`;
   if (!a) return p.loading5 ? '' : `${title}<p class="hint">${t.assetType === 'FUTURE' ? 'No 5-minute bars for futures, so nothing after the exit to measure.' : 'No 5-minute bars for the exit\'s day, so nothing after it to measure.'}</p>`;
   if (deckHidesPnl(t)) return `${title}<p class="hint">After grading: how good the exit was waits for the setup grade, like the result.</p>`;
+  if (waitsForDaily(t, p)) return `${title}<p class="hint">Loading the daily bars: a position held overnight is held on past its exit on them.</p>`;
   const cell = (label, value, sub = '', cls = '', tip = '') => `<div${tip ? ` title="${esc(tip)}"` : ''}><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
   const inR = v => (v !== null ? signedR(v) : '');
   const when = x => x && x.time ? ` at ${esc(zoneWords(x.date, x.time))}` : '';
@@ -380,6 +390,7 @@ function stopCheckHtml(t, c, p) {
   if (!t.stop) return `${title}<p class="hint">No stop on this trade, so there's nothing to check. Edit sets one.</p>`;
   if (!c) return '';
   if (deckHidesPnl(t)) return `${title}<p class="hint">After grading, like the result.</p>`;
+  if (waitsForDaily(t, p)) return `${title}<p class="hint">Loading the daily bars for the days after the stop.</p>`;
   const cell = (label, value, sub = '', cls = '', tip = '') => `<div${tip ? ` title="${esc(tip)}"` : ''}><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
   const when = x => x.time ? ` at ${esc(zoneWords(x.date, x.time))}` : ` on ${+x.date.slice(5, 7)}/${+x.date.slice(8)}`;
   const v = STOP_VERDICT[c.verdict], [tone, say] = stopSay(t, c), units = t.assetType === 'OPTION' ? 'contracts' : 'shares';

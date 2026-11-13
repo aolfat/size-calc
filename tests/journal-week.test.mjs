@@ -65,6 +65,11 @@ test('each part of the week gets its own numbers, the good and the worrying ones
   assert.deepEqual([named.named, named.trades.map(x => x.label)], ['AAPL', ['AAPL']]);
   assert.deepEqual(json(run, `periodReview(${JSON.stringify(TRADES)}, 'week', '2026-10-12', { ...${CTX}, labels: k => ['aapl', 'nvda', 'amd', 'tsla'].includes(k) ? [{ kind: 'mistake', value: 'chased' }] : [] })`)
     .categories.find(c => c.key === 'entry').facts.find(f => f.text.startsWith('Tagged')).trades.map(x => x.label), ['AAPL', 'NVDA', 'AMD', 'TSLA'], "the words say 'and 1 more', the links name all four");
+  // the names' place is kept, not searched for: Ford's F isn't the F of FOMO
+  const ford = [...TRADES, T('f', '2026-10-13T14:00:00Z', '2026-10-13T15:00:00Z', -50)];
+  const fomo = json(run, `periodReview(${JSON.stringify(ford)}, 'week', '2026-10-12', { ...${CTX}, labels: k => k === 'f' ? [{ kind: 'mistake', value: 'mine:fomo' }] : [] })`)
+    .categories.find(c => c.key === 'consistency').facts.find(f => f.text.startsWith('Tagged'));
+  assert.deepEqual([fomo.text, fomo.named, fomo.at], ['Tagged "FOMO" on 1 trade: F', 'F', 26]);
   assert.deepEqual(cat('selection'), [
     '2 of 4 closed trades won (50%), 100% the week before',
     'Setup grades: 2 A, 1 B, 1 C',

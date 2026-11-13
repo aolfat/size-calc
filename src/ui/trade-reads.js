@@ -15,8 +15,13 @@ import { state } from '../state.js';
 const signature = t => `${t.closedAt}|${t.entryQty}|${t.avgEntry}`;
 /** the 5-minute bars a trade's reads come from: an option contract's own, a stock's; spreads have none */
 const barsSymbol = t => t.legs ? '' : t.assetType === 'OPTION' && parseSchwabOption(t.symbol) ? t.symbol.replace(/\s+/g, '') : t.symbol;
-/** a trade whose daily chart is its own symbol's (a stock or a fund; not an option, a future, or a fund read on its underlying) */
-const onOwnDaily = t => !t.legs && !t.setupOn && !['OPTION', 'FUTURE', 'SPREAD'].includes(t.assetType);
+/** a trade whose daily bars are its own symbol's (a stock or a fund; not an option, a future, or a fund read on its
+ * underlying): the ones held on past the exit on them, here and on the trade page */
+export const onOwnDaily = t => !t.legs && !t.setupOn && !['OPTION', 'FUTURE', 'SPREAD'].includes(t.assetType);
+/** the fills that closed a trade: a long's sells, a short's buys */
+export const exitFillsOf = (t, fills) => { const ids = new Set(t.fillIds); return fills.filter(f => ids.has(f.id) && f.side === (t.direction === 'short' ? 'buy' : 'sell')); };
+/** at most this many symbols' bars are read at once */
+const AT_ONCE = 4;
 
 const cached = t => { const c = state.journalExcursions[t.key]; return c && c.sig === signature(t) ? c : undefined; };
 /** a trade's excursions: undefined until read, null when there are no bars for it */
@@ -45,7 +50,9 @@ export async function readTrades(trades, onStart = () => {}) {
     s.trades.push(t);
     bySymbol.set(barsSymbol(t), s);
   }
-  await Promise.all([...bySymbol].map(async ([symbol, { days, trades: ts }]) => {
+  // a few symbols at a time: the Setups tab reads every trade with a setup, and a journal can hold hundreds of symbols
+  const queue = [...bySymbol];
+  const one = async ([symbol, { days, trades: ts }]) => {
     let bars = [];
     // a stock held overnight is held on past its exit on the daily bars (afterExit, stopCheck), as on its trade page
     const overnight = ts.some(t => onOwnDaily(t) && nyDay(t.openedAt) < nyDay(t.closedAt));
@@ -55,11 +62,11 @@ export async function readTrades(trades, onStart = () => {}) {
     try { bars = unpackBars(await loadTradeBars(symbol, [...days].sort())); } catch(e) { bars = []; }
     const daily = await dailyBars;
     for (const t of ts) {
-      const ids = new Set(t.fillIds), exits = fills.filter(f => ids.has(f.id) && f.side === (t.direction === 'short' ? 'buy' : 'sell'));
-      const own = onOwnDaily(t) ? daily : [];
+      const exits = exitFillsOf(t, fills), own = onOwnDaily(t) ? daily : [];
       state.journalExcursions[t.key] = { sig: signature(t), ex: bars.length ? excursions(t, bars) : null,
         after: bars.length ? afterExit(t, exits, bars, own) : null, stop: bars.length ? stopCheck(t, exits, bars, own) : null };
     }
-  }));
+  };
+  await Promise.all(Array.from({ length: Math.min(AT_ONCE, queue.length) }, async () => { while (queue.length) await one(/** @type {any} */ (queue.shift())); }));
   return true;
 }

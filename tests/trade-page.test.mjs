@@ -191,6 +191,10 @@ test('after the exit: held on with the stop in, where the exit sat in that, what
   assert.deepEqual([sw.out, sw.held], [{ price: 100, date: '2026-10-16', time: '', how: 'sessions', sessions: 3 }, -200], 'opened the day before: held the 3 sessions there are so far');
   const moved = json(run, `afterExit(${JSON.stringify({ ...swing, movedTo: 100.5 })}, ${JSON.stringify(sold)}, ${JSON.stringify(day)}, ${JSON.stringify(daily)})`);
   assert.deepEqual([moved.out.price, moved.out.date, moved.out.how, moved.held], [100.5, '2026-10-16', 'stop', -150], 'the stop where you moved it');
+  // a trim before the stop was raised past its price: judged against the stop in force then, not the later one
+  const trail = [{ stopPrice: 98, entered: '2026-10-13T13:40:00.000Z' }, { stopPrice: 103, entered: '2026-10-13T14:40:00.000Z' }];
+  const trimmed = json(run, `afterExit(${JSON.stringify({ ...t, stopTrail: trail })}, ${JSON.stringify([{ time: '2026-10-13T14:31:00.000Z', qty: 50, price: 102 }, { time: '2026-10-13T19:56:00.000Z', qty: 50, price: 108 }])}, ${JSON.stringify(day)})`);
+  assert.deepEqual([trimmed.left, trimmed.held], [400, 300], 'the 102 trim held with the 98 stop: ran to 110, closed 108');
   const atMoved = json(run, `afterExit(${JSON.stringify({ ...t, movedTo: 102 })}, ${JSON.stringify(sold)}, ${JSON.stringify(day)})`);
   assert.deepEqual([atMoved.held, atMoved.out.how, atMoved.left, atMoved.verdict], [0, 'stop', 0, 'good'], 'out at the stop you moved up: nothing to hold, judged up to the exit (102 of 99 to 103)');
 
@@ -225,7 +229,10 @@ test('the stop check: how far past the stop, whether it came back, the stop that
   const sold = [{ time: '2026-10-13T14:31:00.000Z', qty: 100, price: 102 }];
   const room = json(run, `stopCheck(${JSON.stringify(win)}, ${JSON.stringify(sold)}, ${JSON.stringify(BARS)})`);
   assert.deepEqual([room.verdict, room.stopped, room.heatR, room.overshoot], ['room', false, -0.33, 0], 'never within half of the 3 points to its stop');
-  assert.deepEqual([room.heldStop, room.heldDistance, room.heldSize, room.heldPnl, room.end.how], [98.99, 0.34, 297, 594, 'exit'], 'the 10:35 run after the exit doesn\'t count');
+  assert.deepEqual([room.heldStop, room.heldDistance, room.heldSize, room.heldPnl, room.end.how], [98.5, 0.5, 200, 400, 'exit'],
+    'a cent under the 99 low would be a third of the stop: held at half of it, never tighter; the 10:35 run after the exit doesn\'t count');
+  const roomier = json(run, `stopCheck(${JSON.stringify({ ...win, stop: 98.5, risk: 150 })}, ${JSON.stringify(sold)}, ${JSON.stringify(BARS)})`);
+  assert.deepEqual([roomier.heldStop, roomier.heldSize], [98.99, 148], 'past half the stop: a cent under the low');
   const close = json(run, `stopCheck(${JSON.stringify({ ...win, stop: 98.9, risk: 110 })}, ${JSON.stringify(sold)}, ${JSON.stringify(BARS)})`);
   assert.deepEqual([close.verdict, close.heatR], ['close', -0.91], 'came within a tenth of it');
 
@@ -246,12 +253,13 @@ test('the exit and the stop in one sentence: sold too early, out late, a good ex
   const a = { verdict: 'early', held: 420, heldR: 2.1, best: { price: 110 }, gave: 0, gaveR: 0 };
   const say = x => json(run, `exitSay(${JSON.stringify(t)}, ${JSON.stringify(x)})`);
   assert.deepEqual(say(a), ['bad', 'Sold too early: holding on with your stop would have made <b>+$420.00 (+2.10R)</b> more (it reached $110.00).']);
-  assert.deepEqual(say({ ...a, held: -100, heldR: -0.5 }), ['', 'Out before the best of the move (it reached $110.00), but holding on with your stop would have made $100.00 (0.50R) less: it came back to your stop.']);
+  assert.deepEqual(say({ ...a, held: -100, heldR: -0.5, out: { how: 'close' } }), ['', 'Out before the best of the move (it reached $110.00), but holding on with your stop would have made $100.00 (0.50R) less: it gave it back by the close.'], 'the stop never reached: it says so');
+  assert.match(say({ ...a, held: -100, heldR: -0.5, out: { how: 'stop' } })[1], /: it came back to your stop\.$/);
   assert.deepEqual(say({ ...a, verdict: 'late', held: -50, heldR: -0.25, gave: 300, gaveR: 1.5 }), ['bad', 'Out late: you gave back <b>$300.00 (1.50R)</b> from the best while you held, and holding on with your stop would have made $50.00 (0.25R) less.']);
   assert.deepEqual(say({ ...a, verdict: 'good', held: -80, heldR: -0.4 }), ['good', 'Good exit: holding on with your stop would have made $80.00 (0.40R) less.']);
   assert.deepEqual(say({ ...a, verdict: 'good', held: null }), ['good', 'Good exit.']);
-  const c = { verdict: 'room', heatR: -0.33, heldStop: 98.99, heldDistance: 0.34, heldSize: 297, heldPnl: 594, heldR: 1.98, r: 0.67, stop: 97, overshoot: 0, overshootR: 0, end: { how: 'exit' } };
-  assert.deepEqual(json(run, `stopSay(${JSON.stringify(t)}, ${JSON.stringify(c)})`), ['', 'Room to spare: it came no closer than −0.33R to your stop. A $98.99 stop (66% tighter) would have held: 297 shares at the same risk, <b>+$594.00 (+1.98R)</b> instead of +0.67R at your exit.']);
+  const c = { verdict: 'room', heatR: -0.33, heldStop: 98.5, heldDistance: 0.5, heldSize: 200, heldPnl: 400, heldR: 1.33, r: 0.67, stop: 97, overshoot: 0, overshootR: 0, end: { how: 'exit' } };
+  assert.deepEqual(json(run, `stopSay(${JSON.stringify(t)}, ${JSON.stringify(c)})`), ['', 'Room to spare: it came no closer than −0.33R to your stop. A $98.50 stop (50% tighter) would have held: 200 shares at the same risk, <b>+$400.00 (+1.33R)</b> instead of +0.67R at your exit.']);
 });
 
 test('the exit in words: one price or the average of several, and how much is closed while it\'s open', async () => {
@@ -551,6 +559,13 @@ test('with a key: the daily chart from Tradier, framed on the trade', async t =>
   assert.match(elements.get('jtBody').innerHTML, /<dt>Next day<\/dt><dd class="">\+6\.34%<span class="pos-sub">best \$101\.00 · close \+5\.29% · \+1\.00R<\/span>/);
   assert.match(elements.get('jtBody').innerHTML, /<dt>Next 10 days<\/dt>/);
   assert.match(elements.get('jtBody').innerHTML, /Next day and on: the daily bars, no stop\./);
+  // held overnight: while the daily bars are loading, After the exit and Stop check wait for them
+  state.journalTrade.loadingD = true;
+  run('renderJournalTrade()');
+  assert.match(elements.get('jtBody').innerHTML, /After the exit<\/div><p class="hint">Loading the daily bars: a position held overnight is held on past its exit on them\.<\/p>/);
+  assert.match(elements.get('jtBody').innerHTML, /Stop check<\/div><p class="hint">Loading the daily bars for the days after the stop\.<\/p>/);
+  state.journalTrade.loadingD = false;
+  run('renderJournalTrade()');
   // with the days after on the daily bars, the stop-out came back over the 100.02 entry: shaken out
   assert.match(elements.get('jtBody').innerHTML, /<p class="jt-say jt-say-bad">Shaken out: it went only \$0\.50 \(0\.10R\) past your \$95\.00 stop, then came back to \+0\.20R\. A \$94\.49 stop \(10% wider\) would have held: 90 shares at the same risk, <b>−\$1\.80 \(0\.00R\)<\/b> instead of −1\.00R by the end of the hold\.<\/p>/, 'back over the entry, but it closed under it: the wider stop would only have broken even');
   const c = chart('jtChartD');

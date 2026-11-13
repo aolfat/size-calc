@@ -32,8 +32,9 @@ const validKey = (unit, key) => unit === 'month' ? /^\d{4}-\d{2}$/.test(key) : /
 /** read the saved bars for the period's closed trades that haven't been read yet (ui/trade-reads.js) */
 async function loadExcursions(unit, key) {
   const { closedHere } = reviewTrades(journalTradeList(), unit, key);
-  const any = await readTrades(closedHere, () => { state.periodBarsBusy = true; renderJournal(); });
-  state.periodBarsBusy = false;
+  let any = false;
+  try { any = await readTrades(closedHere, () => { state.periodBarsBusy = true; renderJournal(); }); } catch(e) { any = true; } // a failed read redraws without the loading line
+  finally { state.periodBarsBusy = false; }
   if (any && state.journalReviewPeriod?.unit === unit && state.journalReviewPeriod?.key === key) renderJournal();
 }
 
@@ -325,7 +326,7 @@ const linkList = links => {
 };
 /** a fact's words, the trades it names as links to their pages (every one of them, where the words say 'and 2 more') */
 function factHtml(f) {
-  const at = f.named ? f.text.indexOf(f.named) : -1;
+  const at = f.named && Number.isInteger(f.at) ? f.at : -1;
   if (at < 0 || !f.trades?.length) return esc(f.text);
   return `${esc(f.text.slice(0, at))}${linkList(f.trades)}${esc(f.text.slice(at + f.named.length))}`;
 }
