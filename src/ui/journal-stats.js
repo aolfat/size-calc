@@ -466,6 +466,7 @@ export function statsView(trades) {
     ${industryTables(list)}
     ${statTable('By side', b.bySide)}
     ${statTable('By instrument', b.byInstrument)}
+    ${statTable('By option type', b.byOptionType, 'Bought (long) or sold to open, calls and puts; spreads apart.')}
     ${statTable('By time of day', b.byTimeOfDay.map(r => ({ ...r, group: bucketWords(r.group) })), `When the trade opened (${zoneAbbr()}).`)}
     ${oneDay(unit, key) ? '' : statTable('By weekday', b.byWeekday, 'The day it opened.')}
     ${planTable(list)}
