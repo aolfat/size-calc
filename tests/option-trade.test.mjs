@@ -193,12 +193,30 @@ test('a new warning at Place waits for a second Place', async () => {
   assert.equal(net.posts.length, 1, 'the warning has been shown');
 });
 
-test('no quote, no review', async () => {
+test('no quote, nothing to place: the sheet says why', async () => {
   const net = network();
   const fetch = async (url, init) => url.includes('/markets/quotes') ? json({ quotes: null }) : net.fetch(url, init);
-  const { run, elements } = await chain({ fetch, storage: connected() });
+  const { run, elements, state } = await chain({ fetch, storage: connected() });
   await run(`openOptionTrade('${OCC}')`);
-  assert.equal(elements.get('tradeSheet').style.display, 'none');
+  assert.equal(state.tradeTicket.order, null);
+  assert.match(elements.get('tradeBody').innerHTML, /Could not refresh the .* quote, so there is nothing to review yet/);
+  assert.doesNotMatch(elements.get('tradeBody').innerHTML, /data-action="placeOptionTrade"/);
+});
+
+test('the option review opens before its quote is in: Place waits, then the limit is the fresh mid', async () => {
+  const net = network();
+  let answer;
+  const fetch = (url, init) => url.includes('/markets/quotes') ? new Promise(r => { answer = () => r(net.fetch(url, init)); }) : net.fetch(url, init);
+  const { run, elements, state } = await chain({ fetch, storage: connected() });
+  const opening = run(`openOptionTrade('${OCC}')`);
+  assert.notEqual(elements.get('tradeSheet').style.display, 'none', 'the sheet is up at once');
+  assert.match(elements.get('tradeBody').innerHTML, /id="tradePlace" data-action="placeOptionTrade" disabled>Checking quote…</);
+  await run('placeOptionTrade()');
+  assert.equal(state.tradeTicket.sent, false, 'nothing goes on the chain\'s quote');
+  answer();
+  await opening;
+  assert.equal(state.tradeTicket.pending, undefined);
+  assert.match(elements.get('tradeBody').innerHTML, /id="tradePlace" data-action="placeOptionTrade">Buy /);
 });
 
 // ---------- found in review ----------
@@ -235,11 +253,13 @@ test('the option stop\'s duration is remembered for the next review', async () =
   assert.equal(run("store.get('schwab_stop_duration')"), 'DAY');
 });
 
-test('a ticker changed while the contract quote was out opens no review', async () => {
+test('a ticker changed while the contract quote was out leaves nothing to place', async () => {
   const net = network();
-  const { run, elements } = await chain({ fetch: net.fetch, storage: connected() });
+  const { run, elements, state } = await chain({ fetch: net.fetch, storage: connected() });
   await run(`(() => { const p = openOptionTrade('${OCC}'); quoteData = { ...quoteData, symbol: 'OTHER' }; return p; })()`);
-  assert.equal(elements.get('tradeSheet').style.display, 'none');
+  assert.equal(state.tradeTicket.order, null);
+  assert.match(elements.get('tradeBody').innerHTML, /The ticker or the chain changed\. Check the contract, then try again\./);
+  assert.doesNotMatch(elements.get('tradeBody').innerHTML, /data-action="placeOptionTrade"/);
 });
 
 test('ETF options get until 16:15 before the hours warning', async () => {

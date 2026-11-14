@@ -84,6 +84,7 @@ export async function fetchQuote() {
       state.chartHover = -1;
     }
     state.quoteData = q;
+    state.quoteAt = Date.now();
     state.chainData = [];
     if (futures && state.sizingMode === 'allocation') setSizingMode('risk'); // futures size by risk only
     if (isTicker(sym)) { store.set('last_ticker', sym); pushRecentTicker(sym); }
@@ -125,6 +126,7 @@ export async function refreshQuote(draw = true) {
     const q = isFuturesQuote(state.quoteData) ? await fetchFuturesQuote(ticker) : await tradierQuote(ticker, false).catch(() => null);
     if (!q || q.symbol !== ticker || state.quoteData?.symbol !== ticker) return false;
     state.quoteData = q;
+    state.quoteAt = Date.now();
     if (draw) drawQuote();
     return true;
   } catch(e) { return false; }

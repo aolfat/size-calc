@@ -182,7 +182,7 @@ async function pollQuote() {
       : (await (await marketFetch(`${baseUrl()}/markets/quotes?symbols=${encodeURIComponent(ticker)}`, { headers: headers() })).json())?.quotes?.quote;
     if (ticker !== state.quoteData?.symbol) return; // a Load landed meanwhile
     if (!futures && state.liveStreamOk) return; // the stream is fresher
-    if (q && q.symbol === ticker) { state.quoteData = q; if (!editingAnswer()) renderQuote(); }
+    if (q && q.symbol === ticker) { state.quoteData = q; state.quoteAt = Date.now(); if (!editingAnswer()) renderQuote(); }
   } catch(e) {} finally {
     state.livePolling = false;
   }
@@ -289,6 +289,7 @@ export function streamEvents(data) {
   }
   if (q === state.quoteData) return;
   state.quoteData = q;
+  state.quoteAt = Date.now();
   state.liveStreamOk = true;
   scheduleStreamRender();
 }

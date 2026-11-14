@@ -20,6 +20,7 @@ export function createState() {
   try { journalHidden = JSON.parse(store.get('journal_hidden_cols') || '[]'); } catch(e) {}
   return {
     quoteData: null,
+    quoteAt: 0, // when quoteData was last read or streamed: a review opens on one a few seconds old without another read (ui/trade.js)
     chainData: [],
     selectedExp: null,
     currentMode: 'shares',
@@ -246,6 +247,7 @@ export function createState() {
     posLast: null, // { hash, symbol, at, confirmed } of the last position order; unconfirmed blocks a repeat on that account and symbol for a while
     spreadTicket: null, // the spread close the review sheet shows, frozen when it opens
     cancelTicket: null, // the working-order cancel the review sheet shows, frozen when it opens
+    schwabWarmTimer: 0, // the keeper's next warm-up while the app is on screen (ui/trade.js keepSchwabWarm)
     schwabWarmed: {}, // the Schwab URLs a review warmed (services/schwab.js schwabWarm): path → when, so the browser's preflight answer is still held
     cancelAllTicket: null, // Cancel all: every working order (or only the entries) the review sheet shows, frozen when it opens
     editTicket: null, // the working-order change the review sheet shows, re-planned as the form changes

@@ -8,12 +8,12 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { inRegularHours, onOptionStep, optionEntryOrder, optionLimitError, optionQuoteStep, optionStopTick, optionTicketError, quoteLimit } from '../core/orders.js';
 import { fmtPositionPrice, positionLabel, schwabOptionSymbol } from '../core/positions.js';
 import { store } from '../lib/store.js';
-import { schwabAccount, schwabAccounts, schwabConnected, schwabStopDuration, schwabWarm } from '../services/schwab.js';
+import { schwabAccount, schwabAccounts, schwabConnected, schwabStopDuration } from '../services/schwab.js';
 import { showError } from './feedback.js';
 import { planContext, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { readLegQuotes, showSheetQuote, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
-import { limitWaiting, mask, refreshTradeStatus, sendReviewed } from './trade.js';
+import { CHECKING, limitWaiting, mask, refreshTradeStatus, reviewBehind, sendReviewed } from './trade.js';
 
 /** a market this wide (ask − bid over the mid) is called out, as the chain does */
 export const WIDE_SPREAD_PCT = 10;
@@ -93,36 +93,38 @@ function liveQuote(t) {
   return q && q.sheet === 'trade' && q.at > 0 && !q.failed && q.legs[0]?.symbol === t.occ ? { last: q.last, bid: q.bid, ask: q.ask } : null;
 }
 
-/** the review for a chain contract: the card's count and stop, the limit at the mid of a fresh quote */
+/**
+ * The review for a chain contract: the card's count and stop, the limit at the mid. It opens at once on the chain's bid and
+ * ask (trade.js reviewBehind), and the contract's quote is read behind it: the ticket is built again at that quote's mid
+ * before Place lets go.
+ */
 export async function openOptionTrade(occ) {
   if (state.tradeBusy) return;
   const c = state.detailReg[occ];
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   const why = optionTradeBlock(c);
   if (why) { showError(why); return; }
-  const underlying = state.quoteData.symbol;
-  state.tradeBusy = true;
-  let q = null;
-  try { q = await contractQuote(occ); } finally { state.tradeBusy = false; }
-  // the card it was sized on must still be the one showing: a new ticker or a new chain read while the quote was out
-  if (state.quoteData?.symbol !== underlying || state.detailReg[occ] !== c) { showError('The ticker or the chain changed. Check the contract, then try again.'); return; }
-  if (!q) { showError('Could not read the contract\'s quote from Tradier, so there is nothing to review yet. Try again.'); return; }
+  const underlying = state.quoteData.symbol, etf = state.quoteData.type === 'etf';
   const symbol = schwabOptionSymbol(occ), acct = schwabAccount();
-  const { price, step } = limitAt('mid', q);
-  state.tradeTicket = optionTicketFor({
-    occ, symbol, label: positionLabel({ assetType: 'OPTION', symbol }), underlying, etf: state.quoteData.type === 'etf', isCall: c.isCall,
-    qty: c.contracts, stop: c.atStop > 0 ? optionStopTick(c.atStop, true) : 0, atStop: c.atStop, underStop: c.stop, model: c.model,
-    planPrem: c.entryPrem, plannedRisk: c.contracts * c.lossPerContract, customEntry: !!c.customEntry, entryU: c.entryU,
-    entryAt: 'mid', limitPrice: price, step, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '',
-    setups: [], tactics: [], setupGrade: '', setupOrder: null, picksTouched: false, prefilled: false, planCtx: planContext(c.isCall, c.stop),
-  }, q, Date.now());
-  state.tradeSetupQuery = '';
-  startTradePlan(state.tradeTicket);
-  renderOptionTradeSheet();
-  openSheet('trade');
-  if (state.tradeTicket.hash) schwabWarm(state.tradeTicket.hash, { post: true }); // the login, the connection and the browser's permission to post, while you review
-  // a buy fills at the ask
-  watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol: occ, n: 1 }], first: q, fills: () => 'ask' });
+  const ticketOn = q => {
+    const { price, step } = limitAt('mid', q);
+    return optionTicketFor({
+      occ, symbol, label: positionLabel({ assetType: 'OPTION', symbol }), underlying, etf, isCall: c.isCall,
+      qty: c.contracts, stop: c.atStop > 0 ? optionStopTick(c.atStop, true) : 0, atStop: c.atStop, underStop: c.stop, model: c.model,
+      planPrem: c.entryPrem, plannedRisk: c.contracts * c.lossPerContract, customEntry: !!c.customEntry, entryU: c.entryU,
+      entryAt: 'mid', limitPrice: price, step, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '',
+      setups: [], tactics: [], setupGrade: '', setupOrder: null, picksTouched: false, prefilled: false, planCtx: planContext(c.isCall, c.stop),
+    }, q, Date.now());
+  };
+  return reviewBehind({
+    ticket: ticketOn({ bid: Number(c.opt.bid) || 0, ask: Number(c.opt.ask) || 0, last: Number(c.opt.last) || 0 }),
+    read: () => contractQuote(occ),
+    // the card it was sized on must still be the one showing: a new ticker or a new chain read while the quote was out
+    rebuild: q => state.quoteData?.symbol !== underlying || state.detailReg[occ] !== c ? 'The ticker or the chain changed. Check the contract, then try again.' : ticketOn(q),
+    render: renderOptionTradeSheet,
+    // a buy fills at the ask
+    watch: (t, q) => watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol: occ, n: 1 }], first: q, fills: () => 'ask' }),
+  });
 }
 
 const openTicket = () => { const t = state.tradeTicket; return t && t.option && !t.sent && !state.tradeBusy ? t : null; };
@@ -207,7 +209,7 @@ export function renderOptionTradeSheet() {
   const action = t.sent
     ? (t.orderId ? `<button class="btn" data-action="checkOptionTradeStatus"${state.tradeBusy ? ' disabled' : ''}>↻ Status</button>` : '')
       + (limitWaiting(t) ? `<button class="btn" data-action="openOrderEdit" data-arg="${esc(t.orderId)}" title="Move the limit if it isn't filling">Change limit</button>` : '')
-    : `<button class="btn trade-confirm" id="tradePlace" data-action="placeOptionTrade"${state.tradeBusy || !t.order ? ' disabled' : ''}>${esc(placeLabel(t))}</button>`;
+    : `<button class="btn trade-confirm" id="tradePlace" data-action="placeOptionTrade"${state.tradeBusy || !t.order ? ' disabled' : ''}>${esc(t.pending ? CHECKING : placeLabel(t))}</button>`;
   body.innerHTML = `
     <dl class="trade-legs">
       <div><dt>Contract</dt><dd><strong>${esc(t.label)}</strong><span class="shares-detail">${t.isCall ? 'Call' : 'Put'} on ${esc(t.underlying)}, 100 shares a contract</span></dd></div>

@@ -164,6 +164,10 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   An order is in play unless FILLED / CANCELED / REJECTED / EXPIRED / REPLACED / AWAITING_PARENT_ORDER (so NEW, PENDING_*, QUEUED... count); restingOrders tags OCO legs with their pair.
   A cancel Schwab refuses is fine when a GET shows the order already gone (an OCO leg cancelled with its pair) and stops everything when it FILLED.
   No plan when the orders read failed (stopsMissing).
+  **Opening** (reviewOnPositions in ui/positions.js; owner request, for speed): every order sheet on Positions (a position trade, Cancel, Cancel all, Edit, the spread close) opens at once from the table's read when one is on screen (under 45 seconds old, for the selected account, with no read error), and Schwab is read behind it.
+  When that read is in, the ticket is built again with your picks (rereadReview): one that would send something else takes its place with 'Schwab changed since this opened. This is what it would send now.'; the same one changes nothing, so a box being typed in keeps its cursor.
+  With no read on screen (the first open, a failed read, a tab left hidden) the sheet waits for the read first, as it always did.
+  The send's re-check takes a read already on its way (positionsForSend: the one behind a sheet just opened, so a fast Place doesn't wait for two), else reads now; a read that has landed is never reused, so every send is checked against an answer that came in after Place.
   At send, Schwab is re-read and the plan rebuilt with the same choices; if it errors or its steps differ from what was reviewed, nothing is sent and the sheet shows the new plan ('Schwab changed since you opened this…'); a warning that wasn't there at review (warnFlags: hours, fills right away, ...) also stops the send until it's been shown.
   Tickets carry the account hash: every step goes to that account and a switch mid-run stops it.
   Cut or replaced stops keep their type (STOP_LIMIT keeps its limit; a trailing stop can't be cut).

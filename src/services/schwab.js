@@ -299,15 +299,17 @@ const WARM_AGAIN = 8 * 60000;
  * browser asks permission first (OPTIONS) unless it holds an answer for that URL; a GET of the same URL gets that answer,
  * and it covers every method the worker allows (POST, PUT, DELETE). post: the account's /orders (a new order); orderIds:
  * /orders/{id} (a cancel or a replace; the GET reads that order, harmlessly). Never throws, never sends an order.
- * @param {string} hash @param {{ post?: boolean, orderIds?: (number | string | null | undefined)[] }} [what]
+ * again: how old a URL's last warm-up may be before it's read again (the keeper in ui/trade.js asks sooner, so the
+ * connection to the worker stays open between trades).
+ * @param {string} hash @param {{ post?: boolean, orderIds?: (number | string | null | undefined)[], again?: number }} [what]
  */
-export async function schwabWarm(hash, { post = false, orderIds = [] } = {}) {
+export async function schwabWarm(hash, { post = false, orderIds = [], again = WARM_AGAIN } = {}) {
   try {
     await schwabAccessToken(WARM_LOGIN);
     const base = accountPath(hash);
     const paths = [...(post ? [base + '/orders'] : []), ...[...new Set(orderIds.filter(id => id != null).map(String))].map(id => `${base}/orders/${encodeURIComponent(id)}`)];
     const now = Date.now(), warmed = state.schwabWarmed;
-    const due = paths.filter(p => !(now - (warmed[p] || 0) < WARM_AGAIN));
+    const due = paths.filter(p => !(now - (warmed[p] || 0) < again));
     for (const p of due) warmed[p] = now;
     await Promise.all(due.map(p => schwabApi(p).then(r => r.body?.cancel?.(), () => { delete warmed[p]; })));
   } catch(e) { /* a warm-up that fails leaves the send to do it */ }

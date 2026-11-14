@@ -12,7 +12,7 @@ import { schwabAccount, schwabConnected, schwabOrder, schwabPlaceOrder, schwabRe
 import { showError, showToast } from './feedback.js';
 import { cancelWorking, schwabList, sendsSame, shownCancelled, statusOf } from './order-cancel.js';
 import { failureText } from './position-trade.js';
-import { refreshPositions } from './positions.js';
+import { positionsForSend, refreshPositions, rereadReview, reviewOnPositions } from './positions.js';
 import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 
@@ -64,17 +64,25 @@ function buildWarnings(t) {
 export async function openOrderEdit(orderId, edit = {}) {
   if (state.posTradeBusy) return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
-  state.posTradeBusy = true;
-  try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
-  state.editTicket = buildEditTicket(orderId, edit);
-  if (state.positionsError && !state.editTicket.error) state.editTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
-  renderEditSheet();
-  openSheet('edit');
-  const e = state.editTicket; // ready the send while you review: the replace (or the cancels) and a pair placed again
-  if (!e.error) schwabWarm(e.hash, { post: true, orderIds: [e.order?.orderId, e.partner?.orderId] });
-  // the live bid and ask over it; the side the order fills on is lit (the ask on a buy, the bid on a sell)
-  const o = state.editTicket.order;
-  return watchSheetQuote({ sheet: 'edit', el: 'editQuote', legs: o ? [{ symbol: tradierSymbol(o.symbol), n: 1 }] : [], fills: () => o && /^BUY/.test(o.instruction) ? 'ask' : 'bid' });
+  // the plan is built from the table's read when it's on screen (Schwab is read again behind it), else from a read now
+  return reviewOnPositions({
+    open: () => {
+      state.editTicket = buildEditTicket(orderId, edit);
+      if (state.positionsError && !state.editTicket.error) state.editTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
+      renderEditSheet();
+      openSheet('edit');
+      const e = state.editTicket; // ready the send while you review: the replace (or the cancels) and a pair placed again
+      if (!e.error) schwabWarm(e.hash, { post: true, orderIds: [e.order?.orderId, e.partner?.orderId] });
+      // the live bid and ask over it; the side the order fills on is lit (the ask on a buy, the bid on a sell)
+      const o = state.editTicket.order;
+      return watchSheetQuote({ sheet: 'edit', el: 'editQuote', legs: o ? [{ symbol: tradierSymbol(o.symbol), n: 1 }] : [], fills: () => o && /^BUY/.test(o.instruction) ? 'ask' : 'bid' });
+    },
+    reread: () => rereadReview({
+      current: () => state.editTicket, build: t => buildEditTicket(t.orderId, t.edit),
+      same: (a, b) => (a.editError || '') === (b.editError || '') && sameEdit(a, b),
+      swap: next => { state.editTicket = next; renderEditSheet(); },
+    }),
+  });
 }
 
 const editOpen = () => { const t = state.editTicket; return t && !t.error && !t.sent ? t : null; };
@@ -119,7 +127,7 @@ export async function sendOrderEdit() {
   t.checking = true;
   renderEditSheet();
   let fresh;
-  try { await refreshPositions(); fresh = buildEditTicket(t.orderId, t.edit); } finally { t.checking = false; }
+  try { await positionsForSend(); fresh = buildEditTicket(t.orderId, t.edit); } finally { t.checking = false; }
   if (state.positionsError && !fresh.error) fresh.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   const moved = state.positions && fresh.hash !== t.hash ? 'account' : fresh.error || fresh.editError || !sameEdit(fresh, t) ? 'orders' : '';
   if (moved) {

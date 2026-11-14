@@ -28,7 +28,12 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   Re-checked at Place like the rest: a price that broke through the trigger since the review sends nothing, and the review stays open on the new quote with the reason inline, so the trigger can move or Market can be picked.
   The stop lasts Today or Until canceled (schwab_stop_duration, default GOOD_TILL_CANCEL); the entry is always DAY. sharesTicketError blocks a stop already through the bid (long) or ask (short), sub-one-share sizes, and non-stock types.
   Warnings: outside 9:30–16:00 ET weekdays (no holiday table), risk at the current ask/bid >10% over the plan, a same-symbol order in the last 2 minutes.
-  The review only opens on a fresh quote for the loaded symbol (refreshQuote answers true/false; a failed refresh shows an error, no ticket).
+  The review never waits to open (owner request, for speed), and nothing goes on an old quote.
+  A quote read or streamed in the last 3 seconds (state.quoteAt, LIVE_FRESH: a live session's, or a ticker just loaded) opens it ready to place, with no other read; the strip is told how old that quote is (watchSheetQuote firstAt), so Place's re-check never takes it for newer.
+  Otherwise it opens at once on the card as it shows, with Place reading **Checking quote…** and held (ticket.pending, state.tradeBusy holding the sheet's switches), and the quote is read behind it (reviewBehind in ui/trade.js) while the warm-up runs beside it.
+  When the read is in, the card sizes from it, the ticket is built again on it (the setup, grade and tactic picks made meanwhile go with it) and the strip starts.
+  A read that fails, or a ticker that changed meanwhile, leaves the reason in the sheet with nothing to place.
+  A share order card's review and an option entry's open the same way; the option's first ticket is on the chain's bid and ask.
   **Live quote** (#tradeQuote, ui/sheet-quote.js watchSheetQuote): the top of the review shows Last, Bid and Ask, read from Tradier every 2s while the sheet is open (state.sheetQuote, its own setTimeout chain, skipped while the app is hidden, stopped when the sheet closes or another opens).
   The same strip tops the Positions order sheets (docs/positions.md); without a Tradier key it reads Schwab's quote (docs/calculator.md, Market data from Schwab), and with neither it stays hidden.
   The side a market order fills on is lit: the ask on a buy, the bid on a short.
@@ -45,6 +50,8 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   A GET of the same URL gets that answer, and it covers the POST, PUT and DELETE the worker allows, so the warm-up reads each URL the send will use: the account's /orders for a new order (Schwab refuses the bare read, harmlessly) and /orders/{id} for each order a cancel or replace may touch.
   Checked in Chromium (the later POST, PUT and DELETE went without an OPTIONS); not yet on Safari.
   A URL warmed in the last 8 minutes isn't read again (state.schwabWarmed), another account than the selected one is never touched, and a warm-up never throws or sends an order.
+  **Kept warm** (keepSchwabWarm in ui/trade.js; owner request, for speed): while the app is on screen and Schwab is connected, the same warm-up runs at boot, when the app comes back to the front, when the login or the account changes, and every 4 minutes between (state.schwabWarmTimer), reading the account's /orders again after 3.5 minutes so the connection to the worker stays open.
+  So the first trade after a quiet spell doesn't wait on a login renewal, a preflight or a new connection; hidden or logged out, the keeper stops.
   After a 201 the order id comes from Location and one status read reports fill and stop status (↻ Status re-reads).
 
   **Order plans** (ui/order-plan.js, core/order-plans.js pure, services/order-plans.js, table order_plans, migration 20261107000000_order_plans.sql): the sheet's #tradePlan rows pick **Setup** (My setups: the ones filled in first, then the most used; the first 12 until you search #tradeSetupSearch, plus any lit one) and **Entry tactic** (every tactic), the same library items a journal review uses, read with the review data (loadJournalReview).

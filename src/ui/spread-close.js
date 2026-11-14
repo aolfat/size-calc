@@ -11,7 +11,7 @@ import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabP
 import { showError, showToast } from './feedback.js';
 import { positionClosePlaced, profitPcts } from './position-chart.js';
 import { failureText } from './position-trade.js';
-import { refreshPositions } from './positions.js';
+import { positionsForSend, refreshPositions, rereadReview, reviewOnPositions } from './positions.js';
 import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
 
@@ -76,17 +76,25 @@ export async function openSpreadClose(key, start = null) {
   if (state.posTradeBusy) return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   const from = start && start.price > 0 ? { close: { type: 'LIMIT', qty: start.qty || 0, portion: start.qty ? null : 1, price: start.price, pct: start.pct || null } } : null;
-  state.posTradeBusy = true;
-  try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
-  state.spreadTicket = fresh(key, from);
-  renderSpreadCloseSheet();
-  openSheet('spreadClose');
-  const sc = state.spreadTicket; // ready the send while you review: the closers it may cancel, and the close
-  if (!sc.error) schwabWarm(sc.hash, { post: true, orderIds: sc.closers.map(o => o.orderId) });
-  // the net bid and ask over it, from the legs in ratio, signed like the sheet's price; the side the close fills on is lit
-  const s = state.spreadTicket.spread, sign = s && s.kind === 'debit' ? 1 : -1;
-  return watchSheetQuote({ sheet: 'spreadClose', el: 'spreadCloseQuote', legs: s ? s.legs.map(l => ({ symbol: tradierSymbol(l.symbol), n: sign * l.qty / s.units })) : [],
-    fills: () => sign > 0 ? 'bid' : 'ask' });
+  // the plan is built from the table's read when it's on screen (Schwab is read again behind it), else from a read now
+  return reviewOnPositions({
+    open: () => {
+      state.spreadTicket = fresh(key, from);
+      renderSpreadCloseSheet();
+      openSheet('spreadClose');
+      const sc = state.spreadTicket; // ready the send while you review: the closers it may cancel, and the close
+      if (!sc.error) schwabWarm(sc.hash, { post: true, orderIds: sc.closers.map(o => o.orderId) });
+      // the net bid and ask over it, from the legs in ratio, signed like the sheet's price; the side the close fills on is lit
+      const s = state.spreadTicket.spread, sign = s && s.kind === 'debit' ? 1 : -1;
+      return watchSheetQuote({ sheet: 'spreadClose', el: 'spreadCloseQuote', legs: s ? s.legs.map(l => ({ symbol: tradierSymbol(l.symbol), n: sign * l.qty / s.units })) : [],
+        fills: () => sign > 0 ? 'bid' : 'ask' });
+    },
+    reread: () => rereadReview({
+      current: () => state.spreadTicket, build: t => fresh(t.key, t),
+      same: (a, b) => (a.planError || '') === (b.planError || '') && sendsSame(a, b),
+      swap: next => { state.spreadTicket = next; renderSpreadCloseSheet(); },
+    }),
+  });
 }
 
 function fresh(key, prev = null, now = Date.now()) {
@@ -227,7 +235,7 @@ export async function placeSpreadClose() {
   t.checking = true;
   renderSpreadCloseSheet();
   let next;
-  try { await refreshPositions(); next = fresh(t.key, t); } finally { t.checking = false; }
+  try { await positionsForSend(); next = fresh(t.key, t); } finally { t.checking = false; }
   const moved = state.positions && next.hash !== t.hash ? 'account' : next.error || next.planError || !sendsSame(next, t) ? 'orders'
     : (next.warnFlags || []).some(f => !(t.warnFlags || []).includes(f)) ? 'warnings' : '';
   if (moved) {

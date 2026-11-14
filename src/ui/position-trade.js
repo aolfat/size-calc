@@ -13,7 +13,7 @@ import { marketSource } from '../services/market-source.js';
 import { showError, showToast } from './feedback.js';
 import { positionClosePlaced, positionStopPlaced, positionTargetPlaced, profitPcts, profitTitle, rChipRow, rEditToggled, renderPositionChart } from './position-chart.js';
 import { originalStopBlock } from './position-original.js';
-import { positionOriginal, positionRUnit, positionTrade, readPositionJournalForClose, refreshPositions, rUnitWords } from './positions.js';
+import { positionOriginal, positionRUnit, positionTrade, positionsForSend, readPositionJournalForClose, refreshPositions, rereadReview, reviewOnPositions, rUnitWords } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 import { tradierSymbol, watchSheetQuote } from './sheet-quote.js';
 import { openSheet } from './sheets.js';
@@ -491,18 +491,26 @@ export async function openPositionTrade(symbol, kind) {
     : kind === 'stop' && chart && chart.stop > 0 ? { price: chart.stop, qty: 0 }
     : fromChart && chart && chart.closePrice > 0 ? { price: chart.closePrice, qty: chart.closeQty || 0, pct: chart.closeGain || 0 } : null;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
-  state.posTradeBusy = true;
-  // the plan is built from what Schwab shows now; a close also waits for the Journal's older fills, for its original size
-  // every kind waits for the Journal too: the average cost and the breakevens come from its trades
-  try { await Promise.all([refreshPositions(), readPositionJournalForClose()]); } finally { state.posTradeBusy = false; }
-  state.posTicket = freshTicket(kind, symbol, target);
-  renderPositionTradeSheet();
-  openSheet('posTrade');
-  // ready the send while you review: whichever of the orders closing it the plan cancels or replaces, and a new order
-  if (state.posTicket.row) schwabWarm(state.posTicket.hash, { post: true, orderIds: state.posTicket.row.closers.map(o => o.orderId) });
-  // the live bid and ask over it; the side a close fills on is lit (the bid on a long, the ask on a short)
-  const row = state.posTicket.row;
-  return watchSheetQuote({ sheet: 'posTrade', el: 'posTradeQuote', legs: row ? [{ symbol: tradierSymbol(row.symbol), n: 1 }] : [], fills: () => row && row.qty > 0 ? 'bid' : 'ask' });
+  // the plan is built from the table's read when it's on screen (Schwab is read again behind it), else from a read now;
+  // every kind waits for the Journal too: the average cost, the breakevens and a close's original size come from its trades
+  return reviewOnPositions({
+    also: readPositionJournalForClose,
+    open: () => {
+      state.posTicket = freshTicket(kind, symbol, target);
+      renderPositionTradeSheet();
+      openSheet('posTrade');
+      // ready the send while you review: whichever of the orders closing it the plan cancels or replaces, and a new order
+      if (state.posTicket.row) schwabWarm(state.posTicket.hash, { post: true, orderIds: state.posTicket.row.closers.map(o => o.orderId) });
+      // the live bid and ask over it; the side a close fills on is lit (the bid on a long, the ask on a short)
+      const row = state.posTicket.row;
+      return watchSheetQuote({ sheet: 'posTrade', el: 'posTradeQuote', legs: row ? [{ symbol: tradierSymbol(row.symbol), n: 1 }] : [], fills: () => row && row.qty > 0 ? 'bid' : 'ask' });
+    },
+    reread: () => rereadReview({
+      current: () => state.posTicket, build: t => freshTicket(t.kind, t.symbol, t.target, t),
+      same: (a, b) => (a.planError || '') === (b.planError || '') && sendsSame(a, b),
+      swap: next => { state.posTicket = next; renderPositionTradeSheet(); },
+    }),
+  });
 }
 
 export function setPositionStopDuration(d) {
@@ -559,7 +567,7 @@ export async function placePositionTrade() {
   t.checking = true;
   renderPositionTradeSheet();
   let fresh;
-  try { await refreshPositions(); fresh = freshTicket(t.kind, t.symbol, t.target, t); } finally { t.checking = false; }
+  try { await positionsForSend(); fresh = freshTicket(t.kind, t.symbol, t.target, t); } finally { t.checking = false; }
   const moved = state.positions && fresh.hash !== t.hash ? 'account' : fresh.error || fresh.planError || (fresh.choose && !fresh.mode) || !sendsSame(fresh, t) ? 'orders'
     : (fresh.warnFlags || []).some(f => !(t.warnFlags || []).includes(f)) ? 'warnings' : '';
   if (moved) {

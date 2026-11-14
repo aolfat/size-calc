@@ -1455,6 +1455,43 @@ test('a position trade is checked against Schwab again before it goes; a changed
   assert.deepEqual(b.sent.map(c => `${c.method} ${c.path}`), ['DELETE /orders/202', 'PUT /orders/201'], 'the reviewed update goes as shown');
 });
 
+test('with the table on screen a review opens at once; Schwab is read behind it and a changed plan takes its place', async () => {
+  const b = broker();
+  const reads = { n: 0, hold: null };
+  const fetch = (url, init = {}) => {
+    if ((init.method || 'GET') !== 'GET' || !/\?fields=positions|\/orders\?/.test(url)) return b.fetch(url, init);
+    if (url.includes('?fields=positions')) reads.n++;
+    return reads.hold ? new Promise(r => reads.hold.push(() => r(b.fetch(url, init)))) : b.fetch(url, init);
+  };
+  const { run, elements, state } = await app({ fetch, storage: connected() });
+  await run('refreshPositions()'); // the Positions table's own read
+  reads.hold = [];
+  const opening = run("openPositionTrade('TSLA', 'breakeven')");
+  await new Promise(r => setImmediate(r));
+  assert.notEqual(elements.get('posTradeSheet').style.display, 'none', 'the sheet is up before Schwab answers');
+  assert.match(elements.get('posTradeBody').innerHTML, /Replace stop \$270\.00 for 40 shares with stop \$262\.00 for 40 shares/);
+  assert.equal(state.posTradeBusy, false);
+  // Place before the read behind is in: it waits for that one instead of starting another
+  b.live.orders.push(single(202, 'STOP', 'TSLA', 'BUY_TO_COVER', 40, 280));
+  const placing = run('placePositionTrade()');
+  await new Promise(r => setImmediate(r));
+  assert.equal(reads.n, 2, 'the table, then the one read behind the review');
+  reads.hold.splice(0).forEach(go => go());
+  await Promise.all([opening, placing]);
+  assert.equal(b.sent.length, 0, 'Schwab shows something else: nothing goes');
+  assert.match(elements.get('posTradeBody').innerHTML, /Cancel stop \$280\.00 for 40 shares/);
+  // untouched, the read behind swaps a changed plan in by itself
+  reads.hold = null;
+  run('closeSheet()');
+  b.live.orders.pop();
+  await run('refreshPositions()');
+  b.live.orders.push(single(203, 'STOP', 'TSLA', 'BUY_TO_COVER', 40, 281));
+  await run("openPositionTrade('TSLA', 'breakeven')");
+  assert.match(elements.get('posTradeBody').innerHTML, /Schwab changed since this opened\. This is what it would send now\./);
+  assert.match(elements.get('posTradeBody').innerHTML, /Cancel stop \$281\.00 for 40 shares/);
+  assert.equal(b.sent.length, 0);
+});
+
 test('a price through the stop by send time sends nothing and says why', async () => {
   const b = broker();
   const { run, elements } = await app({ fetch: b.fetch, storage: connected() });

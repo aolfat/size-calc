@@ -263,6 +263,54 @@ async function readPositions(id, acct, asked) {
   }
 }
 
+/** the table's read opens a review while it is this young: the 30s read is keeping it, so it is what you tapped on */
+const OPEN_FRESH = POLL_MS * 1.5;
+const readWithin = (ms, now = Date.now()) => {
+  const p = state.positions, acct = schwabConnected() ? schwabAccount() : null;
+  return !!p && !!acct && p.hash === acct.hash && !state.positionsError && now - p.asOf < ms;
+};
+
+/**
+ * Open an order review on Positions (owner request, for speed). With the table's read on screen the review opens on it at
+ * once (open), and Schwab is read behind it: a read that changes what the review would send puts that ticket in its place,
+ * saying so (rereadReview). Without one (the first open, a failed read, a tab left hidden) the read comes first, as before.
+ * also: anything else the ticket needs before it's built (the Journal's records). Resolves once the read behind is in.
+ * @param {{ open: () => void | Promise<any>, reread: () => void, also?: () => Promise<any> }} how
+ */
+export async function reviewOnPositions({ open, reread, also }) {
+  const onScreen = readWithin(OPEN_FRESH);
+  const read = refreshPositions();
+  state.posTradeBusy = true;
+  try { await Promise.all([onScreen ? null : read, also && also()]); } finally { state.posTradeBusy = false; }
+  if (!onScreen) return open();
+  await Promise.all([open(), read.then(reread)]);
+}
+
+/**
+ * The read behind an open review is in: the ticket built again on it (build carries your picks). One that would send
+ * something else, or can't go for another reason, replaces the open one (swap) with a notice; the same one changes nothing,
+ * so a box being typed in keeps its cursor. A read that failed leaves the review as it is: its send reads again.
+ * current: the sheet's ticket now (a pick made meanwhile may have put a new one there); build: that ticket again.
+ * @param {{ current: () => any, build: (t: any) => any, same: (a: any, b: any) => boolean, swap: (next: any) => void }} how
+ */
+export function rereadReview({ current, build, same, swap }) {
+  const t = current();
+  if (!t || t.sent || state.posTradeBusy || state.positionsError) return;
+  const next = build(t);
+  if (t.error || next.error ? (t.error || '') === (next.error || '') : same(next, t)) return;
+  if (!next.error) next.notice = 'Schwab changed since this opened. This is what it would send now.';
+  swap(next);
+}
+
+/**
+ * Schwab as it shows now, for a send's re-check: the read already on its way (the one behind a review just opened, so a
+ * fast Place doesn't start a second one and wait for both), else a read now. A read that has landed is never reused:
+ * every send is checked against an answer that came in after Place was tapped.
+ */
+export function positionsForSend() {
+  return state.positionsBusy || refreshPositions();
+}
+
 export function schedulePositions() {
   stopPositions();
   if (state.positionsView && !document.hidden && schwabConnected()) state.positionsTimer = setTimeout(() => refreshPositions(), POLL_MS);

@@ -774,12 +774,77 @@ function quotes(list, schwab) {
 }
 const created = async (path, init) => init.method === 'POST' && placed(path) ? json(null, 201, { Location: `${PROXY}/trader/v1/accounts/HASH1/orders/1001` }) : json({}, 404);
 
-test('no review from a stale quote: when the refresh fails, the sheet does not open', async () => {
+test('no order from a stale quote: when the refresh fails, the sheet says so and has nothing to place', async () => {
   const net = quotes([new TypeError('Failed to fetch')], created);
   const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });
   await run('openTrade()');
-  assert.equal(state.tradeTicket, null);
-  assert.match(elements.get('errorBox').textContent, /Could not refresh the TEST quote, so there is nothing to review yet/);
+  assert.equal(state.tradeTicket.order, null);
+  assert.equal(state.tradeBusy, false);
+  assert.match(elements.get('tradeBody').innerHTML, /Could not refresh the TEST quote, so there is nothing to review yet/);
+  assert.doesNotMatch(elements.get('tradeBody').innerHTML, /data-action="placeTrade"/);
+  await run('placeTrade()');
+  assert.equal(net.posts().length, 0);
+});
+
+test('the review opens before its quote is in: Place waits for it, and the picks made meanwhile stay', async () => {
+  const calls = [];
+  let answer;
+  const fetch = (url, init = {}) => {
+    calls.push({ url, method: init.method || 'GET' });
+    if (url.startsWith(PROXY)) return created(url.slice(PROXY.length), init);
+    if (url.includes('/markets/quotes')) return new Promise(r => { answer = () => r(json({ quotes: { quote: { ...QUOTE, last: 100.5, bid: 100.48, ask: 100.52 } } })); });
+    return json({});
+  };
+  const { run, elements, state } = await sharesCard({ fetch, storage: connected() });
+  const opening = run('openTrade()');
+  assert.notEqual(elements.get('tradeSheet').style.display, 'none', 'the sheet is up at once');
+  assert.match(elements.get('tradeBody').innerHTML, /id="tradePlace" data-action="placeTrade" disabled>Checking quote…</);
+  await new Promise(r => setImmediate(r));
+  assert.ok(calls.some(c => c.url === PROXY + '/trader/v1/accounts/HASH1/orders' && c.method === 'GET'), 'the send is readied while the quote is out');
+  run("setTradeEntryType('LIMIT')"); // held until the quote is in
+  assert.equal(state.tradeTicket.entryType, 'MARKET');
+  await run('placeTrade()');
+  assert.equal(calls.filter(c => c.method === 'POST').length, 0, 'nothing goes before the quote');
+  state.tradeTicket.setupGrade = 'A'; state.tradeTicket.picksTouched = true;
+  answer();
+  await opening;
+  const t = state.tradeTicket;
+  assert.deepEqual([t.pending, t.ask, t.setupGrade, t.picksTouched, state.tradeBusy], [undefined, 100.52, 'A', true, false]);
+  assert.match(elements.get('tradeBody').innerHTML, /id="tradePlace" data-action="placeTrade">Buy \d+ TEST</);
+  assert.equal(state.sheetQuote.ask, 100.52, 'the live strip starts on the quote just read');
+});
+
+test('a quote read in the last 3 seconds opens the review ready to place, with no other read', async () => {
+  const net = quotes([QUOTE], created);
+  const { run, elements, state } = await sharesCard({ fetch: net.fetch, storage: connected() });
+  run('quoteAt = Date.now() - 1000');
+  await run('openTrade()');
+  assert.equal(net.calls.filter(c => c.url.includes('/markets/quotes')).length, 0);
+  assert.match(elements.get('tradeBody').innerHTML, /id="tradePlace" data-action="placeTrade">Buy \d+ TEST</);
+  assert.ok(Date.now() - state.sheetQuote.at >= 1000, 'the strip knows how old that quote is, so Place does not take it for newer');
+  run('quoteAt = Date.now() - 5000; closeSheet()');
+  await run('openTrade()');
+  assert.equal(net.calls.filter(c => c.url.includes('/markets/quotes')).length, 1, 'an older one is read again');
+});
+
+test('the keeper readies the send while the app is on screen, and stops when it is hidden or logged out', async () => {
+  const net = network(async () => json([]));
+  const { run, state } = await app({ fetch: net.fetch, storage: connected(), timers: 'fake' });
+  const warm = () => net.calls.filter(c => c.url === PROXY + '/trader/v1/accounts/HASH1/orders').length;
+  run('keepSchwabWarm()');
+  await new Promise(r => setImmediate(r));
+  assert.equal(warm(), 1);
+  assert.ok(state.schwabWarmTimer, 'and it comes back');
+  run('keepSchwabWarm()');
+  await new Promise(r => setImmediate(r));
+  assert.equal(warm(), 1, 'not again inside its interval');
+  run('document.hidden = true');
+  run('keepSchwabWarm()');
+  assert.equal(state.schwabWarmTimer, 0);
+  run('document.hidden = false');
+  run("schwabDisconnect(); keepSchwabWarm()");
+  assert.equal(state.schwabWarmTimer, 0);
+  assert.equal(warm(), 1);
 });
 
 test('Place checks the quote again: a stop now through the bid sends nothing', async () => {

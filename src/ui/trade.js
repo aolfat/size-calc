@@ -27,7 +27,8 @@ import { rawStop } from './stops.js';
 import { drawQuote, refreshQuote, tradierQuote } from './ticker.js';
 import { maybeCapture, scheduleCloseCapture } from './schwab-capture.js';
 
-const TRADE_LABEL = 'Trade at Schwab';
+/** what Place says while a review's quote is still out */
+export const CHECKING = 'Checking quote…';
 export const mask = last4 => '••' + last4;
 const unreachable = 'Could not reach the Schwab worker. Check its URL in Settings.';
 
@@ -209,8 +210,28 @@ export function updateSchwabUi() {
   updateAccountSourceUi();
   updateSchwabBanner();
   updateApiStatus(); // without a Tradier key, the Schwab login is what loads quotes
+  if (state.schwabBannerReady) keepSchwabWarm(); // a new login or account is readied; a logout stops the keeper
   const here = globalThis.location;
   if (here?.origin && /^https?:/.test(here.protocol)) document.getElementById('schwabCallbackHint').textContent = here.origin + here.pathname.replace(/index\.html$/, '');
+}
+
+// ---------- kept warm: a send never starts cold ----------
+
+/** how often the keeper looks while the app is on screen: under the worker's 10 minute preflight answer and an idle connection's life */
+const KEEP_WARM_MS = 4 * 60000;
+
+/**
+ * While the app is on screen and Schwab is connected, the send stays ready (owner request, for speed): the login renewed
+ * before it runs low, the connection to the worker open, and the browser's permission to post held (schwabWarm). Runs at
+ * boot, when the app comes back to the front, when the login or the account changes, and every KEEP_WARM_MS between.
+ * Hidden or logged out, it stops. Never sends an order.
+ */
+export function keepSchwabWarm() {
+  clearTimeout(state.schwabWarmTimer);
+  state.schwabWarmTimer = 0;
+  if (document.hidden || !schwabConnected()) return;
+  schwabWarm(schwabAccount().hash, { post: true, again: KEEP_WARM_MS - 30000 });
+  state.schwabWarmTimer = setTimeout(keepSchwabWarm, KEEP_WARM_MS);
 }
 
 // ---------- the banner under the header: not connected, or the login's last day ----------
@@ -390,24 +411,28 @@ export function timingWords(m) {
   return `Sent in ${secs(m.total)}: ${parts.join(', ')}.`;
 }
 
+/** why a review has no quote to stand on yet */
+export const noQuoteYet = what => `Could not refresh the ${what} quote, so there is nothing to review yet. Try again.`;
+
+/**
+ * Trade at Schwab (owner request, for speed: the review never waits to open). A quote read or streamed in the last
+ * LIVE_FRESH opens it ready to place. Otherwise it opens at once on the card as it shows, and the quote is read behind it.
+ */
 export async function openTrade() {
   if (state.tradeBusy || !state.quoteData) return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
   const symbol = state.quoteData.symbol;
-  const btn = document.getElementById('sharesTrade');
-  state.tradeBusy = true;
-  btn.disabled = true;
-  btn.textContent = 'Checking quote…';
-  renderShareOrderCards();
-  let fresh = null;
-  try { fresh = await freshQuote(symbol); } finally {
-    state.tradeBusy = false;
-    btn.textContent = TRADE_LABEL;
-    busyChanged();
-  }
-  if (!state.quoteData || state.quoteData.symbol !== symbol) { showError('The ticker changed. Check the card, then try again.'); return; }
-  if (!fresh) { showError(`Could not refresh the ${symbol} quote, so there is nothing to review yet. Try again.`); return; }
-  showReview(buildTradeTicket(), fresh);
+  if (state.quoteAt > 0 && Date.now() - state.quoteAt < LIVE_FRESH) { showReview(buildTradeTicket(), state.quoteData, state.quoteAt); return; }
+  return reviewBehind({
+    ticket: buildTradeTicket(),
+    read: () => freshQuote(symbol, '', false),
+    rebuild: () => {
+      if (!state.quoteData || state.quoteData.symbol !== symbol) return 'The ticker changed. Check the card, then try again.';
+      drawQuote(); // the card sizes from the new quote first: the ticket is the card's
+      return buildTradeTicket();
+    },
+    render: renderTradeSheet, watch: watchTradeQuote,
+  });
 }
 
 /** a share order card's Trade at Schwab: the same review, for the card's ticker on a quote read for it now */
@@ -415,18 +440,46 @@ export async function openCardTrade(cardId) {
   const d = state.pinnedData[cardId];
   if (state.tradeBusy || !d || d.kind !== 'shares') return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
-  state.tradeBusy = true;
   d.checking = true;
+  return reviewBehind({
+    ticket: buildCardTicket(cardId),
+    read: () => freshQuote(d.symbol, cardId).finally(() => { d.checking = false; }),
+    rebuild: () => state.pinnedData[cardId] === d ? buildCardTicket(cardId) : 'That order card was removed, so there is nothing to review.',
+    render: renderTradeSheet, watch: watchTradeQuote,
+  });
+}
+
+/** what you picked in a review while its quote was still out goes with the ticket built on that quote */
+const PICKS = ['setups', 'tactics', 'setupGrade', 'setupOrder', 'picksTouched', 'prefilled'];
+
+/**
+ * A review opened ahead of its quote, for a shares or an option ticket: the sheet shows at once with the ticket as the card
+ * has it, the send is readied (schwabWarm) and the quote is read, all at the same time. Place says Checking quote and waits
+ * (pending, with tradeBusy holding the sheet's switches) until the read is in; then the ticket is built again on that quote
+ * (rebuild: the ticket, or why there is none) and the live strip starts on it. No quote leaves the reason in the sheet.
+ * @param {{ ticket: any, read: () => Promise<any>, rebuild: (q: any) => any, render: () => void, watch: (t: any, q: any) => void }} how
+ */
+export async function reviewBehind({ ticket: t, read, rebuild, render, watch }) {
+  t.pending = true;
+  state.tradeBusy = true;
+  state.tradeTicket = t;
+  state.tradeSetupQuery = '';
+  startTradePlan(t);
+  render();
+  openSheet('trade');
+  if (t.hash) schwabWarm(t.hash, { post: true });
   busyChanged();
-  let fresh = null;
-  try { fresh = await freshQuote(d.symbol, cardId); } finally {
-    state.tradeBusy = false;
-    d.checking = false;
-    busyChanged();
-  }
-  if (state.pinnedData[cardId] !== d) return; // removed while the quote came
-  if (!fresh) { showError(`Could not refresh the ${d.symbol} quote, so there is nothing to review yet. Try again.`); return; }
-  showReview(buildCardTicket(cardId), fresh);
+  let q = null;
+  try { q = await read(); } catch(e) {} finally { state.tradeBusy = false; }
+  const built = q ? rebuild(q) : noQuoteYet(t.label || t.symbol);
+  if (state.tradeTicket !== t) { busyChanged(); return; } // another review took the sheet
+  const next = typeof built === 'string' ? { ...t, pending: false, order: null, error: built }
+    : { ...built, ...Object.fromEntries(PICKS.map(k => [k, t[k]])) };
+  state.tradeTicket = next;
+  startTradePlan(next);
+  render();
+  busyChanged();
+  if (q && !next.error && state.openSheetName === 'trade') watch(next, q);
 }
 
 /** a card's sent order: its review again, with ↻ Status */
@@ -439,19 +492,20 @@ export function openCardOrder(cardId) {
   watchTradeQuote(t, state.pinnedData[cardId].quote);
 }
 
-function showReview(t, q) {
+/** a review on a quote already in hand (read or streamed at `at`) */
+function showReview(t, q, at) {
   state.tradeTicket = t;
   state.tradeSetupQuery = '';
   startTradePlan(t);
   renderTradeSheet();
   openSheet('trade');
   schwabWarm(t.hash, { post: true }); // the login, the connection and the browser's permission to post, while you review
-  watchTradeQuote(t, q);
+  watchTradeQuote(t, q, at);
 }
 
-function watchTradeQuote(t, q) {
+function watchTradeQuote(t, q, at = 0) {
   // the live bid and ask over it, from the quote just read; the side a market order fills on is lit (the ask on a buy, the bid on a short)
-  watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol: t.symbol, n: 1 }], first: q,
+  watchSheetQuote({ sheet: 'trade', el: 'tradeQuote', legs: [{ symbol: t.symbol, n: 1 }], first: q, firstAt: at,
     fills: () => { const t = state.tradeTicket; return t && !t.error ? (t.isLong ? 'ask' : 'bid') : ''; }, onQuote: followLimitPick });
 }
 
@@ -756,7 +810,7 @@ export function renderTradeSheet() {
   const action = t.sent
     ? (t.orderId ? `<button class="btn" data-action="checkTradeStatus"${state.tradeBusy ? ' disabled' : ''}>↻ Status</button>` : '')
       + (limitWaiting(t) ? `<button class="btn" data-action="openOrderEdit" data-arg="${esc(t.orderId)}" title="Move the limit if it isn't filling">Change limit</button>` : '')
-    : `<button class="btn trade-confirm" id="tradePlace" data-action="placeTrade"${state.tradeBusy || !t.order ? ' disabled' : ''}>${esc(placeLabel(t))}</button>`;
+    : `<button class="btn trade-confirm" id="tradePlace" data-action="placeTrade"${state.tradeBusy || !t.order ? ' disabled' : ''}>${esc(t.pending ? CHECKING : placeLabel(t))}</button>`;
   body.innerHTML = `
     <dl class="trade-legs">
       <div><dt>Entry order</dt><dd><div class="seg entry-types" role="group" aria-label="Entry order">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}${type('STOP', 'Stop')}${type('STOP_LIMIT', 'Stop limit')}</div>${limit}</dd></div>
@@ -835,7 +889,7 @@ export async function initSchwab(href = location.href) {
   refreshSchwabCallback(); // a worker whose callback is this app hides the paste box
   // a login finished in another tab shows up here, and a new day's account size comes in
   window.addEventListener('focus', () => { updateSchwabUi(); dailyAccountSize(); maybeCapture(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { updateSchwabBanner(); maybeCapture(); } }); // the home-screen app comes back without a focus event
+  document.addEventListener('visibilitychange', () => { keepSchwabWarm(); if (!document.hidden) { updateSchwabBanner(); maybeCapture(); } }); // the home-screen app comes back without a focus event
   scheduleCloseCapture(); // the day's import just after the close, while the app is open
   const url = new URL(href);
   // Google's return through Supabase carries a code too: not ours
@@ -846,4 +900,5 @@ export async function initSchwab(href = location.href) {
   } else dailyAccountSize();
   state.schwabBannerReady = true;
   updateSchwabBanner();
+  keepSchwabWarm();
 }

@@ -49,18 +49,19 @@ export function netQuote(legs, quotes) {
 }
 
 /**
- * Starts the strip for one sheet: `el` is its #...Quote box, `first` a quote already read (the entry review's), `fills` says
+ * Starts the strip for one sheet: `el` is its #...Quote box, `first` a quote already read (the entry review's; firstAt: when,
+ * if not just now, so a send never takes it for newer than it is), `fills` says
  * which side to light as the ticket changes, onQuote hears every read after the first. Opening another sheet, or closing this one,
  * stops it. Resolves once the first read is in.
- * @param {{ sheet: string, el: string, legs: QuoteLeg[], fills: () => string, first?: { last: number, bid: number, ask: number } | null, onQuote?: () => void }} watch
+ * @param {{ sheet: string, el: string, legs: QuoteLeg[], fills: () => string, first?: { last: number, bid: number, ask: number } | null, firstAt?: number, onQuote?: () => void }} watch
  */
-export function watchSheetQuote({ sheet, el, legs, fills, first = null, onQuote }) {
+export function watchSheetQuote({ sheet, el, legs, fills, first = null, firstAt = 0, onQuote }) {
   stopSheetQuote();
   if (!legs.length || !marketSource()) return Promise.resolve(); // no Tradier key or Schwab login, nothing to read
   const gen = ++state.sheetQuoteGen;
   const symbols = legs.map(l => l.symbol);
   state.sheetQuote = { sheet, el, legs, fills, last: 0, bid: 0, ask: 0, mid: legs.length > 1 || legs[0].n !== 1, at: 0, failed: false, onQuote: null };
-  if (first) setSheetQuote({ last: Number(first.last) || 0, bid: Number(first.bid) || 0, ask: Number(first.ask) || 0 });
+  if (first) { setSheetQuote({ last: Number(first.last) || 0, bid: Number(first.bid) || 0, ask: Number(first.ask) || 0 }); if (firstAt > 0) state.sheetQuote.at = firstAt; }
   else renderSheetQuote();
   state.sheetQuote.onQuote = onQuote || null; // after the first quote: that one is what the review opened on
   const read = async () => {

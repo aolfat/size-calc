@@ -9,7 +9,7 @@ import { schwabAccount, schwabCancelOrder, schwabConnected, schwabOrder, schwabP
 import { effects } from './effects.js';
 import { showError, showToast } from './feedback.js';
 import { failureText } from './position-trade.js';
-import { refreshPositions } from './positions.js';
+import { positionsForSend, refreshPositions, rereadReview, reviewOnPositions } from './positions.js';
 import { openSheet } from './sheets.js';
 
 const UNCONFIRMED_WAIT = 120000;
@@ -70,14 +70,21 @@ export function buildCancelTicket(orderId, keep = true, now = Date.now()) {
 export async function openOrderCancel(orderId) {
   if (state.posTradeBusy) return;
   if (!schwabConnected()) { showError('Connect Schwab in Settings first.'); openSheet('settings'); return; }
-  state.posTradeBusy = true;
-  try { await refreshPositions(); } finally { state.posTradeBusy = false; } // the plan is built from what Schwab shows now
-  state.cancelTicket = buildCancelTicket(orderId);
-  if (state.positionsError && !state.cancelTicket.error) state.cancelTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
-  renderCancelSheet();
-  openSheet('cancel');
-  const c = state.cancelTicket; // ready the send while you review: the cancel, and the other half placed again
-  if (!c.error) schwabWarm(c.hash, { post: !!c.partner, orderIds: [c.orderId] });
+  // the plan is built from the table's read when it's on screen (Schwab is read again behind it), else from a read now
+  return reviewOnPositions({
+    open: () => {
+      state.cancelTicket = buildCancelTicket(orderId);
+      if (state.positionsError && !state.cancelTicket.error) state.cancelTicket.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
+      renderCancelSheet();
+      openSheet('cancel');
+      const c = state.cancelTicket; // ready the send while you review: the cancel, and the other half placed again
+      if (!c.error) schwabWarm(c.hash, { post: !!c.partner, orderIds: [c.orderId] });
+    },
+    reread: () => rereadReview({
+      current: () => state.cancelTicket, build: t => buildCancelTicket(t.orderId, t.keep), same: sendsSame,
+      swap: next => { state.cancelTicket = next; renderCancelSheet(); },
+    }),
+  });
 }
 
 /** keep the other half of a pair (placed again on its own), or cancel both */
@@ -134,7 +141,7 @@ export async function sendOrderCancel() {
   t.checking = true;
   renderCancelSheet();
   let fresh;
-  try { await refreshPositions(); fresh = buildCancelTicket(t.orderId, t.keep); } finally { t.checking = false; }
+  try { await positionsForSend(); fresh = buildCancelTicket(t.orderId, t.keep); } finally { t.checking = false; }
   if (state.positionsError && !fresh.error) fresh.error = 'Could not re-read your orders from Schwab. ' + state.positionsError;
   const moved = state.positions && fresh.hash !== t.hash ? 'account' : fresh.error || !sendsSame(fresh, t) ? 'orders' : '';
   if (moved) {
