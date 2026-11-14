@@ -392,10 +392,8 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-head-end .jc-month-review { padding: 6px 12px; font-size: 12.5px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
 .jc-nav { padding: 4px 12px; }
-.jc-today { padding: 4px 12px; font-size: 12.5px; }
-.jc-today:disabled { opacity: 0.45; cursor: default; }
-/* the period head (the calendar, a day's page): its name on the left, ‹ Today › as one piece on the right; a button
-   that can't go greys out in place, so nothing moves */
+/* the period head (the calendar, a day's page): ‹ its name › on the left, the button back to today's month, week or day
+   at the row's end; a button that can't go greys out in place, so nothing moves */
 .jc-period { gap: 8px 12px; margin: 6px 0 12px; }
 .jc-lead { display: contents; }
 .jc-titlebox { position: relative; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; margin: 0 auto 0 0; padding: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; }
@@ -411,15 +409,13 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .jc-picks .jc-caret { display: block; }
   .jc-pick { display: block; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; font-size: 16px; color: transparent; background: transparent; border: 0; opacity: 0; -webkit-appearance: none; appearance: none; }
 }
-.jc-step { flex: none; display: inline-flex; align-items: stretch; }
-.jc-step .btn { margin: 0; min-height: 34px; justify-content: center; border-radius: 0; }
-.jc-step .btn + .btn { margin-left: -1px; }
-.jc-step .btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
-.jc-step .btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
-.jc-step .jc-nav { min-width: 40px; padding: 4px 10px; font-size: 16px; }
-.jc-step .jc-today { padding: 4px 14px; font-size: 13px; }
-.jc-step .btn:disabled { opacity: 1; color: var(--text3); pointer-events: none; }
-@media (hover: hover) { .jc-step .btn:hover { position: relative; z-index: 1; } }
+.jc-flip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.jc-flip .jc-titlebox { margin: 0; padding: 0 2px; }
+.jc-period .jc-nav { flex: none; min-width: 36px; min-height: 34px; margin: 0; padding: 4px 8px; justify-content: center; font-size: 16px; }
+.jc-period .btn:disabled { opacity: 1; color: var(--text3); pointer-events: none; }
+/* back to today's month, week or day: a plain tinted button, the way iOS writes Today, so it never reads as part of ‹ › */
+.jc-today { flex: none; margin-left: auto; min-height: 34px; padding: 0 2px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.jc-today:disabled { color: var(--text3); cursor: default; }
 /* phones and tablets: the month's numbers in two lines, Stats › beside them, so the grid starts high */
 .jc-sum { margin: 0 0 10px; }
 .jc-sum-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -556,10 +552,14 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .jc-pnl { font-size: 13px; }
   .jc-n, .jc-wide { display: none; }
   .jc-grid th { padding: 0 3px 2px; }
-  .jc-period .jc-title { font-size: 19px; }
+  .jc-period { column-gap: 8px; }
+  .jc-period .jc-title { font-size: 18px; }
+  .jc-flip { gap: 2px; }
+  .jc-flip .jc-titlebox { column-gap: 6px; }
+  .jc-caret { width: 6px; height: 6px; margin: -3px 1px 0; }
   .jc-lead { display: block; flex: 1 1 100%; } /* the way back on its own line, over the name */
-  .jc-step .btn { min-height: 40px; }
-  .jc-step .jc-nav { min-width: 44px; }
+  .jc-period .jc-nav, .jc-today { min-height: 40px; }
+  .jc-period .jc-nav { min-width: 34px; padding: 4px 6px; }
   /* From and To as one compact pill: 'Nov 1, 2026 – Nov 30, 2026', each half its own native picker */
   .js-range { display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); }
   .js-range:focus-within { border-color: var(--blue); }
@@ -569,6 +569,10 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .js-range label { display: flex; flex: 1 1 0; min-width: 0; }
   .js-range .jr-from input { -webkit-appearance: none; appearance: none; margin: 0; width: 100%; min-width: 0; min-height: 36px; padding: 0 8px; border: 0; background: transparent; text-align: center; }
   .js-range .jr-from input::-webkit-date-and-time-value { text-align: center; }
+}
+/* a narrow phone (iPhone SE, mini): a size smaller, so September and most weeks keep This month on their row */
+@media (max-width: 380px) {
+  .jc-period .jc-title { font-size: 17px; }
 }
 /* the Journal's stats */
 .js-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 4px 0 10px; }

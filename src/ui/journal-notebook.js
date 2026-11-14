@@ -30,7 +30,7 @@ import { loadMissedChart, missedChartHtml } from './missed-chart.js';
 import { deleteFocusShots, deleteMissedShots, focusShotCount, focusShotsRowHtml, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
 import { effects } from './effects.js';
 import { econDayRow, econTodayWords } from './econ-events.js';
-import { periodHead, stepGroup, tradingDay } from './journal-stats.js';
+import { periodHead, tradingDay } from './journal-stats.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -746,7 +746,7 @@ export function dayPageHtml() {
     ${periodHead({ cls: 'nb-head', title: dayName(day),
       lead: `<button class="btn jc-back" data-action="closeJournalDay">${BACK_WORDS[state.notebookBack] || '← Calendar'}</button>`,
       pick: `<input class="jc-pick" type="date" value="${day}" data-change="pickNotebookDay" aria-label="Pick a day">`,
-      nav: stepGroup({ prev: 'data-action="stepJournalDay" data-arg="-1"', next: 'data-action="stepJournalDay" data-arg="1"', today: 'data-action="openTodayNotebook"', word: 'weekday', todayOff: day === today }) })}
+      step: { prev: 'data-action="stepJournalDay" data-arg="-1"', next: 'data-action="stepJournalDay" data-arg="1"', back: 'data-action="openTodayNotebook"', word: 'weekday', backWord: 'Today', backOff: day === today } })}
     ${why ? `<p class="hint jw-db" role="status">${esc(why)}</p>` : ''}
     ${premarket(day, trades, off)}
     ${theDay(day, trades)}
