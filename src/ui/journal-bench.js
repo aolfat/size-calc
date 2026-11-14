@@ -131,12 +131,48 @@ function pnlCell(t) {
   return `<td class="jb-num ${pnlClass(t.pnl)}"${pnlTitle(t)}>${signed$(t.pnl)}${sub}</td>`;
 }
 
+/**
+ * a row's setups on one line (owner request: they wrapped to two or three, so rows changed height down the table): every
+ * pill, then +N (hidden until fitSetupLines needs it) for those that don't fit; the panel shows them all
+ */
+function setupLine(list) {
+  return `<div class="jb-setup-line">${list.map(setupChip).join('')}<span class="jb-setup-more" hidden></span></div>`;
+}
+
+/**
+ * after the table draws (and when the window resizes): each row keeps the setups that fit whole, in order, and +N names
+ * the rest in its title; one that doesn't fit even alone is cut short with … (its title has the whole name)
+ * @param {ParentNode} root
+ */
+export function fitSetupLines(root) {
+  for (const line of root.querySelectorAll?.('.jb-setup-line') || []) {
+    const pills = [...line.querySelectorAll('.journal-setup')], more = line.querySelector('.jb-setup-more');
+    if (!more) continue;
+    let shown = pills.length;
+    const show = () => {
+      pills.forEach((p, i) => { p.hidden = i >= shown; });
+      more.hidden = shown === pills.length;
+      more.textContent = `+${pills.length - shown}`;
+      more.title = pills.slice(shown).map(p => p.title).join(', ');
+      line.classList.toggle('jb-setup-solo', shown === 1);
+    };
+    show();
+    if (!line.clientWidth) continue; // not laid out: nothing to measure
+    while (shown > 1 && line.scrollWidth > line.clientWidth + 1) { shown--; show(); }
+  }
+  if (!fitBound) {
+    fitBound = true;
+    window.addEventListener?.('resize', () => { const el = document.getElementById('journalSection'); if (el) fitSetupLines(el); });
+  }
+}
+let fitBound = false;
+
 /** a trade's row; `end` closes its day's card */
 function benchRow(t, cols, end = false) {
   const sel = state.journalSelected === t.key, history = t.status === 'history';
   const list = setupsOf(t);
   const cells = {
-    setups: `<td class="journal-setups">${list.length ? list.map(setupChip).join('') : '<span class="journal-setups-none">—</span>'}</td>`,
+    setups: `<td class="journal-setups">${list.length ? setupLine(list) : '<span class="journal-setups-none">—</span>'}</td>`,
     pnl: pnlCell(t),
     r: `<td class="jb-num" title="${esc(rTitleOf(t))}">${history || t.r === null ? '—' : `<span class="${pnlClass(t.r)}">${signedR(t.r)}</span>`}</td>`,
     stop: `<td class="jb-num">${stopCell(t)}</td>`,
