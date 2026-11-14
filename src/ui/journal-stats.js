@@ -43,32 +43,56 @@ const nyToday = () => nyParts(new Date().toISOString()).day;
 const thisMonth = () => nyToday().slice(0, 7);
 /** a weekend day's Friday (the calendar and a day's stats are weekdays); a weekday is itself */
 export const tradingDay = d => { const wd = new Date(`${d}T00:00:00Z`).getUTCDay(); return wd === 6 ? plusDays(d, -1) : wd === 0 ? plusDays(d, -2) : d; };
-/** the day, week or month with today in it (New York): what Today goes to */
-export const todayPeriod = unit => unit === 'day' ? tradingDay(nyToday()) : periodKey(nyToday(), unit);
+
+/** a thin chevron, the pill's ‹ or › */
+const chevron = dir => `<svg viewBox="0 0 7 12" aria-hidden="true"><path d="${dir < 0 ? 'M6 1 1 6l5 5' : 'M1 1l5 5-5 5'}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 /**
- * The head over a span of days: ‹ its name ›, and apart at the row's end a button back to the period with today in it,
- * named for it ('This month', 'This week', 'Today'; owner request: ‹ › beside Today read as stepping days). A button that
- * can't go greys out in place, so nothing moves. The calendar and a day's notebook page share it. On a touch screen the
- * name opens the phone's own month or date picker (`pick`, an input laid over it); with a mouse it's just the name.
- * `open` instead makes the name a button with those action attributes (the calendar's own dates open Filters).
- * `step`: prev, next and back are each button's action attributes, word what ‹ › step through ('month with trades',
- * read 'Earlier month with trades'), backWord the back button's name; the Off flags grey out the ones that can't go.
- * @param {{ title: string, sub?: string, pick?: string, open?: string, lead?: string, end?: string, cls?: string,
- *   step?: { prev: string, next: string, back: string, word: string, backWord: string, prevOff?: boolean, nextOff?: boolean, backOff?: boolean } | null }} o
+ * The head over a span of days: its name in a pill with thin ‹ › inside it (owner's pick from a design study: no down
+ * arrow, no This month or Stats › beside it). A step that can't go greys out in place, so nothing moves. The calendar
+ * and a day's notebook page share it. The name is the button: `name` gives it its action (the calendar's month picker,
+ * `panel`), `pick` lays the phone's own date picker over it (a week's or a day's name, on a touch screen), `open` makes
+ * it open Filters (your own dates); else it's just the name. `sub` goes under the pill (Year to date's span), `lead`
+ * over it (a day page's way back and Today), `end` after it (the desktop calendar's modes and review).
+ * `step`: prev and next are each arrow's action attributes, word what they step through ('month with trades', read
+ * 'Earlier month with trades'), and the Off flags grey out the ones that can't go.
+ * @param {{ title: string, sub?: string, name?: string, pick?: string, open?: string, panel?: string, lead?: string, end?: string, cls?: string,
+ *   step?: { prev: string, next: string, word: string, prevOff?: boolean, nextOff?: boolean } | null }} o
  */
-export function periodHead({ title, sub = '', pick = '', open = '', step = null, lead = '', end = '', cls = '' }) {
-  const name = (caret = '') => `<span class="jc-title">${esc(title)}</span>${caret}${sub ? `<span class="jc-sub">${esc(sub)}</span>` : ''}`;
-  const caret = '<span class="jc-caret" aria-hidden="true"></span>';
-  const titleBox = pick ? `<label class="jc-titlebox jc-picks">${name(caret)}${pick}</label>`
-    : open ? `<button class="jc-titlebox jc-opens" ${open}>${name(caret)}</button>` : `<span class="jc-titlebox">${name()}</span>`;
+export function periodHead({ title, sub = '', name = '', pick = '', open = '', panel = '', step = null, lead = '', end = '', cls = '' }) {
+  const words = `<span class="jc-title">${esc(title)}</span>`;
+  const label = name ? `<button class="jc-pill-name" ${name}>${words}</button>`
+    : pick ? `<label class="jc-pill-name jc-picks">${words}${pick}</label>`
+    : open ? `<button class="jc-pill-name" ${open}>${words}</button>` : `<span class="jc-pill-name">${words}</span>`;
   const off = b => b ? ' disabled' : '';
-  const body = !step ? titleBox : `<span class="jc-flip"><button class="btn jc-nav" ${step.prev} aria-label="Earlier ${esc(step.word)}"${off(step.prevOff)}>‹</button>${titleBox}<button class="btn jc-nav" ${step.next} aria-label="Later ${esc(step.word)}"${off(step.nextOff)}>›</button></span>
-    <button class="pos-link jc-today" ${step.back}${off(step.backOff)}>${esc(step.backWord)}</button>`;
-  return `<div class="jc-head jc-period${cls ? ` ${cls}` : ''}">${lead ? `<div class="jc-lead">${lead}</div>` : ''}${body}${end}</div>`;
+  const pill = !step ? `<div class="jc-pill">${label}</div>`
+    : `<div class="jc-pill jc-pill-steps"><button class="jc-pill-step" ${step.prev} aria-label="Earlier ${esc(step.word)}"${off(step.prevOff)}>${chevron(-1)}</button>${label}<button class="jc-pill-step" ${step.next} aria-label="Later ${esc(step.word)}"${off(step.nextOff)}>${chevron(1)}</button></div>`;
+  return `<div class="jc-head jc-period${panel ? ' jc-picking' : ''}${cls ? ` ${cls}` : ''}">${lead ? `<div class="jc-lead">${lead}</div>` : ''}<div class="jc-pillrow">${pill}${sub ? `<span class="jc-sub">${esc(sub)}</span>` : ''}</div>${panel}${end}</div>`;
 }
-/** what the back button is called in each unit: it goes to the period with today in it */
-const TODAY_WORDS = { month: 'This month', week: 'This week', day: 'Today' };
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/**
+ * The calendar's month picker, under the pill while state.journalMonthPick holds a year (owner request: a calendar of
+ * months, not a list with each month's P&L): that year's twelve months four across. The months with trades and this
+ * month can be picked (pickJournalMonth), the rest are dimmed; the month shown is ringed and this month is blue; ‹ ›
+ * change the year, to the years you traded in. Behind it a scrim the width of the screen closes it (closeMonthPicker).
+ * @param {string[]} active the months with exits, 'YYYY-MM' @param {string} shown the month on the calendar
+ */
+function monthPicker(active, shown) {
+  const year = state.journalMonthPick;
+  if (!year) return '';
+  const now = thisMonth(), can = new Set([...active, now]), years = [...can].map(m => +m.slice(0, 4));
+  const months = MONTH_SHORT.map((word, i) => {
+    const m = `${year}-${String(i + 1).padStart(2, '0')}`;
+    return `<button class="jc-mpick-m${m === now ? ' jc-mpick-now' : ''}" data-action="pickJournalMonth" data-arg="${m}" aria-label="${esc(monthName(m))}"${m === shown ? ' aria-current="true"' : ''}${can.has(m) ? '' : ' disabled'}>${word}</button>`;
+  }).join('');
+  const off = by => years.some(y => by < 0 ? y < year : y > year) ? '' : ' disabled';
+  return `<div class="jc-scrim" data-action="closeMonthPicker" aria-hidden="true"></div>
+    <div class="jc-mpick" role="dialog" aria-label="Pick a month">
+      <div class="jc-mpick-year"><button class="jc-pill-step" data-action="stepMonthPicker" data-arg="-1" aria-label="The year before"${off(-1)}>${chevron(-1)}</button><b>${year}</b><button class="jc-pill-step" data-action="stepMonthPicker" data-arg="1" aria-label="The year after"${off(1)}>${chevron(1)}</button></div>
+      <div class="jc-mpick-grid">${months}</div>
+    </div>`;
+}
 
 const pct = v => `${Math.round(v)}%`;
 const statCell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
@@ -98,13 +122,14 @@ function weekCell(w) {
 
 /**
  * Phones and tablets: the span's own numbers over the grid, realized like the days, in two lines so the grid starts high:
- * the Net P&L big (Stats › beside it), then trades, win rate, profit factor and green days
+ * the Net P&L big, then trades, win rate, profit factor and green days (no Stats › beside it: the Stats tab right above
+ * shows the same dates)
  */
-function summary(cal, link, empty) {
+function summary(cal, empty) {
   if (!cal.trades) return `<p class="hint jc-empty">${empty}</p>`;
   const pf = cal.profitFactor === null ? 'no losses' : `PF ${cal.profitFactor.toFixed(2)}`;
   return `<div class="jc-sum">
-      <div class="jc-sum-top"><span class="jc-sum-label">Net P&amp;L</span>${link}</div>
+      <div class="jc-sum-label">Net P&amp;L</div>
       <div class="jc-sum-pnl ${pnlClass(cal.pnl)}">${signed$(cal.pnl)}</div>
       <div class="jc-sum-line"><span>${cal.trades} trade${cal.trades === 1 ? '' : 's'}</span><span title="${cal.wins} won, ${cal.losses} lost">${cal.winRate}% won</span><span title="Gross wins ÷ gross losses">${pf}</span><span title="${cal.red} red">${cal.green} of ${cal.days} days green</span></div>
     </div>`;
@@ -115,7 +140,7 @@ const grid = (cal, label = () => false, cell = dayCell) => `<table class="jc-gri
 
 // the phone calendar's key: folded away under the grid until tapped (owner request: the paragraph read as clutter)
 const CAL_HINT = `<details class="hint-details jc-key"><summary>How to read the calendar</summary><ul>
-    <li>Swipe the calendar sideways, or tap ‹ › beside the month's name, for the month before or after; tap the name to pick one. This month comes back.</li>
+    <li>Swipe the calendar sideways, or tap ‹ › in the month's pill, for the month before or after. Tap the month's name for the year's months: the ones you traded can be picked.</li>
     <li>The month you're on is the Journal's dates, so Trades and Stats show it too. Filters has the rest: a week, a day, your own dates.</li>
     <li>Tap a day for its notebook page, a week's total to review the week.</li>
     <li><span class="jc-key-plan">✎</span> plan written <span class="jc-key-done">✓</span> reviewed <span class="jc-key-due">●</span> a day to review <span>⊘</span> trades you missed</li>
@@ -232,9 +257,10 @@ function deskCalendar(trades, daily, cal, from, to, head, label, empty, swipe) {
 
 /**
  * The calendar lays out the dates the filter bar holds (Trades and Stats share them): a month, a week, a day or your own
- * dates; under All time, the newest month with exits. Its head names them between ‹ ›, which (and a swipe on the grid) step
- * the month, week or day through stepJournalPeriod, the same as the filter bar's and the Filters sheet's ‹ ›: they set
- * the dates, so Trades, Stats and Filters follow. Under All time the first step makes the dates that month.
+ * dates; under All time, the newest month with exits. Its head names them in a pill whose thin ‹ › (and a swipe on the
+ * grid) step the month, week or day through stepJournalPeriod, the same as the filter bar's and the Filters sheet's ‹ ›:
+ * they set the dates, so Trades, Stats and Filters follow; under All time the first step makes the dates that month. A
+ * month's name opens the month picker.
  */
 export function calendarView(trades) {
   const daily = dailyPnl(trades);
@@ -253,30 +279,27 @@ export function calendarView(trades) {
   const step = month ? 'month' : PERIODS.includes(unit) ? unit : '';
   const at = month || key, active = step ? activePeriods(trades, step) : [], today = nyToday();
   const can = by => !!step && !!stepPeriod(active, at, by);
-  // a week across two months ('Sep 28 – Oct 2, 2026') with thin spaces round its dash, so This week keeps to the row on a phone
+  // a week across two months ('Sep 28 – Oct 2, 2026') with thin spaces round its dash, so the pill stays short on a phone
   const title = month ? monthName(month) : ytd ? 'Year to date' : unit === 'range' ? spanWords(from, to) : periodName(unit, key).replace(' – ', '\u2009–\u2009');
-  // the name opens the phone's own picker: a month's, or a day's for a week (the week it falls in) or a day
-  const pick = !step ? '' : step === 'month'
-    ? `<input class="jc-pick" type="month" value="${month}" max="${thisMonth()}" data-change="pickCalendarDate" aria-label="Pick a month">`
-    : `<input class="jc-pick" type="date" value="${at}" max="${today}" data-change="pickCalendarDate" aria-label="Pick a ${step === 'week' ? 'day in the week' : 'day'}">`;
-  const nav = step ? { prev: 'data-action="stepJournalPeriod" data-arg="-1"', next: 'data-action="stepJournalPeriod" data-arg="1"', back: 'data-action="journalToday"',
-    word: `${step} with trades`, backWord: TODAY_WORDS[step], prevOff: !can(-1), nextOff: !can(1), backOff: at === todayPeriod(step) } : null;
+  // the name is the button: a month's opens the month picker; a week's or a day's the phone's own date picker (the week it falls in)
+  const name = step === 'month' ? `data-action="toggleMonthPicker" aria-haspopup="dialog" aria-expanded="${!!state.journalMonthPick}"` : '';
+  const pick = !step || step === 'month' ? '' : `<input class="jc-pick" type="date" value="${at}" max="${today}" data-change="pickCalendarDate" aria-label="Pick a ${step === 'week' ? 'day in the week' : 'day'}">`;
+  const nav = step ? { prev: 'data-action="stepJournalPeriod" data-arg="-1"', next: 'data-action="stepJournalPeriod" data-arg="1"', word: `${step} with trades`, prevOff: !can(-1), nextOff: !can(1) } : null;
+  const panel = step === 'month' ? monthPicker(active, month) : '';
   const reviewOpen = state.journalReviewPeriod?.unit === 'month' && state.journalReviewPeriod.key === month;
   const review = month && cal.trades ? `<button class="btn jc-month-review" data-action="openPeriodReview" data-arg="month" data-arg2="${month}" aria-expanded="${reviewOpen}">${periodStatus('month', month)?.reviewed ? 'Month reviewed ✓' : 'Review the month'}</button>` : '';
-  // the stats share the dates: under All time, the month shown becomes them
-  const stats = !cal.trades ? '' : unit === 'all' ? `<button class="pos-link jc-statslink" data-action="openJournalStats" data-arg="month" data-arg2="${month}">Stats ›</button>`
-    : '<button class="pos-link jc-statslink" data-action="setJournalTab" data-arg="stats">Stats ›</button>';
   const empty = month ? 'No exits this month.' : unit === 'range' ? 'No exits between these dates.' : `No exits this ${unit}.`;
   // the grid in a box that clips it sideways, so a swipe never lets the page scroll sideways
   const swipe = `<div class="jc-clip"><div class="jc-swipe" data-prev="${can(-1) ? 1 : 0}" data-next="${can(1) ? 1 : 0}">`;
+  const sub = ytd ? spanWords(from, to) : '';
   if (wide) {
-    const head = periodHead({ title, sub: ytd ? spanWords(from, to) : '', pick, step: nav, end: `${modeSwitch()}<span class="jc-head-end">${review}${stats}</span>` });
+    const head = periodHead({ title, sub, name, pick, panel, step: nav, end: `${modeSwitch()}<span class="jc-head-end">${review}</span>` });
     return deskCalendar(trades, daily, cal, from, to, head, label, empty, swipe);
   }
   // your dates and the year so far don't step: their name opens Filters, where they're set
-  const head = periodHead({ title, sub: ytd ? spanWords(from, to) : '', pick, step: nav, open: step ? '' : 'data-action="openJournalFilters" aria-haspopup="dialog"' });
+  const head = periodHead({ title, sub, name, pick, panel, step: nav, open: step ? '' : 'data-action="openJournalFilters" aria-haspopup="dialog"' });
   return `${head}
-    ${summary(cal, stats, empty)}
+    ${summary(cal, empty)}
     ${swipe}${grid(cal, label, (d, withMonth) => dayCell(d, withMonth, today))}</div></div>
     ${review ? `<div class="jc-foot">${review}</div>` : ''}
     ${CAL_HINT}`;

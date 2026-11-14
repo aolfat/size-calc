@@ -34,7 +34,7 @@ import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
 import { addPeriodRule, carryPeriodRule, closePeriodReview, graduatePeriodRule, openPeriodReview, periodRuleDraftInput, periodRuleInput, periodRuleSave, periodTextInput, periodTextSave, removePeriodRule, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { setWeekRulesShown } from './week-rules.js';
-import { clearJournalScope, clearJournalSetupFilter, closeJournalSetup, restoreJournalScope, journalToday, openJournalFilters, pickCalendarDate, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setScopeDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, stepJournalPeriod } from './journal.js';
+import { clearJournalScope, clearJournalSetupFilter, closeJournalSetup, restoreJournalScope, closeMonthPicker, openJournalFilters, pickCalendarDate, pickJournalMonth, stepMonthPicker, toggleMonthPicker, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setScopeDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
@@ -198,7 +198,10 @@ export const actions = {
   restoreJournalScope: () => restoreJournalScope(),
   clearJournalScope: () => clearJournalScope(),
   openJournalFilters: () => openJournalFilters(),
-  journalToday: () => journalToday(),
+  toggleMonthPicker: () => toggleMonthPicker(),
+  stepMonthPicker: el => stepMonthPicker(arg(el)),
+  pickJournalMonth: el => pickJournalMonth(arg(el)),
+  closeMonthPicker: () => closeMonthPicker(),
   pickCalendarDate: el => whenPicked(el, () => pickCalendarDate(/** @type {HTMLInputElement} */ (el).value)),
   pickNotebookDay: el => whenPicked(el, () => pickNotebookDay(/** @type {HTMLInputElement} */ (el).value)),
   setJournalPeriod: el => setJournalPeriod(arg(el) || /** @type {HTMLSelectElement} */ (el).value),

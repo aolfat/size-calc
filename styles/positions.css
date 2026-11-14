@@ -392,35 +392,48 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-head-end .jc-month-review { padding: 6px 12px; font-size: 12.5px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
 .jc-nav { padding: 4px 12px; }
-/* the period head (the calendar, a day's page): ‹ its name › on the left, the button back to today's month, week or day
-   at the row's end; a button that can't go greys out in place, so nothing moves */
+/* the period head (the calendar, a day's page): the name in a pill with thin ‹ › inside it (owner's pick from a design
+   study: no down arrow, the name is the button); a step that can't go greys out in place, so nothing moves */
 .jc-period { gap: 8px 12px; margin: 6px 0 12px; }
-.jc-lead { display: contents; }
-.jc-titlebox { position: relative; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; margin: 0 auto 0 0; padding: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; }
-.jc-period .jc-title { margin: 0; min-width: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; text-align: left; }
-.jc-sub { flex-basis: 100%; font-size: 13px; color: var(--text2); }
-.jc-caret { display: none; flex: none; width: 7px; height: 7px; margin: -4px 2px 0; border-right: 2px solid var(--text2); border-bottom: 2px solid var(--text2); transform: rotate(45deg); }
-.jc-opens { cursor: pointer; }
-.jc-opens .jc-caret { display: block; }
+.jc-lead { display: flex; flex: 1 1 100%; align-items: center; justify-content: space-between; gap: 12px; } /* a day page's way back, and Today */
+.jc-pillrow { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.jc-pill { display: inline-flex; align-items: center; max-width: 100%; height: 40px; background: var(--bg3); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--border); }
+.jc-pill-name { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 40px; padding: 0 20px; font: inherit; color: var(--text); white-space: nowrap; background: none; border: 0; border-radius: 999px; }
+button.jc-pill-name, .jc-picks { cursor: pointer; }
+.jc-pill-steps .jc-pill-name { min-width: 128px; padding: 0 6px; }
+button.jc-pill-name:active, .jc-picks:active, .jc-picking .jc-pill-name { background: var(--bg4); }
+@media (hover: hover) { button.jc-pill-name:hover, .jc-picks:hover { background: var(--bg4); } }
+.jc-period .jc-title { margin: 0; min-width: 0; font-size: 15px; font-weight: 600; text-align: center; }
+.jc-pill-step { flex: none; display: grid; place-items: center; width: 38px; height: 40px; padding: 0; color: var(--text2); background: none; border: 0; border-radius: 999px; cursor: pointer; }
+.jc-pill-step svg { width: 7px; height: 12px; }
+.jc-pill-step:disabled { color: var(--text3); opacity: .45; cursor: default; }
+.jc-pill-step:active:not(:disabled) { color: var(--text); }
+@media (hover: hover) { .jc-pill-step:hover:not(:disabled) { color: var(--text); } }
+.jc-sub { font-size: 12.5px; color: var(--text2); } /* Year to date's span, under its pill */
 .jc-pick { display: none; }
-/* a touch screen: the name opens the phone's own month or date picker, laid over it */
+/* a touch screen: a week's or a day's name opens the phone's own date picker, laid over it */
 @media (pointer: coarse) {
-  .jc-picks { cursor: pointer; }
-  .jc-picks .jc-caret { display: block; }
   .jc-pick { display: block; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; font-size: 16px; color: transparent; background: transparent; border: 0; opacity: 0; -webkit-appearance: none; appearance: none; }
 }
-.jc-flip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.jc-flip .jc-titlebox { margin: 0; padding: 0 2px; }
-.jc-period .jc-nav { flex: none; min-width: 36px; min-height: 34px; margin: 0; padding: 4px 8px; justify-content: center; font-size: 16px; }
-.jc-period .btn:disabled { opacity: 1; color: var(--text3); pointer-events: none; }
-/* back to today's month, week or day: a plain tinted button, the way iOS writes Today, so it never reads as part of ‹ › */
-.jc-today { flex: none; margin-left: auto; min-height: 34px; padding: 0 2px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+/* the month picker: the year's months as a small calendar under the pill, over a scrim that closes it */
+.jc-picking { position: relative; z-index: 40; }
+.jc-scrim { position: fixed; inset: 0; z-index: -1; background: rgba(3, 5, 9, 0.55); touch-action: none; }
+.jc-mpick { position: absolute; top: calc(100% + 8px); left: 0; width: 340px; max-width: 100%; padding: 10px 10px 12px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5); }
+.jc-mpick-year { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.jc-mpick-year b { font-size: 16px; font-weight: 700; }
+.jc-mpick-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.jc-mpick-m { height: 44px; padding: 0; font: inherit; font-size: 15px; font-weight: 500; color: var(--text); background: none; border: 1px solid transparent; border-radius: 999px; cursor: pointer; }
+.jc-mpick-m:disabled { color: var(--text3); opacity: .55; cursor: default; }
+.jc-mpick-now { color: var(--blue); font-weight: 600; }
+.jc-mpick-m[aria-current="true"] { color: var(--text); font-weight: 600; background: var(--blue-bg); border-color: var(--blue); }
+.jc-mpick-m:active:not(:disabled) { background: var(--bg4); }
+@media (hover: hover) { .jc-mpick-m:hover:not(:disabled):not([aria-current="true"]) { background: var(--bg3); } }
+/* a day page's Today, in the row over its pill */
+.jc-today { flex: none; min-height: 34px; padding: 0 2px; font-size: 14px; font-weight: 500; white-space: nowrap; }
 .jc-today:disabled { color: var(--text3); cursor: default; }
 /* phones and tablets: the month's numbers in two lines, Stats › beside them, so the grid starts high */
 .jc-sum { margin: 0 0 10px; }
-.jc-sum-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .jc-sum-label { font-size: 12.5px; color: var(--text2); }
-.jc-statslink { font-size: 14px; white-space: nowrap; }
 .jc-sum-pnl { margin-top: 1px; font-size: 28px; font-weight: 700; font-family: var(--num); line-height: 1.15; letter-spacing: -0.01em; }
 .jc-sum-line { display: flex; flex-wrap: wrap; margin-top: 4px; font-size: 13px; color: var(--text2); }
 .jc-sum-line > span + span::before { content: '·'; margin: 0 6px; color: var(--text3); }
@@ -440,7 +453,7 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-day.journal-sell { background: color-mix(in srgb, var(--red) 12%, var(--bg2)); border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
 .jc-quiet { cursor: default; opacity: 0.55; }
 .jc-num { font-size: 11px; color: var(--text3); }
-.jc-pnl { font-size: 15px; font-weight: 600; font-family: var(--num); }
+.jc-pnl { font-size: 15px; font-weight: 600; font-family: var(--num); white-space: nowrap; } /* never across two lines ('−$1.3k' was) */
 .jc-day.journal-buy .jc-pnl { color: var(--green); }
 .jc-day.journal-sell .jc-pnl { color: var(--red); }
 .jc-n { font-size: 10.5px; color: var(--text3); }
@@ -537,8 +550,12 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-key li > span:first-child { margin-left: 0; }
 .jc-head > .seg button { padding: 6px 12px; font-size: 12px; }
 .jc-nav:disabled { opacity: 0.4; cursor: default; }
-/* phones and tablets: weekday names as words, not table caps; today's date in a blue dot, days to come fainter */
+/* phones and tablets: the pill in the middle, its picker across the column; weekday names as words, not table caps;
+   today's date in a blue dot, days to come fainter */
 @media (max-width: 1099px) {
+  .jc-period { justify-content: center; }
+  .jc-pillrow { align-items: center; }
+  .jc-mpick { right: 0; width: auto; }
   .jc-grid th { padding: 0 6px 2px; font-size: 12px; text-transform: none; letter-spacing: 0; background: none; border: 0; }
   .jc-is-today .jc-num { align-self: flex-start; margin: -1px 0 0 -2px; padding: 0 5px; font-weight: 700; color: #fff; background: var(--blue); border-radius: 999px; }
   .jc-day.jc-later { opacity: 0.32; }
@@ -552,14 +569,7 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .jc-pnl { font-size: 13px; }
   .jc-n, .jc-wide { display: none; }
   .jc-grid th { padding: 0 3px 2px; }
-  .jc-period { column-gap: 8px; }
-  .jc-period .jc-title { font-size: 18px; }
-  .jc-flip { gap: 2px; }
-  .jc-flip .jc-titlebox { column-gap: 6px; }
-  .jc-caret { width: 6px; height: 6px; margin: -3px 1px 0; }
-  .jc-lead { display: block; flex: 1 1 100%; } /* the way back on its own line, over the name */
-  .jc-period .jc-nav, .jc-today { min-height: 40px; }
-  .jc-period .jc-nav { min-width: 34px; padding: 4px 6px; }
+  .jc-today { min-height: 40px; }
   /* From and To as one compact pill: 'Nov 1, 2026 – Nov 30, 2026', each half its own native picker */
   .js-range { display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); }
   .js-range:focus-within { border-color: var(--blue); }
@@ -569,10 +579,6 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .js-range label { display: flex; flex: 1 1 0; min-width: 0; }
   .js-range .jr-from input { -webkit-appearance: none; appearance: none; margin: 0; width: 100%; min-width: 0; min-height: 36px; padding: 0 8px; border: 0; background: transparent; text-align: center; }
   .js-range .jr-from input::-webkit-date-and-time-value { text-align: center; }
-}
-/* a narrow phone (iPhone SE, mini): a size smaller, so September and most weeks keep This month on their row */
-@media (max-width: 380px) {
-  .jc-period .jc-title { font-size: 17px; }
 }
 /* the Journal's stats */
 .js-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 4px 0 10px; }

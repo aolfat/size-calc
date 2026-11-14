@@ -744,9 +744,10 @@ export function dayPageHtml() {
   const today = notebookToday(nowIso());
   return `<div class="nb-page" id="journalDayPage" role="region" aria-label="${esc(dayName(day))}">
     ${periodHead({ cls: 'nb-head', title: dayName(day),
-      lead: `<button class="btn jc-back" data-action="closeJournalDay">${BACK_WORDS[state.notebookBack] || '← Calendar'}</button>`,
+      // the way back and Today share the row over the pill; Today greys out on today's page
+      lead: `<button class="btn jc-back" data-action="closeJournalDay">${BACK_WORDS[state.notebookBack] || '← Calendar'}</button><button class="pos-link jc-today" data-action="openTodayNotebook"${day === today ? ' disabled' : ''}>Today</button>`,
       pick: `<input class="jc-pick" type="date" value="${day}" data-change="pickNotebookDay" aria-label="Pick a day">`,
-      step: { prev: 'data-action="stepJournalDay" data-arg="-1"', next: 'data-action="stepJournalDay" data-arg="1"', back: 'data-action="openTodayNotebook"', word: 'weekday', backWord: 'Today', backOff: day === today } })}
+      step: { prev: 'data-action="stepJournalDay" data-arg="-1"', next: 'data-action="stepJournalDay" data-arg="1"', word: 'weekday' } })}
     ${why ? `<p class="hint jw-db" role="status">${esc(why)}</p>` : ''}
     ${premarket(day, trades, off)}
     ${theDay(day, trades)}

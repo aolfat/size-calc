@@ -12,7 +12,7 @@ import { stepRisk } from './risk.js';
 import { deckBack, deckNext, deckOpen, endReviewDeck } from './journal-deck.js';
 import { closeJournalTrade, openJournalTrade, stepJournalTrade } from './journal-trade.js';
 import { journalLayout, stepJournalSelection } from './journal-bench.js';
-import { benchKeys } from './journal.js';
+import { benchKeys, closeMonthPicker } from './journal.js';
 import { DESKTOP_MQ, mq } from '../lib/media.js';
 import { closeSheet } from './sheets.js';
 import { closeSim } from './sim.js';
@@ -41,6 +41,7 @@ export function initShortcuts() {
       if (state.shotView) return; // the screenshot viewer closes first (journal-shots.js)
       if (deckOpen()) { endReviewDeck(); return; }
       if (state.journalView && state.journalTrade) { closeJournalTrade(); return; } // a trade page: back to the list
+      if (state.journalView && state.journalMonthPick) { closeMonthPicker(); return; } // the calendar's month picker
       if (state.marketView && state.marketState.group) { marketSetScope('groups'); return; }
       closeDetails();
       return;

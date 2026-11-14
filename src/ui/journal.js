@@ -21,7 +21,7 @@ import { keepScroll } from '../lib/keep-scroll.js';
 import { inZone, zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
-import { calendarView, drawJournalEquity, periodName, statsScope, statsView, todayPeriod, tradingDay } from './journal-stats.js';
+import { calendarView, drawJournalEquity, periodName, statsScope, statsView, tradingDay } from './journal-stats.js';
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { loadIndustries } from './journal-industry.js';
@@ -336,11 +336,12 @@ export function setScopeDates(end, value) {
   dropBack();
   renderJournal();
 }
-/** the dates become one day, week or month */
+/** the dates become one day, week or month (the month picker closes) */
 function toPeriod(unit, key) {
   state.journalPeriod = unit;
   state.journalPeriodKey = key;
   state.journalReviewPeriod = null;
+  state.journalMonthPick = 0;
   dropBack();
   renderJournal();
 }
@@ -356,10 +357,24 @@ export function stepJournalPeriod(by) {
   const next = stepPeriod(activePeriods(scopeTrades(), unit), from, Number(by) || 0);
   if (next) toPeriod(unit, next);
 }
-/** Today: the month, week or day with today in it (New York; a weekend's day is its Friday); All time goes to this month */
-export function journalToday() {
-  const unit = state.journalPeriod === 'all' ? 'month' : state.journalPeriod;
-  if (PERIODS.includes(unit)) toPeriod(unit, todayPeriod(unit));
+/** the month's name in the calendar's pill: the month picker opens on the year shown, or closes */
+export function toggleMonthPicker() {
+  state.journalMonthPick = state.journalMonthPick ? 0 : +(state.journalMonthShown || nyParts(new Date().toISOString()).day).slice(0, 4);
+  renderJournal();
+}
+/** the picker's ‹ ›: the year before or after */
+export function stepMonthPicker(by) {
+  if (!state.journalMonthPick) return;
+  state.journalMonthPick += Number(by) || 0;
+  renderJournal();
+}
+/** a month picked: the dates become it */
+export function pickJournalMonth(month) { if (/^\d{4}-\d{2}$/.test(month || '')) toPeriod('month', month); }
+/** a tap outside the picker, or Escape */
+export function closeMonthPicker() {
+  if (!state.journalMonthPick) return;
+  state.journalMonthPick = 0;
+  renderJournal();
 }
 /**
  * The calendar's name tapped on a touch screen opens the phone's own picker (applied once it closes: whenPicked): a month
@@ -669,6 +684,7 @@ export function setJournalTab(tab) {
   state.journalNotebookDay = ''; // the Calendar tab goes back to the calendar
   state.notebookBack = '';
   state.journalFilterEdit = '';
+  state.journalMonthPick = 0;
   renderJournal();
   if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
 }
