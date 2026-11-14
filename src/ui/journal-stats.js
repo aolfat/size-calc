@@ -87,7 +87,14 @@ function calendarSwitch(dates) {
 // a month that starts on a weekend leaves its first week without a weekday: no blank row for it
 const grid = (cal, label = () => false, cell = dayCell) => `<table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cal.weeks.filter(w => w.days.some(Boolean) || w.trades).map(w => `<tr>${w.days.map(d => cell(d, !!d && label(d.day))).join('')}${weekCell(w)}</tr>`).join('')}</tbody></table>`;
 
-const CAL_HINT = `<p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its notebook page (✎ plan written, ✓ reviewed, ● a day to review, ⊘ trades you missed), a week's total to review the week. A dot in a day's corner marks its economic releases, a red dot for the Fed, CPI, PPI, jobs, PCE and GDP, an amber ring for the FOMC minutes and Beige Book; point at the day, or open it, for their times.</p>`;
+// the phone calendar's key: folded away under the grid until tapped (owner request: the paragraph read as clutter)
+const CAL_HINT = `<details class="hint-details jc-key"><summary>How to read the calendar</summary><ul>
+    <li>Tap a day for its notebook page, a week's total to review the week.</li>
+    <li><span class="jc-key-plan">✎</span> plan written <span class="jc-key-done">✓</span> reviewed <span class="jc-key-due">●</span> a day to review <span>⊘</span> trades you missed</li>
+    <li><span class="jc-key-ev ev-high"></span> the Fed, CPI, PPI, jobs, PCE, GDP <span class="jc-key-ev ev-medium"></span> FOMC minutes, Beige Book. Open the day for their times.</li>
+    <li>P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open.</li>
+    <li>A trade wins a day, week or month when what it took then adds up above zero.</li>
+  </ul></details>`;
 
 /** the calendar over dates you pick (state.journalCalDates): the weeks they cover, days outside blank, their own numbers */
 function datesCalendar(daily, key) {
@@ -302,8 +309,9 @@ export function statsScope(trades) {
 /** a range's first and last day as date boxes; changing either keeps the other (the stats' or the calendar's) */
 function rangeInputs(key, change = 'data-change="setStatsDates"', id = 'journalRange', what = 'Stats') {
   const [from, to] = periodSpan('range', key);
-  const box = (end, value, label) => `<label class="jr-from">${label} <input type="date" id="${id}${end === 'from' ? 'From' : 'To'}" value="${value}" ${change} data-arg="${end}" aria-label="${what} ${label.toLowerCase()} this day" /></label>`;
-  return `<span class="js-range">${box('from', from, 'From')}${box('to', to, 'To')}</span>`;
+  const box = (end, value, label) => `<label class="jr-from"><span class="jr-word">${label}</span> <input type="date" id="${id}${end === 'from' ? 'From' : 'To'}" value="${value}" ${change} data-arg="${end}" aria-label="${what} ${label.toLowerCase()} this day" /></label>`;
+  // phones draw the two boxes as one compact pill, 'Nov 1, 2026 – Nov 30, 2026' (the words hide, the dash shows)
+  return `<span class="js-range">${box('from', from, 'From')}<span class="jr-dash" aria-hidden="true">–</span>${box('to', to, 'To')}</span>`;
 }
 
 function periodBar({ unit, key, active }) {

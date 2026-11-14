@@ -66,9 +66,9 @@
 .nb-focus-name { margin-left: 0; font-weight: 600; }
 /* the calendar's marks: the plan written, reviewed, a review due */
 .jc-marks { display: flex; gap: 4px; margin-top: auto; padding-top: 2px; font-size: 11px; line-height: 1; }
-.jc-mk-plan { color: var(--blue); }
-.jc-mk-done { color: var(--green); }
-.jc-mk-due { color: var(--amber); font-size: 9px; }
+.jc-mk-plan, .jc-key-plan { color: var(--blue); }
+.jc-mk-done, .jc-key-done { color: var(--green); }
+.jc-mk-due, .jc-key-due { color: var(--amber); font-size: 9px; }
 .jc-mk-missed { color: var(--text3); margin-left: auto; }
 button.jc-quiet { cursor: pointer; }
 .jc-noted { opacity: 0.9; }

@@ -488,6 +488,13 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .js-period { margin-bottom: 12px; }
 .js-period-nav { display: inline-flex; align-items: center; gap: 6px; }
 .js-range { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--text2); }
+.jr-dash { display: none; }
+/* the phone calendar's key, folded under the grid */
+.jc-key { margin-top: 10px; }
+.jc-key ul { margin: 0; padding-left: 16px; display: grid; gap: 4px; }
+.jc-key-ev { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: 1px; margin-left: 4px; }
+.jc-key li > span { margin-left: 4px; }
+.jc-key li > span:first-child { margin-left: 0; }
 .js-period .seg button, .jc-head > .seg button { padding: 6px 12px; font-size: 12px; }
 .jc-nav:disabled { opacity: 0.4; cursor: default; }
 .js-feature-pick { flex-wrap: wrap; gap: 8px; }
@@ -503,10 +510,15 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .js-period .jc-title { min-width: 0; }
   .jc-span { flex: 1 0 100%; }
   .jc-span button { flex: 1 1 0; }
-  .js-range { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  /* From and To as one compact pill: 'Nov 1, 2026 – Nov 30, 2026', each half its own native picker */
+  .js-range { display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); }
+  .js-range:focus-within { border-color: var(--blue); }
+  .js-range .jr-word { display: none; }
+  .js-range .jr-dash { display: block; flex: none; color: var(--text3); }
   .js-feature-pick .js-feature-select { width: 100%; max-width: none; }
-  .js-range label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .js-range .jr-from input { margin-left: 0; width: 100%; min-width: 0; min-height: 40px; }
+  .js-range label { display: flex; flex: 1 1 0; min-width: 0; }
+  .js-range .jr-from input { -webkit-appearance: none; appearance: none; margin: 0; width: 100%; min-width: 0; min-height: 36px; padding: 0 8px; border: 0; background: transparent; text-align: center; }
+  .js-range .jr-from input::-webkit-date-and-time-value { text-align: center; }
 }
 /* the Journal's stats */
 .js-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 4px 0 10px; }
