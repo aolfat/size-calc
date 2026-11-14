@@ -241,6 +241,8 @@ test('the Calendar tab: the month of the latest close under its name, its number
   assert.match(out(), /<\/table><\/div><\/div>\s*<div class="jc-foot"><button class="btn jc-month-review" data-action="openPeriodReview" data-arg="month" data-arg2="2026-10" aria-expanded="false">Review the month<\/button><\/div>/, 'the month\'s review under the grid, where it opens');
   assert.equal(run('compact$(-0.4)'), '−$0.40', 'a day just under even: its cents, not −$0');
   assert.equal(run('compact$(0)'), '$0');
+  assert.equal(run('compact$(0.1 + 0.2 - 0.3)'), '$0', 'a sum\'s float leftover is no cent: no sign, no $0.00');
+  assert.equal(run('compact$(-0.004)'), '$0');
   run("pickJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'trades');
   assert.match(out(), /<option value="day" selected>Day<\/option>[^]*?<span class="jscope-when">Tue, Oct 6, 2026<\/span>[^]*?data-action="restoreJournalScope">‹ Back to All time</, 'the dates narrow to the day');
@@ -324,6 +326,10 @@ test('the month picker: the pill\'s name opens the year\'s months, the ones you 
   assert.equal(state.journalMonthPick, 0, 'another view');
   run("setView('journal'); toggleMonthPicker(); stepJournalPeriod(1)");
   assert.equal(state.journalMonthPick, 0, 'a step in the pill');
+  for (const other of ["setJournalPeriod('week')", "setJournalPeriod('month')", 'clearJournalScope()', "openJournalDay('2026-10-06')", 'openJournalFilters()', "openJournalStats('month', '2026-10')", "pickJournalDay('2026-10-06')"]) {
+    run(`closeSheet(); setJournalTab('calendar'); setJournalPeriod('month'); toggleMonthPicker(); ${other}`);
+    assert.equal(state.journalMonthPick, 0, `${other} closes it too, so it never waits open behind another view`);
+  }
 });
 
 test('the Calendar tab: a trim shows on its day, and that day lists the trade even while it is open', async () => {

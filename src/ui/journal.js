@@ -8,7 +8,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { fillWords, fillsFrom, recordsSummary } from '../core/journal-records.js';
 import { combineCandidates, fillBias, fundOf, holdWords, journalTrades, legWords, listedFund, multiplierOf, withFund, mergeProblem, ownStopError, pnlBasis, pnlPct, riskAt, tradesSummary } from '../core/journal.js';
 import { importWords } from '../core/schwab-history.js';
-import { activePeriods, exitDays, isRangeKey, nyParts, periodKey, periodSpan, PERIODS, rangeKey, stepPeriod, switchPeriod } from '../core/journal-stats.js';
+import { activePeriods, exitDays, isRangeKey, nyParts, periodKey, periodSpan, PERIODS, rangeKey, stepPeriod, switchPeriod, tradingDay } from '../core/journal-stats.js';
 import { fmtPositionPrice } from '../core/positions.js';
 import { lastCapture } from '../services/capture.js';
 import { schwabAccount } from '../services/schwab.js';
@@ -21,7 +21,7 @@ import { keepScroll } from '../lib/keep-scroll.js';
 import { inZone, zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
-import { calendarView, drawJournalEquity, periodName, statsScope, statsView, tradingDay } from './journal-stats.js';
+import { calendarView, drawJournalEquity, periodName, statsScope, statsView } from './journal-stats.js';
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { loadIndustries } from './journal-industry.js';
@@ -315,10 +315,13 @@ export function scopeName(unit, key) {
   return periodName(unit, key);
 }
 const dropBack = () => { state.journalScopeBack = null; };
+/** any change to the dates closes the calendar's month picker, so it never waits open behind another view */
+const closePick = () => { state.journalMonthPick = 0; };
 /** All time / Year to date / Month / Week / Day / Dates: a new unit keeps your place (the newest exit in what's shown now;
  * Dates start as the span shown); Year to date needs no key, it's Jan 1 through today whenever it's read */
 export function setJournalPeriod(unit) {
   const to = PERIODS.includes(unit) || unit === 'range' || unit === 'ytd' ? unit : 'all';
+  closePick();
   if (to === state.journalPeriod) return renderJournal();
   const from = state.journalPeriod === 'ytd' ? 'range' : state.journalPeriod;
   state.journalPeriodKey = to === 'all' || to === 'ytd' ? '' : switchPeriod(scopeTrades(), from, state.journalPeriodShown, to);
@@ -334,6 +337,7 @@ export function setScopeDates(end, value) {
   const [from, to] = isRangeKey(state.journalPeriodShown) ? periodSpan('range', state.journalPeriodShown) : [value, value];
   state.journalPeriodKey = end === 'to' ? rangeKey(from, value) : rangeKey(value, to);
   dropBack();
+  closePick();
   renderJournal();
 }
 /** the dates become one day, week or month (the month picker closes) */
@@ -341,7 +345,7 @@ function toPeriod(unit, key) {
   state.journalPeriod = unit;
   state.journalPeriodKey = key;
   state.journalReviewPeriod = null;
-  state.journalMonthPick = 0;
+  closePick();
   dropBack();
   renderJournal();
 }
@@ -377,15 +381,14 @@ export function closeMonthPicker() {
   renderJournal();
 }
 /**
- * The calendar's name tapped on a touch screen opens the phone's own picker (applied once it closes: whenPicked): a month
- * ('YYYY-MM', under Month or All time), or a day for a week (the week it falls in) or a day (a weekend's is its Friday)
- * @param {string} value
+ * A week's or a day's name in the calendar's pill, tapped on a touch screen, opens the phone's date picker (applied once
+ * it closes: whenPicked): the week the picked day falls in, or that day (a weekend's is its Friday)
+ * @param {string} value 'YYYY-MM-DD'
  */
 export function pickCalendarDate(value) {
-  const v = value || '', month = /^\d{4}-\d{2}$/.test(v);
-  if (!month && !DAY_RE.test(v)) return renderJournal();
-  const unit = month ? 'month' : state.journalPeriod === 'week' ? 'week' : 'day';
-  toPeriod(unit, month ? v : periodKey(tradingDay(v), unit));
+  if (!DAY_RE.test(value || '')) return renderJournal();
+  const unit = state.journalPeriod === 'week' ? 'week' : 'day';
+  toPeriod(unit, periodKey(tradingDay(value), unit));
 }
 /** a day's trades or stats (a calendar day, the notebook's links): the dates narrow to that day, ‹ Back to … returns */
 function narrowToDay(day) {
@@ -395,6 +398,7 @@ function narrowToDay(day) {
   }
   state.journalPeriod = 'day';
   state.journalPeriodKey = day;
+  closePick();
   return true;
 }
 /** a day's trades: the Trades tab on that day (opened or with an exit then) */
@@ -409,6 +413,7 @@ export function restoreJournalScope() {
   const b = state.journalScopeBack;
   if (b) { state.journalPeriod = b.period; state.journalPeriodKey = b.key; }
   dropBack();
+  closePick();
   renderJournal();
 }
 /** the stats for one day, week or month, or a span of dates, from the calendar or a day's page */
@@ -422,13 +427,14 @@ export function openJournalStats(unit, key) {
     state.journalPeriod = period;
     state.journalPeriodKey = k;
   }
+  closePick();
   state.journalTab = 'stats';
   state.journalNotebookDay = '';
   renderJournal();
 }
 /** Clear: every filter off, the dates back to all time (the review chips and fees stay: they're how you work, not what you look at) */
 export function clearJournalScope() {
-  Object.assign(state, { journalSymbol: '', journalSide: 'all', journalSetupFilter: '', journalFilters: [], journalFilterEdit: '', journalPeriod: 'all', journalPeriodKey: '', journalScopeBack: null, journalReviewPeriod: null });
+  Object.assign(state, { journalSymbol: '', journalSide: 'all', journalSetupFilter: '', journalFilters: [], journalFilterEdit: '', journalPeriod: 'all', journalPeriodKey: '', journalScopeBack: null, journalReviewPeriod: null, journalMonthPick: 0 });
   renderJournal();
 }
 
@@ -554,7 +560,11 @@ function phoneChips(all) {
 }
 
 /** Filters (phones): a sheet with the dates, views, side, setup, fees, Review from on Trades, and every More filter */
-export function openJournalFilters() { openSheet('journalFilters'); renderJournalFiltersSheet(); }
+export function openJournalFilters() {
+  if (state.journalMonthPick) { closePick(); renderJournal(); } // the sheet has its own dates
+  openSheet('journalFilters');
+  renderJournalFiltersSheet();
+}
 export function renderJournalFiltersSheet() {
   const sheet = document.getElementById('journalFiltersSheet'), body = document.getElementById('journalFiltersBody');
   if (!sheet || !body || sheet.style.display === 'none') return;

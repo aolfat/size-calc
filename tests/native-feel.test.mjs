@@ -347,17 +347,23 @@ async function calendarApp(opts = {}) {
   const { attachCalendarSwipe } = await import('../src/ui/native-feel.js');
   const on = {};
   const section = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); }, querySelector: () => null };
-  // the grid as the calendar drew it: what's before and after it
-  const grid = { style: {}, offsetWidth: 380, dataset: {} };
+  // the grid as the calendar drew it: what's before and after it, and the listeners put on it while a touch lasts
+  const onGrid = {};
+  const grid = {
+    style: {}, offsetWidth: 380, dataset: {},
+    addEventListener: (type, fn) => { (onGrid[type] ||= []).push(fn); },
+    removeEventListener: (type, fn) => { onGrid[type] = (onGrid[type] || []).filter(f => f !== fn); },
+  };
   const read = () => { const m = a.elements.get('journalSection').innerHTML.match(/class="jc-swipe" data-prev="(\d)" data-next="(\d)"/); Object.assign(grid.dataset, { prev: m[1], next: m[2] }); };
+  // a touch inside the grid reaches the grid's listeners, then the section's
   const fire = (type, x, y = 300, on2 = grid) => {
     const e = { touches: type === 'touchend' ? [] : [{ clientX: x, clientY: y }], target: { closest: sel => sel === '.jc-swipe' ? on2 : null }, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; } };
-    for (const fn of on[type] || []) fn(e);
+    for (const fn of [...(onGrid[type] || []), ...(on[type] || [])]) fn(e);
     return e;
   };
   attachCalendarSwipe(section);
   read();
-  return { ...a, grid, read, fire };
+  return { ...a, grid, read, fire, onGrid, on };
 }
 
 test('swiping the calendar to the right goes to the month before, as ‹ does; left comes back', async () => {
@@ -378,6 +384,34 @@ test('swiping the calendar to the right goes to the month before, as ‹ does; l
   fire('touchend');
   assert.equal(state.journalPeriodKey, '2026-10', 'left: the month after');
   assert.equal(run('taps'), 2, 'a tap you can feel on each');
+});
+
+test('only a touch on the calendar can hold a scroll back, and only while it lasts', async () => {
+  const { grid, fire, onGrid, on } = await calendarApp();
+  assert.equal(on.touchmove, undefined, 'nothing on the Journal waits on every scroll');
+  fire('touchstart', 40);
+  assert.equal(onGrid.touchmove.length, 1, 'a touch on the grid: the grid listens');
+  fire('touchmove', 45, 380);
+  assert.equal(onGrid.touchmove.length, 0, 'it turned out a scroll: let go at once');
+  fire('touchend');
+  fire('touchstart', 40);
+  fire('touchmove', 300);
+  fire('touchend');
+  assert.equal(onGrid.touchmove.length, 0, 'and after a swipe');
+  assert.ok(grid.style);
+});
+
+test('a swipe cut short by another tab leaves the dates alone', async () => {
+  const { run, state, grid, fire, advance } = await calendarApp({ timers: 'fake' });
+  phoneWithMotion();
+  fire('touchstart', 40);
+  fire('touchmove', 300);
+  await advance(100);
+  fire('touchend');
+  run("setJournalTab('trades')");
+  await advance(200);
+  assert.equal(state.journalPeriod, 'all', 'Trades opens on the dates it had');
+  assert.equal(grid.style.transform, '', 'the old grid is put back');
 });
 
 test('a short, up-and-down or dead-end swipe leaves the calendar where it is; a day can still be tapped', async () => {

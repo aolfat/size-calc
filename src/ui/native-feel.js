@@ -170,20 +170,15 @@ export function attachCalendarSwipe(section) {
   let grid = null;
   let mode = null, x0 = 0, y0 = 0, t0 = 0, dx = 0, swipedAt = 0;
   const can = by => grid?.dataset[by > 0 ? 'next' : 'prev'] === '1';
-  section.addEventListener('touchstart', e => {
-    mode = null;
-    const g = e.touches.length === 1 ? e.target?.closest?.('.jc-swipe') : null;
-    if (!g || !state.journalView || state.journalTrade || state.openSheetName) return;
-    if (g.dataset.prev !== '1' && g.dataset.next !== '1') return;
-    grid = g; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); dx = 0; mode = 'maybe';
-  }, { passive: true });
-  section.addEventListener('touchmove', e => {
+  // the one listener that can hold a scroll back sits on the grid, and only while a touch that started on it lasts, so
+  // scrolling anywhere else in the Journal never waits on it
+  const move = e => {
     if (mode !== 'maybe' && mode !== 'drag') return;
     dx = e.touches[0].clientX - x0;
     const dy = e.touches[0].clientY - y0;
     if (mode === 'maybe') {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      if (Math.abs(dy) >= Math.abs(dx)) { mode = null; return; } // up or down: the page scrolls
+      if (Math.abs(dy) >= Math.abs(dx)) { mode = null; release(); return; } // up or down: the page scrolls
       mode = 'drag';
       grid.style.transition = 'none';
     }
@@ -191,8 +186,19 @@ export function attachCalendarSwipe(section) {
     const shown = can(dx < 0 ? 1 : -1) ? dx : dx / 4; // nothing more that way: it gives a little and springs back
     grid.style.transform = `translateX(${shown}px)`;
     grid.style.opacity = String(1 - Math.min(0.5, Math.abs(shown) / (grid.offsetWidth || 390)));
-  }, { passive: false });
+  };
+  const release = () => grid?.removeEventListener('touchmove', move);
+  section.addEventListener('touchstart', e => {
+    release();
+    mode = null;
+    const g = e.touches.length === 1 ? e.target?.closest?.('.jc-swipe') : null;
+    if (!g || !state.journalView || state.journalTrade || state.openSheetName) return;
+    if (g.dataset.prev !== '1' && g.dataset.next !== '1') return;
+    grid = g; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); dx = 0; mode = 'maybe';
+    g.addEventListener('touchmove', move, { passive: false });
+  }, { passive: true });
   const end = () => {
+    release();
     if (mode !== 'drag') { mode = null; return; }
     mode = null;
     swipedAt = Date.now();
@@ -207,6 +213,8 @@ export function attachCalendarSwipe(section) {
     if (still()) { settle(); stepJournalPeriod(by); return; }
     Object.assign(g.style, { transition: `transform 180ms ${EASE}, opacity 180ms ${EASE}`, transform: `translateX(${-by * w}px)`, opacity: '0' });
     effects.wait(180).then(() => {
+      // a tab, a day or a sheet opened while it slid: the dates stay as they are
+      if (!state.journalView || state.journalTab !== 'calendar' || state.journalNotebookDay || state.journalTrade || state.openSheetName) { settle(); return; }
       stepJournalPeriod(by);
       const next = section.querySelector('.jc-swipe');
       if (!next || next === g) { settle(); return; }

@@ -22,17 +22,21 @@ import { econDot, econPopHtml, econTag, econWords } from './econ-events.js';
 import { setupGradeOf } from './journal-review.js';
 import { renderJournal } from './journal.js';
 import { tradeIndustry } from './journal-industry.js';
+import { chevron, periodHead } from './period-head.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
 /** '+$1.2k' for a calendar cell: whole dollars under $1,000, one decimal of thousands above; cents under $1 ('−$0.40',
- * where whole dollars read '−$0') */
+ * where whole dollars read '−$0'); under half a cent (a sum's float leftover) is '$0', no sign */
 export const compact$ = v => {
-  const a = Math.abs(v), s = v > 0 ? '+' : v < 0 ? '−' : '';
-  if (a < 0.995) return `${s}$${a ? a.toFixed(2) : '0'}`;
+  const a = Math.abs(v), s = v > 0 ? '+' : '−';
+  if (a < 0.005) return '$0';
+  if (a < 0.995) return `${s}$${a.toFixed(2)}`;
   return a >= 1000 ? `${s}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k` : `${s}$${Math.round(a)}`;
 };
+/** a calendar cell's green or red: a float's leftover under half a cent is neither */
+const toneOf = v => pnlClass(Math.abs(v) < 0.005 ? 0 : v);
 const monthName = m => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }); };
 
 // ---------- Calendar ----------
@@ -41,35 +45,6 @@ const monthName = m => { const [y, mo] = m.split('-').map(Number); return new Da
 const nyToday = () => nyParts(new Date().toISOString()).day;
 /** this month in New York, 'YYYY-MM' */
 const thisMonth = () => nyToday().slice(0, 7);
-/** a weekend day's Friday (the calendar and a day's stats are weekdays); a weekday is itself */
-export const tradingDay = d => { const wd = new Date(`${d}T00:00:00Z`).getUTCDay(); return wd === 6 ? plusDays(d, -1) : wd === 0 ? plusDays(d, -2) : d; };
-
-/** a thin chevron, the pill's ‹ or › */
-const chevron = dir => `<svg viewBox="0 0 7 12" aria-hidden="true"><path d="${dir < 0 ? 'M6 1 1 6l5 5' : 'M1 1l5 5-5 5'}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
-/**
- * The head over a span of days: its name in a pill with thin ‹ › inside it (owner's pick from a design study: no down
- * arrow, no This month or Stats › beside it). A step that can't go greys out in place, so nothing moves. The calendar
- * and a day's notebook page share it. The name is the button: `name` gives it its action (the calendar's month picker,
- * `panel`), `pick` lays the phone's own date picker over it (a week's or a day's name, on a touch screen), `open` makes
- * it open Filters (your own dates); else it's just the name. `sub` goes under the pill (Year to date's span), `lead`
- * over it (a day page's way back and Today), `end` after it (the desktop calendar's modes and review).
- * `step`: prev and next are each arrow's action attributes, word what they step through ('month with trades', read
- * 'Earlier month with trades'), and the Off flags grey out the ones that can't go.
- * @param {{ title: string, sub?: string, name?: string, pick?: string, open?: string, panel?: string, lead?: string, end?: string, cls?: string,
- *   step?: { prev: string, next: string, word: string, prevOff?: boolean, nextOff?: boolean } | null }} o
- */
-export function periodHead({ title, sub = '', name = '', pick = '', open = '', panel = '', step = null, lead = '', end = '', cls = '' }) {
-  const words = `<span class="jc-title">${esc(title)}</span>`;
-  const label = name ? `<button class="jc-pill-name" ${name}>${words}</button>`
-    : pick ? `<label class="jc-pill-name jc-picks">${words}${pick}</label>`
-    : open ? `<button class="jc-pill-name" ${open}>${words}</button>` : `<span class="jc-pill-name">${words}</span>`;
-  const off = b => b ? ' disabled' : '';
-  const pill = !step ? `<div class="jc-pill">${label}</div>`
-    : `<div class="jc-pill jc-pill-steps"><button class="jc-pill-step" ${step.prev} aria-label="Earlier ${esc(step.word)}"${off(step.prevOff)}>${chevron(-1)}</button>${label}<button class="jc-pill-step" ${step.next} aria-label="Later ${esc(step.word)}"${off(step.nextOff)}>${chevron(1)}</button></div>`;
-  return `<div class="jc-head jc-period${panel ? ' jc-picking' : ''}${cls ? ` ${cls}` : ''}">${lead ? `<div class="jc-lead">${lead}</div>` : ''}<div class="jc-pillrow">${pill}${sub ? `<span class="jc-sub">${esc(sub)}</span>` : ''}</div>${panel}${end}</div>`;
-}
-
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /**
  * The calendar's month picker, under the pill while state.journalMonthPick holds a year (owner request: a calendar of
@@ -109,7 +84,7 @@ function dayCell(d, withMonth = false, today = nyToday()) {
   if (!d.trades) return `${td}<button class="jc-day jc-quiet${mark.html ? ' jc-noted' : ''}${when}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}${now}: no exits${mark.words}${ev}. Open the day`)}"><span class="jc-num">${num}</span>${dot}${mark.html}</button>${pop}</td>`;
   const pf = d.profitFactor === null ? '' : d.profitFactor.toFixed(2);
   const label = `${d.day}${now}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${pf}` : ''}${mark.words}${ev}. Open the day`;
-  return `${td}<button class="jc-day ${pnlClass(d.pnl)}${when}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}"><span class="jc-num">${num}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span><span class="jc-rate">${pct(d.winRate)}<span class="jc-wide"> won${pf ? ` · PF ${pf}` : ''}</span></span>${dot}${mark.html}</button>${pop}</td>`;
+  return `${td}<button class="jc-day ${toneOf(d.pnl)}${when}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}"><span class="jc-num">${num}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span><span class="jc-rate">${pct(d.winRate)}<span class="jc-wide"> won${pf ? ` · PF ${pf}` : ''}</span></span>${dot}${mark.html}</button>${pop}</td>`;
 }
 
 function weekCell(w) {
@@ -117,7 +92,7 @@ function weekCell(w) {
   const open = state.journalReviewPeriod?.unit === 'week' && state.journalReviewPeriod.key === w.start;
   const done = periodStatus('week', w.start)?.reviewed;
   const label = `Week of ${periodName('day', w.start)}: ${signed$(w.pnl)} over ${w.trades} trade${w.trades === 1 ? '' : 's'}, ${w.winRate}% won${done ? ', reviewed' : ''}. Review the week`;
-  return `<td class="jc-week"><button class="jc-weekbtn${open ? ' active' : ''}" data-action="openPeriodReview" data-arg="week" data-arg2="${w.start}" aria-label="${esc(label)}" aria-expanded="${open}" title="Review the week"><span class="${pnlClass(w.pnl)}">${compact$(w.pnl)}</span><span class="jc-n">${w.trades} trade${w.trades === 1 ? '' : 's'} · ${pct(w.winRate)}</span>${periodMark('week', w.start)}</button></td>`;
+  return `<td class="jc-week"><button class="jc-weekbtn${open ? ' active' : ''}" data-action="openPeriodReview" data-arg="week" data-arg2="${w.start}" aria-label="${esc(label)}" aria-expanded="${open}" title="Review the week"><span class="${toneOf(w.pnl)}">${compact$(w.pnl)}</span><span class="jc-n">${w.trades} trade${w.trades === 1 ? '' : 's'} · ${pct(w.winRate)}</span>${periodMark('week', w.start)}</button></td>`;
 }
 
 /**
@@ -171,7 +146,7 @@ function dayValue(d, ctx) {
     const avg = gs.reduce((a, g) => a + GRADE_POINTS[g], 0) / gs.length, g = ['F', 'D', 'C', 'B', 'A'][Math.round(avg)];
     return { text: g, cls: avg >= 2.5 ? 'journal-buy' : avg < 1.5 ? 'journal-sell' : 'jc-mid', size: Math.abs(avg - 2) };
   }
-  return { text: compact$(d.pnl), cls: pnlClass(d.pnl), size: Math.abs(d.pnl) };
+  return { text: compact$(d.pnl), cls: toneOf(d.pnl), size: Math.abs(d.pnl) };
 }
 
 /** a desktop day: its number, today, the releases, the value shaded by its size against the biggest day shown, the review chips */

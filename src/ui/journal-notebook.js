@@ -16,7 +16,7 @@
 // Premarket opens with the day's economic releases (ui/econ-events.js).
 import { fmt$, marketEscape as esc } from '../core/format.js';
 import { buildLibrary, goesBy, setupPickGroups, setupsByUse } from '../core/journal-labels.js';
-import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, standingRuleFor, stepWeekday } from '../core/journal-notebook.js';
+import { activeItems, cleanDayRow, DAY_GRADES, DAY_TEXT, dayOver, dayReviewState, dayTrades, ENERGY, FEELINGS, FOCUS_KEPT, FOCUS_PLAYED, focusTraded, isDay, lastFocus, MAX_ITEM, MAX_ITEMS, MAX_MISSED, MAX_MISSED_NOTE, MAX_FOCUS_ITEMS, MAX_FOCUS_NOTE, MAX_MISSED_PICKS, MISSED_SIDES, MISSED_WHY, missedSymbol, notebookDay, notebookLists, notebookToday, PLACES, planMissingWords, planState, reviewMissingWords, RULE_ANSWERS, rulesForDay, standingRuleFor, stepWeekday } from '../core/journal-notebook.js';
 import { tradeUnderlying } from '../core/journal.js';
 import { LEGACY_RULE_ID, weekRulesFor } from '../core/journal-week.js';
 import { dailyPnl, nyParts } from '../core/journal-stats.js';
@@ -30,7 +30,7 @@ import { loadMissedChart, missedChartHtml } from './missed-chart.js';
 import { deleteFocusShots, deleteMissedShots, focusShotCount, focusShotsRowHtml, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
 import { effects } from './effects.js';
 import { econDayRow, econTodayWords } from './econ-events.js';
-import { periodHead, tradingDay } from './journal-stats.js';
+import { periodHead } from './period-head.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -62,7 +62,7 @@ const focusOf = day => rowOf(day)?.focus_list || [];
 /** a day's page (a calendar cell, today's line, ‹ ›): inside the Calendar tab; the Journal's dates stay as they are */
 export function openJournalDay(day) {
   if (!isDay(day)) return;
-  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalReviewPeriod: null, notebookDraft: null, notebookPlanOpen: '', notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
+  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalReviewPeriod: null, journalMonthPick: 0, notebookDraft: null, notebookPlanOpen: '', notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
   renderJournal();
   window.scrollTo?.({ top: 0 });
 }
@@ -78,8 +78,8 @@ export function stepJournalDay(by) { if (state.journalNotebookDay) openJournalDa
 export function reviewJournalDay(day) { if (!isDay(day)) return; state.notebookBack = 'trades'; openJournalDay(day); }
 /** today's line: today's page (Monday's on a weekend) */
 export function openTodayNotebook() { state.notebookBack = ''; openJournalDay(notebookToday(nowIso())); }
-/** the day's name tapped on a touch screen opens the phone's date picker: that day's page (a weekend's Friday), the way back kept */
-export function pickNotebookDay(value) { if (isDay(value)) openJournalDay(tradingDay(value)); else renderJournal(); }
+/** the day's name tapped on a touch screen opens the phone's date picker: that day's page (a weekend's Monday after, as Today goes), the way back kept */
+export function pickNotebookDay(value) { if (isDay(value)) openJournalDay(notebookDay(value)); else renderJournal(); }
 
 // ---------- where a day stands ----------
 
