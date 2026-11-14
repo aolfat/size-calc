@@ -214,8 +214,10 @@ export function calendarView(trades) {
       <span class="pos-sub jc-newest">All time: the newest month</span>` : '';
   const thisBtn = unit === 'month' && month === thisMonth() ? '' : '<button class="btn jc-today" data-action="journalThisMonth">This month</button>';
   const review = month && cal.trades ? `<button class="btn jc-today" data-action="openPeriodReview" data-arg="month" data-arg2="${month}" aria-expanded="${state.journalReviewPeriod?.unit === 'month' && state.journalReviewPeriod.key === month}">${periodStatus('month', month)?.reviewed ? 'Month reviewed ✓' : 'Review the month'}</button>` : '';
-  // the stats share the dates: under All time, the month shown becomes them
-  const stats = !cal.trades ? '' : unit === 'all' ? `<button class="pos-link" data-action="openJournalStats" data-arg="month" data-arg2="${month}">The month's stats ›</button>` : '<button class="pos-link" data-action="setJournalTab" data-arg="stats">The stats ›</button>';
+  // the stats share the dates: under All time, the month shown becomes them. On phones it's a button paired with the review,
+  // the two splitting the row (owner request: a lone button and a link pushed right looked out of place)
+  const statsCls = wide ? 'pos-link' : 'btn jc-today';
+  const stats = !cal.trades ? '' : unit === 'all' ? `<button class="${statsCls}" data-action="openJournalStats" data-arg="month" data-arg2="${month}">The month's stats ›</button>` : `<button class="${statsCls}" data-action="setJournalTab" data-arg="stats">The stats ›</button>`;
   const empty = month ? 'No exits this month.' : unit === 'range' ? 'No exits between these dates.' : `No exits this ${unit}.`;
   const head = `<div class="jc-head">${nav}${thisBtn}${wide ? modeSwitch() : ''}<span class="jc-head-end">${review}${stats}</span></div>`;
   if (wide) return deskCalendar(trades, daily, cal, from, to, head, label, empty);

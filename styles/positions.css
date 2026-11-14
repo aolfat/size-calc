@@ -389,6 +389,11 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 10px; }
 .jc-head-end { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .jc-head-end .pos-link { font-size: 13px; }
+/* phones and tablets: Review the month and The stats split their own row, like Import and Export */
+@media (max-width: 1099px) {
+  .jc-head-end { flex: 1 1 100%; margin-left: 0; flex-wrap: nowrap; gap: 8px; }
+  .jc-head-end > .btn { flex: 1 1 0; min-width: 0; justify-content: center; padding: 9px 12px; font-size: 14px; }
+}
 .jc-newest { font-size: 12px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
 .jc-nav { padding: 4px 12px; }
