@@ -201,14 +201,14 @@ export function calendarView(trades) {
   const firsts = new Set();
   if (from.slice(0, 7) !== to.slice(0, 7)) for (const d of cal.weeks.flatMap(w => w.days)) if (d && ![...firsts].some(f => f.slice(0, 7) === d.day.slice(0, 7))) firsts.add(d.day);
   const label = day => firsts.has(day);
-  const shownUnit = month ? 'month' : unit, shownKey = month || key;
   const nav = unit === 'all' ? `<button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
       <span class="jc-title">${esc(monthName(month))}</span>
       <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
       <span class="pos-sub jc-newest">All time: the newest month</span>` : '';
   const thisBtn = unit === 'month' && month === thisMonth() ? '' : '<button class="btn jc-today" data-action="journalThisMonth">This month</button>';
   const review = month && cal.trades ? `<button class="btn jc-today" data-action="openPeriodReview" data-arg="month" data-arg2="${month}" aria-expanded="${state.journalReviewPeriod?.unit === 'month' && state.journalReviewPeriod.key === month}">${periodStatus('month', month)?.reviewed ? 'Month reviewed ✓' : 'Review the month'}</button>` : '';
-  const stats = cal.trades ? `<button class="pos-link" data-action="openJournalStats" data-arg="${shownUnit}" data-arg2="${shownKey}">${unit === 'all' ? "The month's stats" : 'The stats'} ›</button>` : '';
+  // the stats share the dates: under All time, the month shown becomes them
+  const stats = !cal.trades ? '' : unit === 'all' ? `<button class="pos-link" data-action="openJournalStats" data-arg="month" data-arg2="${month}">The month's stats ›</button>` : '<button class="pos-link" data-action="setJournalTab" data-arg="stats">The stats ›</button>';
   const empty = month ? 'No exits this month.' : unit === 'range' ? 'No exits between these dates.' : `No exits this ${unit}.`;
   const head = `<div class="jc-head">${nav}${thisBtn}${wide ? modeSwitch() : ''}<span class="jc-head-end">${review}${stats}</span></div>`;
   if (wide) return deskCalendar(trades, daily, cal, from, to, head, label, empty);
@@ -239,11 +239,18 @@ export function periodName(unit, key) {
 }
 const validKey = (unit, key) => unit === 'month' ? /^\d{4}-\d{2}$/.test(key) : /^\d{4}-\d{2}-\d{2}$/.test(key);
 
-/** the period the stats show (state.journalPeriod: all | day | week | month | range) and its trades: all time's closed ones, a period's exits */
+/** the period the stats show (state.journalPeriod: all | ytd | day | week | month | range) and its trades: all time's closed
+ * ones, a period's exits. Year to date is Jan 1 through today (New York) as a span of dates, read fresh each time */
 export function statsScope(trades) {
+  const today = nyParts(new Date().toISOString()).day;
+  if (state.journalPeriod === 'ytd') {
+    const key = `${today.slice(0, 4)}-01-01..${today}`;
+    state.journalPeriodShown = key;
+    return { unit: 'range', key, active: [], list: inPeriod(trades, 'range', key) };
+  }
   const unit = PERIODS.includes(state.journalPeriod) || state.journalPeriod === 'range' ? state.journalPeriod : 'all';
   if (unit === 'all') return { unit, key: '', active: [], list: countedTrades(trades) };
-  const picked = state.journalPeriodKey, today = nyParts(new Date().toISOString()).day;
+  const picked = state.journalPeriodKey;
   if (unit === 'range') {
     // your dates, else the first exit to the last
     const key = isRangeKey(picked) ? picked : switchPeriod(trades, 'all', '', 'range') || `${today}..${today}`;

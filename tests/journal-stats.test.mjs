@@ -408,7 +408,7 @@ test('the Calendar over Dates: the bar\'s From and To, the weeks they cover; Tra
   run("setScopeDates('from', '2026-10-06')");
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 trade/);
   assert.match(out(), /<tr><td class="jc-out"><\/td><td><button class="jc-day journal-sell" data-action="openJournalDay" data-arg="2026-10-06"/, 'Monday 10/5 before the dates is blank');
-  assert.match(out(), /data-arg="range" data-arg2="2026-10-06\.\.2026-10-31">The stats ›</);
+  assert.match(out(), /data-action="setJournalTab" data-arg="stats">The stats ›</, 'the stats share the dates: just the tab');
   run("setScopeDates('to', '2026-11-06')");
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$50\.00<span class="pos-sub">2 trades/, 'across the month end');
   assert.match(out(), /<span class="jc-num">Oct 6<\/span>/, 'across a month end: the first day shown in each month carries it');
@@ -428,6 +428,33 @@ test('the Calendar over Dates: the bar\'s From and To, the weeks they cover; Tra
   assert.match(out(), /No exits between these dates/);
   run("setJournalPeriod('month')");
   assert.equal(state.journalPeriodKey, '2026-11', 'a month keeps your place');
+});
+
+test('Year to date: Jan 1 through today, the same on every tab, fresh each day; a calendar day picked comes back to it', async () => {
+  const records = [...RECORDS, order(5, 'BUY', '2025-12-30T14:35:00+0000', 10, 50, 'PLTR'), order(6, 'SELL', '2025-12-30T15:00:00+0000', 10, 55, 'PLTR')];
+  const a = await app({ supabase: fakeRecords(records), session: SESSION, clock: true, now: Date.UTC(2026, 10, 14, 17) });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  const out = () => a.elements.get('journalSection').innerHTML;
+  const names = () => [...out().matchAll(/<b>(AAPL|MSFT|PLTR)<\/b>/g)].map(m => m[1]).sort();
+  assert.match(out(), /<option value="all" selected>All time<\/option><option value="ytd">Year to date<\/option><option value="month">Month/, 'second in the menu');
+  assert.deepEqual(names(), ['AAPL', 'MSFT', 'PLTR']);
+  a.run("setJournalPeriod('ytd')");
+  assert.equal(a.state.journalPeriodKey, '', 'no key to go stale');
+  assert.deepEqual(names(), ['AAPL', 'MSFT'], 'last December\'s trade left out');
+  assert.match(out(), /<option value="ytd" selected>Year to date<\/option>[^]*?<span class="jscope-when">Jan 1, 2026 – Nov 14, 2026<\/span>/, 'the span it covers, no ‹ ›');
+  assert.doesNotMatch(out(), /stepJournalPeriod|journalRangeFrom/);
+  a.run("setJournalTab('stats')");
+  assert.match(out(), /<dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 closed trades/, 'Stats count this year\'s exits');
+  a.run("setJournalTab('calendar')");
+  assert.match(out(), /<span class="jc-num">Jan 1<\/span>/, 'the calendar lays out the year so far');
+  assert.doesNotMatch(out(), /data-arg="2025-12-30"/);
+  a.run("pickJournalDay('2026-10-05')");
+  assert.match(out(), /data-action="restoreJournalScope">‹ Back to Year to date</);
+  a.run('restoreJournalScope()');
+  assert.equal(a.state.journalPeriod, 'ytd');
+  a.run("setJournalPeriod('month')");
+  assert.equal(a.state.journalPeriodKey, '2026-10', 'leaving it keeps your place: the newest exit inside');
 });
 
 test('the Trades tab on the shared dates: a trade opened or with an exit in them shows; the review chips count what they leave', async () => {

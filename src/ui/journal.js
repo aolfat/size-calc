@@ -307,18 +307,21 @@ const filterBase = all => onSetupFilter(onScopeDates(filtered(all, t => t.bias))
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const longDay = d => new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-/** the dates in words: 'All time', 'October 2026', 'Oct 5–9, 2026', 'Tue, Oct 6, 2026', 'Oct 1, 2026 – Oct 20, 2026' */
+/** the dates in words: 'All time', 'Year to date', 'October 2026', 'Oct 5–9, 2026', 'Tue, Oct 6, 2026', 'Oct 1, 2026 – Oct 20, 2026' */
 export function scopeName(unit, key) {
+  if (unit === 'ytd') return 'Year to date';
   if (unit === 'all' || !key) return 'All time';
   if (unit === 'range') { const [from, to] = periodSpan('range', key); return from === to ? longDay(from) : `${longDay(from)} – ${longDay(to)}`; }
   return periodName(unit, key);
 }
 const dropBack = () => { state.journalScopeBack = null; };
-/** All time / Month / Week / Day / Dates: a new unit keeps your place (the newest exit in what's shown now; Dates start as the span shown) */
+/** All time / Year to date / Month / Week / Day / Dates: a new unit keeps your place (the newest exit in what's shown now;
+ * Dates start as the span shown); Year to date needs no key, it's Jan 1 through today whenever it's read */
 export function setJournalPeriod(unit) {
-  const to = PERIODS.includes(unit) || unit === 'range' ? unit : 'all';
+  const to = PERIODS.includes(unit) || unit === 'range' || unit === 'ytd' ? unit : 'all';
   if (to === state.journalPeriod) return renderJournal();
-  state.journalPeriodKey = to === 'all' ? '' : switchPeriod(scopeTrades(), state.journalPeriod, state.journalPeriodShown, to);
+  const from = state.journalPeriod === 'ytd' ? 'range' : state.journalPeriod;
+  state.journalPeriodKey = to === 'all' || to === 'ytd' ? '' : switchPeriod(scopeTrades(), from, state.journalPeriodShown, to);
   state.journalPeriod = to;
   state.journalReviewPeriod = null;
   dropBack();
@@ -460,13 +463,13 @@ function rangeBoxes(key) {
 }
 /** the dates: the unit (a menu in the bar, buttons in the phones' sheet), ‹ the period ›, or the two boxes for Dates, and ‹ Back to … */
 function timeControl(sheet = false) {
-  const { unit, key, active } = journalScope();
-  const units = [['all', 'All time'], ['month', 'Month'], ['week', 'Week'], ['day', 'Day'], ['range', 'Dates']];
+  const scope = journalScope(), { key, active } = scope, unit = state.journalPeriod === 'ytd' ? 'ytd' : scope.unit;
+  const units = [['all', 'All time', 'All'], ['ytd', 'Year to date', 'YTD'], ['month', 'Month'], ['week', 'Week'], ['day', 'Day'], ['range', 'Dates']];
   const pick = sheet
-    ? `<div class="seg jscope-units" aria-label="Dates">${units.map(([v, label]) => `<button ${onAttr(unit, v)} data-action="setJournalPeriod" data-arg="${v}">${v === 'all' ? 'All' : label}</button>`).join('')}</div>`
+    ? `<div class="seg jscope-units" aria-label="Dates">${units.map(([v, label, short]) => `<button ${onAttr(unit, v)} data-action="setJournalPeriod" data-arg="${v}"${short ? ` aria-label="${label}"` : ''}>${short || label}</button>`).join('')}</div>`
     : `<select class="jscope-unit${unit !== 'all' ? ' active' : ''}" data-change="setJournalPeriod" aria-label="Dates">${units.map(([v, label]) => `<option value="${v}"${unit === v ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
   const off = by => stepPeriod(active, key, by) ? '' : ' disabled';
-  const nav = unit === 'all' ? '' : unit === 'range' ? rangeBoxes(key)
+  const nav = unit === 'all' ? '' : unit === 'ytd' ? `<span class="jscope-when">${esc(scopeName('range', key))}</span>` : unit === 'range' ? rangeBoxes(key)
     : `<span class="jscope-nav"><button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="-1" aria-label="Earlier ${unit} with trades"${off(-1)}>‹</button><span class="jscope-when">${esc(scopeName(unit, key))}</span><button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="1" aria-label="Later ${unit} with trades"${off(1)}>›</button></span>`;
   const b = state.journalScopeBack;
   const back = b ? `<button class="pos-link jscope-back" data-action="restoreJournalScope">‹ Back to ${esc(scopeName(b.period, b.key))}</button>` : '';
@@ -498,7 +501,7 @@ function phoneChips(all) {
   if (!barTab()) return '';
   const full = fullTab();
   const pill = (label, x, on = true) => `<span class="jscope-pill${on ? ' active' : ''}"><button data-action="openJournalFilters">${label}</button>${x ? `<button class="jf-x" ${x} title="Remove">×</button>` : ''}</span>`;
-  const { unit, key } = full ? journalScope() : { unit: 'all', key: '' };
+  const { unit, key } = !full ? { unit: 'all', key: '' } : state.journalPeriod === 'ytd' ? { unit: 'ytd', key: '' } : journalScope();
   const setup = full && state.journalSetupFilter ? setupMenu(all).setups.concat(setupMenu(all).levels).find(o => o.value === state.journalSetupFilter) : null;
   const chips = [
     full ? pill(esc(scopeName(unit, key)), unit === 'all' ? '' : 'data-action="setJournalPeriod" data-arg="all" aria-label="All dates"', unit !== 'all') : '',

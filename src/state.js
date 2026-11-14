@@ -168,7 +168,7 @@ export function createState() {
     periodRulesError: '', // why the rules list (rules_next, rules_kept, rules_note) couldn't be read (its columns not pushed yet): the one rule box stands in
     periodRuleDraft: '', // the new rule for next week being typed, added with + Add or Enter
     weekRulesAt: 0, // when the calculator last read the week reviews for this week's rules (Date.now()), so focusing the app reads them at most every few minutes
-    journalPeriod: 'all', // the dates Trades, Calendar and Stats share (the filter bar's first control): all | day | week | month | range (Dates)
+    journalPeriod: 'all', // the dates Trades, Calendar and Stats share (the filter bar's first control): all | ytd (Jan 1 through today) | day | week | month | range (Dates)
     journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday), 'YYYY-MM' or 'YYYY-MM-DD..YYYY-MM-DD' (Dates); empty = the newest with closed trades
     journalPeriodShown: '', // the period last shown (‹ › step from it)
     journalSide: 'all', // all | long | short
