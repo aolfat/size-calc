@@ -34,6 +34,16 @@ test('a saved row is cleaned: ids as text, picks deduped and capped, numbers onl
   assert.equal(run(`cleanPlanRow(${JSON.stringify({ ...PLAN, id: '' })})`), null);
 });
 
+test('a plan\'s setup grade is A to F (an old A++ reads as A); it goes on a trade whose review has none', async () => {
+  const { run } = await app();
+  const grade = g => json(run, `cleanPlanRow(${JSON.stringify({ ...PLAN, setup_grade: g })}).setup_grade`);
+  assert.deepEqual([grade('B'), grade('A++'), grade('Z'), grade(undefined)], ['B', 'A', null, null]);
+  const plans = JSON.stringify([plan({ id: 'p0' }), plan({ id: 'p1', setup_grade: 'C' }), plan({ id: 'p2', setup_grade: 'A' })]);
+  assert.equal(json(run, `planGrade(${plans}, undefined)`), 'C', 'the first plan that has one');
+  assert.equal(json(run, `planGrade(${plans}, { setup_grade: 'B' })`), null, 'yours wins');
+  assert.equal(json(run, `planGrade(${JSON.stringify([plan()])}, null)`), null);
+});
+
 test('a plan finds its trade by the order that opened it, a replaced order\'s new id too, never the other side', async () => {
   const { run } = await app();
   assert.deepEqual(matched(run, [trade()], [plan()]), [[TRADE.key, ['p1']]]);

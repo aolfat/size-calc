@@ -22,7 +22,7 @@ import { closePositionChart, posUnderChanged, setPosChartOn, posAddChanged, posC
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
-import { toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
+import { pickTradeSetup, setTradeGrade, toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePct, setSpreadClosePctText, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
 import { openPositionTrade, placePositionTrade, setCloseUnder, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setClosePct, setClosePctText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
@@ -426,6 +426,8 @@ export const actions = {
   toggleTradeSetup: el => toggleTradeSetup(arg(el)),
   toggleTradeTactic: el => toggleTradeTactic(arg(el)),
   tradeSetupSearch: el => tradeSetupSearch(/** @type {HTMLInputElement} */ (el).value),
+  pickTradeSetup: () => pickTradeSetup(),
+  setTradeGrade: el => setTradeGrade(arg(el)),
 
   // ---------- futures ----------
   futuresFeesChanged: el => { setFuturesFees(arg(el), el.value); renderShares(); },

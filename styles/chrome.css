@@ -107,6 +107,9 @@
 .trade-plan-picks { margin-bottom:8px; }
 .tp-head { display:flex; align-items:center; gap:10px; margin:2px 0 4px; }
 .tp-head + .tp-groups { margin-bottom:10px; }
+/* Setup grade: A to F on one line under the setups, on the same column */
+.tp-grade { margin:0 0 10px; }
+.tp-grade .filter-btn { min-width:36px; }
 .tp-title { flex:0 0 92px; font-size:12px; font-weight:600; color:var(--text); }
 .trade-plan .jr-search { flex:1 1 auto; max-width:320px; }
 .trade-plan .jr-group { grid-template-columns:92px 1fr; padding:5px 0; }

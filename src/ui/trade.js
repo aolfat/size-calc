@@ -293,7 +293,7 @@ function ticketFromPlan(plan, q, { customEntry, entryNote, planCtx, cardId = '' 
     symbol: q.symbol, qty, isLong, stop, entry, customEntry, entryNote, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '', valid: plan.valid,
     entryType: breakout ? savedStopEntry() : 'MARKET', entryStop, entryLimit: entryStop > 0 ? defaultEntryLimit(entryStop, isLong) : 0,
     limitPrice: entry > 0 ? priceTick(entry) : 0, budget: riskDollars(),
-    setups: [], tactics: [], planCtx, cardId,
+    setups: [], tactics: [], setupGrade: '', planCtx, cardId,
   }, q, now);
 }
 
@@ -338,7 +338,7 @@ function ticketFor(p, q, now) {
     plannedRisk: qty * perShare(at), fillRisk: qty * perShare(fill),
     error, order: null, warnings: [], flags: [], sent: false, orderId: '', result: null, entryStatus: '', filled: 0,
     // the picks and what the calculator knew go with every re-plan; the saved plan's id comes once it's sent
-    setups: p.setups || [], tactics: p.tactics || [], setupOrder: p.setupOrder || null, planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
+    setups: p.setups || [], tactics: p.tactics || [], setupGrade: p.setupGrade || '', setupOrder: p.setupOrder || null, planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
     cardId: p.cardId || '', // the share order card it came from; '' for the shares card
   };
   if (error) return t;

@@ -1,8 +1,9 @@
 // @ts-check
 // Order plans, pure (docs/schwab.md, docs/journal.md): what the Trade at Schwab sheet saves with an order (the setups and
-// entry tactics picked, the risk against the Schwab account's value, how the stop was set), matched to the journal trade
-// its fills open, the labels it puts on that trade, and the plan in words.
+// entry tactics picked, the setup's grade, the risk against the Schwab account's value, how the stop was set), matched to
+// the journal trade its fills open, the labels and grade it puts on that trade, and the plan in words.
 import { fmt$, nyDateStr } from './format.js';
+import { gradeOf } from './journal-labels.js';
 
 /**
  * @typedef {{ at: string, order_id: string, qty: number | null }} PlanEdit
@@ -12,7 +13,7 @@ import { fmt$, nyDateStr } from './format.js';
  *   stop_amount: number | null, stop_level: number | null, stop_level_name: string | null, ext_hours: boolean, atr5: number | null,
  *   stop_planned: number | null, orb_minutes: number | null, edits: PlanEdit[] }} PlanNumbers
  * @typedef {{ id: string, account: string, symbol: string, side: 'long' | 'short', order_ids: string[], sent_at: string,
- *   setups: string[], tactics: string[], plan: PlanNumbers, trade_key: string | null }} OrderPlan
+ *   setups: string[], tactics: string[], setup_grade: string | null, plan: PlanNumbers, trade_key: string | null }} OrderPlan
  * @typedef {{ key: string, account: string, symbol: string, direction: string, status: string, openedAt: string,
  *   entryOrderIds: string[], deleted?: boolean, risk?: number | null }} PlanTrade
  */
@@ -69,7 +70,7 @@ export function cleanPlanRow(r) {
   if (!account || !symbol || !side || !sent) return null;
   return {
     id: r.id, account, symbol, side, order_ids: texts(r.order_ids, MAX_PLAN_ORDERS, 40, true), sent_at: sent,
-    setups: texts(r.setups, MAX_PLAN_PICKS, 120), tactics: texts(r.tactics, MAX_PLAN_PICKS, 120),
+    setups: texts(r.setups, MAX_PLAN_PICKS, 120), tactics: texts(r.tactics, MAX_PLAN_PICKS, 120), setup_grade: gradeOf(r.setup_grade),
     plan: cleanNumbers(r.plan), trade_key: typeof r.trade_key === 'string' && r.trade_key ? r.trade_key : null,
   };
 }
@@ -125,6 +126,15 @@ export function planLabels(plans, labels) {
     if (from) for (const v of from[field]) out.push([kind, v]);
   }
   return out;
+}
+
+/**
+ * The setup grade a trade's plans give it: the first plan's that has one, when the trade's review has none yet (yours wins).
+ * @param {OrderPlan[]} plans @param {{ setup_grade?: string | null } | null | undefined} review @returns {string | null}
+ */
+export function planGrade(plans, review) {
+  if (gradeOf(review?.setup_grade)) return null;
+  return plans.find(p => p.setup_grade)?.setup_grade || null;
 }
 
 /** the planned risk as a percent of the Schwab account's value when the order went (pct null without one) @param {OrderPlan} p */

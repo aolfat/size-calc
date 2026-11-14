@@ -114,7 +114,7 @@ export async function openOptionTrade(occ) {
     qty: c.contracts, stop: c.atStop > 0 ? optionStopTick(c.atStop, true) : 0, atStop: c.atStop, underStop: c.stop, model: c.model,
     planPrem: c.entryPrem, plannedRisk: c.contracts * c.lossPerContract, customEntry: !!c.customEntry, entryU: c.entryU,
     entryAt: 'mid', limitPrice: price, step, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '',
-    setups: [], tactics: [], setupOrder: null, picksTouched: false, prefilled: false, planCtx: planContext(c.isCall, c.stop),
+    setups: [], tactics: [], setupGrade: '', setupOrder: null, picksTouched: false, prefilled: false, planCtx: planContext(c.isCall, c.stop),
   }, q, Date.now());
   state.tradeSetupQuery = '';
   startTradePlan(state.tradeTicket);
