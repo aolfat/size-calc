@@ -50,13 +50,17 @@ The Schwab login and worker, Trade at Schwab, the banner, account size from Schw
   **Order plans** (ui/order-plan.js, core/order-plans.js pure, services/order-plans.js, table order_plans, migration 20261107000000_order_plans.sql): the sheet's #tradePlan rows pick **Setup** (My setups: the ones filled in first, then the most used; the first 12 until you search #tradeSetupSearch, plus any lit one) and **Entry tactic** (every tactic), the same library items a journal review uses, read with the review data (loadJournalReview).
   The read starts once the Trade at Schwab button shows (loadPlanChoices, one read shared by every caller), so the sheet opens with the chips in place instead of pushing Place down when they arrive; opening the sheet tries again after a failed read.
   The setup chips keep one order for the whole review (ticket.setupOrder, set the first time they show): a tap lights a chip where it is, and a search only hides the ones that don't match.
+  Enter in the search lights the first chip it shows that isn't on and clears the search for the next one (pickTradeSetup), so '21 b' then Enter picks the 21 EMA bounce.
+  **Setup grade** sits under the setups (owner request: grade the setup when you take it): A to F, the journal review's grades, one at a time, tapping the lit one clears it (setTradeGrade, ticket.setupGrade).
+  It is saved on the plan (order_plans.setup_grade, migration 20261123000000_order_plan_grade.sql) and goes on the journal trade's review as its Setup grade (docs/journal.md, Order plans).
+  Before that migration is pushed the plan reads and saves without it, and a grade you picked says it wasn't kept.
   Both show in named rows on the sheet's label column (owner request: better organized): setups grouped as the journal's review groups them (setupPickGroups: Bounce, Undercut & rally, each chip its level, then Patterns), with '8 more. Search to find them.' under them when some are past the 12.
   Tactics group by the timeframe their names start with (tacticPickGroups, tacticTimeframe: '5m', '15m', '30m', shortest first, however it's written, '15-minute ORB' too), each chip the rest of the name ('ORB', 'Pivot'), then Other in the library's order; a chip's title is its whole name.
   A journal trade's review and a missed trade group them the same way (tacticGroupsHtml, docs/journal.md).
   They start from today's focus list when this ticker is on it (its side or no side: its setups) and from the opening range (a 15m or 30m chip: the 15m or 30m pivot tactic; 5m has none); once, and never over a pick you made.
   Signed out, the rows say that signing in with Google keeps the setup, tactic and plan with the order.
   The plan is saved only after the send: with the order id on a 201, with no id when the answer was lost (it may have gone through), never on a rejection or a send that never left; beside the status check, so it never delays or blocks the order.
-  Picks stay open after Place: a change then updates only the plan's setups and tactics (updateOrderPlan).
+  Picks stay open after Place: a change then updates only the plan's setups, tactics and grade (updateOrderPlan).
 
   **Options entries** (ui/option-trade.js): a chain contract's detail (the inline row, or the rail ticket on desktop) ends with **Trade at Schwab** while Schwab is connected and sizing is by risk (optionTradeButton), greyed out with why when it can't go (optionTradeBlock: a stock or ETF underlying, a standard 100-share contract on that root, i.e. Tradier's contract_size 100 and root_symbol the ticker; or less than one contract at the stop).
   It buys to open only: calls or puts, the long side the chain sizes; selling to open isn't offered, since the chain has no risk sizing for a short option.

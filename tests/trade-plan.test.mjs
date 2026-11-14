@@ -222,6 +222,60 @@ async function journal(tweak) {
   return { ...a, supabase, labels, plan: () => supabase.tables.order_plans.get('user-1:p1') };
 }
 
+test('the setup gets a grade, A to F: saved with the plan, and a change after Place updates it', async () => {
+  const s = await sheet();
+  await s.run('openTrade()');
+  await settle();
+  assert.match(s.body(), /<span class="tp-title">Setup grade<\/span>/);
+  assert.deepEqual([...s.body().matchAll(/data-action="setTradeGrade" data-arg="([A-F])"/g)].map(m => m[1]), ['A', 'B', 'C', 'D', 'F']);
+  s.run("setTradeGrade('B')");
+  assert.match(s.picks(), /class="filter-btn active" aria-pressed="true" data-action="setTradeGrade" data-arg="B"/);
+  s.run("setTradeGrade('B')");
+  assert.equal(s.state.tradeTicket.setupGrade, '', 'tapping the lit one clears it');
+  s.run("setTradeGrade('A++'); setTradeGrade('A')");
+  assert.equal(s.state.tradeTicket.setupGrade, 'A', 'only A to F');
+  await s.run('placeTrade()');
+  assert.equal(s.plans()[0].setup_grade, 'A');
+  s.run("setTradeGrade('C')");
+  await settle();
+  assert.equal(s.plans()[0].setup_grade, 'C');
+  s.run("setTradeGrade('C')");
+  await settle();
+  assert.equal(s.plans()[0].setup_grade, null);
+});
+
+test('no grade picked saves none; before the grade column is pushed the plan still saves and says the grade wasn\'t kept', async () => {
+  const s = await sheet();
+  await s.run('openTrade()');
+  await s.run('placeTrade()');
+  assert.equal(s.plans()[0].setup_grade, null);
+  const t = await sheet({ tweak: db => db.failColumn('order_plans', 'setup_grade') });
+  await t.run('openTrade()');
+  await settle();
+  t.run("setTradeGrade('B'); toggleTradeSetup('base_breakout')");
+  await t.run('placeTrade()');
+  await settle();
+  assert.deepEqual(t.plans()[0].setups, ['base_breakout']);
+  assert.equal('setup_grade' in t.plans()[0], false);
+  assert.match(t.elements.get('errorBox').textContent, /Order sent and its plan saved, but not the setup grade: .*setup_grade/);
+});
+
+test('Enter in the setup search lights the first match and clears the search for the next', async () => {
+  const s = await sheet();
+  await s.run('openTrade()');
+  await settle();
+  s.run("pickTradeSetup()");
+  assert.deepEqual(s.state.tradeTicket.setups, [], 'nothing typed, nothing picked');
+  s.run("tradeSetupSearch('earn'); pickTradeSetup()");
+  assert.deepEqual(s.state.tradeTicket.setups, ['earnings_gap']);
+  assert.equal(s.state.tradeSetupQuery, '');
+  assert.match(s.picks(), /class="filter-btn active" aria-pressed="true" data-action="toggleTradeSetup" data-arg="earnings_gap"/);
+  s.run("tradeSetupSearch('earn'); pickTradeSetup()");
+  assert.deepEqual(s.state.tradeTicket.setups, ['earnings_gap'], 'one already on is not taken off');
+  s.run("tradeSetupSearch('21 b'); pickTradeSetup()");
+  assert.deepEqual(s.state.tradeTicket.setups, ['earnings_gap', 'ema21_bounce']);
+});
+
 test('the journal puts a plan\'s setup and tactic on the trade its order opened, once, as the app\'s', async () => {
   const j = await journal();
   assert.deepEqual(j.labels(), [['setup', 'ema21_bounce', 'app'], ['tactic', 'pivot15', 'app']]);
@@ -231,6 +285,19 @@ test('the journal puts a plan\'s setup and tactic on the trade its order opened,
   j.supabase.tables.trade_labels.delete(`user-1:${KEY}:tactic:pivot15`);
   await j.run('loadJournal()');
   assert.deepEqual(j.labels(), [['setup', 'ema21_bounce', 'app']]);
+});
+
+test('the plan\'s setup grade goes on the trade\'s review once; a grade you gave stays, and so does one you change', async () => {
+  const graded = db => db.tables.order_plans.get('user-1:p1').setup_grade = 'B';
+  const j = await journal(graded);
+  const review = () => j.supabase.tables.trade_reviews.get(`user-1:${KEY}`);
+  assert.equal(review().setup_grade, 'B');
+  assert.equal(j.state.journalReview.reviews[KEY].setup_grade, 'B');
+  review().setup_grade = 'D';
+  await j.run('loadJournal()');
+  assert.equal(review().setup_grade, 'D', 'met once: your change stays');
+  const mine = await journal(db => { graded(db); db.tables.trade_reviews.set(`user-1:${KEY}`, { user_id: 'user-1', trade_key: KEY, setup_grade: 'A' }); });
+  assert.equal(mine.supabase.tables.trade_reviews.get(`user-1:${KEY}`).setup_grade, 'A');
 });
 
 test('a kind you already labeled stays yours', async () => {

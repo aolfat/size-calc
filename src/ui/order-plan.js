@@ -1,12 +1,12 @@
-// Order plans (docs/schwab.md, docs/journal.md): the Trade at Schwab sheet's setup and entry tactic picks (today's focus list
-// and the opening range fill them in), what the calculator knew when the review opened (core/order-plans.js PlanNumbers:
+// Order plans (docs/schwab.md, docs/journal.md): the Trade at Schwab sheet's setup, setup grade and entry tactic picks
+// (today's focus list and the opening range fill them in), what the calculator knew when the review opened (core/order-plans.js PlanNumbers:
 // the risk, the account size, how the stop was set), the plan saved once the order goes and picks changed after, and the
-// journal putting each plan's labels on its trade once (services/order-plans.js).
+// journal putting each plan's labels and grade on its trade once (services/order-plans.js).
 import { state } from '../state.js';
 import { marketEscape as esc, nyDateStr } from '../core/format.js';
-import { buildLibrary, matchesQuery, setupPickGroups, setupsByUse, setupSearchNames } from '../core/journal-labels.js';
-import { matchPlans, planLabels } from '../core/order-plans.js';
-import { addAppLabels } from '../services/journal-review.js';
+import { buildLibrary, GRADES, matchesQuery, setupPickGroups, setupsByUse, setupSearchNames } from '../core/journal-labels.js';
+import { matchPlans, planGrade, planLabels } from '../core/order-plans.js';
+import { addAppLabels, saveReviewFields } from '../services/journal-review.js';
 import { loadOrderPlans, saveOrderPlan, updateOrderPlan } from '../services/order-plans.js';
 import { schwabAccounts, schwabBalances } from '../services/schwab.js';
 import { accountSizeFromSchwab, todaysAccountValue } from './account-size.js';
@@ -93,19 +93,25 @@ const picksOff = t => t.sent && !t.planId ? ' disabled' : '';
  * them. They show grouped as the journal's review groups them (every bounce together, then the patterns: setupPickGroups),
  * which only depends on which are shown, so tapping one lights it where it is; a search only narrows them.
  */
-function setupChipsHtml(t) {
-  const lib = library(), side = sideOf(t), q = state.tradeSetupQuery || '';
+function shownSetups(t) {
+  const lib = library(), q = state.tradeSetupQuery || '';
   t.setupOrder ||= [...t.setups, ...setupsByUse(lib, state.journalReview?.labels || {}).map(i => i.key).filter(k => !t.setups.includes(k))];
   // without a search, the first SETUP_CHIPS always (and any lit one past them); with one, the first SETUP_CHIPS that match
   let room = SETUP_CHIPS;
   const shown = t.setupOrder.filter((k, i) => t.setups.includes(k) || (q ? matchesQuery(setupSearchNames(lib, k), q) && room-- > 0 : i < SETUP_CHIPS));
+  return setupPickGroups(lib, shown, sideOf(t));
+}
+
+function setupChipsHtml(t) {
+  const lib = library(), side = sideOf(t), q = state.tradeSetupQuery || '';
+  const groups = shownSetups(t), shown = groups.flatMap(g => g.items);
   if (q && !shown.length) return `<p class="jr-none">No setup matches “${esc(q)}”.</p>`;
   const more = q ? 0 : t.setupOrder.length - shown.length;
-  return pickGroupsHtml(setupPickGroups(lib, shown, side), i => chip(i.label, t.setups.includes(i.key), `data-action="toggleTradeSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}"${picksOff(t)}`))
+  return pickGroupsHtml(groups, i => chip(i.label, t.setups.includes(i.key), `data-action="toggleTradeSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}"${picksOff(t)}`))
     + (more > 0 ? `<p class="jr-none">${more} more. Search to find them.</p>` : '');
 }
 
-/** the Setup and Entry tactic rows, or why they can't show */
+/** the Setup, Setup grade and Entry tactic rows, or why they can't show */
 export function tradePlanHtml(t) {
   if (!state.session) return '<p class="hint">Sign in with Google to keep the setup, tactic and plan with the order.</p>';
   if (state.journalReviewError) return `<p class="hint" style="color:var(--amber)">Your setups couldn't load: ${esc(state.journalReviewError)}. The plan's numbers are still saved with the order.</p>`;
@@ -114,12 +120,13 @@ export function tradePlanHtml(t) {
   // tactics by the timeframe their names start with ('5m', '15m', '30m'), then the rest, as the journal picks them
   const tactics = tacticGroupsHtml(lib.choices('tactic'), i => chip(i.label, t.tactics.includes(i.key), `data-action="toggleTradeTactic" data-arg="${esc(i.key)}" title="${esc(i.name)}"${picksOff(t)}`));
   return `<div class="trade-plan-picks">
-      <div class="tp-head"><span class="tp-title">Setup</span><input type="search" class="jr-search" id="tradeSetupSearch" placeholder="Search setups" autocomplete="off" spellcheck="false" value="${esc(state.tradeSetupQuery || '')}" data-input="tradeSetupSearch" aria-label="Search My setups" /></div>
+      <div class="tp-head"><span class="tp-title">Setup</span><input type="search" class="jr-search" id="tradeSetupSearch" placeholder="Search setups, Enter picks" autocomplete="off" spellcheck="false" value="${esc(state.tradeSetupQuery || '')}" data-input="tradeSetupSearch" data-enter="pickTradeSetup" aria-label="Search My setups" /></div>
       <div class="tp-groups" id="tradeSetupPick">${setupChipsHtml(t)}</div>
+      <div class="tp-head tp-grade"><span class="tp-title">Setup grade</span><span class="jr-group-chips">${GRADES.map(g => chip(g, t.setupGrade === g, `data-action="setTradeGrade" data-arg="${g}" title="How good the setup is: ${g}"${picksOff(t)}`)).join('')}</span></div>
       <div class="tp-head"><span class="tp-title">Entry tactic</span></div>
       <div class="tp-groups">${tactics || '<p class="jr-none">No entry tactics yet. Add them on a journal trade.</p>'}</div>
     </div>
-    <p class="hint">Saved with the order. The journal puts them on the trade once it fills.</p>`;
+    <p class="hint">Saved with the order. The journal puts them and the grade on the trade once it fills.</p>`;
 }
 
 /** only the picks redraw, so the search keeps its cursor */
@@ -137,7 +144,31 @@ function togglePick(field, key) {
   if (t.planId) queuePlanSave(t);
 }
 export function toggleTradeSetup(key) { togglePick('setups', key); }
+
+/** the setup's grade, A to F (GRADES, the journal review's); tapping the lit one clears it */
+export function setTradeGrade(g) {
+  const t = state.tradeTicket;
+  if (!t || t.error || picksOff(t) || !GRADES.includes(g)) return;
+  t.picksTouched = true;
+  t.setupGrade = t.setupGrade === g ? '' : g;
+  renderTradePlan();
+  if (t.planId) queuePlanSave(t);
+}
 export function toggleTradeTactic(key) { togglePick('tactics', key); }
+
+/** Enter in the setup search lights the first match that isn't on, then clears the search to type the next */
+export function pickTradeSetup() {
+  const t = state.tradeTicket;
+  if (!t || !state.tradeSetupQuery) return;
+  const lib = library();
+  const key = shownSetups(t).flatMap(g => g.items).map(i => i.key) // as they show: the first chip that matches and isn't on
+    .find(k => !t.setups.includes(k) && matchesQuery(setupSearchNames(lib, k), state.tradeSetupQuery));
+  if (!key) return;
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById('tradeSetupSearch'));
+  if (input) input.value = '';
+  state.tradeSetupQuery = '';
+  togglePick('setups', key);
+}
 
 /** typing in the setup search: only the chips under it redraw */
 export function tradeSetupSearch(value) {
@@ -162,7 +193,7 @@ function planRow(t, v) {
   const acct = schwabAccounts().find(a => a.hash === t.hash);
   return {
     id: t.planId, account: acct ? acct.last4 : '', symbol: t.symbol, side: sideOf(t), order_ids: [...t.planOrderIds], sent_at: t.planSentAt,
-    setups: [...t.setups], tactics: [...t.tactics],
+    setups: [...t.setups], tactics: [...t.tactics], setup_grade: t.setupGrade || null,
     plan: { ...t.planCtx, qty: t.qty, entry_type: t.entryType, entry: t.entry, stop: t.stop, planned_risk: round2(t.plannedRisk), fill_risk: round2(t.fillRisk), schwab_value: v.value, schwab_value_at: v.at },
   };
 }
@@ -173,8 +204,9 @@ function queuePlanSave(t) {
   t.planSaved = true;
   t.planChain = (t.planChain || Promise.resolve()).then(async () => {
     if (first) await saveOrderPlan(planRow(t, await t.planValue));
-    else await updateOrderPlan(t.planId, { setups: [...t.setups], tactics: [...t.tactics] });
-  }).catch(e => showError(`Order sent. Its plan wasn't saved for the journal: ${String(e?.message || e)}`));
+    else await updateOrderPlan(t.planId, { setups: [...t.setups], tactics: [...t.tactics], setup_grade: t.setupGrade || null });
+  }).catch(e => showError(e?.gradeOnly ? `Order sent and its plan saved, but not the setup grade: ${e.message}`
+    : `Order sent. Its plan wasn't saved for the journal: ${String(e?.message || e)}`));
   return t.planChain;
 }
 
@@ -195,8 +227,8 @@ export function saveTradePlan(t) {
 
 /**
  * Read the plans and match them to the journal's trades (state.orderPlanMatch, for the trade page). A plan's labels go on
- * its trade once: the first time they meet, for a kind the trade has none of, marked as the app's; the plan then keeps the
- * trade's key, so a label you take off stays off.
+ * its trade once: the first time they meet, for a kind the trade has none of, marked as the app's; its setup grade too, when
+ * the trade's review has none. The plan then keeps the trade's key, so a label you take off or a grade you change stays.
  * @param {() => any[]} trades the journal's trades now
  * @returns {Promise<number>} how many trades got labels
  */
@@ -211,13 +243,19 @@ export async function applyOrderPlans(trades) {
     const fresh = plans.filter(p => p.trade_key === null);
     if (!fresh.length) continue;
     const labels = state.journalReview.labels[key] ||= [];
-    const add = plans.some(p => p.trade_key === key) ? [] : planLabels(plans, labels);
+    const met = plans.some(p => p.trade_key === key);
+    const add = met ? [] : planLabels(plans, labels);
+    const grade = met ? null : planGrade(plans, state.journalReview.reviews[key]);
     try {
       if (add.length) {
         await addAppLabels(key, add, 'Picked when the order was placed');
         for (const [kind, value] of add) labels.push({ kind, value, set_by: 'app', links: [] });
-        labeled++;
       }
+      if (grade) {
+        await saveReviewFields(key, { setup_grade: grade });
+        state.journalReview.reviews[key] = { ...(state.journalReview.reviews[key] || {}), setup_grade: grade };
+      }
+      if (add.length || grade) labeled++;
       for (const p of fresh) { await updateOrderPlan(p.id, { trade_key: key }); p.trade_key = key; }
     } catch(e) {
       state.orderPlansError = String(e?.message || e);
