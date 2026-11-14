@@ -1,6 +1,6 @@
 {
-  "name": "Tradeforge",
-  "short_name": "Tradeforge",
+  "name": "Shwing Trader",
+  "short_name": "Shwing",
   "description": "Trading software: size every trade off your max loss, trade at Schwab, journal every trade",
   "start_url": "./",
   "scope": "./",
