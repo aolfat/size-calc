@@ -248,20 +248,28 @@ const KEY = `${LONG},${SHORT}`;
 
 test('Close on a spread trims it as one order at market, and the re-read confirms every leg went', async () => {
   const b = broker();
-  const { run, elements, state } = await app({ fetch: b.fetch, storage: connected() });
+  const { run, elements, state, dispatch } = await app({ fetch: b.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
   assert.match(elements.get('positionsSection').innerHTML, new RegExp(`data-action="openSpreadClose" data-arg="${KEY}"`));
   await run(`openSpreadClose('${KEY}')`);
   assert.equal(state.openSheetName, 'spreadClose');
   const t = () => state.spreadTicket;
-  assert.equal(t().close.type, 'LIMIT', 'a net limit at the mark to start');
-  assert.equal(t().close.price, 4);
+  assert.equal(t().close.type, 'MARKET', 'Market first, as on a stock');
+  assert.equal(t().close.price, 4, 'the net limit waits at the mark');
   assert.equal(t().close.qty, 3);
   const html = () => elements.get('spreadCloseBody').innerHTML;
+  assert.match(html(), /data-arg="MARKET"[^>]*>Market<\/button><button[^>]*data-arg="LIMIT"[^>]*>Net limit<\/button>/, 'Market, then Net limit');
+  run("setSpreadCloseType('LIMIT')");
   assert.match(html(), /Long 3 spreads RBRK 8\/28\/26 105\/115C/);
   assert.match(html(), /Close 3 spreads RBRK 8\/28\/26 105\/115C for a net credit of \$4\.00 or better, as one order: sell 3 RBRK 8\/28\/26 105C, buy 3 RBRK 8\/28\/26 115C/);
   assert.match(html(), /likely fills right away/, 'a limit at the mark');
+  run('initShortcuts()');
+  const key = k => dispatch('keydown', { key: k, target: { tagName: 'BODY', blur() {} }, preventDefault() {} });
+  key('l');
+  assert.equal(t().close.type, 'MARKET', 'l switches back to market');
+  key('l');
+  assert.equal(t().close.type, 'LIMIT', 'and to the net limit again');
   run('setSpreadClosePortion(0.5)');
   assert.equal(t().close.qty, 1, 'half of 3, at least one');
   run("setSpreadCloseType('MARKET')");
@@ -283,6 +291,7 @@ test('a net limit close goes on Schwab\'s list and is confirmed there; Schwab ch
   run("setView('positions')");
   await settle();
   await run(`openSpreadClose('${KEY}')`);
+  run("setSpreadCloseType('LIMIT')");
   run('setSpreadClosePrice("5.12")');
   assert.equal(state.spreadTicket.price, 5.1, 'snapped to the $0.10 step from $3');
   // a leg changes before the send: the plan differs, so nothing goes
@@ -377,6 +386,7 @@ test('a spread close takes a % profit target: over the debit, under the credit, 
   await settle();
   await run(`openSpreadClose('${KEY}')`);
   const html = () => elements.get('spreadCloseBody').innerHTML;
+  run("setSpreadCloseType('LIMIT')");
   assert.match(html(), /Limit in % profit/);
   assert.match(html(), /Over the debit of \$3\.50/);
   assert.match(html(), /data-action="setSpreadClosePct" data-arg="200" title="Past the spread&#39;s width" disabled/);

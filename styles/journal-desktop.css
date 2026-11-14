@@ -1,21 +1,25 @@
-/* The desktop Journal (≥1100px, mirrors DESKTOP_MQ): the page holds still and each pane scrolls on its own, like the
-   calculator's shell (nothing is position:sticky). Workbench = rail | list | trade panel; Review desk = the same rail | the
-   cards two-up | the review queue; the full review = chart | review; the calendar. */
+/* The desktop Journal (≥1100px, mirrors DESKTOP_MQ). The lists (Workbench, Review desk, the calendar and the other tabs)
+   scroll as a page, like Tools and Market (owner request: on a desktop the scroll just continues, not inside a box); the
+   rail and the column on the right stay in view as it goes (position: sticky, here only), each scrolling on its own when
+   taller than the window. The full review (.journal-page) holds still: chart | review, each scrolling on its own.
+   Workbench = rail | list | trade panel; Review desk = the same rail | the cards two-up | the review queue. */
 @media (min-width: 1100px) {
-  .app.journal-view { height: 100vh; height: 100dvh; overflow: hidden; padding-bottom: 16px; }
-  .app.journal-view .pane > #journalSection, .app.journal-view .pane > #journalTradeSection { max-width: 1680px; flex: 1 1 auto; min-height: 0; }
-  #journalSection { display: flex; flex-direction: column; }
-  #journalSection > .card { flex: 1 1 auto; min-height: 0; margin-bottom: 0; }
-  #journalSection > .empty-card { flex: 0 0 auto; }
+  .app.journal-view .pane > #journalSection, .app.journal-view .pane > #journalTradeSection { max-width: 1680px; }
+  .app.journal-view.journal-page { height: 100vh; height: 100dvh; overflow: hidden; padding-bottom: 16px; }
+  .app.journal-view.journal-page .pane > #journalTradeSection { flex: 1 1 auto; min-height: 0; }
+  #journalSection > .card { margin-bottom: 0; }
 
   /* ---------- Workbench ---------- */
-  .jw-bench { display: grid; grid-template-columns: 236px minmax(0, 1fr); padding: 0; overflow: hidden; }
+  /* at least the window under the header, so the dividers run to its foot on a short list; overflow: clip keeps the
+     rounded corners without making the card a scroll box, which would stop the rail and the side from sticking */
+  .jw-bench { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: calc(100vh - 122px); min-height: calc(100dvh - 122px); padding: 0; overflow: clip; }
   .jw-bench.jw-has-side { grid-template-columns: 236px minmax(0, 1fr) 372px; }
-  .jw-bench > * { min-height: 0; overflow-y: auto; }
-  .jw-bench > *, .jt-left, .jt-body { scrollbar-gutter: stable; scrollbar-width: thin; }
-  .jw-bench > .jw-main { padding: 18px 20px 40px; }
-  .jb-rail { display: flex; flex-direction: column; gap: 16px; padding: 20px 16px; border-right: 1px solid var(--border); }
-  .jb-side { padding: 20px 18px 40px; border-left: 1px solid var(--border); }
+  .jb-rail, .jb-side { position: sticky; top: 0; align-self: start; max-height: 100vh; max-height: 100dvh; overflow-y: auto; }
+  .jb-rail, .jb-side, .jt-left, .jt-body { scrollbar-gutter: stable; scrollbar-width: thin; }
+  .jw-bench > .jw-main { min-width: 0; padding: 18px 20px 40px; border-left: 1px solid var(--border); }
+  .jw-bench.jw-has-side > .jw-main { border-right: 1px solid var(--border); }
+  .jb-rail { display: flex; flex-direction: column; gap: 16px; padding: 20px 16px; }
+  .jb-side { padding: 20px 18px 40px; }
   .jb-title { display: grid; gap: 4px; }
   .jb-title .section-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--text); }
   .jb-title .section-title::after { display: none; }
@@ -71,9 +75,18 @@
   @media (hover: hover) { .jb-row:hover td { background: color-mix(in srgb, var(--blue) 6%, var(--bg2)); } }
   .jb-row.jb-sel td { background: color-mix(in srgb, var(--blue) 12%, var(--bg2)); }
   .jb-row.jb-sel td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
-  .jb-day td { padding: 18px 12px 6px; background: var(--bg2); }
-  .jb-day td > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 600; }
-  .jb-day-n { margin: 0 8px 0 6px; font-weight: 500; color: var(--text3); }
+  /* a day's band: set off from its trades and folding them (the chevron or the band); while the table fits, it stays at the
+     top of the window as its trades scroll under it, so the day you're in always shows */
+  .jb-day td { padding: 9px 12px 9px 8px; background: var(--bg3); border-top: 1px solid var(--border2); border-bottom: 1px solid var(--border2); cursor: pointer; }
+  .jb-day td > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 600; }
+  .jb-day td > div > span:first-child { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; }
+  .jb-day .jd-date { font-size: 15px; font-weight: 700; }
+  .jb-day-n { font-weight: 500; color: var(--text3); }
+  @media (hover: hover) { .journal-table tbody tr.jb-day:hover td { background: var(--bg4); box-shadow: none; } }
+  .jb-wrap.jb-fits { overflow: visible; }
+  .jb-fits .jb-day td { position: sticky; top: 0; z-index: 2; }
+  .jds-cards .jtc-day + .jtc-day { margin-top: -10px; border-top: 0; } /* folded days stack as one list */
+  .jds-cards .jtc-day { position: sticky; top: 0; z-index: 2; margin-top: 6px; padding: 10px 6px 10px 4px; background: var(--bg2); border-bottom: 1px solid var(--border); }
   .jb-day-total { font-weight: 600; }
   .jb-day-total b { font-weight: 600; }
   /* the Review column: filled pills, so what waits and what's done read down the table at a glance */
@@ -213,7 +226,7 @@
   .jc-desk.journal-sell .jc-pnl { color: color-mix(in srgb, var(--red) 70%, #fff); }
   .jc-desk.jc-mid .jc-pnl { color: var(--amber); }
   .jc-desk .jc-pnl { font-size: 19px; }
-  .jc-desk .jc-n { color: var(--text2); }
+  .jc-desk .jc-n { max-width: 100%; overflow: hidden; color: var(--text2); text-overflow: ellipsis; white-space: nowrap; }
   .jc-desk.jc-quiet { opacity: 1; cursor: pointer; background: var(--bg); }
   .jc-desk.jc-quiet .jc-num { color: var(--text3); }
   .jc-desk.jc-today-cell { border-color: var(--blue-bd); }
@@ -222,7 +235,8 @@
   .jc-tag { min-width: 0; margin-left: auto; padding: 1px 5px; overflow: hidden; text-overflow: ellipsis; font-size: 9.5px; font-weight: 700; border-radius: 4px; white-space: nowrap; }
   .jc-tag-high { color: var(--red); background: color-mix(in srgb, var(--red) 16%, transparent); }
   .jc-tag-medium { color: var(--amber); background: var(--amber-bg); }
-  .jc-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 6px; }
+  .jc-chips { display: flex; gap: 4px; max-width: 100%; margin-top: auto; padding-top: 6px; overflow: hidden; }
+  .jc-plan { font-size: 11px; color: var(--text2); }
   .jc-chip { padding: 1px 7px; font-size: 10.5px; font-weight: 600; white-space: nowrap; border-radius: 999px; }
   .jc-chip-due { color: var(--amber); background: color-mix(in srgb, var(--amber) 16%, transparent); }
   .jc-chip-done { color: var(--green); }
@@ -244,6 +258,7 @@
   .jc-band { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .jc-band dd { font-size: 18px; }
   .jc-band > .jc-reviewed { grid-column: span 2; }
+  .jc-pf { display: none; } /* a day's profit factor doesn't fit its line here; the band and the day's page have it */
   .jw-bench.jw-has-side { grid-template-columns: 212px minmax(0, 1fr) 320px; }
   .jb-band dd { font-size: 19px; }
   .jb-band > div { padding: 10px 12px; }

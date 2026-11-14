@@ -607,7 +607,7 @@ function desktopTradesView(all) {
 /** the Workbench's ↑ ↓ step through the trades as the table shows them */
 export const benchKeys = () => {
   const all = tradesTabList(currentTrades()), shown = (state.journalShowDeleted ? all : all.filter(t => !t.deleted)).slice(0, JOURNAL_SHOWN);
-  return [...shown.filter(isOpen), ...shown.filter(t => !isOpen(t)).sort((a, b) => closeKey(b) < closeKey(a) ? -1 : closeKey(b) > closeKey(a) ? 1 : 0)].map(t => t.key);
+  return [...shown.filter(isOpen), ...shown.filter(t => !isOpen(t) && !state.journalDaysShut.includes(closeKey(t))).sort((a, b) => closeKey(b) < closeKey(a) ? -1 : closeKey(b) > closeKey(a) ? 1 : 0)].map(t => t.key);
 };
 const closeKey = t => nyParts(t.closedAt || t.openedAt).day;
 
@@ -679,7 +679,7 @@ export function renderJournal() {
       ${railNav(all)}
       ${navOnly ? '' : railFilters(all)}
     </aside>
-    <div class="jw-main" data-scroll="main:${view}">
+    <div class="jw-main">
       ${errors}
       ${split ? reviewChips(all, false, benchTools()) : ''}
       ${body}
@@ -687,6 +687,9 @@ export function renderJournal() {
     ${split ? `<aside class="jw-side jb-side${desk ? ' jd-side' : ''}" data-scroll="side:trades" aria-label="${desk ? 'Review queue' : 'The trade you picked'}">${split.side}</aside>` : ''}
   </div>`;
   });
+  // the desktop's list scrolls as a page: a new tab, day page or setup starts at its top
+  if (wide && state.journalViewShown && state.journalViewShown !== view && !state.journalTrade) window.scrollTo?.({ top: 0 });
+  state.journalViewShown = view;
   if (books) renderModelBooks();
   const wrap = scrolled && el.querySelector?.('.positions-wrap');
   if (wrap) wrap.scrollLeft = scrolled;

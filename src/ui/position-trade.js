@@ -210,6 +210,12 @@ function closeChanged(form) {
 
 const closeOpen = () => { const t = state.posTicket; return t && t.kind === 'close' && !t.error && !t.sent ? t : null; };
 
+/** l in the Close sheet: Market to Limit (its R and % profit targets), or back */
+export function switchCloseType() {
+  const t = closeOpen();
+  if (t) setCloseType(t.close.type === 'LIMIT' ? 'MARKET' : 'LIMIT');
+}
+
 export function setCloseType(type) {
   const t = closeOpen();
   if (!t || (type !== 'MARKET' && type !== 'LIMIT')) return;
@@ -772,7 +778,7 @@ const pctOf = (n, of) => `${+(n / of * 100).toFixed(1)}%`;
 /** the close ticket, like a broker's: Market or Limit, how many, and for a limit its price and how long it lasts */
 function closeForm(t, duration) {
   const row = t.row, c = t.close, held = Math.abs(row.qty), limit = c.type === 'LIMIT', off = t.sent ? ' disabled' : '';
-  const type = (v, label) => `<button class="${c.type === v ? 'active' : ''}" aria-pressed="${c.type === v}" data-action="setCloseType" data-arg="${v}" title="${label} · key ${label[0].toLowerCase()}"${off}>${label}</button>`;
+  const type = (v, label) => `<button class="${c.type === v ? 'active' : ''}" aria-pressed="${c.type === v}" data-action="setCloseType" data-arg="${v}" title="${label} · key l switches"${off}>${label}</button>`;
   const chips = CLOSE_PORTIONS.map(f => {
     const n = portionQty(t, f), ok = !t.sent && n > 0, on = ok && c.qty === n && (c.portion === f || (f >= 1 && c.portion == null));
     const want = Math.max(1, Math.floor(portionBase(t) * f + 1e-9));

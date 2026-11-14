@@ -310,6 +310,20 @@ export const dayButton = (day, words) => `<button class="jd-date" data-action="r
 /** the New York day a closed trade closed */
 export const closeDay = t => nyParts(t.closedAt || t.openedAt).day;
 
+/** a day folded on the Trades tab: its header shows (the count, what waits, its P&L), its trades don't */
+export const dayShut = day => state.journalDaysShut.includes(day);
+/** the chevron at the head of a day: folds or unfolds it (the whole band does too, past its date and links) */
+export const dayFold = day => {
+  const shut = dayShut(day);
+  return `<button class="jd-fold${shut ? ' jd-fold-shut' : ''}" data-action="toggleJournalDayShut" data-arg="${day}" aria-expanded="${!shut}" aria-label="${shut ? 'Show' : 'Hide'} ${dayWords(day)}'s trades" title="${shut ? 'Show' : 'Hide'} the day's trades"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+};
+/** fold or unfold a day's trades */
+export function toggleJournalDayShut(day) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) return;
+  state.journalDaysShut = dayShut(day) ? state.journalDaysShut.filter(d => d !== day) : [...state.journalDaysShut, day];
+  renderJournal();
+}
+
 /** Closed, a day at a time, newest first: the day (it opens the day's notebook), how many wait or that it's all reviewed, Review the day, and its P&L */
 export function closedDays(list) {
   /** @type {Map<string, any[]>} */
@@ -321,7 +335,8 @@ export function closedDays(list) {
     const waiting = reviewsRead() ? live.filter(toReview).length : 0;
     const status = waiting ? `<span class="jtc-day-todo">${waiting} to review</span>` : reviewsRead() && live.length && live.every(isReviewed) ? '<span class="jtc-day-done">All reviewed</span>' : '';
     const total = trades.some(counts) ? `<b class="${pnlClass(sum(trades))}">${signed$(sum(trades))}</b>` : '';
-    return `<div class="jtc-day"><span>${dayButton(day, day === now ? `Today · ${dayWords(day)}` : dayWords(day, true))}${status ? ` · ${status}` : ''}</span><span class="jtc-day-end">${dayReviewLink(day)}${total}</span></div>${trades.map(closedCard).join('')}`;
+    const shut = dayShut(day), n = `<span class="jtc-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>`;
+    return `<div class="jtc-day${shut ? ' jtc-day-shut' : ''}" data-action="toggleJournalDayShut" data-arg="${day}"><span class="jtc-day-start">${dayFold(day)}${dayButton(day, day === now ? `Today · ${dayWords(day)}` : dayWords(day, true))}${n}${status ? ` · ${status}` : ''}</span><span class="jtc-day-end">${dayReviewLink(day)}${total}</span></div>${shut ? '' : trades.map(closedCard).join('')}`;
   }).join('');
 }
 

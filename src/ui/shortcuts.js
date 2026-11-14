@@ -5,7 +5,8 @@ import { closeDetails } from './detail.js';
 import { toggleLive } from './live.js';
 import { marketRefreshToday, marketSetScope } from './market.js';
 import { refreshPositions } from './positions.js';
-import { setCloseType } from './position-trade.js';
+import { setCloseType, switchCloseType } from './position-trade.js';
+import { setSpreadCloseType, switchSpreadCloseType } from './spread-close.js';
 import { toggleQuick } from './quick-lookup.js';
 import { stepRisk } from './risk.js';
 import { deckBack, deckNext, deckOpen, endReviewDeck } from './journal-deck.js';
@@ -45,11 +46,17 @@ export function initShortcuts() {
       return;
     }
     if (typing && e.key === '/' && e.target.id === 'ticker') { e.preventDefault(); e.target.select(); return; } // '/' re-selects even from inside the field
-    // the Close sheet: l a limit (its R and % profit targets), m back to market (owner request: a shortcut to the targets)
-    if (!typing && state.openSheetName === 'posTrade' && state.posTicket && state.posTicket.kind === 'close' && (e.key === 'l' || e.key === 'm')) {
-      e.preventDefault();
-      setCloseType(e.key === 'l' ? 'LIMIT' : 'MARKET');
-      return;
+    // a Close sheet (a position's or a spread's): l switches Market and Limit (a position's limit holds its R and % profit
+    // targets), m goes back to Market (owner request)
+    if (!typing && (e.key === 'l' || e.key === 'm')) {
+      const position = state.openSheetName === 'posTrade' && state.posTicket && state.posTicket.kind === 'close';
+      const spread = state.openSheetName === 'spreadClose' && state.spreadTicket;
+      if (position || spread) {
+        e.preventDefault();
+        if (e.key === 'm') (position ? setCloseType : setSpreadCloseType)('MARKET');
+        else if (position) switchCloseType(); else switchSpreadCloseType();
+        return;
+      }
     }
     if (typing || state.openSheetName || state.simState) return; // never hijack keys while filling a field or working in a sheet or the simulator
     const focus = id => { e.preventDefault(); document.getElementById(id).focus(); };

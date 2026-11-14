@@ -40,7 +40,7 @@ import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTr
 import { toggleTradeFeatures } from './journal-features.js';
 import { addJournalFilter, applyJournalView, cancelJournalView, clearJournalFilters, deleteJournalView, journalViewTyped, removeJournalFilter, saveJournalView, setJournalFilterBound, setJournalFilterNot, setJournalFilterOp, startJournalView, toggleJournalFilterValue } from './journal-filters.js';
 import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
-import { reviewUpNext, skipUpNext } from './journal-cards.js';
+import { reviewUpNext, skipUpNext, toggleJournalDayShut } from './journal-cards.js';
 import { setCalendarMode, setStatsFeature, setStatsFeatureMode } from './journal-stats.js';
 import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
@@ -267,6 +267,7 @@ export const actions = {
   skipUpNext: () => skipUpNext(),
   setJournalLayout: el => setJournalLayout(arg(el)),
   selectJournalTrade: (el, e) => selectJournalTrade(arg(el), e),
+  toggleJournalDayShut: el => toggleJournalDayShut(arg(el)),
   skipPanelTrade: () => skipPanelTrade(),
   toggleBenchColumn: el => toggleBenchColumn(arg(el)),
   reviewUpNext: el => reviewUpNext(arg(el)),
