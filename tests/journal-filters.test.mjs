@@ -297,6 +297,27 @@ test('core: Ticker type is what the trade is on, whatever the instrument: Stocks
   assert.deepEqual(filterChoices(trades, [], 'ticker', ctx).map(c => `${c.name} ${c.count}`), ['Stocks 1', 'ETFs 1', 'Futures 1'], 'only the kinds some trade has');
 });
 
+test('core: Options splits option trades into long and sold calls and puts and spreads; anything else is Not options', () => {
+  const trades = [
+    { key: 'lc', symbol: 'AAPL  261120C00200000', assetType: 'OPTION', direction: 'long', status: 'closed' },
+    { key: 'lp', symbol: 'AAPL  261120P00190000', assetType: 'OPTION', direction: 'long', status: 'closed' },
+    { key: 'sc', symbol: 'TSLA  261120C00500000', assetType: 'OPTION', direction: 'short', status: 'closed' },
+    { key: 'sp', symbol: 'SPY   261120P00550000', assetType: 'OPTION', direction: 'short', bias: 'long', status: 'open' },
+    { key: 'sp2', symbol: 'QQQ261120P00450000', assetType: 'OPTION', direction: 'short', status: 'closed' },
+    { key: 'vs', symbol: 'SPY', assetType: 'SPREAD', direction: 'long', legs: [{}, {}], status: 'closed' },
+    { key: 'st', symbol: 'AAPL', assetType: 'EQUITY', direction: 'short', status: 'closed' },
+  ];
+  const ctx = { grade: () => '', plan: () => '', market: () => '', labels: () => [], nameOf: (k, v) => v };
+  const keys = filters => applyFilters(trades, filters, ctx).map(t => t.key).join(',');
+  assert.equal(filterField('optionType').label, 'Options');
+  assert.equal(keys([{ field: 'optionType', values: ['Long calls', 'Long puts'] }]), 'lc,lp', 'long calls or long puts or both');
+  assert.equal(keys([{ field: 'optionType', values: ['Sold calls', 'Sold puts'] }]), 'sc,sp,sp2', 'sold options: a put sold is a long bet, still sold');
+  assert.equal(keys([{ field: 'optionType', values: ['Spreads'] }]), 'vs');
+  assert.equal(keys([{ field: 'optionType', values: [NONE], not: true }]), 'lc,lp,sc,sp,sp2,vs', 'every options trade');
+  assert.deepEqual(filterChoices(trades, [], 'optionType', ctx).map(c => `${c.name} ${c.count}`),
+    ['Long calls 1', 'Long puts 1', 'Sold calls 1', 'Sold puts 2', 'Spreads 1', 'Not options 1'], 'how many of each');
+});
+
 test('+ Add filter offers Ticker type in the rail', async () => {
   const a = await journal();
   assert.match(a.list(), /<option value="ticker">Ticker type<\/option>/);

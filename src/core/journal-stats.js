@@ -305,6 +305,20 @@ const R_BINS = [[-Infinity, -2, 'Under −2R'], [-2, -1.5, '−2 to −1.5R'], [
 
 /** @param {StatTrade} t */
 export const instrumentOf = t => t.legs ? 'Spreads' : t.assetType === 'OPTION' ? 'Options' : t.assetType === 'FUTURE' ? 'Futures' : 'Stocks';
+/** the option kinds, in the order the filter and Stats show them */
+export const OPTION_TYPES = ['Long calls', 'Long puts', 'Sold calls', 'Sold puts', 'Spreads'];
+/**
+ * What kind of options trade it is: a call or put bought (Long) or sold to open (Sold), or a spread; null for a stock or a
+ * future. Bought or sold is the trade's direction, not its side (a put sold is a long bet, still Sold puts).
+ * @param {StatTrade} t @returns {string | null}
+ */
+export function optionTypeOf(t) {
+  if (t.legs) return 'Spreads';
+  if (t.assetType !== 'OPTION') return null;
+  const type = (/\d{6}([CP])\d{8}$/.exec(String(t.symbol || '').replace(/\s+/g, '')) || [])[1]; // OCC: 'AAPL  261120C00200000'
+  if (!type) return null;
+  return `${t.direction === 'short' ? 'Sold' : 'Long'} ${type === 'P' ? 'puts' : 'calls'}`;
+}
 /** @param {StatTrade} t */
 const sideOf = t => (t.bias || t.direction) === 'neutral' ? 'Neutral' : (t.bias || t.direction) === 'short' ? 'Short' : 'Long';
 /** an option's or a spread's underlying, a stock's own symbol. @param {StatTrade} t */
@@ -377,6 +391,7 @@ export function breakdowns(trades) {
     bySide: groupBy(list, sideOf, ['Long', 'Short', 'Neutral']),
     byWeekday: groupBy(list, t => nyParts(t.openedAt).weekday, WEEKDAYS),
     byInstrument: groupBy(list, instrumentOf, ['Stocks', 'Options', 'Spreads']),
+    byOptionType: groupBy(list.filter(t => optionTypeOf(t)), t => /** @type {string} */ (optionTypeOf(t)), OPTION_TYPES),
     byTimeOfDay: groupBy(list, t => timeBucket(nyParts(t.openedAt).time), [...TIME_BUCKETS.map(b => b[2]), 'Extended hours']),
     byHold: groupBy(list, t => holdBucket(t.holdMs), HOLD_ORDER),
     holdWinners: avgHold(list.filter(t => t.pnl > 0)), holdLosers: avgHold(list.filter(t => t.pnl < 0)),

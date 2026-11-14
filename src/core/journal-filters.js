@@ -1,6 +1,6 @@
 // @ts-check
 // The Journal's More filters, pure (docs/journal.md, More filters): each one a field (the setup grade, the outcome, R, the
-// ticker type, the instrument, what the review says...), is or is not, and any of its values; a trade passes when it fits
+// ticker type, the instrument, long or sold calls and puts, what the review says...), is or is not, and any of its values; a trade passes when it fits
 // every one. The buckets are the Stats tab's own (time of day, hold, weekday), so a filter and a breakdown row agree.
 // Every trade feature is a field too ('feature:<key>', docs/journal-features.md, part 3): a condition on its stamped value
 // (at least, at most or between), which a trade without a current value never fits; a feature of words picks words.
@@ -8,7 +8,7 @@
 import { INDEXES, isEtf } from './etfs.js';
 import { SECTORS } from './industries.js';
 import { FEATURES } from './features/index.js';
-import { HOLD_ORDER, TIME_BUCKETS, WEEKDAYS, holdBucket, instrumentOf, nyParts, timeBucket } from './journal-stats.js';
+import { HOLD_ORDER, OPTION_TYPES, TIME_BUCKETS, WEEKDAYS, holdBucket, instrumentOf, nyParts, optionTypeOf, timeBucket } from './journal-stats.js';
 import { parseSchwabOption } from './positions.js';
 
 /** @typedef {import('./journal-stats.js').StatTrade} StatTrade
@@ -62,6 +62,7 @@ export const FILTER_FIELDS = [
   { key: 'r', label: 'R', order: [['ge2', '2R and up'], ['1-2', '1 to 2R'], ['0-1', '0 to 1R'], ['-1-0', '−1 to 0R'], ['lt-1', 'Worse than −1R'], [NONE, 'No stop']], of: t => t.status === 'history' ? [] : [rBucket(t.r)] },
   { key: 'ticker', label: 'Ticker type', order: same(['Stocks', 'ETFs', 'Indexes', 'Futures']), of: (t, ctx) => [tickerType(t, ctx.funds)] },
   { key: 'instrument', label: 'Instrument', order: same(['Stocks', 'Options', 'Spreads', 'Futures']), of: t => [instrumentOf(t)] },
+  { key: 'optionType', label: 'Options', order: [...same(OPTION_TYPES), [NONE, 'Not options']], of: t => [optionTypeOf(t) || NONE] },
   { key: 'stockSector', label: 'Sector', industry: true, order: [...same(SECTORS), [NONE, 'Not listed']], of: (t, ctx) => [ctx.industryOf?.(t)?.sector || NONE] },
   { key: 'industry', label: 'Industry group', industry: true, of: (t, ctx) => [ctx.industryOf?.(t)?.industry || NONE] },
   { key: 'time', label: 'Time opened', order: same([...TIME_BUCKETS.map(b => b[2]), 'Extended hours']), of: t => t.openedAt ? [timeBucket(nyParts(t.openedAt).time)] : [] },
