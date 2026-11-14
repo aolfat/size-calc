@@ -48,18 +48,19 @@ test("extended hours: each intraday bar's session, a faint band behind the pre-m
   const [band] = candles.primitives;
   assert.equal(band.paneViews()[0].zOrder(), 'bottom', 'behind the candles');
   assert.ok(candles.updates >= 1, 'redrawn when the bars are painted');
-  assert.deepEqual(json(run, 'h.bands'), [[0, 1], [4, 5]], 'one band per run of extended bars');
-  assert.deepEqual(json(run, "extendedRuns(['post', 'post', 'pre', '', 'pre', '', ''])"), [[0, 2], [4, 4]], 'the night between two days is one run');
+  assert.deepEqual(json(run, 'h.bands'), [[0, 1, 'pre'], [4, 5, 'post']], 'one band per run of extended bars');
+  assert.deepEqual(json(run, "extendedRuns(['post', 'post', 'pre', '', 'pre', '', ''])"), [[0, 1, 'post'], [2, 2, 'pre'], [4, 4, 'pre']], 'after hours and the next pre-market are two bands');
   // drawn edge to edge of its bars: bars 10px apart
   const rects = [];
-  const target = { useMediaCoordinateSpace: fn => fn({ context: { fillRect: (...r) => rects.push(r) }, mediaSize: { width: 100, height: 200 } }) };
+  const context = { fillRect(...r) { rects.push([context.fillStyle, ...r]); } };
+  const target = { useMediaCoordinateSpace: fn => fn({ context, mediaSize: { width: 100, height: 200 } }) };
   c.timeScale = () => ({ logicalToCoordinate: i => 5 + i * 10 });
   band.paneViews()[0].renderer().draw(target);
-  assert.deepEqual(rects, [[0, 0, 20, 200], [40, 0, 20, 200]]);
+  assert.deepEqual(rects, [['--amber', 0, 0, 20, 200], ['--blue', 40, 0, 20, 200]], 'pre-market amber, after hours blue');
   const legend = () => elements.get('jtLegend5').innerHTML;
-  assert.match(legend(), /<span class="jt-legend-ext">After hours<\/span>/, 'the latest bar is after hours');
+  assert.match(legend(), /<span class="jt-legend-ext" style="color:--blue">After hours<\/span>/, 'the latest bar is after hours, in its band\'s color');
   c.hover({ time: c.series[0].data[0].time, logical: 0 });
-  assert.match(legend(), /Pre-market/);
+  assert.match(legend(), /style="color:--amber">Pre-market/);
   c.hover({ time: c.series[0].data[2].time, logical: 2 });
   assert.doesNotMatch(legend(), /jt-legend-ext/, 'nothing on a regular-hours bar');
 

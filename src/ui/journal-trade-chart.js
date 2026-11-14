@@ -4,8 +4,8 @@
 // over it) and price lines. The library pans (drag, sideways swipe) and pinches on touch; a
 // plain vertical scroll or swipe is left to the page, and ctrl/cmd+scroll or a trackpad pinch zooms around the cursor here.
 // The legend over the top-left (like TradeZella's) shows the hovered bar, else the latest: OHLC and the change from the bar
-// before, volume, the 8 EMA and VWAP, and Pre-market or After hours on an extended-hours bar. Those bars also sit on a faint
-// band (the Size tab's chart does the same; sessionBand).
+// before, volume, the 8 EMA and VWAP, and Pre-market or After hours on an extended-hours bar. Those bars also sit on a tinted
+// band, amber before the open and blue after the close (sessionBand).
 import { marketEscape as esc } from '../core/format.js';
 import { chartSeries, compactVolume } from '../core/trade-page.js';
 import { SANS_FONT } from '../lib/media.js';
@@ -41,28 +41,29 @@ function zoomAt(h, clientX, f) {
   ts.setVisibleLogicalRange({ from: at - (at - r.from) * f, to: at + (r.to - at) * f });
 }
 
-/** each run of extended-hours bars, as [first, last] bar indexes @param {string[]} sessions */
+/** each run of pre-market or after-hours bars, as [first, last, 'pre' | 'post'] @param {string[]} sessions */
 export function extendedRuns(sessions) {
-  /** @type {[number, number][]} */
+  /** @type {[number, number, string][]} */
   const runs = [];
   sessions.forEach((x, i) => {
     if (!x) return;
     const last = runs[runs.length - 1];
-    if (last && last[1] === i - 1) last[1] = i; else runs.push([i, i]);
+    if (last && last[1] === i - 1 && last[2] === x) last[1] = i; else runs.push([i, i, x]);
   });
   return runs;
 }
 
 /**
- * The extended-hours band, a pane primitive on the candles: a faint full-height rectangle behind each run of pre-market or
- * after-hours bars (h.bands), edge to edge of its bars, so it stays one block at any zoom.
+ * The extended-hours band, a pane primitive on the candles: a tinted full-height rectangle behind each run of pre-market
+ * (amber) or after-hours (blue) bars (h.bands), as TradingView shades them, edge to edge of its bars, so it stays one block
+ * at any zoom.
  */
 function sessionBand(h) {
   const renderer = {
     draw: target => target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       const ts = h.chart.timeScale();
-      context.fillStyle = 'rgba(255,255,255,0.05)';
-      for (const [a, b] of h.bands) {
+      for (const [a, b, kind] of h.bands) {
+        context.fillStyle = kind === 'pre' ? fade(h.colors.amber, 0.09) : fade(h.colors.blue, 0.11);
         const x1 = ts.logicalToCoordinate(a), x2 = ts.logicalToCoordinate(b), next = ts.logicalToCoordinate(a + 1);
         if (x1 === null || x2 === null || next === null) continue;
         const half = (next - x1) / 2;
@@ -88,8 +89,9 @@ function legendHtml(h, i) {
   const sign = chg > 0 ? '+' : chg < 0 ? '−' : '', bar = b.close >= b.open ? green : red;
   const v = (/** @type {number} */ x) => `<b style="color:${bar}">${f(x)}</b>`;
   // non-breaking inside each pair, so a narrow chart wraps between them, never between a label and its value
-  const ext = h.sessions[i] === 'pre' ? 'Pre-market' : h.sessions[i] === 'post' ? 'After hours' : '';
-  return `<div><span class="jt-legend-title">${esc(h.title)}</span>${ext ? ` <span class="jt-legend-ext">${ext}</span>` : ''} O&nbsp;${v(b.open)} H&nbsp;${v(b.high)} L&nbsp;${v(b.low)} C&nbsp;${v(b.close)} <span style="color:${chg >= 0 ? green : red}">${sign}${f(Math.abs(chg))}&nbsp;(${sign}${Math.abs(pct).toFixed(2)}%)</span></div>`
+  const ext = h.sessions[i] === 'pre' ? `<span class="jt-legend-ext" style="color:${h.colors.amber}">Pre-market</span> `
+    : h.sessions[i] === 'post' ? `<span class="jt-legend-ext" style="color:${h.colors.blue}">After hours</span> ` : '';
+  return `<div><span class="jt-legend-title">${esc(h.title)}</span> ${ext}O&nbsp;${v(b.open)} H&nbsp;${v(b.high)} L&nbsp;${v(b.low)} C&nbsp;${v(b.close)} <span style="color:${chg >= 0 ? green : red}">${sign}${f(Math.abs(chg))}&nbsp;(${sign}${Math.abs(pct).toFixed(2)}%)</span></div>`
     + `<div>Vol <b>${compactVolume(b.volume || 0)}</b></div>`
     + (h.emaValues[i] !== undefined ? `<div>EMA 8 <b style="color:${purple}">${f(h.emaValues[i])}</b>`
       + (h.vwapValues[i] !== undefined ? ` VWAP <b style="color:${teal}">${f(h.vwapValues[i])}</b>` : '') + '</div>' : '');
@@ -100,7 +102,7 @@ function legendHtml(h, i) {
  * @param {any} lib @param {HTMLElement} el @param {HTMLElement} legend @param {{ daily: boolean }} o
  */
 export function makeTradeChart(lib, el, legend, { daily }) {
-  const c = { text: cssColor('--text3'), border: cssColor('--border2'), green: cssColor('--green'), red: cssColor('--red'), purple: cssColor('--purple'), teal: cssColor('--teal') };
+  const c = { text: cssColor('--text3'), border: cssColor('--border2'), green: cssColor('--green'), red: cssColor('--red'), purple: cssColor('--purple'), teal: cssColor('--teal'), amber: cssColor('--amber'), blue: cssColor('--blue') };
   const grid = 'rgba(255,255,255,0.045)';
   const chart = lib.createChart(el, {
     autoSize: true,
