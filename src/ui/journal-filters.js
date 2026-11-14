@@ -1,10 +1,12 @@
-// The Journal's More filters (docs/journal.md, More filters; core/journal-filters.js): + Add filter puts a field under the
-// filters (the setup grade, the outcome, R, the ticker type, the instrument, time and day opened, hold, exits, and what the
-// review says), is or is not, its values as chips with how many trades each lets through, × takes it off. Trades, Calendar and Stats.
+// The Journal's More filters (docs/journal.md, More filters; core/journal-filters.js): + Filter puts a field on (the setup
+// grade, the review, the outcome, R, the ticker type, the instrument, time and day opened, hold, exits, and what the
+// review says), is or is not, its values as chips with how many trades each lets through, × takes it off. Trades, Calendar
+// and Stats share them. In the filter bar each one is a chip ('Setup grade: A, B') that opens its box under the bar; the
+// phones' Filters sheet shows every box.
 // Every trade feature is in the menu too, by family, once the stamps are read: a condition on its value (at least, at most
 // or between, in its own unit), with how many trades fit and how many have no value (docs/journal-features.md, part 3).
-// Saved views: Save as view keeps the setup, the side and the filters under a name (journal_views, synced); the Views row
-// puts one back with a tap, lights the one that matches, and its × deletes it.
+// Saved views: Save as view keeps the setup, the side and the filters under a name (journal_views, synced); the bar's
+// Views menu (the sheet's Views row on phones) puts one back, names the one that matches, and deletes it.
 import { CONDITION_OPS, conditionCounts, conditionSet, FEATURE_FIELD, FILTER_FIELDS, applyFilters, filterChoices, filterField, filtersOn, isCondition, MAX_VIEW_NAME, parseViews, sameView, saveView, viewOf, viewSetsAnything, viewsText } from '../core/journal-filters.js';
 import { store } from '../lib/store.js';
 import { FEATURE_FAMILIES, FEATURES, featureVersion } from '../core/features/index.js';
@@ -14,7 +16,7 @@ import { myFunds, reviewLibrary, setupGradeOf, shownSide, tradeReviewState } fro
 import { renderJournal, reviewsRead } from './journal.js';
 import { industriesReady, tradeIndustry } from './journal-industry.js';
 
-/** the tabs the filters narrow: the same ones the setup filter does */
+/** the tabs the filters narrow: the same ones the setup filter and the dates do */
 export const moreFiltersTab = () => ['trades', 'calendar', 'stats'].includes(state.journalTab);
 
 /** what the review says about a trade, read once per pass (the library is built once, not per trade) */
@@ -28,6 +30,7 @@ function context() {
     nameOf: (kind, key) => lib.nameOf(kind, key, side),
     funds: myFunds(),
     industryOf: t => tradeIndustry(t),
+    reviewed: t => !!d && tradeReviewState(t).reviewed,
     featureValue: (t, f) => { const s = state.featureStamps?.[t.key]?.[f.key]; return s && s.v === featureVersion(f) && s.value !== undefined ? s.value : null; },
   };
 }
@@ -45,44 +48,93 @@ export const onMoreFilters = list => filtersOn(active()) ? applyFilters(list, ac
 /** how many narrow the list, for the phones' Filters count */
 export const moreFiltersOn = () => filtersOn(active());
 
-/**
- * The filters under the others: each one's name, is / is not, its values as chips (counted over base, the trades the other
- * filters leave), ×; then + Add filter (the fields not used yet) and Remove all
- * @param {any[]} base the trades before these filters
- */
-export function moreFiltersHtml(base) {
-  if (!moreFiltersTab()) return '';
-  const ctx = context(), list = active(), used = new Set(list.map(f => f.field));
-  const fields = FILTER_FIELDS.filter(f => !used.has(f.key) && (!f.review || reviewsRead()) && (!f.industry || industriesReady()));
-  const block = f => {
-    const field = filterField(f.field), choices = filterChoices(base, list, f.field, ctx);
-    const is = (v, label) => `<button class="${!!f.not === (v === 'not') ? 'active' : ''}" aria-pressed="${!!f.not === (v === 'not')}" data-action="setJournalFilterNot" data-arg="${f.field}" data-arg2="${v}">${label}</button>`;
-    const chip = c => `<button class="journal-chip${c.on ? ' active' : ''}" aria-pressed="${c.on}" data-action="toggleJournalFilterValue" data-arg="${f.field}" data-arg2="${esc(c.value)}">${esc(c.name)} <b>${c.count}</b></button>`;
-    return `<div class="jf-filter${f.values.length ? ' active' : ''}">
+/** a field's values as chips (counted over base, the trades the other filters leave), is / is not, × */
+function blockHtml(f, base, list, ctx) {
+  const field = filterField(f.field), choices = filterChoices(base, list, f.field, ctx);
+  const is = (v, label) => `<button class="${!!f.not === (v === 'not') ? 'active' : ''}" aria-pressed="${!!f.not === (v === 'not')}" data-action="setJournalFilterNot" data-arg="${f.field}" data-arg2="${v}">${label}</button>`;
+  const chip = c => `<button class="journal-chip${c.on ? ' active' : ''}" aria-pressed="${c.on}" data-action="toggleJournalFilterValue" data-arg="${f.field}" data-arg2="${esc(c.value)}">${esc(c.name)} <b>${c.count}</b></button>`;
+  return `<div class="jf-filter${f.values.length ? ' active' : ''}">
       <div class="jf-head"><span class="jf-name">${esc(field.label)}</span><div class="seg jf-is" aria-label="${esc(field.label)}: is or is not">${is('is', 'is')}${is('not', 'is not')}</div><button class="jf-x" data-action="removeJournalFilter" data-arg="${f.field}" aria-label="Remove the ${esc(field.label)} filter" title="Remove">×</button></div>
       <div class="jf-vals">${choices.length ? choices.map(chip).join('') : '<span class="jf-none">None in these trades.</span>'}</div>
     </div>`;
-  };
+}
+
+/** a feature's condition: at least / at most / between, its number boxes in the feature's unit, and what it lets through */
+function conditionHtml(f, base, list, ctx) {
+  const field = filterField(f.field), unit = UNIT_WORDS[field.feature.unit] || '', op = f.op || 'atleast';
+  const c = conditionCounts(base, list, f.field, ctx), set = conditionSet(f);
+  const opBtn = v => `<button class="${op === v ? 'active' : ''}" aria-pressed="${op === v}" data-action="setJournalFilterOp" data-arg="${f.field}" data-arg2="${v}">${OP_WORDS[v]}</button>`;
+  const box = (end, value) => `<input class="jf-num" type="number" step="any" value="${Number.isFinite(value) ? value : ''}" data-change="setJournalFilterBound" data-arg="${f.field}" data-arg2="${end}" aria-label="${esc(field.label)}: ${end === 'min' ? (op === 'between' ? 'from' : 'at least') : (op === 'between' ? 'to' : 'at most')}" />`;
+  const boxes = op === 'between' ? `${box('min', f.min)}<span class="jf-and">and</span>${box('max', f.max)}` : box(op === 'atmost' ? 'max' : 'min', op === 'atmost' ? f.max : f.min);
+  const count = set ? `${c.fit} of ${c.total} trade${c.total === 1 ? '' : 's'} fit${c.noValue ? ` · ${c.noValue} without a value left out` : ''}` : `${c.total - c.noValue} of ${c.total} trade${c.total === 1 ? '' : 's'} have a value`;
+  return `<div class="jf-filter jf-condition${set ? ' active' : ''}">
+      <div class="jf-head"><span class="jf-name">${esc(field.label)}</span><div class="seg jf-is" aria-label="${esc(field.label)}: the condition">${CONDITION_OPS.map(opBtn).join('')}</div><button class="jf-x" data-action="removeJournalFilter" data-arg="${f.field}" aria-label="Remove the ${esc(field.label)} filter" title="Remove">×</button></div>
+      <div class="jf-vals jf-cond">${boxes}${unit ? `<span class="jf-unit">${esc(unit)}</span>` : ''}<span class="jf-count">${count}</span></div>
+    </div>`;
+}
+const boxHtml = (f, base, list, ctx) => isCondition(filterField(f.field)) ? conditionHtml(f, base, list, ctx) : blockHtml(f, base, list, ctx);
+
+/** + Filter: the fields not used yet, then every trade feature by family once the stamps are read */
+function addMenu(label = '+ Add filter') {
+  const used = new Set(active().map(f => f.field));
+  const fields = FILTER_FIELDS.filter(f => !used.has(f.key) && (!f.review || reviewsRead()) && (!f.industry || industriesReady()));
   const groups = featuresReady() ? FEATURE_FAMILIES.map(fam => {
     const list = FEATURES.filter(f => f.family.key === fam.key && !used.has(FEATURE_FIELD + f.key));
     return list.length ? `<optgroup label="Features: ${esc(fam.name)}">${list.map(f => `<option value="${FEATURE_FIELD}${f.key}">${esc(f.name)}</option>`).join('')}</optgroup>` : '';
   }).join('') : '';
-  const add = fields.length || groups ? `<select class="jf-add" data-change="addJournalFilter" aria-label="Add a filter"><option value="">+ Add filter</option>${fields.map(f => `<option value="${f.key}">${esc(f.label)}</option>`).join('')}${groups}</select>` : '';
+  return fields.length || groups ? `<select class="jf-add" data-change="addJournalFilter" aria-label="Add a filter"><option value="">${label}</option>${fields.map(f => `<option value="${f.key}">${esc(f.label)}</option>`).join('')}${groups}</select>` : '';
+}
+
+/**
+ * Every filter's box (the phones' Filters sheet): its name, is / is not, its values as chips (counted over base, the trades
+ * the other filters leave), ×; then + Add filter, Remove all and Save as view
+ * @param {any[]} base the trades before these filters
+ */
+export function moreFiltersHtml(base) {
+  if (!moreFiltersTab()) return '';
+  const ctx = context(), list = active();
   const clear = list.length ? '<button class="pos-link" data-action="clearJournalFilters">Remove all</button>' : '';
-  /** a feature's condition: at least / at most / between, its number boxes in the feature's unit, and what it lets through */
-  const condition = f => {
-    const field = filterField(f.field), unit = UNIT_WORDS[field.feature.unit] || '', op = f.op || 'atleast';
-    const c = conditionCounts(base, list, f.field, ctx), set = conditionSet(f);
-    const opBtn = v => `<button class="${op === v ? 'active' : ''}" aria-pressed="${op === v}" data-action="setJournalFilterOp" data-arg="${f.field}" data-arg2="${v}">${OP_WORDS[v]}</button>`;
-    const box = (end, value) => `<input class="jf-num" type="number" step="any" value="${Number.isFinite(value) ? value : ''}" data-change="setJournalFilterBound" data-arg="${f.field}" data-arg2="${end}" aria-label="${esc(field.label)}: ${end === 'min' ? (op === 'between' ? 'from' : 'at least') : (op === 'between' ? 'to' : 'at most')}" />`;
-    const boxes = op === 'between' ? `${box('min', f.min)}<span class="jf-and">and</span>${box('max', f.max)}` : box(op === 'atmost' ? 'max' : 'min', op === 'atmost' ? f.max : f.min);
-    const count = set ? `${c.fit} of ${c.total} trade${c.total === 1 ? '' : 's'} fit${c.noValue ? ` · ${c.noValue} without a value left out` : ''}` : `${c.total - c.noValue} of ${c.total} trade${c.total === 1 ? '' : 's'} have a value`;
-    return `<div class="jf-filter jf-condition${set ? ' active' : ''}">
-      <div class="jf-head"><span class="jf-name">${esc(field.label)}</span><div class="seg jf-is" aria-label="${esc(field.label)}: the condition">${CONDITION_OPS.map(opBtn).join('')}</div><button class="jf-x" data-action="removeJournalFilter" data-arg="${f.field}" aria-label="Remove the ${esc(field.label)} filter" title="Remove">×</button></div>
-      <div class="jf-vals jf-cond">${boxes}${unit ? `<span class="jf-unit">${esc(unit)}</span>` : ''}<span class="jf-count">${count}</span></div>
-    </div>`;
+  return `<div class="jf" role="group" aria-label="More filters">${list.map(f => boxHtml(f, base, list, ctx)).join('')}<div class="jf-foot">${addMenu()}${clear}${saveBit()}</div></div>`;
+}
+
+/** a filter in words for its chip: 'A, B', 'not C', 'at least 1.5 ATR', 'any' while nothing is picked */
+function chipWords(f, base, list, ctx) {
+  const field = filterField(f.field);
+  if (isCondition(field)) {
+    if (!conditionSet(f)) return 'any';
+    const unit = UNIT_WORDS[field.feature.unit] || '', u = unit ? ` ${unit}` : '';
+    return f.op === 'between' ? `${Math.min(f.min, f.max)} to ${Math.max(f.min, f.max)}${u}` : `${OP_WORDS[f.op || 'atleast']} ${f.op === 'atmost' ? f.max : f.min}${u}`;
+  }
+  if (!f.values.length) return 'any';
+  const names = filterChoices(base, list, f.field, ctx).filter(c => c.on).map(c => c.name);
+  const words = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+  return `${f.not ? 'not ' : ''}${words}`;
+}
+
+/**
+ * The filter bar's More filters: a chip per filter ('Setup grade: A, B', its box opens under the bar), × on each, then
+ * + Filter; on phones the chips open the Filters sheet instead
+ * @param {any[]} base the trades before these filters @param {boolean} [phone]
+ */
+export function filterChipsHtml(base, phone = false) {
+  if (!moreFiltersTab()) return '';
+  const ctx = context(), list = active();
+  const chip = f => {
+    const field = filterField(f.field), open = !phone && state.journalFilterEdit === f.field, words = chipWords(f, base, list, ctx);
+    const main = phone ? 'data-action="openJournalFilters"' : `data-action="editJournalFilter" data-arg="${f.field}" aria-expanded="${open}"`;
+    return `<span class="${phone ? 'jscope-pill' : 'jscope-chip'}${words !== 'any' ? ' active' : ''}${open ? ' open' : ''}"><button class="jscope-chip-main" ${main}><span class="jscope-k">${esc(field.label)}</span> ${esc(words)}</button><button class="jf-x" data-action="removeJournalFilter" data-arg="${f.field}" aria-label="Remove the ${esc(field.label)} filter" title="Remove">×</button></span>`;
   };
-  return `<div class="jf" role="group" aria-label="More filters">${viewsRow()}${list.map(f => isCondition(filterField(f.field)) ? condition(f) : block(f)).join('')}<div class="jf-foot">${add}${clear}${saveBit()}</div></div>`;
+  return `${list.map(chip).join('')}${phone ? '' : addMenu('+ Filter')}`;
+}
+
+/** under the bar: the box of the chip that's open, with Done; Save as view's name box while it's open */
+export function filterEditorHtml(base) {
+  if (!moreFiltersTab()) return '';
+  const list = active(), f = list.find(x => x.field === state.journalFilterEdit);
+  const naming = state.journalViewDraft !== null || state.journalViewNote ? `<div class="jf-foot">${saveBit()}</div>` : '';
+  if (!f && !naming) return '';
+  const box = f ? `${boxHtml(f, base, list, context())}<div class="jf-foot"><button class="btn" data-action="closeJournalFilterEdit">Done</button></div>` : '';
+  return `<div class="jf jscope-edit" role="group" aria-label="Edit a filter">${box}${naming}</div>`;
 }
 
 // ---------- saved views ----------
@@ -95,7 +147,7 @@ const savedViews = () => parseViews(store.get(VIEWS_KEY));
 const setNow = () => ({ setup: state.journalSetupFilter, side: state.journalSide, filters: state.journalFilters });
 
 /** the Views row: a chip per view, lit while what's set matches it, with × to delete the lit one; nothing with no views */
-function viewsRow() {
+export function viewsRow() {
   const list = savedViews();
   if (!list.length) return '';
   const now = setNow();
@@ -104,6 +156,24 @@ function viewsRow() {
     return `<span class="jf-view"><button class="journal-chip${on ? ' active' : ''}" aria-pressed="${on}" data-action="applyJournalView" data-arg="${i}">${esc(v.name)}</button>${on ? `<button class="jf-x" data-action="deleteJournalView" data-arg="${i}" aria-label="Delete the view ${esc(v.name)}" title="Delete view">×</button>` : ''}</span>`;
   };
   return `<div class="jf-views" role="group" aria-label="Saved views"><span class="jf-views-label">Views</span>${list.map(chip).join('')}</div>`;
+}
+
+/** the bar's Views menu: each view (the one that matches what's set is the one shown), Save as view…, and Delete the
+ * one shown; nothing with no views and nothing to save */
+export function viewsMenu() {
+  const list = savedViews(), now = setNow(), lit = list.findIndex(v => sameView(v, now));
+  const canSave = viewSetsAnything(viewOf(now)) && lit < 0 && state.journalViewDraft === null;
+  if (!list.length && !canSave) return '';
+  const opt = (value, label, on = false) => `<option value="${value}"${on ? ' selected' : ''}>${esc(label)}</option>`;
+  return `<select class="jscope-views${lit >= 0 ? ' active' : ''}" data-change="pickJournalView" aria-label="Saved views">${opt('', 'Views', lit < 0)}${list.map((v, i) => opt(`v:${i}`, v.name, i === lit)).join('')}${canSave ? opt('save', 'Save as view…') : ''}${lit >= 0 ? opt(`del:${lit}`, `Delete "${list[lit].name}"`) : ''}</select>`;
+}
+/** a pick in the Views menu: put a view back, start Save as view, or delete the one shown */
+export function pickJournalView(value) {
+  const v = String(value || '');
+  if (v.startsWith('v:')) return applyJournalView(v.slice(2));
+  if (v === 'save') return startJournalView();
+  if (v.startsWith('del:')) return deleteJournalView(v.slice(4));
+  renderJournal();
 }
 
 /** Save as view once something is set and no view has it; then the name box, Save and Cancel, and why it couldn't */
@@ -125,6 +195,7 @@ export function applyJournalView(i) {
   state.journalFilters = v.filters.map(f => f.op ? { ...f, values: [] } : { ...f, values: [...f.values] });
   state.journalViewDraft = null;
   state.journalViewNote = '';
+  state.journalFilterEdit = '';
   renderJournal();
 }
 /** Save as view: the name box opens, focused */
@@ -157,12 +228,30 @@ export function deleteJournalView(i) {
   renderJournal();
 }
 
-/** + Add filter: the field goes on with nothing picked yet (it narrows nothing until a value is) */
+/** a filter that narrows nothing comes off as its box closes, so the bar holds only what's set */
+function pruneEdited() {
+  const key = state.journalFilterEdit;
+  state.journalFilterEdit = '';
+  const f = state.journalFilters.find(x => x.field === key);
+  if (f && !filtersOn([f])) state.journalFilters = state.journalFilters.filter(x => x !== f);
+}
+/** + Filter: the field goes on with nothing picked yet (it narrows nothing until a value is), its box open */
 export function addJournalFilter(key) {
   if (!filterField(key) || state.journalFilters.some(f => f.field === key)) return renderJournal();
+  pruneEdited();
   state.journalFilters = [...state.journalFilters, isCondition(filterField(key)) ? { field: key, values: [], op: 'atleast', min: null, max: null } : { field: key, values: [], not: false }];
+  state.journalFilterEdit = key;
   renderJournal();
 }
+/** a filter's chip in the bar: its box opens under the bar (another's closes); again closes it */
+export function editJournalFilter(key) {
+  const again = state.journalFilterEdit === key;
+  pruneEdited();
+  if (!again && state.journalFilters.some(f => f.field === key)) state.journalFilterEdit = key;
+  renderJournal();
+}
+/** Done under a filter's box */
+export function closeJournalFilterEdit() { pruneEdited(); renderJournal(); }
 /** a value's chip: on or off */
 export function toggleJournalFilterValue(key, value) {
   state.journalFilters = state.journalFilters.map(f => f.field !== key ? f
@@ -187,5 +276,9 @@ export function setJournalFilterBound(key, end, text) {
   state.journalFilters = state.journalFilters.map(f => f.field === key ? { ...f, [end]: Number.isFinite(n) ? n : null } : f);
   renderJournal();
 }
-export function removeJournalFilter(key) { state.journalFilters = state.journalFilters.filter(f => f.field !== key); renderJournal(); }
-export function clearJournalFilters() { state.journalFilters = []; renderJournal(); }
+export function removeJournalFilter(key) {
+  state.journalFilters = state.journalFilters.filter(f => f.field !== key);
+  if (state.journalFilterEdit === key) state.journalFilterEdit = '';
+  renderJournal();
+}
+export function clearJournalFilters() { state.journalFilters = []; state.journalFilterEdit = ''; renderJournal(); }

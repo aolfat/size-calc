@@ -225,9 +225,9 @@ test('phones: a card per trade, Open then Closed by day with what they took; wid
   assert.match(wide.out(), /journal-table/, 'the table stays on wider screens');
 });
 
-test('the Calendar tab: the month of the latest close, a day tapped opens its page, ‹ › step months', async () => {
+test('the Calendar tab: the month of the latest close, a day tapped opens its page, ‹ › pick a month the other tabs share', async () => {
   const { run, state, out } = await journal();
-  assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="missed">Missed<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats</);
+  assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats<\/button><button[^>]*data-action="setJournalTab" data-arg="missed">Missed</, 'the three tabs that share the filters side by side');
   run("setJournalTab('calendar')");
   assert.match(out(), /class="jc-title">October 2026</);
   assert.match(out(), /<dl class="js-stats jc-stats">\s*<div><dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 trades<\/span>/, 'the month\'s own numbers');
@@ -239,26 +239,28 @@ test('the Calendar tab: the month of the latest close, a day tapped opens its pa
   assert.match(out(), /data-action="openPeriodReview" data-arg="week" data-arg2="2026-10-05"[^>]*><span class="journal-buy">\+\$200<\/span><span class="jc-n">2 trades · 50%</);
   run("pickJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'trades');
-  assert.match(out(), /data-action="clearJournalDay"[^>]*>Exits 10\/6 ×<\/button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="2026-10-06">The day's stats</);
+  assert.match(out(), /<option value="day" selected>Day<\/option>[^]*?<span class="jscope-when">Tue, Oct 6, 2026<\/span>[^]*?data-action="restoreJournalScope">‹ Back to All time</, 'the dates narrow to the day');
   assert.match(out(), /<b>MSFT<\/b>/);
   assert.doesNotMatch(out(), /<b>AAPL<\/b>/, 'only that day\'s trades');
-  run('clearJournalDay()');
-  assert.match(out(), /<b>AAPL<\/b>/);
+  run('restoreJournalScope()');
+  assert.equal(state.journalPeriod, 'all');
   run("setJournalTab('calendar'); shiftJournalMonth('-1')");
-  assert.match(out(), /September 2026<\/span>[\s\S]*No exits this month/);
+  assert.match(out(), /<option value="month" selected>Month<\/option>[^]*?September 2026<\/span>[\s\S]*No exits this month/, 'the month becomes the dates');
   run("shiftJournalMonth('1')");
-  assert.match(out(), /October 2026/);
+  assert.match(out(), /<span class="jscope-when">October 2026</);
+  run("setJournalTab('trades')");
+  assert.match(out(), /<span class="jscope-when">October 2026</, 'Trades keeps the month');
   run("openJournalStats('month', '2026-10')");
   assert.equal(state.journalTab, 'stats');
-  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="month">Month</);
+  assert.match(out(), /<option value="month" selected>Month</);
   run("setJournalTab('calendar')");
   // This month: back to today's month in New York, whatever month is shown
   const now = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'long', year: 'numeric' }).format(new Date());
   run("shiftJournalMonth('-5')");
   assert.match(out(), /data-action="journalThisMonth">This month</);
   run('journalThisMonth()');
-  assert.match(out(), new RegExp(`class="jc-title">${now}<`));
-  assert.match(out(), /data-action="journalThisMonth" disabled>This month</, 'already there: nothing to do');
+  assert.match(out(), new RegExp(`class="jscope-when">${now}<`));
+  assert.doesNotMatch(out(), /data-action="journalThisMonth"/, 'already there: nothing to do');
 });
 
 test('the Calendar tab: a trim shows on its day, and that day lists the trade even while it is open', async () => {
@@ -280,7 +282,7 @@ test('a week\'s stats count it even when its only exits were trims', async () =>
     order(1, 'BUY', '2026-10-05T13:35:00+0000', 100, 100), order(2, 'SELL', '2026-10-05T15:00:00+0000', 50, 103), order(3, 'SELL', '2026-10-13T15:00:00+0000', 20, 104),
   ]);
   run("openJournalStats('week', '2026-10-12')");
-  assert.match(out(), /class="jc-title">Oct 12–16, 2026</);
+  assert.match(out(), /class="jscope-when">Oct 12–16, 2026</);
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$80\.00<span class="pos-sub">1 trade · 1 partly closed<\/span>/);
   assert.match(out(), /<dt>Win rate<\/dt><dd class="">100%/);
   assert.doesNotMatch(out(), /No exits this week/);
@@ -310,23 +312,22 @@ test('the Stats tab: headline numbers, the equity canvas, tables by group, thin 
 test('the Stats tab narrowed to a day, a week or a month: ‹ › step through the ones with trades, the place kept switching', async () => {
   const { run, state, out } = await journal();
   run("setJournalTab('stats')");
-  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="all">All time</);
+  assert.match(out(), /<select class="jscope-unit" data-change="setJournalPeriod" aria-label="Dates"><option value="all" selected>All time</);
   assert.match(out(), /By month/);
   run("setJournalPeriod('day')");
-  assert.match(out(), /class="jc-title">Tue, Oct 6, 2026</, 'the newest day with a close');
+  assert.match(out(), /class="jscope-when">Tue, Oct 6, 2026</, 'the newest day with a close');
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 closed trade</);
   assert.match(out(), /aria-label="Later day with trades" disabled>/, 'nothing newer');
-  assert.match(out(), /data-action="pickJournalDay" data-arg="2026-10-06">The day's trades</);
   assert.doesNotMatch(out(), /By month|By day|By weekday/);
   run("stepJournalPeriod('-1')");
   assert.match(out(), /Mon, Oct 5, 2026[\s\S]*<dd class="journal-buy">\+\$300\.00/);
   assert.match(out(), /aria-label="Earlier day with trades" disabled>/);
   run("setJournalPeriod('week')");
-  assert.match(out(), /class="jc-title">Oct 5–9, 2026</, 'the week of the day shown');
+  assert.match(out(), /class="jscope-when">Oct 5–9, 2026</, 'the week of the day shown');
   assert.match(out(), /<dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 closed trades/);
   assert.match(out(), /By day[\s\S]*<b>Tue 10\/6<\/b>[\s\S]*<b>Mon 10\/5<\/b>/, 'a week shows each day, newest first');
   run("setJournalPeriod('month')");
-  assert.match(out(), /class="jc-title">October 2026</);
+  assert.match(out(), /class="jscope-when">October 2026</);
   run("document.getElementById('journalSymbol').value = 'MSFT'; journalSymbolChanged(); setJournalPeriod('day'); stepJournalPeriod('-1')");
   assert.equal(state.journalPeriodShown, '2026-10-06', 'only MSFT\'s day');
   run("state.journalPeriodKey = '2026-10-05'; renderJournal()");
@@ -359,24 +360,24 @@ test('dates: any span counts the exits between its two days, ends included; it s
 test('the Stats tab over picked dates: From and To boxes, the stats between them, by day or by month', async () => {
   const { run, state, out } = await journal();
   run("setJournalTab('stats'); setJournalPeriod('month'); setJournalPeriod('range')");
-  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="range">Dates</);
-  assert.match(out(), /id="journalRangeFrom" value="2026-10-01" data-change="setStatsDates" data-arg="from"/, 'starts as the month shown');
-  assert.match(out(), /id="journalRangeTo" value="2026-10-31" data-change="setStatsDates" data-arg="to"/);
+  assert.match(out(), /<option value="range" selected>Dates</);
+  assert.match(out(), /id="journalRangeFrom" value="2026-10-01" data-change="setScopeDates" data-arg="from"/, 'starts as the month shown');
+  assert.match(out(), /id="journalRangeTo" value="2026-10-31" data-change="setScopeDates" data-arg="to"/);
   assert.doesNotMatch(out(), /stepJournalPeriod/, 'no ‹ ›: the dates say where');
   assert.match(out(), /<dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 closed trades/);
   assert.match(out(), /By day[\s\S]*<b>Tue 10\/6<\/b>/, 'within a month: by day');
-  run("setStatsDates('from', '2026-10-06')");
+  run("setScopeDates('from', '2026-10-06')");
   assert.equal(state.journalPeriodKey, '2026-10-06..2026-10-31');
   assert.match(out(), /<dd class="journal-sell">−\$100\.00<span class="pos-sub">1 closed trade/);
-  run("setStatsDates('to', '2026-10-06')");
+  run("setScopeDates('to', '2026-10-06')");
   assert.doesNotMatch(out(), /By day|By weekday/, 'one day: no by-day or weekday tables');
-  run("setStatsDates('from', '2026-10-07')");
+  run("setScopeDates('from', '2026-10-07')");
   assert.equal(state.journalPeriodKey, '2026-10-06..2026-10-07', 'a From after To swaps them');
-  run("setStatsDates('to', '')");
+  run("setScopeDates('to', '')");
   assert.equal(state.journalPeriodKey, '2026-10-06..2026-10-07', 'a cleared box keeps the dates');
-  run("setStatsDates('from', '2026-09-01')");
+  run("setScopeDates('from', '2026-09-01')");
   assert.match(out(), /By month<\/div>/, 'over more than one month: by month');
-  run("setStatsDates('from', '2026-10-07'); setStatsDates('to', '2026-10-31')");
+  run("setScopeDates('from', '2026-10-07'); setScopeDates('to', '2026-10-31')");
   assert.match(out(), /No exits between these dates/);
   run("setJournalPeriod('day')");
   assert.equal(state.journalPeriodShown, '2026-10-07', 'back to a day: the first of the empty dates');
@@ -395,86 +396,86 @@ test('a span of days laid out like a month: the weeks it covers, days outside bl
   assert.deepEqual([month.month, month.from, month.to, month.pnl, month.trades], ['2026-10', '2026-10-01', '2026-10-31', 0, 5], 'a month is its span');
 });
 
-test('the Calendar tab over picked dates: Month | Dates, From and To, the weeks they cover, back to a month', async () => {
+test('the Calendar over Dates: the bar\'s From and To, the weeks they cover; Trades and Stats on the same dates; back to a month', async () => {
   const records = [...RECORDS, order(5, 'BUY', '2026-11-02T14:35:00+0000', 10, 50, 'PLTR'), order(6, 'SELL', '2026-11-02T15:00:00+0000', 10, 55, 'PLTR')];
   const { run, state, out } = await journal(records);
   run("setJournalTab('calendar')");
-  assert.match(out(), /aria-pressed="true" data-action="setCalendarDates" data-arg="month">Month</);
-  run("shiftJournalMonth('-1'); setCalendarDates('dates')");
-  assert.equal(state.journalCalDates, '2026-10-01..2026-10-31', 'starts as the month shown');
-  assert.match(out(), /aria-pressed="true" data-action="setCalendarDates" data-arg="dates">Dates</);
-  assert.match(out(), /id="journalCalFrom" value="2026-10-01" data-change="setCalendarRange" data-arg="from"/);
-  assert.doesNotMatch(out(), /shiftJournalMonth|journalThisMonth|Review the month/, 'the dates say where: no ‹ ›, This month or month review');
-  run("setCalendarRange('from', '2026-10-06')");
+  assert.match(out(), /class="jc-title">November 2026</, 'All time: the newest month');
+  run("shiftJournalMonth('-1'); setJournalPeriod('range')");
+  assert.equal(state.journalPeriodKey, '2026-10-01..2026-10-31', 'starts as the month shown');
+  assert.match(out(), /id="journalRangeFrom" value="2026-10-01" data-change="setScopeDates" data-arg="from"/);
+  assert.doesNotMatch(out(), /shiftJournalMonth|Review the month/, 'the dates say where: no ‹ › or month review');
+  run("setScopeDates('from', '2026-10-06')");
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 trade/);
   assert.match(out(), /<tr><td class="jc-out"><\/td><td><button class="jc-day journal-sell" data-action="openJournalDay" data-arg="2026-10-06"/, 'Monday 10/5 before the dates is blank');
-  assert.match(out(), /data-arg="range" data-arg2="2026-10-06\.\.2026-10-31">All of these dates' stats</);
-  run("setCalendarRange('to', '2026-11-06')");
+  assert.match(out(), /data-arg="range" data-arg2="2026-10-06\.\.2026-10-31">The stats ›</);
+  run("setScopeDates('to', '2026-11-06')");
   assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$50\.00<span class="pos-sub">2 trades/, 'across the month end');
   assert.match(out(), /<span class="jc-num">Oct 6<\/span>/, 'across a month end: the first day shown in each month carries it');
   assert.match(out(), /data-arg="2026-11-02"[^>]*><span class="jc-num">Nov 2<\/span><span class="jc-pnl">\+\$50</);
   assert.match(out(), /<span class="jc-num">7<\/span>/, 'other days keep the plain number');
-  run("setCalendarRange('from', '2026-11-20')");
-  assert.equal(state.journalCalDates, '2026-11-06..2026-11-20', 'a From after To swaps them');
+  run("setJournalTab('trades')");
+  assert.match(out(), /id="journalRangeFrom" value="2026-10-06"[\s\S]*id="journalRangeTo" value="2026-11-06"/, 'Trades keeps the dates');
+  assert.match(out(), /<b>PLTR<\/b>/);
+  assert.doesNotMatch(out(), /<b>AAPL<\/b>/, 'the AAPL stock closed 10/5, before the dates');
+  run("setJournalTab('stats')");
+  assert.match(out(), /<dd class="journal-sell">−\$50\.00<span class="pos-sub">2 closed trades/, 'Stats count the same exits');
+  run("setScopeDates('from', '2026-11-20')");
+  assert.equal(state.journalPeriodKey, '2026-11-06..2026-11-20', 'a From after To swaps them');
+  run("setScopeDates('to', '')");
+  assert.equal(state.journalPeriodKey, '2026-11-06..2026-11-20', 'a cleared box keeps the dates');
+  run("setJournalTab('calendar')");
   assert.match(out(), /No exits between these dates/);
-  run("setCalendarRange('to', '')");
-  assert.equal(state.journalCalDates, '2026-11-06..2026-11-20', 'a cleared box keeps the dates');
-  run("setCalendarRange('from', '2026-10-01'); openJournalStats('range', state.journalCalDates)");
-  assert.equal(state.journalTab, 'stats');
-  assert.match(out(), /aria-pressed="true" data-action="setJournalPeriod" data-arg="range">Dates</);
-  assert.match(out(), /id="journalRangeFrom" value="2026-10-01"[\s\S]*id="journalRangeTo" value="2026-11-20"/, 'the stats get the calendar\'s dates');
-  run("setJournalTab('calendar'); setCalendarDates('month')");
-  assert.equal(state.journalCalDates, '');
-  assert.match(out(), /class="jc-title">November 2026</, 'back to the month the dates end in');
+  run("setJournalPeriod('month')");
+  assert.equal(state.journalPeriodKey, '2026-11', 'a month keeps your place');
 });
 
-test('the Trades tab from a date: From alone is that day on, To ends it, a trade opened or with an exit then shows', async () => {
+test('the Trades tab on the shared dates: a trade opened or with an exit in them shows; the review chips count what they leave', async () => {
   const records = [...RECORDS, order(5, 'BUY', '2026-10-05T14:00:00+0000', 10, 50, 'PLTR'), order(6, 'SELL', '2026-10-07T15:00:00+0000', 10, 55, 'PLTR')];
   const { run, state, out } = await journal(records);
   const names = () => [...out().matchAll(/<b>(AAPL|MSFT|PLTR)<\/b>/g)].map(m => m[1]).sort();
   assert.deepEqual(names(), ['AAPL', 'MSFT', 'PLTR']);
-  assert.match(out(), /<label class="jr-from">Trades from <input type="date" id="journalFrom" value="" [^>]*data-change="setJournalDates" data-arg="from"/);
-  assert.doesNotMatch(out(), /clearJournalDates/, 'nothing to clear yet');
-  run("setJournalDates('from', '2026-10-06')");
-  assert.deepEqual(names(), ['MSFT', 'PLTR'], 'PLTR opened 10/5 but closed 10/7');
-  assert.match(out(), /data-action="clearJournalDates">All dates</);
-  run("setJournalDates('to', '2026-10-06')");
-  assert.deepEqual(names(), ['MSFT'], 'one day: opened or closed that day');
-  run("setJournalDates('from', '2026-10-07')");
-  assert.deepEqual([state.journalFrom, state.journalTo], ['2026-10-06', '2026-10-07'], 'a From after To swaps them');
-  run("setJournalDates('from', '')");
-  assert.deepEqual(names(), ['AAPL', 'MSFT', 'PLTR'], 'To alone: everything up to it');
-  run("setJournalDates('to', '2026-10-05')");
-  assert.deepEqual(names(), ['AAPL', 'PLTR']);
+  assert.doesNotMatch(out(), /clearJournalScope/, 'nothing to clear yet');
+  run("setJournalPeriod('day')");
+  assert.equal(state.journalPeriodKey, '2026-10-07', 'the newest day with an exit');
+  assert.deepEqual(names(), ['PLTR']);
+  assert.match(out(), /data-action="clearJournalScope">Clear</);
+  run("stepJournalPeriod('-1')");
+  assert.deepEqual(names(), ['MSFT'], 'one day: opened or closed that day (PLTR was open through it)');
+  run("setJournalPeriod('range'); setScopeDates('from', '2026-10-05'); setScopeDates('to', '2026-10-05')");
+  assert.deepEqual(names(), ['AAPL', 'PLTR'], 'PLTR opened 10/5 and closed 10/7');
   assert.match(out(), /data-action="setJournalReviewFilter" data-arg="all">All <b>2<\/b>/, 'the review chips count what the dates leave');
-  run('clearJournalDates()');
-  assert.deepEqual([state.journalFrom, state.journalTo], ['', '']);
+  run('clearJournalScope()');
+  assert.equal(state.journalPeriod, 'all');
   assert.deepEqual(names(), ['AAPL', 'MSFT', 'PLTR']);
 });
 
-test('phones: the Trades dates sit in Filters and count as one on', async () => {
+test('phones: the dates sit in the Filters sheet, as a chip under the bar, and count as one on', async () => {
   const a = await app({ width: 390, supabase: fakeRecords(RECORDS), session: SESSION });
   a.run("setView('journal')");
   await a.run('loadJournal()');
   const out = () => a.elements.get('journalSection').innerHTML;
-  a.run("setJournalDates('from', '2026-10-06')");
-  assert.match(out(), /data-action="toggleJournalFilters" aria-expanded="false">Filters <b>1<\/b>/);
-  assert.doesNotMatch(out(), /id="journalFrom"/, 'closed: the boxes wait under Filters');
-  a.run('toggleJournalFilters()');
-  assert.match(out(), /id="journalFrom" value="2026-10-06"/);
+  a.run("setJournalPeriod('month')");
+  assert.match(out(), /data-action="openJournalFilters" aria-haspopup="dialog">Filters <b>1<\/b>/);
+  assert.match(out(), /<span class="jscope-pill active"><button data-action="openJournalFilters">October 2026<\/button><button class="jf-x" data-action="setJournalPeriod" data-arg="all"/, 'the dates as a chip, × back to all time');
+  assert.doesNotMatch(out(), /jscope-unit/, 'the dates menu waits in the sheet');
+  a.run('openJournalFilters()');
+  assert.match(a.elements.get('journalFiltersBody').innerHTML, /<div class="seg jscope-units" aria-label="Dates">[^]*?aria-pressed="true" data-action="setJournalPeriod" data-arg="month">Month<\/button>[^]*?<span class="jscope-when">October 2026<\/span>/);
 });
 
 test('a touch screen applies a date box once its picker closes: the redraw no longer pulls the box from under it', async () => {
   const a = await app({ width: 390, supabase: fakeRecords(RECORDS), session: SESSION });
   a.run("setView('journal')");
   await a.run('loadJournal()');
-  a.run(`var box = { dataset: { arg: 'from' }, value: '2026-10-06', listeners: 0, addEventListener(type, fn) { this.listeners++; this.done = fn; } }; document.activeElement = box;`);
-  a.run('actions.setJournalDates(box)');
-  assert.equal(a.state.journalFrom, '', 'waits while the picker is open');
-  a.run("box.value = '2026-10-07'; actions.setJournalDates(box)");
+  a.run("setJournalPeriod('range')");
+  const key = a.state.journalPeriodKey;
+  a.run(`var box = { dataset: { arg: 'to' }, value: '2026-10-08', listeners: 0, addEventListener(type, fn) { this.listeners++; this.done = fn; } }; document.activeElement = box;`);
+  a.run('actions.setScopeDates(box)');
+  assert.equal(a.state.journalPeriodKey, key, 'waits while the picker is open');
+  a.run("box.value = '2026-10-09'; actions.setScopeDates(box)");
   assert.equal(a.run('box.listeners'), 1, 'one wait for the latest value');
   a.run('document.activeElement = null; box.done()');
-  assert.equal(a.state.journalFrom, '2026-10-07', 'closing the picker applies the day picked');
-  a.run("box.value = '2026-10-08'; actions.setJournalDates(box)");
-  assert.equal(a.state.journalFrom, '2026-10-08', 'a change with the box not focused applies at once');
+  assert.equal(a.state.journalPeriodKey.split('..')[1], '2026-10-09', 'closing the picker applies the day picked');
+  a.run("box.value = '2026-10-12'; actions.setScopeDates(box)");
+  assert.equal(a.state.journalPeriodKey.split('..')[1], '2026-10-12', 'a change with the box not focused applies at once');
 });

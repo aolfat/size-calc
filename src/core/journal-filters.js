@@ -17,7 +17,7 @@ import { parseSchwabOption } from './positions.js';
  * @typedef {{ grade: (t: StatTrade) => string, plan: (t: StatTrade) => string, market: (t: StatTrade) => string,
  *   labels: (t: StatTrade, kind: string) => string[], nameOf: (kind: string, key: string) => string,
  *   funds?: Record<string, string>, featureValue?: (t: StatTrade, f: Feature) => number | string | null,
- *   industryOf?: (t: StatTrade) => { industry: string, sector: string } | null }} FilterContext
+ *   industryOf?: (t: StatTrade) => { industry: string, sector: string } | null, reviewed?: (t: StatTrade) => boolean }} FilterContext
  *   what the review says about a trade, an item's name (the UI's review data), your funds (journal_funds), a trade
  *   feature's current stamped value (null: not stamped, outdated or unknown), and its stock's industry group and sector
  *   (null: the universe doesn't list it)
@@ -58,6 +58,7 @@ const same = (/** @type {string[]} */ list) => list.map(v => /** @type {[string,
 /** @type {FilterField[]} every field the menu offers, in its order; review ones once the reviews are read */
 export const FILTER_FIELDS = [
   { key: 'grade', label: 'Setup grade', review: true, order: [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'], ['F', 'F'], [NONE, 'Not graded']], of: answer((t, ctx) => ctx.grade(t)) },
+  { key: 'reviewed', label: 'Review', review: true, order: [['yes', 'Reviewed'], ['no', 'Not reviewed']], of: (t, ctx) => t.status === 'history' ? [] : [ctx.reviewed?.(t) ? 'yes' : 'no'] },
   { key: 'outcome', label: 'Outcome', order: [['win', 'Win'], ['loss', 'Loss'], ['even', 'Breakeven'], ['open', 'Open']], of: outcomeOf },
   { key: 'r', label: 'R', order: [['ge2', '2R and up'], ['1-2', '1 to 2R'], ['0-1', '0 to 1R'], ['-1-0', '−1 to 0R'], ['lt-1', 'Worse than −1R'], [NONE, 'No stop']], of: t => t.status === 'history' ? [] : [rBucket(t.r)] },
   { key: 'ticker', label: 'Ticker type', order: same(['Stocks', 'ETFs', 'Indexes', 'Futures']), of: (t, ctx) => [tickerType(t, ctx.funds)] },

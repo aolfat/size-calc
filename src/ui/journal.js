@@ -21,7 +21,7 @@ import { keepScroll } from '../lib/keep-scroll.js';
 import { inZone, zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { captureNow, maybeCapture, onCaptureChange } from './schwab-capture.js';
-import { calendarView, drawJournalEquity, nextJournalMonth, statsView, thisMonth } from './journal-stats.js';
+import { calendarView, drawJournalEquity, nextJournalMonth, periodName, statsScope, statsView, thisMonth } from './journal-stats.js';
 import { maybeSaveBars } from './journal-bars.js';
 import { featuresLine, featuresView, loadFeatureRows, maybeStampFeatures, stampAfterImport } from './journal-features.js';
 import { loadIndustries } from './journal-industry.js';
@@ -36,9 +36,9 @@ import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-book
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
 import { tosSectionHtml } from './journal-tos.js';
-import { dayPageHtml, dayReviewLink, todayButtonHtml, todayEconWords } from './journal-notebook.js';
+import { dayPageHtml, todayButtonHtml, todayEconWords } from './journal-notebook.js';
 import { missedTabHtml } from './journal-missed.js';
-import { moreFiltersHtml, moreFiltersOn, onMoreFilters } from './journal-filters.js';
+import { filterChipsHtml, filterEditorHtml, moreFiltersHtml, moreFiltersOn, onMoreFilters, viewsMenu, viewsRow } from './journal-filters.js';
 import { drawMissedChart } from './missed-chart.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { showError, showToast } from './feedback.js';
@@ -268,7 +268,6 @@ function filtered(list, sideOf) {
   const q = state.journalSymbol.trim().toUpperCase();
   return list.filter(x => (state.journalSide === 'all' || sideOf(x) === state.journalSide) && (!q || (x.label || x.symbol).toUpperCase().includes(q)));
 }
-/** the trades tab, narrowed to a day picked on the calendar (the trades with an exit that New York day) */
 /** the review chips: To review (the deck's queue), Reviewed, and No setup (nothing labelled yet); All lets every trade through */
 export const reviewsRead = () => !!state.journalReview && !state.journalReviewError;
 export const isReviewed = t => reviewsRead() && t.status !== 'history' && tradeReviewState(t).reviewed;
@@ -280,18 +279,125 @@ const onReviewFilter = list => REVIEW_TESTS[state.journalReviewFilter] ? list.fi
 const onSetupFilter = list => state.journalSetupFilter ? list.filter(t => setupMatches(t, state.journalSetupFilter)) : list;
 /** the setup filter and More filters (journal-filters.js), wherever the setup filter applies */
 const onTradeFilters = list => onMoreFilters(onSetupFilter(list));
-/** the trades More filters count over: the tab's other filters applied (the Trades tab's dates and day too), deleted ones left out */
-const filterBase = all => (state.journalTab === 'trades' ? onSetupFilter(onPickedDay(onDates(filtered(all, t => t.bias)))) : onSetupFilter(filtered(all, t => t.bias))).filter(t => !t.deleted);
 export function setJournalSetupFilter(v) { state.journalSetupFilter = String(v || ''); renderJournal(); }
+export function clearJournalSetupFilter() { setJournalSetupFilter(''); }
 export function setJournalReviewFilter(v) { state.journalReviewFilter = v in REVIEW_TESTS ? v : 'all'; renderJournal(); }
-const onPickedDay = list => state.journalDay ? list.filter(t => exitDays(t).has(state.journalDay)) : list;
-/** the Trades tab's dates (state.journalFrom / journalTo, either may be blank): a trade opened then, or with an exit then */
-const onDates = list => {
-  const from = state.journalFrom || '0000', to = state.journalTo || '9999', inside = d => d >= from && d <= to;
-  if (!state.journalFrom && !state.journalTo) return list;
+
+// ---------- the dates Trades, Calendar and Stats share (the filter bar's first control) ----------
+
+/** the trades the dates are read against (the newest period with exits when none is picked): side, symbol, setup, More filters */
+const scopeTrades = () => onTradeFilters(filtered(currentTrades(), t => t.bias));
+/**
+ * The dates the three tabs share (state.journalPeriod / journalPeriodKey): all time, a day, week or month, or your own
+ * dates. { unit, key, active (the periods with exits, for ‹ ›), span: [first, last day] or null for all time }
+ */
+export function journalScope(trades = scopeTrades()) {
+  const { unit, key, active } = statsScope(trades);
+  return { unit, key, active, span: unit === 'all' ? null : periodSpan(unit, key) };
+}
+/** the Trades tab's dates: a trade opened in them, or with an exit in them */
+const onScopeDates = list => {
+  const { span } = journalScope();
+  if (!span) return list;
+  const [from, to] = span, inside = d => d >= from && d <= to;
   return list.filter(t => (t.openedAt && inside(nyParts(t.openedAt).day)) || [...exitDays(t)].some(inside));
 };
-/** Trades from … to …: either end may be blank (From alone: that day on), a From after To swaps them */
+/** the trades More filters count over: the side, symbol, dates and setup applied, deleted ones left out */
+const filterBase = all => onSetupFilter(onScopeDates(filtered(all, t => t.bias))).filter(t => !t.deleted);
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const longDay = d => new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+/** the dates in words: 'All time', 'October 2026', 'Oct 5–9, 2026', 'Tue, Oct 6, 2026', 'Oct 1, 2026 – Oct 20, 2026' */
+export function scopeName(unit, key) {
+  if (unit === 'all' || !key) return 'All time';
+  if (unit === 'range') { const [from, to] = periodSpan('range', key); return from === to ? longDay(from) : `${longDay(from)} – ${longDay(to)}`; }
+  return periodName(unit, key);
+}
+const dropBack = () => { state.journalScopeBack = null; };
+/** All time / Month / Week / Day / Dates: a new unit keeps your place (the newest exit in what's shown now; Dates start as the span shown) */
+export function setJournalPeriod(unit) {
+  const to = PERIODS.includes(unit) || unit === 'range' ? unit : 'all';
+  if (to === state.journalPeriod) return renderJournal();
+  state.journalPeriodKey = to === 'all' ? '' : switchPeriod(scopeTrades(), state.journalPeriod, state.journalPeriodShown, to);
+  state.journalPeriod = to;
+  state.journalReviewPeriod = null;
+  dropBack();
+  renderJournal();
+}
+/** Dates: a new first or last day, the other kept (swapped when they cross); a cleared box gets its day back */
+export function setScopeDates(end, value) {
+  if (state.journalPeriod !== 'range') return;
+  if (!DAY_RE.test(value || '')) return renderJournal();
+  const [from, to] = isRangeKey(state.journalPeriodShown) ? periodSpan('range', state.journalPeriodShown) : [value, value];
+  state.journalPeriodKey = end === 'to' ? rangeKey(from, value) : rangeKey(value, to);
+  dropBack();
+  renderJournal();
+}
+/** ‹ or ›: the nearest day, week or month with exits before or after the one shown */
+export function stepJournalPeriod(by) {
+  if (!PERIODS.includes(state.journalPeriod)) return;
+  const next = stepPeriod(activePeriods(scopeTrades(), state.journalPeriod), state.journalPeriodShown, Number(by) || 0);
+  if (!next) return;
+  state.journalPeriodKey = next;
+  state.journalReviewPeriod = null;
+  dropBack();
+  renderJournal();
+}
+/** a month on the calendar (its ‹ › under All time, This month): the dates become that month */
+function toMonth(month) {
+  state.journalPeriod = 'month';
+  state.journalPeriodKey = month;
+  state.journalReviewPeriod = null;
+  dropBack();
+  renderJournal();
+}
+export function shiftJournalMonth(by) { toMonth(nextJournalMonth(by)); }
+export function journalThisMonth() { toMonth(thisMonth()); }
+/** a day's trades or stats (a calendar day, the notebook's links): the dates narrow to that day, ‹ Back to … returns */
+function narrowToDay(day) {
+  if (!DAY_RE.test(day || '')) return false;
+  if (!(state.journalPeriod === 'day' && state.journalPeriodKey === day) && !state.journalScopeBack) {
+    state.journalScopeBack = { period: state.journalPeriod, key: state.journalPeriod === 'all' ? '' : state.journalPeriodKey || state.journalPeriodShown };
+  }
+  state.journalPeriod = 'day';
+  state.journalPeriodKey = day;
+  return true;
+}
+/** a day's trades: the Trades tab on that day (opened or with an exit then) */
+export function pickJournalDay(day) {
+  if (!narrowToDay(day)) return renderJournal();
+  state.journalTab = 'trades';
+  state.journalNotebookDay = '';
+  renderJournal();
+}
+/** ‹ Back to …: the dates before a day was picked */
+export function restoreJournalScope() {
+  const b = state.journalScopeBack;
+  if (b) { state.journalPeriod = b.period; state.journalPeriodKey = b.key; }
+  dropBack();
+  renderJournal();
+}
+/** the stats for one day, week or month, or a span of dates, from the calendar or a day's page */
+export function openJournalStats(unit, key) {
+  const range = unit === 'range' && isRangeKey(key);
+  const ok = range || (PERIODS.includes(unit) && (unit === 'month' ? /^\d{4}-\d{2}$/ : DAY_RE).test(key || ''));
+  if (ok && unit === 'day') narrowToDay(key);
+  else {
+    const period = ok ? unit : 'all', k = range ? key : ok ? periodKey(key, unit) : '';
+    if (period !== state.journalPeriod || k !== state.journalPeriodKey) dropBack();
+    state.journalPeriod = period;
+    state.journalPeriodKey = k;
+  }
+  state.journalTab = 'stats';
+  state.journalNotebookDay = '';
+  renderJournal();
+}
+/** Clear: every filter off, the dates back to all time (the review chips and fees stay: they're how you work, not what you look at) */
+export function clearJournalScope() {
+  Object.assign(state, { journalSymbol: '', journalSide: 'all', journalSetupFilter: '', journalFilters: [], journalFilterEdit: '', journalPeriod: 'all', journalPeriodKey: '', journalScopeBack: null, journalReviewPeriod: null });
+  renderJournal();
+}
+
 /**
  * A Journal date box's change, applied once you're done picking. On a touch screen the picker fires change while it's
  * still open, and the redraw replaced the box under it (an iPhone's picker closed after the first spin or tap), so there
@@ -303,19 +409,6 @@ export function whenPicked(el, apply) {
   if (el.dataset.pickPending) return; // one blur applies the latest value
   el.dataset.pickPending = '1';
   el.addEventListener('blur', () => { delete el.dataset.pickPending; apply(); }, { once: true });
-}
-
-export function setJournalDates(end, value) {
-  const v = /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '';
-  if (end === 'to') state.journalTo = v; else state.journalFrom = v;
-  if (state.journalFrom && state.journalTo && state.journalFrom > state.journalTo) [state.journalFrom, state.journalTo] = [state.journalTo, state.journalFrom];
-  renderJournal();
-}
-export function clearJournalDates() { state.journalFrom = ''; state.journalTo = ''; renderJournal(); }
-/** the Trades tab's date boxes, All dates once either is set */
-function datesHtml() {
-  const today = nyParts(new Date().toISOString()).day, set = state.journalFrom || state.journalTo;
-  return `<span class="journal-dates${set ? ' active' : ''}"><label class="jr-from">Trades from <input type="date" id="journalFrom" value="${state.journalFrom}" max="${today}" data-change="setJournalDates" data-arg="from" aria-label="Show trades from this day" /></label><label class="jr-from">to <input type="date" id="journalTo" value="${state.journalTo}" data-change="setJournalDates" data-arg="to" aria-label="Show trades up to this day" /></label>${set ? '<button class="pos-link" data-action="clearJournalDates">All dates</button>' : ''}</span>`;
 }
 
 function summaryLine(trades, deleted) {
@@ -334,7 +427,7 @@ function summaryLine(trades, deleted) {
 
 /** the setup filter's menu: each kind (any bounce) with its setups under it, then each level; shown once there's one */
 function setupFilter(all) {
-  if (state.journalTab === 'fills' || state.journalTab === 'setups') return '';
+  if (!['trades', 'calendar', 'stats'].includes(state.journalTab)) return '';
   const { setups, levels } = setupMenu(all);
   if (!setups.length && !state.journalSetupFilter) return '';
   const opt = o => `<option value="${esc(o.value)}"${o.value === state.journalSetupFilter ? ' selected' : ''}>${o.depth ? '&nbsp;&nbsp;&nbsp;' : ''}${esc(o.name)} (${o.count})</option>`;
@@ -343,57 +436,127 @@ function setupFilter(all) {
     </select>`;
 }
 
-function controls(all = [], navigationOnly = false) {
-  const on = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
-  const tab = (v, label) => `<button ${on(state.journalTab, v)} data-action="setJournalTab" data-arg="${v}">${label}</button>`;
-  const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
+// ---------- the filter bar: one row over Trades, Calendar and Stats (Setups and Fills take the symbol and side) ----------
+
+const onAttr = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
+const sideSeg = () => {
+  const b = (v, label) => `<button ${onAttr(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
+  return `<div class="seg jscope-side" aria-label="Side">${b('all', 'All')}${b('long', 'Long')}${b('short', 'Short')}</div>`;
+};
+const feesSeg = () => {
   const fees = journalAfterFees() ? 'after' : 'before';
-  const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const tabs = `<div class="seg journal-tabs journal-nav" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('missed', 'Missed')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
-  if (state.journalTab === 'books' || state.journalTab === 'features' || state.journalTab === 'missed' || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
-  const symbol = `<input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />`;
-  const dayChip = state.journalTab === 'trades' && state.journalDay ? `<button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>${dayReviewLink(state.journalDay)}` : '';
+  const b = (v, label) => `<button ${onAttr(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
+  return `<div class="seg jscope-fees" aria-label="P&amp;L">${b('before', 'Before fees')}${b('after', 'After fees')}</div>`;
+};
+const symbolBox = () => `<input type="search" id="journalSymbol" class="jscope-symbol${state.journalSymbol.trim() ? ' active' : ''}" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />`;
+/** the tabs the bar shows on: the three that share everything, and Setups and Fills (symbol and side) */
+const barTab = () => ['trades', 'calendar', 'stats', 'setups', 'fills'].includes(state.journalTab);
+const fullTab = () => ['trades', 'calendar', 'stats'].includes(state.journalTab);
+/** a span of dates as two boxes; changing either keeps the other */
+function rangeBoxes(key) {
+  const [from, to] = periodSpan('range', key);
+  const box = (end, value, label) => `<label class="jr-from">${label} <input type="date" id="journalRange${end === 'from' ? 'From' : 'To'}" value="${value}" data-change="setScopeDates" data-arg="${end}" aria-label="Dates ${label.toLowerCase()} this day" /></label>`;
+  return `<span class="js-range">${box('from', from, 'From')}${box('to', to, 'To')}</span>`;
+}
+/** the dates: the unit (a menu in the bar, buttons in the phones' sheet), ‹ the period ›, or the two boxes for Dates, and ‹ Back to … */
+function timeControl(sheet = false) {
+  const { unit, key, active } = journalScope();
+  const units = [['all', 'All time'], ['month', 'Month'], ['week', 'Week'], ['day', 'Day'], ['range', 'Dates']];
+  const pick = sheet
+    ? `<div class="seg jscope-units" aria-label="Dates">${units.map(([v, label]) => `<button ${onAttr(unit, v)} data-action="setJournalPeriod" data-arg="${v}">${v === 'all' ? 'All' : label}</button>`).join('')}</div>`
+    : `<select class="jscope-unit${unit !== 'all' ? ' active' : ''}" data-change="setJournalPeriod" aria-label="Dates">${units.map(([v, label]) => `<option value="${v}"${unit === v ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+  const off = by => stepPeriod(active, key, by) ? '' : ' disabled';
+  const nav = unit === 'all' ? '' : unit === 'range' ? rangeBoxes(key)
+    : `<span class="jscope-nav"><button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="-1" aria-label="Earlier ${unit} with trades"${off(-1)}>‹</button><span class="jscope-when">${esc(scopeName(unit, key))}</span><button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="1" aria-label="Later ${unit} with trades"${off(1)}>›</button></span>`;
+  const b = state.journalScopeBack;
+  const back = b ? `<button class="pos-link jscope-back" data-action="restoreJournalScope">‹ Back to ${esc(scopeName(b.period, b.key))}</button>` : '';
+  return `<span class="jscope-time" role="group" aria-label="Dates">${pick}${nav}${back}</span>`;
+}
+/** what narrows: the dates, the side, the setup and More filters (the symbol box shows itself) */
+const narrowing = () => fullTab()
+  ? (state.journalPeriod !== 'all' ? 1 : 0) + (state.journalSide !== 'all' ? 1 : 0) + (state.journalSetupFilter ? 1 : 0) + moreFiltersOn()
+  : state.journalSide !== 'all' ? 1 : 0;
+const clearLink = () => narrowing() || state.journalSymbol.trim() ? '<button class="pos-link jscope-clear" data-action="clearJournalScope">Clear</button>' : '';
+/** how many trades the filters and dates leave, of all of them */
+function countHtml(all) {
+  const total = all.filter(t => !t.deleted).length, shown = onMoreFilters(filterBase(all)).length;
+  return `<span class="jscope-count" role="status"><b>${shown}</b> of ${total} trade${total === 1 ? '' : 's'}</span>`;
+}
+
+/** the bar (tablets and the desktop): dates, symbol, side, setup, a chip per More filter and + Filter, then the count, Views, fees and Clear; the open chip's box under it */
+function scopeBar(all) {
+  if (!barTab()) return '';
+  const full = fullTab(), base = full ? filterBase(all) : [];
+  return `<div class="jscope" role="group" aria-label="Filters">
+      ${full ? timeControl() : ''}${symbolBox()}${sideSeg()}${full ? setupFilter(all) : ''}${full ? filterChipsHtml(base) : ''}
+      <span class="jscope-end">${full ? countHtml(all) : ''}${full ? viewsMenu() : ''}${state.journalTab !== 'fills' ? feesSeg() : ''}${clearLink()}</span>
+    </div>${full ? filterEditorHtml(base) : ''}`;
+}
+
+/** phones: what narrows as chips that open the Filters sheet, each with × (the dates first; side-swipe) */
+function phoneChips(all) {
+  if (!barTab()) return '';
+  const full = fullTab();
+  const pill = (label, x, on = true) => `<span class="jscope-pill${on ? ' active' : ''}"><button data-action="openJournalFilters">${label}</button>${x ? `<button class="jf-x" ${x} title="Remove">×</button>` : ''}</span>`;
+  const { unit, key } = full ? journalScope() : { unit: 'all', key: '' };
+  const setup = full && state.journalSetupFilter ? setupMenu(all).setups.concat(setupMenu(all).levels).find(o => o.value === state.journalSetupFilter) : null;
+  const chips = [
+    full ? pill(esc(scopeName(unit, key)), unit === 'all' ? '' : 'data-action="setJournalPeriod" data-arg="all" aria-label="All dates"', unit !== 'all') : '',
+    state.journalSide !== 'all' ? pill(state.journalSide === 'long' ? 'Long' : 'Short', 'data-action="setJournalSide" data-arg="all" aria-label="Both sides"') : '',
+    full && state.journalSetupFilter ? pill(esc(setup?.name || 'Setup'), 'data-action="clearJournalSetupFilter" aria-label="All setups"') : '',
+    full ? filterChipsHtml(filterBase(all), true) : '',
+  ].join('');
+  const b = full && state.journalScopeBack;
+  return `<div class="jscope-pills" role="group" aria-label="Filters on">${chips}${b ? `<button class="pos-link jscope-back" data-action="restoreJournalScope">‹ Back to ${esc(scopeName(b.period, b.key))}</button>` : ''}</div>`;
+}
+
+/** Filters (phones): a sheet with the dates, views, side, setup, fees, Review from on Trades, and every More filter */
+export function openJournalFilters() { openSheet('journalFilters'); renderJournalFiltersSheet(); }
+export function renderJournalFiltersSheet() {
+  const sheet = document.getElementById('journalFiltersSheet'), body = document.getElementById('journalFiltersBody');
+  if (!sheet || !body || sheet.style.display === 'none') return;
+  const all = state.session && fillsFrom(state.journalRecords || []).length ? currentTrades() : [];
+  const full = fullTab(), sec = (label, html) => html ? `<div class="jscope-sec"><div class="jscope-lbl">${label}</div>${html}</div>` : '';
+  const clear = clearLink();
+  body.innerHTML = `${full ? `<p class="hint jscope-sheet-count">${countHtml(all)} · Trades, Calendar and Stats</p>` : ''}
+    ${full ? sec('Views', viewsRow()) : ''}
+    ${full ? sec('When', timeControl(true)) : ''}
+    ${sec('Side', sideSeg())}
+    ${full ? sec('Setup', setupFilter(all)) : ''}
+    ${state.journalTab !== 'fills' ? sec('P&amp;L', feesSeg()) : ''}
+    ${state.journalTab === 'trades' ? sec('Review deck', reviewFromHtml(all)) : ''}
+    ${full ? sec('More filters', moreFiltersHtml(filterBase(all))) : ''}
+    <div class="jscope-sheet-foot">${clear}<button class="btn primary" data-action="closeSheet">Done</button></div>`;
+}
+
+function controls(all = [], navigationOnly = false) {
+  const tab = (v, label) => `<button ${onAttr(state.journalTab, v)} data-action="setJournalTab" data-arg="${v}">${label}</button>`;
+  const tabs = `<div class="seg journal-tabs journal-nav" aria-label="Show">${tab('trades', 'Trades')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('missed', 'Missed')}${tab('setups', 'Setups')}${tab('books', '<span class="mb-tab-long">Model books</span><span class="mb-tab-short">Books</span>')}${tab('features', 'Features')}${tab('fills', 'Fills')}</div>`;
+  if (!barTab() || navigationOnly) return `<div class="journal-controls">${tabs}</div>`;
+  const trades = state.journalTab === 'trades';
   if (mq(PHONE_MQ)) {
-    // phones: the symbol box, Filters (how many are on) and Select on one line; the rest opens under it
-    const trades = state.journalTab === 'trades';
-    const on = (state.journalSetupFilter && setupFilter(all) ? 1 : 0) + (state.journalSide !== 'all' ? 1 : 0) + (trades && reviewFrom() ? 1 : 0) + (trades && (state.journalFrom || state.journalTo) ? 1 : 0) + moreFiltersOn();
-    const open = state.journalFiltersOpen;
+    // phones: the symbol box, Filters (how many narrow) and Select on one line, what narrows as chips under it; the rest is in the sheet
+    const n = narrowing();
     return `<div class="journal-controls">
     ${tabs}
-    <div class="journal-phone-bar">${symbol}
-      <button class="btn journal-filters-btn${on ? ' active' : ''}" data-action="toggleJournalFilters" aria-expanded="${open}">Filters${on ? ` <b>${on}</b>` : ''}</button>
+    <div class="journal-phone-bar">${symbolBox()}
+      <button class="btn journal-filters-btn${n ? ' active' : ''}" data-action="openJournalFilters" aria-haspopup="dialog">Filters${n ? ` <b>${n}</b>` : ''}</button>
       ${trades ? `<button class="btn journal-cols-btn" data-action="toggleJournalSelect" aria-pressed="${state.journalSelecting}">${state.journalSelecting ? 'Done' : 'Select'}</button>` : ''}
     </div>
-    ${open ? `<div class="journal-filters">
-      ${setupFilter(all)}
-      <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
-      ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
-      ${trades ? datesHtml() : ''}
-      ${trades ? reviewFromHtml(all) : ''}
-      ${moreFiltersHtml(filterBase(all))}
-    </div>` : ''}
-    ${dayChip ? `<div class="journal-filters">${dayChip}</div>` : ''}
+    ${phoneChips(all)}
     ${trades ? reviewChips(all, false) : ''}
   </div>`;
   }
   return `<div class="journal-controls">
     ${tabs}
-    <div class="journal-filters">
-      ${symbol}
-      ${setupFilter(all)}
-      <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
-      ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
-      ${state.journalTab === 'trades' ? datesHtml() : ''}
-      ${dayChip}
-    </div>
-    ${moreFiltersHtml(filterBase(all))}
-    ${state.journalTab === 'trades' ? reviewChips(all) : ''}
+    ${scopeBar(all)}
+    ${trades ? reviewChips(all) : ''}
   </div>`;
 }
 
 /** All · Open (while any is) · To review · Reviewed · No setup, each with how many of the trades the other filters leave */
 function reviewChips(all, withFrom = true, end = '') {
-  const base = onTradeFilters(onPickedDay(onDates(filtered(all, t => t.bias)))).filter(t => !t.deleted);
+  const base = onTradeFilters(onScopeDates(filtered(all, t => t.bias))).filter(t => !t.deleted);
   const chip = (v, label, n) => `<button class="journal-chip${state.journalReviewFilter === v ? ' active' : ''}" aria-pressed="${state.journalReviewFilter === v}" data-action="setJournalReviewFilter" data-arg="${v}">${label} <b>${n}</b></button>`;
   const more = reviewsRead() ? chip('done', 'Reviewed', base.filter(isReviewed).length) + chip('untagged', 'No setup', base.filter(untagged).length) : '';
   const open = base.filter(isOpen).length;
@@ -425,8 +588,8 @@ function watchPhone() {
 
 /** open trades first (the phone cards' order too), each part newest first */
 const openFirst = list => [...list.filter(isOpen), ...list.filter(t => !isOpen(t))];
-/** the Trades tab's trades: its side, symbol, dates, day, review and setup filters, open ones first, newest first */
-const tradesTabList = all => openFirst(onTradeFilters(onReviewFilter(onPickedDay(onDates(filtered(all, t => t.bias))))));
+/** the Trades tab's trades: the side, symbol, dates, review chips, setup and More filters, open ones first, newest first */
+const tradesTabList = all => openFirst(onTradeFilters(onReviewFilter(onScopeDates(filtered(all, t => t.bias)))));
 /**
  * The trades a trade page's arrows step through: the Trades tab as it's filtered now (deleted ones only while shown), or
  * every trade when the page opened from somewhere the trade isn't in that list (the calendar, a setup's page)
@@ -477,66 +640,9 @@ export function setJournalTab(tab) {
   state.journalTab = ['fills', 'calendar', 'missed', 'stats', 'setups', 'books', 'features'].includes(tab) ? tab : 'trades';
   state.journalNotebookDay = ''; // the Calendar tab goes back to the calendar
   state.notebookBack = '';
-  if (state.journalTab !== 'trades') state.journalDay = '';
+  state.journalFilterEdit = '';
   renderJournal();
   if (state.journalTab === 'books' && (!state.modelBooks.loaded || state.modelBooks.owner !== state.session?.user?.id)) loadModelBooks();
-}
-/** a day on the calendar: the trades with an exit then */
-export function pickJournalDay(day) { state.journalDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''; state.journalTab = 'trades'; state.journalNotebookDay = ''; renderJournal(); }
-export function clearJournalDay() { state.journalDay = ''; renderJournal(); }
-export function shiftJournalMonth(by) { state.journalMonth = nextJournalMonth(by); state.journalReviewPeriod = null; renderJournal(); }
-export function journalThisMonth() { state.journalMonth = thisMonth(); state.journalReviewPeriod = null; renderJournal(); }
-/** Month | Dates on the calendar: Dates start as the month shown, Month comes back to the month the dates end in */
-export function setCalendarDates(mode) {
-  const on = isRangeKey(state.journalCalDates);
-  if ((mode === 'dates') === on) return;
-  if (on) state.journalMonth = periodSpan('range', state.journalCalDates)[1].slice(0, 7);
-  state.journalCalDates = on ? '' : rangeKey(...periodSpan('month', state.journalMonth || state.journalMonthShown || thisMonth()));
-  state.journalReviewPeriod = null;
-  renderJournal();
-}
-/** the calendar's dates: a new first or last day, the other kept (swapped when they cross) */
-export function setCalendarRange(end, value) {
-  if (!isRangeKey(state.journalCalDates)) return;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return renderJournal(); // a cleared box gets its day back
-  const [from, to] = periodSpan('range', state.journalCalDates);
-  state.journalCalDates = end === 'to' ? rangeKey(from, value) : rangeKey(value, to);
-  renderJournal();
-}
-/** the trades the stats count from: the side, symbol, setup and More filters applied, as the Stats tab shows them */
-const statsTrades = () => onTradeFilters(filtered(currentTrades(), t => t.bias));
-/** All time / Month / Week / Day / Dates on the stats: a new unit keeps your place (the newest close in what's shown now; Dates start as the span shown) */
-export function setJournalPeriod(unit) {
-  const to = PERIODS.includes(unit) || unit === 'range' ? unit : 'all';
-  if (to === state.journalPeriod) return;
-  state.journalPeriodKey = to === 'all' ? '' : switchPeriod(statsTrades(), state.journalPeriod, state.journalPeriodShown, to);
-  state.journalPeriod = to;
-  renderJournal();
-}
-/** Dates: a new first or last day, the other kept (swapped when they cross) */
-export function setStatsDates(end, value) {
-  if (state.journalPeriod !== 'range') return;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return renderJournal(); // a cleared box gets its day back
-  const [from, to] = isRangeKey(state.journalPeriodShown) ? periodSpan('range', state.journalPeriodShown) : [value, value];
-  state.journalPeriodKey = end === 'to' ? rangeKey(from, value) : rangeKey(value, to);
-  renderJournal();
-}
-/** ‹ or ›: the nearest day, week or month with closed trades before or after the one shown */
-export function stepJournalPeriod(by) {
-  if (!PERIODS.includes(state.journalPeriod)) return;
-  const next = stepPeriod(activePeriods(statsTrades(), state.journalPeriod), state.journalPeriodShown, Number(by) || 0);
-  if (next) { state.journalPeriodKey = next; renderJournal(); }
-}
-/** the stats for one day, week or month, or the calendar's dates, from the calendar or a day's trades */
-export function openJournalStats(unit, key) {
-  const range = unit === 'range' && isRangeKey(key);
-  const ok = range || (PERIODS.includes(unit) && (unit === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(key || ''));
-  state.journalPeriod = ok ? unit : 'all';
-  state.journalPeriodKey = range ? key : ok ? periodKey(key, unit) : '';
-  state.journalTab = 'stats';
-  state.journalDay = '';
-  state.journalNotebookDay = '';
-  renderJournal();
 }
 /** the Setups tab: one setup's page, and back to them all */
 export function openJournalSetup(key) { state.journalSetupKey = String(key || ''); renderJournal(); }
@@ -559,33 +665,11 @@ export function journalSymbolChanged() {
 
 // ---------- the desktop: the Workbench's rail, and the Trades tab beside a panel or the review queue ----------
 
-/** the Workbench rail's tabs, one per line, the trades counted */
+/** the Workbench rail's tabs, one per line, the trades counted (the filters sit in the bar over the list) */
 function railNav(all) {
   const n = all.filter(t => !t.deleted).length;
   const tab = (v, label, count = '') => `<button class="${state.journalTab === v ? 'active' : ''}" aria-pressed="${state.journalTab === v}" data-action="setJournalTab" data-arg="${v}"><span>${label}</span>${count !== '' ? `<span class="jb-nav-n">${count}</span>` : ''}</button>`;
-  return `<nav class="jb-nav journal-nav" aria-label="Show">${tab('trades', 'Trades', n || '')}${tab('calendar', 'Calendar')}${tab('missed', 'Missed')}${tab('stats', 'Stats')}${tab('setups', 'Setups')}${tab('books', 'Model books')}${tab('features', 'Features')}${tab('fills', 'Fills')}</nav>`;
-}
-
-/** the rail's filters: what the tab shown takes (the same as the bar over the list on narrower screens) */
-function railFilters(all) {
-  if (['books', 'features', 'missed'].includes(state.journalTab)) return '';
-  const on = (current, v) => `class="${current === v ? 'active' : ''}" aria-pressed="${current === v}"`;
-  const side = (v, label) => `<button ${on(state.journalSide, v)} data-action="setJournalSide" data-arg="${v}">${label}</button>`;
-  const fees = journalAfterFees() ? 'after' : 'before';
-  const fee = (v, label) => `<button ${on(fees, v)} data-action="setJournalFees" data-arg="${v}">${label}</button>`;
-  const trades = state.journalTab === 'trades';
-  const dayChip = trades && state.journalDay ? `<div class="jb-daychip"><button class="filter-btn active jc-daychip" data-action="clearJournalDay" aria-label="Show every day">Exits ${+state.journalDay.slice(5, 7)}/${+state.journalDay.slice(8)} ×</button><button class="pos-link" data-action="openJournalStats" data-arg="day" data-arg2="${state.journalDay}">The day's stats</button>${dayReviewLink(state.journalDay)}</div>` : '';
-  return `<div class="jb-filters journal-controls" role="group" aria-label="Filters">
-      <div class="jb-filters-title">Filters</div>
-      <input type="search" id="journalSymbol" placeholder="Symbol" value="${esc(state.journalSymbol)}" autocomplete="off" spellcheck="false" data-input="journalSymbolChanged" aria-label="Filter by symbol" />
-      ${setupFilter(all)}
-      <div class="seg" aria-label="Side">${side('all', 'All')}${side('long', 'Long')}${side('short', 'Short')}</div>
-      ${state.journalTab !== 'fills' ? `<div class="seg" aria-label="P&amp;L">${fee('before', 'Before fees')}${fee('after', 'After fees')}</div>` : ''}
-      ${trades ? datesHtml() : ''}
-      ${moreFiltersHtml(filterBase(all))}
-      ${trades ? reviewFromHtml(all) : ''}
-      ${dayChip}
-    </div>`;
+  return `<nav class="jb-nav journal-nav" aria-label="Show">${tab('trades', 'Trades', n || '')}${tab('calendar', 'Calendar')}${tab('stats', 'Stats')}${tab('missed', 'Missed')}${tab('setups', 'Setups')}${tab('books', 'Model books')}${tab('features', 'Features')}${tab('fills', 'Fills')}</nav>`;
 }
 
 /** the chips row's end on the desktop: Select (tick boxes for Merge and Delete), Columns (the Workbench's table), the layout switch */
@@ -677,11 +761,11 @@ export function renderJournal() {
       <div class="jb-title">${head}</div>
       ${books ? '' : `<div class="jb-acts">${deckButtonHtml(all)}${todayButtonHtml()}<div class="jb-io">${importBtns}</div></div>`}
       ${railNav(all)}
-      ${navOnly ? '' : railFilters(all)}
     </aside>
     <div class="jw-main">
       ${errors}
-      ${split ? reviewChips(all, false, benchTools()) : ''}
+      ${navOnly ? '' : scopeBar(all)}
+      ${split ? reviewChips(all, true, benchTools()) : ''}
       ${body}
     </div>
     ${split ? `<aside class="jw-side jb-side${desk ? ' jd-side' : ''}" data-scroll="side:trades" aria-label="${desk ? 'Review queue' : 'The trade you picked'}">${split.side}</aside>` : ''}
@@ -697,6 +781,7 @@ export function renderJournal() {
   drawMissedChart();
   bindUpNext();
   growBoxes(el);
+  renderJournalFiltersSheet();
 }
 
 // ---------- Import and Export sheets ----------
@@ -1160,7 +1245,6 @@ export function toggleJournalPick(key) {
 export function clearJournalPicks() { state.journalPicked = []; renderJournal(); }
 /** phones: Select shows the cards' tick boxes, Done hides them and clears what's ticked */
 /** phones: Filters opens the setup menu, side, fees and Review from under the symbol box, and closes them */
-export function toggleJournalFilters() { state.journalFiltersOpen = !state.journalFiltersOpen; renderJournal(); }
 export function toggleJournalSelect() {
   state.journalSelecting = !state.journalSelecting;
   if (!state.journalSelecting) state.journalPicked = [];

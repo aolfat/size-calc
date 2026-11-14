@@ -57,10 +57,13 @@ export function stepPeriodReview(by) {
   const next = stepPeriod(activePeriods(journalTradeList(), p.unit), p.key, Number(by) || 0);
   if (!next) return;
   state.journalReviewPeriod = { unit: p.unit, key: next };
-  // the calendar follows: a month to itself, a week to its Friday's month unless the month shown already holds it
+  // the calendar follows while it shows a month (the dates the tabs share become it): a month to itself, a week to its
+  // Friday's month unless the month shown already holds it
   const fri = p.unit === 'week' ? new Date(Date.parse(`${next}T00:00:00Z`) + 4 * 864e5).toISOString().slice(0, 7) : next;
-  const shown = state.journalMonth || state.journalMonthShown;
-  if (p.unit === 'month' || (next.slice(0, 7) !== shown && fri !== shown)) state.journalMonth = fri;
+  const shown = state.journalMonthShown;
+  if (['all', 'month'].includes(state.journalPeriod) && (p.unit === 'month' || (next.slice(0, 7) !== shown && fri !== shown))) {
+    Object.assign(state, { journalPeriod: 'month', journalPeriodKey: fri, journalScopeBack: null });
+  }
   renderJournal();
   loadExcursions(p.unit, next);
 }

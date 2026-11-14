@@ -123,7 +123,7 @@ test('signed in, it shows what is kept and the fills inside your orders, newest 
   assert.match(out, /3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026/);
   assert.match(out, /<span class="positions-meta journal-meta" id="journalKept" role="status" title="3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026 · Not imported yet">2 trades · not imported yet · <span style="color:var\(--amber\)">import failed<\/span> <button class="pos-link" data-action="openJournalImport">Details<\/button><span class="journal-features-line" id="journalFeaturesLine">Stamping/, 'the head says it in one quiet line (a failed import and a features run too); what\'s kept in full is its title');
   assert.doesNotMatch(out, /id="journalStatus"/, 'no line of its own for the last import');
-  assert.match(out, /<div class="seg journal-tabs journal-nav" aria-label="Show">[^]*?<\/div>\s*<div class="journal-filters">/, 'the tabs, then the filters in a row of their own');
+  assert.match(out, /<div class="seg journal-tabs journal-nav" aria-label="Show">[^]*?<\/div>\s*<div class="jscope" role="group" aria-label="Filters">/, 'the tabs, then the filter bar in a row of its own');
   run('openJournalImport()');
   assert.match(elements.get('journalImportBody').innerHTML, /<p class="hint">3 orders and 1 trades kept · Sep 15, 2026 to Oct 7, 2026<\/p>/, 'the Import sheet says it in full');
   const rows = [...out.matchAll(/<tr>\s*<td><b>([^<]*)<\/b><\/td>\s*<td class="journal-(buy|sell)">([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/g)].map(m => m.slice(1, 7));
@@ -205,21 +205,24 @@ test('phones: each card shows the P&L % under the dollars', async () => {
   assert.doesNotMatch(out, /toggleJournalColumnsMenu/, 'no Columns button: phones show cards');
 });
 
-test('phones: the symbol box, Filters and Select on one line, the rest behind Filters; the summary as one line', async () => {
+test('phones: the symbol box, Filters and Select on one line, what narrows as chips, the rest in the Filters sheet; the summary as one line', async () => {
   const records = RECORDS.map(r => ({ ...r, account: '6789' }));
   const { run, elements } = await app({ width: 390, storage: connected(), supabase: fakeSupabase(records), session: SESSION });
   run("setView('journal')");
   await run('loadJournal()');
   const out = () => elements.get('journalSection').innerHTML;
-  assert.match(out(), /<div class="journal-phone-bar"><input type="search" id="journalSymbol"[^>]*\/>\s*<button class="btn journal-filters-btn" data-action="toggleJournalFilters" aria-expanded="false">Filters<\/button>\s*<button class="btn journal-cols-btn" data-action="toggleJournalSelect"/);
-  assert.doesNotMatch(out(), /aria-label="Side"/, 'side and fees wait behind Filters');
+  assert.match(out(), /<div class="journal-phone-bar"><input type="search" id="journalSymbol"[^>]*\/>\s*<button class="btn journal-filters-btn" data-action="openJournalFilters" aria-haspopup="dialog">Filters<\/button>\s*<button class="btn journal-cols-btn" data-action="toggleJournalSelect"/);
+  assert.doesNotMatch(out(), /aria-label="Side"/, 'side and fees wait in the sheet');
+  assert.match(out(), /<div class="jscope-pills" role="group" aria-label="Filters on"><span class="jscope-pill"><button data-action="openJournalFilters">All time<\/button><\/span><\/div>/, 'the dates as a chip, nothing to take off');
   assert.match(out(), /<p class="jtc-statline"><span title="−\$504\.00 before fees">Net <b class="journal-sell">−\$504<\/b><\/span><span title="0 of 1 won">Win <b>0%<\/b><\/span><span title="−5\.04% average">Avg <b class="journal-sell">−1\.00R<\/b><\/span><\/p>/, 'net in whole dollars, the cents in its title');
   assert.doesNotMatch(out(), /journal-summary-row/, 'no long summary line');
-  run("toggleJournalFilters(); setJournalSide('short')");
-  assert.match(out(), /aria-expanded="true">Filters <b>1<\/b><\/button>/, 'how many filters are on');
-  assert.match(out(), /<div class="journal-filters">[^]*?aria-label="Side"[^]*?aria-label="P&amp;L"/);
-  run('toggleJournalFilters()');
-  assert.match(out(), /aria-expanded="false">Filters <b>1<\/b>/, 'closed, the count stays');
+  run("openJournalFilters(); setJournalSide('short')");
+  assert.match(out(), /aria-haspopup="dialog">Filters <b>1<\/b><\/button>/, 'how many filters are on');
+  assert.match(out(), /<span class="jscope-pill active"><button data-action="openJournalFilters">Short<\/button><button class="jf-x" data-action="setJournalSide" data-arg="all" aria-label="Both sides" title="Remove">×<\/button><\/span>/, 'the side as a chip with ×');
+  const sheet = elements.get('journalFiltersBody').innerHTML;
+  assert.match(sheet, /<div class="jscope-lbl">When<\/div>[^]*?<div class="jscope-lbl">Side<\/div>[^]*?aria-label="Side"[^]*?<div class="jscope-lbl">P&amp;L<\/div>/, 'the sheet: the dates, the side, the fees');
+  run("closeSheet(); setJournalSide('all')");
+  assert.match(out(), /aria-haspopup="dialog">Filters<\/button>/, 'none on');
 });
 
 test('open trades come first, though one closed since; the Open chip lists only them', async () => {

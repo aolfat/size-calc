@@ -4,7 +4,7 @@ import { marketSource } from '../services/market-source.js';
 import { mq, PHONE_MQ } from '../lib/media.js';
 import { effects } from './effects.js';
 
-export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', posActions: 'posActionsSheet', spreadClose: 'spreadCloseSheet', cancel: 'cancelSheet', cancelAll: 'cancelAllSheet', edit: 'editSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', tradeReview: 'tradeReviewSheet', journalLibrary: 'journalLibrarySheet' };
+export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', posActions: 'posActionsSheet', spreadClose: 'spreadCloseSheet', cancel: 'cancelSheet', cancelAll: 'cancelAllSheet', edit: 'editSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', journalFilters: 'journalFiltersSheet', tradeReview: 'tradeReviewSheet', journalLibrary: 'journalLibrarySheet' };
 // the page behind a sheet goes inert (no clicks, no Tab stops, hidden from screen readers); the toast stays live
 export const SHEET_BACKGROUND = ['stickyBar', 'titleBar', 'appHeader', 'sidePane', 'mainPane', 'simOverlay'];
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

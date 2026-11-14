@@ -15,7 +15,7 @@ A notebook for each trading day: write a plan before the open, then a short revi
 
 ## Where it lives
 
-- **The calendar is the index.** Every weekday cell opens that day's page: a day with trades, a quiet day, today before the open, tomorrow (to write Monday's plan on Sunday). It used to narrow the Trades list to the day; that's the page's "The day's trades" link now.
+- **The calendar is the index.** Every weekday cell opens that day's page: a day with trades, a quiet day, today before the open, tomorrow (to write Monday's plan on Sunday). It used to narrow the Trades list to the day; that's the page's "The day's trades" link now, which sets the Journal's dates to the day (‹ Back to … in the filter bar returns).
 - **The day page** replaces the calendar inside the Calendar tab: ← Calendar goes back, ‹ › step one weekday. Tapping the Calendar tab goes back too.
 - **Today's button** in the Journal's head (todayButtonHtml) opens today's page (Monday's on a weekend; the day is its title): "Write your plan" until the premarket is done, then "Plan written ✓" (or "Premarket done ✓" with no plan), then "Review the day" after 4pm New York, then "Day reviewed ✓" in a quieter color.
 - **The Trades tab** opens it too: each day's date in the list and Review the day › beside it (Day reviewed ✓ once it is); the page's back button reads ← Trades and keeps the list's filters.

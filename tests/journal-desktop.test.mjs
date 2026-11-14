@@ -35,7 +35,8 @@ test('Workbench: the rail, the trades a day at a time, the newest to review in t
   const html = a.list();
   assert.match(html, /class="card positions-card journal-card jw-bench jw-has-side"/);
   assert.match(html, /<aside class="jb-rail"[^>]*>[^]*?<nav class="jb-nav journal-nav"[^]*?<span>Trades<\/span><span class="jb-nav-n">3<\/span>/, 'the tabs in the rail, the trades counted');
-  assert.match(html, /<div class="jb-filters journal-controls"[^]*?id="journalSymbol"/, 'the filters in the rail');
+  assert.match(html, /<div class="jw-main">\s*<div class="jscope" role="group" aria-label="Filters">[^]*?id="journalSymbol"/, 'the filter bar over the list');
+  assert.doesNotMatch(html.slice(0, html.indexOf('<div class="jw-main">')), /id="journalSymbol"/, 'none in the rail');
   assert.match(html, /<div class="jb-acts">[^]*?<div class="jb-io"><button class="btn" id="journalImportBtn"[^]*?id="journalExportBtn"[^]*?<\/div><\/div>\s*<nav class="jb-nav/, 'Import and Export at the top of the rail, above the tabs');
   assert.ok(html.indexOf('Fri · Oct 2') < html.indexOf('Thu · Oct 1'), 'newest day first');
   assert.match(html, /<dl class="jb-band">[^]*?Net P&amp;L/);
@@ -90,7 +91,7 @@ test('Review desk: one click away, the Workbench rail, the cards two-up with the
   a.run("setJournalLayout('desk')");
   const html = a.list();
   assert.match(html, /class="card positions-card journal-card jw-bench jw-has-side"/);
-  assert.match(html, /<aside class="jb-rail"[^>]*>[^]*?<nav class="jb-nav journal-nav"[^]*?<div class="jb-filters journal-controls"/, 'the tabs and filters in the rail, as on the Workbench');
+  assert.match(html, /<aside class="jb-rail"[^>]*>[^]*?<nav class="jb-nav journal-nav"[^]*?<div class="jw-main">\s*<div class="jscope"/, 'the tabs in the rail and the filter bar over the cards, as on the Workbench');
   assert.doesNotMatch(html, /journal-tabs|positions-head/, 'no head and tabs over the list');
   assert.match(html, /<div class="jw-main"[^]*?data-arg="desk"[^]*?<div class="jtc-list jds-cards">/, 'the chips row with the switch over the cards');
   assert.doesNotMatch(html, /toggleJournalColumnsMenu/, 'Columns is the table\'s');

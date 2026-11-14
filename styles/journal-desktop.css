@@ -17,6 +17,8 @@
   .jb-rail, .jb-side { position: sticky; top: 0; align-self: start; max-height: 100vh; max-height: 100dvh; overflow-y: auto; }
   .jb-rail, .jb-side, .jt-left, .jt-body { scrollbar-gutter: stable; scrollbar-width: thin; }
   .jw-bench > .jw-main { min-width: 0; padding: 18px 20px 40px; border-left: 1px solid var(--border); }
+  .jw-main > .jscope { margin-bottom: 10px; }
+  .jw-main > .jscope-edit { margin-bottom: 10px; }
   .jw-bench.jw-has-side > .jw-main { border-right: 1px solid var(--border); }
   .jb-rail { display: flex; flex-direction: column; gap: 16px; padding: 20px 16px; }
   .jb-side { padding: 20px 18px 40px; }
@@ -31,24 +33,7 @@
   @media (hover: hover) { .jb-nav button:hover { color: var(--text); background: var(--bg3); } }
   .jb-nav button.active { color: var(--text); font-weight: 600; background: var(--bg3); }
   .jb-nav-n { font-size: 12px; font-weight: 500; color: var(--text3); }
-  .jb-filters { display: grid; gap: 8px; margin: 0; padding-top: 14px; border-top: 1px solid var(--border); }
-  .jb-filters-title { font-size: 12px; font-weight: 600; color: var(--text3); }
-  .jb-filters input[type="search"], .jb-filters .journal-setup-filter { width: 100%; max-width: none; }
-  .jb-filters .seg { display: flex; }
-  .jb-filters .seg button { flex: 1 1 0; padding: 6px 4px; }
-  .jb-filters .journal-dates { display: grid; grid-template-columns: 1fr; gap: 6px; }
-  .jb-filters .jr-from { display: grid; gap: 4px; font-size: 12px; }
-  .jb-filters .jr-from input { margin: 0; width: 100%; min-width: 0; padding: 5px 8px; }
-  .jb-filters .jr-queue { display: grid; gap: 4px; margin: 0; }
-  .jb-filters .jf { display: grid; grid-template-columns: minmax(0, 1fr); }
-  /* the rail is narrow: the name and × on one line, is / is not under them */
-  .jb-filters .jf-head { flex-wrap: wrap; row-gap: 6px; }
-  .jb-filters .jf-name { flex: 1 0 calc(100% - 30px); }
-  .jb-filters .jf-x { order: 1; }
-  .jb-filters .jf .jf-is.seg { order: 2; }
-  .jb-filters .jf-add { flex: 1 1 auto; width: auto; max-width: none; }
   .jb-day-end { display: inline-flex; align-items: baseline; gap: 14px; }
-  .jb-daychip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .jb-acts .jb-io { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
   .journal-chips-end { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
@@ -225,7 +210,6 @@
 @media (min-width: 1100px) {
   /* ---------- the calendar: days shaded by their size, chips for the review; a day clicked opens its notebook page ---------- */
   .jc-wrap .jc-head { gap: 8px 10px; }
-  .jc-head-end { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
   .jc-mode button { padding: 6px 12px; font-size: 12px; }
   .jc-band { grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.3fr); gap: 1px; margin: 6px 0 10px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; } /* the gaps draw the dividers, however the tiles wrap */
   .jc-band > div { padding: 12px 16px; background: var(--bg); }
