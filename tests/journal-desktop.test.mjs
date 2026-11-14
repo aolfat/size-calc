@@ -77,7 +77,7 @@ test('Workbench: a Review column at the right (by the name under 1500px) says wh
   const html = a.list();
   assert.match(html, /<th scope="col" class="jb-num">Stop<\/th><th scope="col" class="jb-rv-col">Review<\/th><\/tr>/, 'the last column');
   const row = sym => html.split(`<b>${sym}</b>`)[1].split('</tr>')[0];
-  assert.match(row('AAPL'), /<td class="jb-rv-cell"><span class="jb-rv jb-rv-done">✓ Reviewed<\/span><span class="jtc-grade jb-rv-grade jtc-grade-a" title="Setup grade">A<\/span><\/td>\s*$/);
+  assert.match(row('AAPL'), /<td class="jb-rv-cell"><span class="jb-rv jb-rv-done jb-rv-graded jb-rv-a">✓ Reviewed<b class="jb-rv-grade" title="Setup grade">A<\/b><\/span><\/td>\s*$/, 'one pill, the grade its end');
   assert.match(row('MSFT'), /<td class="jb-rv-cell"><span class="jb-rv jb-rv-todo">To review<\/span><\/td>\s*$/);
   assert.match(row('MSFT'), /^<span class="jtc-pill jtc-long">Long<\/span><button class="journal-share-btn" data-action="shareJournalTrade" data-arg="[^"]+" aria-label="Share MSFT as an image"[^>]*><svg[^]*?<\/button><span class="jb-rv-inline"><span class="jb-rv jb-rv-todo">To review<\/span><\/span><\/div>/, 'and by the name, for screens too narrow for the column');
   assert.doesNotMatch(html, /jb-todo|jb-grade"/, 'nothing under R');

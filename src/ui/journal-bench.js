@@ -105,7 +105,8 @@ function reviewBadge(t) {
   if (t.deleted || t.status === 'history' || !reviewsRead()) return '';
   if (isReviewed(t)) {
     const g = setupGradeOf(t);
-    return `<span class="jb-rv jb-rv-done">✓ Reviewed</span>${g ? `<span class="jtc-grade jb-rv-grade jtc-grade-${g.toLowerCase()}" title="Setup grade">${g}</span>` : ''}`;
+    // one quiet pill, the setup grade its tinted end: done is the common case, so it stays out of the way of what waits
+    return `<span class="jb-rv jb-rv-done${g ? ` jb-rv-graded jb-rv-${g.toLowerCase()}` : ''}">✓ Reviewed${g ? `<b class="jb-rv-grade" title="Setup grade">${g}</b>` : ''}</span>`;
   }
   if (toReview(t)) return `<span class="jb-rv jb-rv-todo">${tradePass(t) === 'opening' ? 'Opening pass' : 'To review'}</span>`;
   if (t.status === 'open' && !tradePass(t)) return '<span class="jb-rv-later" title="Opening pass done">After the close</span>';
@@ -130,7 +131,8 @@ function pnlCell(t) {
   return `<td class="jb-num ${pnlClass(t.pnl)}"${pnlTitle(t)}>${signed$(t.pnl)}${sub}</td>`;
 }
 
-function benchRow(t, cols) {
+/** a trade's row; `end` closes its day's card */
+function benchRow(t, cols, end = false) {
   const sel = state.journalSelected === t.key, history = t.status === 'history';
   const list = setupsOf(t);
   const cells = {
@@ -147,7 +149,7 @@ function benchRow(t, cols) {
   const live = t.status === 'open' && !t.deleted ? ' <span class="jb-live">Live</span>' : '';
   const pick = state.journalSelecting || state.journalPicked.length ? pickBox(t) : '';
   const review = reviewBadge(t);
-  return `<tr class="jb-row${sel ? ' jb-sel' : ''}${t.deleted ? ' journal-deleted' : ''}" data-action="selectJournalTrade" data-arg="${esc(t.key)}" aria-selected="${sel}"${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
+  return `<tr class="jb-row${end ? ' jb-row-end' : ''}${sel ? ' jb-sel' : ''}${t.deleted ? ' journal-deleted' : ''}" data-action="selectJournalTrade" data-arg="${esc(t.key)}" aria-selected="${sel}"${history ? ` title="${esc(HISTORY_TITLE)}"` : ''}>
     <td><div class="journal-sym">${pick}<div class="journal-sym-main"><div class="jb-name"><b>${esc(t.label)}</b>${sideTags(t)}${live}${shareButton(t)}${review ? `<span class="jb-rv-inline">${review}</span>` : ''}</div><div class="jb-sub">${rowSub(t)}</div>${restoreLink(t)}</div></div></td>
     ${cols.map(([k]) => cells[k]).join('')}
     <td class="jb-rv-cell">${review || '<span class="jb-rv-none">—</span>'}</td>
@@ -157,20 +159,21 @@ function benchRow(t, cols) {
 /** the trades a group at a time: Open, then each day they closed, newest first, with what waits and the day's P&L */
 function benchGroups(list, cols) {
   const n = cols.length + 2; // Symbol and Review around them
-  // a day's band: the chevron and the band fold it (the date and Review the day keep their own clicks)
+  // each day is a card: its band heads it, its last row closes it (the chevron and the band fold it; the date and Review
+  // the day keep their own clicks)
   const head = (left, right, day = '') => `<tr class="jb-day${day && dayShut(day) ? ' jb-day-shut' : ''}"${day ? ` data-action="toggleJournalDayShut" data-arg="${day}"` : ''}><td colspan="${n}"><div><span>${day ? dayFold(day) : ''}${left}</span>${right}</div></td></tr>`;
   const open = list.filter(t => t.status === 'open'), closed = list.filter(t => t.status !== 'open');
   /** @type {Map<string, any[]>} */
   const byDay = new Map();
   for (const t of closed) byDay.set(closeDay(t), [...(byDay.get(closeDay(t)) || []), t]);
   const rows = [];
-  if (open.length) rows.push(head(`Open <span class="jb-day-n">${open.length}</span>`, open.some(counts) ? `<span class="jb-day-total">Taken so far <b class="${pnlClass(sum(open))}">${signed$(sum(open))}</b></span>` : ''), ...open.map(t => benchRow(t, cols)));
+  if (open.length) rows.push(head(`Open <span class="jb-day-n">${open.length}</span>`, open.some(counts) ? `<span class="jb-day-total">Taken so far <b class="${pnlClass(sum(open))}">${signed$(sum(open))}</b></span>` : ''), ...open.map((t, i) => benchRow(t, cols, i === open.length - 1)));
   for (const [day, trades] of [...byDay.entries()].sort((a, b) => a[0] < b[0] ? 1 : -1)) {
     const live = trades.filter(t => !t.deleted && t.status !== 'history');
     const waiting = reviewsRead() ? live.filter(toReview).length : 0;
     const status = waiting ? `<span class="jtc-day-todo">${waiting} to review</span>` : reviewsRead() && live.length && live.every(isReviewed) ? '<span class="jtc-day-done">All reviewed</span>' : '';
     const total = trades.some(counts) ? `<b class="jb-day-total ${pnlClass(sum(trades))}">${signed$(sum(trades))}</b>` : '';
-    rows.push(head(`${dayButton(day, dayLine(day))} <span class="jb-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>${status}`, `<span class="jb-day-end">${dayReviewLink(day)}${total}</span>`, day), ...(dayShut(day) ? [] : trades.map(t => benchRow(t, cols))));
+    rows.push(head(`${dayButton(day, dayLine(day))} <span class="jb-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>${status}`, `<span class="jb-day-end">${dayReviewLink(day)}${total}</span>`, day), ...(dayShut(day) ? [] : trades.map((t, i) => benchRow(t, cols, i === trades.length - 1))));
   }
   return rows.join('');
 }

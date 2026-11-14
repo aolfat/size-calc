@@ -71,22 +71,43 @@
   .jb-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .jb-name b { font-size: 15px; }
   .jb-sub { margin-top: 3px; font-size: 12px; color: var(--text2); white-space: normal; }
+  /* each day is its own card (owner request: the days were hard to tell apart as bands in one table): the band heads it
+     on a lighter ground, its last row closes it with rounded corners, and the column's own ground shows between days.
+     The table stays one table, so the columns line up from day to day. */
+  .jb-wrap { --jb-card: var(--bg); --jb-gap: 14px; border: 0; border-radius: 0; }
+  .jb-table thead th { padding-bottom: 6px; border-bottom: 0; }
+  .jb-table tbody td, .jb-table tbody td:first-child { background: var(--jb-card); }
+  .jb-table tbody tr.jb-row td:first-child { border-left: 1px solid var(--border2); }
+  .jb-table tbody tr.jb-row td:last-child { border-right: 1px solid var(--border2); }
+  .jb-table tbody tr.jb-row-end td { border-bottom-color: var(--border2); }
+  .jb-table tbody tr.jb-row-end td:first-child { border-bottom-left-radius: 12px; }
+  .jb-table tbody tr.jb-row-end td:last-child { border-bottom-right-radius: 12px; }
   .jb-row { cursor: pointer; }
-  @media (hover: hover) { .jb-row:hover td { background: color-mix(in srgb, var(--blue) 6%, var(--bg2)); } }
-  .jb-row.jb-sel td { background: color-mix(in srgb, var(--blue) 12%, var(--bg2)); }
+  @media (hover: hover) { .jb-table tbody tr.jb-row:hover td, .jb-table tbody tr.jb-row:hover td:first-child { background: color-mix(in srgb, var(--blue) 7%, var(--jb-card)); } }
+  .jb-table tbody tr.jb-sel td, .jb-table tbody tr.jb-sel td:first-child { background: color-mix(in srgb, var(--blue) 13%, var(--jb-card)); }
   .jb-row.jb-sel td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
-  /* a day's band: set off from its trades and folding them (the chevron or the band); while the table fits, it stays at the
-     top of the window as its trades scroll under it, so the day you're in always shows */
-  .jb-day td { padding: 9px 12px 9px 8px; background: var(--bg3); border-top: 1px solid var(--border2); border-bottom: 1px solid var(--border2); cursor: pointer; }
-  .jb-day td > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 600; }
+  /* a day's band, the card's head, folding its trades (the chevron or the band); the cell carries the gap above the card on
+     the column's ground, so while the table fits it can stay at the top of the window as its trades scroll under it, and
+     the day you're in always shows */
+  .jb-day td { padding: var(--jb-gap) 0 0; background: var(--bg2); border: 0; cursor: pointer; }
+  .jb-table tbody > tr.jb-day:first-child td { padding-top: 0; }
+  .jb-day td > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px 11px 8px; font-size: 13px; font-weight: 600; background: var(--bg3); border: 1px solid var(--border2); border-radius: 12px 12px 0 0; }
+  .jb-day.jb-day-shut td > div { border-radius: 12px; }
+  .jb-day.jb-day-shut + .jb-day.jb-day-shut td { padding-top: 8px; } /* folded days stack closer, as one list */
   .jb-day td > div > span:first-child { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; }
-  .jb-day .jd-date { font-size: 15px; font-weight: 700; }
+  .jb-day .jd-date { font-size: 17px; font-weight: 700; }
   .jb-day-n { font-weight: 500; color: var(--text3); }
-  @media (hover: hover) { .journal-table tbody tr.jb-day:hover td { background: var(--bg4); box-shadow: none; } }
+  @media (hover: hover) { .journal-table tbody tr.jb-day:hover td { background: var(--bg2); box-shadow: none; } .journal-table tbody tr.jb-day:hover td > div { background: var(--bg4); } }
   .jb-wrap.jb-fits { overflow: visible; }
   .jb-fits .jb-day td { position: sticky; top: 0; z-index: 2; }
-  .jds-cards .jtc-day + .jtc-day { margin-top: -10px; border-top: 0; } /* folded days stack as one list */
-  .jds-cards .jtc-day { position: sticky; top: 0; z-index: 2; margin-top: 6px; padding: 10px 6px 10px 4px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+  /* the Review desk's days are cards the same way, their cards two-up inside; the band sticks while its day scrolls by */
+  .jds-cards .jtc-dayc { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0 10px 10px; border-radius: 16px; }
+  .jds-cards .jtc-dayc-shut { padding-bottom: 0; }
+  .jds-cards .jtc-day { grid-column: 1 / -1; position: sticky; top: 0; z-index: 2; margin: 0 -10px; padding: 10px 14px 10px 8px; border-radius: 15px 15px 0 0; }
+  .jds-cards .jtc-dayc-shut .jtc-day { border-radius: 15px; }
+  @media (hover: hover) { .jds-cards .jtc-day:hover { background: var(--bg4); } }
+  .jds-cards .jtc-day-start { display: inline-flex; flex-wrap: wrap; gap: 2px 8px; }
+  .jds-cards .jtc-day > .jtc-day-end { flex-direction: row; align-items: baseline; gap: 14px; } /* room for it all on one line */
   .jb-day-total { font-weight: 600; }
   .jb-day-total b { font-weight: 600; }
   /* the Review column: filled pills, so what waits and what's done read down the table at a glance */
@@ -94,9 +115,11 @@
   .jb-rv { display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 999px; }
   .jb-rv-todo { color: var(--amber); background: color-mix(in srgb, var(--amber) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
   .jb-rv-todo::before { content: '● '; }
-  .jb-rv-done { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
-  .jb-rv-grade { margin-left: 6px; padding: 1px 7px; font-size: 11.5px; }
-  .jb-rv-grade.jtc-grade-b { color: var(--blue); }
+  /* done is quiet (most trades are): a grey pill, its setup grade a tinted end inside it, so the two read as one thing */
+  .jb-rv-done { --g: var(--green); display: inline-flex; align-items: center; color: var(--text2); font-weight: 500; background: var(--bg3); box-shadow: inset 0 0 0 1px var(--border2); }
+  .jb-rv-graded { padding-right: 0; }
+  .jb-rv-b { --g: var(--blue); } .jb-rv-c { --g: var(--amber); } .jb-rv-d, .jb-rv-f { --g: var(--red); }
+  .jb-rv-grade { display: inline-grid; place-items: center; min-width: 26px; align-self: stretch; margin: -3px 0 -3px 9px; padding: 0 9px 0 8px; font-weight: 700; color: var(--g); background: color-mix(in srgb, var(--g) 16%, transparent); border-left: 1px solid var(--border2); border-radius: 0 999px 999px 0; }
   .jb-rv-later { font-size: 12px; color: var(--text3); }
   .jb-rv-none { color: var(--text3); }
   .jb-rv-inline { display: none; }
@@ -151,7 +174,7 @@
   .jd-side .jrp, .jd-side .jun-stack, .jd-side .jun-done { margin: 0; }
   .jd-side .jun-hints { display: none; } /* Skip and Start review are right there; a mouse drag still works */
   .jds-cards .jtc-group { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .jds-cards .jtc-group > .jtc-group-head, .jds-cards .jtc-group > .jtc-day { grid-column: 1 / -1; }
+  .jds-cards .jtc-group > .jtc-group-head { grid-column: 1 / -1; }
   .jds { padding: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; }
   .jds-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
   .jds-head h3 { font-size: 15px; font-weight: 700; }
@@ -252,6 +275,9 @@
 @media (min-width: 1100px) and (max-width: 1499.98px) {
   .jb-table .jb-rv-col, .jb-table .jb-rv-cell { display: none; }
   .jb-rv-inline { display: inline-flex; align-items: center; }
+  /* the day cards close on the last column that shows */
+  .jb-table tbody tr.jb-row td:nth-last-child(2) { border-right: 1px solid var(--border2); }
+  .jb-table tbody tr.jb-row-end td:nth-last-child(2) { border-bottom-right-radius: 12px; }
 }
 
 @media (min-width: 1100px) and (max-width: 1299.98px) {
@@ -262,5 +288,5 @@
   .jw-bench.jw-has-side { grid-template-columns: 212px minmax(0, 1fr) 320px; }
   .jb-band dd { font-size: 19px; }
   .jb-band > div { padding: 10px 12px; }
-  .jds-cards .jtc-group { grid-template-columns: 1fr; }
+  .jds-cards .jtc-group, .jds-cards .jtc-dayc { grid-template-columns: 1fr; }
 }

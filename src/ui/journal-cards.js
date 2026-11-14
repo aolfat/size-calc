@@ -324,7 +324,7 @@ export function toggleJournalDayShut(day) {
   renderJournal();
 }
 
-/** Closed, a day at a time, newest first: the day (it opens the day's notebook), how many wait or that it's all reviewed, Review the day, and its P&L */
+/** Closed, a day at a time, newest first, each day a card: the day (it opens the day's notebook), how many wait or that it's all reviewed, Review the day, and its P&L */
 export function closedDays(list) {
   /** @type {Map<string, any[]>} */
   const byDay = new Map();
@@ -336,7 +336,8 @@ export function closedDays(list) {
     const status = waiting ? `<span class="jtc-day-todo">${waiting} to review</span>` : reviewsRead() && live.length && live.every(isReviewed) ? '<span class="jtc-day-done">All reviewed</span>' : '';
     const total = trades.some(counts) ? `<b class="${pnlClass(sum(trades))}">${signed$(sum(trades))}</b>` : '';
     const shut = dayShut(day), n = `<span class="jtc-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>`;
-    return `<div class="jtc-day${shut ? ' jtc-day-shut' : ''}" data-action="toggleJournalDayShut" data-arg="${day}"><span class="jtc-day-start">${dayFold(day)}${dayButton(day, day === now ? `Today · ${dayWords(day)}` : dayWords(day, true))}${n}${status ? ` · ${status}` : ''}</span><span class="jtc-day-end">${dayReviewLink(day)}${total}</span></div>${shut ? '' : trades.map(closedCard).join('')}`;
+    // each day is a card of its own: its band heads it, its trades' cards sit inside
+    return `<section class="jtc-dayc${shut ? ' jtc-dayc-shut' : ''}" aria-label="${esc(dayWords(day, true))}"><div class="jtc-day${shut ? ' jtc-day-shut' : ''}" data-action="toggleJournalDayShut" data-arg="${day}"><span class="jtc-day-start">${dayFold(day)}${dayButton(day, day === now ? `Today · ${dayWords(day)}` : dayWords(day, true))}<span class="jtc-day-sub">${n}${status ? ` · ${status}` : ''}</span></span><span class="jtc-day-end">${dayReviewLink(day)}${total}</span></div>${shut ? '' : trades.map(closedCard).join('')}</section>`;
   }).join('');
 }
 
