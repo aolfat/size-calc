@@ -385,20 +385,56 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .jr-row { grid-template-columns: 1fr; gap: 4px; }
   .jr-label { padding-top: 0; }
 }
-/* the Journal's calendar */
+/* the Journal's calendar (a setup's page and a week's review share .jc-head, .jc-title and .jc-nav) */
 .jc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 10px; }
 .jc-head-end { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .jc-head-end .pos-link { font-size: 13px; }
-/* phones and tablets: Review the month and The stats split their own row, like Import and Export */
-@media (max-width: 1099px) {
-  .jc-head-end { flex: 1 1 100%; margin-left: 0; flex-wrap: nowrap; gap: 8px; }
-  .jc-head-end > .btn { flex: 1 1 0; min-width: 0; justify-content: center; padding: 9px 12px; font-size: 14px; }
-}
-.jc-newest { font-size: 12px; }
+.jc-head-end .jc-month-review { padding: 6px 12px; font-size: 12.5px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
 .jc-nav { padding: 4px 12px; }
 .jc-today { padding: 4px 12px; font-size: 12.5px; }
 .jc-today:disabled { opacity: 0.45; cursor: default; }
+/* the period head (the calendar, a day's page): its name on the left, ‹ Today › as one piece on the right; a button
+   that can't go greys out in place, so nothing moves */
+.jc-period { gap: 8px 12px; margin: 6px 0 12px; }
+.jc-lead { display: contents; }
+.jc-titlebox { position: relative; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; margin: 0 auto 0 0; padding: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; }
+.jc-period .jc-title { margin: 0; min-width: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; text-align: left; }
+.jc-sub { flex-basis: 100%; font-size: 13px; color: var(--text2); }
+.jc-caret { display: none; flex: none; width: 7px; height: 7px; margin: -4px 2px 0; border-right: 2px solid var(--text2); border-bottom: 2px solid var(--text2); transform: rotate(45deg); }
+.jc-opens { cursor: pointer; }
+.jc-opens .jc-caret { display: block; }
+.jc-pick { display: none; }
+/* a touch screen: the name opens the phone's own month or date picker, laid over it */
+@media (pointer: coarse) {
+  .jc-picks { cursor: pointer; }
+  .jc-picks .jc-caret { display: block; }
+  .jc-pick { display: block; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; font-size: 16px; color: transparent; background: transparent; border: 0; opacity: 0; -webkit-appearance: none; appearance: none; }
+}
+.jc-step { flex: none; display: inline-flex; align-items: stretch; }
+.jc-step .btn { margin: 0; min-height: 34px; justify-content: center; border-radius: 0; }
+.jc-step .btn + .btn { margin-left: -1px; }
+.jc-step .btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.jc-step .btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.jc-step .jc-nav { min-width: 40px; padding: 4px 10px; font-size: 16px; }
+.jc-step .jc-today { padding: 4px 14px; font-size: 13px; }
+.jc-step .btn:disabled { opacity: 1; color: var(--text3); pointer-events: none; }
+@media (hover: hover) { .jc-step .btn:hover { position: relative; z-index: 1; } }
+/* phones and tablets: the month's numbers in two lines, Stats › beside them, so the grid starts high */
+.jc-sum { margin: 0 0 10px; }
+.jc-sum-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.jc-sum-label { font-size: 12.5px; color: var(--text2); }
+.jc-statslink { font-size: 14px; white-space: nowrap; }
+.jc-sum-pnl { margin-top: 1px; font-size: 28px; font-weight: 700; font-family: var(--num); line-height: 1.15; letter-spacing: -0.01em; }
+.jc-sum-line { display: flex; flex-wrap: wrap; margin-top: 4px; font-size: 13px; color: var(--text2); }
+.jc-sum-line > span + span::before { content: '·'; margin: 0 6px; color: var(--text3); }
+.jc-empty { margin: 0 0 10px; }
+.jc-foot { margin-top: 12px; }
+.jc-foot .jc-month-review { width: 100%; min-height: 44px; justify-content: center; font-size: 14px; }
+.jc-foot .jc-month-review[aria-expanded="true"] { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
+/* the grid follows a sideways drag (native-feel.js attachCalendarSwipe); up and down still scroll the page */
+.jc-clip { overflow-x: clip; }
+.jc-swipe { touch-action: pan-y pinch-zoom; }
 .jc-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 4px; }
 .jc-grid th { font-size: 11px; font-weight: 500; color: var(--text3); text-align: left; padding: 0 6px; }
 .jc-grid td { vertical-align: top; padding: 0; }
@@ -474,9 +510,10 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jw-overall .jw-note { margin-top: 4px; min-height: 64px; }
 .jw-kept { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .jw-kept-q { font-size: 12.5px; color: var(--text2); margin-right: 2px; }
-.jc-rev { font-size: 11px; font-weight: 500; }
-.jc-rev-done { color: var(--green); }
-.jc-rev-due { color: var(--amber); }
+/* a week's mark under its total: ✓ Reviewed, or once it's over an amber Review pill */
+.jc-rev { display: inline-block; margin-top: 4px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; border-radius: 999px; }
+.jc-rev-done { padding-left: 0; color: var(--green); }
+.jc-rev-due { color: var(--amber); background: color-mix(in srgb, var(--amber) 16%, transparent); }
 @media (max-width: 600px) {
   .jw-panel { padding: 10px; }
   .jw-cat, .jw-overall { padding: 8px 10px; }
@@ -488,6 +525,7 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .journal-table.jw-trades-table td:first-child .journal-name, .journal-table.jw-trades-table td:first-child b { white-space: normal; text-align: left; }
   .jw-grade { min-height: 36px; }
   .jc-rev { font-size: 10px; }
+  .jc-rev-due { padding: 1px 6px; }
   .jw-head .jc-title { min-width: 0; font-size: 14px; }
   .js-stats.jw-stats dd { font-size: 16px; }
 }
@@ -503,15 +541,25 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-key li > span:first-child { margin-left: 0; }
 .jc-head > .seg button { padding: 6px 12px; font-size: 12px; }
 .jc-nav:disabled { opacity: 0.4; cursor: default; }
+/* phones and tablets: weekday names as words, not table caps; today's date in a blue dot, days to come fainter */
+@media (max-width: 1099px) {
+  .jc-grid th { padding: 0 6px 2px; font-size: 12px; text-transform: none; letter-spacing: 0; background: none; border: 0; }
+  .jc-is-today .jc-num { align-self: flex-start; margin: -1px 0 0 -2px; padding: 0 5px; font-weight: 700; color: #fff; background: var(--blue); border-radius: 999px; }
+  .jc-day.jc-later { opacity: 0.32; }
+}
 .js-feature-pick { flex-wrap: wrap; gap: 8px; }
 .js-feature-pick .js-feature-select { max-width: 340px; }
 .jc-out { opacity: 0; }
 @media (max-width: 600px) {
-  .jc-grid { border-spacing: 2px; }
-  .jc-day { min-height: 54px; padding: 4px; }
-  .jc-pnl { font-size: 12.5px; }
+  .jc-grid { border-spacing: 3px; }
+  .jc-day { min-height: 58px; padding: 5px; border-radius: 9px; }
+  .jc-pnl { font-size: 13px; }
   .jc-n, .jc-wide { display: none; }
-  .jc-grid th { padding: 0 2px; }
+  .jc-grid th { padding: 0 3px 2px; }
+  .jc-period .jc-title { font-size: 19px; }
+  .jc-lead { display: block; flex: 1 1 100%; } /* the way back on its own line, over the name */
+  .jc-step .btn { min-height: 40px; }
+  .jc-step .jc-nav { min-width: 44px; }
   /* From and To as one compact pill: 'Nov 1, 2026 – Nov 30, 2026', each half its own native picker */
   .js-range { display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); }
   .js-range:focus-within { border-color: var(--blue); }

@@ -30,6 +30,7 @@ import { loadMissedChart, missedChartHtml } from './missed-chart.js';
 import { deleteFocusShots, deleteMissedShots, focusShotCount, focusShotsRowHtml, missedShotCount, missedShotsRowHtml } from './journal-shots.js';
 import { effects } from './effects.js';
 import { econDayRow, econTodayWords } from './econ-events.js';
+import { periodHead, stepGroup, tradingDay } from './journal-stats.js';
 
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
@@ -77,6 +78,8 @@ export function stepJournalDay(by) { if (state.journalNotebookDay) openJournalDa
 export function reviewJournalDay(day) { if (!isDay(day)) return; state.notebookBack = 'trades'; openJournalDay(day); }
 /** today's line: today's page (Monday's on a weekend) */
 export function openTodayNotebook() { state.notebookBack = ''; openJournalDay(notebookToday(nowIso())); }
+/** the day's name tapped on a touch screen opens the phone's date picker: that day's page (a weekend's Friday), the way back kept */
+export function pickNotebookDay(value) { if (isDay(value)) openJournalDay(tradingDay(value)); else renderJournal(); }
 
 // ---------- where a day stands ----------
 
@@ -740,13 +743,10 @@ export function dayPageHtml() {
     : data().notebookError ? `The notebook needs a database update: ${data().notebookError}` : '';
   const today = notebookToday(nowIso());
   return `<div class="nb-page" id="journalDayPage" role="region" aria-label="${esc(dayName(day))}">
-    <div class="jc-head nb-head">
-      <button class="btn jc-today" data-action="closeJournalDay">${BACK_WORDS[state.notebookBack] || '← Calendar'}</button>
-      <button class="btn jc-nav" data-action="stepJournalDay" data-arg="-1" aria-label="The weekday before">‹</button>
-      <span class="jc-title">${esc(dayName(day))}</span>
-      <button class="btn jc-nav" data-action="stepJournalDay" data-arg="1" aria-label="The weekday after">›</button>
-      ${day === today ? '' : '<button class="btn jc-today" data-action="openTodayNotebook">Today</button>'}
-    </div>
+    ${periodHead({ cls: 'nb-head', title: dayName(day),
+      lead: `<button class="btn jc-back" data-action="closeJournalDay">${BACK_WORDS[state.notebookBack] || '← Calendar'}</button>`,
+      pick: `<input class="jc-pick" type="date" value="${day}" data-change="pickNotebookDay" aria-label="Pick a day">`,
+      nav: stepGroup({ prev: 'data-action="stepJournalDay" data-arg="-1"', next: 'data-action="stepJournalDay" data-arg="1"', today: 'data-action="openTodayNotebook"', word: 'weekday', todayOff: day === today }) })}
     ${why ? `<p class="hint jw-db" role="status">${esc(why)}</p>` : ''}
     ${premarket(day, trades, off)}
     ${theDay(day, trades)}

@@ -11,7 +11,7 @@ import { fmt$, marketEscape as esc } from '../core/format.js';
 import { featureBreakdown, FEATURE_GROUP_MODES } from '../core/feature-stats.js';
 import { FEATURE_FAMILIES, FEATURES } from '../core/features/index.js';
 import { holdWords } from '../core/journal.js';
-import { activeMonths, activePeriods, breakdowns, byPlan, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, statsByLabel, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
+import { activeMonths, activePeriods, breakdowns, byPlan, calendarSpan, countedTrades, dailyPnl, equityCurve, groupStats, inPeriod, isRangeKey, monthlyResults, nyParts, periodKey, periodResults, periodSpan, PERIODS, statsByLabel, stepPeriod, streaks, switchPeriod, THIN, TIME_BUCKETS } from '../core/journal-stats.js';
 import { SECTORS } from '../core/industries.js';
 import { DESKTOP_MQ, mq, SANS_FONT } from '../lib/media.js';
 import { zoneAbbr, zoneClock, zoneDial } from '../lib/zone.js';
@@ -26,33 +26,70 @@ import { tradeIndustry } from './journal-industry.js';
 const signed$ = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt$(Math.abs(v))}`;
 const signedR = r => `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`;
 const pnlClass = v => v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '';
-/** '+$1.2k' for a calendar cell: whole dollars under $1,000, one decimal of thousands above */
+/** '+$1.2k' for a calendar cell: whole dollars under $1,000, one decimal of thousands above; cents under $1 ('−$0.40',
+ * where whole dollars read '−$0') */
 export const compact$ = v => {
   const a = Math.abs(v), s = v > 0 ? '+' : v < 0 ? '−' : '';
+  if (a < 0.995) return `${s}$${a ? a.toFixed(2) : '0'}`;
   return a >= 1000 ? `${s}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k` : `${s}$${Math.round(a)}`;
 };
 const monthName = m => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }); };
-const shiftMonth = (m, by) => { const [y, mo] = m.split('-').map(Number); const d = new Date(Date.UTC(y, mo - 1 + by, 1)); return d.toISOString().slice(0, 7); };
 
 // ---------- Calendar ----------
 
+/** today in New York, 'YYYY-MM-DD' */
+const nyToday = () => nyParts(new Date().toISOString()).day;
 /** this month in New York, 'YYYY-MM' */
-export const thisMonth = () => nyParts(new Date().toISOString()).day.slice(0, 7);
+const thisMonth = () => nyToday().slice(0, 7);
+/** a weekend day's Friday (the calendar and a day's stats are weekdays); a weekday is itself */
+export const tradingDay = d => { const wd = new Date(`${d}T00:00:00Z`).getUTCDay(); return wd === 6 ? plusDays(d, -1) : wd === 0 ? plusDays(d, -2) : d; };
+/** the day, week or month with today in it (New York): what Today goes to */
+export const todayPeriod = unit => unit === 'day' ? tradingDay(nyToday()) : periodKey(nyToday(), unit);
+
+/**
+ * The head over a span of days: its name, and ‹ Today › to step and come back, each greyed out where it can't go (so
+ * nothing moves when one can't). The calendar and a day's notebook page share it. On a touch screen the name opens the
+ * phone's own month or date picker (`pick`, an input laid over it); with a mouse it's just the name.
+ * `open` instead makes the name a button with those action attributes (the calendar's own dates open Filters).
+ * @param {{ title: string, sub?: string, pick?: string, open?: string, nav?: string, lead?: string, end?: string, cls?: string }} o
+ */
+export function periodHead({ title, sub = '', pick = '', open = '', nav = '', lead = '', end = '', cls = '' }) {
+  const name = (caret = '') => `<span class="jc-title">${esc(title)}</span>${caret}${sub ? `<span class="jc-sub">${esc(sub)}</span>` : ''}`;
+  const caret = '<span class="jc-caret" aria-hidden="true"></span>';
+  const titleBox = pick ? `<label class="jc-titlebox jc-picks">${name(caret)}${pick}</label>`
+    : open ? `<button class="jc-titlebox jc-opens" ${open}>${name(caret)}</button>` : `<span class="jc-titlebox">${name()}</span>`;
+  return `<div class="jc-head jc-period${cls ? ` ${cls}` : ''}">${lead ? `<div class="jc-lead">${lead}</div>` : ''}${titleBox}${nav}${end}</div>`;
+}
+/**
+ * ‹ Today ›: prev, next and today are each button's action attributes, word what they step through ('month with trades',
+ * read 'Earlier month with trades'); the Off flags grey out the ones that can't go
+ * @param {{ prev: string, next: string, today: string, word: string, prevOff?: boolean, nextOff?: boolean, todayOff?: boolean }} o
+ */
+export function stepGroup({ prev, next, today, word, prevOff = false, nextOff = false, todayOff = false }) {
+  const off = b => b ? ' disabled' : '';
+  return `<span class="jc-step" role="group" aria-label="${esc(word)}">
+      <button class="btn jc-nav" ${prev} aria-label="Earlier ${esc(word)}"${off(prevOff)}>‹</button>
+      <button class="btn jc-today" ${today}${off(todayOff)}>Today</button>
+      <button class="btn jc-nav" ${next} aria-label="Later ${esc(word)}"${off(nextOff)}>›</button>
+    </span>`;
+}
 
 const pct = v => `${Math.round(v)}%`;
 const statCell = (label, value, sub = '', cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}${sub ? `<span class="pos-sub">${sub}</span>` : ''}</dd></div>`;
 
-/** a weekday: tapping it opens its notebook page (docs/journal-notebook.md), quiet days and days to come too. Over dates
- * that cross a month, the first day shown in each month carries it ('Nov 2') */
-function dayCell(d, withMonth = false) {
+/** a weekday: tapping it opens its notebook page (docs/journal-notebook.md), quiet days and days to come too; today's
+ * number sits in a blue dot, days to come are fainter. Over dates that cross a month, the first day shown in each month
+ * carries it ('Nov 2') */
+function dayCell(d, withMonth = false, today = nyToday()) {
   if (!d) return '<td class="jc-out"></td>';
   const num = withMonth ? shortDay(d.day) : String(+d.day.slice(8));
   const mark = dayMark(d.day, d.trades > 0);
   const pop = econPopHtml(d.day), td = pop ? '<td class="jc-has-ev">' : '<td>', ev = econWords(d.day), dot = econDot(d.day);
-  if (!d.trades) return `${td}<button class="jc-day jc-quiet${mark.html ? ' jc-noted' : ''}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}: no exits${mark.words}${ev}. Open the day`)}"><span class="jc-num">${num}</span>${dot}${mark.html}</button>${pop}</td>`;
+  const when = d.day === today ? ' jc-is-today' : d.day > today ? ' jc-later' : '', now = d.day === today ? ', today' : '';
+  if (!d.trades) return `${td}<button class="jc-day jc-quiet${mark.html ? ' jc-noted' : ''}${when}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}${now}: no exits${mark.words}${ev}. Open the day`)}"><span class="jc-num">${num}</span>${dot}${mark.html}</button>${pop}</td>`;
   const pf = d.profitFactor === null ? '' : d.profitFactor.toFixed(2);
-  const label = `${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${pf}` : ''}${mark.words}${ev}. Open the day`;
-  return `${td}<button class="jc-day ${pnlClass(d.pnl)}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}"><span class="jc-num">${num}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span><span class="jc-rate">${pct(d.winRate)}<span class="jc-wide"> won${pf ? ` · PF ${pf}` : ''}</span></span>${dot}${mark.html}</button>${pop}</td>`;
+  const label = `${d.day}${now}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${pf}` : ''}${mark.words}${ev}. Open the day`;
+  return `${td}<button class="jc-day ${pnlClass(d.pnl)}${when}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}"><span class="jc-num">${num}</span><span class="jc-pnl">${compact$(d.pnl)}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'}</span><span class="jc-rate">${pct(d.winRate)}<span class="jc-wide"> won${pf ? ` · PF ${pf}` : ''}</span></span>${dot}${mark.html}</button>${pop}</td>`;
 }
 
 function weekCell(w) {
@@ -63,15 +100,18 @@ function weekCell(w) {
   return `<td class="jc-week"><button class="jc-weekbtn${open ? ' active' : ''}" data-action="openPeriodReview" data-arg="week" data-arg2="${w.start}" aria-label="${esc(label)}" aria-expanded="${open}" title="Review the week"><span class="${pnlClass(w.pnl)}">${compact$(w.pnl)}</span><span class="jc-n">${w.trades} trade${w.trades === 1 ? '' : 's'} · ${pct(w.winRate)}</span>${periodMark('week', w.start)}</button></td>`;
 }
 
-/** the month's (or the dates') own numbers over the grid, realized like the days: P&L, win rate, profit factor, green days */
-function monthStats(cal, empty = 'No exits this month.') {
-  if (!cal.trades) return `<p class="hint">${empty}</p>`;
-  return `<dl class="js-stats jc-stats">
-    ${statCell('Net P&amp;L', signed$(cal.pnl), `${cal.trades} trade${cal.trades === 1 ? '' : 's'}`, pnlClass(cal.pnl))}
-    ${statCell('Win rate', `${cal.winRate}%`, `${cal.wins} won, ${cal.losses} lost`)}
-    ${statCell('Profit factor', cal.profitFactor === null ? '—' : cal.profitFactor.toFixed(2), cal.profitFactor === null ? 'no losses' : 'gross wins ÷ gross losses')}
-    ${statCell('Green days', `${cal.green} of ${cal.days}`, `${cal.red} red`)}
-  </dl>`;
+/**
+ * Phones and tablets: the span's own numbers over the grid, realized like the days, in two lines so the grid starts high:
+ * the Net P&L big (Stats › beside it), then trades, win rate, profit factor and green days
+ */
+function summary(cal, link, empty) {
+  if (!cal.trades) return `<p class="hint jc-empty">${empty}</p>`;
+  const pf = cal.profitFactor === null ? 'no losses' : `PF ${cal.profitFactor.toFixed(2)}`;
+  return `<div class="jc-sum">
+      <div class="jc-sum-top"><span class="jc-sum-label">Net P&amp;L</span>${link}</div>
+      <div class="jc-sum-pnl ${pnlClass(cal.pnl)}">${signed$(cal.pnl)}</div>
+      <div class="jc-sum-line"><span>${cal.trades} trade${cal.trades === 1 ? '' : 's'}</span><span title="${cal.wins} won, ${cal.losses} lost">${cal.winRate}% won</span><span title="Gross wins ÷ gross losses">${pf}</span><span title="${cal.red} red">${cal.green} of ${cal.days} days green</span></div>
+    </div>`;
 }
 
 // a month that starts on a weekend leaves its first week without a weekday: no blank row for it
@@ -79,6 +119,8 @@ const grid = (cal, label = () => false, cell = dayCell) => `<table class="jc-gri
 
 // the phone calendar's key: folded away under the grid until tapped (owner request: the paragraph read as clutter)
 const CAL_HINT = `<details class="hint-details jc-key"><summary>How to read the calendar</summary><ul>
+    <li>Swipe the calendar sideways, or tap ‹ ›, for the month before or after; tap its name to pick one. Today comes back.</li>
+    <li>The month you're on is the Journal's dates, so Trades and Stats show it too. Filters has the rest: a week, a day, your own dates.</li>
     <li>Tap a day for its notebook page, a week's total to review the week.</li>
     <li><span class="jc-key-plan">✎</span> plan written <span class="jc-key-done">✓</span> reviewed <span class="jc-key-due">●</span> a day to review <span>⊘</span> trades you missed</li>
     <li><span class="jc-key-ev ev-high"></span> the Fed, CPI, PPI, jobs, PCE, GDP <span class="jc-key-ev ev-medium"></span> FOMC minutes, Beige Book. Open the day for their times.</li>
@@ -169,9 +211,9 @@ function deskStats(cal, daily, from, to, empty) {
 
 const LEGEND = '<p class="jc-legend"><span><span class="jc-chip jc-chip-due">Review</span> the day to review</span><span><span class="jc-chip jc-chip-done">✓ Reviewed</span></span><span><span class="jc-chip jc-chip-quiet">⊘</span> trades you missed</span><span><span class="jc-plan">✎</span> plan written</span><span><span class="jc-tag jc-tag-high">CPI</span> a major release</span><span><span class="jc-tag jc-tag-medium">Minutes</span> FOMC minutes, Beige Book</span><span class="jc-legend-end">Color scales with the day\'s size</span></p>';
 
-/** the desktop calendar over from..to: the band, the line, the grid with its chips, and the legend */
-function deskCalendar(trades, daily, cal, from, to, head, label, empty) {
-  const today = nyParts(new Date().toISOString()).day;
+/** the desktop calendar over from..to: the band, the line, the grid with its chips (a touch screen swipes it too), and the legend */
+function deskCalendar(trades, daily, cal, from, to, head, label, empty, swipe) {
+  const today = nyToday();
   /** @type {Map<string, any[]>} */
   const closed = new Map();
   /** @type {Map<string, number>} */
@@ -187,55 +229,68 @@ function deskCalendar(trades, daily, cal, from, to, head, label, empty) {
   return `<div class="jc-wrap">${head}
       ${deskStats(cal, daily, from, to, empty)}
       ${cal.trades ? cumulativeHtml(daily, from, to) : ''}
-      ${grid(cal, label, (d, withMonth) => deskDayCell(d, withMonth, ctx))}
+      ${swipe}${grid(cal, label, (d, withMonth) => deskDayCell(d, withMonth, ctx))}</div></div>
       ${LEGEND}
     </div>`;
 }
 
 /**
  * The calendar lays out the dates the filter bar holds (Trades and Stats share them): a month, a week, a day or your own
- * dates; under All time, the newest month with exits, its ‹ › picking a month (which the other tabs then show too)
+ * dates; under All time, the newest month with exits. Its head names them, and ‹ Today › (a swipe on the grid too) step
+ * the month, week or day through stepJournalPeriod, the same as the filter bar's and the Filters sheet's ‹ ›: they set
+ * the dates, so Trades, Stats and Filters follow. Under All time the first step makes the dates that month.
  */
 export function calendarView(trades) {
   const daily = dailyPnl(trades);
   const wide = mq(DESKTOP_MQ);
   const { unit, key } = statsScope(trades);
+  const ytd = state.journalPeriod === 'ytd';
   const month = unit === 'month' ? key : unit === 'all' ? activeMonths(daily)[0] || thisMonth() : '';
   const [from, to] = month ? periodSpan('month', month) : periodSpan(unit, key);
-  state.journalMonthShown = month || to.slice(0, 7); // ‹ and › step from here
+  state.journalMonthShown = month || to.slice(0, 7); // All time's ‹ › step from here
   const cal = calendarSpan(daily, from, to);
   // dates that cross a month: the month on the first day shown in each
   const firsts = new Set();
   if (from.slice(0, 7) !== to.slice(0, 7)) for (const d of cal.weeks.flatMap(w => w.days)) if (d && ![...firsts].some(f => f.slice(0, 7) === d.day.slice(0, 7))) firsts.add(d.day);
   const label = day => firsts.has(day);
-  const nav = unit === 'all' ? `<button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="-1" aria-label="Previous month">‹</button>
-      <span class="jc-title">${esc(monthName(month))}</span>
-      <button class="btn jc-nav" data-action="shiftJournalMonth" data-arg="1" aria-label="Next month">›</button>
-      <span class="pos-sub jc-newest">All time: the newest month</span>` : '';
-  const thisBtn = unit === 'month' && month === thisMonth() ? '' : '<button class="btn jc-today" data-action="journalThisMonth">This month</button>';
-  const review = month && cal.trades ? `<button class="btn jc-today" data-action="openPeriodReview" data-arg="month" data-arg2="${month}" aria-expanded="${state.journalReviewPeriod?.unit === 'month' && state.journalReviewPeriod.key === month}">${periodStatus('month', month)?.reviewed ? 'Month reviewed ✓' : 'Review the month'}</button>` : '';
-  // the stats share the dates: under All time, the month shown becomes them. On phones it's a button paired with the review,
-  // the two splitting the row (owner request: a lone button and a link pushed right looked out of place)
-  const statsCls = wide ? 'pos-link' : 'btn jc-today';
-  const stats = !cal.trades ? '' : unit === 'all' ? `<button class="${statsCls}" data-action="openJournalStats" data-arg="month" data-arg2="${month}">The month's stats ›</button>` : `<button class="${statsCls}" data-action="setJournalTab" data-arg="stats">The stats ›</button>`;
+  // what ‹ Today › step: the month shown (All time's too), a week or a day; your dates and the year so far don't step
+  const step = month ? 'month' : PERIODS.includes(unit) ? unit : '';
+  const at = month || key, active = step ? activePeriods(trades, step) : [], today = nyToday();
+  const can = by => !!step && !!stepPeriod(active, at, by);
+  const title = month ? monthName(month) : ytd ? 'Year to date' : unit === 'range' ? spanWords(from, to) : periodName(unit, key);
+  // the name opens the phone's own picker: a month's, or a day's for a week (the week it falls in) or a day
+  const pick = !step ? '' : step === 'month'
+    ? `<input class="jc-pick" type="month" value="${month}" max="${thisMonth()}" data-change="pickCalendarDate" aria-label="Pick a month">`
+    : `<input class="jc-pick" type="date" value="${at}" max="${today}" data-change="pickCalendarDate" aria-label="Pick a ${step === 'week' ? 'day in the week' : 'day'}">`;
+  const nav = step ? stepGroup({ prev: 'data-action="stepJournalPeriod" data-arg="-1"', next: 'data-action="stepJournalPeriod" data-arg="1"', today: 'data-action="journalToday"',
+    word: `${step} with trades`, prevOff: !can(-1), nextOff: !can(1), todayOff: at === todayPeriod(step) }) : '';
+  const reviewOpen = state.journalReviewPeriod?.unit === 'month' && state.journalReviewPeriod.key === month;
+  const review = month && cal.trades ? `<button class="btn jc-month-review" data-action="openPeriodReview" data-arg="month" data-arg2="${month}" aria-expanded="${reviewOpen}">${periodStatus('month', month)?.reviewed ? 'Month reviewed ✓' : 'Review the month'}</button>` : '';
+  // the stats share the dates: under All time, the month shown becomes them
+  const stats = !cal.trades ? '' : unit === 'all' ? `<button class="pos-link jc-statslink" data-action="openJournalStats" data-arg="month" data-arg2="${month}">Stats ›</button>`
+    : '<button class="pos-link jc-statslink" data-action="setJournalTab" data-arg="stats">Stats ›</button>';
   const empty = month ? 'No exits this month.' : unit === 'range' ? 'No exits between these dates.' : `No exits this ${unit}.`;
-  const head = `<div class="jc-head">${nav}${thisBtn}${wide ? modeSwitch() : ''}<span class="jc-head-end">${review}${stats}</span></div>`;
-  if (wide) return deskCalendar(trades, daily, cal, from, to, head, label, empty);
+  // the grid in a box that clips it sideways, so a swipe never lets the page scroll sideways
+  const swipe = `<div class="jc-clip"><div class="jc-swipe" data-prev="${can(-1) ? 1 : 0}" data-next="${can(1) ? 1 : 0}">`;
+  if (wide) {
+    const head = periodHead({ title, sub: ytd ? spanWords(from, to) : '', pick, nav, end: `${modeSwitch()}<span class="jc-head-end">${review}${stats}</span>` });
+    return deskCalendar(trades, daily, cal, from, to, head, label, empty, swipe);
+  }
+  // your dates and the year so far don't step: their name opens Filters, where they're set
+  const head = periodHead({ title, sub: ytd ? spanWords(from, to) : '', pick, nav, open: step ? '' : 'data-action="openJournalFilters" aria-haspopup="dialog"' });
   return `${head}
-    ${monthStats(cal, empty)}
-    ${grid(cal, label)}
+    ${summary(cal, stats, empty)}
+    ${swipe}${grid(cal, label, (d, withMonth) => dayCell(d, withMonth, today))}</div></div>
+    ${review ? `<div class="jc-foot">${review}</div>` : ''}
     ${CAL_HINT}`;
-}
-
-/** ‹ or ›: the month before or after the one shown */
-export function nextJournalMonth(by) {
-  return shiftMonth(state.journalMonthShown || thisMonth(), Number(by) || 0);
 }
 
 // ---------- Stats ----------
 
 const shortDay = d => new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const plusDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+/** a span of days in words: 'Oct 1, 2026 – Oct 20, 2026', one day 'Tue, Oct 6, 2026' */
+const spanWords = (from, to) => from === to ? periodName('day', from) : `${shortDay(from)}, ${from.slice(0, 4)} – ${shortDay(to)}, ${to.slice(0, 4)}`;
 /** 'October 2026', 'Oct 5–9, 2026' (Monday to Friday), 'Tue, Oct 6, 2026' */
 export function periodName(unit, key) {
   if (unit === 'month') return monthName(key);

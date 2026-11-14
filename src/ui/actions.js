@@ -34,12 +34,12 @@ import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
 import { addPeriodRule, carryPeriodRule, closePeriodReview, graduatePeriodRule, openPeriodReview, periodRuleDraftInput, periodRuleInput, periodRuleSave, periodTextInput, periodTextSave, removePeriodRule, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { setWeekRulesShown } from './week-rules.js';
-import { clearJournalScope, clearJournalSetupFilter, closeJournalSetup, restoreJournalScope, journalThisMonth, openJournalFilters, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setScopeDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
+import { clearJournalScope, clearJournalSetupFilter, closeJournalSetup, restoreJournalScope, journalToday, openJournalFilters, pickCalendarDate, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setScopeDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
 import { addJournalFilter, applyJournalView, cancelJournalView, clearJournalFilters, closeJournalFilterEdit, deleteJournalView, editJournalFilter, journalViewTyped, pickJournalView, removeJournalFilter, saveJournalView, setJournalFilterBound, setJournalFilterNot, setJournalFilterOp, startJournalView, toggleJournalFilterValue } from './journal-filters.js';
-import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
+import { reviewJournalDay, pickNotebookDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { reviewUpNext, skipUpNext, toggleJournalDayShut } from './journal-cards.js';
 import { setCalendarMode, setStatsFeature, setStatsFeatureMode } from './journal-stats.js';
 import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
@@ -198,8 +198,9 @@ export const actions = {
   restoreJournalScope: () => restoreJournalScope(),
   clearJournalScope: () => clearJournalScope(),
   openJournalFilters: () => openJournalFilters(),
-  shiftJournalMonth: el => shiftJournalMonth(arg(el)),
-  journalThisMonth: () => journalThisMonth(),
+  journalToday: () => journalToday(),
+  pickCalendarDate: el => whenPicked(el, () => pickCalendarDate(/** @type {HTMLInputElement} */ (el).value)),
+  pickNotebookDay: el => whenPicked(el, () => pickNotebookDay(/** @type {HTMLInputElement} */ (el).value)),
   setJournalPeriod: el => setJournalPeriod(arg(el) || /** @type {HTMLSelectElement} */ (el).value),
   stepJournalPeriod: el => stepJournalPeriod(arg(el)),
   setScopeDates: el => whenPicked(el, () => setScopeDates(arg(el), /** @type {HTMLInputElement} */ (el).value)),

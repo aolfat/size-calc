@@ -159,6 +159,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
 - No web page tells on phones (owner request: feel like a native iOS app): no grey tap flash, no text selection or callout menu from a long press on buttons and [data-action] elements (fields still select), every field 16px so iOS never zooms on focus, and no font inflation when the phone turns sideways (base.css).
   Tapping the tab you're on scrolls to the top, or leaves a Journal trade page (docs/tools.md).
   The rest of the native feel lives in ui/native-feel.js: the small title bar once the large title scrolls away, pull to refresh, swipe back from a Journal trade page's left edge, and haptics through effects.haptic (docs/tools.md, docs/journal.md).
+  Swiping the Journal's calendar sideways steps its month the way its ‹ › do (attachCalendarSwipe, docs/journal.md, The calendar's head).
   Every :hover rule sits in @media (hover: hover) (a test keeps it so), so a tap never leaves a hover style stuck on a phone.
   tests/native-feel.test.mjs covers these.
 - Wheel over a focused number input blurs it so the page scrolls instead of spinning the value

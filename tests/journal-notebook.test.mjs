@@ -117,8 +117,8 @@ async function journal({ records = RECORDS, library = [], days = [], reviews = [
 test('a calendar day opens its page: premarket, the day\'s trades, post-market; ← Calendar and the tab go back', async () => {
   const { run, state, out } = await journal({ library: RULES });
   run("setJournalTab('calendar')");
-  assert.match(out(), /<button class="jc-day journal-sell" data-action="openJournalDay" data-arg="2026-10-06"/);
-  assert.match(out(), /<button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-08" aria-label="2026-10-08: no exits\. Open the day">/, 'a quiet day opens too');
+  assert.match(out(), /<button class="jc-day journal-sell jc-is-today" data-action="openJournalDay" data-arg="2026-10-06" aria-label="2026-10-06, today: /, 'today, its number in a dot');
+  assert.match(out(), /<button class="jc-day jc-quiet jc-later" data-action="openJournalDay" data-arg="2026-10-08" aria-label="2026-10-08: no exits\. Open the day">/, 'a quiet day opens too, a day to come fainter');
   run("openJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'calendar');
   const page = out();
@@ -140,6 +140,14 @@ test('a calendar day opens its page: premarket, the day\'s trades, post-market; 
   assert.match(page, /<span class="nb-rule-name">Max loss = 5%<\/span><span class="chip-row jr-chips"><button class="filter-btn" aria-pressed="false" data-action="setDayRule" data-arg="mine:r1" data-arg2="kept">Kept<\/button>/);
   assert.match(page, /From the day's trades[\s\S]*<b>MSFT<\/b> <span class="nb-none">No exit note yet<\/span>/);
   assert.doesNotMatch(page, /Kept your last focus/, 'no focus written before: no question');
+  assert.match(page, /<div class="jc-head jc-period nb-head"><div class="jc-lead"><button class="btn jc-back" data-action="closeJournalDay">← Calendar<\/button><\/div><label class="jc-titlebox jc-picks"><span class="jc-title">Tue, Oct 6, 2026<\/span><span class="jc-caret" aria-hidden="true"><\/span><input class="jc-pick" type="date" value="2026-10-06" data-change="pickNotebookDay"/, 'the calendar\'s head: the way back over the day, a date picker on its name');
+  assert.match(page, /data-action="stepJournalDay" data-arg="-1" aria-label="Earlier weekday">‹<\/button>\s*<button class="btn jc-today" data-action="openTodayNotebook" disabled>Today<\/button>/, 'today\'s page: Today greys out in place');
+  run("pickNotebookDay('2026-10-03')");
+  assert.equal(state.journalNotebookDay, '2026-10-02', 'a Saturday picked: its Friday');
+  assert.match(out(), /data-action="openTodayNotebook">Today<\/button>/);
+  run("pickNotebookDay('')");
+  assert.equal(state.journalNotebookDay, '2026-10-02', 'a cleared picker stays');
+  run("openJournalDay('2026-10-06')");
   run("stepJournalDay('1')");
   assert.equal(state.journalNotebookDay, '2026-10-07');
   assert.match(out(), /No trades yet\./, 'Wednesday hasn\'t happened');
@@ -154,7 +162,7 @@ test('economic releases: a dot and a hover card on the calendar, a row on the da
   const { run, out } = await journal({ now: Date.parse('2026-10-14T12:00:00Z') });
   run("setJournalTab('calendar')");
   const cal = out();
-  assert.match(cal, /<td class="jc-has-ev"><button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-14" aria-label="2026-10-14: no exits, CPI 8:30 am, Beige Book 2:00 pm\. Open the day"><span class="jc-num">14<\/span><span class="jc-ev jc-ev-high" aria-hidden="true"><\/span><\/button><div class="jc-pop" aria-hidden="true"><div class="ev-head">Wednesday, October 14, 2026<\/div>/);
+  assert.match(cal, /<td class="jc-has-ev"><button class="jc-day jc-quiet jc-is-today" data-action="openJournalDay" data-arg="2026-10-14" aria-label="2026-10-14, today: no exits, CPI 8:30 am, Beige Book 2:00 pm\. Open the day"><span class="jc-num">14<\/span><span class="jc-ev jc-ev-high" aria-hidden="true"><\/span><\/button><div class="jc-pop" aria-hidden="true"><div class="ev-head">Wednesday, October 14, 2026<\/div>/);
   assert.match(cal, /<li><span class="ev-time">8:30 am<\/span><span class="ev-dot ev-high"><\/span><span class="ev-name">CPI<span class="ev-note">Sep<\/span><\/span><\/li><li><span class="ev-time">2:00 pm<\/span><span class="ev-dot ev-medium"><\/span><span class="ev-name">Beige Book<\/span><\/li><\/ul><div class="ev-foot">2 events · New York time<\/div>/);
   assert.match(cal, /data-arg="2026-10-07"[^>]*><span class="jc-num">7<\/span><span class="jc-ev jc-ev-medium"/, 'the minutes alone: amber');
   assert.match(cal, /<td><button class="jc-day jc-quiet" data-action="openJournalDay" data-arg="2026-10-08"/, 'a quiet day has no card');

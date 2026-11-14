@@ -226,18 +226,21 @@ test('phones: a card per trade, Open then Closed by day with what they took; wid
   assert.match(wide.out(), /journal-table/, 'the table stays on wider screens');
 });
 
-test('the Calendar tab: the month of the latest close, a day tapped opens its page, ‹ › pick a month the other tabs share', async () => {
+test('the Calendar tab: the month of the latest close under its name, its numbers in two lines, a day tapped opens its page', async () => {
   const { run, state, out } = await journal();
   assert.match(out(), /data-action="setJournalTab" data-arg="calendar">Calendar<\/button><button[^>]*data-action="setJournalTab" data-arg="stats">Stats<\/button><button[^>]*data-action="setJournalTab" data-arg="missed">Missed</, 'the three tabs that share the filters side by side');
   run("setJournalTab('calendar')");
-  assert.match(out(), /class="jc-title">October 2026</);
-  assert.match(out(), /<dl class="js-stats jc-stats">\s*<div><dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$200\.00<span class="pos-sub">2 trades<\/span>/, 'the month\'s own numbers');
-  assert.match(out(), /<dt>Win rate<\/dt><dd class="">50%<span class="pos-sub">1 won, 1 lost</);
-  assert.match(out(), /<dt>Profit factor<\/dt><dd class="">3\.00</);
-  assert.match(out(), /<dt>Green days<\/dt><dd class="">1 of 2<span class="pos-sub">1 red</);
+  assert.match(out(), /<div class="jc-head jc-period"><label class="jc-titlebox jc-picks"><span class="jc-title">October 2026<\/span><span class="jc-caret" aria-hidden="true"><\/span><input class="jc-pick" type="month" value="2026-10" max="\d{4}-\d{2}" data-change="pickCalendarDate" aria-label="Pick a month"><\/label>/, 'All time: the newest month, its name a month picker');
+  assert.doesNotMatch(out(), /All time: the newest month|journalThisMonth/, 'no note or extra button: the head looks the same on every month');
+  assert.match(out(), /<div class="jc-sum-top"><span class="jc-sum-label">Net P&amp;L<\/span><button class="pos-link jc-statslink" data-action="openJournalStats" data-arg="month" data-arg2="2026-10">Stats ›<\/button><\/div>\s*<div class="jc-sum-pnl journal-buy">\+\$200\.00<\/div>/, 'the month\'s own numbers: the net big, Stats beside it');
+  assert.match(out(), /<div class="jc-sum-line"><span>2 trades<\/span><span title="1 won, 1 lost">50% won<\/span><span title="Gross wins ÷ gross losses">PF 3\.00<\/span><span title="1 red">1 of 2 days green<\/span><\/div>/);
+  assert.match(out(), /<div class="jc-clip"><div class="jc-swipe" data-prev="0" data-next="0"><table class="jc-grid">/, 'one month with trades: nothing to swipe to');
   assert.match(out(), /<button class="jc-day journal-buy" data-action="openJournalDay" data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$300<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">100%<span class="jc-wide"> won<\/span>/, 'no losses: no profit factor');
   assert.match(out(), /data-arg="2026-10-06"[^>]*><span class="jc-num">6<\/span><span class="jc-pnl">−\$100<\/span><span class="jc-n">1 trade<\/span><span class="jc-rate">0%<span class="jc-wide"> won · PF 0\.00</);
   assert.match(out(), /data-action="openPeriodReview" data-arg="week" data-arg2="2026-10-05"[^>]*><span class="journal-buy">\+\$200<\/span><span class="jc-n">2 trades · 50%</);
+  assert.match(out(), /<\/table><\/div><\/div>\s*<div class="jc-foot"><button class="btn jc-month-review" data-action="openPeriodReview" data-arg="month" data-arg2="2026-10" aria-expanded="false">Review the month<\/button><\/div>/, 'the month\'s review under the grid, where it opens');
+  assert.equal(run('compact$(-0.4)'), '−$0.40', 'a day just under even: its cents, not −$0');
+  assert.equal(run('compact$(0)'), '$0');
   run("pickJournalDay('2026-10-06')");
   assert.equal(state.journalTab, 'trades');
   assert.match(out(), /<option value="day" selected>Day<\/option>[^]*?<span class="jscope-when">Tue, Oct 6, 2026<\/span>[^]*?data-action="restoreJournalScope">‹ Back to All time</, 'the dates narrow to the day');
@@ -245,23 +248,51 @@ test('the Calendar tab: the month of the latest close, a day tapped opens its pa
   assert.doesNotMatch(out(), /<b>AAPL<\/b>/, 'only that day\'s trades');
   run('restoreJournalScope()');
   assert.equal(state.journalPeriod, 'all');
-  run("setJournalTab('calendar'); shiftJournalMonth('-1')");
-  assert.match(out(), /<option value="month" selected>Month<\/option>[^]*?September 2026<\/span>[\s\S]*No exits this month/, 'the month becomes the dates');
-  run("shiftJournalMonth('1')");
-  assert.match(out(), /<span class="jscope-when">October 2026</);
-  run("setJournalTab('trades')");
-  assert.match(out(), /<span class="jscope-when">October 2026</, 'Trades keeps the month');
-  run("openJournalStats('month', '2026-10')");
-  assert.equal(state.journalTab, 'stats');
-  assert.match(out(), /<option value="month" selected>Month</);
+});
+
+test('the calendar\'s ‹ Today ›: the same step as the filters\', to the nearest month with trades; the dates become it on every tab', async () => {
+  const records = [...RECORDS, order(5, 'BUY', '2026-08-05T14:35:00+0000', 10, 50, 'PLTR'), order(6, 'SELL', '2026-08-05T15:00:00+0000', 10, 55, 'PLTR')];
+  const a = await app({ supabase: fakeRecords(records), session: SESSION, clock: true, now: Date.UTC(2026, 10, 14, 17) });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  const { run, state } = a, out = () => a.elements.get('journalSection').innerHTML;
+  const head = () => out().match(/<div class="jc-head jc-period">[^]*?<\/span>\s*<\/span>/)?.[0] || '';
   run("setJournalTab('calendar')");
-  // This month: back to today's month in New York, whatever month is shown
-  const now = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'long', year: 'numeric' }).format(new Date());
-  run("shiftJournalMonth('-5')");
-  assert.match(out(), /data-action="journalThisMonth">This month</);
-  run('journalThisMonth()');
-  assert.match(out(), new RegExp(`class="jscope-when">${now}<`));
-  assert.doesNotMatch(out(), /data-action="journalThisMonth"/, 'already there: nothing to do');
+  assert.match(head(), /<span class="jc-title">October 2026<\/span>/);
+  assert.match(head(), /<button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="-1" aria-label="Earlier month with trades">‹<\/button>\s*<button class="btn jc-today" data-action="journalToday">Today<\/button>\s*<button class="btn jc-nav" data-action="stepJournalPeriod" data-arg="1" aria-label="Later month with trades" disabled>›<\/button>/, 'nothing later: › greys out in place');
+  assert.match(out(), /data-prev="1" data-next="0"/, 'the swipe knows the same');
+  assert.match(out(), /<option value="all" selected>All time<\/option>/);
+  assert.doesNotMatch(out(), /jscope-nav/, 'on the calendar the bar leaves ‹ › to the head under it');
+  run('stepJournalPeriod(-1)');
+  assert.deepEqual([state.journalPeriod, state.journalPeriodKey], ['month', '2026-08'], 'September had no exits: August, and the dates become it');
+  assert.match(head(), /<span class="jc-title">August 2026<\/span>[^]*?aria-label="Earlier month with trades" disabled>‹/);
+  assert.match(out(), /<option value="month" selected>Month<\/option>/, 'the bar shows it as a month');
+  run("setJournalTab('trades')");
+  assert.match(out(), /<span class="jscope-when">August 2026</, 'Trades shows the same month');
+  assert.match(out(), /<b>PLTR<\/b>/);
+  assert.doesNotMatch(out(), /<b>AAPL<\/b>/);
+  run("setJournalTab('calendar'); stepJournalPeriod(1)");
+  assert.equal(state.journalPeriodKey, '2026-10');
+  run('journalToday()');
+  assert.equal(state.journalPeriodKey, '2026-11', 'Today: this month in New York');
+  assert.match(head(), /<span class="jc-title">November 2026<\/span>[^]*?data-action="journalToday" disabled>Today</, 'already there: Today greys out');
+  assert.match(out(), /No exits this month\./);
+  run("pickCalendarDate('2026-08')");
+  assert.equal(state.journalPeriodKey, '2026-08', 'the name\'s month picker');
+  run("setJournalPeriod('week')");
+  assert.match(head(), /<span class="jc-title">Aug 3–7, 2026<\/span><span class="jc-caret" aria-hidden="true"><\/span><input class="jc-pick" type="date" value="2026-08-03"/, 'a week: a day picker for the week it falls in');
+  assert.match(head(), /aria-label="Earlier week with trades" disabled>‹/);
+  run("pickCalendarDate('2026-10-07')");
+  assert.deepEqual([state.journalPeriod, state.journalPeriodKey], ['week', '2026-10-05']);
+  run("setJournalPeriod('day'); pickCalendarDate('2026-10-10')");
+  assert.equal(state.journalPeriodKey, '2026-10-09', 'a Saturday picked: its Friday');
+  run('journalToday()');
+  assert.equal(state.journalPeriodKey, '2026-11-13', 'Today on a Saturday: Friday');
+  run("pickCalendarDate('nope')");
+  assert.equal(state.journalPeriodKey, '2026-11-13', 'a cleared picker changes nothing');
+  run("setJournalPeriod('ytd')");
+  assert.match(out(), /<div class="jc-head jc-period"><button class="jc-titlebox jc-opens" data-action="openJournalFilters" aria-haspopup="dialog"><span class="jc-title">Year to date<\/span><span class="jc-caret" aria-hidden="true"><\/span><span class="jc-sub">Jan 1, 2026 – Nov 14, 2026<\/span><\/button><\/div>/, 'the year so far doesn\'t step: no ‹ Today ›, its name opens Filters where it\'s set');
+  assert.doesNotMatch(out(), /journalToday/);
 });
 
 test('the Calendar tab: a trim shows on its day, and that day lists the trade even while it is open', async () => {
@@ -271,9 +302,8 @@ test('the Calendar tab: a trim shows on its day, and that day lists the trade ev
   run("setJournalTab('calendar')");
   assert.match(out(), /data-arg="2026-10-05"[^>]*><span class="jc-num">5<\/span><span class="jc-pnl">\+\$150<\/span>/);
   assert.match(out(), /data-arg="2026-10-07"[^>]*><span class="jc-num">7<\/span><span class="jc-pnl">\+\$80<\/span>/);
-  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-buy">\+\$230\.00<span class="pos-sub">1 trade<\/span>/, 'trimmed on two days, counted once in the month');
-  assert.match(out(), /<dt>Win rate<\/dt><dd class="">100%<span class="pos-sub">1 won, 0 lost</);
-  assert.match(out(), /<dt>Green days<\/dt><dd class="">2 of 2</);
+  assert.match(out(), /<div class="jc-sum-pnl journal-buy">\+\$230\.00<\/div>\s*<div class="jc-sum-line"><span>1 trade<\/span>/, 'trimmed on two days, counted once in the month');
+  assert.match(out(), /<span title="1 won, 0 lost">100% won<\/span><span title="Gross wins ÷ gross losses">no losses<\/span><span title="0 red">2 of 2 days green<\/span>/);
   run("pickJournalDay('2026-10-05')");
   assert.match(out(), /<b>AAPL<\/b>/, 'the open trade trimmed that day');
 });
@@ -402,16 +432,17 @@ test('the Calendar over Dates: the bar\'s From and To, the weeks they cover; Tra
   const { run, state, out } = await journal(records);
   run("setJournalTab('calendar')");
   assert.match(out(), /class="jc-title">November 2026</, 'All time: the newest month');
-  run("shiftJournalMonth('-1'); setJournalPeriod('range')");
+  run("stepJournalPeriod(-1); setJournalPeriod('range')");
   assert.equal(state.journalPeriodKey, '2026-10-01..2026-10-31', 'starts as the month shown');
   assert.match(out(), /id="journalRangeFrom" value="2026-10-01" data-change="setScopeDates" data-arg="from"/);
-  assert.doesNotMatch(out(), /shiftJournalMonth|Review the month/, 'the dates say where: no ‹ › or month review');
+  assert.doesNotMatch(out(), /journalToday|Review the month/, 'your own dates don\'t step: no ‹ Today › or month review');
+  assert.match(out(), /<div class="jc-head jc-period"><button class="jc-titlebox jc-opens" data-action="openJournalFilters" aria-haspopup="dialog"><span class="jc-title">Oct 1, 2026 – Oct 31, 2026<\/span>/, 'the head names them');
   run("setScopeDates('from', '2026-10-06')");
-  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 trade/);
+  assert.match(out(), /<div class="jc-sum-pnl journal-sell">−\$100\.00<\/div>\s*<div class="jc-sum-line"><span>1 trade<\/span>/);
   assert.match(out(), /<tr><td class="jc-out"><\/td><td><button class="jc-day journal-sell" data-action="openJournalDay" data-arg="2026-10-06"/, 'Monday 10/5 before the dates is blank');
-  assert.match(out(), /data-action="setJournalTab" data-arg="stats">The stats ›</, 'the stats share the dates: just the tab');
+  assert.match(out(), /data-action="setJournalTab" data-arg="stats">Stats ›</, 'the stats share the dates: just the tab');
   run("setScopeDates('to', '2026-11-06')");
-  assert.match(out(), /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$50\.00<span class="pos-sub">2 trades/, 'across the month end');
+  assert.match(out(), /<div class="jc-sum-pnl journal-sell">−\$50\.00<\/div>\s*<div class="jc-sum-line"><span>2 trades<\/span>/, 'across the month end');
   assert.match(out(), /<span class="jc-num">Oct 6<\/span>/, 'across a month end: the first day shown in each month carries it');
   assert.match(out(), /data-arg="2026-11-02"[^>]*><span class="jc-num">Nov 2<\/span><span class="jc-pnl">\+\$50</);
   assert.match(out(), /<span class="jc-num">7<\/span>/, 'other days keep the plain number');
@@ -489,6 +520,27 @@ test('phones: the dates sit in the Filters sheet, as a chip under the bar, and c
   assert.doesNotMatch(out(), /jscope-unit/, 'the dates menu waits in the sheet');
   a.run('openJournalFilters()');
   assert.match(a.elements.get('journalFiltersBody').innerHTML, /<div class="seg jscope-units" aria-label="Dates">[^]*?aria-pressed="true" data-action="setJournalPeriod" data-arg="month">Month<\/button>[^]*?<span class="jscope-when">October 2026<\/span>/);
+});
+
+test('phones: the calendar\'s head is its dates, so no chip for them there; a step lights Filters, which shows the same month', async () => {
+  const records = [...RECORDS, order(5, 'BUY', '2026-08-05T14:35:00+0000', 10, 50, 'PLTR'), order(6, 'SELL', '2026-08-05T15:00:00+0000', 10, 55, 'PLTR')];
+  const a = await app({ width: 390, supabase: fakeRecords(records), session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  const out = () => a.elements.get('journalSection').innerHTML;
+  a.run("setJournalTab('calendar')");
+  assert.doesNotMatch(out(), /jscope-pills/, 'nothing narrows and the head names the dates: no chip row');
+  assert.match(out(), /data-action="openJournalFilters" aria-haspopup="dialog">Filters<\/button>/);
+  a.run('stepJournalPeriod(-1)');
+  assert.match(out(), /<span class="jc-title">August 2026<\/span>/);
+  assert.match(out(), /data-action="openJournalFilters" aria-haspopup="dialog">Filters <b>1<\/b>/, 'the month is the Journal\'s dates: one on');
+  assert.doesNotMatch(out(), /jscope-pill/, 'still no chip: the head says it');
+  a.run('openJournalFilters()');
+  assert.match(a.elements.get('journalFiltersBody').innerHTML, /aria-pressed="true" data-action="setJournalPeriod" data-arg="month">Month<\/button>[^]*?data-action="stepJournalPeriod" data-arg="-1"[^>]*disabled>‹<\/button><span class="jscope-when">August 2026<\/span>/, 'Filters shows the same month, its ‹ › the same step');
+  a.run("setJournalSide('long')");
+  assert.match(out(), /<div class="jscope-pills" role="group" aria-label="Filters on"><span class="jscope-pill active"><button data-action="openJournalFilters">Long<\/button>/, 'the other filters keep their chips');
+  a.run("setJournalTab('trades')");
+  assert.match(out(), /<span class="jscope-pill active"><button data-action="openJournalFilters">August 2026<\/button>/, 'on Trades the dates are a chip again');
 });
 
 test('a touch screen applies a date box once its picker closes: the redraw no longer pulls the box from under it', async () => {
