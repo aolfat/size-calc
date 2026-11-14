@@ -279,7 +279,8 @@ test('‹ › step to the nearest week with trades, the calendar follows, and th
   run("openPeriodReview('month', '2026-10')");
   assert.match(out(), /class="jc-title">October 2026<\/span>[\s\S]*All of the month's stats/);
   assert.match(out(), /2 of 2 closed trades won|1 of 2 closed trades won/);
-  run("shiftJournalMonth('-1')");
+  run('stepJournalPeriod(-1)');
+  assert.equal(state.journalPeriodKey, '2026-09');
   assert.equal(state.journalReviewPeriod, null, 'another month closes the review');
 });
 
@@ -326,7 +327,7 @@ test('a week is over after its Friday close in New York, a month once the next o
 test('grades and notes save as you go: one column per save, a note on blur, the reviewed mark on the calendar', async () => {
   const { run, state, out, supabase } = await journal();
   const writes = () => supabase.writes.filter(w => w.table === 'period_reviews');
-  assert.match(out(), /data-arg2="2026-10-05"[^>]*>[\s\S]*?<span class="jc-rev jc-rev-due">review week<\/span><\/button>/, 'a week that is over and not reviewed asks for it');
+  assert.match(out(), /data-arg2="2026-10-05"[^>]*>[\s\S]*?<span class="jc-rev jc-rev-due">Review<\/span><\/button>/, 'a week that is over and not reviewed asks for it');
   run("openPeriodReview('week', '2026-10-05')");
   assert.match(out(), /class="jw-status jw-status-open">To finish: grades on 8 parts and the rules for next week\./);
   assert.match(out(), /<select class="jw-grade jw-grade-empty" id="jwGrade-exit" data-change="setPeriodGrade" data-arg="exit" aria-label="Exit discipline grade">/);
@@ -363,7 +364,7 @@ test('grades and notes save as you go: one column per save, a note on blur, the 
   assert.equal(saved.rule_next, 'No entries before 9:45', 'the old column keeps the first');
   assert.ok(saved.reviewed_at, 'reviewed_at stamped with the save that finished it');
   assert.match(out(), /<span class="journal-tag journal-tag-done">reviewed<\/span> Every part graded and the rules for next week set\./);
-  assert.match(out(), /data-arg2="2026-10-05"[^>]*aria-label="[^"]*, reviewed\. Review the week"[\s\S]*?<span class="jc-rev jc-rev-done">✓ reviewed<\/span>/);
+  assert.match(out(), /data-arg2="2026-10-05"[^>]*aria-label="[^"]*, reviewed\. Review the week"[\s\S]*?<span class="jc-rev jc-rev-done">✓<span class="jc-wide"> Reviewed<\/span><\/span>/, 'a phone keeps the ✓');
   run("setPeriodGrade('risk', '')");
   await settle();
   assert.equal(supabase.tables.period_reviews.get('user-1:week:2026-10-05').reviewed_at, null, 'a grade cleared takes the mark off');

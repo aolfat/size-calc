@@ -72,11 +72,13 @@ export function stepWeekday(day, by) {
   return iso(t);
 }
 
-/** the day today's line opens: today in New York, or the Monday after a weekend. @param {string} nowIso */
-export function notebookToday(nowIso) {
-  const { day } = nyParts(nowIso), w = weekday(day);
+/** a day's notebook page: a weekday is itself, a weekend the Monday after (the plan for the next session). @param {string} day */
+export function notebookDay(day) {
+  const w = weekday(day);
   return w === 6 ? iso(ms(day) + 2 * 864e5) : w === 0 ? iso(ms(day) + 864e5) : day;
 }
+/** the day today's line opens: today in New York, or the Monday after a weekend. @param {string} nowIso */
+export const notebookToday = nowIso => notebookDay(nyParts(nowIso).day);
 
 /** the day's session is over: past its 4pm close in New York. @param {string} day @param {string} nowIso */
 export function dayOver(day, nowIso) {

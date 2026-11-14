@@ -256,8 +256,6 @@
   .jc-chip-done { color: var(--green); }
   .jc-chip-quiet { color: var(--text2); }
   .jc-chip-open { color: var(--blue); }
-  .jc-wrap .jc-week .jc-rev { display: inline-block; margin-top: 4px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; border-radius: 999px; }
-  .jc-wrap .jc-week .jc-rev-due { background: color-mix(in srgb, var(--amber) 16%, transparent); }
   .jc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 10px 4px 0; font-size: 11.5px; color: var(--text3); }
   .jc-legend-end { margin-left: auto; }
 }

@@ -131,6 +131,11 @@ export function periodKey(day, unit) {
   if (unit === 'week') { const t = Date.parse(`${day}T00:00:00Z`); return isoDay(t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5); }
   return day;
 }
+/** a weekend day's Friday, a weekday itself: the calendar's days are weekdays. @param {string} day 'YYYY-MM-DD' */
+export function tradingDay(day) {
+  const t = Date.parse(`${day}T00:00:00Z`), w = new Date(t).getUTCDay();
+  return w === 6 ? isoDay(t - 864e5) : w === 0 ? isoDay(t - 2 * 864e5) : day;
+}
 /** a span of dates you pick, its key 'YYYY-MM-DD..YYYY-MM-DD' (the earlier day first, whichever way round they come). @param {string} from @param {string} to */
 export const rangeKey = (from, to) => from <= to ? `${from}..${to}` : `${to}..${from}`;
 /** a key rangeKey made. @param {string} key */

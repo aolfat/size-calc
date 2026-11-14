@@ -153,12 +153,12 @@ export function periodStatus(unit, key) {
   return stateOf(unit, key);
 }
 
-/** the calendar's mark on a week or month: reviewed, or (once it's over) still to review */
+/** the calendar's mark on a week or month: reviewed (a phone's narrow column keeps the ✓), or once it's over a Review pill */
 export function periodMark(unit, key) {
   const st = periodStatus(unit, key);
   if (!st) return '';
-  if (st.reviewed) return '<span class="jc-rev jc-rev-done">✓ reviewed</span>';
-  return periodOver(unit, key, new Date(Date.now()).toISOString()) ? `<span class="jc-rev jc-rev-due">review ${unitWord(unit)}</span>` : '';
+  if (st.reviewed) return '<span class="jc-rev jc-rev-done">✓<span class="jc-wide"> Reviewed</span></span>';
+  return periodOver(unit, key, new Date(Date.now()).toISOString()) ? '<span class="jc-rev jc-rev-due">Review</span>' : '';
 }
 
 /** the redraw replaces the panel: keep the box you're in */

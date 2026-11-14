@@ -328,6 +328,129 @@ test('swipe back only starts at the edge of a trade page, and only sideways', as
   assert.ok(run('journalTrade'));
 });
 
+// ---------- swipe the calendar ----------
+
+// a journal with exits in August and October; Saturday Nov 14 2026 at noon New York
+async function calendarApp(opts = {}) {
+  const { fakeRecords } = await import('./helpers/supabase.mjs');
+  const order = (id, instruction, time, qty, price, symbol = 'AAPL') => ({ kind: 'order', record_id: String(id), account: '6789', entered_at: time.replace('+0000', 'Z'), data: {
+    orderId: id, enteredTime: time, status: 'FILLED',
+    orderLegCollection: [{ legId: 1, instruction, quantity: qty, instrument: { symbol, assetType: 'EQUITY' } }],
+    orderActivityCollection: [{ activityType: 'EXECUTION', activityId: id * 10, executionLegs: [{ legId: 1, quantity: qty, price, time }] }],
+  } });
+  const records = [order(1, 'BUY', '2026-10-05T13:35:00+0000', 100, 100), order(2, 'SELL', '2026-10-05T15:00:00+0000', 100, 103),
+    order(3, 'BUY', '2026-08-05T13:35:00+0000', 10, 50, 'PLTR'), order(4, 'SELL', '2026-08-05T15:00:00+0000', 10, 55, 'PLTR')];
+  const a = await app({ width: 390, clock: true, now: Date.UTC(2026, 10, 14, 17), supabase: fakeRecords(records), session: { user: { id: 'user-1' } }, ...opts });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  a.run("setJournalTab('calendar')");
+  const { attachCalendarSwipe } = await import('../src/ui/native-feel.js');
+  const on = {};
+  const section = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); }, querySelector: () => null };
+  // the grid as the calendar drew it: what's before and after it, and the listeners put on it while a touch lasts
+  const onGrid = {};
+  const grid = {
+    style: {}, offsetWidth: 380, dataset: {},
+    addEventListener: (type, fn) => { (onGrid[type] ||= []).push(fn); },
+    removeEventListener: (type, fn) => { onGrid[type] = (onGrid[type] || []).filter(f => f !== fn); },
+  };
+  const read = () => { const m = a.elements.get('journalSection').innerHTML.match(/class="jc-swipe" data-prev="(\d)" data-next="(\d)"/); Object.assign(grid.dataset, { prev: m[1], next: m[2] }); };
+  // a touch inside the grid reaches the grid's listeners, then the section's
+  const fire = (type, x, y = 300, on2 = grid) => {
+    const e = { touches: type === 'touchend' ? [] : [{ clientX: x, clientY: y }], target: { closest: sel => sel === '.jc-swipe' ? on2 : null }, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; } };
+    for (const fn of [...(onGrid[type] || []), ...(on[type] || [])]) fn(e);
+    return e;
+  };
+  attachCalendarSwipe(section);
+  read();
+  return { ...a, grid, read, fire, onGrid, on };
+}
+
+test('swiping the calendar to the right goes to the month before, as ‹ does; left comes back', async () => {
+  const { run, state, grid, read, fire, advance } = await calendarApp();
+  run('var taps = 0; effects.haptic = () => { taps++; }');
+  assert.deepEqual(grid.dataset, { prev: '1', next: '0' }, 'October, the newest: August before it, nothing after');
+  fire('touchstart', 40);
+  const move = fire('touchmove', 300);
+  assert.ok(move.prevented, 'sideways: the calendar owns the drag');
+  assert.equal(grid.style.transform, 'translateX(260px)', 'the grid follows the finger');
+  await advance(400);
+  fire('touchend');
+  assert.deepEqual([state.journalPeriod, state.journalPeriodKey], ['month', '2026-08'], 'past a fifth of its width: the month before with trades, and the dates become it');
+  read();
+  fire('touchstart', 300);
+  fire('touchmove', 40);
+  await advance(400);
+  fire('touchend');
+  assert.equal(state.journalPeriodKey, '2026-10', 'left: the month after');
+  assert.equal(run('taps'), 2, 'a tap you can feel on each');
+});
+
+test('only a touch on the calendar can hold a scroll back, and only while it lasts', async () => {
+  const { grid, fire, onGrid, on } = await calendarApp();
+  assert.equal(on.touchmove, undefined, 'nothing on the Journal waits on every scroll');
+  fire('touchstart', 40);
+  assert.equal(onGrid.touchmove.length, 1, 'a touch on the grid: the grid listens');
+  fire('touchmove', 45, 380);
+  assert.equal(onGrid.touchmove.length, 0, 'it turned out a scroll: let go at once');
+  fire('touchend');
+  fire('touchstart', 40);
+  fire('touchmove', 300);
+  fire('touchend');
+  assert.equal(onGrid.touchmove.length, 0, 'and after a swipe');
+  assert.ok(grid.style);
+});
+
+test('a swipe cut short by another tab leaves the dates alone', async () => {
+  const { run, state, grid, fire, advance } = await calendarApp({ timers: 'fake' });
+  phoneWithMotion();
+  fire('touchstart', 40);
+  fire('touchmove', 300);
+  await advance(100);
+  fire('touchend');
+  run("setJournalTab('trades')");
+  await advance(200);
+  assert.equal(state.journalPeriod, 'all', 'Trades opens on the dates it had');
+  assert.equal(grid.style.transform, '', 'the old grid is put back');
+});
+
+test('a short, up-and-down or dead-end swipe leaves the calendar where it is; a day can still be tapped', async () => {
+  const { state, grid, read, fire, advance } = await calendarApp();
+  fire('touchstart', 300);
+  const move = fire('touchmove', 100);
+  assert.equal(grid.style.transform, 'translateX(-50px)', 'nothing after October: it gives only a little');
+  assert.ok(move.prevented);
+  await advance(400);
+  fire('touchend');
+  assert.equal(state.journalPeriod, 'all', 'and springs back');
+  assert.equal(grid.style.transform, '');
+  fire('touchstart', 100, 300);
+  assert.ok(!fire('touchmove', 110, 120).prevented, 'mostly up: the page scrolls');
+  fire('touchend');
+  fire('touchstart', 100);
+  fire('touchmove', 150);
+  await advance(800);
+  fire('touchend');
+  assert.equal(state.journalPeriod, 'all', 'a short slow drag springs back');
+  read();
+  fire('touchstart', 100, 300, null);
+  assert.ok(!fire('touchmove', 300).prevented, 'off the grid nothing swipes');
+  fire('touchend');
+});
+
+test('with motion the old month slides off and the next slides in', async () => {
+  const { state, grid, fire, advance } = await calendarApp({ timers: 'fake' });
+  phoneWithMotion();
+  fire('touchstart', 40);
+  fire('touchmove', 300);
+  await advance(100);
+  fire('touchend');
+  assert.equal(grid.style.transform, 'translateX(380px)', 'off to the right');
+  assert.equal(state.journalPeriod, 'all', 'the step waits for the slide');
+  await advance(200);
+  assert.equal(state.journalPeriodKey, '2026-08');
+});
+
 // ---------- the small title bar ----------
 
 test('the small title bar shows once the large title scrolls away, and gives way to the quote bar', async () => {
