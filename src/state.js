@@ -156,6 +156,7 @@ export function createState() {
     focusOpen: '', // the id of the focus ticker open to edit (a missed trade and a focus ticker are never open at once)
     focusUndo: null, // { day, list }: the focus list before the last Remove, for the toast's Undo
     journalMonthShown: '', // the month the calendar last showed (All time shows the newest; its ‹ › step from it)
+    journalMonthPick: 0, // the year the calendar's month picker shows while it's open; 0 = closed
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }
     journalExcursions: {}, // trade key → { sig, ex, after }: each closed trade's MFE, MAE and exit efficiency, and what it did after the exits (afterExit), from its saved bars, for the reviews
     periodTradeSort: { by: 'pnl', dir: -1 }, // the week or month review's trade list: 'pnl' | 'pct' | 'r' | 'opened', -1 biggest (newest) first

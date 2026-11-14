@@ -1,9 +1,9 @@
-// Phone gestures and chrome that make the app feel like an iOS one: the small title bar once the large title scrolls away, pull to refresh, and swiping back from a Journal trade page's left edge.
+// Phone gestures and chrome that make the app feel like an iOS one: the small title bar once the large title scrolls away, pull to refresh, swiping back from a Journal trade page's left edge, and swiping the Journal's calendar for the month before or after.
 import { state } from '../state.js';
 import { mq, PHONE_MQ } from '../lib/media.js';
 import { effects } from './effects.js';
 import { closeJournalTrade } from './journal-trade.js';
-import { loadJournal } from './journal.js';
+import { loadJournal, stepJournalPeriod } from './journal.js';
 import { marketRefreshToday } from './market.js';
 import { refreshPositions } from './positions.js';
 import { refreshQuote } from './ticker.js';
@@ -153,9 +153,88 @@ export function attachSwipeBack(page) {
   page.addEventListener('touchcancel', end, true);
 }
 
+// ---------- swipe the calendar ----------
+
+/** how far a release has to carry the calendar, as a share of its width (or a quick flick) */
+export const SWIPE_SHARE = 0.22;
+
+/**
+ * A touch screen, on the Journal's calendar grid (.jc-swipe): drag it sideways for the month (or week, or day) before or
+ * after, as in a phone's calendar app; left is later, right earlier. The grid follows the finger, gives only a little
+ * where there's nothing more that way (its data-prev and data-next say), and let go past SWIPE_SHARE of its width or
+ * with a flick it slides off while the next one slides in (stepJournalPeriod, the same step as ‹ ›). A drag that starts
+ * up or down scrolls the page as usual, and the finger lifting off a day after a swipe doesn't open it.
+ */
+export function attachCalendarSwipe(section) {
+  /** @type {HTMLElement | null} */
+  let grid = null;
+  let mode = null, x0 = 0, y0 = 0, t0 = 0, dx = 0, swipedAt = 0;
+  const can = by => grid?.dataset[by > 0 ? 'next' : 'prev'] === '1';
+  // the one listener that can hold a scroll back sits on the grid, and only while a touch that started on it lasts, so
+  // scrolling anywhere else in the Journal never waits on it
+  const move = e => {
+    if (mode !== 'maybe' && mode !== 'drag') return;
+    dx = e.touches[0].clientX - x0;
+    const dy = e.touches[0].clientY - y0;
+    if (mode === 'maybe') {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dy) >= Math.abs(dx)) { mode = null; release(); return; } // up or down: the page scrolls
+      mode = 'drag';
+      grid.style.transition = 'none';
+    }
+    e.preventDefault();
+    const shown = can(dx < 0 ? 1 : -1) ? dx : dx / 4; // nothing more that way: it gives a little and springs back
+    grid.style.transform = `translateX(${shown}px)`;
+    grid.style.opacity = String(1 - Math.min(0.5, Math.abs(shown) / (grid.offsetWidth || 390)));
+  };
+  const release = () => grid?.removeEventListener('touchmove', move);
+  section.addEventListener('touchstart', e => {
+    release();
+    mode = null;
+    const g = e.touches.length === 1 ? e.target?.closest?.('.jc-swipe') : null;
+    if (!g || !state.journalView || state.journalTrade || state.openSheetName) return;
+    if (g.dataset.prev !== '1' && g.dataset.next !== '1') return;
+    grid = g; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); dx = 0; mode = 'maybe';
+    g.addEventListener('touchmove', move, { passive: false });
+  }, { passive: true });
+  const end = () => {
+    release();
+    if (mode !== 'drag') { mode = null; return; }
+    mode = null;
+    swipedAt = Date.now();
+    const g = grid, w = g.offsetWidth || window.innerWidth || 390, by = dx < 0 ? 1 : -1;
+    const flick = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, Date.now() - t0) > 0.5;
+    if (!can(by) || (Math.abs(dx) < w * SWIPE_SHARE && !flick)) {
+      Object.assign(g.style, { transition: `transform 250ms ${EASE}, opacity 250ms ${EASE}`, transform: '', opacity: '' });
+      return;
+    }
+    effects.haptic();
+    const settle = () => Object.assign(g.style, { transition: '', transform: '', opacity: '' }); // if nothing redrew it
+    if (still()) { settle(); stepJournalPeriod(by); return; }
+    Object.assign(g.style, { transition: `transform 180ms ${EASE}, opacity 180ms ${EASE}`, transform: `translateX(${-by * w}px)`, opacity: '0' });
+    effects.wait(180).then(() => {
+      // a tab, a day or a sheet opened while it slid: the dates stay as they are
+      if (!state.journalView || state.journalTab !== 'calendar' || state.journalNotebookDay || state.journalTrade || state.openSheetName) { settle(); return; }
+      stepJournalPeriod(by);
+      const next = section.querySelector('.jc-swipe');
+      if (!next || next === g) { settle(); return; }
+      // the next one comes in from the side the finger came from
+      Object.assign(next.style, { transition: 'none', transform: `translateX(${by * w * 0.35}px)`, opacity: '0' });
+      void next.offsetWidth;
+      Object.assign(next.style, { transition: `transform 260ms ${EASE}, opacity 260ms ${EASE}`, transform: '', opacity: '' });
+    });
+  };
+  section.addEventListener('touchend', end);
+  section.addEventListener('touchcancel', end);
+  section.addEventListener('click', e => {
+    if (Date.now() - swipedAt < 400 && e.target?.closest?.('.jc-swipe')) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+}
+
 /** wire the phone gestures once at boot */
 export function initNativeFeel() {
   attachPullRefresh(window);
   attachSwipeBack(document.getElementById('journalTradeSection'));
+  attachCalendarSwipe(document.getElementById('journalSection'));
   updateTitleBar();
 }

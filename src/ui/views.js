@@ -48,6 +48,7 @@ export function scrollViewToTop() {
 
 export function setView(v) {
   if (v !== 'journal' && state.modelBooks.viewerId) closeModelImage();
+  if (v !== 'journal') state.journalMonthPick = 0; // the calendar's month picker doesn't wait for you to come back
   rememberView(v);
   state.positionsView = v === 'positions';
   state.utilsView = v === 'utils';

@@ -385,20 +385,69 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .jr-row { grid-template-columns: 1fr; gap: 4px; }
   .jr-label { padding-top: 0; }
 }
-/* the Journal's calendar */
+/* the Journal's calendar (a setup's page and a week's review share .jc-head, .jc-title and .jc-nav) */
 .jc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 10px; }
 .jc-head-end { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .jc-head-end .pos-link { font-size: 13px; }
-/* phones and tablets: Review the month and The stats split their own row, like Import and Export */
-@media (max-width: 1099px) {
-  .jc-head-end { flex: 1 1 100%; margin-left: 0; flex-wrap: nowrap; gap: 8px; }
-  .jc-head-end > .btn { flex: 1 1 0; min-width: 0; justify-content: center; padding: 9px 12px; font-size: 14px; }
-}
-.jc-newest { font-size: 12px; }
+.jc-head-end .jc-month-review { padding: 6px 12px; font-size: 12.5px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
 .jc-nav { padding: 4px 12px; }
-.jc-today { padding: 4px 12px; font-size: 12.5px; }
-.jc-today:disabled { opacity: 0.45; cursor: default; }
+/* the period head (the calendar, a day's page): the name in a pill with thin ‹ › inside it (owner's pick from a design
+   study: no down arrow, the name is the button); a step that can't go greys out in place, so nothing moves */
+.jc-period { gap: 8px 12px; margin: 6px 0 12px; }
+.jc-lead { display: flex; flex: 1 1 100%; align-items: center; justify-content: space-between; gap: 12px; } /* a day page's way back, and Today */
+.jc-pillrow { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.jc-pill { display: inline-flex; align-items: center; max-width: 100%; height: 40px; background: var(--bg3); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--border); }
+.jc-pill-name { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 40px; padding: 0 20px; font: inherit; color: var(--text); white-space: nowrap; background: none; border: 0; border-radius: 999px; }
+button.jc-pill-name { cursor: pointer; }
+.jc-pill-steps .jc-pill-name { min-width: 128px; padding: 0 6px; }
+button.jc-pill-name:active, .jc-picking .jc-pill-name { background: var(--bg4); }
+@media (hover: hover) { button.jc-pill-name:hover { background: var(--bg4); } }
+.jc-period .jc-title { margin: 0; min-width: 0; font-size: 15px; font-weight: 600; text-align: center; }
+.jc-pill-step { flex: none; display: grid; place-items: center; width: 38px; height: 40px; padding: 0; color: var(--text2); background: none; border: 0; border-radius: 999px; cursor: pointer; }
+.jc-pill-step svg { width: 7px; height: 12px; }
+.jc-pill-step:disabled { color: var(--text3); opacity: .45; cursor: default; }
+.jc-pill-step:active:not(:disabled) { color: var(--text); }
+@media (hover: hover) { .jc-pill-step:hover:not(:disabled) { color: var(--text); } }
+.jc-sub { font-size: 12.5px; color: var(--text2); } /* Year to date's span, under its pill */
+.jc-pick { display: none; }
+/* a touch screen: a week's or a day's name opens the phone's own date picker, laid over it (with a mouse it's just the
+   name, so it doesn't look like a button there) */
+@media (pointer: coarse) {
+  .jc-picks { cursor: pointer; }
+  .jc-picks:active { background: var(--bg4); }
+  .jc-pick { display: block; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; font-size: 16px; color: transparent; background: transparent; border: 0; opacity: 0; -webkit-appearance: none; appearance: none; }
+}
+/* the month picker: the year's months as a small calendar under the pill, over a scrim that closes it */
+.jc-picking { position: relative; z-index: 40; }
+.jc-scrim { position: fixed; inset: 0; z-index: -1; background: rgba(3, 5, 9, 0.55); touch-action: none; }
+.jc-mpick { position: absolute; top: calc(100% + 8px); left: 0; width: 340px; max-width: 100%; padding: 10px 10px 12px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5); }
+.jc-mpick-year { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.jc-mpick-year b { font-size: 16px; font-weight: 700; }
+.jc-mpick-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.jc-mpick-m { height: 44px; padding: 0; font: inherit; font-size: 15px; font-weight: 500; color: var(--text); background: none; border: 1px solid transparent; border-radius: 999px; cursor: pointer; }
+.jc-mpick-m:disabled { color: var(--text3); opacity: .55; cursor: default; }
+.jc-mpick-now { color: var(--blue); font-weight: 600; }
+.jc-mpick-m[aria-current="true"] { color: var(--text); font-weight: 600; background: var(--blue-bg); border-color: var(--blue); }
+.jc-mpick-m:active:not(:disabled) { background: var(--bg4); }
+@media (hover: hover) { .jc-mpick-m:hover:not(:disabled):not([aria-current="true"]) { background: var(--bg3); } }
+/* a day page's way back and Today, in the row over its pill */
+.jc-back { padding: 6px 12px; font-size: 13px; }
+.jc-today { flex: none; min-height: 34px; padding: 0 2px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.jc-today:disabled { color: var(--text3); cursor: default; }
+/* phones and tablets: the month's numbers in two lines, so the grid starts high */
+.jc-sum { margin: 0 0 10px; }
+.jc-sum-label { font-size: 12.5px; color: var(--text2); }
+.jc-sum-pnl { margin-top: 1px; font-size: 28px; font-weight: 700; font-family: var(--num); line-height: 1.15; letter-spacing: -0.01em; }
+.jc-sum-line { display: flex; flex-wrap: wrap; margin-top: 4px; font-size: 13px; color: var(--text2); }
+.jc-sum-line > span + span::before { content: '·'; margin: 0 6px; color: var(--text3); }
+.jc-empty { margin: 0 0 10px; }
+.jc-foot { margin-top: 12px; }
+.jc-foot .jc-month-review { width: 100%; min-height: 44px; justify-content: center; font-size: 14px; }
+.jc-foot .jc-month-review[aria-expanded="true"] { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
+/* the grid follows a sideways drag (native-feel.js attachCalendarSwipe); up and down still scroll the page */
+.jc-clip { overflow-x: clip; }
+.jc-swipe { touch-action: pan-y pinch-zoom; }
 .jc-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 4px; }
 .jc-grid th { font-size: 11px; font-weight: 500; color: var(--text3); text-align: left; padding: 0 6px; }
 .jc-grid td { vertical-align: top; padding: 0; }
@@ -408,7 +457,7 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-day.journal-sell { background: color-mix(in srgb, var(--red) 12%, var(--bg2)); border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
 .jc-quiet { cursor: default; opacity: 0.55; }
 .jc-num { font-size: 11px; color: var(--text3); }
-.jc-pnl { font-size: 15px; font-weight: 600; font-family: var(--num); }
+.jc-pnl { font-size: 15px; font-weight: 600; font-family: var(--num); white-space: nowrap; } /* never across two lines ('−$1.3k' was) */
 .jc-day.journal-buy .jc-pnl { color: var(--green); }
 .jc-day.journal-sell .jc-pnl { color: var(--red); }
 .jc-n { font-size: 10.5px; color: var(--text3); }
@@ -474,9 +523,10 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jw-overall .jw-note { margin-top: 4px; min-height: 64px; }
 .jw-kept { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .jw-kept-q { font-size: 12.5px; color: var(--text2); margin-right: 2px; }
-.jc-rev { font-size: 11px; font-weight: 500; }
-.jc-rev-done { color: var(--green); }
-.jc-rev-due { color: var(--amber); }
+/* a week's mark under its total: ✓ Reviewed, or once it's over an amber Review pill */
+.jc-rev { display: inline-block; margin-top: 4px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; border-radius: 999px; }
+.jc-rev-done { padding-left: 0; color: var(--green); }
+.jc-rev-due { color: var(--amber); background: color-mix(in srgb, var(--amber) 16%, transparent); }
 @media (max-width: 600px) {
   .jw-panel { padding: 10px; }
   .jw-cat, .jw-overall { padding: 8px 10px; }
@@ -488,6 +538,7 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
   .journal-table.jw-trades-table td:first-child .journal-name, .journal-table.jw-trades-table td:first-child b { white-space: normal; text-align: left; }
   .jw-grade { min-height: 36px; }
   .jc-rev { font-size: 10px; }
+  .jc-rev-due { padding: 1px 6px; }
   .jw-head .jc-title { min-width: 0; font-size: 14px; }
   .js-stats.jw-stats dd { font-size: 16px; }
 }
@@ -503,15 +554,26 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-key li > span:first-child { margin-left: 0; }
 .jc-head > .seg button { padding: 6px 12px; font-size: 12px; }
 .jc-nav:disabled { opacity: 0.4; cursor: default; }
+/* phones and tablets: the pill in the middle, its picker across the column; weekday names as words, not table caps;
+   today's date in a blue dot, days to come fainter */
+@media (max-width: 1099px) {
+  .jc-period { justify-content: center; }
+  .jc-pillrow { align-items: center; }
+  .jc-mpick { right: 0; width: auto; }
+  .jc-grid th { padding: 0 6px 2px; font-size: 12px; text-transform: none; letter-spacing: 0; background: none; border: 0; }
+  .jc-is-today .jc-num { align-self: flex-start; margin: -1px 0 0 -2px; padding: 0 5px; font-weight: 700; color: #fff; background: var(--blue); border-radius: 999px; }
+  .jc-day.jc-later { opacity: 0.32; }
+}
 .js-feature-pick { flex-wrap: wrap; gap: 8px; }
 .js-feature-pick .js-feature-select { max-width: 340px; }
 .jc-out { opacity: 0; }
 @media (max-width: 600px) {
-  .jc-grid { border-spacing: 2px; }
-  .jc-day { min-height: 54px; padding: 4px; }
-  .jc-pnl { font-size: 12.5px; }
+  .jc-grid { border-spacing: 3px; }
+  .jc-day { min-height: 58px; padding: 5px; border-radius: 9px; }
+  .jc-pnl { font-size: 13px; }
   .jc-n, .jc-wide { display: none; }
-  .jc-grid th { padding: 0 2px; }
+  .jc-grid th { padding: 0 3px 2px; }
+  .jc-today { min-height: 40px; }
   /* From and To as one compact pill: 'Nov 1, 2026 – Nov 30, 2026', each half its own native picker */
   .js-range { display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); }
   .js-range:focus-within { border-color: var(--blue); }
