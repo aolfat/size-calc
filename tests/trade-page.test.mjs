@@ -31,6 +31,42 @@ test('New York stamps, bars unpacked, regular hours unless a fill was outside th
   assert.equal(json(run, `holdChartBars(${JSON.stringify(all)}, [{ time: '2026-10-13T20:10:00.000Z' }])`).length, 3, 'unless a fill happened then');
 });
 
+test("extended hours: each intraday bar's session, a faint band behind the pre-market and after-hours bars, named in the legend", async t => {
+  globalThis.getComputedStyle = () => ({ getPropertyValue: n => n });
+  t.after(() => { delete globalThis.getComputedStyle; });
+  const lib = fakeCharts();
+  const { run, elements } = await app({ charts: lib });
+  const bars = [['08:15', 1], ['09:25', 2], ['09:30', 3], ['15:55', 4], ['16:00', 5], ['19:55', 6]].map(([time, c]) => ({ date: '2026-10-13', time, open: c, high: c, low: c, close: c, volume: 1 }));
+  assert.deepEqual(json(run, `chartSeries(${JSON.stringify(bars)}, []).session`), ['pre', 'pre', '', '', 'post', 'post'], '9:30 opens the session, 16:00 ends it');
+  assert.deepEqual(json(run, `chartSeries([{ date: '2026-10-13', open: 1, high: 1, low: 1, close: 1 }], []).session`), [], 'none on daily bars');
+
+  await run('loadTradeChartLibrary()');
+  run("var h = makeTradeChart(chartLib, document.getElementById('jtChart5'), document.getElementById('jtLegend5'), { daily: false })");
+  run(`paintTradeChart(h, ${JSON.stringify(bars)}, { fills: [], lines: [], title: 'AAPL · 5m' })`);
+  const c = lib.charts[0], [candles] = c.series;
+  assert.equal(c.series.length, 4, 'candles, EMA, volume, VWAP: the band is no series of its own');
+  const [band] = candles.primitives;
+  assert.equal(band.paneViews()[0].zOrder(), 'bottom', 'behind the candles');
+  assert.ok(candles.updates >= 1, 'redrawn when the bars are painted');
+  assert.deepEqual(json(run, 'h.bands'), [[0, 1], [4, 5]], 'one band per run of extended bars');
+  assert.deepEqual(json(run, "extendedRuns(['post', 'post', 'pre', '', 'pre', '', ''])"), [[0, 2], [4, 4]], 'the night between two days is one run');
+  // drawn edge to edge of its bars: bars 10px apart
+  const rects = [];
+  const target = { useMediaCoordinateSpace: fn => fn({ context: { fillRect: (...r) => rects.push(r) }, mediaSize: { width: 100, height: 200 } }) };
+  c.timeScale = () => ({ logicalToCoordinate: i => 5 + i * 10 });
+  band.paneViews()[0].renderer().draw(target);
+  assert.deepEqual(rects, [[0, 0, 20, 200], [40, 0, 20, 200]]);
+  const legend = () => elements.get('jtLegend5').innerHTML;
+  assert.match(legend(), /<span class="jt-legend-ext">After hours<\/span>/, 'the latest bar is after hours');
+  c.hover({ time: c.series[0].data[0].time, logical: 0 });
+  assert.match(legend(), /Pre-market/);
+  c.hover({ time: c.series[0].data[2].time, logical: 2 });
+  assert.doesNotMatch(legend(), /jt-legend-ext/, 'nothing on a regular-hours bar');
+
+  run("var d = makeTradeChart(chartLib, document.getElementById('jtChartD'), document.getElementById('jtLegendD'), { daily: true })");
+  assert.equal(lib.charts[1].series.length, 3, 'no band on the daily chart');
+});
+
 test('fills land on the bar they happened in, or their day on a daily chart; the daily view frames the trade', async () => {
   const { run } = await app();
   const fills = [{ time: '2026-10-13T13:40:10.000Z', side: 'buy', qty: 100, price: 100 }, { time: '2026-10-13T14:31:00.000Z', side: 'sell', qty: 100, price: 102 }, { time: '2026-10-20T14:00:00.000Z', side: 'sell', qty: 1, price: 1 }];

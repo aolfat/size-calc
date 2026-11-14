@@ -17,6 +17,7 @@ export function fakeCharts() {
             type, options: opts, data: [], lines: [],
             setData(d) { s.data = d; },
             applyOptions(o) { Object.assign(s.options, o); },
+            attachPrimitive(p) { (s.primitives ||= []).push(p); p.attached?.({ chart, series: s, requestUpdate: () => { s.updates = (s.updates || 0) + 1; } }); },
             createPriceLine(o) { const line = { options: o }; s.lines.push(line); return line; },
             removePriceLine(line) { s.lines = s.lines.filter(l => l !== line); },
             priceScale: () => ({ applyOptions(o) { s.scale = o; } }),

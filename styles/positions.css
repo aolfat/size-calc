@@ -643,6 +643,7 @@ span.journal-pick { cursor: default; }
 .jt-legend { position: absolute; top: 6px; left: 9px; max-width: calc(100% - 80px); z-index: 3; pointer-events: none; font-size: 11.5px; line-height: 1.5; color: var(--text2); } /* clear of the price axis */
 .jt-legend b { font-weight: 500; }
 .jt-legend-title { color: var(--text); font-weight: 600; margin-right: 2px; white-space: nowrap; }
+.jt-legend-ext { color: var(--amber); font-weight: 600; margin-right: 2px; white-space: nowrap; } /* an extended-hours bar */
 /* Lightweight Charts lays its chart out as a table of canvases: the panel look goes on the box, and the app's table and
    chart canvas rules stay out of it */
 .jt-plot { height: 280px; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); overflow: hidden; }

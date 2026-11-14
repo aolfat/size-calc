@@ -44,6 +44,9 @@ export function unpackBars(rows) {
 
 const REGULAR = (/** @type {Candle} */ b) => (b.time || '') >= '09:30' && (b.time || '') < '16:00';
 
+/** which session an intraday bar is in: 'pre' before the 9:30 open, 'post' from the 16:00 close, '' in regular hours or on a daily bar @param {Candle} b */
+export const barSession = b => !b.time || REGULAR(b) ? '' : b.time < '09:30' ? 'pre' : 'post';
+
 /**
  * The bars a chart shows for a trade: its days, regular hours only unless a fill happened outside them.
  * @param {Candle[]} bars @param {{ time: string }[]} fills
@@ -158,8 +161,8 @@ export function sessionVwap(bars) {
 /**
  * What a trade chart draws, oldest first: the candles, the 8 EMA of the closes (seeded on the first close), the session
  * VWAP on intraday bars (sessionVwap; `end` on a day's last bar when another day follows, so the line can break there),
- * volume (up = closed at or over its open, like the candles), and each fill on its bar (fillMarks), in the order they happened.
- * Times read in `zone` (chartTime).
+ * volume (up = closed at or over its open, like the candles), each fill on its bar (fillMarks), in the order they happened,
+ * and each intraday bar's session (barSession: 'pre', 'post' or ''; none on daily bars). Times read in `zone` (chartTime).
  * @param {Candle[]} bars @param {{ time: string, side: 'buy' | 'sell', qty: number, price: number }[]} fills @param {number} [iv] @param {string} [zone]
  */
 export function chartSeries(bars, fills, iv = 5, zone = 'America/New_York') {
@@ -172,6 +175,7 @@ export function chartSeries(bars, fills, iv = 5, zone = 'America/New_York') {
     vwap: sessionVwap(bars).map((value, i) => ({ time: times[i], value, end: i + 1 < bars.length && bars[i + 1].date !== bars[i].date })),
     volume: bars.map((b, i) => ({ time: times[i], value: b.volume || 0, up: b.close >= b.open })),
     markers: fillMarks(bars, byTime, iv).sort((a, b) => a.index - b.index).map(m => ({ time: times[m.index], side: m.side, qty: m.qty, price: m.price })),
+    session: bars.some(b => b.time) ? bars.map(barSession) : [],
   };
 }
 
