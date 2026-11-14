@@ -82,6 +82,8 @@ test('Workbench: a Review column at the right (by the name under 1500px) says wh
   assert.match(row('MSFT'), /^<span class="jtc-pill jtc-long">Long<\/span><button class="journal-share-btn" data-action="shareJournalTrade" data-arg="[^"]+" aria-label="Share MSFT as an image"[^>]*><svg[^]*?<\/button><span class="jb-rv-inline"><span class="jb-rv jb-rv-todo">To review<\/span><\/span><\/div>/, 'and by the name, for screens too narrow for the column');
   assert.doesNotMatch(html, /jb-todo|jb-grade"/, 'nothing under R');
   assert.match(html, /<tr class="jb-day" data-action="toggleJournalDayShut" data-arg="2026-10-01"><td colspan="6">/, 'the day rows span Symbol, the four columns and Review');
+  assert.match(row('AAPL'), /<td class="journal-setups"><div class="jb-setup-line"><span class="journal-setup"[^]*?<\/span><span class="jb-setup-more" hidden><\/span><\/div><\/td>/, 'the setups on one line, +N waiting for what won\'t fit');
+  assert.doesNotThrow(() => a.run("fitSetupLines(document.getElementById('journalSection'))"), 'nothing laid out to measure: left as drawn');
 });
 
 test('Review desk: one click away, the Workbench rail, the cards two-up with the progress, Up next and By setup beside them; kept on this device', async () => {

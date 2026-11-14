@@ -68,6 +68,13 @@
   .jb-table th.jb-num, .jb-table td.jb-num { text-align: right; }
   .jb-table td { padding-top: 12px; padding-bottom: 12px; }
   .jb-table td.journal-setups { min-width: 140px; max-width: 280px; }
+  /* a row's setups stay on one line: the ones that fit whole, then +N (journal-bench.js fitSetupLines); the line's own
+     max-width sets the column's (a cell's max-width doesn't hold in a table) */
+  .jb-setup-line { display: flex; align-items: center; gap: 4px; width: max-content; max-width: 280px; margin-left: auto; overflow: hidden; } /* right-aligned as a whole, so what doesn't fit spills right, where it can be measured */
+  .jb-setup-line .journal-setup { flex: none; margin: 0; }
+  .jb-setup-line > [hidden] { display: none; } /* the pills' inline-block would show them anyway */
+  .jb-setup-line.jb-setup-solo .journal-setup { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .jb-setup-more { flex: none; padding: 1px 7px; font-size: 11.5px; line-height: 1.5; font-weight: 600; color: var(--text2); background: var(--bg3); border: 1px solid var(--border2); border-radius: 999px; cursor: default; }
   .jb-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .jb-name b { font-size: 15px; }
   .jb-sub { margin-top: 3px; font-size: 12px; color: var(--text2); white-space: normal; }

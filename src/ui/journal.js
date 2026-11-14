@@ -31,7 +31,7 @@ import { loadJournalReview, myFunds, reviewFrom, reviewedMark, setupMatches, set
 import { loadJournalShots } from './journal-shots.js';
 import { deckButtonHtml, renderDeckEnd, reviewFromHtml, syncJournalBadge } from './journal-deck.js';
 import { bindUpNext, phoneTradesHtml } from './journal-cards.js';
-import { benchTradesHtml, deskTradesHtml, journalLayout, layoutSwitchHtml } from './journal-bench.js';
+import { benchTradesHtml, deskTradesHtml, fitSetupLines, journalLayout, layoutSwitchHtml } from './journal-bench.js';
 import { loadModelBooks, renderModelBooks, selectModelSetup } from './model-books.js';
 import { setupsView } from './journal-setups.js';
 import { loadPeriodReviewRows, periodReviewHtml } from './journal-week.js';
@@ -686,6 +686,7 @@ export function renderJournal() {
     </div>
     ${split ? `<aside class="jw-side jb-side${desk ? ' jd-side' : ''}" data-scroll="side:trades" aria-label="${desk ? 'Review queue' : 'The trade you picked'}">${split.side}</aside>` : ''}
   </div>`;
+    if (split && !desk) fitSetupLines(el); // before the scroll goes back: the rows' height can change
   });
   // the desktop's list scrolls as a page: a new tab, day page or setup starts at its top
   if (wide && state.journalViewShown && state.journalViewShown !== view && !state.journalTrade) window.scrollTo?.({ top: 0 });
