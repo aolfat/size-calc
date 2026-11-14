@@ -833,12 +833,20 @@ span.journal-pick { cursor: default; }
 .jtc-group-head h3 span { font-weight: 500; color: var(--text3); margin-left: 2px; }
 .jtc-total { font-size: 12px; font-weight: 500; color: var(--text2); }
 .jtc-total b { font-weight: 600; }
-/* each day opens with a band of its own (owner request: where a day starts and ends was hard to see), and folds */
-.jtc-day { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 12px 4px 2px; font-size: 12.5px; font-weight: 600; color: var(--text2); border-top: 1px solid var(--border2); cursor: pointer; }
-.jtc-group-head + .jtc-day, .jtc-day + .jtc-day { margin-top: 0; }
+/* each day is its own card (owner request: where a day starts and ends was hard to see): an outlined box on the page's
+   ground, its band the head on a lighter strip, the day's trade cards inside it; it folds to the band alone */
+.jtc-dayc { display: grid; gap: 8px; padding: 0 8px 8px; background: var(--bg); border: 1px solid var(--border2); border-radius: 22px; }
+.jtc-dayc-shut { padding-bottom: 0; }
+.jtc-dayc-shut + .jtc-dayc-shut { margin-top: -4px; } /* folded days stack closer, as one list */
+.jtc-day { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 -8px; padding: 11px 14px 11px 8px; font-size: 12.5px; font-weight: 600; color: var(--text2); background: var(--bg3); border-bottom: 1px solid var(--border2); border-radius: 21px 21px 0 0; cursor: pointer; }
+.jtc-dayc-shut .jtc-day { border-bottom: 0; border-radius: 21px; }
 .jtc-day b { font-weight: 600; }
-.jtc-day-start { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; }
-.jtc-day .jd-date { font-size: 15px; font-weight: 700; color: var(--text); }
+/* the right side matches the left: the day's P&L big on top, Review the day under it */
+.jtc-day > .jtc-day-end { flex-direction: column-reverse; align-items: flex-end; gap: 3px; }
+.jtc-day > .jtc-day-end > b { font-size: 16px; }
+.jtc-day-start { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 1px 6px; min-width: 0; }
+.jtc-day-sub { grid-column: 2; white-space: nowrap; } /* the count and what waits under the date, so the chevron and the date keep their line */
+.jtc-day .jd-date { font-size: 17px; font-weight: 700; color: var(--text); }
 .jtc-day-n { font-weight: 500; color: var(--text3); }
 .jd-fold { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; margin-right: -2px; padding: 0; color: var(--text2); background: none; border: 0; border-radius: 6px; cursor: pointer; }
 .jd-fold svg { width: 14px; height: 14px; transition: transform .15s; }
