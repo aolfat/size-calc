@@ -241,7 +241,7 @@ test('phones: More filters sit in Filters and count toward its number', async ()
 
 test('a day on the Trades tab: its date and Review the day open its notebook page, ← Trades goes back with the filters kept', async () => {
   const a = await journal();
-  const head = a.list().split('<tr class="jb-day">').find(h => h.includes('data-arg="2026-10-01"'));
+  const head = a.list().split('<tr class="jb-day"').find(h => h.includes('data-arg="2026-10-01"'));
   assert.match(head, /<button class="jd-date" data-action="reviewJournalDay" data-arg="2026-10-01"[^>]*>Thu · Oct 1<\/button>/, 'the date opens the day');
   assert.match(head, /<span class="jb-day-end"><button class="pos-link jd-review" data-action="reviewJournalDay" data-arg="2026-10-01"[^>]*>Review the day ›<\/button><b class="jb-day-total/, 'Review the day beside its P&L');
   a.run("state.journalSymbol = 'A'; reviewJournalDay('2026-10-01')");

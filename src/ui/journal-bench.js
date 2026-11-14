@@ -10,7 +10,7 @@ import { zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { reviewChecklist, reviewQueue, setupGradeOf, setupsOf, toReview, tradePass } from './journal-review.js';
 import {
-  closeDay, closedDays, counts, dayButton, dayWords, nowrap, openCard, progress, progressHtml, setupTags, sideTags, statsLine, stopNow,
+  closeDay, closedDays, counts, dayButton, dayFold, dayShut, dayWords, nowrap, openCard, progress, progressHtml, setupTags, sideTags, statsLine, stopNow,
   sum, unitWord, upNextHtml,
 } from './journal-cards.js';
 import {
@@ -157,7 +157,8 @@ function benchRow(t, cols) {
 /** the trades a group at a time: Open, then each day they closed, newest first, with what waits and the day's P&L */
 function benchGroups(list, cols) {
   const n = cols.length + 2; // Symbol and Review around them
-  const head = (left, right) => `<tr class="jb-day"><td colspan="${n}"><div><span>${left}</span>${right}</div></td></tr>`;
+  // a day's band: the chevron and the band fold it (the date and Review the day keep their own clicks)
+  const head = (left, right, day = '') => `<tr class="jb-day${day && dayShut(day) ? ' jb-day-shut' : ''}"${day ? ` data-action="toggleJournalDayShut" data-arg="${day}"` : ''}><td colspan="${n}"><div><span>${day ? dayFold(day) : ''}${left}</span>${right}</div></td></tr>`;
   const open = list.filter(t => t.status === 'open'), closed = list.filter(t => t.status !== 'open');
   /** @type {Map<string, any[]>} */
   const byDay = new Map();
@@ -169,7 +170,7 @@ function benchGroups(list, cols) {
     const waiting = reviewsRead() ? live.filter(toReview).length : 0;
     const status = waiting ? `<span class="jtc-day-todo">${waiting} to review</span>` : reviewsRead() && live.length && live.every(isReviewed) ? '<span class="jtc-day-done">All reviewed</span>' : '';
     const total = trades.some(counts) ? `<b class="jb-day-total ${pnlClass(sum(trades))}">${signed$(sum(trades))}</b>` : '';
-    rows.push(head(`${dayButton(day, dayLine(day))} <span class="jb-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>${status}`, `<span class="jb-day-end">${dayReviewLink(day)}${total}</span>`), ...trades.map(t => benchRow(t, cols)));
+    rows.push(head(`${dayButton(day, dayLine(day))} <span class="jb-day-n">${trades.length} trade${trades.length === 1 ? '' : 's'}</span>${status}`, `<span class="jb-day-end">${dayReviewLink(day)}${total}</span>`, day), ...(dayShut(day) ? [] : trades.map(t => benchRow(t, cols))));
   }
   return rows.join('');
 }
@@ -265,7 +266,7 @@ export function benchTradesHtml(trades, counted, deleted) {
   const t = selectedOf(trades);
   if (reviewsRead()) state.journalSelected = t ? t.key : ''; // the default waits for the reviews: it's the newest still to review
   const main = `${statsBand(counted, deleted)}${benchColumnPicker()}
-    <div class="positions-wrap jb-wrap"><table class="positions-table journal-table jb-table">
+    <div class="positions-wrap jb-wrap${cols.length <= BENCH_DEFAULT.length ? ' jb-fits' : ''}"><table class="positions-table journal-table jb-table">
       <thead><tr><th scope="col">Symbol</th>${cols.map(([k, label]) => `<th scope="col"${k === 'setups' ? '' : ' class="jb-num"'}>${k === 'opened' ? `${label} (${zoneAbbr()})` : label}</th>`).join('')}<th scope="col" class="jb-rv-col">Review</th></tr></thead>
       <tbody>${benchGroups(trades, cols)}</tbody>
     </table></div>`;

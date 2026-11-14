@@ -81,7 +81,7 @@ test('Workbench: a Review column at the right (by the name under 1500px) says wh
   assert.match(row('MSFT'), /<td class="jb-rv-cell"><span class="jb-rv jb-rv-todo">To review<\/span><\/td>\s*$/);
   assert.match(row('MSFT'), /^<span class="jtc-pill jtc-long">Long<\/span><button class="journal-share-btn" data-action="shareJournalTrade" data-arg="[^"]+" aria-label="Share MSFT as an image"[^>]*><svg[^]*?<\/button><span class="jb-rv-inline"><span class="jb-rv jb-rv-todo">To review<\/span><\/span><\/div>/, 'and by the name, for screens too narrow for the column');
   assert.doesNotMatch(html, /jb-todo|jb-grade"/, 'nothing under R');
-  assert.match(html, /<tr class="jb-day"><td colspan="6">/, 'the day rows span Symbol, the four columns and Review');
+  assert.match(html, /<tr class="jb-day" data-action="toggleJournalDayShut" data-arg="2026-10-01"><td colspan="6">/, 'the day rows span Symbol, the four columns and Review');
 });
 
 test('Review desk: one click away, the Workbench rail, the cards two-up with the progress, Up next and By setup beside them; kept on this device', async () => {
@@ -157,4 +157,61 @@ test('keepScroll: a pane keeps its place through a redraw while its key matches'
     return panes.map(p => p.scrollTop).join(',');
   })()`);
   assert.equal(out, '240,0');
+});
+
+test('a day folds: its band keeps the count and P&L, its trades go, ↑ ↓ skip them; the Review desk and phones fold the same', async () => {
+  const a = await desktop();
+  const band = () => a.list().split('<tr class="jb-day').find(h => h.includes('data-arg="2026-10-01"')).split('</tr>')[0];
+  assert.match(band(), /<button class="jd-fold" data-action="toggleJournalDayShut" data-arg="2026-10-01" aria-expanded="true"/, 'a chevron at the head of the day');
+  a.run("toggleJournalDayShut('2026-10-01')");
+  assert.match(band(), /^ jb-day-shut" data-action="toggleJournalDayShut" data-arg="2026-10-01">/, 'the band folds it too');
+  assert.match(band(), /aria-expanded="false"[^]*?2 trades[^]*?jb-day-total/, 'still says how many and what they made');
+  assert.doesNotMatch(a.list(), /<b>AAPL<\/b>|<b>MSFT<\/b>[^]*?jb-sub/, "the day's trades go");
+  assert.equal(a.run('benchKeys()').map(k => k.split('|')[1]).join(','), 'NVDA', '↑ ↓ skip a folded day');
+  a.run("setJournalLayout('desk')");
+  assert.match(a.list(), /<div class="jtc-day jtc-day-shut" data-action="toggleJournalDayShut" data-arg="2026-10-01">/);
+  assert.doesNotMatch(a.list().split('jds-cards')[1].split('jd-side')[0], /data-arg="[^"]*AAPL/, 'no cards for it');
+  a.run("toggleJournalDayShut('2026-10-01')");
+  assert.match(a.list().split('jds-cards')[1], /<b>AAPL<\/b>/, 'unfolded: back');
+  a.run("toggleJournalDayShut('not a day')");
+  assert.equal(a.run('state.journalDaysShut.length'), 0, 'only a day folds');
+});
+
+test('the desktop lists scroll as a page: a new tab starts at the top, a trade page holds still and goes back to where the list was', async () => {
+  const a = await desktop();
+  const scrolls = [];
+  a.run('window').scrollTo = o => scrolls.push(o.top);
+  a.run('window').scrollY = 900;
+  assert.equal(a.elements.get('app').classList.contains('journal-page'), false, 'the list scrolls');
+  a.run(`openJournalTrade('${a.key('MSFT')}')`);
+  await settle();
+  assert.equal(a.elements.get('app').classList.contains('journal-page'), true, 'the full review holds still');
+  a.run('closeJournalTrade()');
+  assert.equal(a.elements.get('app').classList.contains('journal-page'), false);
+  assert.equal(scrolls.at(-1), 900, 'back where the list was');
+  scrolls.length = 0;
+  a.run('renderJournal()');
+  assert.deepEqual(scrolls, [], 'a redraw stays put');
+  a.run("setJournalTab('calendar')");
+  assert.ok(scrolls.includes(0), 'a new tab starts at the top');
+});
+
+test('the desktop calendar: no blank week when the month starts on a weekend; every day keeps one line of chips, the plan by the date', async () => {
+  const supabase = fakeRecords([
+    order('BUY', '2026-11-02T14:30:00Z', 10, 100, 'AMD'), order('SELL', '2026-11-02T18:00:00Z', 10, 101, 'AMD'),
+  ]);
+  supabase.tables.journal_days.set('user-1:2026-11-02', { user_id: 'user-1', day: '2026-11-02', feelings: ['calm'], energy: 'ok', place: 'desk', market: 'bullish', plan: 'Wait for the open.' });
+  const a = await app({ width: 1500, supabase, session: SESSION });
+  a.run("setView('journal')");
+  await a.run('loadJournal()');
+  await settle();
+  a.run("setJournalTab('calendar'); state.journalMonth = '2026-11'; renderJournal()");
+  const list = () => a.elements.get('journalSection').innerHTML;
+  const rows = list().split('<tbody>')[1].split('</tbody>')[0].split('<tr>').slice(1);
+  assert.match(rows[0], /data-arg="2026-11-02"/, 'Nov 1 is a Sunday: the first row is the week of the 2nd');
+  assert.equal(rows.length, 5);
+  const day = list().split('class="jc-day jc-desk')[1].split('</button>')[0];
+  assert.match(day, /data-arg="2026-11-02"/);
+  assert.match(day, /<span class="jc-top"><span class="jc-num">2<\/span><span class="jc-plan" title="Plan written">✎<\/span>/, 'the plan by the date');
+  assert.match(day, /<span class="jc-n">1 trade · 100%<\/span>/, 'no profit factor without a loss');
 });

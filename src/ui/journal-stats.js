@@ -84,7 +84,8 @@ function calendarSwitch(dates) {
   return `<div class="seg jc-span" aria-label="Calendar span">${b(!dates, 'month', 'Month')}${b(!!dates, 'dates', 'Dates')}</div>`;
 }
 
-const grid = (cal, label = () => false, cell = dayCell) => `<table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cal.weeks.map(w => `<tr>${w.days.map(d => cell(d, !!d && label(d.day))).join('')}${weekCell(w)}</tr>`).join('')}</tbody></table>`;
+// a month that starts on a weekend leaves its first week without a weekday: no blank row for it
+const grid = (cal, label = () => false, cell = dayCell) => `<table class="jc-grid"><thead><tr><th scope="col">Mon</th><th scope="col">Tue</th><th scope="col">Wed</th><th scope="col">Thu</th><th scope="col">Fri</th><th scope="col">Week</th></tr></thead><tbody>${cal.weeks.filter(w => w.days.some(Boolean) || w.trades).map(w => `<tr>${w.days.map(d => cell(d, !!d && label(d.day))).join('')}${weekCell(w)}</tr>`).join('')}</tbody></table>`;
 
 const CAL_HINT = `<p class="hint">P&amp;L goes on the day you took it, New York time: a trim counts that day, even while the rest is still open. A trade wins a day, week or month when what it took then adds up above zero; PF is the profit factor, none without a loss (phones show the win rate). Tap a day for its notebook page (✎ plan written, ✓ reviewed, ● a day to review, ⊘ trades you missed), a week's total to review the week. A dot in a day's corner marks its economic releases, a red dot for the Fed, CPI, PPI, jobs, PCE and GDP, an amber ring for the FOMC minutes and Beige Book; point at the day, or open it, for their times.</p>`;
 
@@ -154,17 +155,17 @@ function deskDayCell(d, withMonth, ctx) {
   const pop = econPopHtml(d.day), td = pop ? '<td class="jc-has-ev">' : '<td>', ev = econWords(d.day);
   const flags = dayFlags(d.day, d.trades > 0), mark = dayMark(d.day, d.trades > 0);
   const now = d.day === ctx.today;
-  const top = `<span class="jc-top"><span class="jc-num">${num}</span>${now ? '<span class="jc-now">Today</span>' : ''}${econTag(d.day)}</span>`;
+  // every day's lines stay one line each, so no day is taller than the rest of its week: the plan's ✎ sits by the date
+  const top = `<span class="jc-top"><span class="jc-num">${num}</span>${flags?.planned ? '<span class="jc-plan" title="Plan written">✎</span>' : ''}${now ? '<span class="jc-now">Today</span>' : ''}${econTag(d.day)}</span>`;
   const chips = [
     flags?.reviewed ? '<span class="jc-chip jc-chip-done">✓ Reviewed</span>' : flags?.due ? '<span class="jc-chip jc-chip-due">Review</span>' : '',
-    flags?.missed ? `<span class="jc-chip jc-chip-quiet">⊘ ${flags.missed} missed</span>` : '',
+    flags?.missed ? `<span class="jc-chip jc-chip-quiet" title="${flags.missed} trade${flags.missed === 1 ? '' : 's'} you missed">⊘ ${flags.missed}</span>` : '',
     ctx.open.get(d.day) ? `<span class="jc-chip jc-chip-open">● ${ctx.open.get(d.day)} open</span>` : '',
-    flags?.planned ? '<span class="jc-chip jc-chip-quiet" title="Plan written">✎</span>' : '',
   ].filter(Boolean).join('');
   const cls = `jc-day jc-desk${now ? ' jc-today-cell' : ''}`;
   if (!d.trades) return `${td}<button class="${cls} jc-quiet${mark.html ? ' jc-noted' : ''}" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(`${d.day}: no exits${mark.words}${ev}. Open the day`)}">${top}${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
   const v = dayValue(d, ctx), shade = ctx.max ? Math.round(10 + 34 * Math.sqrt(v.size / ctx.max)) : 12;
-  const pf = d.profitFactor === null ? '' : ` · PF ${d.profitFactor.toFixed(2)}`;
+  const pf = d.profitFactor === null ? '' : `<span class="jc-pf"> · PF ${d.profitFactor.toFixed(2)}</span>`;
   const label = `${d.day}: ${signed$(d.pnl)} over ${d.trades} trade${d.trades === 1 ? '' : 's'}, ${d.winRate}% won${pf ? `, profit factor ${d.profitFactor.toFixed(2)}` : ''}${mark.words}${ev}`;
   return `${td}<button class="${cls} ${v.cls}" style="--jc-shade:${shade}%" data-action="openJournalDay" data-arg="${d.day}" aria-label="${esc(label)}">${top}<span class="jc-pnl">${v.text}</span><span class="jc-n">${d.trades} trade${d.trades === 1 ? '' : 's'} · ${pct(d.winRate)}${pf}</span>${chips ? `<span class="jc-chips">${chips}</span>` : ''}</button>${pop}</td>`;
 }
@@ -203,7 +204,7 @@ function deskStats(cal, daily, from, to, empty) {
   </dl>`;
 }
 
-const LEGEND = '<p class="jc-legend"><span><span class="jc-chip jc-chip-due">Review</span> the day to review</span><span><span class="jc-chip jc-chip-done">✓ Reviewed</span></span><span><span class="jc-chip jc-chip-quiet">⊘</span> trades you missed</span><span><span class="jc-tag jc-tag-high">CPI</span> a major release</span><span><span class="jc-tag jc-tag-medium">Minutes</span> FOMC minutes, Beige Book</span><span class="jc-legend-end">Color scales with the day\'s size</span></p>';
+const LEGEND = '<p class="jc-legend"><span><span class="jc-chip jc-chip-due">Review</span> the day to review</span><span><span class="jc-chip jc-chip-done">✓ Reviewed</span></span><span><span class="jc-chip jc-chip-quiet">⊘</span> trades you missed</span><span><span class="jc-plan">✎</span> plan written</span><span><span class="jc-tag jc-tag-high">CPI</span> a major release</span><span><span class="jc-tag jc-tag-medium">Minutes</span> FOMC minutes, Beige Book</span><span class="jc-legend-end">Color scales with the day\'s size</span></p>';
 
 /** the desktop calendar over from..to: the band, the line, the grid with its chips, and the legend */
 function deskCalendar(trades, daily, cal, from, to, head, label, empty) {

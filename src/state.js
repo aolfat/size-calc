@@ -121,6 +121,9 @@ export function createState() {
     reviewNoteDraft: null, // { key, which: 'entry' | 'exit', text }: the note being typed, so a redraw never loses it
     journalDeck: null, // the review deck: { keys (the queue when it started, oldest first), at, seen, shown (P&L revealed), finished }
     journalTrade: null, // the trade page open in the Journal: { key, five, daily, viewD, loading/status per chart, charts }
+    journalDaysShut: [], // the days folded on the Trades tab (their header shows, their trades don't), for the session
+    journalListY: 0, // how far the list was scrolled when a trade page opened from it, put back on the way back
+    journalViewShown: '', // the Journal view last drawn (tab, day page, setup): a new one starts the desktop's page at the top
     chartLib: null, // Lightweight Charts once loaded (the trade page's charts), or null
     chartLibLoading: null, // the one in-flight library load
     journalHiddenCols: Array.isArray(journalHidden) ? journalHidden : [], // the trades table's columns you hid (journal_hidden_cols, this device only)

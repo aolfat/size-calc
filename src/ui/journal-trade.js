@@ -91,6 +91,7 @@ export function openJournalTrade(key, nav) {
   Object.assign(state, { shotView: null, shotDeleteArmed: false, setupDraft: null, reviewLinkDraft: '', reviewNewKind: '', reviewNewName: '', reviewNewShort: '', reviewNoteDraft: null, reviewMarketOwn: false, fundEdit: null, reviewSearch: { setup: '', tactic: '' } });
   dropTradeExample();
   dropCharts(state.journalTrade);
+  if (!state.journalTrade) state.journalListY = window.scrollY || 0; // from the list: its place, for the way back
   state.journalTrade = {
     key, nav: nav?.includes(key) ? nav : journalNavKeys(key), five: [], under: [], daily: [], viewD: { count: 63, offset: 0 },
     loading5: false, loadingU: false, loadingD: false, status5: '', statusU: '', statusD: '',
@@ -131,6 +132,7 @@ export function closeJournalTrade() {
   state.journalTrade = null;
   state.journalDeck = null;
   renderJournal();
+  window.scrollTo?.({ top: state.journalListY }); // back where the list was
 }
 
 /** the arrows (and ← →): the trade before or after this one in the list it opened from; not in the review deck, which has its own */
@@ -172,6 +174,7 @@ export function syncJournalPage() {
   const page = (!!state.journalTrade || !!state.journalDeck?.finished) && state.journalView;
   document.getElementById('journalSection').style.display = state.journalView && !page ? '' : 'none';
   document.getElementById('journalTradeSection').style.display = page ? '' : 'none';
+  document.getElementById('app').classList.toggle('journal-page', page); // the desktop's full review holds still; the lists scroll as a page
 }
 
 /**

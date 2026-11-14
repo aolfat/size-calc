@@ -41,7 +41,8 @@ export function buildSpreadTicket(spread, key, now = Date.now(), prev = null) {
   }
   const all = spreadClosePlan(spread, state.positions ? state.positions.orders : [], { type: 'MARKET' }); // what blocks any close of it
   if (all.error) { t.error = all.error; return t; }
-  t.close = prev ? { ...prev.close } : { type: 'LIMIT', qty: spread.units, portion: 1, price: optionPriceTick(Math.max(0, spread.price)), pct: null };
+  // Market first, as on a stock's Close (owner request); the net limit starts at the mark, and the chart's Close tool opens on it
+  t.close = prev ? { ...prev.close } : { type: 'MARKET', qty: spread.units, portion: 1, price: optionPriceTick(Math.max(0, spread.price)), pct: null };
   if (t.close.pct > 0 && spreadPctPrice(spread, t.close.pct) !== t.close.price) t.close.pct = null; // the re-read cost moved it
   if (prev && prev.close.portion != null) t.close.qty = portionQty(t, prev.close.portion); // All (or ½) means of what's held now
   plan(t);
@@ -104,6 +105,12 @@ function changed(form) {
   plan(t);
   t.warnings = buildWarnings(t, Date.now());
   renderSpreadCloseSheet(form);
+}
+
+/** l in the sheet: Market to Net limit, or back */
+export function switchSpreadCloseType() {
+  const t = formOpen();
+  if (t) setSpreadCloseType(t.close.type === 'LIMIT' ? 'MARKET' : 'LIMIT');
 }
 
 export function setSpreadCloseType(type) {
@@ -311,14 +318,14 @@ function stepText(t, step) {
 
 function form(t, duration) {
   const s = t.spread, c = t.close, limit = c.type === 'LIMIT', off = t.sent ? ' disabled' : '';
-  const type = (v, label) => `<button class="${c.type === v ? 'active' : ''}" aria-pressed="${c.type === v}" data-action="setSpreadCloseType" data-arg="${v}"${off}>${label}</button>`;
+  const type = (v, label) => `<button class="${c.type === v ? 'active' : ''}" aria-pressed="${c.type === v}" data-action="setSpreadCloseType" data-arg="${v}" title="${label} · key l switches"${off}>${label}</button>`;
   const chips = PORTIONS.map(f => {
     const n = portionQty(t, f), on = c.qty === n && (c.portion === f || (f >= 1 && c.portion == null));
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setSpreadClosePortion" data-arg="${f}" title="${spreads(n)}"${off}>${f >= 1 ? 'All' : Math.round(f * 100) + '%'}</button>`;
   }).join('');
   const price = c.price > 0 ? c.price.toFixed(2) : '';
   const net = s.kind === 'debit' ? 'credit' : 'debit';
-  return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('LIMIT', 'Net limit')}${type('MARKET', 'Market')}</div></dd></div>
+  return `<div><dt>Order</dt><dd><div class="seg" role="group" aria-label="Order type">${type('MARKET', 'Market')}${type('LIMIT', 'Net limit')}</div></dd></div>
     <div><dt><label for="spreadCloseQty">Spreads to close</label></dt><dd><div class="pos-close-qty"><input type="number" id="spreadCloseQty" step="1" min="1" max="${s.units}" inputmode="numeric" autocomplete="off" value="${c.qty > 0 ? c.qty : ''}" data-input="setSpreadCloseQty"${off} /><div class="chip-row pos-portions pos-close-portions" role="group" aria-label="Percent of the spreads held">${chips}</div></div></dd></div>
     ${limit ? `<div><dt><label for="spreadClosePrice">Net ${net}</label></dt><dd><div class="prefix-wrap pos-close-price"><span class="prefix">$</span><input type="number" id="spreadClosePrice" step="0.05" min="0" inputmode="decimal" autocomplete="off" value="${price}" data-input="setSpreadClosePrice"${off} /></div><span class="shares-detail">Per spread. Now ${px(s.price)} at Schwab's marks; $0.05 steps under $3, $0.10 from $3</span></dd></div>
     <div><dt><label for="spreadClosePct">Limit in % profit</label></dt><dd><div class="pos-close-qty"><input type="number" id="spreadClosePct" step="1" min="0" inputmode="decimal" placeholder="e.g. 50" autocomplete="off" value="${pctText(t)}" data-input="setSpreadClosePctText"${s.avg > 0 ? off : ' disabled'} /><div class="chip-row pos-portions pos-close-portions r-chips" id="spreadClosePctChips" role="group" aria-label="Limit in percent profit">${pctChips(t)}</div></div><span class="shares-detail">${esc(s.avg > 0 ? (s.kind === 'debit' ? `Over the debit of ${px(s.avg)}` : `Of the credit of ${px(s.avg)}, bought back that much cheaper`) : 'Schwab shows no cost basis for this spread.')}</span></dd></div>

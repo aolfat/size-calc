@@ -492,20 +492,23 @@ test('the close ticket picks market or limit, how many and the price, like a bro
   assert.match(body(), /Schwab now shows a limit \$40\.50 for 150 shares, paired with a stop at \$35\.50/);
 });
 
-test('in the Close sheet, l switches to a limit and its targets and m back to market; never while typing', async () => {
+test('in the Close sheet, Market comes first; l switches it to a limit and its targets and back, m to market; never while typing', async () => {
   const b = broker();
   const { run, elements, dispatch } = await app({ fetch: b.fetch, storage: connected() });
   run('initShortcuts()');
   await run("openPositionTrade('HOOD', 'close')");
   const body = () => elements.get('posTradeBody').innerHTML;
   const key = (k, tagName = 'BODY') => dispatch('keydown', { key: k, target: { tagName, blur() {} }, preventDefault() {} });
-  assert.match(body(), /data-arg="MARKET" title="Market · key m"/);
+  assert.match(body(), /data-arg="MARKET" title="Market · key l switches"[^>]*>Market<\/button><button[^>]*data-arg="LIMIT"/, 'Market, then Limit');
   key('l', 'INPUT');
   assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="MARKET"/, 'typing in a field is typing');
   key('l');
   assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="LIMIT"/);
   assert.match(body(), /id="posCloseRChips"/, 'the R targets are a key away');
   assert.equal(run('liveEnd'), 0, 'l in the sheet is not live');
+  key('l');
+  assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="MARKET"/, 'l again: back to market');
+  key('l');
   key('m');
   assert.match(body(), /aria-pressed="true" data-action="setCloseType" data-arg="MARKET"/);
   assert.equal(run('marketView'), false, 'm in the sheet is not the Market tab');
