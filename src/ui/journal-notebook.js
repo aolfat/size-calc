@@ -58,10 +58,10 @@ const focusOf = day => rowOf(day)?.focus_list || [];
 
 // ---------- opening the page ----------
 
-/** a day's page (a calendar cell, today's line, ‹ ›): inside the Calendar tab, the calendar on its month behind it */
+/** a day's page (a calendar cell, today's line, ‹ ›): inside the Calendar tab; the Journal's dates stay as they are */
 export function openJournalDay(day) {
   if (!isDay(day)) return;
-  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalMonth: day.slice(0, 7), journalReviewPeriod: null, journalDay: state.notebookBack === 'trades' ? state.journalDay : '', notebookDraft: null, notebookPlanOpen: '', notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
+  Object.assign(state, { journalTab: 'calendar', journalNotebookDay: day, journalReviewPeriod: null, notebookDraft: null, notebookPlanOpen: '', notebookEdit: '', notebookItemDraft: '', missedDraft: '', missedOpen: '', focusDraft: '', focusOpen: '' });
   renderJournal();
   window.scrollTo?.({ top: 0 });
 }

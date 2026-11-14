@@ -34,18 +34,18 @@ import { saveKey, setTimeZone, signIn, signOut } from './settings.js';
 import { copyClaudeKey, makeClaudeAccessKey, revokeClaudeAccessKey } from './claude-access.js';
 import { addPeriodRule, carryPeriodRule, closePeriodReview, graduatePeriodRule, openPeriodReview, periodRuleDraftInput, periodRuleInput, periodRuleSave, periodTextInput, periodTextSave, removePeriodRule, setPeriodGrade, setPeriodTradeSort, setRuleKept, stepPeriodReview } from './journal-week.js';
 import { setWeekRulesShown } from './week-rules.js';
-import { clearJournalDates, clearJournalDay, closeJournalSetup, journalThisMonth, setCalendarDates, setCalendarRange, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalDates, setJournalPeriod, setStatsDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
+import { clearJournalScope, clearJournalSetupFilter, closeJournalSetup, restoreJournalScope, journalThisMonth, openJournalFilters, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setScopeDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, shiftJournalMonth, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
 import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
-import { addJournalFilter, applyJournalView, cancelJournalView, clearJournalFilters, deleteJournalView, journalViewTyped, removeJournalFilter, saveJournalView, setJournalFilterBound, setJournalFilterNot, setJournalFilterOp, startJournalView, toggleJournalFilterValue } from './journal-filters.js';
+import { addJournalFilter, applyJournalView, cancelJournalView, clearJournalFilters, closeJournalFilterEdit, deleteJournalView, editJournalFilter, journalViewTyped, pickJournalView, removeJournalFilter, saveJournalView, setJournalFilterBound, setJournalFilterNot, setJournalFilterOp, startJournalView, toggleJournalFilterValue } from './journal-filters.js';
 import { reviewJournalDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
 import { reviewUpNext, skipUpNext, toggleJournalDayShut } from './journal-cards.js';
 import { setCalendarMode, setStatsFeature, setStatsFeatureMode } from './journal-stats.js';
 import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
 import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, cancelSetupEdit, editSetup, newLibrarySetup, startLibraryChoice, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, reviewSearchInput, reviewSearchPick, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
-import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund, saveFund, setFundInverse, setFundOn, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalFilters, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
+import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund, saveFund, setFundInverse, setFundOn, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { shareJournalTrade } from './journal-share.js';
@@ -195,16 +195,14 @@ export const actions = {
   removeFocusTicker: el => removeFocusTicker(arg(el)),
   undoRemoveFocus: () => undoRemoveFocus(),
   retireNotebookItem: el => retireNotebookItem(arg(el)),
-  clearJournalDay: () => clearJournalDay(),
-  setJournalDates: el => whenPicked(el, () => setJournalDates(arg(el), /** @type {HTMLInputElement} */ (el).value)),
-  clearJournalDates: () => clearJournalDates(),
+  restoreJournalScope: () => restoreJournalScope(),
+  clearJournalScope: () => clearJournalScope(),
+  openJournalFilters: () => openJournalFilters(),
   shiftJournalMonth: el => shiftJournalMonth(arg(el)),
   journalThisMonth: () => journalThisMonth(),
-  setCalendarDates: el => setCalendarDates(arg(el)),
-  setCalendarRange: el => whenPicked(el, () => setCalendarRange(arg(el), /** @type {HTMLInputElement} */ (el).value)),
-  setJournalPeriod: el => setJournalPeriod(arg(el)),
+  setJournalPeriod: el => setJournalPeriod(arg(el) || /** @type {HTMLSelectElement} */ (el).value),
   stepJournalPeriod: el => stepJournalPeriod(arg(el)),
-  setStatsDates: el => whenPicked(el, () => setStatsDates(arg(el), /** @type {HTMLInputElement} */ (el).value)),
+  setScopeDates: el => whenPicked(el, () => setScopeDates(arg(el), /** @type {HTMLInputElement} */ (el).value)),
   openJournalStats: el => openJournalStats(arg(el), el.dataset.arg2 || ''),
   openJournalSetup: el => openJournalSetup(arg(el)),
   closeJournalSetup: () => closeJournalSetup(),
@@ -241,6 +239,7 @@ export const actions = {
   stepJournalTrade: el => stepJournalTrade(num(el)),
   setJournalReviewFilter: el => setJournalReviewFilter(arg(el)),
   setJournalSetupFilter: el => setJournalSetupFilter(/** @type {HTMLSelectElement} */ (el).value),
+  clearJournalSetupFilter: () => clearJournalSetupFilter(),
   // More filters, in journal-filters.js
   addJournalFilter: el => addJournalFilter(/** @type {HTMLSelectElement} */ (el).value),
   toggleJournalFilterValue: el => toggleJournalFilterValue(arg(el), el.dataset.arg2 || ''),
@@ -248,6 +247,9 @@ export const actions = {
   setJournalFilterOp: el => setJournalFilterOp(arg(el), el.dataset.arg2 || ''),
   setJournalFilterBound: el => setJournalFilterBound(arg(el), el.dataset.arg2 || '', /** @type {HTMLInputElement} */ (el).value),
   removeJournalFilter: el => removeJournalFilter(arg(el)),
+  editJournalFilter: el => editJournalFilter(arg(el)),
+  closeJournalFilterEdit: () => closeJournalFilterEdit(),
+  pickJournalView: el => pickJournalView(/** @type {HTMLSelectElement} */ (el).value),
   clearJournalFilters: () => clearJournalFilters(),
   applyJournalView: el => applyJournalView(arg(el)),
   deleteJournalView: el => deleteJournalView(arg(el)),
@@ -354,7 +356,6 @@ export const actions = {
   toggleJournalPick: el => toggleJournalPick(arg(el)),
   clearJournalPicks: () => clearJournalPicks(),
   toggleJournalSelect: () => toggleJournalSelect(),
-  toggleJournalFilters: () => toggleJournalFilters(),
   mergePicked: () => mergePicked(),
   separateTrade: el => separateTrade(arg(el)),
   schwabProxyDone: () => schwabProxyDone(),

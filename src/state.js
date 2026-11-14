@@ -137,9 +137,7 @@ export function createState() {
       noTradeLink: false, // the database has no model_examples.trade_key yet: Add to model book waits for db push
       noTactics: false, // the database has no model_examples.tactic_keys yet: examples keep setups only until db push
     },
-    journalDay: '', // the trades tab narrowed to one day picked on the calendar ('YYYY-MM-DD', New York)
-    journalFrom: '', // the trades tab from this day ('YYYY-MM-DD', New York; '' = no start): opened or with an exit then
-    journalTo: '', // and up to this one ('' = no end)
+    journalScopeBack: null, // the dates before a day was picked (a calendar day's trades or stats): { period, key }, for ‹ Back to …
     journalNotebookDay: '', // the day's notebook page open in the Calendar tab ('YYYY-MM-DD', New York; docs/journal-notebook.md)
     notebookBack: '', // where the day's page goes back to: '' the calendar, 'missed' the Missed tab (a line there opened it), 'trades' the Trades tab (a day's date or Review the day there)
     journalMissed: { q: '', side: 'all', setup: '', why: '' }, // the Missed tab's search and filters: text, all | long | short, a setup key, a reason
@@ -157,9 +155,7 @@ export function createState() {
     focusDraft: '', // the ticker being typed into the day's focus list
     focusOpen: '', // the id of the focus ticker open to edit (a missed trade and a focus ticker are never open at once)
     focusUndo: null, // { day, list }: the focus list before the last Remove, for the toast's Undo
-    journalMonth: '', // the calendar's month, 'YYYY-MM'; empty = the newest with closed trades
-    journalMonthShown: '', // the month the calendar last showed (‹ › step from it)
-    journalCalDates: '', // the calendar over dates you pick, 'YYYY-MM-DD..YYYY-MM-DD'; empty = a month
+    journalMonthShown: '', // the month the calendar last showed (All time shows the newest; its ‹ › step from it)
     journalReviewPeriod: null, // the week or month review open under the calendar: { unit: 'week' | 'month', key: its Monday or 'YYYY-MM' }
     journalExcursions: {}, // trade key → { sig, ex, after }: each closed trade's MFE, MAE and exit efficiency, and what it did after the exits (afterExit), from its saved bars, for the reviews
     periodTradeSort: { by: 'pnl', dir: -1 }, // the week or month review's trade list: 'pnl' | 'pct' | 'r' | 'opened', -1 biggest (newest) first
@@ -172,9 +168,9 @@ export function createState() {
     periodRulesError: '', // why the rules list (rules_next, rules_kept, rules_note) couldn't be read (its columns not pushed yet): the one rule box stands in
     periodRuleDraft: '', // the new rule for next week being typed, added with + Add or Enter
     weekRulesAt: 0, // when the calculator last read the week reviews for this week's rules (Date.now()), so focusing the app reads them at most every few minutes
-    journalPeriod: 'all', // the stats cover: all | day | week | month | range (Dates)
+    journalPeriod: 'all', // the dates Trades, Calendar and Stats share (the filter bar's first control): all | ytd (Jan 1 through today) | day | week | month | range (Dates)
     journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday), 'YYYY-MM' or 'YYYY-MM-DD..YYYY-MM-DD' (Dates); empty = the newest with closed trades
-    journalPeriodShown: '', // the period the stats last showed (‹ › step from it)
+    journalPeriodShown: '', // the period last shown (‹ › step from it)
     journalSide: 'all', // all | long | short
     journalSymbol: '', // symbol filter, typed
     tradeReviews: null, // your word on each trade, by trade key: { stop, deleted }, once read
@@ -182,7 +178,7 @@ export function createState() {
     journalSavedError: '', // the trades table couldn't be read (no migration yet): trades show as the app groups them, merging is off
     journalPicked: [], // trade keys ticked for Merge
     journalSelecting: false, // phones: Select shows the cards' tick boxes
-    journalFiltersOpen: false, // phones: Filters opens the setup, side, fees and Review from row
+    journalFilterEdit: '', // the More filter whose chip is open in the filter bar (its field key), '' = none
     journalJustReviewed: '', // a trade reviewed on its page just now: its card pops once on the way back
     journalSelected: '', // the desktop Workbench's picked trade, shown in the panel beside the table ('' = the newest to review)
     journalCalMode: 'pnl', // what the desktop calendar's days show: pnl | r | grade

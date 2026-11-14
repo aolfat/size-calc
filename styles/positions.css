@@ -387,6 +387,9 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 }
 /* the Journal's calendar */
 .jc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 10px; }
+.jc-head-end { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.jc-head-end .pos-link { font-size: 13px; }
+.jc-newest { font-size: 12px; }
 .jc-title { margin: 0 4px; min-width: 9.5em; text-align: center; font-weight: 600; font-size: 15px; }
 .jc-nav { padding: 4px 12px; }
 .jc-today { padding: 4px 12px; font-size: 12.5px; }
@@ -485,8 +488,6 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 }
 .jc-stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 .jc-stats dd { font-size: 16px; }
-.js-period { margin-bottom: 12px; }
-.js-period-nav { display: inline-flex; align-items: center; gap: 6px; }
 .js-range { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--text2); }
 .jr-dash { display: none; }
 /* the phone calendar's key, folded under the grid */
@@ -495,21 +496,17 @@ textarea.grow { resize: none; overflow-y: hidden; } /* as tall as its text (lib/
 .jc-key-ev { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: 1px; margin-left: 4px; }
 .jc-key li > span { margin-left: 4px; }
 .jc-key li > span:first-child { margin-left: 0; }
-.js-period .seg button, .jc-head > .seg button { padding: 6px 12px; font-size: 12px; }
+.jc-head > .seg button { padding: 6px 12px; font-size: 12px; }
 .jc-nav:disabled { opacity: 0.4; cursor: default; }
 .js-feature-pick { flex-wrap: wrap; gap: 8px; }
 .js-feature-pick .js-feature-select { max-width: 340px; }
 .jc-out { opacity: 0; }
-.jc-daychip { padding: 5px 10px; font-size: 12px; }
 @media (max-width: 600px) {
   .jc-grid { border-spacing: 2px; }
   .jc-day { min-height: 54px; padding: 4px; }
   .jc-pnl { font-size: 12.5px; }
   .jc-n, .jc-wide { display: none; }
   .jc-grid th { padding: 0 2px; }
-  .js-period .jc-title { min-width: 0; }
-  .jc-span { flex: 1 0 100%; }
-  .jc-span button { flex: 1 1 0; }
   /* From and To as one compact pill: 'Nov 1, 2026 – Nov 30, 2026', each half its own native picker */
   .js-range { display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); }
   .js-range:focus-within { border-color: var(--blue); }
@@ -741,17 +738,68 @@ span.journal-pick { cursor: default; }
 .seg.journal-tabs.journal-nav button { margin-bottom: -1px; padding: 8px 12px 9px; font-size: 13.5px; font-weight: 500; color: var(--text2); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
 @media (hover: hover) { .seg.journal-tabs.journal-nav button:hover { color: var(--text); } }
 .seg.journal-tabs.journal-nav button.active { color: var(--text); font-weight: 600; background: none; border-bottom-color: var(--blue); }
+/* the Missed tab's own filters (journal-missed.js): one row */
 .journal-filters { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .journal-filters .journal-setup-filter { max-width: 220px; min-width: 0; }
+/* the filter bar (ui/journal.js scopeBar): one row over Trades, Calendar and Stats, the dates first, a chip per More filter,
+   then the count, Views, fees and Clear at its end; the open chip's box under it */
+.jscope { flex-basis: 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; }
+.jscope select, .jscope input[type="search"] { width: auto; min-width: 0; margin: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jscope input.jscope-symbol { width: 120px; outline: none; }
+.jscope input.jscope-symbol:focus { border-color: var(--blue); }
+.jscope input.jscope-symbol::placeholder { color: var(--text2); }
+.jscope .journal-setup-filter { max-width: 220px; }
+.jscope select.active, .jscope input.active, .jscope .journal-setup-filter.active { color: var(--text); background: var(--blue-bg); border-color: var(--blue-bd); }
+.jscope .seg button { padding: 5px 10px; font-size: 12px; }
+.jscope-time { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.jscope-nav { display: inline-flex; align-items: center; gap: 4px; }
+.jscope-nav .jc-nav { margin: 0; padding: 4px 10px; }
+.jscope-when { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.jscope-back { font-size: 12.5px; white-space: nowrap; }
+.jscope-chip, .jscope-pill { flex: none; display: inline-flex; align-items: center; max-width: 100%; color: var(--text); background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); }
+.jscope-chip > button:first-child, .jscope-pill > button:first-child { min-width: 0; padding: 5px 4px 5px 10px; font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit; background: none; border: 0; cursor: pointer; }
+.jscope-chip .jf-x, .jscope-pill .jf-x { margin: 0; padding: 4px 8px 4px 4px; }
+.jscope-chip.active, .jscope-pill.active { background: var(--blue-bg); border-color: var(--blue-bd); }
+.jscope-chip.open { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.jscope-k { color: var(--text2); }
+.jscope .jf-add { border-style: dashed; background: none; color: var(--text2); }
+.jscope-end { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; min-width: 0; }
+.jscope-count { font-size: 12.5px; color: var(--text2); white-space: nowrap; }
+.jscope-count b { color: var(--text); }
+.jscope-clear { font-size: 12.5px; }
+.jf.jscope-edit { margin-top: -2px; padding: 10px; background: var(--bg2); border: 1px solid var(--blue-bd); border-radius: 12px; }
+.jscope-edit .jf-filter { flex: 1 1 auto; border: 0; padding: 0; }
+/* phones: what narrows as chips under the symbol box (side-swipe), each opening the Filters sheet */
+.jscope-pills { flex-basis: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.jscope-pills::-webkit-scrollbar { display: none; }
+.jscope-pill { border-radius: 999px; }
+.jscope-pill > button:first-child { padding: 7px 12px; font-size: 14px; }
+.jscope-pill > button:first-child:last-child { padding-right: 12px; }
+.jscope-pill .jf-x { padding: 6px 10px 6px 2px; font-size: 18px; }
+/* the Filters sheet (phones): a section per part, the dates' buttons sharing the width */
+#journalFiltersBody { display: grid; gap: 16px; }
+.jscope-sheet-count { margin: 0; }
+.jscope-sec { display: grid; gap: 6px; min-width: 0; }
+.jscope-lbl { font-size: 13px; color: var(--text2); }
+.jscope-sec .seg { display: flex; }
+.jscope-sec .seg button { flex: 1 1 0; min-width: 0; min-height: 40px; padding: 6px 4px; font-size: 14px; white-space: nowrap; }
+.jscope-sec .jscope-time { display: grid; gap: 8px; }
+.jscope-sec .jscope-nav { justify-content: space-between; }
+.jscope-sec .jscope-nav .jc-nav { min-width: 44px; min-height: 40px; }
+.jscope-sec .jscope-when { font-size: 15px; }
+.jscope-sec select { width: 100%; min-height: 44px; margin: 0; font-size: 16px; }
+.jscope-sec .jf { display: grid; }
+.jscope-sec .jf-filter { flex: 1 1 100%; }
+.jscope-sec .jf-views { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+.jscope-sec .jf-views-label { display: none; }
+.jscope-sheet-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.jscope-sheet-foot .btn { margin-left: auto; min-height: 44px; padding: 8px 22px; }
 /* phones (rendered only there): the symbol box, Filters and Select on one line; the summary as three tiles */
 .journal-phone-bar { flex-basis: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .journal-controls .journal-phone-bar #journalSymbol { flex: 1 1 0; width: 0; min-width: 0; } /* takes what the buttons leave */
 .journal-phone-bar .btn { flex: none; margin: 0; padding: 8px 14px; font-size: 13px; }
 .journal-filters-btn.active { color: var(--blue); border-color: var(--blue-bd); }
 .journal-filters-btn b { margin-left: 2px; padding: 0 6px; font-size: 11px; color: #fff; background: var(--blue); border-radius: 999px; }
-.journal-filters .jr-queue { grid-column: 1 / -1; }
-.journal-dates { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--text2); }
-.journal-dates.active input { border-color: var(--blue-bd); }
 .journal-chips-row { flex-basis: 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; } /* min-width 0, or the chips in a line widen the page and iOS zooms the whole app out to fit */
 .journal-chips-row .jr-queue { margin: 0; }
 .journal-chips { flex: 0 1 auto; max-width: 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
@@ -946,17 +994,11 @@ span.journal-pick { cursor: default; }
   .journal-card .positions-head .journal-actions { order: 1; margin-left: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .journal-card .positions-head .journal-actions .btn { justify-content: center; padding: 8px 6px; white-space: nowrap; }
   .journal-card .positions-head .journal-actions #journalDeckBtn { order: -1; } /* the deck first: it's what waits */
+  .jf-filter { flex: 1 1 100%; }
   .journal-filters { display: grid; grid-template-columns: 1fr 1fr; }
-  .journal-filters #journalSymbol, .journal-filters .journal-setup-filter { width: 100%; min-width: 0; max-width: none; }
+  .journal-filters input[type="search"], .journal-filters select { width: 100%; min-width: 0; max-width: none; }
   .journal-filters .seg { display: flex; min-width: 0; }
   .journal-filters .seg button { flex: 1 1 0; min-width: 0; padding: 6px 4px; white-space: nowrap; }
-  .journal-filters .jc-daychip { justify-self: start; }
-  .journal-filters .journal-dates { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
-  .journal-dates label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .journal-dates .jr-from input { margin-left: 0; width: 100%; min-width: 0; min-height: 40px; }
-  .journal-dates .pos-link { grid-column: 1 / -1; justify-self: start; }
-  .journal-filters .jf { grid-column: 1 / -1; }
-  .jf-filter { flex: 1 1 100%; }
 }
 
 /* the Import sheet's zone picker for a thinkorswim statement */

@@ -69,6 +69,18 @@ test('core: each filter is any of its values (none of them with is not), every f
   assert.deepEqual(filterChoices(trades, [], 'mistake', ctx).map(c => `${c.name} ${c.count}`), ['Chased the entry 1', 'No mistakes 2'], 'yours most used first, none last');
 });
 
+test('core: Review is Reviewed or Not reviewed, from what the review says; a trade from before your history is neither', () => {
+  const field = filterField('reviewed');
+  assert.equal(field.label, 'Review');
+  assert.ok(field.review, 'only once the reviews are read');
+  const ctx = { reviewed: t => t.key === 'done' };
+  assert.deepEqual(field.of({ key: 'done', status: 'win' }, ctx), ['yes']);
+  assert.deepEqual(field.of({ key: 'other', status: 'loss' }, ctx), ['no']);
+  assert.deepEqual(field.of({ key: 'old', status: 'history' }, ctx), []);
+  const trades = [{ key: 'done', status: 'win' }, { key: 'other', status: 'loss' }];
+  assert.deepEqual(applyFilters(trades, [{ field: 'reviewed', values: ['yes'] }], ctx).map(t => t.key), ['done']);
+});
+
 test('core: a feature condition is at least, at most or between its value; no current value never fits; no number narrows nothing', () => {
   const F = FEATURES.find(f => f.key === 'atr_from_daily_sma50'), key = `feature:${F.key}`;
   const values = { a: -1, b: 2, c: 4.5, d: null };
@@ -153,14 +165,14 @@ test('core: a view keeps what narrows, the same in any order, a name replaces it
   assert.deepEqual(parseViews('[{"name":""},{"name":"Nothing"},{"name":"Old","filters":[{"field":"gone","values":["x"]}]},{"name":"Ok","side":"short"},{"name":"ok","side":"long"}]').map(v => v.name), ['Ok'], 'no name, sets nothing, a field gone, a name twice');
 });
 
-test('saved views: Save as view keeps the setup, side and filters; the chip puts them back, lit while they match; × deletes; synced', async () => {
+test('saved views: Save as view keeps the setup, side and filters; the Views menu puts them back, shows the one that matches, deletes it; synced', async () => {
   const a = await journal();
-  const foot = () => a.list().split('class="jf-foot"')[1].split('</div>')[0];
-  assert.doesNotMatch(a.list(), /jf-views|Save as view/, 'no views and nothing set: neither');
+  const menu = () => (a.list().match(/<select class="jscope-views[^"]*" data-change="pickJournalView"[^]*?<\/select>/) || [''])[0];
+  assert.equal(menu(), '', 'no views and nothing set: no menu');
   a.run("setJournalSide('long'); addJournalFilter('grade'); toggleJournalFilterValue('grade', 'A')");
   assert.equal(a.shown(), 'AAPL');
-  assert.match(foot(), /data-action="startJournalView">Save as view</);
-  a.run('startJournalView()');
+  assert.match(menu(), /<option value="" selected>Views<\/option><option value="save">Save as view…<\/option>/);
+  a.run("pickJournalView('save')");
   assert.match(a.list(), /<input id="journalViewName" class="jf-num jf-view-name" type="text" maxlength="40"[^>]*data-input="journalViewTyped" data-enter="saveJournalView"/);
   a.run('saveJournalView()');
   assert.match(a.list(), /<span class="jf-note" role="status">Give the view a name\.<\/span>/, 'no name: says so, box stays');
@@ -168,33 +180,37 @@ test('saved views: Save as view keeps the setup, side and filters; the chip puts
   assert.equal(a.run("store.get('journal_views')"), '[{"name":"A longs","side":"long","filters":[{"field":"grade","values":["A"]}]}]');
   assert.ok(a.run("JSON.parse(store.get('cloud_pending') || '[]')").includes('journal_views'), 'marked to sync');
   assert.doesNotMatch(a.list(), /journalViewName|Save as view/, 'saved: the box closes, and this set has a view');
-  assert.match(a.list(), /<div class="jf-views" role="group" aria-label="Saved views"><span class="jf-views-label">Views<\/span><span class="jf-view"><button class="journal-chip active" aria-pressed="true" data-action="applyJournalView" data-arg="0">A longs<\/button><button class="jf-x" data-action="deleteJournalView" data-arg="0"/);
-  // cleared, then one tap puts it all back
+  assert.match(menu(), /^<select class="jscope-views active"[^]*?<option value="v:0" selected>A longs<\/option><option value="del:0">Delete &quot;A longs&quot;<\/option>/, 'the view shown, Delete beside it');
+  // cleared, then one pick puts it all back
   a.run("clearJournalFilters(); setJournalSide('all')");
   assert.equal(a.shown(), 'AAPL,MSFT,NVDA');
-  assert.match(a.list(), /class="journal-chip" aria-pressed="false" data-action="applyJournalView" data-arg="0">A longs</, 'not lit');
-  assert.doesNotMatch(a.list(), /deleteJournalView/, '× only on the lit view');
-  a.run('applyJournalView(0)');
+  assert.match(menu(), /<option value="" selected>Views<\/option><option value="v:0">A longs<\/option><\/select>/, 'not shown, nothing to delete');
+  a.run("pickJournalView('v:0')");
   assert.equal(a.shown(), 'AAPL');
   assert.equal(a.run('journalSide'), 'long');
-  assert.match(a.list(), /class="journal-chip active"/);
+  assert.match(menu(), /class="jscope-views active"/);
   // a condition saves and comes back as one
   a.run(`featureStamps = {}; addJournalFilter('feature:atr_from_daily_sma50'); setJournalFilterBound('feature:atr_from_daily_sma50', 'min', '2'); startJournalView(); journalViewTyped('Extended'); saveJournalView(); clearJournalFilters(); applyJournalView(1)`);
   assert.deepEqual(a.run('journalFilters').find(f => f.field.startsWith('feature:')), { field: 'feature:atr_from_daily_sma50', values: [], op: 'atleast', min: 2, max: null });
-  // × deletes the lit one; '[]' once none are left, so the delete syncs
-  a.run('deleteJournalView(1)');
+  // Delete the one shown; '[]' once none are left, so the delete syncs
+  a.run("pickJournalView('del:1')");
   assert.deepEqual(parseViews(a.run("store.get('journal_views')")).map(v => v.name), ['A longs']);
   a.run('applyJournalView(0); deleteJournalView(0)');
   assert.equal(a.run("store.get('journal_views')"), '[]');
-  assert.doesNotMatch(a.list(), /jf-views/);
+  assert.doesNotMatch(menu(), /value="v:0"/);
   a.run('applyJournalView(5); deleteJournalView(5); startJournalView(); cancelJournalView()');
   assert.doesNotMatch(a.list(), /journalViewName/, 'Cancel closes the box');
+  // phones: the Filters sheet lists them as chips
+  const p = await journal(390);
+  p.run("store.set('journal_views', '[{\"name\":\"A longs\",\"side\":\"long\",\"filters\":[]}]'); openJournalFilters()");
+  assert.match(p.elements.get('journalFiltersBody').innerHTML, /<div class="jscope-lbl">Views<\/div><div class="jf-views"[^]*?data-action="applyJournalView" data-arg="0">A longs</);
 });
 
 test('+ Add filter: Setup grade with its values counted; picking A narrows Trades, Stats and Calendar; is not; × takes it off', async () => {
   const a = await journal();
-  assert.match(a.list(), /<div class="jb-filters journal-controls"[^]*?<select class="jf-add" data-change="addJournalFilter"[^]*?<option value="grade">Setup grade<\/option>/, 'in the rail');
+  assert.match(a.list(), /<div class="jscope" role="group" aria-label="Filters">[^]*?<select class="jf-add" data-change="addJournalFilter" aria-label="Add a filter"><option value="">\+ Filter<\/option>[^]*?<option value="grade">Setup grade<\/option><option value="reviewed">Review<\/option>/, 'in the bar');
   a.run("addJournalFilter('grade')");
+  assert.match(a.list(), /<span class="jscope-chip open"><button class="jscope-chip-main" data-action="editJournalFilter" data-arg="grade" aria-expanded="true"><span class="jscope-k">Setup grade<\/span> any<\/button>/, 'a chip, its box open under the bar');
   assert.equal(a.shown(), 'AAPL,MSFT,NVDA', 'nothing picked yet: every trade');
   const block = a.list().split('class="jf-filter')[1].split('class="jf-foot"')[0];
   assert.match(block, /<span class="jf-name">Setup grade<\/span>/);
@@ -210,10 +226,18 @@ test('+ Add filter: Setup grade with its values counted; picking A narrows Trade
   a.run("setJournalTab('stats')");
   assert.match(a.list(), />AAPL</, 'Stats count the same trades');
   assert.doesNotMatch(a.list(), />(MSFT|NVDA)</);
-  assert.match(a.list(), /class="jf-filter active"/, 'and show the filters');
+  assert.match(a.list(), /<span class="jscope-chip active"><button class="jscope-chip-main" data-action="editJournalFilter" data-arg="grade" aria-expanded="false"><span class="jscope-k">Setup grade<\/span> A<\/button>/, 'and show it as a chip, its box shut');
+  a.run("editJournalFilter('grade')");
+  assert.match(a.list(), /<div class="jf jscope-edit"[^]*?<div class="jf-filter active">/, 'the chip opens its box');
+  a.run('closeJournalFilterEdit()');
+  assert.doesNotMatch(a.list(), /jscope-edit/, 'Done shuts it');
   a.run("setJournalTab('trades'); removeJournalFilter('grade')");
   assert.equal(a.shown(), 'AAPL,MSFT,NVDA');
   assert.doesNotMatch(a.list(), /class="jf-filter/);
+  a.run("addJournalFilter('outcome'); closeJournalFilterEdit()");
+  assert.deepEqual(a.run('journalFilters'), [], 'closed with nothing picked: it comes off');
+  a.run("addJournalFilter('outcome'); addJournalFilter('weekday')");
+  assert.deepEqual(a.run('journalFilters').map(f => f.field), ['weekday'], 'another box opening closes the empty one');
 });
 
 test('filters add up: an outcome and a mistake; the review chips count what they leave; Remove all', async () => {
@@ -229,13 +253,14 @@ test('filters add up: an outcome and a mistake; the review chips count what they
   assert.equal(a.shown(), 'AAPL,MSFT,NVDA');
 });
 
-test('phones: More filters sit in Filters and count toward its number', async () => {
+test('phones: More filters sit in the Filters sheet, as chips under the bar, and count toward its number', async () => {
   const a = await journal(390);
   a.run("addJournalFilter('grade'); toggleJournalFilterValue('grade', 'C')");
-  assert.match(a.list(), /data-action="toggleJournalFilters" aria-expanded="false">Filters <b>1<\/b>/);
-  assert.doesNotMatch(a.list(), /class="jf"/, 'closed');
-  a.run('toggleJournalFilters()');
-  assert.match(a.list(), /<div class="journal-filters">[^]*?<div class="jf" role="group" aria-label="More filters">/);
+  assert.match(a.list(), /data-action="openJournalFilters" aria-haspopup="dialog">Filters <b>1<\/b>/);
+  assert.match(a.list(), /<span class="jscope-pill active"><button class="jscope-chip-main" data-action="openJournalFilters"><span class="jscope-k">Setup grade<\/span> C<\/button>/, 'a chip that opens the sheet');
+  assert.doesNotMatch(a.list(), /class="jf"/, 'no boxes on the page');
+  a.run('openJournalFilters()');
+  assert.match(a.elements.get('journalFiltersBody').innerHTML, /<div class="jf" role="group" aria-label="More filters">[^]*?<span class="jf-name">Setup grade<\/span>/);
   assert.equal(a.shown(), 'MSFT');
 });
 
@@ -256,13 +281,20 @@ test('a day on the Trades tab: its date and Review the day open its notebook pag
   assert.match(a.list(), /← Calendar/, 'opened from the calendar: back to it');
 });
 
-test('a calendar day picked on the Trades tab keeps through its notebook page and back', async () => {
+test("a day's trades: the dates narrow to the day, kept through its notebook page and back; ‹ Back to returns", async () => {
   const a = await journal(1000);
   a.run("pickJournalDay('2026-10-02')");
-  assert.match(a.list(), /Exits 10\/2 ×[^]*?The day's stats<\/button><button class="pos-link jd-review" data-action="reviewJournalDay" data-arg="2026-10-02"/);
-  a.run("reviewJournalDay('2026-10-02'); closeJournalDay()");
-  assert.equal(a.run('state.journalDay'), '2026-10-02');
   assert.equal(a.shown(), 'NVDA');
+  assert.match(a.list(), /<option value="day" selected>Day<\/option>[^]*?Fri, Oct 2, 2026[^]*?<button class="pos-link jscope-back" data-action="restoreJournalScope">‹ Back to All time<\/button>/);
+  a.run("reviewJournalDay('2026-10-02'); closeJournalDay()");
+  assert.equal(a.run('journalPeriodKey'), '2026-10-02');
+  assert.equal(a.shown(), 'NVDA');
+  a.run("setJournalTab('stats')");
+  assert.match(a.list(), />NVDA</, 'Stats on the same day');
+  assert.doesNotMatch(a.list(), />AAPL</);
+  a.run('restoreJournalScope()');
+  assert.equal(a.run('journalPeriod'), 'all');
+  assert.equal(a.shown(), 'AAPL,MSFT,NVDA');
 });
 
 test('core: Ticker type is what the trade is on, whatever the instrument: Stocks, ETFs, Indexes, Futures', async () => {
@@ -318,7 +350,7 @@ test('core: Options splits option trades into long and sold calls and puts and s
     ['Long calls 1', 'Long puts 1', 'Sold calls 1', 'Sold puts 2', 'Spreads 1', 'Not options 1'], 'how many of each');
 });
 
-test('+ Add filter offers Ticker type in the rail', async () => {
+test('+ Filter offers Ticker type', async () => {
   const a = await journal();
   assert.match(a.list(), /<option value="ticker">Ticker type<\/option>/);
   a.run("addJournalFilter('ticker')");

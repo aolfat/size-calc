@@ -594,9 +594,9 @@ test('a setup filter on the Stats periods: Day and ‹ › only see the trades w
   await run(`toggleSetup(${t}, 'ema21_bounce')`);
   run('closeJournalTrade()');
   run("setJournalTab('stats'); setJournalPeriod('day')");
-  assert.match(list(), /class="jc-title">Mon, Oct 5, 2026</, 'no filter: the newest close, MSFT\'s');
+  assert.match(list(), /class="jscope-when">Mon, Oct 5, 2026</, 'no filter: the newest close, MSFT\'s');
   run("setJournalPeriod('all'); setJournalSetupFilter('ema21_bounce'); setJournalPeriod('day')");
-  assert.match(list(), /class="jc-title">Fri, Oct 2, 2026</, 'the AAPL trade with the setup, not the MSFT day');
+  assert.match(list(), /class="jscope-when">Fri, Oct 2, 2026</, 'the AAPL trade with the setup, not the MSFT day');
   assert.match(list(), /aria-label="Earlier day with trades" disabled>[\s\S]*aria-label="Later day with trades" disabled>/, 'nothing else carries the setup');
 });
 
