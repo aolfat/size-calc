@@ -4,7 +4,7 @@
 // go (services/journal-review.js), with what's still missing; the reviewed mark and To review filter in the list; and the
 // Library sheet (#journalLibrarySheet) to rename, hide and merge choices, and edit what a setup is made of. core/journal-labels.js holds the rules.
 import { marketEscape as esc } from '../core/format.js';
-import { buildLibrary, cleanLink, goesBy, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tacticPickGroups, tradeSide } from '../core/journal-labels.js';
+import { buildLibrary, cleanLink, goesBy, deckQueue, fromReviewDay, gradeOf, GRADES, linkLabel, matchesQuery, MAX_LINKS, missingWords, onOrderSheet, OPENING_PASS, PLAN_FOLLOWED, reviewFromDay, reviewPass, reviewState, sameParts, setupFits, setupGroups, setupName, setupPickGroups, setupsByUse, setupSearchNames, setupTwin, shortTwin, SINGLE, BUILT_IN_MERGES, tacticPickGroups, tradeSide } from '../core/journal-labels.js';
 import { fundOf, listedFund, parseFunds } from '../core/journal.js';
 import { nyParts } from '../core/journal-stats.js';
 import { industryWords } from '../core/industries.js';
@@ -652,6 +652,8 @@ export function mergeEditedSetup(into) {
 
 // ---------- the Library sheet ----------
 
+/** the kinds the Trade at Schwab sheet picks from, each of which can be marked Review only */
+const SHEET_KINDS = new Set(['action', 'level', 'pattern', 'tactic']);
 const KIND_WORDS = [['setup', 'My setups'], ['market', 'Market'], ['sector', 'Sector'], ['level', 'Levels'], ['action', 'What happened'], ['pattern', 'Patterns'], ['tactic', 'Entry tactics'], ['tag', 'Tags'], ['mistake', 'Mistakes']];
 /** what a kind's section says first: the second box is the words on a short */
 const KIND_NOTES = {
@@ -682,9 +684,10 @@ export function renderJournalLibrary() {
       const twin = into || i.hidden ? null : kind === 'setup' ? setupTwin(lib, i.key) : kind === 'action' || kind === 'pattern' ? shortTwin(lib, kind, i.key) : null;
       return `<div class="jl-row${kind === 'setup' ? ' jl-setup' : ''}${sideWords ? ' jl-sided' : ''}${i.hidden || into ? ' jl-off' : ''}"><input type="text" maxlength="80" value="${esc(i.name)}" aria-label="Rename ${esc(i.name)}" data-change="renameLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}" />
         ${sideWords && !into ? shortBox(kind, i) : ''}
-        ${kind === 'setup' ? `<span class="jl-parts">${esc(lib.partsWords(lib.parts(i.key)) + shortWords)}</span>` : ''}${i.own ? '<span class="journal-tag journal-tag-quiet">yours</span>' : ''}
+        ${kind === 'setup' ? `<span class="jl-parts">${esc(lib.partsWords(lib.parts(i.key)) + shortWords)}</span>` : ''}${i.own ? '<span class="journal-tag journal-tag-quiet">yours</span>' : ''}${SHEET_KINDS.has(kind) && !onOrderSheet(i) ? '<span class="journal-tag journal-tag-quiet">review only</span>' : ''}
         ${kind === 'setup' && !into ? `<button class="pos-link" data-action="editSetup" data-arg="${esc(i.key)}" aria-expanded="${state.setupEdit?.key === i.key}">Edit</button>` : ''}
         <button class="pos-link" data-action="toggleLibraryHidden" data-arg="${kind}" data-arg2="${esc(i.key)}">${i.hidden ? 'Show' : 'Hide'}</button>
+        ${SHEET_KINDS.has(kind) && !i.hidden && !into ? `<button class="pos-link" data-action="toggleLibraryReviewOnly" data-arg="${kind}" data-arg2="${esc(i.key)}" title="${onOrderSheet(i) ? 'Leave it off the Trade at Schwab sheet: only a review offers it' : 'Offer it on the Trade at Schwab sheet again'}">${onOrderSheet(i) ? 'Review only' : 'Show on order sheet'}</button>` : ''}
         <select aria-label="Merge ${esc(i.name)} into" data-change="mergeLibraryItem" data-arg="${kind}" data-arg2="${esc(i.key)}"><option value="">${into ? '' : 'Merge into…'}</option>${others.map(o => `<option value="${esc(o.key)}"${into === o.key ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}${into ? '<option value="__unmerge">Unmerge</option>' : ''}</select>
         ${twin ? `<span class="jl-twin">${kind === 'setup' ? 'Same setup as' : 'The short side of'} <b>${esc(lib.nameOf(kind, twin.key, 'both'))}</b> <button class="pos-link" data-action="mergeTwin" data-arg="${kind}" data-arg2="${esc(i.key)}" data-into="${esc(twin.key)}">Merge into it</button></span>` : ''}</div>
         ${kind === 'setup' && state.setupEdit?.key === i.key ? setupEditHtml(lib) : ''}`;
@@ -692,7 +695,7 @@ export function renderJournalLibrary() {
     // My setups ends with + New setup, the builder in its place while it's open
     const add = kind !== 'setup' || forMissed ? '' : state.setupEdit && !state.setupEdit.key ? setupEditHtml(lib) : '<div><button class="pos-link jr-new" data-action="newLibrarySetup">+ New setup</button></div>';
     return `<div class="sheet-section"><div class="sheet-label">${words}</div>${KIND_NOTES[kind] ? `<p class="hint">${esc(KIND_NOTES[kind])}</p>` : ''}<div class="jl-list">${rows}${add}</div></div>`;
-  }).join('') + '<p class="hint">Hidden choices stop being offered; trades already labeled keep them. Merging counts one as the other everywhere, and the old name maps to the kept one from then on.</p>';
+  }).join('') + '<p class="hint">Hidden choices stop being offered; trades already labeled keep them. Review only keeps one off the Trade at Schwab sheet but in every review. Merging counts one as the other everywhere, and the old name maps to the kept one from then on.</p>';
 }
 
 export function openJournalLibrary() { state.setupEdit = null; state.libraryNew = null; renderJournalLibrary(); openSheet('journalLibrary'); }
@@ -713,6 +716,14 @@ function changeLibrary(kind, key, patch) {
 
 export const renameLibraryItem = (kind, key, name) => String(name || '').trim() ? changeLibrary(kind, key, { name: String(name).trim().slice(0, 80) }) : renderJournalLibrary();
 export const toggleLibraryHidden = (kind, key) => changeLibrary(kind, key, { hidden: !library().item(kind, key)?.hidden });
+/** Review only: the Trade at Schwab sheet stops offering it (an action, level, pattern or tactic); a review still does */
+export function toggleLibraryReviewOnly(kind, key) {
+  const base = libraryRow(kind, key);
+  if (!base || !SHEET_KINDS.has(kind)) return;
+  const settings = { ...(base.settings || {}) };
+  if (onOrderSheet(library().item(kind, key))) settings.review_only = true; else delete settings.review_only;
+  return changeLibrary(kind, key, { settings });
+}
 export const mergeLibraryItem = (kind, key, into) => into === '__unmerge' ? changeLibrary(kind, key, { merged_into: null }) : into ? changeLibrary(kind, key, { merged_into: into }) : null;
 /** a setup made of the same things as another, or a pattern or action that is another's short side, merged into it */
 export const mergeTwin = (kind, key, into) => kind && key && into ? mergeLibraryItem(kind, key, into) : null;

@@ -22,7 +22,7 @@ import { closePositionChart, posUnderChanged, setPosChartOn, posAddChanged, posC
 import { openOrderCancel, sendOrderCancel, setCancelKeep } from './order-cancel.js';
 import { openCancelAll, sendCancelAll, setCancelAllOnly } from './order-cancel-all.js';
 import { openOrderEdit, sendOrderEdit, setEditDuration, setEditPrice, setEditQty, setEditStop } from './order-edit.js';
-import { pickTradeSetup, setTradeGrade, toggleTradeSetup, toggleTradeTactic, tradeSetupSearch } from './order-plan.js';
+import { addTradeTactic, applyTradeQuick, cancelTradeTactic, pickTradeLevel, pickTradePattern, setTradeGrade, setTradeMove, startTradeTactic, toggleTradeSetup, toggleTradeTactic, tradeQuickInput } from './order-plan.js';
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePct, setSpreadClosePctText, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
 import { openPositionTrade, placePositionTrade, setCloseUnder, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setClosePct, setClosePctText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
@@ -44,7 +44,7 @@ import { reviewUpNext, skipUpNext, toggleJournalDayShut } from './journal-cards.
 import { setCalendarMode, setStatsFeature, setStatsFeatureMode } from './journal-stats.js';
 import { selectJournalTrade, setJournalLayout, skipPanelTrade, toggleBenchColumn } from './journal-bench.js';
 import { deckBack, deckNext, endReviewDeck, revealDeckPnl, reviewSkipped, setDeckPnl, setReviewFrom, startReviewDeck, toggleDeckWeekly } from './journal-deck.js';
-import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, cancelSetupEdit, editSetup, newLibrarySetup, startLibraryChoice, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, reviewSearchInput, reviewSearchPick, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
+import { addLibraryChoice, useSetupTwin, addReviewLink, cancelLibraryChoice, cancelSetupEdit, editSetup, newLibrarySetup, startLibraryChoice, mergeEditedSetup, saveSetupEdit, setEditAction, setEditPattern, setupEditNameInput, toggleEditLevel, removeReviewLink, reviewLinkInput, cancelReviewItem, cancelSetupDraft, setDraftAction, setDraftPattern, startSetupDraft, toggleDraftLevel, toggleSetup, mergeLibraryItem, mergeTwin, setLibraryShort, openJournalLibrary, renameLibraryItem, reviewNoteInput, reviewNoteSave, reviewSearchInput, reviewSearchPick, saveReviewItem, setPlanFollowed, setReviewMarket, setSetupGrade, startReviewItem, toggleLibraryHidden, toggleLibraryReviewOnly, toggleReviewLabel, toggleReviewMarketOwn } from './journal-review.js';
 import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund, saveFund, setFundInverse, setFundOn, combineTrade, deletePicked, deleteTrade, journalImport, journalSymbolChanged, mergePicked, openJournalExport, openJournalImport, openTradeReview, openTradeRow, pickTradeStop, restoreTrade, saveTradeStop, separateTrade, setJournalFees, setJournalSide, setJournalTab, splitSpread, toggleDeletedTrades, toggleJournalColumn, toggleJournalColumnsMenu, toggleJournalPick, toggleJournalSelect, tradeStopPreview, undoDeleteTrades } from './journal.js';
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
@@ -338,6 +338,7 @@ export const actions = {
   openJournalLibrary: () => openJournalLibrary(),
   renameLibraryItem: el => renameLibraryItem(arg(el), el.dataset.arg2 || '', /** @type {HTMLInputElement} */ (el).value),
   toggleLibraryHidden: el => toggleLibraryHidden(arg(el), el.dataset.arg2 || ''),
+  toggleLibraryReviewOnly: el => toggleLibraryReviewOnly(arg(el), el.dataset.arg2 || ''),
   mergeLibraryItem: el => mergeLibraryItem(arg(el), el.dataset.arg2 || '', /** @type {HTMLSelectElement} */ (el).value),
   mergeTwin: el => mergeTwin(arg(el), el.dataset.arg2 || '', el.dataset.into || ''),
   setLibraryShort: el => setLibraryShort(arg(el), el.dataset.arg2 || '', /** @type {HTMLInputElement} */ (el).value),
@@ -430,8 +431,14 @@ export const actions = {
   checkTradeStatus: () => checkTradeStatus(),
   toggleTradeSetup: el => toggleTradeSetup(arg(el)),
   toggleTradeTactic: el => toggleTradeTactic(arg(el)),
-  tradeSetupSearch: el => tradeSetupSearch(/** @type {HTMLInputElement} */ (el).value),
-  pickTradeSetup: () => pickTradeSetup(),
+  setTradeMove: el => setTradeMove(arg(el)),
+  pickTradeLevel: el => pickTradeLevel(arg(el)),
+  pickTradePattern: el => pickTradePattern(arg(el)),
+  startTradeTactic: () => startTradeTactic(),
+  cancelTradeTactic: () => cancelTradeTactic(),
+  addTradeTactic: el => addTradeTactic(el.tagName === 'INPUT' ? /** @type {HTMLInputElement} */ (el).value : undefined),
+  tradeQuickInput: el => tradeQuickInput(/** @type {HTMLInputElement} */ (el).value),
+  applyTradeQuick: () => applyTradeQuick(),
   setTradeGrade: el => setTradeGrade(arg(el)),
 
   // ---------- futures ----------

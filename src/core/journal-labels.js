@@ -373,6 +373,64 @@ export function setupTwin(lib, key) {
   return lib.choices('setup').find(i => i.key !== k && sameParts(lib.parts(i.key), p)) || null;
 }
 
+/**
+ * Whether the Trade at Schwab sheet offers an item: everything but what you marked Review only in Edit setups (labels like
+ * Accident or No setup, or a tactic like N/A, that you give a trade afterwards, never when you take it).
+ * @param {{ settings?: any } | null | undefined} item
+ */
+export const onOrderSheet = item => !!item && !item.settings?.review_only;
+
+/**
+ * Levels in groups to pick from, in the order given: the daily moving averages, the weekly ones, the AVWAPs, then the rest.
+ * @param {{ key: string, name: string }[]} items
+ * @returns {{ key: string, name: string, items: { key: string, label: string }[] }[]}
+ */
+export function levelPickGroups(items) {
+  const GROUPS = [['daily', 'Daily'], ['weekly', 'Weekly'], ['avwap', 'AVWAP'], ['other', 'Other']];
+  /** @type {Record<string, { key: string, label: string }[]>} */
+  const by = { daily: [], weekly: [], avwap: [], other: [] };
+  for (const i of items) {
+    const ma = /^(\d+)\s*(wk|w|week|weekly)?\s*(EMA|SMA)$/i.exec(i.name.trim());
+    by[ma ? (ma[2] ? 'weekly' : 'daily') : /^avwap\b/i.test(i.name.trim()) ? 'avwap' : 'other'].push({ key: i.key, label: i.name });
+  }
+  return GROUPS.filter(([k]) => by[k].length).map(([key, name]) => ({ key, name, items: by[key] }));
+}
+
+/**
+ * The one of My setups made of these parts: one offered first, else a hidden one (so picking it never makes a twin), or null.
+ * @param {ReturnType<typeof buildLibrary>} lib @param {SetupParts} parts
+ */
+export function setupOfParts(lib, parts) {
+  const all = (lib.byKind.setup || []).filter(i => !lib.merged.has(`setup:${i.key}`) && sameParts(lib.parts(i.key), parts));
+  return all.find(i => !i.hidden) || all[0] || null;
+}
+
+/**
+ * The Trade at Schwab sheet's typed line, '21 ur, 15 orb, a': parts split by commas, each a grade (one letter, A to F), an
+ * entry tactic or a setup. A part that starts with a timeframe ('15', '5m') is a tactic when one matches; otherwise a setup
+ * when one matches, else a tactic. Each part takes its first match in the order given (setups most used first).
+ * @param {string} text
+ * @param {{ key: string, names: string[] }[]} setups @param {{ key: string, names: string[] }[]} tactics
+ * @returns {{ setups: string[], tactics: string[], grade: string, unmatched: string[] }}
+ */
+export function parseQuickPick(text, setups, tactics) {
+  /** @type {{ setups: string[], tactics: string[], grade: string, unmatched: string[] }} */
+  const out = { setups: [], tactics: [], grade: '', unmatched: [] };
+  for (const raw of String(text || '').split(/[,;·]+/)) {
+    const part = raw.trim();
+    if (!part) continue;
+    if (/^[abcdf]$/i.test(part)) { out.grade = part.toUpperCase(); continue; }
+    const tactic = tactics.find(i => matchesQuery(i.names, part));
+    const setup = setups.find(i => matchesQuery(i.names, part));
+    const timed = /^(5|15|30)(m|min)?\b/i.test(part);
+    const pick = timed && tactic ? ['tactics', tactic.key] : setup ? ['setups', setup.key] : tactic ? ['tactics', tactic.key] : null;
+    if (!pick) { out.unmatched.push(part); continue; }
+    const list = /** @type {string[]} */ (out[/** @type {'setups' | 'tactics'} */ (pick[0])]);
+    if (!list.includes(pick[1])) list.push(pick[1]);
+  }
+  return out;
+}
+
 /** a setup's key: 'sma50+bounce', 'sma50', or 'pattern:base_breakout'. @param {{ level?: string, action?: string, pattern?: string }} s */
 export const setupKey = s => s.pattern ? `pattern:${s.pattern}` : s.action ? `${s.level}+${s.action}` : String(s.level || '');
 

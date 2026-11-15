@@ -359,7 +359,7 @@ function ticketFor(p, q, now) {
     plannedRisk: qty * perShare(at), fillRisk: qty * perShare(fill),
     error, order: null, warnings: [], flags: [], sent: false, orderId: '', result: null, entryStatus: '', filled: 0,
     // the picks and what the calculator knew go with every re-plan; the saved plan's id comes once it's sent
-    setups: p.setups || [], tactics: p.tactics || [], setupGrade: p.setupGrade || '', setupOrder: p.setupOrder || null, planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
+    setups: p.setups || [], tactics: p.tactics || [], setupGrade: p.setupGrade || '', pickMove: p.pickMove || '', planCtx: p.planCtx || null, picksTouched: !!p.picksTouched, prefilled: !!p.prefilled, planId: '',
     cardId: p.cardId || '', // the share order card it came from; '' for the shares card
   };
   if (error) return t;
@@ -450,7 +450,7 @@ export async function openCardTrade(cardId) {
 }
 
 /** what you picked in a review while its quote was still out goes with the ticket built on that quote */
-const PICKS = ['setups', 'tactics', 'setupGrade', 'setupOrder', 'picksTouched', 'prefilled'];
+const PICKS = ['setups', 'tactics', 'setupGrade', 'pickMove', 'picksTouched', 'prefilled'];
 
 /**
  * A review opened ahead of its quote, for a shares or an option ticket: the sheet shows at once with the ticket as the card
@@ -463,7 +463,7 @@ export async function reviewBehind({ ticket: t, read, rebuild, render, watch }) 
   t.pending = true;
   state.tradeBusy = true;
   state.tradeTicket = t;
-  state.tradeSetupQuery = '';
+  state.tradeQuickText = '';
   startTradePlan(t);
   render();
   openSheet('trade');
@@ -495,7 +495,7 @@ export function openCardOrder(cardId) {
 /** a review on a quote already in hand (read or streamed at `at`) */
 function showReview(t, q, at) {
   state.tradeTicket = t;
-  state.tradeSetupQuery = '';
+  state.tradeQuickText = '';
   startTradePlan(t);
   renderTradeSheet();
   openSheet('trade');
@@ -812,11 +812,11 @@ export function renderTradeSheet() {
       + (limitWaiting(t) ? `<button class="btn" data-action="openOrderEdit" data-arg="${esc(t.orderId)}" title="Move the limit if it isn't filling">Change limit</button>` : '')
     : `<button class="btn trade-confirm" id="tradePlace" data-action="placeTrade"${state.tradeBusy || !t.order ? ' disabled' : ''}>${esc(t.pending ? CHECKING : placeLabel(t))}</button>`;
   body.innerHTML = `
+    <div class="trade-plan" id="tradePlan">${tradePlanHtml(t)}</div>
     <dl class="trade-legs">
       <div><dt>Entry order</dt><dd><div class="seg entry-types" role="group" aria-label="Entry order">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}${type('STOP', 'Stop')}${type('STOP_LIMIT', 'Stop limit')}</div>${limit}</dd></div>
     </dl>
     <div id="tradeDetail">${tradeDetail(t)}</div>
-    <div class="trade-plan" id="tradePlan">${tradePlanHtml(t)}</div>
     <div class="trade-actions">
       <button class="btn" data-action="closeSheet">${t.sent ? 'Close' : 'Cancel'}</button>
       ${action}
