@@ -4,9 +4,9 @@
 // journal putting each plan's labels and grade on its trade once (services/order-plans.js).
 import { state } from '../state.js';
 import { marketEscape as esc, nyDateStr } from '../core/format.js';
-import { buildLibrary, GRADES, matchesQuery, setupPickGroups, setupsByUse, setupSearchNames } from '../core/journal-labels.js';
+import { buildLibrary, goesBy, GRADES, levelPickGroups, onOrderSheet, parseQuickPick, sameParts, setupName, setupOfParts, setupsByUse, setupSearchNames } from '../core/journal-labels.js';
 import { matchPlans, planGrade, planLabels } from '../core/order-plans.js';
-import { addAppLabels, saveReviewFields } from '../services/journal-review.js';
+import { addAppLabels, saveLibraryItem, saveReviewFields } from '../services/journal-review.js';
 import { loadOrderPlans, saveOrderPlan, updateOrderPlan } from '../services/order-plans.js';
 import { schwabAccounts, schwabBalances } from '../services/schwab.js';
 import { accountSizeFromSchwab, todaysAccountValue } from './account-size.js';
@@ -16,8 +16,6 @@ import { orbActive, orbStopName } from './orb.js';
 import { riskDollars } from './risk.js';
 import { currentAtr5, dayRange, rawStop } from './stops.js';
 
-/** the most setup chips the sheet shows before you search (the ones on always show) */
-const SETUP_CHIPS = 12;
 /** the default tactics the opening-range chips stand for */
 const ORB_TACTICS = /** @type {Record<number, string>} */ ({ 15: 'pivot15', 30: 'pivot30' });
 const newId = () => globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
@@ -84,97 +82,245 @@ function prefillPicks(t) {
   t.tactics = tactic && lib.choices('tactic').some(i => i.key === tactic) ? [tactic] : [];
 }
 
-const chip = (label, on, attrs) => `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" ${attrs}>${esc(label)}</button>`;
+const chip = (label, on, attrs, cls = '') => `<button class="filter-btn${on ? ' active' : ''}${cls}" aria-pressed="${on}" ${attrs}>${esc(label)}</button>`;
 /** picks can change until the order goes, and after it while its plan is kept */
 const picksOff = t => t.sent && !t.planId ? ' disabled' : '';
+const cap = s => s.replace(/^./, c => c.toUpperCase());
 
-/**
- * The setups to show, set the first time they show: the ones filled in first, then the most used, the first SETUP_CHIPS of
- * them. They show grouped as the journal's review groups them (every bounce together, then the patterns: setupPickGroups),
- * which only depends on which are shown, so tapping one lights it where it is; a search only narrows them.
- */
-function shownSetups(t) {
-  const lib = library(), q = state.tradeSetupQuery || '';
-  t.setupOrder ||= [...t.setups, ...setupsByUse(lib, state.journalReview?.labels || {}).map(i => i.key).filter(k => !t.setups.includes(k))];
-  // without a search, the first SETUP_CHIPS always (and any lit one past them); with one, the first SETUP_CHIPS that match
-  let room = SETUP_CHIPS;
-  const shown = t.setupOrder.filter((k, i) => t.setups.includes(k) || (q ? matchesQuery(setupSearchNames(lib, k), q) && room-- > 0 : i < SETUP_CHIPS));
-  return setupPickGroups(lib, shown, sideOf(t));
+/** whether the sheet offers a library item: it isn't marked Review only (an item the library doesn't know is offered) */
+const offered = (lib, kind, key) => { const i = lib.item(kind, key); return !i || onOrderSheet(i); };
+/** a setup the sheet offers: none of what it's made of is Review only */
+function setupOffered(lib, key) {
+  const p = lib.parts(key);
+  return p.pattern ? offered(lib, 'pattern', p.pattern) : (!p.action || offered(lib, 'action', p.action)) && (p.levels || []).every(l => offered(lib, 'level', l));
+}
+const PATTERN = 'pattern';
+/** the move the picker shows: the one you tapped, else the first picked setup's, else the first move */
+function moveOf(t, lib) {
+  if (t.pickMove) return t.pickMove;
+  const p = t.setups.map(k => lib.parts(k)).find(p => p.pattern || p.action);
+  return p ? (p.pattern ? PATTERN : p.action) : lib.choices('action').find(i => onOrderSheet(i))?.key || PATTERN;
+}
+/** the setup on the ticket made of these parts, if any */
+const pickedOf = (t, lib, parts) => t.setups.find(k => sameParts(lib.parts(k), parts));
+
+/** what you picked, read back in one line; each tap takes it off; what's missing in amber (Place never waits for it) */
+function planLineHtml(t, lib) {
+  const side = sideOf(t), off = picksOff(t);
+  const tacticName = key => lib.nameOf('tactic', key);
+  const item = (label, attrs, cls = '') => `<button class="tp-picked${cls}" ${attrs}${off}>${esc(label)}<span aria-hidden="true">×</span></button>`;
+  const parts = [
+    ...t.setups.map(k => item(lib.nameOf('setup', k, side), `data-action="toggleTradeSetup" data-arg="${esc(k)}" title="Take this setup off"`)),
+    ...t.tactics.map(k => item(tacticName(k), `data-action="toggleTradeTactic" data-arg="${esc(k)}" title="Take this tactic off"`)),
+    ...(t.setupGrade ? [item(t.setupGrade, `data-action="setTradeGrade" data-arg="${t.setupGrade}" title="Clear the grade"`, ` tp-picked-grade g-${t.setupGrade}`)] : []),
+  ];
+  const missing = [!t.setups.length && 'setup', !t.tactics.length && 'tactic', !t.setupGrade && 'grade'].filter(Boolean);
+  const need = missing.length ? `<span class="tp-need">No ${missing.length > 1 ? `${missing.slice(0, -1).join(', ')} or ${missing.at(-1)}` : missing[0]} yet</span>` : '';
+  return `<div class="tp-line" id="tradePlanLine">${parts.join('') || ''}${need}</div>`;
 }
 
-function setupChipsHtml(t) {
-  const lib = library(), side = sideOf(t), q = state.tradeSetupQuery || '';
-  const groups = shownSetups(t), shown = groups.flatMap(g => g.items);
-  if (q && !shown.length) return `<p class="jr-none">No setup matches “${esc(q)}”.</p>`;
-  const more = q ? 0 : t.setupOrder.length - shown.length;
-  return pickGroupsHtml(groups, i => chip(i.label, t.setups.includes(i.key), `data-action="toggleTradeSetup" data-arg="${esc(i.key)}" title="${esc(lib.nameOf('setup', i.key, side))}"${picksOff(t)}`))
-    + (more > 0 ? `<p class="jr-none">${more} more. Search to find them.</p>` : '');
+/** the setup picker: what happened (a move, or Pattern), then at what; a level that move hasn't been paired with is dashed and a tap makes it */
+function setupPickerHtml(t, lib) {
+  const side = sideOf(t), move = moveOf(t, lib), off = picksOff(t);
+  const moves = lib.choices('action').filter(i => onOrderSheet(i) || move === i.key);
+  const seg = (key, label) => `<button class="${move === key ? 'active' : ''}" aria-pressed="${move === key}" data-action="setTradeMove" data-arg="${esc(key)}"${off}>${esc(label)}</button>`;
+  const head = `<div class="seg tp-moves" role="group" aria-label="What happened">${moves.map(i => seg(i.key, cap(lib.nameOf('action', i.key, side)))).join('')}${seg(PATTERN, 'Pattern')}</div>`;
+  if (move === PATTERN) {
+    const items = lib.choices('pattern').filter(i => onOrderSheet(i) || pickedOf(t, lib, { pattern: i.key }));
+    return head + `<div class="tp-groups" id="tradeSetupPick">${items.length ? pickGroupsHtml([{ name: 'Pattern', items: items.map(i => ({ key: i.key, label: lib.nameOf('pattern', i.key, side) })) }], i => {
+      const parts = { pattern: i.key }, made = !!setupOfParts(lib, parts);
+      return chip(i.label, !!pickedOf(t, lib, parts), `data-action="pickTradePattern" data-arg="${esc(i.key)}" title="${esc(made ? i.label : `${i.label}: a tap adds it to My setups`)}"${off}`, made ? '' : ' tp-new');
+    }) : '<p class="jr-none">No patterns yet. Add them in Edit setups.</p>'}</div>`;
+  }
+  const levels = lib.choices('level').filter(i => onOrderSheet(i) || pickedOf(t, lib, { action: move, levels: [i.key] }));
+  let fresh = false;
+  const groups = pickGroupsHtml(levelPickGroups(levels.map(i => ({ key: i.key, name: lib.nameOf('level', i.key, side) }))), i => {
+    const parts = { action: move, levels: [i.key] }, made = !!setupOfParts(lib, parts), name = setupName(lib, parts, side);
+    if (!made) fresh = true;
+    return chip(i.label, !!pickedOf(t, lib, parts), `data-action="pickTradeLevel" data-arg="${esc(i.key)}" title="${esc(made ? name : `${name}: a tap adds it to My setups`)}"${off}`, made ? '' : ' tp-new');
+  });
+  return head + `<div class="tp-groups" id="tradeSetupPick">${groups || '<p class="jr-none">No levels yet. Add them in Edit setups.</p>'}</div>`
+    + (fresh ? '<p class="jr-none">Dashed: not in My setups yet. A tap adds it.</p>' : '');
 }
 
-/** the Setup, Setup grade and Entry tactic rows, or why they can't show */
+/** entry tactics by timeframe, then + New, which takes a name */
+function tacticPickerHtml(t, lib) {
+  const off = picksOff(t);
+  const items = lib.choices('tactic').filter(i => onOrderSheet(i) || t.tactics.includes(i.key));
+  const add = t.addingTactic
+    ? `<span class="jr-newbox tp-newbox"><input type="text" id="tradeNewTactic" maxlength="80" placeholder="15m flag break" autocomplete="off" spellcheck="false" data-enter="addTradeTactic" aria-label="New entry tactic" /><button class="btn" data-action="addTradeTactic">Add</button><button class="pos-link" data-action="cancelTradeTactic">Cancel</button></span>`
+    : `<button class="filter-btn tp-new" data-action="startTradeTactic" title="Add an entry tactic to your library and pick it"${off}>+ New</button>`;
+  const groups = tacticGroupsHtml(items, i => chip(i.label, t.tactics.includes(i.key), `data-action="toggleTradeTactic" data-arg="${esc(i.key)}" title="${esc(i.name)}"${off}`));
+  return `<div class="tp-groups">${groups}${groups ? '' : '<p class="jr-none">No entry tactics yet.</p>'}<div class="tp-add">${add}</div></div>`;
+}
+
+/** the plan line, then Setup, Entry tactic and Grade, or why they can't show */
 export function tradePlanHtml(t) {
   if (!state.session) return '<p class="hint">Sign in with Google to keep the setup, tactic and plan with the order.</p>';
   if (state.journalReviewError) return `<p class="hint" style="color:var(--amber)">Your setups couldn't load: ${esc(state.journalReviewError)}. The plan's numbers are still saved with the order.</p>`;
   if (!state.journalReview) return '<p class="hint">Loading your setups…</p>';
-  const lib = library();
-  // tactics by the timeframe their names start with ('5m', '15m', '30m'), then the rest, as the journal picks them
-  const tactics = tacticGroupsHtml(lib.choices('tactic'), i => chip(i.label, t.tactics.includes(i.key), `data-action="toggleTradeTactic" data-arg="${esc(i.key)}" title="${esc(i.name)}"${picksOff(t)}`));
+  const lib = library(), off = picksOff(t);
+  // desktop only (CSS): the whole plan typed on one line
+  const quick = `<div class="tp-quick"><input type="text" id="tradeQuick" class="jr-search" placeholder="Type it: 21 ur, 15 orb, a" autocomplete="off" spellcheck="false" value="${esc(state.tradeQuickText || '')}" data-input="tradeQuickInput" data-enter="applyTradeQuick" aria-label="Type the setup, entry tactic and grade, separated by commas; Enter picks them"${off} /><span class="tp-quick-preview" id="tradeQuickPreview" role="status">${quickPreview(t, lib)}</span></div>`;
+  const grade = `<div class="tp-grades" role="group" aria-label="Setup grade">${GRADES.map(g => `<button class="tp-grade-btn g-${g}${t.setupGrade === g ? ' active' : ''}" aria-pressed="${t.setupGrade === g}" data-action="setTradeGrade" data-arg="${g}" title="How good the setup is: ${g}"${off}>${g}</button>`).join('')}</div>`;
   return `<div class="trade-plan-picks">
-      <div class="tp-head"><span class="tp-title">Setup</span><input type="search" class="jr-search" id="tradeSetupSearch" placeholder="Search setups, Enter picks" autocomplete="off" spellcheck="false" value="${esc(state.tradeSetupQuery || '')}" data-input="tradeSetupSearch" data-enter="pickTradeSetup" aria-label="Search My setups" /></div>
-      <div class="tp-groups" id="tradeSetupPick">${setupChipsHtml(t)}</div>
-      <div class="tp-head tp-grade"><span class="tp-title">Setup grade</span><span class="jr-group-chips">${GRADES.map(g => chip(g, t.setupGrade === g, `data-action="setTradeGrade" data-arg="${g}" title="How good the setup is: ${g}"${picksOff(t)}`)).join('')}</span></div>
-      <div class="tp-head"><span class="tp-title">Entry tactic</span></div>
-      <div class="tp-groups">${tactics || '<p class="jr-none">No entry tactics yet. Add them on a journal trade.</p>'}</div>
+      ${planLineHtml(t, lib)}
+      ${quick}
+      <div class="tp-title">Setup</div>
+      ${setupPickerHtml(t, lib)}
+      <div class="tp-title">Entry tactic</div>
+      ${tacticPickerHtml(t, lib)}
+      <div class="tp-title">Grade</div>
+      ${grade}
     </div>
-    <p class="hint">Saved with the order. The journal puts them and the grade on the trade once it fills.</p>`;
+    <p class="hint">Saved with the order. The journal puts them on the trade once it fills.</p>`;
 }
 
-/** only the picks redraw, so the search keeps its cursor */
+/** only the picks redraw */
 function renderTradePlan() {
   const el = document.getElementById('tradePlan');
   if (el && state.tradeTicket) el.innerHTML = tradePlanHtml(state.tradeTicket);
 }
 
-function togglePick(field, key) {
-  const t = state.tradeTicket;
-  if (!t || t.error || picksOff(t) || typeof key !== 'string' || !key) return;
+/** a pick changed: drawn, and saved with the plan once there is one */
+function picked(t) {
   t.picksTouched = true;
-  t[field] = t[field].includes(key) ? t[field].filter(k => k !== key) : [...t[field], key];
   renderTradePlan();
   if (t.planId) queuePlanSave(t);
 }
+const canPick = t => !!t && !t.error && !picksOff(t) && !!state.journalReview;
+
+function togglePick(field, key) {
+  const t = state.tradeTicket;
+  if (!canPick(t) || typeof key !== 'string' || !key) return;
+  t[field] = t[field].includes(key) ? t[field].filter(k => k !== key) : [...t[field], key];
+  picked(t);
+}
 export function toggleTradeSetup(key) { togglePick('setups', key); }
+export function toggleTradeTactic(key) { togglePick('tactics', key); }
 
 /** the setup's grade, A to F (GRADES, the journal review's); tapping the lit one clears it */
 export function setTradeGrade(g) {
   const t = state.tradeTicket;
-  if (!t || t.error || picksOff(t) || !GRADES.includes(g)) return;
-  t.picksTouched = true;
+  if (!canPick(t) || !GRADES.includes(g)) return;
   t.setupGrade = t.setupGrade === g ? '' : g;
-  renderTradePlan();
-  if (t.planId) queuePlanSave(t);
+  picked(t);
 }
-export function toggleTradeTactic(key) { togglePick('tactics', key); }
 
-/** Enter in the setup search lights the first match that isn't on, then clears the search to type the next */
-export function pickTradeSetup() {
+/** what happened: a move (bounce, undercut & rally, breakout, yours) or Pattern; the levels or patterns under it follow */
+export function setTradeMove(move) {
   const t = state.tradeTicket;
-  if (!t || !state.tradeSetupQuery) return;
-  const lib = library();
-  const key = shownSetups(t).flatMap(g => g.items).map(i => i.key) // as they show: the first chip that matches and isn't on
-    .find(k => !t.setups.includes(k) && matchesQuery(setupSearchNames(lib, k), state.tradeSetupQuery));
-  if (!key) return;
-  const input = /** @type {HTMLInputElement | null} */ (document.getElementById('tradeSetupSearch'));
-  if (input) input.value = '';
-  state.tradeSetupQuery = '';
-  togglePick('setups', key);
+  if (!canPick(t) || (move !== PATTERN && !library().item('action', move))) return;
+  t.pickMove = move;
+  renderTradePlan();
 }
 
-/** typing in the setup search: only the chips under it redraw */
-export function tradeSetupSearch(value) {
-  state.tradeSetupQuery = String(value || '');
-  const el = document.getElementById('tradeSetupPick');
-  if (el && state.tradeTicket) el.innerHTML = setupChipsHtml(state.tradeTicket);
+/**
+ * The setup these parts make goes on the ticket, or comes off if it's on. One of My setups made of them is used; with none,
+ * a new one, named for its parts as the journal's + New setup names it, goes into My setups first (taken back out of the
+ * ticket if the save fails).
+ */
+function pickParts(parts) {
+  const t = state.tradeTicket;
+  if (!canPick(t)) return;
+  const lib = library(), on = pickedOf(t, lib, parts);
+  if (on) { t.setups = t.setups.filter(k => k !== on); return picked(t); }
+  const have = setupOfParts(lib, parts);
+  if (have) { t.setups = [...t.setups, have.key]; return picked(t); }
+  const name = setupName(lib, parts);
+  if (!name) return;
+  const row = { id: newId(), kind: 'setup', name, settings: parts }, key = `mine:${row.id}`;
+  state.journalReview.library = [...state.journalReview.library, row];
+  t.setups = [...t.setups, key];
+  picked(t);
+  return saveLibraryItem(row).catch(e => {
+    if (state.journalReview) state.journalReview.library = state.journalReview.library.filter(r => r.id !== row.id);
+    t.setups = t.setups.filter(k => k !== key);
+    showError(`Couldn't add ${name} to My setups: ${String(e?.message || e)}`);
+    picked(t);
+  });
+}
+export function pickTradeLevel(level) {
+  const t = state.tradeTicket, move = t && moveOf(t, library());
+  if (!t || !move || move === PATTERN || typeof level !== 'string' || !library().item('level', level)) return;
+  return pickParts({ action: move, levels: [level] });
+}
+export function pickTradePattern(pattern) {
+  if (typeof pattern !== 'string' || !library().item('pattern', pattern)) return;
+  return pickParts({ pattern });
+}
+
+/** + New under the tactics: a name box */
+export function startTradeTactic() {
+  const t = state.tradeTicket;
+  if (!canPick(t)) return;
+  t.addingTactic = true;
+  renderTradePlan();
+  document.getElementById('tradeNewTactic')?.focus();
+}
+export function cancelTradeTactic() {
+  const t = state.tradeTicket;
+  if (!t) return;
+  t.addingTactic = false;
+  renderTradePlan();
+}
+/** the typed tactic goes on the ticket: one you have by that name, else a new one in your library (back off if the save fails) */
+export function addTradeTactic(value) {
+  const t = state.tradeTicket;
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById('tradeNewTactic'));
+  const name = String(value ?? input?.value ?? '').trim().slice(0, 80);
+  if (!canPick(t) || !name) return;
+  const lib = library();
+  t.addingTactic = false;
+  const same = (lib.byKind.tactic || []).find(i => !lib.merged.has(`tactic:${i.key}`) && goesBy('tactic', i, name));
+  if (same) {
+    if (!t.tactics.includes(same.key)) t.tactics = [...t.tactics, same.key];
+    return picked(t);
+  }
+  const row = { id: newId(), kind: 'tactic', name }, key = `mine:${row.id}`;
+  state.journalReview.library = [...state.journalReview.library, row];
+  t.tactics = [...t.tactics, key];
+  picked(t);
+  return saveLibraryItem(row).catch(e => {
+    if (state.journalReview) state.journalReview.library = state.journalReview.library.filter(r => r.id !== row.id);
+    t.tactics = t.tactics.filter(k => k !== key);
+    showError(`Couldn't add ${name} to your entry tactics: ${String(e?.message || e)}`);
+    picked(t);
+  });
+}
+
+// ---------- the typed line (desktop) ----------
+
+/** what the typed line reads as, with your setups most used first and only what the sheet offers */
+function quickParse(lib) {
+  const setups = setupsByUse(lib, state.journalReview?.labels || {}).filter(i => setupOffered(lib, i.key)).map(i => ({ key: i.key, names: setupSearchNames(lib, i.key) }));
+  const tactics = lib.choices('tactic').filter(i => onOrderSheet(i)).map(i => ({ key: i.key, names: [i.name] }));
+  return parseQuickPick(state.tradeQuickText || '', setups, tactics);
+}
+function quickPreview(t, lib) {
+  if (!(state.tradeQuickText || '').trim()) return '';
+  const p = quickParse(lib), side = sideOf(t);
+  const said = [...p.setups.map(k => lib.nameOf('setup', k, side)), ...p.tactics.map(k => lib.nameOf('tactic', k)), ...(p.grade ? [p.grade] : [])];
+  return esc(said.join(' · ')) + (p.unmatched.length ? `${said.length ? ' · ' : ''}<span class="tp-need">no match: ${esc(p.unmatched.join(', '))}</span>` : '');
+}
+/** typing: only the line under it redraws */
+export function tradeQuickInput(value) {
+  state.tradeQuickText = String(value || '');
+  const el = document.getElementById('tradeQuickPreview');
+  if (el && state.tradeTicket && state.journalReview) el.innerHTML = quickPreview(state.tradeTicket, library());
+}
+/** Enter: what it reads as goes on (nothing comes off), the grade is set, and the line clears for the next */
+export function applyTradeQuick() {
+  const t = state.tradeTicket;
+  if (!canPick(t) || !(state.tradeQuickText || '').trim()) return;
+  const p = quickParse(library());
+  if (!p.setups.length && !p.tactics.length && !p.grade) return;
+  t.setups = [...t.setups, ...p.setups.filter(k => !t.setups.includes(k))];
+  t.tactics = [...t.tactics, ...p.tactics.filter(k => !t.tactics.includes(k))];
+  if (p.grade) t.setupGrade = p.grade;
+  state.tradeQuickText = '';
+  picked(t);
+  document.getElementById('tradeQuick')?.focus();
 }
 
 // ---------- saved once the order goes ----------

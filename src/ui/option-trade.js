@@ -113,7 +113,7 @@ export async function openOptionTrade(occ) {
       qty: c.contracts, stop: c.atStop > 0 ? optionStopTick(c.atStop, true) : 0, atStop: c.atStop, underStop: c.stop, model: c.model,
       planPrem: c.entryPrem, plannedRisk: c.contracts * c.lossPerContract, customEntry: !!c.customEntry, entryU: c.entryU,
       entryAt: 'mid', limitPrice: price, step, stopDuration: schwabStopDuration(), hash: acct ? acct.hash : '',
-      setups: [], tactics: [], setupGrade: '', setupOrder: null, picksTouched: false, prefilled: false, planCtx: planContext(c.isCall, c.stop),
+      setups: [], tactics: [], setupGrade: '', pickMove: '', picksTouched: false, prefilled: false, planCtx: planContext(c.isCall, c.stop),
     }, q, Date.now());
   };
   return reviewBehind({
@@ -211,12 +211,12 @@ export function renderOptionTradeSheet() {
       + (limitWaiting(t) ? `<button class="btn" data-action="openOrderEdit" data-arg="${esc(t.orderId)}" title="Move the limit if it isn't filling">Change limit</button>` : '')
     : `<button class="btn trade-confirm" id="tradePlace" data-action="placeOptionTrade"${state.tradeBusy || !t.order ? ' disabled' : ''}>${esc(t.pending ? CHECKING : placeLabel(t))}</button>`;
   body.innerHTML = `
+    <div class="trade-plan" id="tradePlan">${tradePlanHtml(t)}</div>
     <dl class="trade-legs">
       <div><dt>Contract</dt><dd><strong>${esc(t.label)}</strong><span class="shares-detail">${t.isCall ? 'Call' : 'Put'} on ${esc(t.underlying)}, 100 shares a contract</span></dd></div>
       <div><dt>Buy at</dt><dd><div class="seg entry-types" role="group" aria-label="Limit price">${pick('mid', 'Mid', 'The mid, rounded up toward a fill')}${pick('ask', 'Ask', 'The ask: likely fills now')}${pick('bid', 'Bid', 'The bid: waits for a seller')}${pick('limit', 'Limit', 'Your own price')}</div>${limit}</dd></div>
     </dl>
     <div id="tradeDetail">${optionDetail(t)}</div>
-    <div class="trade-plan" id="tradePlan">${tradePlanHtml(t)}</div>
     <div class="trade-actions">
       <button class="btn" data-action="closeSheet">${t.sent ? 'Close' : 'Cancel'}</button>
       ${action}

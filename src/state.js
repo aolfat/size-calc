@@ -288,7 +288,7 @@ export function createState() {
     tradeTicket: null, // the order the review sheet shows, frozen when it opens; that exact payload is what gets sent
     tradeBusy: false,
     tradeLast: null, // { symbol, at } of the last order placed, to flag a quick repeat
-    tradeSetupQuery: '', // what's typed in the review sheet's setup search
+    tradeQuickText: '', // the review sheet's typed line (desktop): '21 ur, 15 orb, a'
     sheetQuote: null, // the open order review's live quote (ui/sheet-quote.js): { sheet, el, legs, fills, last, bid, ask, mid, at, failed }; the ticket never moves with it
     sheetQuoteTimer: 0,
     sheetQuoteGen: 0, // bumped on every open and close, so a read that answers late for an old review is dropped
