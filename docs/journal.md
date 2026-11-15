@@ -140,6 +140,7 @@ The Journal tab: imports, trades and spreads, fees, your stops and deletes, bars
 
   **Up next** (upNextHtml): one trade of the deck's queue (reviewQueue, newest first) on a small stack: 'Up next · 1 of 10', Skip, the name and side, size · day · hold, the P&L with R under it, the setups (amber 'No setup: tag it'), Entry / Exit / Stop, Start review, and the swipe hints.
   Skip or a left swipe (past 90px; the card follows the finger and tilts) shows the next one, round to the first after the last (skipUpNext, state.journalUpNext keeps its key); Start review or a right swipe starts the review deck on it, going round the rest (reviewUpNext → startReviewDeck), so reviewing is the trade page as before.
+  A tap anywhere on the card starts the review too (owner request): the card itself carries reviewUpNext, and Skip keeps its own action.
   The swipe is bindUpNext, wired after each draw: touch-action pan-y keeps scrolling up and down, a short drag springs back, a drag is never a tap, and no fly-off motion when the device asks for less.
   The trade Up next shows stays in the list under it too: Open and Closed always hold every trade the filters keep.
   Up next and the progress card show only while the list shows All or To review, and not while picking trades; with nothing left, '✓ Day reviewed' and the streak take Up next's place.

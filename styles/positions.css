@@ -932,7 +932,7 @@ span.journal-pick { cursor: default; }
 .jun-stack { position: relative; margin-bottom: 26px; }
 .jun-peek { position: absolute; left: 7px; right: 7px; bottom: -6px; height: 30px; background: color-mix(in srgb, var(--blue) 3%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--amber) 22%, transparent); border-radius: 18px; }
 .jun-peek-2 { left: 14px; right: 14px; bottom: -12px; background: var(--bg2); border-color: color-mix(in srgb, var(--amber) 15%, transparent); }
-.jun { position: relative; display: grid; gap: 12px; padding: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 7%, var(--bg2)), var(--bg2) 60%); border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent); border-radius: 20px; touch-action: pan-y; user-select: none; -webkit-user-select: none; transition: transform .25s ease; }
+.jun { position: relative; display: grid; gap: 12px; padding: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 7%, var(--bg2)), var(--bg2) 60%); border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent); border-radius: 20px; touch-action: pan-y; cursor: pointer; user-select: none; -webkit-user-select: none; transition: transform .25s ease; }
 .jun.jun-dragging { transition: none; }
 .jun-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .jun-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--amber); }

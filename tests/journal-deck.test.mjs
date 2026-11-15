@@ -317,6 +317,7 @@ test('phones: the progress card, Up next (Skip goes round, Start review starts t
   assert.deepEqual([...out().matchAll(/<span class="jrp-dot ([^"]+)"/g)].map(m => m[1]), ['jrp-due', 'jrp-none', 'jrp-none', 'jrp-due jrp-focus', 'jrp-future']);
   assert.equal(upNext(), C, 'the newest waiting');
   assert.match(out(), /Up next · 1 of 2<\/span><button class="jun-skip" data-action="skipUpNext"/);
+  assert.match(out(), /id="jUpNext" data-key="([^"]+)" data-action="reviewUpNext" data-arg="\1"/, 'a tap anywhere on the card starts the review');
   assert.match(out(), /<button class="jun-go" data-action="reviewUpNext" data-arg="[^"]+">[^]*?Start review<\/button>/);
   assert.match(out(), /<h3>Open <span>1<\/span>/, 'Up next stays in the list too');
   a.run('skipUpNext()');

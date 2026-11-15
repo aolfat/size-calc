@@ -128,7 +128,7 @@ export function upNextHtml(queue, p) {
   const under = open && !t.exits ? '<span class="pos-sub">no exits yet</span>' : t.r !== null ? `<span class="jtc-pct ${pnlClass(t.r)}" title="${esc(rTitleOf(t))}">${signedR(t.r)}</span>` : pctOf(t);
   return `<div class="jun-stack">
       <span class="jun-peek jun-peek-2" aria-hidden="true"></span><span class="jun-peek jun-peek-1" aria-hidden="true"></span>
-      <article class="jun" id="jUpNext" data-key="${key}" aria-label="Up next: ${label}">
+      <article class="jun" id="jUpNext" data-key="${key}" data-action="reviewUpNext" data-arg="${key}" aria-label="Up next: ${label}">
         <div class="jun-top"><span class="jun-eyebrow">Up next · ${at + 1} of ${queue.length}</span>${queue.length > 1 ? `<button class="jun-skip" data-action="skipUpNext" aria-label="Skip ${label}">Skip ›</button>` : ''}</div>
         <div class="jtc-head"><div class="jtc-id">
           <div class="jtc-name"><b>${label}</b>${sideTags(t)}</div>
@@ -154,7 +154,7 @@ export function skipUpNext() {
   renderJournal();
 }
 
-/** Start review (or a right swipe): the deck, starting on this trade and going round the rest */
+/** Start review, a tap anywhere on the card, or a right swipe: the deck, starting on this trade and going round the rest */
 export function reviewUpNext(key) {
   const queue = reviewQueue(journalTradeList()).map(t => t.key);
   const at = Math.max(0, queue.indexOf(key));
