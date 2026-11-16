@@ -49,7 +49,7 @@ import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund,
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { shareJournalTrade } from './journal-share.js';
-import { sharePositions } from './positions-share.js';
+import { openPosShare, pickAllPosShare, sharePositions, togglePosShare } from './positions-share.js';
 import { contractsQtyChanged, renderShares, sharesQtyChanged } from './shares.js';
 import { closeSheet, dismissSheet, openSheet } from './sheets.js';
 import { toggleKbdHelp } from './shortcuts.js';
@@ -562,6 +562,9 @@ export const actions = {
   togglePosColumn: el => togglePosColumn(arg(el)),
   togglePosHideValue: () => togglePosHideValue(),
   sharePositions: () => sharePositions(),
+  openPosShare: () => openPosShare(),
+  pickAllPosShare: el => pickAllPosShare(arg(el)),
+  togglePosShare: el => togglePosShare(arg(el)),
   togglePosLegs: el => togglePosLegs(arg(el)),
   togglePosCard: el => togglePosCard(arg(el)),
   openPosActions: el => openPosActions(arg(el)),

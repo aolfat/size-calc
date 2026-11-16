@@ -21,6 +21,7 @@ import { onCaptureChange } from './schwab-capture.js';
 import { openSheet } from './sheets.js';
 import { renderPositionChart } from './position-chart.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
+import { shareIconButton } from './share-button.js';
 
 const POLL_MS = 30000;
 const money = v => (v < 0 ? '−' : '') + fmt$(Math.abs(v));
@@ -969,7 +970,7 @@ function drawPositionsTable(el) {
   // Hide sizes hides the value and cash for good (with a percent of the account beside each position they'd give the sizes away)
   const value = sizesHidden() ? 'Sizes hidden' : state.posHideValue ? 'Account value hidden' : phone || cards ? `Cash ${money(p.cash)}` : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
   const hide = sizesHidden() ? '' : `<button class="pos-link" data-action="togglePosHideValue" aria-pressed="${state.posHideValue}" title="${state.posHideValue ? 'Show' : 'Hide'} the account value and cash">${state.posHideValue ? 'Show' : 'Hide'}</button>`;
-  const share = p.rows.length ? '<button class="btn" data-action="sharePositions" title="Copy an image of your positions: each one\'s size as a percent of the account, cost, price, P/L %, R and stop. No share counts and no dollars.">Share</button>' : '';
+  const share = p.rows.length ? shareIconButton('data-action="openPosShare"', 'Share your positions as an image', 'Share: pick the positions, then copy an image of them, each one\'s size as a percent of the account, cost, price, P/L %, R and stop. No share counts and no dollars.') : '';
   const picker = state.posColsOpen ? `<div class="chip-row pos-cols" role="group" aria-label="Optional columns">${pickable().map(([key, label]) => {
     const on = state.posCols.includes(key);
     return `<button class="filter-btn${on ? ' active' : ''}" data-action="togglePosColumn" data-arg="${key}" aria-pressed="${on}">${label}</button>`;

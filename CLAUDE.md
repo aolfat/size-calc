@@ -104,6 +104,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Entry sits under shares; the stop source is **Custom stop** for an explicit input, otherwise **Low of day (LOD)** or **High of day (HOD)** according to direction.
   Never infer the source from price equality.
   Image and summary actions sit in the footer.
+- One share button everywhere a card image is copied (owner request: uniform, like the logo): the share icon in a 30px square, shareIconButton and SHARE_ICON in `src/ui/share-button.js`, class .share-btn in base.css; the shares answer's static one in index.html carries the same icon (a test keeps them equal).
 - Desktop shell (≥1100px, calculator and Positions only, media-only — no toggle): .app becomes a 100vh grid and the PAGE HOLDS STILL; each pane scrolls on its own (no position:sticky in the shell — sticky charts once shifted against the page; don't re-add; the Journal's rail, right column and day bands are the one exception).
   Panes: #sidePane = #railPane (setup notice, #riskStrip, entry and stops #stopsCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, rules and goals (#weekRulesCard, its groups side by side), the ticker card #modeCard (instrument switch and ticker row side by side, stacked in the 1100–1439 tier), quote card, charts, chain (and the positions table in Positions, which spans the full width).
   The ticket was split in two so the rail reads max loss, entry and stops, then the answer, which starts above the fold at 900px tall.

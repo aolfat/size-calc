@@ -154,7 +154,7 @@
     <div class="shares-actions" role="group" aria-label="Share trade plan">
       <button type="button" class="btn trade-btn" id="sharesTrade" data-action="openTrade" style="display:none;" title="Review a market order with this stop, then send it to Schwab" disabled>Trade at Schwab</button>
       <button type="button" class="filter-btn" id="sharesPin" data-action="pinShares" style="display:none;" title="Keep this order as a card with its own Trade at Schwab, then size the next ticker" disabled>Pin order</button>
-      <button type="button" class="filter-btn" id="sharesImage" data-action="shareShares" title="Copy a PNG card, or download it if image copying is unavailable" disabled>Copy image</button>
+      <button type="button" class="share-btn" id="sharesImage" data-action="shareShares" aria-label="Share this plan as an image" title="Share: copy a PNG card, or download it if image copying is unavailable" disabled><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M8 10.5H6.5A1.5 1.5 0 0 0 5 12v7.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V12a1.5 1.5 0 0 0-1.5-1.5H16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button type="button" class="filter-btn" id="sharesCopy" data-action="copyShares" title="Copy a compact text summary with entry, stop, risk percentage, and a $100-risk example" disabled>Copy text</button>
     </div>
   </div>
@@ -743,6 +743,14 @@
       <button class="sheet-close" data-action="closeSheet" aria-label="Close position actions">×</button>
     </div>
     <div id="posActionsBody"></div>
+  </div>
+
+  <div class="sheet pos-share-sheet" id="posShareSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="posShareTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="posShareTitle">Share positions</h2>
+      <button class="sheet-close" data-action="closeSheet" aria-label="Close share positions">×</button>
+    </div>
+    <div id="posShareBody"></div>
   </div>
 
   <div class="sheet trade-sheet" id="spreadCloseSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="spreadCloseTitle" tabindex="-1">

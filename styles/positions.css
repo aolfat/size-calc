@@ -6,6 +6,8 @@
 .positions-head .btn { margin-left: auto; font-size: 12px; padding: 6px 12px; }
 .positions-head .pos-cols-btn { margin-left: auto; }
 .positions-head .btn + .btn { margin-left: 0; }
+.positions-head .share-btn { margin-left: auto; }
+.positions-head .pos-cols-btn ~ .share-btn, .positions-head .share-btn + .btn { margin-left: 0; }
 .pos-link { background: none; border: none; padding: 0; color: var(--blue); font: inherit; cursor: pointer; }
 .pos-cols { margin: -4px 0 12px; }
 .pos-cols .filter-btn.active { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
@@ -995,12 +997,6 @@ span.journal-pick { cursor: default; }
 .jtc-id { flex: 1 1 auto; min-width: 0; }
 .jtc-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /* a trade's share icon, beside its side tags on the cards, the desktop table and the trade page (ui/journal-share.js) */
-.journal-share-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--text2); background: transparent; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
-.journal-share-btn:focus-visible { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; }
-.journal-share-btn:active { color: var(--blue); background: var(--blue-bg); }
-@media (hover: hover) { .journal-share-btn:hover { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); } }
-.jt-share-link { display: inline-flex; align-items: center; gap: 4px; }
-.jt-share-link svg { width: 14px; height: 14px; }
 .jtc-name .journal-name, .jtc-name > b { font-size: 17px; font-weight: 700; margin-right: 2px; }
 @media (hover: none) { .jtc-name .journal-name::after { content: none; } } /* the whole card opens */
 .jtc-sub { margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--text2); }
@@ -1104,3 +1100,16 @@ span.journal-pick { cursor: default; }
 .jt-say-bad b { color: var(--amber); }
 .jt-say-good b { color: var(--green); }
 .journal-amber { color: var(--amber); }
+/* the share sheet: a tick per position, All / None, and the button that copies the card */
+.ps-body { display: grid; gap: 12px; }
+.ps-quick { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--text2); }
+.ps-quick span { margin-right: auto; }
+.ps-list { display: grid; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.ps-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; cursor: pointer; font-size: 14px; }
+.ps-row + .ps-row { border-top: 1px solid var(--border); }
+.ps-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--blue); flex: 0 0 auto; }
+.ps-row b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-meta { margin-left: auto; color: var(--text2); font-size: 12.5px; font-family: var(--num); white-space: nowrap; }
+.ps-go { justify-content: center; min-height: 44px; font-weight: 600; }
+.ps-go svg { flex: 0 0 auto; }
+.ps-go:disabled { opacity: 0.4; cursor: default; }
