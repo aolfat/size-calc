@@ -54,8 +54,9 @@
   .jb-table td { padding-top: 12px; padding-bottom: 12px; }
   .jb-table td.journal-setups { min-width: 140px; max-width: 280px; }
   /* a row's setups stay on one line: the ones that fit whole, then +N (journal-bench.js fitSetupLines); the line's own
-     max-width sets the column's (a cell's max-width doesn't hold in a table) */
-  .jb-setup-line { display: flex; align-items: center; gap: 4px; width: max-content; max-width: 280px; margin-left: auto; overflow: hidden; } /* right-aligned as a whole, so what doesn't fit spills right, where it can be measured */
+     max-width sets the column's (a cell's max-width doesn't hold in a table), 280px or less when the window is narrow
+     (fitTable sets --jb-setups-max so the table fits its column instead of sliding under the trade panel) */
+  .jb-setup-line { display: flex; align-items: center; gap: 4px; width: max-content; max-width: var(--jb-setups-max, 280px); margin-left: auto; overflow: hidden; } /* right-aligned as a whole, so what doesn't fit spills right, where it can be measured */
   .jb-setup-line .journal-setup { flex: none; margin: 0; }
   .jb-setup-line > [hidden] { display: none; } /* the pills' inline-block would show them anyway */
   .jb-setup-line.jb-setup-solo .journal-setup { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
