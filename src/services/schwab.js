@@ -113,8 +113,20 @@ async function readJson(res) {
 
 async function tokenCall(path, payload, proxy = schwabProxy()) {
   assertCredentialOrigin();
-  const res = await fetch(proxy + path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  const body = await readJson(res);
+  // a renewal that never answers would hold every Schwab read behind it (schwabAccessToken shares one renewal), so it
+  // gives up like a read does; a token call that times out leaves the login as it was for the next try
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), READ_TIMEOUT);
+  let res, body;
+  try {
+    res = await fetch(proxy + path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ctrl.signal });
+    body = await readJson(res);
+  } catch(e) {
+    if (ctrl.signal.aborted) throw new Error(`No answer from Schwab in ${READ_TIMEOUT / 1000} seconds. Try again.`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok || !body?.access_token) {
     const err = schwabError(body, res.status);
     if (typeof body?.error === 'string') err.code = body.error; // OAuth's reason, e.g. invalid_grant

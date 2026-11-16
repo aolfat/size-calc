@@ -187,7 +187,7 @@ test('multiplier preference restores safely and syncs to the account', async () 
   }
 });
 
-test('ATR stays on five-minute data across chart intervals, ignores stale requests, and clears on failure', async () => {
+test('ATR stays on five-minute data across chart intervals, ignores stale requests, and keeps the last good bars on failure', async () => {
   const pending = [];
   const { run, elements } = await app({ fetch: () => new Promise(resolve => pending.push(resolve)) });
   elements.get('ticker').value = 'TEST';
@@ -209,11 +209,50 @@ test('ATR stays on five-minute data across chart intervals, ignores stale reques
   respond(pending.shift(), bars.map(b => ({ ...b, high: 110, low: 90 })));
   await stale;
   assert.equal(run('atr5.value'), 0.5);
+  // a refresh that fails keeps the chart and the ATR (a blip used to blank both until the next refresh)
   const failed = run("fetchChart('TEST')");
   pending.shift()({ ok: false });
   await failed;
+  assert.equal(run('atr5.value'), 0.5);
+  assert.equal(run('chartBars.length'), 3);
+  // an interval change redraws from the bars in hand at once, then a failed fetch leaves them there
+  const fiveMin = run('setChartInterval(5)');
+  assert.equal(run('chartBars.length'), 16, 'redrawn before the fetch answers');
+  pending.shift()({ ok: false });
+  await fiveMin;
+  assert.equal(run('chartBars.length'), 16);
+  // an answer that lands after a later request has gone out still draws, while that one fails
+  const early = run("fetchChart('TEST')");
+  const later = run("fetchChart('TEST')");
+  respond(pending.shift(), bars.slice(0, 12));
+  await early;
+  assert.equal(run('chartBars.length'), 12);
+  pending.shift()({ ok: false });
+  await later;
+  assert.equal(run('chartBars.length'), 12);
+  // another symbol's bars are never kept: a failed first fetch for it leaves nothing
+  run("quoteData = { symbol: 'OTHER', last: 50, low: 49, high: 51 }; chartBars = []; chartRaw = null;");
+  const other = run("fetchChart('OTHER')");
+  pending.shift()({ ok: false });
+  await other;
+  assert.equal(run('chartBars.length'), 0);
   assert.equal(run('atr5'), null);
   assert.equal(elements.get('sharesCopy').disabled, true);
+});
+
+test('market data reads give up after 15 seconds, and Load says so instead of spinning', async () => {
+  const { run, elements } = await app({ fetch: (url, init) => new Promise((_, reject) => {
+    if (init.signal.aborted) reject(init.signal.reason); // like fetch: a signal that already fired ends it at once
+    else init.signal.addEventListener('abort', () => reject(init.signal.reason));
+  }) });
+  assert.equal(run('MARKET_TIMEOUT'), 15000);
+  elements.get('apiKey').value = 'test-key';
+  elements.get('ticker').value = 'AAPL';
+  const realTimeout = AbortSignal.timeout;
+  AbortSignal.timeout = () => { const c = new AbortController(); c.abort(new DOMException('The operation timed out.', 'TimeoutError')); return c.signal; };
+  try { await run('fetchQuote()'); } finally { AbortSignal.timeout = realTimeout; }
+  assert.match(elements.get('errorBox').textContent, /^Error: No answer in 15 seconds/);
+  assert.doesNotMatch(elements.get('fetchBtnText').innerHTML, /spinner/);
 });
 
 test('extended range: pre-market bars stand alone; once regular hours begin the quote joins in', async () => {

@@ -23,7 +23,12 @@ export function setChartInterval(iv) {
   state.chartInterval = iv;
   store.set('chart_interval', String(iv));
   updateIntervalChips();
-  if (state.quoteData?.symbol) fetchChart(state.quoteData.symbol); // the loaded symbol, not the field
+  const sym = state.quoteData?.symbol;
+  if (!sym) return;
+  // the bars in hand redraw at the new interval at once; the fetch brings them up to date
+  const kept = state.chartRaw, extended = state.extHours && !futuresSymbol(sym);
+  if (kept?.symbol === sym && kept.extended === extended) applyChartBars(sym, extended, kept.raw);
+  fetchChart(sym); // the loaded symbol, not the field
 }
 
 export function updateIntervalChips() {
@@ -62,13 +67,35 @@ export async function fetchFiveMinuteBars(ticker, extended = false) {
 
 export async function fetchChart(ticker) {
   const requestId = ++state.chartRequestId;
-  let raw = [];
   // futures: the trading day from 18:00 the evening before, overnight always in (core/futures.js futuresBars), and their
   // LOD / HOD stay Schwab's session's, so Ext changes nothing for them
   const futures = !!futuresSymbol(ticker);
   const extended = state.extHours && !futures;
+  let raw = null;
   try { raw = futures ? await fetchFuturesBars(ticker) : await fetchFiveMinuteBars(ticker, extended); } catch(e) {}
-  if (requestId !== state.chartRequestId || ticker !== (state.quoteData?.symbol ?? ticker)) return; // only the latest request, for the loaded symbol
+  if (ticker !== (state.quoteData?.symbol ?? ticker) || extended !== (state.extHours && !futures)) return; // the loaded symbol, as Ext is now
+  if (raw?.length) {
+    // any answer newer than the bars on the chart lands, even when a later request is still out (a live tick can start
+    // one before this one answers, and that one may fail)
+    if (requestId <= state.chartAppliedId) return;
+    state.chartAppliedId = requestId;
+    state.chartRaw = { symbol: ticker, extended, raw };
+  } else {
+    // failed or empty: only the latest request decides, and it keeps the last good bars of this symbol (a blip on a
+    // refresh no longer blanks the chart and drops the ATR); with none, the chart stays hidden until one lands
+    if (requestId !== state.chartRequestId) return;
+    const kept = state.chartRaw;
+    if (!kept || kept.symbol !== ticker || kept.extended !== extended) {
+      if (state.chartRaw?.symbol !== ticker) applyChartBars(ticker, extended, []);
+      return;
+    }
+    raw = kept.raw;
+  }
+  applyChartBars(ticker, extended, raw);
+}
+
+/** the chart, the ATR and the Ext day from one symbol's 5-minute bars at the chosen interval */
+function applyChartBars(ticker, extended, raw) {
   const days = [...new Set(raw.map(b => (b.t || '').slice(0, 10)))].sort();
   // a futures session opens at 18:00 with a handful of bars: the one before stays on until the new one is two hours old
   const young = !!futuresSymbol(ticker) && raw.filter(b => (b.t || '').startsWith(days[days.length - 1])).length < 24;

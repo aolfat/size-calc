@@ -8,7 +8,7 @@ import { cleanExpirations } from '../core/options.js';
 import { isShorthand, parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { store } from '../lib/store.js';
 import { baseUrl, headers } from '../services/tradier.js';
-import { marketFetch, marketSource, schwabRefusal } from '../services/market-source.js';
+import { marketError, marketFetch, marketSource, schwabRefusal } from '../services/market-source.js';
 import { fetchChain, markActiveExp, renderChain, renderExpTabs } from './chain.js';
 import { fetchChart } from './chart.js';
 import { fetchAdr, updateChartVisibility } from './daily.js';
@@ -81,6 +81,7 @@ export async function fetchQuote() {
       document.getElementById('stopShort').value = '';
       document.getElementById('entryPrice').value = '';
       state.chartBars = []; // the chart hides until this symbol's bars land
+      state.chartRaw = null;
       state.chartHover = -1;
     }
     state.quoteData = q;
@@ -108,7 +109,7 @@ export async function fetchQuote() {
     if (current()) document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
     if (current()) autoLive(); // every Load goes live, unless Settings says tap to start
   } catch(e) {
-    if (current()) showError('Error: ' + e.message);
+    if (current()) showError('Error: ' + marketError(e));
   } finally {
     // a newer Load owns the button and the sections; otherwise show whatever quote is loaded now
     if (current()) {

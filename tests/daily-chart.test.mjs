@@ -132,6 +132,29 @@ test('a new symbol opens on the saved range; reloading the same one keeps the zo
   assert.deepEqual(JSON.parse(run('JSON.stringify(dailyView)')), { count: 63, offset: 0 });
 });
 
+test('reloading the same symbol keeps its daily bars while the fetch is out and when it fails; a new symbol drops them at once', async () => {
+  let answer = null;
+  const fetch = () => new Promise(resolve => { answer = resolve; });
+  const { run } = await app({ fetch });
+  const loading = run("fetchAdr('AAA')");
+  answer({ ok: true, json: async () => ({ history: { day: series(260) } }) });
+  await loading;
+  const adr = run('adrValue');
+  assert.ok(adr > 0);
+  const reload = run("fetchAdr('AAA')");
+  assert.equal(run('dailyBars.length'), 260, 'still drawn while the reload is out');
+  answer({ ok: false, json: async () => { throw new Error('rate limited'); } });
+  await reload;
+  assert.equal(run('dailyBars.length'), 260, 'a failed reload leaves the pane as it was');
+  assert.equal(run('adrValue'), adr);
+  const other = run("fetchAdr('BBB')");
+  assert.equal(run('dailyBars.length'), 0, 'another symbol never shows the last one\'s bars');
+  assert.equal(run('adrValue'), 0);
+  answer({ ok: false, json: async () => { throw new Error('rate limited'); } });
+  await other;
+  assert.equal(run('dailyBars.length'), 0);
+});
+
 // ---------- touch: the shared long-press crosshair ----------
 
 test('a second finger cancels the long-press instead of setting a stop', async () => {

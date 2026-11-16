@@ -6,7 +6,7 @@ import { parseQuickStr, quickParseHint } from '../core/shorthand.js';
 import { calculateAtr5 } from '../core/stops.js';
 import { mq } from '../lib/media.js';
 import { baseUrl, headers } from '../services/tradier.js';
-import { marketFetch } from '../services/market-source.js';
+import { marketError, marketFetch } from '../services/market-source.js';
 import { recalcPinnedStop, renderPinnedCard, updatePinnedBar } from './cards.js';
 import { fetchFiveMinuteBars } from './chart.js';
 import { clearError, showError } from './feedback.js';
@@ -131,7 +131,7 @@ export async function fetchQuickOption(str, fromSearch = false) {
     }
     document.getElementById('lastUpdated').textContent = 'Updated ' + inZone(Date.now());
   } catch(e) {
-    showError('Error: ' + e.message);
+    showError('Error: ' + marketError(e));
   } finally {
     busyEl.innerHTML = idleLabel;
   }
