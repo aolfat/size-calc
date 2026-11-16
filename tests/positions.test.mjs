@@ -608,6 +608,17 @@ test('working orders list everything still in play, entries included, pairs and 
   assert.ok(Number.isNaN(run("schwabTime('')")));
 });
 
+test('a multi-leg order reads like its spread: one expiry as 120/125C, mixed expiries keep each date', async () => {
+  const { run } = await app();
+  const leg = (symbol, instruction) => ({ instruction, quantity: 1, instrument: { assetType: 'OPTION', symbol } });
+  const order = legs => ({ orderId: 1, status: 'PENDING_ACTIVATION', orderType: 'NET_CREDIT', quantity: 1, price: 2.5, orderLegCollection: legs });
+  const label = legs => run(`workingOrders(${JSON.stringify([order(legs)])})[0].label`);
+  assert.equal(label([leg('ELF   261120C00125000', 'BUY_TO_OPEN'), leg('ELF   261120C00120000', 'SELL_TO_OPEN')]), 'ELF 11/20/26 120/125C', 'by strike, as the spread row reads');
+  assert.equal(label([leg('ELF   261120P00120000', 'SELL_TO_OPEN'), leg('ELF   261120C00125000', 'SELL_TO_OPEN')]), 'ELF 11/20/26 120P/125C');
+  assert.equal(label([leg('ELF   261218C00120000', 'BUY_TO_OPEN'), leg('ELF   261120C00120000', 'SELL_TO_OPEN')]), 'ELF 11/20/26 120C / 12/18/26 120C');
+  assert.equal(label([leg('ELF   261120C00120000', 'SELL_TO_OPEN')]), 'ELF 11/20/26 120C');
+});
+
 test('the Positions tab lists working orders under the table', async () => {
   const net = network(path => path.includes('/orders?') ? json(BOOK) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404));
   const { run, elements } = await app({ fetch: net.fetch, storage: connected() });
