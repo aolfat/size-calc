@@ -112,10 +112,9 @@ export function workingOrders(orders) {
       const legs = o.orderLegCollection || [];
       const live = !!o.status && !DONE.has(o.status);
       if (legs.length && live) {
-        const labels = legs.map(l => positionLabel({ assetType: l.instrument?.assetType, symbol: l.instrument?.symbol }));
         const first = legs[0], symbol = first.instrument?.symbol || '', option = parseSchwabOption(symbol);
         const offset = Number(o.stopPriceOffset) || 0;
-        rows.push({ orderId: o.orderId ?? null, symbol, label: labels.join(' / '), under: option ? option.root : symbol, assetType: first.instrument?.assetType || '',
+        rows.push({ orderId: o.orderId ?? null, symbol, label: orderLabel(legs), under: option ? option.root : symbol, assetType: first.instrument?.assetType || '',
           legs: legs.length, instruction: first.instruction || '', orderType: o.orderType || '', qty: Number(o.quantity) || Number(first.quantity) || 0,
           filled: Number(o.filledQuantity) || 0, stop: num(o.stopPrice), price: num(o.price),
           trail: offset > 0 ? (o.stopPriceLinkType === 'PERCENT' ? offset + '%' : '$' + offset.toFixed(2)) : '',
@@ -421,6 +420,31 @@ const OPENS = { BUY_TO_OPEN: 'long', SELL_TO_OPEN: 'short' };
 const dateWords = (/** @type {string} */ exp) => { const [y, mo, d] = exp.split('-'); return `${+mo}/${+d}/${y.slice(2)}`; };
 
 /**
+ * A spread's name on one expiry: 'ELF 11/20/26 120/125C', or 'ELF 11/20/26 120P/125C' when the types differ; opts sorted by strike
+ * @param {string} root @param {{ strike: number, type: string, exp: string }[]} opts
+ */
+function strikesLabel(root, opts) {
+  const one = new Set(opts.map(o => o.type)).size === 1;
+  return `${root} ${dateWords(opts[0].exp)} ${one ? `${opts.map(o => o.strike).join('/')}${opts[0].type}` : opts.map(o => `${o.strike}${o.type}`).join('/')}`;
+}
+
+/**
+ * An order's name: one leg as positionLabel reads it; option legs on one stock and expiry the way the spread's row reads
+ * ('ELF 11/20/26 120/125C'); option legs over expiries keep each leg's date ('ELF 11/20/26 120C / 12/18/26 120C'); anything else each leg's label
+ * @param {{ instrument?: { assetType?: string, symbol?: string } }[]} legs
+ */
+export function orderLabel(legs) {
+  const labels = legs.map(l => positionLabel({ assetType: l.instrument?.assetType, symbol: l.instrument?.symbol }));
+  if (legs.length < 2) return labels.join('');
+  const opts = legs.map(l => l.instrument?.assetType === 'OPTION' ? parseSchwabOption(l.instrument?.symbol || '') : null);
+  if (opts.some(o => !o) || new Set(opts.map(o => o?.root)).size > 1) return labels.join(' / ');
+  const sorted = /** @type {NonNullable<typeof opts[0]>[]} */ (opts).slice().sort((a, b) => a.strike - b.strike || a.exp.localeCompare(b.exp));
+  const root = sorted[0].root;
+  return new Set(sorted.map(o => o.exp)).size === 1 ? strikesLabel(root, sorted)
+    : `${root} ${sorted.map(o => `${dateWords(o.exp)} ${o.strike}${o.type}`).join(' / ')}`;
+}
+
+/**
  * Option legs Schwab lists one by one, grouped back into the spreads they are. First the orders: a filled (or partly filled)
  * order that opened two or more contracts together (a vertical, a calendar, an iron condor...) holds the legs still open on
  * the same sides, newest order first. Then, for a spread opened before the 59 days of orders or legged in, an underlying
@@ -479,9 +503,7 @@ function spreadRow(legs, by, pct) {
   const type = opts[0].type === 'C' ? 'call' : 'put';
   const structure = types.size > 1 ? `${kind} spread` : exps.size === 1 ? `${type} ${kind}` : strikes.size === 1 ? 'time spread' : `${type} diagonal`;
   const root = legs[0].under;
-  const label = exps.size === 1
-    ? `${root} ${dateWords(opts[0].exp)} ${types.size === 1 ? `${opts.map(o => o.strike).join('/')}${opts[0].type}` : opts.map(o => `${o.strike}${o.type}`).join('/')}`
-    : `${root} ${structure}`;
+  const label = exps.size === 1 ? strikesLabel(root, opts) : `${root} ${structure}`;
   const legWords = legs.map((l, i) => `${l.qty > 0 ? '+' : '−'}${Math.abs(l.qty).toLocaleString('en-US')} ${exps.size > 1 ? dateWords(opts[i].exp) + ' ' : ''}${opts[i].strike}${opts[i].type}`).join(' ');
   const priced = legs.every(l => l.avg > 0);
   // defined risk, on one bought and one sold contract of a type and size: a debit with the bought leg covering the sold one
