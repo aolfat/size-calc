@@ -3,7 +3,7 @@
 // buttons into a position's chart and targets (position-chart.js), an option's return simulator (position-sim.js) and the stop, breakeven-stop and close reviews (position-trade.js),
 // optional P/L and R columns picked from Columns (kept on this device; R reads the Journal's trades for each position's first stop), the account value hidden on request,
 // a card per position (P/L, R and a bar from the stop past your cost to the price; a tap opens its figures and buttons),
-// and every order still working in the account.
+// and every order still working in the account. Hide sizes (Settings) puts every size in percent: no share counts and no dollars but prices.
 import { mq, PHONE_MQ } from '../lib/media.js';
 import { store } from '../lib/store.js';
 import { inZone } from '../lib/zone.js';
@@ -40,9 +40,13 @@ const EXTRA_COLS = [
   ['day', 'Today', r => pnlCell(r.day)],
   ['dayPct', 'Today %', r => pctCell(r.dayPct)],
 ];
-// % only (Settings, Positions) drops the dollar P/L columns, the picker's chips with them
+// % only (Settings, Positions) drops the dollar P/L columns, the picker's chips with them; Hide sizes does too
 const DOLLAR_COLS = ['pnl', 'day'];
-const pickable = () => EXTRA_COLS.filter(([key]) => !(state.posPnlPct && DOLLAR_COLS.includes(key)));
+/** Hide sizes (Settings, Positions): no share or contract counts and no dollars but prices; every size is a percent */
+export const sizesHidden = () => state.posHideSize;
+/** the dollar P/L hidden: % only, or Hide sizes */
+const pnlPctOnly = () => state.posPnlPct || state.posHideSize;
+const pickable = () => EXTRA_COLS.filter(([key]) => !(pnlPctOnly() && DOLLAR_COLS.includes(key)));
 const shownCols = () => pickable().filter(([key]) => state.posCols.includes(key));
 
 /** the Columns button: shows or hides the column picker */
@@ -344,11 +348,19 @@ function avgNote(r) {
   return `<span class="pos-sub" title="${esc(title)}">Schwab ${px(r.schwabAvg)}</span>`;
 }
 
+/** 'covers 200 of 300', or with sizes hidden 'covers 67%' */
+const coversWords = r => sizesHidden() ? `covers ${Math.round(r.covered / Math.abs(r.qty) * 100)}%` : `covers ${r.covered.toLocaleString('en-US')} of ${Math.abs(r.qty).toLocaleString('en-US')}`;
+/** a share of the account: '1.25%' */
+const acctPct = v => `${Math.abs(v).toFixed(2)}%`;
+
 function riskCell(r) {
   if (r.risk === null) return '—';
   const held = Math.abs(r.qty);
-  const partial = r.covered < held ? `<span class="pos-sub pos-partial">covers ${r.covered.toLocaleString('en-US')} of ${held.toLocaleString('en-US')}</span>` : '';
-  if (Math.abs(r.risk) < 0.005) return `<span class="pos-locked">$0.00</span><span class="pos-sub">at breakeven</span>${partial}`;
+  const partial = r.covered < held ? `<span class="pos-sub pos-partial">${coversWords(r)}</span>` : '';
+  if (Math.abs(r.risk) < 0.005) return `<span class="pos-locked">${sizesHidden() ? '0%' : '$0.00'}</span><span class="pos-sub">at breakeven</span>${partial}`;
+  if (sizesHidden()) return r.risk > 0
+    ? `<span class="pos-loss">−${acctPct(r.riskPct)}</span><span class="pos-sub">of acct</span>${partial}`
+    : `<span class="pos-locked">+${acctPct(r.riskPct)} locked</span><span class="pos-sub">of acct</span>${partial}`;
   return r.risk > 0
     ? `<span class="pos-loss">−${fmt$(r.risk)}</span><span class="pos-sub">${r.riskPct.toFixed(2)}% of acct</span>${partial}`
     : `<span class="pos-locked">+${fmt$(-r.risk)} locked</span>${partial}`;
@@ -382,10 +394,10 @@ function tradeButtons(r) {
 function positionRow(r, leg = false) {
   return `<tr${leg ? ' class="pos-leg"' : ''}>
     <td><b>${esc(r.label)}</b>${tradeButtons(r)}</td>
-    <td>${count(r.qty)}</td>
+    ${sizesHidden() ? '' : `<td>${count(r.qty)}</td>`}
     <td>${r.avg > 0 ? fmt$(r.avg) + avgNote(r) : '—'}</td>
     <td>${fmt$(r.price)}</td>
-    <td>${money(r.value)}</td>
+    ${sizesHidden() ? '' : `<td>${money(r.value)}</td>`}
     ${shownCols().map(([, , cell]) => `<td>${cell(r)}</td>`).join('')}
     <td>${r.pctAcct.toFixed(2)}%</td>
     <td>${r.stop === null ? '—' : fmt$(r.stop) + (r.stops > 1 ? `<span class="pos-sub">+${r.stops - 1} more</span>` : '')}</td>
@@ -407,13 +419,14 @@ function spreadRow(s) {
   const open = state.posLegsOpen.includes(s.key);
   const how = s.by === 'order' ? 'Opened together in one order.' : 'The only bought and sold contracts on this underlying, so they read as one spread.';
   const legs = spreadButtons(s);
-  const risk = s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span><span class="pos-sub">max loss · ${s.maxLossPct.toFixed(2)}% of acct</span>`;
+  const risk = s.maxLoss === null ? '—' : sizesHidden() ? `<span class="pos-loss">−${acctPct(s.maxLossPct)}</span><span class="pos-sub">max loss · of acct</span>`
+    : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span><span class="pos-sub">max loss · ${s.maxLossPct.toFixed(2)}% of acct</span>`;
   return `<tr class="pos-spread">
     <td><b>${esc(s.label)}</b><span class="journal-tag journal-tag-quiet" title="${esc(how)}">${esc(s.structure)}</span><span class="pos-sub">${esc(s.legWords)}</span><span class="pos-acts">${legs}</span></td>
-    <td>${count(s.qty)}</td>
+    ${sizesHidden() ? '' : `<td>${count(s.qty)}</td>`}
     <td>${s.avg > 0 ? fmt$(s.avg) : '—'}<span class="pos-sub">${s.kind}</span></td>
     <td>${fmt$(s.price)}</td>
-    <td>${money(s.value)}</td>
+    ${sizesHidden() ? '' : `<td>${money(s.value)}</td>`}
     ${shownCols().map(([, , cell]) => `<td>${cell(s)}</td>`).join('')}
     <td>${s.pctAcct.toFixed(2)}%</td>
     <td>—</td>
@@ -422,7 +435,7 @@ function spreadRow(s) {
 }
 
 /** the table's rows: each spread once, where its first leg sits, and every other position on its own */
-function tableRows(p) {
+export function tableRows(p) {
   const spreads = p.spreads || [];
   const bySymbol = new Map(spreads.flatMap(s => s.legs.map(l => [l.symbol, s])));
   return p.rows.flatMap(r => {
@@ -449,7 +462,7 @@ function cardName(label) {
  * the stop ladder: your working stops and targets, your cost and the price on one line, the stretch from cost to price tinted by the P/L.
  * A long option with no stop starts at zero, its premium being the risk. levels are positionLevels' stops and targets, hovered for their size
  */
-function ladder({ cost, price, floor, pnl, levels = [], fmt = fmt$, unit = 'sh' }) {
+function ladder({ cost, price, floor, pnl, levels = [], fmt = fmt$, unit = 'sh', held = 0 }) {
   const pts = [...levels.map(l => l.price), cost, price, floor].filter(v => v !== null && Number.isFinite(v));
   let lo = Math.min(...pts), hi = Math.max(...pts);
   const span = hi - lo;
@@ -458,7 +471,7 @@ function ladder({ cost, price, floor, pnl, levels = [], fmt = fmt$, unit = 'sh' 
   const at = v => ((v - lo) / (hi - lo) * 100).toFixed(1) + '%';
   const cls = tone(pnl);
   const fill = cost !== null && cls ? `<span class="pc-fill ${cls}" style="left:${at(Math.min(cost, price))};right:calc(100% - ${at(Math.max(cost, price))})"></span>` : '';
-  const tick = l => `<span class="pc-tick pc-${l.kind}" style="left:${at(l.price)}" title="${l.kind === 'stop' ? 'Stop' : 'Target'} ${esc(fmt(l.price))}${l.r == null ? '' : ` · ${rShort(l.r)}`} · ${count(l.qty)} ${unit}"></span>`;
+  const tick = l => `<span class="pc-tick pc-${l.kind}" style="left:${at(l.price)}" title="${l.kind === 'stop' ? 'Stop' : 'Target'} ${esc(fmt(l.price))}${l.r == null ? '' : ` · ${rShort(l.r)}`} · ${sizesHidden() && held ? `${Math.round(l.qty / held * 100)}% of the position` : `${count(l.qty)} ${unit}`}"></span>`;
   // each target's R under its tick, skipping one that would sit on the last label drawn
   let last = -Infinity;
   const labels = levels.filter(l => l.kind === 'target' && l.r != null).sort((a, b) => a.price - b.price).map(l => {
@@ -478,8 +491,9 @@ function stopNote(r) {
   const px = v => fmtPositionPrice(v, r.tradeAs);
   if (r.stop === null) return r.option && r.qty > 0 ? '<span class="pc-note">No stop · max loss is premium</span>' : '<span class="pc-note pos-partial">No stop</span>';
   const held = Math.abs(r.qty);
-  const covers = r.covered < held ? ` · <span class="pos-partial">covers ${r.covered.toLocaleString('en-US')} of ${held.toLocaleString('en-US')}</span>` : '';
-  if (atBreakeven(r)) return `<span class="pc-note pos-locked">${r.stopOrders.every(x => x.stop === r.be) ? 'At breakeven' : `Stop${r.stops > 1 ? 's' : ''} past breakeven${r.risk !== null && r.risk < -0.005 ? ` · +${fmt$(-r.risk)} locked` : ''}`}</span>`;
+  const covers = r.covered < held ? ` · <span class="pos-partial">${coversWords(r)}</span>` : '';
+  const locked = r.risk === null || r.risk >= -0.005 ? '' : ` · +${sizesHidden() ? `${acctPct(r.riskPct)} of acct` : fmt$(-r.risk)} locked`;
+  if (atBreakeven(r)) return `<span class="pc-note pos-locked">${r.stopOrders.every(x => x.stop === r.be) ? 'At breakeven' : `Stop${r.stops > 1 ? 's' : ''} past breakeven${locked}`}</span>`;
   return `<span class="pc-note">Stop ${px(r.stop)}${r.stops > 1 ? ` · +${r.stops - 1} more` : ''}${covers}</span>`;
 }
 
@@ -507,28 +521,33 @@ function targetNote(r) {
 }
 
 const rowLadder = r => ladder({ cost: r.avg > 0 ? r.avg : null, price: r.price, floor: r.option && r.qty > 0 && r.stop === null ? 0 : null, pnl: r.pnl,
-  levels: rowLevels(r), fmt: v => fmtPositionPrice(v, r.tradeAs), unit: r.option ? 'ct' : 'sh' });
+  levels: rowLevels(r), fmt: v => fmtPositionPrice(v, r.tradeAs), unit: r.option ? 'ct' : 'sh', held: Math.abs(r.qty) });
 // a debit spread is worth zero at worst; a credit's mark runs the other way, so no bar
 const spreadLadder = s => s.kind === 'debit' && s.avg > 0 ? ladder({ cost: s.avg, price: s.price, floor: 0, pnl: s.pnl }) : '';
-const spreadNote = s => `<span class="pc-note">${esc(s.structure.charAt(0).toUpperCase() + s.structure.slice(1))}${s.maxLoss === null ? '' : ` · max loss ${fmt$(s.maxLoss)}`}</span>`;
+const spreadNote = s => `<span class="pc-note">${esc(s.structure.charAt(0).toUpperCase() + s.structure.slice(1))}${s.maxLoss === null ? '' : ` · max loss ${sizesHidden() ? `${acctPct(s.maxLossPct)} of acct` : fmt$(s.maxLoss)}`}</span>`;
 
 /** R on the card: the R column's, once the Journal is in when signed in */
-function cardR(r) {
+export function cardR(r) {
   if (state.session && !state.journalRecords && (state.posJournalBusy || state.journalLoading)) return null;
   return positionR(r, positionTrades(), state.positions?.last4 || '').r;
 }
 
 function cardRisk(r) {
   if (r.risk === null) return '—';
-  if (Math.abs(r.risk) < 0.005) return '<span class="pos-locked">$0.00</span>';
+  if (Math.abs(r.risk) < 0.005) return `<span class="pos-locked">${sizesHidden() ? '0%' : '$0.00'}</span>`;
+  if (sizesHidden()) return r.risk > 0 ? `<span class="pos-loss">−${acctPct(r.riskPct)}</span>` : `<span class="pos-locked">+${acctPct(r.riskPct)} locked</span>`;
   return r.risk > 0 ? `<span class="pos-loss">−${fmt$(r.risk)}</span>` : `<span class="pos-locked">+${fmt$(-r.risk)} locked</span>`;
 }
 
 /** the part a tap toggles: the name, P/L, cost → price, the ladder and the stop line */
 /** the P/L a card or the action sheet leads with: dollars, or the percent when % only hides them */
-const headline = (pnl, pct) => state.posPnlPct ? (pct === null ? '—' : pct1(pct)) : pnl === null ? '—' : signed$(pnl);
+const headline = (pnl, pct) => pnlPctOnly() ? (pct === null ? '—' : pct1(pct)) : pnl === null ? '—' : signed$(pnl);
 /** what sits beside cost → price: P/L % and R, or R alone when the percent already leads */
-const figuresOf = (pct, r) => [state.posPnlPct || pct === null ? '' : pct1(pct), r === null ? '' : rWords(r)].filter(Boolean).join(' · ');
+const figuresOf = (pct, r) => [pnlPctOnly() || pct === null ? '' : pct1(pct), r === null ? '' : rWords(r)].filter(Boolean).join(' · ');
+/** the size after cost → price: ' · 100 sh', or with sizes hidden ' · 5.5% of acct' */
+const sizeWords = (qty, unit, pctAcct) => sizesHidden() ? ` · ${pctAcct.toFixed(1)}% of acct` : ` · ${count(qty)} ${unit}`;
+/** market value in the opened card and the actions sheet: dollars, or with sizes hidden the share of the account */
+const valueStat = x => sizesHidden() ? stat('Of acct', `${x.pctAcct.toFixed(2)}%`) : stat('Mkt val', money(x.value));
 
 /**
  * Long, Short or Neutral beside the name: the bet on the stock, by the Journal's rules (positionBias). A put bought reads Short and
@@ -537,10 +556,14 @@ const figuresOf = (pct, r) => [state.posPnlPct || pct === null ? '' : pct1(pct),
  * (long SQQQ reads 'Short QQQ'): your funds (journal_funds) first, then the built-in list, as in the Journal (fundOf).
  * @param {{ symbol: string, qty: number, option?: unknown }[]} legs @param {string} under the stock they're on
  */
-function sideTag(legs, under) {
+export function sideOf(legs, under) {
   const fund = fundOf({ symbol: under, assetType: 'EQUITY' }, parseFunds(store.get('journal_funds')));
   const own = positionBias(legs);
-  const side = fund && fund.lev < 0 ? ({ long: 'short', short: 'long', neutral: 'neutral' })[own] : own;
+  return { side: fund && fund.lev < 0 ? ({ long: 'short', short: 'long', neutral: 'neutral' })[own] : own, fund };
+}
+
+function sideTag(legs, under) {
+  const { side, fund } = sideOf(legs, under);
   const how = !fund ? '' : fund.mine ? `moves ${fund.lev < 0 ? 'against' : 'with'}` : `is ${Math.abs(fund.lev)}×${fund.lev < 0 ? ' inverse' : ''}`;
   const title = fund ? ` title="${esc(under)} ${how} ${esc(fund.under)}"` : '';
   const word = { long: 'Long', short: 'Short', neutral: 'Neutral' }[side];
@@ -565,12 +588,12 @@ export function positionCard(r, leg = false) {
   const R = r.pnl === null ? null : cardR(r);
   const top = cardTop(r.symbol, open, {
     name: cardName(r.label), side: sideTag([r], r.under), pnl: r.pnl, pct: r.pnlPct,
-    sub: `${r.avg > 0 ? `${px(r.avg)} → ` : ''}<b>${px(r.price)}</b> · ${count(r.qty)} ${unit}`,
+    sub: `${r.avg > 0 ? `${px(r.avg)} → ` : ''}<b>${px(r.price)}</b>${sizeWords(r.qty, unit, r.pctAcct)}`,
     figures: figuresOf(r.pnlPct, R),
     bar: rowLadder(r),
     note: stopNote(r) + targetNote(r),
   });
-  const more = open ? `<div class="pc-more"><dl class="pc-stats">${stat('Mkt val', money(r.value))}${stat('Stop', r.stop === null ? '—' : px(r.stop))}${stat('Risk @ stop', cardRisk(r))}</dl>${tradeButtons(r)}</div>` : '';
+  const more = open ? `<div class="pc-more"><dl class="pc-stats">${valueStat(r)}${stat('Stop', r.stop === null ? '—' : px(r.stop))}${stat('Risk @ stop', cardRisk(r))}</dl>${tradeButtons(r)}</div>` : '';
   return `<article class="pc${open ? ' pc-open' : ''}${leg ? ' pc-leg' : ''}">${top}${more}</article>`;
 }
 
@@ -580,12 +603,12 @@ export function spreadCard(s) {
   const units = Math.abs(s.qty) === 1 ? 'spread' : 'spreads';
   const top = cardTop(s.key, open, {
     name: cardName(s.label), side: sideTag(s.legs, s.under), pnl: s.pnl, pct: s.pnlPct,
-    sub: `${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${units}`,
+    sub: `${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b>${sizeWords(s.qty, units, s.pctAcct)}`,
     figures: figuresOf(s.pnlPct, r),
     bar: spreadLadder(s),
     note: spreadNote(s),
   });
-  const more = open ? `<div class="pc-more"><dl class="pc-stats">${stat('Mkt val', money(s.value))}${stat('Max loss', s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span>`)}${stat('Legs', esc(s.legWords))}</dl><span class="pos-acts">${spreadButtons(s)}</span></div>` : '';
+  const more = open ? `<div class="pc-more"><dl class="pc-stats">${valueStat(s)}${stat('Max loss', s.maxLoss === null ? '—' : `<span class="pos-loss">−${sizesHidden() ? `${acctPct(s.maxLossPct)} of acct` : fmt$(s.maxLoss)}</span>`)}${stat('Legs', esc(s.legWords))}</dl><span class="pos-acts">${spreadButtons(s)}</span></div>` : '';
   const legs = state.posLegsOpen.includes(s.key) ? s.legs.map(l => positionCard(l, true)).join('') : '';
   const card = `<article class="pc${open ? ' pc-open' : ''}">${top}${more}</article>`;
   return legs ? `<div class="pc-group">${card}${legs}</div>` : card; // the legs stay under their spread in the desktop's grid
@@ -665,8 +688,8 @@ function scrollParent(el) {
 /** the account in three tiles over the cards: its value, what's in positions, the open P/L */
 function cardTiles(p) {
   const tile = (label, value, cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value}</dd></div>`;
-  const account = state.posHideValue ? 'Hidden' : '$' + Math.round(p.value).toLocaleString('en-US');
-  return `<dl class="pc-tiles">${tile('Account', account)}${tile('Invested', money(p.total))}${tile('Open P/L', headline(p.pnl, p.pnlPct), tone(p.pnl))}</dl>`;
+  const account = state.posHideValue || sizesHidden() ? 'Hidden' : '$' + Math.round(p.value).toLocaleString('en-US');
+  return `<dl class="pc-tiles">${tile('Account', account)}${tile('Invested', sizesHidden() ? `${p.totalPct.toFixed(1)}%` : money(p.total))}${tile('Open P/L', headline(p.pnl, p.pnlPct), tone(p.pnl))}</dl>`;
 }
 
 const CARD_LEGEND = '<div class="pc-legend" aria-hidden="true"><span><i class="pc-key pc-stop"></i>Stop</span><span><i class="pc-key pc-target"></i>Target</span><span><i class="pc-key pc-cost"></i>Cost</span><span><i class="pc-key pc-price"></i>Price</span></div>';
@@ -688,11 +711,11 @@ function ptRow(r, leg = false) {
   const px = v => fmtPositionPrice(v, r.tradeAs);
   const [, ...rest] = String(r.label).split(' ');
   const be = atBreakeven(r);
-  const sub = be ? 'stop at breakeven' : r.option ? esc(rest.length === 2 ? `${rest[1]} ${rest[0]}` : rest.join(' ')) : `${count(r.qty)} sh`;
+  const sub = be ? 'stop at breakeven' : r.option ? esc(rest.length === 2 ? `${rest[1]} ${rest[0]}` : rest.join(' ')) : sizesHidden() ? `${r.pctAcct.toFixed(1)}% of acct` : `${count(r.qty)} sh`;
   return `<tr class="pt-row${leg ? ' pos-leg' : ''}" data-action="openPosActions" data-arg="${esc(r.symbol)}">
     ${ptSymbol(r.symbol, r.label, sub, be ? 'pos-locked' : '')}
-    ${ptCell(px(r.price))}${state.posPnlPct ? '' : ptCell(pnl$(r.pnl))}${ptCell(pnlPctCell(r.pnlPct))}${ptCell(money(r.value))}
-    ${ptCell(count(r.qty))}${ptCell(r.avg > 0 ? px(r.avg) + avgNote(r) : '—')}${ptCell(r.stop === null ? '—' : px(r.stop))}${ptCell(cardRisk(r))}${ptCell(rCellOf(r.pnl === null ? null : cardR(r)))}
+    ${ptCell(px(r.price))}${pnlPctOnly() ? '' : ptCell(pnl$(r.pnl))}${ptCell(pnlPctCell(r.pnlPct))}${ptCell(ptValue(r))}
+    ${sizesHidden() ? '' : ptCell(count(r.qty))}${ptCell(r.avg > 0 ? px(r.avg) + avgNote(r) : '—')}${ptCell(r.stop === null ? '—' : px(r.stop))}${ptCell(cardRisk(r))}${ptCell(rCellOf(r.pnl === null ? null : cardR(r)))}
   </tr>`;
 }
 
@@ -700,19 +723,24 @@ function ptSpreadRow(s) {
   const legs = state.posLegsOpen.includes(s.key) ? s.legs.map(l => ptRow(l, true)).join('') : '';
   return `<tr class="pt-row pos-spread" data-action="openPosActions" data-arg="${esc(s.key)}">
     ${ptSymbol(s.key, s.label, esc(s.structure))}
-    ${ptCell(fmt$(s.price))}${state.posPnlPct ? '' : ptCell(pnl$(s.pnl))}${ptCell(pnlPctCell(s.pnlPct))}${ptCell(money(s.value))}
-    ${ptCell(count(s.qty))}${ptCell(s.avg > 0 ? fmt$(s.avg) : '—')}${ptCell('—')}${ptCell(s.maxLoss === null ? '—' : `<span class="pos-loss">−${fmt$(s.maxLoss)}</span>`)}${ptCell(rCellOf(spreadR(s).r))}
+    ${ptCell(fmt$(s.price))}${pnlPctOnly() ? '' : ptCell(pnl$(s.pnl))}${ptCell(pnlPctCell(s.pnlPct))}${ptCell(ptValue(s))}
+    ${sizesHidden() ? '' : ptCell(count(s.qty))}${ptCell(s.avg > 0 ? fmt$(s.avg) : '—')}${ptCell('—')}${ptCell(s.maxLoss === null ? '—' : `<span class="pos-loss">−${sizesHidden() ? acctPct(s.maxLossPct) : fmt$(s.maxLoss)}</span>`)}${ptCell(rCellOf(spreadR(s).r))}
   </tr>${legs}`;
 }
 
+/** the phone table's value column: dollars, or with sizes hidden the share of the account */
+const ptValue = x => sizesHidden() ? `${x.pctAcct.toFixed(2)}%` : money(x.value);
+
 /** the account over the table: its value large, then the open P/L */
 function ptAccount(p) {
-  return `<div class="pt-acct"><div class="pt-value">${state.posHideValue ? 'Account value hidden' : fmt$(p.value)}</div><div class="pt-meta">Open P/L <span class="${tone(p.pnl)}">${headline(p.pnl, p.pnlPct)}</span></div></div>`;
+  return `<div class="pt-acct"><div class="pt-value">${state.posHideValue || sizesHidden() ? 'Account value hidden' : fmt$(p.value)}</div><div class="pt-meta">Open P/L <span class="${tone(p.pnl)}">${headline(p.pnl, p.pnlPct)}</span></div></div>`;
 }
 
 function phoneTable(p, items) {
-  const heads = ['Price', ...(state.posPnlPct ? [] : ['P/L']), 'P/L %', 'Mkt val', 'Qty', 'Avg', 'Stop', 'Risk @ stop', 'R'];
-  const total = `<tr><th scope="row">Total</th><td></td>${state.posPnlPct ? '' : `<td>${pnl$(p.pnl)}</td>`}<td>${pnlPctCell(p.pnlPct)}</td><td>${money(p.total)}</td><td></td><td></td><td></td><td>${p.risk > 0 ? `<span class="pos-loss">−${fmt$(p.risk)}</span>` : '—'}</td><td></td></tr>`;
+  const hidden = sizesHidden();
+  const heads = ['Price', ...(pnlPctOnly() ? [] : ['P/L']), 'P/L %', hidden ? '% of acct' : 'Mkt val', ...(hidden ? [] : ['Qty']), 'Avg', 'Stop', 'Risk @ stop', 'R'];
+  const risk = p.risk > 0 ? `<span class="pos-loss">−${hidden ? acctPct(p.riskPct) : fmt$(p.risk)}</span>` : '—';
+  const total = `<tr><th scope="row">Total</th><td></td>${pnlPctOnly() ? '' : `<td>${pnl$(p.pnl)}</td>`}<td>${pnlPctCell(p.pnlPct)}</td><td>${hidden ? `${p.totalPct.toFixed(2)}%` : money(p.total)}</td>${hidden ? '' : '<td></td>'}<td></td><td></td><td>${risk}</td><td></td></tr>`;
   return `${ptAccount(p)}<div class="positions-wrap pt-wrap"><table class="positions-table pt-table">
       <thead><tr><th scope="col">Symbol</th>${heads.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead>
       <tbody>${items.map(i => i.spread ? ptSpreadRow(i.spread) : ptRow(i.row)).join('')}</tbody>
@@ -744,7 +772,7 @@ function renderPosActions() {
     const open = state.posLegsOpen.includes(s.key);
     body.innerHTML = `<div class="pa-body">
       <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(s.pnl)}">${headline(s.pnl, s.pnlPct)}</span><span class="${tone(s.pnl)}">${figuresOf(s.pnlPct, r)}</span></div>
-      <div class="pc-sub">${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b> · ${count(s.qty)} ${Math.abs(s.qty) === 1 ? 'spread' : 'spreads'} · ${esc(s.legWords)}</div>
+      <div class="pc-sub">${s.avg > 0 ? `${fmt$(s.avg)} → ` : ''}<b>${fmt$(s.price)}</b>${sizeWords(s.qty, Math.abs(s.qty) === 1 ? 'spread' : 'spreads', s.pctAcct)} · ${esc(s.legWords)}</div>
       ${spreadLadder(s)}${spreadNote(s)}
       <div class="pa-acts">${actBtn(s.key, 'chart', 'Chart')}${actBtn(s.key, 'sim', 'Simulate')}${actBtn(s.key, 'legs', open ? 'Hide legs' : 'Show legs')}${actBtn(s.key, 'spreadClose', 'Close spread', 'pos-act-close')}${(n => n ? actBtn(s.key, 'cancelOrders', cancelWords(n)) : '')(ordersOn(s.legs.map(l => l.symbol)))}</div>
     </div>`;
@@ -763,11 +791,11 @@ function renderPosActions() {
   ].join('') : '';
   body.innerHTML = `<div class="pa-body">
     <div class="pc-row pa-pnl"><span class="pc-pnl ${tone(row.pnl)}">${headline(row.pnl, row.pnlPct)}</span><span class="${tone(row.pnl)}">${figuresOf(row.pnlPct, R)}</span></div>
-    <div class="pc-sub">${row.avg > 0 ? `${px(row.avg)} → ` : ''}<b>${px(row.price)}</b> · ${count(row.qty)} ${row.option ? 'ct' : 'sh'}</div>
+    <div class="pc-sub">${row.avg > 0 ? `${px(row.avg)} → ` : ''}<b>${px(row.price)}</b>${sizeWords(row.qty, row.option ? 'ct' : 'sh', row.pctAcct)}</div>
     ${avgNote(row) ? `<div class="pc-sub">Whole position's average · ${avgNote(row)}</div>` : ''}
     ${rowLadder(row)}${stopNote(row)}${targetNote(row)}
     <div class="pa-orig">${rUnitLine(row)}${originalStopBlock(row, 'actions')}</div>
-    <dl class="pc-stats">${stat('Mkt val', money(row.value))}${stat('Stop', row.stop === null ? '—' : px(row.stop))}${stat('Risk @ stop', cardRisk(row))}</dl>
+    <dl class="pc-stats">${valueStat(row)}${stat('Stop', row.stop === null ? '—' : px(row.stop))}${stat('Risk @ stop', cardRisk(row))}</dl>
     ${acts ? `<div class="pa-acts">${acts}</div>` : '<p class="hint">Schwab trades for this kind of position aren\'t offered here.</p>'}
   </div>`;
 }
@@ -807,11 +835,20 @@ export function setPosPnl(v) {
   if (state.positionsView) renderPositionsTable();
 }
 
-/** the two switches show what's in use */
+/** Show sizes, or Hide sizes: every size in percent (no share counts, no dollars but prices) on every Positions surface */
+export function setPosSizes(v) {
+  state.posHideSize = v === 'hide';
+  store.set('positions_hide_size', state.posHideSize ? '1' : '0');
+  syncPosSettings();
+  if (state.positionsView) { renderPositionsTable(); renderPositionChart(); }
+}
+
+/** the switches show what's in use */
 export function syncPosSettings() {
   watchPhone();
   const layout = posLayoutNow();
-  for (const [id, on] of [['posLayoutCards', layout === 'cards'], ['posLayoutTable', layout === 'table'], ['posPnlBoth', !state.posPnlPct], ['posPnlPct', state.posPnlPct]]) {
+  for (const [id, on] of [['posLayoutCards', layout === 'cards'], ['posLayoutTable', layout === 'table'], ['posPnlBoth', !state.posPnlPct], ['posPnlPct', state.posPnlPct],
+    ['posSizesShow', !state.posHideSize], ['posSizesHide', state.posHideSize]]) {
     const b = document.getElementById(id);
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
@@ -929,8 +966,10 @@ function drawPositionsTable(el) {
   const cards = posLayoutNow() === 'cards';
   const cols = shownCols();
   // the cards and the phone table show the account value over them
-  const value = state.posHideValue ? 'Account value hidden' : phone || cards ? `Cash ${money(p.cash)}` : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
-  const hide = `<button class="pos-link" data-action="togglePosHideValue" aria-pressed="${state.posHideValue}" title="${state.posHideValue ? 'Show' : 'Hide'} the account value and cash">${state.posHideValue ? 'Show' : 'Hide'}</button>`;
+  // Hide sizes hides the value and cash for good (with a percent of the account beside each position they'd give the sizes away)
+  const value = sizesHidden() ? 'Sizes hidden' : state.posHideValue ? 'Account value hidden' : phone || cards ? `Cash ${money(p.cash)}` : `Account value ${fmt$(p.value)} · cash ${money(p.cash)}`;
+  const hide = sizesHidden() ? '' : `<button class="pos-link" data-action="togglePosHideValue" aria-pressed="${state.posHideValue}" title="${state.posHideValue ? 'Show' : 'Hide'} the account value and cash">${state.posHideValue ? 'Show' : 'Hide'}</button>`;
+  const share = p.rows.length ? '<button class="btn" data-action="sharePositions" title="Copy an image of your positions: each one\'s size as a percent of the account, cost, price, P/L %, R and stop. No share counts and no dollars.">Share</button>' : '';
   const picker = state.posColsOpen ? `<div class="chip-row pos-cols" role="group" aria-label="Optional columns">${pickable().map(([key, label]) => {
     const on = state.posCols.includes(key);
     return `<button class="filter-btn${on ? ' active' : ''}" data-action="togglePosColumn" data-arg="${key}" aria-pressed="${on}">${label}</button>`;
@@ -940,7 +979,7 @@ function drawPositionsTable(el) {
       <span class="section-title">Schwab ••${esc(p.last4)}</span>
       <span class="positions-meta">${value} ${hide} · as of ${asOf}</span>
       ${phone || cards ? '' : `<button class="btn pos-cols-btn" data-action="togglePosColumnsMenu" aria-expanded="${state.posColsOpen}" title="Add or remove columns: P/L, R and today's P/L">Columns</button>`}
-      ${refresh}
+      ${share}${refresh}
     </div>
     ${phone || cards ? '' : picker}
     ${state.positionsError ? `<p class="shares-error" role="status">Refresh failed: ${esc(state.positionsError)} Showing ${asOf}.</p>` : ''}
@@ -950,9 +989,9 @@ function drawPositionsTable(el) {
     : p.rows.length && cards ? `${cardTiles(p)}${CARD_LEGEND}<div class="pc-list">${items.map(i => (i.spread ? spreadCard(i.spread) : positionCard(i.row)) + (chartUnder(i) ? CHART_SLOT : '')).join('')}</div>
     <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. R is how far the price has moved from your cost, in 1Rs: to your original stop or the trade's first stop (or a long option's premium), else the nearest stop now. ${phone ? 'Tap' : 'Click'} a card for its figures and buttons.</p>`
     : p.rows.length ? `<div class="positions-wrap"><table class="positions-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Market value</th>${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
+      <thead><tr><th scope="col">Symbol</th>${sizesHidden() ? '' : '<th scope="col">Qty</th>'}<th scope="col">Avg cost</th><th scope="col">Price</th>${sizesHidden() ? '' : '<th scope="col">Market value</th>'}${cols.map(([, label]) => `<th scope="col">${label}</th>`).join('')}<th scope="col">% of acct</th><th scope="col">Stop</th><th scope="col">Risk @ stop</th></tr></thead>
       <tbody>${items.map(i => i.spread ? spreadRow(i.spread) : positionRow(i.row)).join('')}</tbody>
-      <tfoot><tr><th scope="row">Total</th><td></td><td></td><td></td><td>${money(p.total)}</td>${cols.map(([, , cell]) => `<td>${cell(p)}</td>`).join('')}<td>${p.totalPct.toFixed(2)}%</td><td></td><td>${p.risk > 0 ? `<span class="pos-loss">−${fmt$(p.risk)}</span><span class="pos-sub">${p.riskPct.toFixed(2)}% of acct</span>` : '—'}</td></tr></tfoot>
+      <tfoot><tr><th scope="row">Total</th>${sizesHidden() ? '<td></td><td></td>' : `<td></td><td></td><td></td><td>${money(p.total)}</td>`}${cols.map(([, , cell]) => `<td>${cell(p)}</td>`).join('')}<td>${p.totalPct.toFixed(2)}%</td><td></td><td>${p.risk > 0 ? (sizesHidden() ? `<span class="pos-loss">−${acctPct(p.riskPct)}</span><span class="pos-sub">of acct</span>` : `<span class="pos-loss">−${fmt$(p.risk)}</span><span class="pos-sub">${p.riskPct.toFixed(2)}% of acct</span>`) : '—'}</td></tr></tfoot>
     </table></div>
     <p class="hint">Stop is the nearest working stop order that closes the position, from the last 59 days of orders. Risk @ stop is the loss if it fills, measured from your average cost; a spread's is its max loss.${rShown() ? ' R is open P/L over the risk at entry: the Journal trade\'s first stop (or a long option\'s premium), else the nearest stop now.' : ''}</p>` : '<p class="hint">No open positions in this account.</p>'}
   </div>
@@ -993,11 +1032,18 @@ function orderRow(o, list) {
     <td><b>${esc(o.label)}</b>${acts}</td>
     <td class="pos-order">${esc(what.charAt(0).toUpperCase() + what.slice(1))}${note ? `<span class="pos-sub">${esc(note)}</span>` : ''}</td>
     <td>${orderPrice(o)}</td>
-    <td>${o.filled > 0 ? `${left.toLocaleString('en-US')}<span class="pos-sub">of ${o.qty.toLocaleString('en-US')}, ${o.filled.toLocaleString('en-US')} filled</span>` : o.qty.toLocaleString('en-US')}</td>
+    <td>${sizesHidden() ? orderShare(o, left) : o.filled > 0 ? `${left.toLocaleString('en-US')}<span class="pos-sub">of ${o.qty.toLocaleString('en-US')}, ${o.filled.toLocaleString('en-US')} filled</span>` : o.qty.toLocaleString('en-US')}</td>
     <td>${lasts}</td>
     <td>${esc(STATUS_WORDS[o.status] || words(o.status))}</td>
     <td>${placed(o.entered)}</td>
   </tr>`;
+}
+
+/** with sizes hidden, a working order's size: what's left of it as a percent of the position it closes ('50% of the position'), '—' otherwise */
+function orderShare(o, left) {
+  const held = o.legs > 1 ? null : state.positions?.rows.find(r => r.symbol === o.symbol);
+  if (!held || !held.qty) return '—';
+  return `${Math.round(left / Math.abs(held.qty) * 100)}%<span class="pos-sub">of the position</span>`;
 }
 
 /** every order still working in the account, entries included; a pair's legs sit together and name each other */
@@ -1009,7 +1055,7 @@ function ordersCard(p) {
     ? `<button class="btn" data-action="openCancelAll" title="Review cancelling every working order">Cancel all</button>` : '';
   return `<div class="card positions-card orders-card">${head(list.length, all)}
     ${list.length ? `<div class="positions-wrap"><table class="positions-table orders-table">
-      <thead><tr><th scope="col">Symbol</th><th scope="col">Order</th><th scope="col">Price</th><th scope="col">Qty</th><th scope="col">Lasts</th><th scope="col">Status</th><th scope="col">Placed</th></tr></thead>
+      <thead><tr><th scope="col">Symbol</th><th scope="col">Order</th><th scope="col">Price</th><th scope="col">${sizesHidden() ? 'Size' : 'Qty'}</th><th scope="col">Lasts</th><th scope="col">Status</th><th scope="col">Placed</th></tr></thead>
       <tbody>${list.map(o => orderRow(o, list)).join('')}</tbody>
     </table></div>` : ''}
     <p class="hint">${list.length ? 'From the last 59 days of orders: one placed before that doesn\'t show here.' : 'Nothing working in the last 59 days of orders.'}</p>

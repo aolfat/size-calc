@@ -101,6 +101,19 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   The cards and the actions sheet lead with the P/L % (R alone beside cost → price), the Open P/L tile and the table's open P/L line show the percent, the phone table drops its P/L column, and the desktop table drops the P/L and Today columns and their chips from Columns (the picks are kept for when dollars come back).
   Market value, cash, the account value and Risk @ stop stay in dollars; the account value has its own Hide.
 
+  **Hide sizes** (Settings → Positions: Show sizes | Hide sizes; setPosSizes, state.posHideSize, positions_hide_size, this device only; owner request: everything in percent): no share or contract counts and no dollars but prices, anywhere in Positions.
+  It takes in % only (the dollar P/L goes the same way) and hides the account value and cash for good ('Sizes hidden', no Show: beside each position's percent of the account they'd give the sizes away).
+  The cards and the actions sheet say '5.5% of acct' where the count was, Of acct in place of Mkt val, and Risk @ stop, a lock-in and a spread's max loss as percents of the account; 'covers X of Y' reads 'covers 67%'.
+  The tiles: Account 'Hidden', Invested the percent of the account.
+  The phone table drops Qty and puts % of acct in Mkt val's place, the symbol's sub line a percent too; the desktop table drops Qty and Market value (% of acct is already there).
+  The ladder's ticks and the position chart's lines size each order as a percent of the position, and the chart's head line reads 'Long · 5.5% of acct'.
+  Working orders head their Qty column Size: what's left of each as a percent of the position on its symbol ('50% of the position'), '—' with none held or for a multi-leg order.
+  The order reviews (stop, breakeven, close, target, the spread close) still count shares: they say exactly what goes to Schwab.
+
+  **Share** (in the head, beside Refresh, once there's a position; ui/positions-share.js, sharePositions): copies a table card image of every position (drawTableCard, a download where the clipboard can't take it), with no share counts and no dollars but prices, whatever Hide sizes says.
+  A row per position, a spread once (positionsShareSpec over tableRows): the name, Long or Short (the cards' side, a fund naming what it bets on), Size (% of the account), Cost, Price, P/L %, R (the card's), the nearest stop (green at or past breakeven, '+1' for each more; a spread has none) and Risk (the loss at the stops, or a spread's max loss, as % of the account).
+  Under them a Total row: what's invested and the risk at the stops as % of the account, and the open P/L % from cost; no account number on the card.
+
   **Position trades** (ui/position-trade.js, #posTradeSheet = SHEETS.posTrade): stock, ETF/closed-end fund (COLLECTIVE_INVESTMENT) and option rows (row.tradeAs) get **Stop**, **BE stop** and **Close** buttons under the symbol, in the pinned column; a position whose every share already has a stop at or past breakeven (long: stop ≥ be; short: ≤ be) reads 'stop at breakeven' or 'stops past breakeven' instead.
   Both re-read Schwab first, then freeze a ticket from pure plans in core/positions.js. breakevenPlan NEVER loosens a stop: stops (and pairs) already at or past breakeven are kept as they are and count as covering their shares (breakevenCovered / atBreakeven); only the remaining shares get a breakeven stop at row.be (stocks stopTick toward the market, options optionStopTick: $0.05 under $3, $0.10 from $3, the grid every option class accepts, so up to a dime better than cost) without ever asking Schwab to sell more than you hold, which it refuses through the API ('may result in an oversold/overbought position').
 
