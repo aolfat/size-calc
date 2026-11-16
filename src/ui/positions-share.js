@@ -1,11 +1,14 @@
-// Sharing Positions (the Share button in its head; one tap): a table card image of every position, copied. No share counts and
-// no dollars but prices, like the other share cards: each position's size and risk as a percent of the account, its cost, price,
-// P/L %, R and stop, a spread as one row.
-import { atBreakeven, fmtPositionPrice, spreadR } from '../core/positions.js';
+// Sharing Positions (the share button in its head): a sheet to pick the positions (all ticked to start), then a table card image of
+// them, copied. No share counts and no dollars but prices, like the other share cards: each position's size and risk as a percent
+// of the account, its cost, price, P/L %, R and stop, a spread as one row, and the totals of the ones picked.
+import { marketEscape as esc } from '../core/format.js';
+import { atBreakeven, fmtPositionPrice, pickedTotals, spreadR } from '../core/positions.js';
 import { inZone, zoneAbbr } from '../lib/zone.js';
 import { state } from '../state.js';
 import { effects } from './effects.js';
 import { showError } from './feedback.js';
+import { SHARE_ICON } from './share-button.js';
+import { openSheet } from './sheets.js';
 import { cardR, sideOf, tableRows } from './positions.js';
 import { SC } from './share-image.js';
 
@@ -52,9 +55,15 @@ function spreadCells(s) {
   ];
 }
 
-/** the card: a row per position (a spread once), the totals under them; nothing that gives away a share count or a dollar */
-export function positionsShareSpec(p, now = Date.now()) {
-  const items = tableRows(p);
+/** a row's or a spread's key: what the sheet's ticks name */
+const keyOf = i => i.spread ? i.spread.key : i.row.symbol;
+
+/** the positions the card shows: every one but those unticked in the sheet */
+export const pickedPositions = p => tableRows(p).filter(i => !state.posShareOff.includes(keyOf(i)));
+
+/** the card: a row per position picked (a spread once), their totals under them; nothing that gives away a share count or a dollar */
+export function positionsShareSpec(p, now = Date.now(), items = tableRows(p)) {
+  const t = pickedTotals(items, p.value);
   const when = `${inZone(now, { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '')} ${zoneAbbr()}`;
   return {
     title: [{ t: 'Positions  ' }, { t: `${items.length} open`, c: SC.text2 }],
@@ -62,17 +71,60 @@ export function positionsShareSpec(p, now = Date.now()) {
     cols: [{ label: 'Position' }, { label: 'Side' }, { label: 'Size', right: true }, { label: 'Cost', right: true }, { label: 'Price', right: true },
       { label: 'P/L', right: true }, { label: 'R', right: true }, { label: 'Stop', right: true }, { label: 'Risk', right: true }],
     rows: items.map(i => i.spread ? spreadCells(i.spread) : rowCells(i.row)),
-    total: [{ t: 'Total', b: true }, null, { t: `${p.totalPct.toFixed(1)}%`, b: true }, null, null,
-      p.pnlPct === null ? DASH : { t: signedPct(p.pnlPct), c: tone(p.pnlPct), b: true }, null, null, p.risk > 0 ? riskCell(p.riskPct) : DASH],
+    total: [{ t: 'Total', b: true }, null, { t: `${t.totalPct.toFixed(1)}%`, b: true }, null, null,
+      t.pnlPct === null ? DASH : { t: signedPct(t.pnlPct), c: tone(t.pnlPct), b: true }, null, null, t.riskPct > 0 ? riskCell(t.riskPct) : DASH],
     footer: 'P/L % from cost · R: open P/L over 1R · Risk: the loss at the stops',
   };
 }
 
-/** Share: the card image, copied (or downloaded where the clipboard can't take it). Returns the drawn card (tests read it). */
+/** the share sheet: a tick per position (its side and size beside it), All and None, and the button that copies the card */
+export function renderPosShare() {
+  const body = document.getElementById('posShareBody');
+  const p = state.positions;
+  const items = p ? tableRows(p) : [];
+  if (!items.length) { body.innerHTML = '<p class="hint">No positions to share.</p>'; return; }
+  const n = pickedPositions(p).length;
+  const row = i => {
+    const key = keyOf(i), x = i.spread || i.row, on = !state.posShareOff.includes(key);
+    const side = sideCell(i.spread ? i.spread.legs : [i.row], x.under);
+    return `<label class="ps-row"><input type="checkbox" data-change="togglePosShare" data-arg="${esc(key)}"${on ? ' checked' : ''} />`
+      + `<b>${esc(x.label)}</b><span class="ps-meta">${esc(side.t)} · ${x.pctAcct.toFixed(1)}%</span></label>`;
+  };
+  body.innerHTML = `<div class="ps-body">
+    <div class="ps-quick"><span>${n} of ${items.length} picked</span><button class="pos-link" data-action="pickAllPosShare" data-arg="all">All</button><button class="pos-link" data-action="pickAllPosShare" data-arg="none">None</button></div>
+    <div class="ps-list">${items.map(row).join('')}</div>
+    <button class="btn primary ps-go" data-action="sharePositions"${n ? '' : ' disabled'}>${SHARE_ICON}Share ${n === items.length ? `all ${n}` : n} position${n === 1 ? '' : 's'}</button>
+    <p class="hint">Copies a card image: each position's size and risk as a percent of the account, cost, price, P/L %, R and stop, and the totals of the ones picked. No share counts and no dollars.</p>
+  </div>`;
+}
+
+/** the share button in Positions' head: the sheet, every position ticked unless you left it off this visit */
+export function openPosShare() {
+  const p = state.positions;
+  if (!p || !p.rows.length) { showError('No positions to share.'); return; }
+  renderPosShare();
+  openSheet('posShare');
+}
+
+/** a tick in the sheet: that position on or off the card */
+export function togglePosShare(key) {
+  state.posShareOff = state.posShareOff.includes(key) ? state.posShareOff.filter(k => k !== key) : [...state.posShareOff, key];
+  renderPosShare();
+}
+
+/** All ('all') or None ('none') */
+export function pickAllPosShare(which) {
+  state.posShareOff = which !== 'none' || !state.positions ? [] : tableRows(state.positions).map(keyOf);
+  renderPosShare();
+}
+
+/** Share: the card image of the positions picked, copied (or downloaded where the clipboard can't take it). Returns the drawn card (tests read it). */
 export function sharePositions() {
   const p = state.positions;
   if (!p || !p.rows.length) { showError('No positions to share.'); return null; }
-  const card = effects.drawTableCard(positionsShareSpec(p));
+  const items = pickedPositions(p);
+  if (!items.length) { showError('Pick a position to share.'); return null; }
+  const card = effects.drawTableCard(positionsShareSpec(p, Date.now(), items));
   effects.shareCanvasToClipboard(card, `positions-${new Date().toISOString().slice(0, 10)}`);
   return card;
 }

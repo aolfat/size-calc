@@ -530,6 +530,30 @@ function spreadRow(legs, by, pct) {
   };
 }
 
+/**
+ * The totals over some of the positions (the share card's picks), as percents of the account: what's in them (signed, as the
+ * table's total), their open P/L over their cost, and their loss at the stops (a spread its max loss; a stop past breakeven counts 0).
+ * Picking every row and spread gives positionRows' own totalPct, pnlPct and riskPct.
+ * @param {({ row: Row } | { spread: SpreadRow })[]} items @param {number} acct the account's liquidation value
+ * @returns {{ totalPct: number, pnlPct: number | null, riskPct: number }}
+ */
+export function pickedTotals(items, acct) {
+  const pct = (/** @type {number} */ v) => acct > 0 ? v * 100 / acct : 0;
+  let total = 0, pnl = 0, cost = 0, risk = 0, priced = 0;
+  for (const i of items) {
+    if ('spread' in i) {
+      const s = i.spread;
+      total += s.value; risk += s.maxLoss || 0;
+      if (s.pnl !== null) { pnl += s.pnl; cost += s.avg * s.units * s.mult; priced++; }
+    } else {
+      const r = i.row;
+      total += r.value; risk += Math.max(0, r.risk || 0);
+      if (r.pnl !== null) { pnl += r.pnl; cost += r.avg * Math.abs(r.qty) * r.mult; priced++; }
+    }
+  }
+  return { totalPct: pct(total), pnlPct: priced && cost > 0 ? pnl / cost * 100 : null, riskPct: pct(risk) };
+}
+
 /** a spread's R: open P/L over its defined max loss. @param {SpreadRow} s */
 export function spreadR(s) {
   if (s.pnl === null) return { r: null, why: 'No average cost from Schwab on every leg.' };

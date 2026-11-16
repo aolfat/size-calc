@@ -368,7 +368,7 @@ test('Share copies a card of every position with no share counts and no dollars 
   const { run, elements } = await app({ width: 390, fetch: net.fetch, storage: connected() });
   run("setView('positions')");
   await settle();
-  assert.match(elements.get('positionsSection').innerHTML, /data-action="sharePositions"/);
+  assert.match(elements.get('positionsSection').innerHTML, /data-action="openPosShare"/);
   run('var spec, copied; drawTableCard = s => { spec = s; return { card: true }; }; shareCanvasToClipboard = (c, name) => { copied = { c, name }; };');
   run('sharePositions()');
   const spec = run('spec'), copied = run('copied');
@@ -1035,6 +1035,41 @@ test('Stop asks first: a stop at a price, or reset to the original stop, which c
   assert.match(bare.elements.get('posTradeBody').innerHTML, /data-action="setPositionStopOriginal" disabled><strong>Reset to original<\/strong><span>No Journal trade on this position/);
 });
 
+test('Share opens a sheet with every position ticked; the card shows only the ones picked, its totals theirs', async () => {
+  const net = network(schwabOk);
+  const { run, elements } = await app({ width: 390, fetch: net.fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  run('openPosShare()');
+  assert.equal(run('openSheetName'), 'posShare');
+  const body = () => elements.get('posShareBody').innerHTML;
+  assert.equal((body().match(/data-change="togglePosShare"[^>]* checked/g) || []).length, 4, 'all ticked to start');
+  assert.match(body(), /4 of 4 picked/);
+  assert.match(body(), /Share all 4 positions/);
+  run('var spec; drawTableCard = s => { spec = s; return {}; }; shareCanvasToClipboard = () => {};');
+  run('sharePositions()');
+  const all = run('spec');
+  assert.equal(all.rows.length, 4);
+  assert.deepEqual(all.total.map(c => c && c.t), ['Total', null, '6.2%', null, null, run('positions.pnlPct').toFixed(1).replace(/^/, '+') + '%', null, null, '−' + run('positions.riskPct').toFixed(2) + '%'], 'every one picked: the table\'s own totals');
+
+  run("togglePosShare('SHRT')");
+  run("togglePosShare('ACAT')");
+  assert.match(body(), /2 of 4 picked/);
+  assert.match(body(), /data-arg="SHRT"(?! checked)/);
+  run('sharePositions()');
+  const two = run('spec');
+  assert.deepEqual(two.rows.map(r => r[0].t).sort(), ['TEST', 'TEST 12/18/26 55C'].sort());
+  assert.match(two.title[1].t, /^2 /);
+  assert.equal(two.total[2].t, '6.1%', 'TEST 5.5% and the call 0.6%');
+  assert.equal(two.total[5].t, '+10.9%', '$600 made on $5,500 cost');
+
+  run("pickAllPosShare('none')");
+  assert.match(body(), /0 of 4 picked/);
+  assert.match(body(), /data-action="sharePositions" disabled/);
+  run("pickAllPosShare('all')");
+  assert.match(body(), /4 of 4 picked/);
+});
+
 test('every share button is the same one: the share icon in a square', async () => {
   const { readFileSync } = await import('node:fs');
   const net = network(schwabOk);
@@ -1042,7 +1077,7 @@ test('every share button is the same one: the share icon in a square', async () 
   const icon = run('SHARE_ICON');
   run("setView('positions')");
   await settle();
-  const btn = elements.get('positionsSection').innerHTML.match(/<button[^>]*data-action="sharePositions"[^>]*>(.*?)<\/button>/s);
+  const btn = elements.get('positionsSection').innerHTML.match(/<button[^>]*data-action="openPosShare"[^>]*>(.*?)<\/button>/s);
   assert.match(btn[0], /class="share-btn"/);
   assert.equal(btn[1], icon, 'the icon alone');
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');

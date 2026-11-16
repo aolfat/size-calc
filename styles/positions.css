@@ -1100,3 +1100,16 @@ span.journal-pick { cursor: default; }
 .jt-say-bad b { color: var(--amber); }
 .jt-say-good b { color: var(--green); }
 .journal-amber { color: var(--amber); }
+/* the share sheet: a tick per position, All / None, and the button that copies the card */
+.ps-body { display: grid; gap: 12px; }
+.ps-quick { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--text2); }
+.ps-quick span { margin-right: auto; }
+.ps-list { display: grid; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.ps-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; cursor: pointer; font-size: 14px; }
+.ps-row + .ps-row { border-top: 1px solid var(--border); }
+.ps-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--blue); flex: 0 0 auto; }
+.ps-row b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-meta { margin-left: auto; color: var(--text2); font-size: 12.5px; font-family: var(--num); white-space: nowrap; }
+.ps-go { justify-content: center; min-height: 44px; font-weight: 600; }
+.ps-go svg { flex: 0 0 auto; }
+.ps-go:disabled { opacity: 0.4; cursor: default; }
