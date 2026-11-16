@@ -199,6 +199,36 @@ test('portion chips take a share of the position, never more than the other targ
   assert.equal(elements.get('posTargetPct').value, '66.7');
 });
 
+test('two chips that come to the same count: only the one you picked lights', async () => {
+  const { run, elements, storage } = await chartApp();
+  storage.set('sell_pct_presets', '[10,10.2]'); // of 300 held, both are 30 shares
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const lit = id => [...elements.get(id).innerHTML.matchAll(/class="filter-btn active"[^>]*data-arg="([^"]+)"/g)].map(m => m[1]);
+  run('setPosTargetPortion(0.102)');
+  assert.equal(run('posChart.qty'), 30);
+  assert.deepEqual(lit('posTargetPortions'), ['0.102']);
+  run('setPosTargetPortion(0.1)');
+  assert.deepEqual(lit('posTargetPortions'), ['0.1']);
+  elements.get('posTargetQty').value = '30';
+  elements.get('posTargetPct').value = '';
+  run('posTargetChanged()');
+  assert.deepEqual(lit('posTargetPortions'), ['0.1'], 'the same count typed keeps the chip');
+  elements.get('posTargetQty').value = '31';
+  run('posTargetChanged()');
+  elements.get('posTargetQty').value = '30';
+  run('posTargetChanged()');
+  assert.deepEqual(lit('posTargetPortions'), [], 'a typed count lights no chip');
+  elements.get('posTargetPct').value = '10.2';
+  run('posTargetPctChanged()');
+  assert.deepEqual(lit('posTargetPortions'), ['0.102'], 'a typed percent lights its own chip');
+  run('setPosClosePortion(0.102)');
+  assert.equal(run('posChart.closeQty'), 30);
+  assert.deepEqual(lit('posChartClosePortions'), ['0.102']);
+  run('setPosClosePortion(1)');
+  assert.deepEqual(lit('posChartClosePortions'), ['1']);
+});
+
 test('your own percent chips: ✎ turns them into boxes, ✓ keeps those under 100 smallest first, All stays, and both forms share them', async () => {
   const { run, elements, storage } = await chartApp();
   run("togglePositionChart('HOOD')");

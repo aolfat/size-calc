@@ -164,8 +164,8 @@ export function togglePositionChart(symbol) {
   const row = state.positions && state.positions.rows.find(r => r.symbol === symbol);
   const spread = !row && state.positions ? (state.positions.spreads || []).find(s => s.key === symbol) || null : null;
   const c = { symbol, option: !!(row && row.tradeAs === 'OPTION') || !!spread, label: row ? row.label : spread ? spread.label : symbol,
-    spread: !!spread, legs: spread ? spread.legs.map(l => l.symbol) : [], weights: spread ? spreadWeights(spread) : [], five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, stop: null, addStop: null, addPrice: null,
-    closePrice: null, closeQty: null, closeGain: null, drag: null, on: 'fund', under: '' };
+    spread: !!spread, legs: spread ? spread.legs.map(l => l.symbol) : [], weights: spread ? spreadWeights(spread) : [], five: newPane('five'), daily: newPane('daily'), error: '', price: null, r: null, qty: null, portion: null, stop: null, addStop: null, addPrice: null,
+    closePrice: null, closeQty: null, closePortion: null, closeGain: null, drag: null, on: 'fund', under: '' };
   c.sets = { fund: { five: c.five, daily: c.daily } };
   state.posChart = c;
   setTargetInputs();
@@ -406,7 +406,7 @@ export function posChartCloseChanged() {
   const price = parseFloat(document.getElementById('posChartClosePrice').value), qty = Number(document.getElementById('posChartCloseQty').value);
   if ((price > 0 ? price : null) !== c.closePrice) c.closeGain = null; // a typed price is a price; the profit box follows it
   c.closePrice = price > 0 ? price : null;
-  if ((qty > 0 ? qty : null) !== c.closeQty) c.closePct = null; // a typed count is a count; the % box follows it
+  if ((qty > 0 ? qty : null) !== c.closeQty) { c.closePct = null; c.closePortion = null; } // a typed count is a count; the % box follows it
   c.closeQty = qty > 0 ? qty : null;
   document.getElementById('posChartClosePct').value = pctText(c.closeQty, c.closePct);
   document.getElementById('posChartCloseGain').value = gainText(c);
@@ -419,6 +419,7 @@ export function posChartClosePctChanged() {
   if (!c) return;
   const pct = parseFloat(document.getElementById('posChartClosePct').value), held = heldOf(c);
   c.closePct = pct > 0 ? pct : null;
+  c.closePortion = c.closePct ? Math.min(1, c.closePct / 100) : null; // a typed 25 lights the 25% chip
   c.closeQty = c.closePct && held ? closeQty(held, c.closePct / 100) : null;
   document.getElementById('posChartCloseQty').value = c.closeQty >= 1 ? String(c.closeQty) : '';
   renderPositionChart();
@@ -429,6 +430,7 @@ export function setPosClosePortion(fraction) {
   const c = state.posChart, held = heldOf(c);
   if (!c || !held) return;
   c.closeQty = closeQty(held, fraction);
+  c.closePortion = fraction;
   c.closePct = null;
   setTargetInputs();
   renderPositionChart();
@@ -452,7 +454,7 @@ export function posTargetChanged() {
   const price = parseFloat(document.getElementById('posTargetPrice').value);
   const qty = Number(document.getElementById('posTargetQty').value);
   c.price = price > 0 ? price : null;
-  if ((qty > 0 ? qty : null) !== c.qty) c.pct = null; // a typed count is a count; the % box follows it
+  if ((qty > 0 ? qty : null) !== c.qty) { c.pct = null; c.portion = null; } // a typed count is a count; the % box follows it
   c.qty = qty > 0 ? qty : null;
   c.r = null; // a typed price is a price; the R box follows it
   document.getElementById('posTargetR').value = rText(c);
@@ -466,6 +468,7 @@ export function posTargetPctChanged() {
   if (!c) return;
   const pct = parseFloat(document.getElementById('posTargetPct').value);
   c.pct = pct > 0 ? pct : null;
+  c.portion = c.pct ? Math.min(1, c.pct / 100) : null; // a typed 25 lights the 25% chip
   const room = row ? targetRoom(row) : null;
   c.qty = c.pct && room && room.free > 0 ? portionQty(room, c.pct / 100) : null;
   document.getElementById('posTargetQty').value = c.qty >= 1 ? String(c.qty) : '';
@@ -517,6 +520,7 @@ export function setPosTargetPortion(fraction) {
   const room = targetRoom(row);
   if (!(room.free > 0)) return;
   c.qty = portionQty(room, fraction);
+  c.portion = fraction;
   c.pct = null;
   setTargetInputs();
   renderPositionChart();
@@ -553,6 +557,7 @@ export function positionTargetPlaced(symbol) {
   c.price = null;
   c.r = null;
   c.qty = null;
+  c.portion = null;
   setTargetInputs();
   renderPositionChart();
 }
@@ -572,6 +577,7 @@ export function positionClosePlaced(symbol) {
   if (!c || c.symbol !== symbol) return;
   c.closePrice = null;
   c.closeQty = null;
+  c.closePortion = null;
   c.closeGain = null;
   setTargetInputs();
   renderPositionChart();
@@ -756,7 +762,8 @@ export function renderPositionChart() {
   renderFundLink(c, row);
   const held = heldOf(c), many = n => c.spread ? spreadWords(n) : units(c.option, n);
   document.getElementById('posChartClosePortions').innerHTML = pctChipRow((f, label) => {
-    const qty = held ? closeQty(held, f) : 0, on = qty > 0 && c.closeQty === qty;
+    // only the chip you picked lights: 20% and 25% of 11 are both 2 shares; a count set another way lights All when it's every share
+    const qty = held ? closeQty(held, f) : 0, on = qty > 0 && c.closeQty === qty && (c.closePortion != null ? c.closePortion === f : f >= 1);
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosClosePortion" data-arg="${f}"${qty ? ` title="${many(qty)}"` : ' disabled'}>${label}</button>`;
   });
   document.getElementById('posChartCloseGainChips').innerHTML = profitPcts(c.spread ? { tradeAs: 'OPTION' } : row).map(p => {
@@ -772,7 +779,7 @@ export function renderPositionChart() {
   const room = row ? targetRoom(row) : null;
   document.getElementById('posTargetPortions').innerHTML = pctChipRow((f, label) => {
     const qty = room && room.free > 0 ? portionQty(room, f) : 0;
-    const on = qty > 0 && c.qty === qty;
+    const on = qty > 0 && c.qty === qty && (c.portion != null ? c.portion === f : f >= 1); // only the chip you picked, as in Close
     return `<button class="filter-btn${on ? ' active' : ''}" aria-pressed="${on}" data-action="setPosTargetPortion" data-arg="${f}"${qty ? ` title="${units(c.option, qty)}"` : ' disabled'}>${label}</button>`;
   });
   const unit = unitFor(row);
