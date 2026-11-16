@@ -12,15 +12,18 @@ import { attachTouchCrosshair } from './chart.js';
 import { showError } from './feedback.js';
 import { effects } from './effects.js';
 
+const YEAR = 365 * 24 * 3600 * 1000;
+
 export function openSim(o) {
   if (!o) return;
   if (!(o.entry > 0)) { showError('No entry price to measure returns from.'); return; }
   if (o.sizing === 'allocation' && o.qty < 1) { showError('No contracts fit this allocation.'); return; }
   if (o.mark != null) {
     const asOf = o.asOf ?? Date.now(), spot = +Number(o.spot).toFixed(2);
-    const T = (expiryCloseMs(o.expStr) - asOf) / (365 * 24 * 3600 * 1000);
-    // Fit each leg to its own quote. Work on copies so the card retains its supplied IV and prices.
-    const legs = o.legs?.map(L => ({ ...L, iv: impliedVolatility(o.isCall, L.mid, spot, L.K, T, RISK_FREE) }));
+    const years = (/** @type {string} */ exp) => (expiryCloseMs(exp) - asOf) / YEAR;
+    const T = years(o.expStr);
+    // Fit each leg to its own quote, type and expiry. Work on copies so the card retains its supplied IV and prices.
+    const legs = o.legs?.map(L => ({ ...L, iv: impliedVolatility(L.isCall ?? o.isCall, L.mid, spot, L.K, L.expStr ? years(L.expStr) : T, RISK_FREE) }));
     const iv = legs ? legs[0]?.iv : impliedVolatility(o.isCall, o.mark, spot, o.K, T, RISK_FREE);
     if (!(iv > 0) || legs?.some(L => !(L.iv > 0))) {
       showError(`Cannot fit a simulation to the ${o.markSource || 'Schwab'} price for ${o.label}. Refresh the quote and try again.`);
@@ -85,19 +88,22 @@ export function simPriceTyped(el) {
 }
 
 export function simCurve(S) {
-  const exp = expiryCloseMs(state.simState.expStr); // the 4pm New York close, not the browser's 4pm
-  const now = state.simState.asOf ?? Date.now(); // redraws must not age a price snapshot while its fitted IV stays fixed
+  const o = state.simState;
+  const exp = expiryCloseMs(o.expStr); // the 4pm New York close, not the browser's 4pm; a calendar's nearest expiry
+  const now = o.asOf ?? Date.now(); // redraws must not age a price snapshot while its fitted IV stays fixed
   const total = Math.max(exp - now, 3600 * 1000);
+  // a leg may carry its own type and expiry (a position's diagonal, calendar or mixed spread); a card's legs share the card's
+  const legs = o.legs?.map(L => ({ ...L, call: L.isCall ?? o.isCall, exp: L.expStr ? expiryCloseMs(L.expStr) : exp }));
   const N = 80;
   const pts = [];
   for (let i = 0; i <= N; i++) {
     const t = now + total * i / N;
-    const T = (exp - t) / (365 * 24 * 3600 * 1000);
-    const v = state.simState.legs
-      ? state.simState.legs.reduce((a, L) => a + L.side * bsPrice(state.simState.isCall, S, L.K, Math.max(0, T), L.iv || state.simState.iv, RISK_FREE), 0)
-      : bsPrice(state.simState.isCall, S, state.simState.K, T, state.simState.iv, RISK_FREE);
+    const T = (exp - t) / YEAR;
+    const v = legs
+      ? legs.reduce((a, L) => a + L.side * bsPrice(L.call, S, L.K, Math.max(0, (L.exp - t) / YEAR), L.iv || o.iv, RISK_FREE), 0)
+      : bsPrice(o.isCall, S, o.K, T, o.iv, RISK_FREE);
     // At the quoted starting point, avoid solver round-off showing a tiny loss or negative zero.
-    pts.push({ t, v: i === 0 && S === state.simState.spot && state.simState.mark != null ? state.simState.mark : v });
+    pts.push({ t, v: i === 0 && S === o.spot && o.mark != null ? o.mark : v });
   }
   return pts;
 }
@@ -145,8 +151,9 @@ export function drawSim() {
     ctx.fillStyle = cText3;
     ctx.fillText((g > 0 ? '+' : '') + g + '%', w - padR + 6, y(g) + 3);
   }
-  // max loss floor; a lone sold option measured on its premium has none there (−100% is just the credit lost again)
-  if (!(o.credit && !o.shortPut && !(o.width > 0))) {
+  // max loss floor; a lone sold option measured on its premium has none there (−100% is just the credit lost again),
+  // nor does a position spread with no defined max loss (a ratio, an uncovered diagonal)
+  if (!o.noFloor && !(o.credit && !o.shortPut && !(o.width > 0))) {
     ctx.save();
     ctx.strokeStyle = cRed; ctx.setLineDash([4, 4]); ctx.globalAlpha = 0.6;
     ctx.beginPath(); ctx.moveTo(padL, y(-100)); ctx.lineTo(w - padR, y(-100)); ctx.stroke();

@@ -126,6 +126,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Green above breakeven / red below via canvas clipping, max-loss floor, drag crosshair readout (est $/ct, %, $ P&L × qty).
   Price chips: stop / now / 1R / 2R (R = distance to stop, side-aware), or −1σ / now / +1σ when opened from a position (#simRChips / #simEmChips).
   Entry points: chain detail row (simReg by OCC symbol), pinned cards (entry = mid), option positions (entry = your average cost).
+  Position spreads simulate too (docs/positions.md): a sim leg may carry its own isCall and expStr, fitted and priced at its own expiry, with the time axis running to the nearest one.
   Esc closes
 - **Trade at Schwab on a contract**: the detail row and the rail ticket end with a button that buys the sized contracts to open at a limit with a stop on the option at the loss model's Premium @ stop (docs/schwab.md, Options entries).
 - **Option loss model**: Black-Scholes move applied to the market mid — `premium@stop = max(0, mid + BS(stop,T) − BS(spot,T))` so IV-skew level offsets cancel; time to expiry runs to the 4pm New York close (expiryCloseMs in core/options.js, whatever the device's zone; also the sim and the allocation expired check); falls back to Δ+½Γ·move² when the contract has no IV (model flag 'bs'/'approx').

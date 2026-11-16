@@ -37,13 +37,13 @@ const SCHWAB_QUOTES = {
   HOOD: { assetMainType: 'EQUITY', assetSubType: 'COE', symbol: 'HOOD', quote: { lastPrice: 41.1, bidPrice: 41.05, askPrice: 41.15 } },
 };
 
-function network({ quotes = QUOTES } = {}) {
+function network({ quotes = QUOTES, account = ACCOUNT } = {}) {
   const tradier = [], schwab = [];
   const fetch = async (url) => {
     if (url.startsWith(PROXY)) {
       const path = url.slice(PROXY.length);
       if (path.startsWith('/marketdata/v1/quotes')) { schwab.push(path); return json(SCHWAB_QUOTES); }
-      return path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
+      return path.includes('/orders?') ? json([]) : path.endsWith('?fields=positions') ? json(account) : json({}, 404);
     }
     if (url.includes('/markets/quotes')) { tradier.push(url); return json({ quotes: { quote: quotes } }); }
     throw new Error('Unexpected request ' + url);
@@ -239,4 +239,76 @@ test('the simulator: a position swaps stop and R chips for ±1σ, which move the
   run("openSim({ isCall: true, K: 50, expStr: '2026-12-18', iv: 0.5, entry: 2, qty: 1, spot: 41, stop: 39, label: 'x', parsedTicker: 'HOOD' })");
   assert.equal(elements.get('simRChips').style.display, '');
   assert.equal(elements.get('simEmChips').style.display, 'none');
+});
+
+// spreads: Schwab's legs folded back into one row, simulated as one position
+const opt = (symbol, qty, avg, price) => ({ longQuantity: qty > 0 ? qty : 0, shortQuantity: qty < 0 ? -qty : 0, averagePrice: avg, marketValue: qty * price * 100,
+  instrument: { assetType: 'OPTION', symbol, underlyingSymbol: 'HOOD', optionMultiplier: 100 } });
+const holding = positions => ({ securitiesAccount: { currentBalances: { liquidationValue: 100000, cashBalance: 25000 }, positions } });
+const C45 = 'HOOD  261218C00045000', C50 = 'HOOD  261218C00050000', P40 = 'HOOD  261218P00040000', P35 = 'HOOD  261218P00035000', C50J = 'HOOD  270115C00050000';
+const DEBIT = holding([opt(C45, 2, 3, 4), opt(C50, -2, 1.2, 2)]);
+const CREDIT = holding([opt(P40, -1, 1.8, 1.5), opt(P35, 1, 0.6, 0.5)]);
+const CALENDAR = holding([opt(C50J, 1, 3, 3.2), opt(C50, -1, 2.2, 2)]);
+const spreadKey = run => run('positions.spreads[0].key');
+
+test('a spread row and its actions sheet get a Simulate button', async () => {
+  const { run, elements } = await simApp({ account: DEBIT });
+  const key = spreadKey(run);
+  const row = elements.get('positionsSection').innerHTML.split('<tr').find(r => r.includes('pos-spread'));
+  assert.match(row, new RegExp(`data-action="simPosition" data-arg="${key}"`));
+  run(`openPosActions('${key}')`);
+  assert.match(elements.get('posActionsBody').innerHTML, new RegExp(`data-action="posSheetAct" data-arg="${key}" data-arg2="sim">Simulate`));
+});
+
+test('a debit spread fits every leg to Schwab\'s price, at the net debit and the count of spreads', async () => {
+  const { run, tradier } = await simApp({ account: DEBIT });
+  await run(`simPosition('${spreadKey(run)}')`);
+  assert.equal(tradier.length, 1, 'one underlying quote');
+  const o = run('opened');
+  assert.equal(o.label, 'HOOD 12/18/26 45/50C');
+  assert.equal(o.credit, false);
+  assert.ok(Math.abs(o.entry - 1.8) < 1e-9);
+  assert.equal(o.qty, 2);
+  assert.ok(Math.abs(o.mark - 2) < 1e-9);
+  assert.deepEqual(o.legs.map(L => [L.K, L.side]), [[45, 1], [50, -1]]);
+  assert.equal(o.noFloor, false);
+  assert.equal(o.expStr, '2026-12-18');
+  // the now point is the net mark; at expiry with HOOD at 60 the spread is worth its width
+  assert.ok(Math.abs(run('simState = opened; simCurve(opened.spot)[0].v') - 2) < 1e-7);
+  assert.ok(Math.abs(run('simCurve(60).at(-1).v') - 5) < 1e-9);
+});
+
+test('a credit vertical is short its legs\' net: P/L the other way, measured on its max loss', async t => {
+  const h = await simApp({ account: CREDIT });
+  useRealSimulator(h, t);
+  await h.run(`simPosition('${spreadKey(h.run)}')`);
+  const o = h.run('simState');
+  assert.equal(o.credit, true);
+  assert.ok(Math.abs(o.entry - 1.2) < 1e-9);
+  assert.equal(o.width, 5);
+  assert.ok(Math.abs(h.run('simReturnBase(simState)') - 3.8) < 1e-9);
+  assert.match(h.elements.get('simReadout').innerHTML, /est <b>\$1\.00<\/b>\/ct.*\+5\.3%.*\+\$20\.00<\/span> for 1 ct/);
+  assert.match(h.elements.get('simMeta').textContent, /credit \$1\.20\/ct · 1 ct/);
+  // below the bought strike at expiry: the full width to close, the whole max loss
+  assert.ok(Math.abs(h.run('simCurve(30).at(-1).v') - 5) < 1e-9);
+});
+
+test('a calendar: each leg at its own expiry, the curve ending at the nearer one with the far leg still priced', async t => {
+  const h = await simApp({ account: CALENDAR });
+  useRealSimulator(h, t);
+  await h.run(`simPosition('${spreadKey(h.run)}')`);
+  const o = h.run('simState');
+  assert.equal(o.expStr, '2026-12-18');
+  assert.equal(o.noFloor, false, 'a calendar risks its debit');
+  assert.match(h.elements.get('simReadout').innerHTML, /est <b>\$1\.20<\/b>\/ct.*\+50\.0%.*\+\$40\.00<\/span> for 1 ct/);
+  // at the near expiry with HOOD at the strike, the short leg is worthless and the January call keeps time value
+  const end = h.run('simCurve(50).at(-1).v');
+  assert.ok(end > 0.5 && end < 5, `far leg's time value, got ${end}`);
+});
+
+test('a spread with a leg the model cannot fit shows an error, no simulator', async () => {
+  const { run, elements } = await simApp({ account: holding([opt(C45, 2, 3, 45), opt(C50, -2, 1.2, 2)]) });
+  await run(`simPosition('${spreadKey(run)}')`);
+  assert.equal(run('opened'), null);
+  assert.match(elements.get('errorBox').textContent, /Cannot fit a simulation to Schwab's prices for HOOD 12\/18\/26 45\/50C/);
 });
