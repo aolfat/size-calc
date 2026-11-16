@@ -118,6 +118,7 @@
 .shares-actions { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border); margin-top: 18px; padding-top: 14px; }
 .shares-actions .filter-btn { flex: 1 1 0; min-width: 0; padding: 8px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
 .shares-actions .filter-btn:disabled { opacity: 0.4; cursor: default; }
+.shares-actions .share-btn { width: 44px; height: auto; align-self: stretch; }
 .shares-actions .filter-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .shares-actions .trade-btn { flex: 1 1 100%; justify-content: center; min-height: 40px; font-weight: 600; background: linear-gradient(180deg, #16294a, #101f39); border-color: var(--blue-bd); color: var(--blue); }
 @media (hover: hover) { .shares-actions .trade-btn:hover { border-color: var(--blue); } }

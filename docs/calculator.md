@@ -109,8 +109,9 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Single-side views (Calls/Puts) use a wider layout with bid/ask/IV/@stop/total.
   Mobile (<500px) shows OI/Vol/Δ/Mid per side (m-size hides Loss/Cts/Total — sizing lives in the tap-in detail; m-oi and m-delta re-shown) and compacts number formats; colspans both 9 / single 5 / banner 4.
   Chain header is locked while scrolling: sticky thead — on desktop the chain is its own scroll panel (.chain-scroll, max-height ~100vh); on mobile (table fits, no scroll wrapper) it sticks to the page below the context bar (--sbh offset)
-- **Share cards**: the shares sizing card has separate **Copy image** and **Copy text** actions, disabled when the stop is invalid.
-  The footer is Trade at Schwab across the top, then Pin order, Copy image and Copy text in one row of equal buttons (owner request: they wrapped two over one); whichever are hidden, the rest split the row.
+- **Share cards**: the shares sizing card has separate **Share** (the image) and **Copy text** actions, disabled when the stop is invalid.
+  The footer is Trade at Schwab across the top, then Pin order, Share and Copy text in one row (owner request: they wrapped two over one); Share is the app's one share button, the share icon in a square (ui/share-button.js), and the others split what's left.
+  Pinned cards share with the same button.
   Image copying (also available as 'share' on pinned cards) renders a hand-drawn canvas PNG (drawShareCard — deliberately NOT a DOM screenshot: no deps, Safari foreignObject is unreliable) via ClipboardItem (promise constructed inside the gesture for Safari); falls back to downloading the PNG.
   Shares images label custom stops explicitly and retain percentage-based risk/position values and the $10k-account example.
   Copy-as-text one-liners (copyShares/copyPinned) state risk as % of account and end with a $100-risk example (ex100: units for $100, or the one-unit risk when a single unit exceeds it)

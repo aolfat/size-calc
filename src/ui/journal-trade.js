@@ -27,7 +27,7 @@ import { dailyHistory } from '../services/tradier.js';
 import { state } from '../state.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { dropTradeChart, loadTradeChartLibrary, makeTradeChart, paintTradeChart } from './journal-trade-chart.js';
-import { SHARE_ICON, clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal, setJournalTab } from './journal.js';
+import { clockTime, journalNavKeys, journalTradeList, openTradeReview, renderJournal, setJournalTab } from './journal.js';
 import { onReviewChange, reviewChecklist, reviewSectionHtml, setupsOf, tacticKeysOf, toReview, tradeNotes, tradeReviewState } from './journal-review.js';
 import { dropTradeExample, modelTradeRowHtml, onModelTradeChange, openModelImage, startTradeExample } from './model-books.js';
 import { initTradeShotEvents, onShotsChange, renderShotViewer } from './journal-shots.js';
@@ -35,6 +35,7 @@ import { deckBarHtml, deckHidesPnl, deckPnlNote, renderDeckEnd, syncJournalBadge
 import { tradeFeatureCount, tradeFeaturesHtml } from './journal-features.js';
 import { tradeIndustry } from './journal-industry.js';
 import { exitFillsOf, onOwnDaily } from './trade-reads.js';
+import { shareIconButton } from './share-button.js';
 
 
 const px = (p, assetType) => fmtPositionPrice(p, assetType === 'OPTION' || assetType === 'SPREAD' ? 'OPTION' : null);
@@ -486,7 +487,7 @@ export function renderJournalTrade() {
       ${backBtn}
       <div class="jt-id"><span class="section-title" id="jtTitle">${esc(t.label)}</span>
         ${industryLine(t)}
-        <span class="positions-meta">${side}${t.setupOn ? ` ${esc(t.setupOn)} ·` : ''} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button>${t.status === 'history' ? '' : ` · <button class="pos-link jt-share-link" data-action="shareJournalTrade" title="Copy a card image of this trade">${SHARE_ICON}Share</button>`}</span></div>
+        <span class="positions-meta">${side}${t.setupOn ? ` ${esc(t.setupOn)} ·` : ''} ${t.entryQty}${t.status === 'open' ? ` · ${x ? `${t.openQty} ` : ''}open` : ''}${t.expired ? ' · expired' : ''}${t.via ? ` · ${t.via}` : ''}${t.openedAt ? ` · ${esc(clockTime(t.openedAt))}` : ''} · <button class="pos-link" data-action="editJournalTrade" title="Your stop, separate, delete">Edit</button>${t.status === 'history' ? '' : ` ${shareIconButton('data-action="shareJournalTrade"', `Share ${t.label} as an image`, 'Share: copy a card image of this trade')}`}</span></div>
       ${headStatsHtml(t)}
       ${navHtml(p)}
     </div>${deckBarHtml(t)}`;

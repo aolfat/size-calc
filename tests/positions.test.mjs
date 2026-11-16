@@ -1034,3 +1034,21 @@ test('Stop asks first: a stop at a price, or reset to the original stop, which c
   await bare.run("openPositionTrade('SHRT', 'stop')");
   assert.match(bare.elements.get('posTradeBody').innerHTML, /data-action="setPositionStopOriginal" disabled><strong>Reset to original<\/strong><span>No Journal trade on this position/);
 });
+
+test('every share button is the same one: the share icon in a square', async () => {
+  const { readFileSync } = await import('node:fs');
+  const net = network(schwabOk);
+  const { run, elements } = await app({ width: 390, fetch: net.fetch, storage: connected() });
+  const icon = run('SHARE_ICON');
+  run("setView('positions')");
+  await settle();
+  const btn = elements.get('positionsSection').innerHTML.match(/<button[^>]*data-action="sharePositions"[^>]*>(.*?)<\/button>/s);
+  assert.match(btn[0], /class="share-btn"/);
+  assert.equal(btn[1], icon, 'the icon alone');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const shares = html.match(/<button[^>]*id="sharesImage"[^>]*>(.*?)<\/button>/s);
+  assert.match(shares[0], /class="share-btn"/);
+  assert.equal(shares[1], icon, 'the shares answer carries the same icon');
+  const src = ['cards.js', 'allocation.js', 'journal.js', 'journal-trade.js'].map(f => readFileSync(new URL(`../src/ui/${f}`, import.meta.url), 'utf8')).join('\n');
+  assert.doesNotMatch(src, />share<\/button>|>Copy image<|journal-share-btn|jt-share-link/, 'no other share button left');
+});

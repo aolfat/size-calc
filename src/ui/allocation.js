@@ -13,6 +13,7 @@ import { recalcAll, riskDollars } from './risk.js';
 import { cancelSpread } from './spreads.js';
 import { setDirection, updateStopVisibility } from './stops.js';
 import { effects } from './effects.js';
+import { shareIconButton } from './share-button.js';
 
 export function allocationInputs(symbol) {
   return { account: parseFloat(document.getElementById('accountSize').value),
@@ -171,7 +172,7 @@ export function renderAllocationCard(id, d) {
     <span class="pinned-symbol">${marketEscape(d.parsed.ticker)} $${d.parsed.strike} ${marketEscape(d.parsed.expStr)}</span>
     <span class="pinned-meta">ALLOCATION · ${marketEscape(d.asOf || '')}</span>
     <button class="filter-btn" data-action="copyPinned" data-arg="${id}">copy</button>
-    <button class="filter-btn" data-action="sharePinned" data-arg="${id}">share</button>
+    ${shareIconButton(`data-action="sharePinned" data-arg="${id}"`, 'Share this card as an image', 'Share: copy this card as an image')}
     <button class="filter-btn" ${error || qty < 1 ? 'disabled' : ''} data-action="simFromPinned" data-arg="${id}">sim</button>
     <button class="filter-btn" data-action="refreshPinned" data-arg="${id}">↻</button>
     <button class="filter-btn" aria-label="Remove card" data-action="removePinned" data-arg="${id}">×</button>

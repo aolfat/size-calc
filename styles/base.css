@@ -150,6 +150,12 @@ tbody td:first-child { text-align: left; font-family: inherit; }
 
 .filter-btn { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--text2); transition: all 0.12s; }
 .filter-btn.active { background: var(--bg4); color: var(--text); border-color: var(--border2); }
+/* the one share button (ui/share-button.js): the share icon in a small square, the same wherever a card image is copied */
+.share-btn { display: inline-grid; place-items: center; flex: 0 0 auto; width: 30px; height: 30px; padding: 0; color: var(--text2); background: transparent; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; vertical-align: middle; }
+.share-btn:focus-visible { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); outline: none; }
+.share-btn:active { color: var(--blue); background: var(--blue-bg); }
+.share-btn:disabled { opacity: 0.4; cursor: default; color: var(--text2); background: transparent; border-color: var(--border); }
+@media (hover: hover) { .share-btn:not(:disabled):hover { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-bd); } }
 @media (hover: hover) { .filter-btn:hover { color: var(--text); } }
 
 a { color: var(--blue); text-decoration: none; }

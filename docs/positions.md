@@ -110,7 +110,7 @@ The Positions tab: rows, spreads, optional columns and R, position trades (stop,
   Working orders head their Qty column Size: what's left of each as a percent of the position on its symbol ('50% of the position'), '—' with none held or for a multi-leg order.
   The order reviews (stop, breakeven, close, target, the spread close) still count shares: they say exactly what goes to Schwab.
 
-  **Share** (in the head, beside Refresh, once there's a position; ui/positions-share.js, sharePositions): copies a table card image of every position (drawTableCard, a download where the clipboard can't take it), with no share counts and no dollars but prices, whatever Hide sizes says.
+  **Share** (the app's one share button, the share icon in a square, in the head beside Refresh once there's a position; ui/positions-share.js, sharePositions): copies a table card image of every position (drawTableCard, a download where the clipboard can't take it), with no share counts and no dollars but prices, whatever Hide sizes says.
   A row per position, a spread once (positionsShareSpec over tableRows): the name, Long or Short (the cards' side, a fund naming what it bets on), Size (% of the account), Cost, Price, P/L %, R (the card's), the nearest stop (green at or past breakeven, '+1' for each more; a spread has none) and Risk (the loss at the stops, or a spread's max loss, as % of the account).
   Under them a Total row: what's invested and the risk at the stops as % of the account, and the open P/L % from cost; no account number on the card.
 

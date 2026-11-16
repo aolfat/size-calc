@@ -387,7 +387,7 @@ test('Share: one tap copies a card image with the entry, the stop, the exit, the
   const { run, head } = await page({}, t);
   run(`openJournalTrade('${KEY}')`);
   await settle();
-  assert.match(head(), /data-action="editJournalTrade"[^>]*>Edit<\/button> · <button class="pos-link jt-share-link" data-action="shareJournalTrade"[^>]*><svg[^]*?<\/svg>Share</);
+  assert.match(head(), /data-action="editJournalTrade"[^>]*>Edit<\/button> <button class="share-btn" data-action="shareJournalTrade" aria-label="Share [^"]+ as an image"[^>]*><svg/);
   // the review's labels: a setup and an entry tactic
   run(`journalReview = { ...(journalReview || {}), reviews: {}, days: {}, library: [], weekly: {}, labels: { '${KEY}': [{ kind: 'setup', value: 'ema21_bounce' }, { kind: 'tactic', value: 'pivot15' }] } }`);
   run('var spec, name; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = (c, n) => { name = n; }; shareJournalTrade()');
@@ -407,7 +407,7 @@ test('Share: one tap copies a card image with the entry, the stop, the exit, the
 test('the share icon on a trade\'s card copies that trade\'s card, without opening it', async t => {
   const { run, state, elements } = await page({}, t);
   const list = elements.get('journalList')?.innerHTML || elements.get('journalSection').innerHTML;
-  assert.match(list, new RegExp(`<button class="journal-share-btn" data-action="shareJournalTrade" data-arg="${KEY.replace(/[|.]/g, '\\$&')}" aria-label="Share AAPL as an image"`), 'beside its side tags');
+  assert.match(list, new RegExp(`<button class="share-btn" data-action="shareJournalTrade" data-arg="${KEY.replace(/[|.]/g, '\\$&')}" aria-label="Share AAPL as an image"`), 'beside its side tags');
   run(`var spec; drawShareCard = s => { spec = s; return {}; }; shareCanvasToClipboard = () => {}; shareJournalTrade('${KEY}')`);
   assert.deepEqual(json(run, 'spec').title.map(p => p.t), ['AAPL  ', 'LONG']);
   assert.equal(state.journalTrade, null, 'the list stays: no trade page opened');
