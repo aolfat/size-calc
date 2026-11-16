@@ -145,9 +145,8 @@ function setupLine(list) {
  * @param {ParentNode} root
  */
 export function fitSetupLines(root) {
-  for (const line of root.querySelectorAll?.('.jb-setup-line') || []) {
+  const lines = [...(root.querySelectorAll?.('.jb-setup-line') || [])].map(line => {
     const pills = [...line.querySelectorAll('.journal-setup')], more = line.querySelector('.jb-setup-more');
-    if (!more) continue;
     let shown = pills.length;
     const show = () => {
       pills.forEach((p, i) => { p.hidden = i >= shown; });
@@ -156,16 +155,42 @@ export function fitSetupLines(root) {
       more.title = pills.slice(shown).map(p => p.title).join(', ');
       line.classList.toggle('jb-setup-solo', shown === 1);
     };
-    show();
-    if (!line.clientWidth) continue; // not laid out: nothing to measure
-    while (shown > 1 && line.scrollWidth > line.clientWidth + 1) { shown--; show(); }
-  }
+    return { line, pills, more, fit: () => { shown = pills.length; show(); if (line.clientWidth) while (shown > 1 && line.scrollWidth > line.clientWidth + 1) { shown--; show(); } } };
+  }).filter(l => l.more);
+  const wrap = root.querySelector?.('.jb-wrap.jb-fits, .jb-wrap.jb-squeezed'), table = wrap?.querySelector('.jb-table');
+  if (wrap && table && wrap.clientWidth) fitTable(wrap, table, lines);
+  else for (const l of lines) l.fit(); // not laid out: each line as drawn
   if (!fitBound) {
     fitBound = true;
     window.addEventListener?.('resize', () => { const el = document.getElementById('journalSection'); if (el) fitSetupLines(el); });
   }
 }
 let fitBound = false;
+
+const SETUPS_MAX = 280, SETUPS_MIN = 96; // px: the line's cap with room to spare, and the least it gives up to
+
+/**
+ * the table lets its rows spill (so the day bands can stick to the window), so it has to fit its column, or its right
+ * end slides under the trade panel: a window too narrow for the setups at full width gets them cut to the room left
+ * (the pills that fit, then +N), and one too narrow even then scrolls the table sideways in its own column instead
+ * @param {HTMLElement} wrap
+ * @param {HTMLElement} table
+ * @param {{ line: HTMLElement, fit: () => void }[]} lines
+ */
+function fitTable(wrap, table, lines) {
+  wrap.classList.add('jb-fits');
+  wrap.classList.remove('jb-squeezed');
+  table.style.removeProperty('--jb-setups-max');
+  for (const l of lines) l.fit();
+  const over = () => table.offsetWidth - wrap.clientWidth;
+  if (over() <= 1) return;
+  const widest = Math.max(0, ...lines.map(l => l.line.offsetWidth));
+  if (widest > SETUPS_MIN) {
+    table.style.setProperty('--jb-setups-max', `${Math.max(SETUPS_MIN, Math.min(SETUPS_MAX, widest) - over())}px`);
+    for (const l of lines) l.fit();
+  }
+  if (over() > 1) { wrap.classList.remove('jb-fits'); wrap.classList.add('jb-squeezed'); } // still too wide: it scrolls
+}
 
 /** a trade's row; `end` closes its day's card */
 function benchRow(t, cols, end = false) {
