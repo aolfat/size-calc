@@ -33,19 +33,27 @@ export function ivRankInfo(symbol, iv) {
 }
 
 export async function fetchAdr(ticker) {
-  // a new symbol opens on the chosen range; reloading the same one keeps the zoom
-  if (ticker !== state.dailySymbol) { state.dailySymbol = ticker; state.dailyView = { count: state.dailyRange, offset: 0 }; }
-  state.adrValue = 0;
-  state.prevDay = null;
-  state.hv20 = 0;
-  state.hvDist = []; // or IV percentile ranks this symbol against the last one's vol
-  state.dailyBars = [];
+  // a new symbol opens on the chosen range and drops the last one's numbers at once (or IV percentile would rank this
+  // symbol against the last one's vol); reloading the same one keeps its zoom, and its bars until the new ones land,
+  // so a reload never blanks the daily pane and a failed one leaves it as it was
+  if (ticker !== state.dailySymbol) {
+    state.dailySymbol = ticker;
+    state.dailyView = { count: state.dailyRange, offset: 0 };
+    state.adrValue = 0;
+    state.prevDay = null;
+    state.hv20 = 0;
+    state.hvDist = [];
+    state.dailyBars = [];
+    updateChartVisibility();
+  }
   try {
     const futures = !!futuresSymbol(ticker);
     const days = futures ? await fetchFuturesDays(ticker) : await dailyHistory(ticker);
     if (ticker !== state.dailySymbol) return; // a newer symbol was requested meanwhile
     if (days.length) applyDailyHistory(days, futures ? futuresSessionClock(Date.now()).day : undefined);
-  } catch(e) {}
+  } catch(e) {
+    if (ticker !== state.dailySymbol) return;
+  }
   renderAdr();
   updateChartVisibility();
   if (state.chartBars.length) drawChart(); // prior-day lines

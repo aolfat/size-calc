@@ -30,12 +30,33 @@ export function schwabRefusal(status) {
 
 const answer = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-/** gives up with an AbortError when the caller's signal fires, like fetch would */
+/**
+ * a market data read gives up after this long, its body included: a stalled request (a phone back from the background,
+ * a dropped connection) would otherwise leave Load spinning and Live waiting for good
+ */
+export const MARKET_TIMEOUT = 15000;
+
+/** the caller's signal, plus the deadline (a TimeoutError); the caller's alone where the browser can't combine them */
+export function withDeadline(signal) {
+  const S = globalThis.AbortSignal;
+  if (typeof S?.timeout !== 'function') return signal;
+  const deadline = S.timeout(MARKET_TIMEOUT);
+  if (!signal) return deadline;
+  return typeof S.any === 'function' ? S.any([signal, deadline]) : signal;
+}
+
+/** an error in words: a read that ran out of time says so @param {any} e */
+export function marketError(e) {
+  return e?.name === 'TimeoutError' ? `No answer in ${MARKET_TIMEOUT / 1000} seconds. Check your connection and try again.` : String(e?.message || e);
+}
+
+/** gives up with the signal's reason (an AbortError, or the deadline's TimeoutError) when it fires, like fetch would */
 function abortable(promise, signal) {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+  const why = () => signal.reason ?? new DOMException('Aborted', 'AbortError');
+  if (signal.aborted) return Promise.reject(why());
   return new Promise((resolve, reject) => {
-    const stop = () => reject(new DOMException('Aborted', 'AbortError'));
+    const stop = () => reject(why());
     signal.addEventListener('abort', stop, { once: true });
     promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
   });
@@ -48,15 +69,17 @@ function abortable(promise, signal) {
  * @param {string} url @param {RequestInit} [init]
  */
 export async function marketFetch(url, init = {}) {
-  if (marketSource() !== 'schwab') return fetch(url, init);
+  const signal = withDeadline(init.signal);
+  if (marketSource() !== 'schwab') return fetch(url, signal ? { ...init, signal } : init); // the signal ends the body's read too
   const req = schwabRequest(url, typeof init.body === 'string' ? init.body : null);
   if (!req) return answer({ fault: 'Schwab has no stand-in for this read.' }, 404);
-  const res = await abortable(schwabApi(req.path, { base: '/marketdata/v1' }), init.signal);
+  // the deadline covers the login's renewal and the body too, which schwabApi's own timeout doesn't
+  const res = await abortable(schwabApi(req.path, { base: '/marketdata/v1' }), signal);
   let body = null;
-  try { body = await res.json(); } catch (e) {}
+  try { body = await abortable(res.json(), signal); } catch (e) { if (signal?.aborted) throw e; }
   if (!res.ok) return answer(body ?? {}, res.status);
   const out = tradierBody(req, body);
-  if (req.kind === 'history') await withToday(req, out, init.signal);
+  if (req.kind === 'history') await withToday(req, out, signal);
   return answer(out);
 }
 
@@ -78,6 +101,6 @@ async function withToday(req, out, signal) {
     if (![q.open, q.high, q.low, q.last].every(v => v > 0)) return;
     out.history = { day: [...days, { date: today, open: q.open, high: q.high, low: q.low, close: q.last, volume: q.volume || 0 }] };
   } catch (e) {
-    if (e?.name === 'AbortError') throw e;
+    if (signal?.aborted) throw e;
   }
 }

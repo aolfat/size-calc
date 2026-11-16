@@ -201,6 +201,8 @@ export function createState() {
     extHours: store.get('chart_ext') === '1', // the Ext chip: the chart pulls 4:00 to 20:00 and the default LOD / HOD include those bars, this device only
     extDay: null, // { symbol, bars }: the latest session's 5-minute bars, extended hours included, while Ext is on
     chartRequestId: 0,
+    chartAppliedId: 0, // the newest fetchChart whose bars are on the chart: an older answer never replaces them
+    chartRaw: null, // { symbol, extended, raw }: the last good 5-minute bars, so a failed refresh or an interval change redraws from them
     adrValue: 0,
     prevDay: null, // { h, l, c } of the last completed session
     hv20: 0, // annualized 20-day historical volatility

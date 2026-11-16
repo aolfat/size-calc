@@ -36,6 +36,9 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Inputs clear on symbol change.
   Only an explicit Load (fetchQuote) reads the ticker field, which doubles as the search box; every refresh (refreshQuote, live ticks, mode switch, expiry, chart interval) keys off `state.quoteData.symbol`, so typed-but-unloaded text never swaps the quote under the old stops.
   Symbols must match isSymbol (ticker.js) before they're fetched or saved, and are URL-encoded and escaped everywhere
+  Every market data read (marketFetch: Tradier, or Schwab's stand-in, the login's renewal and the body included) gives up after 15 seconds (MARKET_TIMEOUT, AbortSignal.timeout), so a stalled request, often a phone back from the background, can't leave Load spinning or Live waiting for good.
+  Load then says 'No answer in 15 seconds' (marketError) and the button comes back.
+  The Schwab worker's token call gives up after 15 seconds too, since every Schwab read waits on one shared renewal.
 - **Stop adjustment strategies**: a segmented control below the stop inputs (#stopStrategy, setStopStrategy) offers None (default), 5m ATR, and Percent.
   Every choice is in view, so turning an adjustment off is one tap on None.
   ATR keeps its 0.25× / 0.5× / 1× / 1.5× / 2× chips.
@@ -193,6 +196,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   A chip lights only while the view shows exactly that range (none after a gesture zoom); tapping it resets to today.
   Panned back, a 'Today →' chip sits in the plot's bottom-right corner (not the caption: no room on phones).
   The view resets to the chosen range on a new symbol (dailySymbol), not on a reload of the same one.
+  A reload of the same symbol keeps its daily bars, ADR and prior-day levels until the new ones land, and a failed one leaves them as they were; a new symbol drops the last one's at once (fetchAdr).
   The price scale fits the VISIBLE bars plus stop/entry lines; the EMA is warmed up on the full history and clipped to the plot. dailyGeom(w) is the one scale for drawing, hover and click-to-stop (dailyPriceAtY).
   Scale, painting and gestures live in ui/candles.js (candleGeom, paintCandles, attachCandleGestures), shared with the position chart; line labels draw over the candles on a backing.
   A mouse drag never sets a stop; touch gestures go through attachTouchCrosshair's optional gestures hooks (a second finger cancels the long-press there, on every chart).
@@ -202,6 +206,10 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Interval chips 5m/15m/30m/65m (chartInterval, persisted): 5m native from timesales, larger intervals aggregated client-side from 5m, bucketed by clock time from the 9:30 open so a missing 5m bar can't shift later buckets (buckets never cross a session), with more lookback per interval (CHART_SESSIONS 1/2/3/5).
   VWAP resets per session; HOD/LOD dashed lines come from the LAST session only; faint separators at session boundaries.
   Walks back up to 6 sessions if today has no data.
+  A refresh that fails or comes back empty keeps the symbol's last good bars and its ATR (state.chartRaw); before, one blip on a live tick blanked the chart until the next good one.
+  Any answer newer than the bars on the chart draws, even when a later request is still out (chartAppliedId): a live tick starts one right after the Load's, and that one may fail.
+  An interval chip redraws from the bars in hand at once, then refetches.
+  A new symbol's bars are never borrowed from the last one: a Load of another ticker clears chartRaw, and its chart stays hidden until its own bars land.
   Dashed lines: HOD/LOD, red long stop, green short stop.
   Overlays: blue VWAP, purple 8 EMA.
   Click/tap = set stop (side-aware).
