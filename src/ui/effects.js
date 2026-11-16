@@ -2,7 +2,7 @@
 // shrinking a screenshot, loading the chart library, opening a WebSocket, and a haptic tap.
 // Callers go through `effects`, so tests can observe or replace one without patching the module that owns it.
 import { copyPlainText } from './copy-text.js';
-import { drawShareCard, shareCanvasToClipboard } from './share-image.js';
+import { drawShareCard, drawTableCard, shareCanvasToClipboard } from './share-image.js';
 import { openSim } from './sim.js';
 import { prepareImage, readClipboardImages } from './image-prep.js';
 
@@ -50,4 +50,4 @@ export function haptic() {
   } catch { /* no haptics here: nothing to feel */ }
 }
 
-export const effects = { copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket, haptic };
+export const effects = { copyPlainText, drawShareCard, drawTableCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket, haptic };
