@@ -260,6 +260,7 @@ export function createState() {
     posCardsOpen: [], // the phone cards (a row's symbol or a spread's key) opened to their figures and buttons
     posLayout: ['cards', 'table'].includes(store.get('positions_layout')) ? store.get('positions_layout') : null, // Positions: a card per position, or the table (positions_layout, this device only); null until picked = cards on a phone, the table wider (posLayoutNow)
     posPnlPct: store.get('positions_pnl_pct') === '1', // open P/L in percent only, the dollars hidden (positions_pnl_pct, this device only)
+    posHideSize: store.get('positions_hide_size') === '1', // Hide sizes: every size in percent, no share counts or dollars but prices, on every Positions surface (positions_hide_size, this device only)
     posActions: '', // the position (a row's symbol or a spread's key) the phone table's action sheet is for
     posJournalBusy: false, // the R column's read of the Journal's records, stops and merges in flight (a promise), or false
     posJournalError: '', // that read failed: R counts from the stops working now until a Refresh tries again

@@ -1,4 +1,4 @@
-// Share cards: hand-drawn PNG of a plan or position, copied to the clipboard (download fallback).
+// Share cards: hand-drawn PNG of a plan or position (or a table of every position: drawTableCard), copied to the clipboard (download fallback).
 import { state } from '../state.js';
 import { inZone, zoneAbbr } from '../lib/zone.js';
 import { effectivePrice } from '../core/extended-hours.js';
@@ -129,6 +129,120 @@ export function drawShareCard(spec) {
       x.fillText(words, PAD + DETAIL_LABEL, y);
     });
   }
+
+  if (spec.footer) {
+    x.font = `500 13px ${SANS_FONT}`;
+    x.fillStyle = SC.text2;
+    x.fillText(spec.footer, PAD, H - 30);
+  }
+  x.font = `700 12px ${SANS_FONT}`;
+  x.textAlign = 'right';
+  x.fillStyle = SC.text3;
+  x.fillText('SHWING TRADER', W - 40, H - 30);
+  x.fillStyle = SC.green;
+  x.fillText('●', W - 40 - x.measureText('SHWING TRADER').width - 8, H - 30);
+  x.textAlign = 'left';
+  return c;
+}
+
+/**
+ * A table card (the positions share): title parts and sub as drawShareCard's, then cols ({ label, right }) over rows of cells
+ * ({ t, c: color, b: bold }), an optional total row under a rule, a footer and the wordmark. Columns take the width their widest
+ * cell needs; the font steps down when the card would pass 1200px.
+ * @param {{ title: { t: string, c?: string }[], sub: string, cols: { label: string, right?: boolean }[], rows: { t: string, c?: string, b?: boolean }[][], total?: { t: string, c?: string, b?: boolean }[] | null, footer?: string }} spec
+ */
+export function drawTableCard(spec) {
+  const meas = document.createElement('canvas').getContext('2d');
+  const PAD = 40, GAP = 28, ROW = 38;
+  const body = [...spec.rows, ...(spec.total ? [spec.total] : [])];
+  let size = 17, widths = [], W = 0;
+  for (size = 17; size >= 12; size--) {
+    widths = spec.cols.map((col, i) => {
+      meas.font = `600 12px ${SANS_FONT}`;
+      let w = meas.measureText(col.label.toUpperCase()).width;
+      for (const row of body) {
+        const cell = row[i];
+        if (!cell || !cell.t) continue;
+        meas.font = `${cell.b ? 700 : 500} ${size}px ${SANS_FONT}`;
+        w = Math.max(w, meas.measureText(cell.t).width);
+      }
+      return w;
+    });
+    meas.font = `700 30px ${SANS_FONT}`;
+    const titleW = spec.title.reduce((a, p) => a + meas.measureText(p.t).width, 0);
+    meas.font = `500 14px ${SANS_FONT}`;
+    const subW = meas.measureText(spec.sub).width;
+    meas.font = `500 13px ${SANS_FONT}`;
+    const footW = spec.footer ? meas.measureText(spec.footer).width + 220 : 0;
+    W = Math.ceil(Math.max(720, titleW + PAD * 2, subW + PAD * 2, footW + PAD * 2, PAD * 2 + widths.reduce((a, b) => a + b, 0) + GAP * (widths.length - 1)));
+    if (W <= 1200) break;
+  }
+  const slack = Math.max(0, (W - PAD * 2 - widths.reduce((a, b) => a + b, 0) - GAP * (widths.length - 1)) / Math.max(1, widths.length - 1));
+  const lefts = [];
+  widths.reduce((x, w) => { lefts.push(x); return x + w + GAP + slack; }, PAD);
+
+  const headTop = 126, rowsTop = headTop + 22;
+  const totalTop = rowsTop + spec.rows.length * ROW + (spec.total ? 10 : 0);
+  const H = totalTop + (spec.total ? ROW : 0) + (spec.footer ? 44 : 20) + 24;
+  const scale = 2;
+  const c = document.createElement('canvas');
+  c.width = W * scale; c.height = H * scale;
+  const x = c.getContext('2d');
+  x.scale(scale, scale);
+  x.fillStyle = SC.bg; x.fillRect(0, 0, W, H);
+  const rr = (px, py, pw, ph, r) => {
+    x.beginPath();
+    x.moveTo(px + r, py);
+    x.arcTo(px + pw, py, px + pw, py + ph, r);
+    x.arcTo(px + pw, py + ph, px, py + ph, r);
+    x.arcTo(px, py + ph, px, py, r);
+    x.arcTo(px, py, px + pw, py, r);
+    x.closePath();
+  };
+  const g = x.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, SC.card1); g.addColorStop(1, SC.card2);
+  rr(14, 14, W - 28, H - 28, 16);
+  x.fillStyle = g; x.fill();
+  x.strokeStyle = SC.border; x.lineWidth = 1.5; x.stroke();
+
+  let tx = PAD;
+  x.font = `700 30px ${SANS_FONT}`;
+  spec.title.forEach(part => {
+    x.fillStyle = part.c || SC.text;
+    x.fillText(part.t, tx, 66);
+    tx += x.measureText(part.t).width;
+  });
+  x.font = `500 14px ${SANS_FONT}`;
+  x.fillStyle = SC.text2;
+  x.fillText(spec.sub, PAD, 96);
+
+  const cellAt = (cell, i, y) => {
+    if (!cell || !cell.t) return;
+    const right = spec.cols[i].right;
+    x.textAlign = right ? 'right' : 'left';
+    x.fillText(cell.t, right ? lefts[i] + widths[i] : lefts[i], y);
+  };
+  x.font = `600 12px ${SANS_FONT}`;
+  x.fillStyle = SC.text3;
+  spec.cols.forEach((col, i) => cellAt({ t: col.label.toUpperCase() }, i, headTop));
+  const rule = (y, color) => { x.strokeStyle = color; x.lineWidth = 1; x.beginPath(); x.moveTo(PAD, y); x.lineTo(W - PAD, y); x.stroke(); };
+  rule(headTop + 10, SC.border);
+  const drawRow = (row, top) => row.forEach((cell, i) => {
+    if (!cell) return;
+    x.font = `${cell.b ? 700 : 500} ${size}px ${SANS_FONT}`;
+    x.fillStyle = cell.c || SC.text;
+    cellAt(cell, i, top + ROW / 2 + size * 0.36);
+  });
+  spec.rows.forEach((row, ri) => {
+    const top = rowsTop + ri * ROW;
+    if (ri) rule(top, 'rgba(50,58,74,0.55)');
+    drawRow(row, top);
+  });
+  if (spec.total) {
+    rule(totalTop - 4, SC.border);
+    drawRow(spec.total, totalTop);
+  }
+  x.textAlign = 'left';
 
   if (spec.footer) {
     x.font = `500 13px ${SANS_FONT}`;

@@ -26,7 +26,7 @@ import { anchorWords, fundLink, fundPriceFor, onFundAnchor, underPriceFor } from
 import { showError } from './feedback.js';
 import { openOrderEdit } from './order-edit.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
-import { positionChartInCards, positionRUnit, renderPositions, rUnitWords } from './positions.js';
+import { positionChartInCards, positionRUnit, renderPositions, rUnitWords, sizesHidden } from './positions.js';
 import { maxLossPerTrade } from './risk.js';
 
 // how much to sell, in percent of what you hold, then All; ✎ makes them your own (sell_pct_presets), the % box takes any other
@@ -740,9 +740,11 @@ export function renderPositionChart() {
   if (!c) return;
   const row = chartRow(), spread = chartSpread();
   document.getElementById('posChartTitle').textContent = c.label;
+  // Hide sizes (Settings, Positions): the size as a percent of the account
+  const sized = (n, words, pctAcct) => sizesHidden() ? ` · ${pctAcct.toFixed(1)}% of acct` : ` ${words(n)}`;
   document.getElementById('posChartMeta').textContent = row
-    ? `${row.qty > 0 ? 'Long' : 'Short'} ${units(c.option, Math.abs(row.qty))} · avg ${row.avg > 0 ? fmt$(row.avg) : '—'} · now ${fmt$(row.price)}`
-    : spread ? `${spread.kind === 'debit' ? 'Long' : 'Short'} ${spreadWords(spread.units)} · ${spread.kind} ${spread.avg > 0 ? fmt$(spread.avg) : '—'} · now ${fmt$(spread.price)}` : '';
+    ? `${row.qty > 0 ? 'Long' : 'Short'}${sized(Math.abs(row.qty), n => units(c.option, n), row.pctAcct)} · avg ${row.avg > 0 ? fmt$(row.avg) : '—'} · now ${fmt$(row.price)}`
+    : spread ? `${spread.kind === 'debit' ? 'Long' : 'Short'}${sized(spread.units, spreadWords, spread.pctAcct)} · ${spread.kind} ${spread.avg > 0 ? fmt$(spread.avg) : '—'} · now ${fmt$(spread.price)}` : '';
   // a pane without bars hides, and says why here: still loading, or what Tradier answered
   const notes = c.error ? [c.error] : PANES.filter(k => !c[k].bars.length).map(k => c[k].loading ? `Loading the ${chartName(c)} ${k === 'five' ? '5-minute' : 'daily'} chart…` : c[k].error);
   document.getElementById('posChartStatus').textContent = notes.filter(Boolean).join(' ');
@@ -859,7 +861,9 @@ export function priorDay(fiveBars, dailyBars) {
 function chartLines(c, row) {
   const css = getComputedStyle(document.documentElement);
   const color = name => css.getPropertyValue(name).trim();
-  const size = q => ' ×' + q.toLocaleString('en-US');
+  // with sizes hidden, a line's size is its percent of the position
+  const held = heldOf(c);
+  const size = q => !sizesHidden() ? ' ×' + q.toLocaleString('en-US') : held ? ` · ${Math.round(q / held * 100)}%` : '';
   // on the underlying's chart every line of the fund's sits where the underlying puts the fund at it, labelled with the fund's price
   const tag = onUnder(c) ? c.symbol + ' ' : '', at = v => toChart(c, row, v);
   const lines = levelsOf(c, row).map(l => l.kind === 'avg'

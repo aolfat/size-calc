@@ -304,6 +304,89 @@ test('% only hides the dollar P/L of open positions on the cards, the phone tabl
   assert.doesNotMatch(desk.elements.get('positionsSection').innerHTML, /data-arg="pnl"|data-arg="day"/, 'and their chips');
 });
 
+test('Hide sizes puts every size in percent: no share counts and no dollars but prices, on the cards, both tables and the orders', async () => {
+  const net = network(schwabOk);
+  const storage = connected();
+  const phone = await app({ width: 390, fetch: net.fetch, storage });
+  phone.run("setView('positions')");
+  await settle();
+  const html = () => phone.elements.get('positionsSection').innerHTML;
+  assert.match(html(), /100 sh/, 'sizes show until asked');
+  phone.run("setPosSizes('hide')");
+  assert.equal(storage.get('positions_hide_size'), '1');
+  assert.equal(phone.elements.get('posSizesHide').getAttribute('aria-pressed'), 'true');
+  const sizes = /\b100 sh\b|\b2 ct\b|\b50 sh\b|\$5,500|\$100,000|\$25,000|\$500\.00|\$1,000\.00/;
+  assert.doesNotMatch(html(), sizes, 'no share counts, values or dollar P/L on the cards');
+  const card = html().split('<article').find(c => c.includes('data-arg="TEST"'));
+  assert.match(card, /\$50\.00 → <\/?.*\$55\.00.*5\.5% of acct/s, 'cost → price and the size as a percent of the account');
+  assert.match(card, /<span class="pc-pnl pos-locked">\+10\.0%<\/span>/, 'the P/L in percent');
+  assert.match(html(), /<dt>Account<\/dt><dd class="">Hidden<\/dd>/);
+  assert.match(html(), /<dt>Invested<\/dt><dd class="">6\.2%<\/dd>/);
+  assert.match(html(), /Sizes hidden/);
+  assert.doesNotMatch(html(), /togglePosHideValue/, 'the value stays hidden: no Show');
+  phone.run("togglePosCard('TEST')");
+  const open = html().split('<article').find(c => c.includes('data-arg="TEST"'));
+  assert.match(open, /<dt>Of acct<\/dt><dd>5\.50%<\/dd>/);
+  assert.match(open, /<dt>Risk @ stop<\/dt><dd><span class="pos-loss">−0\.20%<\/span><\/dd>/, 'risk at the stop as a percent of the account');
+  assert.doesNotMatch(html(), sizes);
+
+  phone.run("setPosLayout('table')");
+  assert.doesNotMatch(html(), /<th scope="col">Qty<\/th>|<th scope="col">Mkt val<\/th>|<th scope="col">P\/L<\/th>/);
+  assert.match(html(), /<th scope="col">% of acct<\/th>/);
+  assert.doesNotMatch(html().split('class="card positions-card orders-card"')[0], sizes, 'nor in the phone table');
+  assert.match(html(), /Account value hidden/);
+  phone.run("openPosActions('TEST')");
+  const sheet = phone.elements.get('posActionsBody').innerHTML;
+  assert.doesNotMatch(sheet, sizes, 'nor in the actions sheet');
+  assert.match(sheet, /5\.5% of acct/);
+
+  const orders = html().split('class="card positions-card orders-card"')[1];
+  assert.match(orders, /100%<span class="pos-sub">of the position<\/span>/, 'a working order is a percent of the position it closes');
+  assert.match(orders, /60%<span class="pos-sub">of the position<\/span>/, '30 of the 50 SHRT');
+  assert.doesNotMatch(orders, /<td>30<\/td>|<td>100<\/td>/);
+
+  // the desktop table, a new visit keeping the choice
+  const desk = await app({ width: 1280, fetch: net.fetch, storage });
+  desk.run("setView('positions')");
+  desk.run("setPosLayout('table')");
+  await settle();
+  const dh = desk.elements.get('positionsSection').innerHTML;
+  assert.doesNotMatch(dh, /<th scope="col">Qty<\/th>|<th scope="col">Market value<\/th>/);
+  assert.match(dh, /<th scope="col">% of acct<\/th>/);
+  assert.doesNotMatch(dh.split('class="card positions-card orders-card"')[0], sizes, 'nor in the desktop table');
+  const head = (dh.match(/<thead><tr>(.*?)<\/tr><\/thead>/) || [])[1];
+  const foot = (dh.match(/<tfoot><tr>(.*?)<\/tr><\/tfoot>/s) || [])[1];
+  assert.equal((foot.match(/<t[hd]/g) || []).length, (head.match(/<th/g) || []).length, 'the total row lines up with the head');
+
+  desk.run("setPosSizes('show')");
+  assert.match(desk.elements.get('positionsSection').innerHTML, /<th scope="col">Qty<\/th>/);
+  assert.equal(storage.get('positions_hide_size'), '0');
+});
+
+test('Share copies a card of every position with no share counts and no dollars but prices', async () => {
+  const net = network(schwabOk);
+  const { run, elements } = await app({ width: 390, fetch: net.fetch, storage: connected() });
+  run("setView('positions')");
+  await settle();
+  assert.match(elements.get('positionsSection').innerHTML, /data-action="sharePositions"/);
+  run('var spec, copied; drawTableCard = s => { spec = s; return { card: true }; }; shareCanvasToClipboard = (c, name) => { copied = { c, name }; };');
+  run('sharePositions()');
+  const spec = run('spec'), copied = run('copied');
+  assert.equal(copied.c.card, true);
+  assert.match(copied.name, /^positions-\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(spec.cols.map(c => c.label), ['Position', 'Side', 'Size', 'Cost', 'Price', 'P/L', 'R', 'Stop', 'Risk']);
+  assert.equal(spec.rows.length, 4);
+  const text = JSON.stringify(spec);
+  assert.doesNotMatch(text, /\$5,500|\$100,000|\$25,000|\$500\.00|\$1,000|\b100 sh|\bshares\b|\bcontracts\b/, 'no counts or dollar amounts');
+  const test = spec.rows.find(r => r[0].t === 'TEST').map(c => c && c.t);
+  assert.deepEqual(test.slice(0, 6), ['TEST', 'Long', '5.5%', '$50.00', '$55.00', '+10.0%']);
+  assert.equal(test[7], '$48.00');
+  assert.equal(test[8], '−0.20%', 'risk at the stop as a percent of the account');
+  assert.equal(spec.rows.find(r => r[0].t === 'SHRT')[1].t, 'Short');
+  assert.equal(spec.total[2].t, '6.2%');
+  assert.match(spec.sub, /percent of the account/);
+});
+
 test('an option bought with no stop draws its ladder from zero: the premium is the risk', async () => {
   const { run } = await app();
   const html = run(`(() => { const p = positionRows(${JSON.stringify(ACCOUNT.securitiesAccount)}, []); return positionCard(p.rows.find(r => r.option)); })()`);

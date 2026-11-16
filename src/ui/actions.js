@@ -26,7 +26,7 @@ import { addTradeTactic, applyTradeQuick, cancelTradeTactic, pickTradeLevel, pic
 import { openSpreadClose, placeSpreadClose, setSpreadCloseDuration, setSpreadClosePct, setSpreadClosePctText, setSpreadClosePortion, setSpreadClosePrice, setSpreadCloseQty, setSpreadCloseType } from './spread-close.js';
 import { cancelOriginalStop, clearOriginalStop, openOriginalStop, saveOriginalStop, setOriginalStopText } from './position-original.js';
 import { openPositionTrade, placePositionTrade, setCloseUnder, setCloseAt, setClosePortion, setClosePrice, setCloseQty, setCloseR, setCloseRText, setClosePct, setClosePctText, setCloseType, setPositionBeAt, setPositionBeMode, setPositionSession, setPositionStopAt, setPositionStopDuration, setPositionStopOriginal, setPositionStopPick, setPositionStopPrice, toggleREdit } from './position-trade.js';
-import { openPosActions, refreshPositions, setPosLayout, setPosPnl, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
+import { openPosActions, refreshPositions, setPosLayout, setPosPnl, setPosSizes, togglePosCard, togglePosColumn, togglePosColumnsMenu, togglePosHideValue, togglePosLegs } from './positions.js';
 import { simPosition } from './position-sim.js';
 import { fetchQuickOption, parseQuick, toggleQuick } from './quick-lookup.js';
 import { addRiskPreset, recalcAll, removeRiskPreset, setRiskAddUnit, setRiskPct, setRiskUsd, stepRisk, syncFromDollar, toggleRiskEdit } from './risk.js';
@@ -49,6 +49,7 @@ import { cancelFundEdit, clearJournalPicks, clearTradeStop, editFund, resetFund,
 import { downloadSchwabHistory } from './schwab-history.js';
 import { sharePinned, shareShares } from './share-image.js';
 import { shareJournalTrade } from './journal-share.js';
+import { sharePositions } from './positions-share.js';
 import { contractsQtyChanged, renderShares, sharesQtyChanged } from './shares.js';
 import { closeSheet, dismissSheet, openSheet } from './sheets.js';
 import { toggleKbdHelp } from './shortcuts.js';
@@ -560,6 +561,7 @@ export const actions = {
   togglePosColumnsMenu: () => togglePosColumnsMenu(),
   togglePosColumn: el => togglePosColumn(arg(el)),
   togglePosHideValue: () => togglePosHideValue(),
+  sharePositions: () => sharePositions(),
   togglePosLegs: el => togglePosLegs(arg(el)),
   togglePosCard: el => togglePosCard(arg(el)),
   openPosActions: el => openPosActions(arg(el)),
@@ -576,6 +578,7 @@ export const actions = {
   },
   setPosLayout: el => setPosLayout(arg(el)),
   setPosPnl: el => setPosPnl(arg(el)),
+  setPosSizes: el => setPosSizes(arg(el)),
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),

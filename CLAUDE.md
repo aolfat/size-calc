@@ -19,7 +19,7 @@ They sit outside `src/` on purpose (the test harness loads and scans every `src/
   Adding a control = attribute in markup + one entry in `actions`.
   A test fails on any inline `on*` attribute or any action name without a handler (and vice versa)
 - **Seams**: `onStoreWrite` (store tells the cloud module about value-changing writes, which marks account keys pending) and `onCloudView` (cloud reports status, rehydrate and pulled-toast to the settings sheet, which registers it on import).
-  Side effects tests swap go through `effects` in `src/ui/effects.js` (copyPlainText, drawShareCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket, haptic): call `effects.x(...)`, not the import
+  Side effects tests swap go through `effects` in `src/ui/effects.js` (copyPlainText, drawShareCard, drawTableCard, shareCanvasToClipboard, openSim, reloadPage, wait, downloadText, prepareImage, readClipboardImages, loadChartLibrary, openSocket, haptic): call `effects.x(...)`, not the import
 - **Types**: `core/` and `lib/` are `// @ts-check` with JSDoc; `jsconfig.json` makes editors check them.
   Ad-hoc full check (TypeScript is not a dependency): `npx -p typescript tsc -p jsconfig.json`
 - **Running**: ES modules do not load from `file://`; serve the folder (`npm run serve` = `python3 -m http.server 8765`) and open http://localhost:8765.

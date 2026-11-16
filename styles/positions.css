@@ -5,7 +5,7 @@
 .positions-meta { font-size: 12px; color: var(--text2); font-family: var(--num); }
 .positions-head .btn { margin-left: auto; font-size: 12px; padding: 6px 12px; }
 .positions-head .pos-cols-btn { margin-left: auto; }
-.positions-head .pos-cols-btn + .btn { margin-left: 0; }
+.positions-head .btn + .btn { margin-left: 0; }
 .pos-link { background: none; border: none; padding: 0; color: var(--blue); font: inherit; cursor: pointer; }
 .pos-cols { margin: -4px 0 12px; }
 .pos-cols .filter-btn.active { color: var(--blue); border-color: var(--blue-bd); background: var(--blue-bg); }
@@ -156,6 +156,7 @@
 .pa-acts .pos-act-close { grid-column: 1 / -1; color: var(--red); background: var(--red-bg); }
 .pa-acts .pos-act:nth-last-child(2):nth-child(odd) { grid-column: 1 / -1; } /* an odd one out before Close takes the row */
 .pos-pnl-seg { margin-left: 8px; }
+.pos-sizes-seg { display: flex; width: fit-content; margin-top: 8px; }
 @media (max-width: 600px) { .pos-pnl-seg { margin: 8px 0 0; } }
 
 /* Position chart: one position's 5-minute and daily charts with its cost, stops and targets, and the profit-target form.
