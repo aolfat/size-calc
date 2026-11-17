@@ -14,6 +14,7 @@ import { closeJournalTrade, openJournalTrade, stepJournalTrade } from './journal
 import { journalLayout, stepJournalSelection } from './journal-bench.js';
 import { benchKeys, closeMonthPicker } from './journal.js';
 import { DESKTOP_MQ, mq } from '../lib/media.js';
+import { clearTradeQuick, tradeQuickBackspace } from './order-plan.js';
 import { closeSheet } from './sheets.js';
 import { closeSim } from './sim.js';
 import { cancelSpread } from './spreads.js';
@@ -33,7 +34,10 @@ export function initShortcuts() {
     const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
     // in the max loss field, ↑ ↓ step through your presets instead of the input's fixed $50
     if (e.target.id === 'riskDollar' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); stepRisk(e.key === 'ArrowUp' ? 1 : -1); return; }
+    // the review's typed line: Backspace on an empty line marks, then takes off, the last pick; Esc clears text before it closes
+    if (e.target.id === 'tradeQuick' && e.key === 'Backspace' && tradeQuickBackspace()) { e.preventDefault(); return; }
     if (e.key === 'Escape') {
+      if (e.target.id === 'tradeQuick' && clearTradeQuick()) return;
       if (state.openSheetName) { closeSheet(); return; }
       if (state.simState) { closeSim(); return; }
       if (state.spreadPending) { cancelSpread(); return; }

@@ -16,7 +16,7 @@ import { showError, showToast } from './feedback.js';
 import { positionsAccountChanged } from './positions.js';
 import { sharesPlan } from './shares.js';
 import { orbEntryName } from './orb.js';
-import { loadPlanChoices, planContext, riskContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
+import { focusTradeQuick, keepQuickCursor, loadPlanChoices, planContext, riskContext, saveTradePlan, startTradePlan, tradePlanHtml } from './order-plan.js';
 import { cardPlan, refreshShareOrderQuote, renderShareOrderCard, renderShareOrderCards, updatePinSharesButton } from './share-orders.js';
 import { inZone } from '../lib/zone.js';
 import { showSheetQuote, watchSheetQuote } from './sheet-quote.js';
@@ -450,7 +450,7 @@ export async function openCardTrade(cardId) {
 }
 
 /** what you picked in a review while its quote was still out goes with the ticket built on that quote */
-const PICKS = ['setups', 'tactics', 'setupGrade', 'pickMove', 'picksTouched', 'prefilled'];
+const PICKS = ['setups', 'tactics', 'setupGrade', 'pickMove', 'openLevel', 'picksTouched', 'prefilled'];
 
 /**
  * A review opened ahead of its quote, for a shares or an option ticket: the sheet shows at once with the ticket as the card
@@ -467,6 +467,7 @@ export async function reviewBehind({ ticket: t, read, rebuild, render, watch }) 
   startTradePlan(t);
   render();
   openSheet('trade');
+  focusTradeQuick();
   if (t.hash) schwabWarm(t.hash, { post: true });
   busyChanged();
   let q = null;
@@ -489,6 +490,7 @@ export function openCardOrder(cardId) {
   state.tradeTicket = t;
   renderTradeSheet();
   openSheet('trade');
+  focusTradeQuick();
   watchTradeQuote(t, state.pinnedData[cardId].quote);
 }
 
@@ -499,6 +501,7 @@ function showReview(t, q, at) {
   startTradePlan(t);
   renderTradeSheet();
   openSheet('trade');
+  focusTradeQuick();
   schwabWarm(t.hash, { post: true }); // the login, the connection and the browser's permission to post, while you review
   watchTradeQuote(t, q, at);
 }
@@ -811,7 +814,7 @@ export function renderTradeSheet() {
     ? (t.orderId ? `<button class="btn" data-action="checkTradeStatus"${state.tradeBusy ? ' disabled' : ''}>↻ Status</button>` : '')
       + (limitWaiting(t) ? `<button class="btn" data-action="openOrderEdit" data-arg="${esc(t.orderId)}" title="Move the limit if it isn't filling">Change limit</button>` : '')
     : `<button class="btn trade-confirm" id="tradePlace" data-action="placeTrade"${state.tradeBusy || !t.order ? ' disabled' : ''}>${esc(t.pending ? CHECKING : placeLabel(t))}</button>`;
-  body.innerHTML = `
+  keepQuickCursor(() => { body.innerHTML = `
     <div class="trade-plan" id="tradePlan">${tradePlanHtml(t)}</div>
     <dl class="trade-legs">
       <div><dt>Entry order</dt><dd><div class="seg entry-types" role="group" aria-label="Entry order">${type('MARKET', 'Market')}${type('LIMIT', 'Limit')}${type('STOP', 'Stop')}${type('STOP_LIMIT', 'Stop limit')}</div>${limit}</dd></div>
@@ -822,7 +825,7 @@ export function renderTradeSheet() {
       ${action}
     </div>
     <p class="trade-result${t.result && t.result.ok !== null ? (t.result.ok ? ' ok' : ' bad') : ''}" id="tradeResult" role="status">${t.result ? esc(t.result.text) : ''}</p>
-    ${t.timing ? `<p class="hint trade-timing">${esc(t.timing)}</p>` : ''}`;
+    ${t.timing ? `<p class="hint trade-timing">${esc(t.timing)}</p>` : ''}`; });
 }
 
 /** Mid | Ask | Bid for a limit entry (the fill-now side second), lit while the price is still the one picked */

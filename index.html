@@ -647,6 +647,11 @@
         <p class="hint">This week's rules, your rules and your goals from the Journal, under your max loss while you size a trade. Signed in only. This device only.</p>
       </div>
       <div class="sheet-section">
+        <div class="sheet-label">Setup picker</div>
+        <div class="seg" role="group" aria-label="Setup picker"><button id="tradePickerSketch" class="active" aria-pressed="true" data-action="setTradePicker" data-arg="sketch">Sketches</button><button id="tradePickerGrid" aria-pressed="false" data-action="setTradePicker" data-arg="grid">Grid</button><button id="tradePickerLevel" aria-pressed="false" data-action="setTradePicker" data-arg="level">Level first</button></div>
+        <p class="hint">How Trade at Schwab picks the setup. Sketches: what happened, drawn, then the level. Grid: a level's row, a move's column, one tap. Level first: the level, then what it did. Typing works the same in all three. This device only.</p>
+      </div>
+      <div class="sheet-section">
         <div class="sheet-label">Positions</div>
         <div class="seg" role="group" aria-label="Positions layout"><button id="posLayoutCards" class="active" aria-pressed="true" data-action="setPosLayout" data-arg="cards">Cards</button><button id="posLayoutTable" aria-pressed="false" data-action="setPosLayout" data-arg="table">Table</button></div>
         <div class="seg pos-pnl-seg" role="group" aria-label="Open P/L"><button id="posPnlBoth" class="active" aria-pressed="true" data-action="setPosPnl" data-arg="both">$ and %</button><button id="posPnlPct" aria-pressed="false" data-action="setPosPnl" data-arg="pct">% only</button></div>

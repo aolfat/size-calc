@@ -340,8 +340,14 @@ function searchWords(names) {
 export function matchesQuery(names, query) {
   const typed = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
   if (!typed.length) return true;
+  const word = wordMatcher(names);
+  return typed.every(word);
+}
+
+/** one typed word against names, matchesQuery's rule. @param {string[]} names @returns {(q: string) => boolean} */
+function wordMatcher(names) {
   const words = searchWords(names), runTogether = names.join('').toLowerCase().replace(/[^a-z0-9&/]+/g, '');
-  return typed.every(q => words.some(w => w.startsWith(q)) || (q.length >= 3 && runTogether.includes(q.replace(/[^a-z0-9&/]+/g, ''))));
+  return q => words.some(w => w.startsWith(q)) || (q.length >= 3 && runTogether.includes(q.replace(/[^a-z0-9&/]+/g, '')));
 }
 
 /**
@@ -406,29 +412,73 @@ export function setupOfParts(lib, parts) {
 }
 
 /**
- * The Trade at Schwab sheet's typed line, '21 ur, 15 orb, a': parts split by commas, each a grade (one letter, A to F), an
- * entry tactic or a setup. A part that starts with a timeframe ('15', '5m') is a tactic when one matches; otherwise a setup
- * when one matches, else a tactic. Each part takes its first match in the order given (setups most used first).
- * @param {string} text
- * @param {{ key: string, names: string[] }[]} setups @param {{ key: string, names: string[] }[]} tactics
- * @returns {{ setups: string[], tactics: string[], grade: string, unmatched: string[] }}
+ * @typedef {{ key: string, names: string[] }} Named
+ * @typedef {{ grade: string, move: string, setups: SetupParts[], tactics: string[], text: string }} QuickPart
+ *   one comma part: a grade; or the move it names ('pattern' for a pattern, '' for none) and every setup it could be, by
+ *   its parts, the likeliest first; or every tactic it could be; nothing of either when it matched nothing
  */
-export function parseQuickPick(text, setups, tactics) {
-  /** @type {{ setups: string[], tactics: string[], grade: string, unmatched: string[] }} */
-  const out = { setups: [], tactics: [], grade: '', unmatched: [] };
-  for (const raw of String(text || '').split(/[,;·]+/)) {
-    const part = raw.trim();
-    if (!part) continue;
-    if (/^[abcdf]$/i.test(part)) { out.grade = part.toUpperCase(); continue; }
-    const tactic = tactics.find(i => matchesQuery(i.names, part));
-    const setup = setups.find(i => matchesQuery(i.names, part));
-    const timed = /^(5|15|30)(m|min)?\b/i.test(part);
-    const pick = timed && tactic ? ['tactics', tactic.key] : setup ? ['setups', setup.key] : tactic ? ['tactics', tactic.key] : null;
-    if (!pick) { out.unmatched.push(part); continue; }
-    const list = /** @type {string[]} */ (out[/** @type {'setups' | 'tactics'} */ (pick[0])]);
-    if (!list.includes(pick[1])) list.push(pick[1]);
+
+/**
+ * One part of the Trade at Schwab sheet's typed line, read as you type it. A single letter A to F is the grade. A part that
+ * starts with a timeframe ('15', '5m') is a tactic when one matches. Otherwise it's a setup read in parts, in this order:
+ * a pattern; a move word and a level in either order ('21 ur', 'ur 21': a word that starts one of a move's names or
+ * initials, long or short, so 'unr' is undercut & rally and reclaim & fail alike), the move on screen tried first; a
+ * move alone ('unr': the picker turns to it, nothing to pick yet); a level alone under the move on screen; one of My setups
+ * by name (a setup of several levels, or one named for itself); then a tactic.
+ * @param {string} text
+ * @param {{ moves: Named[], levels: Named[], patterns: Named[], setups: (Named & { parts: SetupParts })[], tactics: Named[], move: string }} lists
+ *   moves are your actions (both sides' words); setups yours, most used first; move the one the picker shows ('pattern' or an action)
+ * @returns {QuickPart}
+ */
+export function readQuickPart(text, lists) {
+  const part = String(text || '').trim().toLowerCase();
+  /** @type {QuickPart} */
+  const out = { grade: '', move: '', setups: [], tactics: [], text: String(text || '').trim() };
+  if (!part) return out;
+  if (/^[abcdf]$/.test(part)) return { ...out, grade: part.toUpperCase() };
+  const tokens = part.split(/\s+/);
+  const tactics = lists.tactics.filter(i => matchesQuery(i.names, part)).map(i => i.key);
+  if (/^(5|15|30)(m|min)?\b/.test(part) && tactics.length) return { ...out, tactics };
+  const patterns = lists.patterns.filter(i => matchesQuery(i.names, part));
+  if (patterns.length) return { ...out, move: 'pattern', setups: patterns.map(i => ({ pattern: i.key })) };
+  const moves = [...lists.moves.filter(m => m.key === lists.move), ...lists.moves.filter(m => m.key !== lists.move)];
+  let alone = '';
+  for (const m of moves) {
+    const isMove = wordMatcher(m.names), rest = tokens.filter(q => !isMove(q));
+    if (rest.length === tokens.length) continue;
+    if (!rest.length) { alone ||= m.key; continue; }
+    const levels = lists.levels.filter(l => matchesQuery(l.names, rest.join(' ')));
+    if (levels.length) return { ...out, move: m.key, setups: levels.map(l => ({ action: m.key, levels: [l.key] })) };
   }
-  return out;
+  if (alone) return { ...out, move: alone };
+  const onScreen = lists.moves.some(m => m.key === lists.move) ? lists.move : lists.moves[0]?.key || '';
+  const levels = onScreen ? lists.levels.filter(l => matchesQuery(l.names, part)) : [];
+  if (levels.length) return { ...out, setups: levels.map(l => ({ action: onScreen, levels: [l.key] })) };
+  const named = lists.setups.filter(i => matchesQuery(i.names, part));
+  if (named.length) return { ...out, move: named[0].parts.pattern ? 'pattern' : named[0].parts.action || '', setups: named.map(i => i.parts) };
+  return { ...out, tactics };
+}
+
+/**
+ * The whole typed line, '21 ur, 15 orb, a': parts split by commas, each read by readQuickPart. Enter puts on each part's
+ * first setup and tactic and the last grade (setups and tactics once each); last is the part being typed, whose every
+ * match the sheet rings; unmatched the parts that found nothing.
+ * @param {string} text @param {Parameters<typeof readQuickPart>[1]} lists
+ */
+export function readQuickLine(text, lists) {
+  const parts = String(text || '').split(/[,;·]+/).map(p => readQuickPart(p, lists));
+  /** @type {SetupParts[]} */
+  const setups = [];
+  /** @type {string[]} */
+  const tactics = [];
+  let grade = '';
+  for (const p of parts) {
+    if (p.setups[0] && !setups.some(s => sameParts(s, p.setups[0]))) setups.push(p.setups[0]);
+    if (p.tactics[0] && !tactics.includes(p.tactics[0])) tactics.push(p.tactics[0]);
+    if (p.grade) grade = p.grade;
+  }
+  const unmatched = parts.filter(p => p.text && !p.grade && !p.move && !p.setups.length && !p.tactics.length).map(p => p.text);
+  return { setups, tactics, grade, unmatched, last: parts[parts.length - 1] };
 }
 
 /** a setup's key: 'sma50+bounce', 'sma50', or 'pattern:base_breakout'. @param {{ level?: string, action?: string, pattern?: string }} s */

@@ -112,9 +112,43 @@
 .tp-picked:disabled { cursor:default; }
 .tp-need { color:var(--amber); font-size:12px; }
 .tp-title { font-size:12px; font-weight:600; color:var(--text); margin:10px 0 6px; }
-/* the moves share the width evenly; a long name ('Undercut & rally') wraps instead of being cut */
-.tp-moves { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0, 1fr); width:100%; margin-bottom:4px; }
-.tp-moves button { min-width:0; white-space:normal; line-height:1.2; padding:7px 4px; }
+.tp-title-hint { font-weight:400; color:var(--text3); margin-left:4px; }
+/* Sketches: the moves one segmented control, each drawn over its name, the lit one filled blue (owner request: make it pronounced) */
+.tp-moves { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0, 1fr); gap:4px; padding:4px; background:var(--bg); border:1px solid var(--border2); border-radius:12px; }
+.tp-move { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:0; min-height:62px; padding:5px 6px; border:1px solid transparent; border-radius:9px; background:none; color:var(--text2); font-size:12.5px; font-weight:600; line-height:1.15; text-align:center; text-wrap:balance; cursor:pointer; transition:background 0.12s, color 0.12s; }
+.tp-move.active { background:var(--blue-bg); color:var(--blue); border-color:var(--blue); box-shadow:0 0 16px -6px rgba(91,157,255,0.55); }
+.tp-move:disabled { opacity:0.45; cursor:default; }
+.tp-move:not(.active) .tp-glyph { color:var(--text3); }
+.tp-move-count { position:absolute; top:-7px; right:-5px; z-index:1; min-width:17px; padding:0 4px; border-radius:9px; border:2px solid var(--bg); background:var(--blue); color:var(--bg); font-size:10px; font-weight:700; line-height:13px; }
+@media (hover: hover) { .tp-move:not(.active):not(:disabled):hover { background:var(--bg3); color:var(--text); } }
+.tp-glyph { display:block; flex:none; }
+.tp-glyph path { fill:none; stroke:currentColor; stroke-width:1.8; stroke-linejoin:round; stroke-linecap:round; }
+.tp-glyph-level { stroke:currentColor; stroke-opacity:0.45; stroke-dasharray:2 2; }
+.tp-panel { margin-top:8px; padding:8px 10px 10px; background:var(--bg); border:1px solid var(--border); border-radius:10px; }
+.tp-panel-head { font-size:12px; color:var(--text2); margin-bottom:2px; }
+.tp-panel-head b { color:var(--blue); font-weight:600; }
+/* Grid: a row per level, a column per move, a cell per setup */
+.tp-grid { padding:2px 8px 8px; background:var(--bg); border:1px solid var(--border); border-radius:10px; }
+.tp-grid-row { display:grid; grid-template-columns:minmax(0, 1fr) repeat(var(--tp-cols, 3), minmax(44px, 64px)); gap:4px; align-items:center; padding:2px 0; }
+.tp-grid-head { padding:6px 0; border-bottom:1px solid var(--border); }
+.tp-grid-col { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0; font-size:11px; font-weight:600; line-height:1.15; text-align:center; color:var(--text2); }
+.tp-grid-col.has { color:var(--blue); }
+.tp-grid-group { padding:8px 0 2px; font-size:11px; color:var(--text3); }
+.tp-grid-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; color:var(--text); }
+.tp-cell { height:28px; border-radius:6px; background:var(--bg3); border:1px solid var(--border); color:var(--blue); font-weight:700; cursor:pointer; }
+.tp-cell.tp-new { background:transparent; border-style:dashed; }
+.tp-cell.active { background:var(--blue-bg); border:1px solid var(--blue); }
+.tp-cell:disabled { opacity:0.45; cursor:default; }
+@media (hover: hover) { .tp-cell:not(:disabled):hover { border-color:var(--blue-bd); } }
+/* Level first: a tap on a level opens a strip of what it did there */
+.trade-plan .filter-btn.tp-open { border-color:var(--text2); color:var(--text); }
+.tp-lv-move { color:var(--blue); font-size:11px; }
+.tp-strip { flex-basis:100%; display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:6px 8px; border-radius:8px; background:var(--bg3); border:1px solid var(--border2); }
+.tp-strip-name { font-size:12px; color:var(--text2); margin-right:2px; }
+/* typed, not picked yet: Enter takes the bright one */
+.trade-plan .tp-cand { border-color:var(--blue); color:var(--text); box-shadow:0 0 0 2px rgba(91,157,255,0.35); }
+.trade-plan .tp-cand.tp-top { background:rgba(91,157,255,0.16); }
+.tp-picked.tp-armed { border-color:var(--red); }
 .trade-plan .jr-group { grid-template-columns:72px 1fr; padding:4px 0; }
 .trade-plan .jr-group + .jr-group { border-top:0; }
 .trade-plan .jr-group-name { padding-top:5px; font-weight:500; color:var(--text2); }
@@ -133,15 +167,20 @@
 .tp-grade-btn.active.g-A, .tp-grade-btn.active.g-B, .tp-picked-grade.g-A, .tp-picked-grade.g-B { background:var(--green-bg); border-color:var(--green-bd); color:var(--green); }
 .tp-grade-btn.active.g-C, .tp-picked-grade.g-C { background:var(--amber-bg); border-color:#594016; color:var(--amber); }
 .tp-grade-btn.active.g-D, .tp-grade-btn.active.g-F, .tp-picked-grade.g-D, .tp-picked-grade.g-F { background:var(--red-bg); border-color:var(--red-bd); color:var(--red); }
-/* the typed line: desktop only (DESKTOP_MQ), where there's a keyboard */
-.tp-quick { display:none; }
+/* the typed line: desktop only (DESKTOP_MQ), where there's a keyboard; it sits in the plan line, after the picks */
+.tp-quick, .tp-quick-preview { display:none; }
 .trade-plan .jr-none { margin:6px 0 0; font-size:12px; color:var(--text3); }
 .trade-plan .hint { margin:0; }
 .jr-plan .hint { margin:0 0 2px; }
 @media (min-width: 1100px) {
-  .tp-quick { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-bottom:6px; }
-  .tp-quick .jr-search { flex:0 1 260px; }
-  .tp-quick-preview { font-size:12.5px; color:var(--text2); min-width:0; }
+  .tp-line { margin-bottom:4px; min-height:42px; border-color:var(--border2); cursor:text; }
+  .tp-line:focus-within { border-color:var(--blue); box-shadow:0 0 0 3px rgba(91,157,255,0.15); }
+  .tp-line .tp-need { display:none; }
+  .tp-quick { display:block; flex:1 1 140px; min-width:140px; padding:4px 2px; border:0; background:none; outline:none; font-size:15px; color:var(--text); }
+  .tp-quick::placeholder { color:var(--text3); }
+  .tp-quick-preview { display:block; min-height:18px; margin:0 2px 4px; font-size:12.5px; color:var(--text2); min-width:0; }
+  .tp-quick-preview b { color:var(--blue); font-weight:600; }
+  .tp-quick-preview kbd { font:11px/1 var(--sans); background:var(--bg4); border:1px solid var(--border2); border-bottom-width:2px; border-radius:4px; padding:1px 5px; color:var(--text); }
 }
 /* phones: a narrower name column, so the chips keep most of the sheet's width; the grade a full thumb tall */
 @media (max-width: 600px) {
