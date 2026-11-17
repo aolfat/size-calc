@@ -66,8 +66,9 @@ test('the picks come first on the sheet; today\'s focus list and the opening ran
   assert.match(s.picks(), /<div class="tp-line" id="tradePlanLine"><button class="tp-picked" data-action="toggleTradeSetup" data-arg="ema21_bounce" title="Take this setup off">21 EMA bounce<span aria-hidden="true">×<\/span><\/button><button class="tp-picked" data-action="toggleTradeTactic" data-arg="pivot15"[^>]*>15m pivot<span/);
   assert.match(s.picks(), /<span class="tp-need">No grade yet<\/span>/);
   // the move is the picked setup's, its levels grouped, the picked one lit
-  assert.match(s.picks(), /<button class="active" aria-pressed="true" data-action="setTradeMove" data-arg="bounce">Bounce<\/button><button class="" aria-pressed="false" data-action="setTradeMove" data-arg="undercut">Undercut &amp; rally<\/button><button class="" aria-pressed="false" data-action="setTradeMove" data-arg="pattern">Pattern<\/button>/);
-  assert.match(s.picks(), /<span class="jr-group-name">Daily<\/span><span class="jr-group-chips">[^]*?class="filter-btn active" aria-pressed="true" data-action="pickTradeLevel" data-arg="ema21" title="21 EMA bounce">21 EMA</);
+  assert.match(s.picks(), /<button class="tp-move active" aria-pressed="true" data-action="setTradeMove" data-arg="bounce"><svg class="tp-glyph"[^]*?<span class="tp-move-name">Bounce<\/span><span class="tp-move-count" title="1 picked">1<\/span><\/button><button class="tp-move" aria-pressed="false" data-action="setTradeMove" data-arg="undercut"><svg[^]*?<span class="tp-move-name">Undercut &amp; rally<\/span><\/button><button class="tp-move" aria-pressed="false" data-action="setTradeMove" data-arg="pattern"><svg[^]*?<span class="tp-move-name">Pattern<\/span><\/button>/);
+  assert.match(s.picks(), /<div class="tp-panel-head"><b>Bounce<\/b> at…<\/div>/);
+  assert.match(s.picks(), /<span class="jr-group-name">Daily<\/span><span class="jr-group-chips">[^]*?class="filter-btn active" aria-pressed="true" data-action="pickTradeLevel" data-arg="ema21" data-arg2="bounce" title="21 EMA bounce">21 EMA</);
   assert.match(s.picks(), /<span class="jr-group-name">Weekly<\/span>[^]*?data-arg="ema9w"/);
   assert.match(s.picks(), /<span class="jr-group-name">AVWAP<\/span>[^]*?data-arg="avwap_ath"/);
   assert.match(s.picks(), /<span class="jr-group-name">Other<\/span><span class="jr-group-chips"><button class="filter-btn tp-new"[^>]*data-arg="support"/);
@@ -75,7 +76,7 @@ test('the picks come first on the sheet; today\'s focus list and the opening ran
   assert.match(s.picks(), /<span class="jr-group-name">15m<\/span><span class="jr-group-chips"><button class="filter-btn active" aria-pressed="true" data-action="toggleTradeTactic" data-arg="pivot15" title="15m pivot">Pivot</);
   assert.match(s.picks(), /<span class="jr-group-name">Other<\/span><span class="jr-group-chips"><button[^>]*data-arg="six20" title="6\/20 \(Gil Morales\)">6\/20/);
   assert.match(s.picks(), /data-action="startTradeTactic"/);
-  assert.match(s.picks(), /<div class="tp-title">Grade<\/div>\s*<div class="tp-grades"/);
+  assert.match(s.picks(), /<div class="tp-title">Grade<\/div>\s*<div id="tradePickGrade"><div class="tp-grades"/);
 });
 
 test('your setups are read as soon as the trade button shows, once, so the sheet opens with them in place', async () => {
@@ -97,14 +98,14 @@ test('a move and a level make the setup: one of yours is used, a new pair goes i
   await settle();
   s.run("setTradeMove('undercut'); pickTradeLevel('ema21')");
   assert.deepEqual(s.state.tradeTicket.setups, ['ema21_unr'], 'the one you have');
-  assert.match(s.picks(), /class="filter-btn active" aria-pressed="true" data-action="pickTradeLevel" data-arg="ema21" title="21 EMA undercut &amp; rally">21 EMA</);
+  assert.match(s.picks(), /class="filter-btn active" aria-pressed="true" data-action="pickTradeLevel" data-arg="ema21" data-arg2="undercut" title="21 EMA undercut &amp; rally">21 EMA</);
   // a pair you never made is dashed, and a tap makes it, named for its parts
-  assert.match(s.picks(), /class="filter-btn tp-new" aria-pressed="false" data-action="pickTradeLevel" data-arg="sma200" title="200 SMA undercut &amp; rally: a tap adds it to My setups">200 SMA</);
+  assert.match(s.picks(), /class="filter-btn tp-new" aria-pressed="false" data-action="pickTradeLevel" data-arg="sma200" data-arg2="undercut" title="200 SMA undercut &amp; rally: a tap adds it to My setups">200 SMA</);
   await s.run("pickTradeLevel('sma200')");
   const [row] = libraryRows(s);
   assert.deepEqual([row.kind, row.name, row.settings], ['setup', '200 SMA undercut & rally', { action: 'undercut', levels: ['sma200'] }]);
   assert.deepEqual(s.state.tradeTicket.setups, ['ema21_unr', `mine:${row.id}`], 'several setups at once');
-  assert.match(s.picks(), /class="filter-btn tp-new active" aria-pressed="true" data-action="pickTradeLevel" data-arg="sma200"|class="filter-btn active" aria-pressed="true" data-action="pickTradeLevel" data-arg="sma200"/);
+  assert.match(s.picks(), /class="filter-btn active" aria-pressed="true" data-action="pickTradeLevel" data-arg="sma200"/);
   await s.run("pickTradeLevel('sma200')");
   assert.deepEqual(s.state.tradeTicket.setups, ['ema21_unr'], 'tapped again, it comes off');
   await s.run("pickTradeLevel('sma200')");
@@ -117,7 +118,7 @@ test('a move and a level make the setup: one of yours is used, a new pair goes i
   assert.deepEqual(s.state.tradeTicket.setups, [`mine:${row.id}`, 'earnings_gap']);
   // on a short, the words are a short's
   s.run("state.tradeTicket.isLong = false; setTradeMove('bounce')");
-  assert.match(s.picks(), /data-arg="bounce">Rejection<\/button>/);
+  assert.match(s.picks(), /data-arg="bounce"><svg class="tp-glyph"[^>]*><g transform="matrix\(1 0 0 -1 0 20\)">[^]*?<span class="tp-move-name">Rejection<\/span>/, 'the sketch flipped too');
 });
 
 test('a setup that can\'t be added to My setups comes back off the ticket and says why', async () => {
@@ -162,6 +163,7 @@ test('what you marked Review only stays off the sheet, and stays in a review', a
   assert.doesNotMatch(s.picks(), /Accident/);
   s.run("tradeQuickInput('accident')");
   assert.match(s.elements.get('tradeQuickPreview').innerHTML, /no match: accident/, 'the typed line skips it too');
+  s.run("tradeQuickInput('')");
   // the library sheet marks and unmarks it
   const { buildLibrary, onOrderSheet } = await import('../src/core/journal-labels.js');
   const lib = () => buildLibrary(s.state.journalReview.library);
@@ -331,30 +333,139 @@ test('no grade picked saves none; before the grade column is pushed the plan sti
   assert.match(t.elements.get('errorBox').textContent, /Order sent and its plan saved, but not the setup grade: .*setup_grade/);
 });
 
-test('desktop: the plan typed on one line, Enter picks it and clears the line', async () => {
+test('desktop: the plan typed in the plan line; Enter picks it and clears the line', async () => {
   const s = await sheet();
   await s.run('openTrade()');
   await settle();
-  assert.match(s.picks(), /<div class="tp-quick"><input type="text" id="tradeQuick"[^>]*data-input="tradeQuickInput" data-enter="applyTradeQuick"/);
+  assert.match(s.picks(), /<div class="tp-line" id="tradePlanLine"><input type="text" id="tradeQuick" class="tp-quick" placeholder="Type it: 21 ur, 15 orb, a"[^>]*data-input="tradeQuickInput" data-enter="applyTradeQuick"[^>]*\/><span class="tp-need">No setup, tactic or grade yet<\/span><\/div>/);
   s.run("tradeQuickInput('21 ur, 15 piv, a')");
-  assert.equal(s.elements.get('tradeQuickPreview').innerHTML, '21 EMA undercut &amp; rally · 15m pivot · A');
+  assert.equal(s.elements.get('tradeQuickPreview').innerHTML, '<kbd>Enter</kbd> puts on <b>21 EMA undercut &amp; rally · 15m pivot · Grade A</b>');
   s.run('applyTradeQuick()');
   const t = s.state.tradeTicket;
   assert.deepEqual([t.setups, t.tactics, t.setupGrade, s.state.tradeQuickText], [['ema21_unr'], ['pivot15'], 'A', '']);
+  assert.match(s.picks(), /<div class="tp-line" id="tradePlanLine"><button class="tp-picked"[^]*?<input type="text" id="tradeQuick" class="tp-quick" placeholder="Type more"/, 'the picks sit before the cursor');
   s.run("tradeQuickInput('21 ur, earn, 6/20, zzz')");
-  assert.match(s.elements.get('tradeQuickPreview').innerHTML, /Earnings gap · 6\/20 \(Gil Morales\) · <span class="tp-need">no match: zzz<\/span>/);
+  assert.match(s.elements.get('tradeQuickPreview').innerHTML, /Earnings gap · 6\/20 \(Gil Morales\)<\/b> · <span class="tp-need">no match: zzz<\/span>/);
   s.run('applyTradeQuick()');
   assert.deepEqual([t.setups, t.tactics, t.setupGrade], [['ema21_unr', 'earnings_gap'], ['pivot15', 'six20'], 'A'], 'nothing already on comes off');
 });
 
-test('the typed line\'s parts: a grade, a tactic when it starts with a timeframe, else a setup first', async () => {
-  const { parseQuickPick, levelPickGroups } = await import('../src/core/journal-labels.js');
-  // names as setupSearchNames gives them: the setup's, and what it adds up under ('Undercut & rally' is found by 'ur')
-  const setups = [{ key: 'u21', names: ['21 EMA undercut & rally', 'Undercut & rally'] }, { key: 'b50', names: ['50 SMA bounce', 'Bounce'] }, { key: 'b9', names: ['9 EMA bounce', 'Bounce'] }];
-  const tactics = [{ key: 'orb5', names: ['5m ORB'] }, { key: 'e9', names: ['5m 9 EMA bounce'] }, { key: 'rdr', names: ['RDR'] }];
-  assert.deepEqual(parseQuickPick('21 ur, 5 9, b', setups, tactics), { setups: ['u21'], tactics: ['e9'], grade: 'B', unmatched: [] });
-  assert.deepEqual(parseQuickPick('9 b; rdr · f', setups, tactics), { setups: ['b9'], tactics: ['rdr'], grade: 'F', unmatched: [] });
-  assert.deepEqual(parseQuickPick('50 b, nope', setups, tactics), { setups: ['b50'], tactics: [], grade: '', unmatched: ['nope'] });
+test('typing: a move word turns the picker, what Enter takes is ringed, a setup never made is made', async () => {
+  const s = await sheet();
+  await s.run('openTrade()');
+  await settle();
+  const setupArea = () => s.elements.get('tradePickSetup').innerHTML;
+  s.run("tradeQuickInput('unr')");
+  assert.equal(s.state.tradeTicket.pickMove, 'undercut', 'the move alone turns the switch');
+  assert.match(setupArea(), /class="tp-move active" aria-pressed="true" data-action="setTradeMove" data-arg="undercut"/);
+  assert.equal(s.elements.get('tradeQuickPreview').innerHTML, '<b>Undercut &amp; rally</b> at… type the level');
+  s.run("tradeQuickInput('unr 200')");
+  assert.match(setupArea(), /class="filter-btn tp-new tp-cand tp-top" aria-pressed="false" data-action="pickTradeLevel" data-arg="sma200" data-arg2="undercut"/, 'either order, dashed and ringed');
+  s.run("tradeQuickInput('21')");
+  assert.match(setupArea(), /tp-cand tp-top"[^>]*data-arg="ema21" data-arg2="undercut"/, 'a level alone stays under the move on screen');
+  assert.match(setupArea(), /tp-cand"[^>]*data-arg="ema9w"|tp-cand"[^>]*data-arg="ema21w"|^(?![^]*tp-cand")/);
+  s.run("tradeQuickInput('100 sma ur, 15 orb, b')");
+  assert.match(s.elements.get('tradePickGrade').innerHTML, /g-B tp-cand tp-top/);
+  await s.run('applyTradeQuick()');
+  const [row] = libraryRows(s);
+  assert.deepEqual([row.name, row.settings], ['100 SMA undercut & rally', { action: 'undercut', levels: ['sma100'] }]);
+  assert.deepEqual(s.state.tradeTicket.setups, [`mine:${row.id}`]);
+  assert.equal(s.state.tradeTicket.setupGrade, 'B');
+  // a short's words: reclaim & fail is the same move
+  s.run("state.tradeTicket.isLong = false; state.tradeTicket.pickMove = 'bounce'; tradeQuickInput('rf 50')");
+  assert.equal(s.state.tradeTicket.pickMove, 'undercut');
+  assert.match(s.elements.get('tradeQuickPreview').innerHTML, /50 SMA reclaim &amp; fail/);
+});
+
+test('the typed line: Backspace on an empty line marks the last pick, then takes it off; Esc clears text before it closes', async () => {
+  const s = await sheet();
+  await s.run('openTrade()');
+  await settle();
+  s.run("tradeQuickInput('21 ur, a'); applyTradeQuick()");
+  assert.equal(s.run('tradeQuickBackspace()'), true);
+  assert.match(s.picks(), /class="tp-picked tp-armed tp-picked-grade g-A"/);
+  assert.equal(s.state.tradeTicket.setupGrade, 'A', 'marked, still on');
+  s.run('tradeQuickBackspace()');
+  assert.equal(s.state.tradeTicket.setupGrade, '');
+  s.run('tradeQuickBackspace(); tradeQuickBackspace()');
+  assert.deepEqual(s.state.tradeTicket.setups, []);
+  assert.equal(s.run('tradeQuickBackspace()'), false, 'nothing left: Backspace is the browser\'s');
+  s.run("tradeQuickInput('9 b')");
+  assert.equal(s.run('tradeQuickBackspace()'), false, 'text in the line: Backspace edits it');
+  assert.equal(s.run('clearTradeQuick()'), true);
+  assert.equal(s.state.tradeQuickText, '');
+  assert.equal(s.run('clearTradeQuick()'), false, 'an empty line lets Esc close the sheet');
+});
+
+test('the picker starts on the move of your most used setup', async () => {
+  const s = await sheet();
+  await settle();
+  s.run("state.journalReview.labels = { k1: [{ kind: 'setup', value: 'ema21_unr' }], k2: [{ kind: 'setup', value: 'sma50_unr' }] }");
+  await s.run('openTrade()');
+  await settle();
+  assert.match(s.picks(), /class="tp-move active" aria-pressed="true" data-action="setTradeMove" data-arg="undercut"/);
+  s.run("setTradeMove('bounce')");
+  assert.match(s.picks(), /class="tp-move active" aria-pressed="true" data-action="setTradeMove" data-arg="bounce"/, 'a tap still wins');
+});
+
+test('Settings picks the setup picker: Sketches, Grid or Level first, every one picking the same setups', async () => {
+  const s = await sheet();
+  await s.run('openTrade()');
+  await settle();
+  assert.equal(s.run('tradePicker()'), 'sketch', 'Sketches until you pick');
+  s.run("setTradePicker('grid')");
+  assert.equal(s.storage.get('trade_picker'), 'grid');
+  assert.equal(s.elements.get('tradePickerGrid').getAttribute('aria-pressed'), 'true');
+  // Grid: a row per level, a column per move, one tap per setup
+  assert.match(s.picks(), /<div class="tp-grid-row tp-grid-head" style="--tp-cols:2"><span><\/span><span class="tp-grid-col"><svg[^]*?<span>Bounce<\/span><\/span><span class="tp-grid-col"><svg[^]*?<span>Undercut &amp; rally<\/span>/);
+  assert.match(s.picks(), /<div class="tp-grid-row" style="--tp-cols:2"><span class="tp-grid-name">21 EMA<\/span><button class="tp-cell" aria-pressed="false" aria-label="21 EMA bounce"[^>]*data-arg="ema21" data-arg2="bounce"/);
+  await s.run("pickTradeLevel('ema21', 'undercut')");
+  assert.deepEqual(s.state.tradeTicket.setups, ['ema21_unr']);
+  assert.match(s.picks(), /<button class="tp-cell active" aria-pressed="true" aria-label="21 EMA undercut &amp; rally"[^>]*>✓<\/button>/);
+  assert.match(s.picks(), /<span class="jr-group-name">Pattern<\/span>[^]*?data-action="pickTradePattern" data-arg="earnings_gap"/, 'patterns under the grid');
+  // Level first: a level, then what it did; a picked level carries its move
+  s.run("setTradePicker('level')");
+  assert.match(s.picks(), /<button class="filter-btn active" aria-expanded="false" data-action="openTradeLevel" data-arg="ema21"[^>]*>21 EMA <span class="tp-lv-move">undercut &amp; rally<\/span><\/button>/);
+  assert.doesNotMatch(s.picks(), /tp-strip/, 'nothing open yet');
+  s.run("openTradeLevel('sma50')");
+  assert.match(s.picks(), /<span class="tp-strip" role="group" aria-label="What 50 SMA did"><span class="tp-strip-name">50 SMA:<\/span><button class="filter-btn" aria-pressed="false" data-action="pickTradeLevel" data-arg="sma50" data-arg2="bounce"[^>]*>Bounce<\/button><button class="filter-btn" aria-pressed="false" data-action="pickTradeLevel" data-arg="sma50" data-arg2="undercut"/);
+  await s.run("pickTradeLevel('sma50', 'bounce')");
+  assert.deepEqual(s.state.tradeTicket.setups, ['ema21_unr', 'sma50_bounce']);
+  // typing opens the level it reads
+  s.run("tradeQuickInput('200 b')");
+  assert.equal(s.state.tradeTicket.openLevel, 'sma200');
+  assert.match(s.elements.get('tradePickSetup').innerHTML, /What 200 SMA did[^]*?tp-new tp-cand tp-top" aria-pressed="false" data-action="pickTradeLevel" data-arg="sma200" data-arg2="bounce"/);
+  s.run("setTradePicker('nope')");
+  assert.equal(s.run('tradePicker()'), 'level', 'only the three');
+});
+
+test('the typed line\'s parts: a grade, a tactic when it starts with a timeframe, else a setup in parts', async () => {
+  const { readQuickLine, readQuickPart, levelPickGroups } = await import('../src/core/journal-labels.js');
+  const lists = {
+    moves: [{ key: 'bounce', names: ['bounce', 'rejection'] }, { key: 'undercut', names: ['undercut & rally', 'reclaim & fail'] }],
+    levels: [{ key: 'ema9', names: ['9 EMA'] }, { key: 'ema21', names: ['21 EMA'] }, { key: 'ema21w', names: ['21 WK EMA'] }, { key: 'sma50', names: ['50 SMA'] }, { key: 'support', names: ['Support', 'Resistance'] }],
+    patterns: [{ key: 'base', names: ['Base breakout', 'Base breakdown'] }],
+    setups: [{ key: 'combo', names: ['Power pullback'], parts: { action: 'bounce', levels: ['ema21', 'support'] } }],
+    tactics: [{ key: 'orb5', names: ['5m ORB'] }, { key: 'e9', names: ['5m 9 EMA bounce'] }, { key: 'rdr', names: ['RDR'] }],
+    move: 'bounce',
+  };
+  const part = text => readQuickPart(text, lists);
+  assert.deepEqual(part('21 ur').setups, [{ action: 'undercut', levels: ['ema21'] }, { action: 'undercut', levels: ['ema21w'] }]);
+  assert.deepEqual([part('ur 21').move, part('rf 50').setups], ['undercut', [{ action: 'undercut', levels: ['sma50'] }]], 'either order; a short\'s words find the move');
+  assert.deepEqual([part('unr').move, part('unr').setups], ['undercut', []], 'a move alone');
+  const withBreakout = { ...lists, moves: [...lists.moves, { key: 'bo', names: ['Breakout', 'Breakdown'] }] };
+  assert.deepEqual([readQuickPart('breakout', withBreakout).move, readQuickPart('breakdown', withBreakout).move], ['bo', 'bo'], 'a move\'s own word is the move, not the pattern that shares it');
+  assert.deepEqual(readQuickPart('base', withBreakout).setups, [{ pattern: 'base' }]);
+  assert.deepEqual(readQuickPart('res breakout', withBreakout).setups, [{ action: 'bo', levels: ['support'] }]);
+  assert.deepEqual(part('50').setups, [{ action: 'bounce', levels: ['sma50'] }], 'a level alone: the move on screen');
+  assert.deepEqual(readQuickPart('50', { ...lists, move: 'undercut' }).setups, [{ action: 'undercut', levels: ['sma50'] }]);
+  assert.deepEqual(part('resist b').setups, [{ action: 'bounce', levels: ['support'] }], 'a short\'s level word');
+  assert.deepEqual([part('base').move, part('base').setups], ['pattern', [{ pattern: 'base' }]]);
+  assert.deepEqual(part('power').setups, [{ action: 'bounce', levels: ['ema21', 'support'] }], 'one of yours by its name');
+  assert.deepEqual(part('5 9').tactics, ['e9'], 'a timeframe first: a tactic');
+  assert.deepEqual(part('rdr').tactics, ['rdr']);
+  assert.deepEqual(readQuickLine('21 ur, 5 9, b', lists), { setups: [{ action: 'undercut', levels: ['ema21'] }], tactics: ['e9'], grade: 'B', unmatched: [], last: { grade: 'B', move: '', setups: [], tactics: [], text: 'b' } });
+  assert.deepEqual(readQuickLine('9 b; rdr · f, nope', lists).unmatched, ['nope']);
   assert.deepEqual(levelPickGroups(['4 EMA', '9 WK EMA', 'AVWAP from ATH', 'Support', '200 SMA'].map(name => ({ key: name, name }))).map(g => [g.name, g.items.map(i => i.label)]),
     [['Daily', ['4 EMA', '200 SMA']], ['Weekly', ['9 WK EMA']], ['AVWAP', ['AVWAP from ATH']], ['Other', ['Support']]]);
 });

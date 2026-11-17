@@ -27,6 +27,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   The week reviews and the review data (your goals and rules among it, state.journalReview) are read at boot once the Google session is back and again when the app comes to the front, at most every 5 minutes (loadWeekRules); the review data isn't re-read while the Journal is open, which reads its own.
   Saving the rules in the week's review, or a goal or rule in the notebook, shows in the card the next time Size is in view.
   Settings, Rules and goals: Show in Size (the default) or Hide (setWeekRulesShown, `week_rules_calc`, this device only).
+  Settings, Setup picker: how Trade at Schwab picks the setup, Sketches (the default), Grid or Level first (docs/schwab.md, Order plans).
 - **Stops**: ONE global stop pair in the entry and stops card (#stopsCard), used everywhere; with options sized by allocation the card hides.
   Long stop (shares-long + calls, blank = LOD) and short stop (shares-short + puts, blank = HOD).
   Only the stop matching tradeCtx() is shown/drawn (shares follow the Long/Short toggle, options follow chain side; Both view shows both).
