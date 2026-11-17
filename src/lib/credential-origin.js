@@ -1,6 +1,6 @@
 // @ts-check
-// Credentials need HTTPS (or local development). github.io is allowed by request, though every Pages site under the
-// account shares this origin's storage: keep scripts off the others (aolfat.github.io/resume has none), or move hosts.
+// Credentials need HTTPS (or local development). Any HTTPS host passes; the app lives on its own workers.dev origin
+// (shwing-trader.aolfat.workers.dev), so no other site shares its storage.
 export const CREDENTIAL_ORIGIN_MESSAGE = 'Use an HTTPS app address for sign-in and API keys. This address cannot safely store credentials.';
 
 /** @param {string | undefined} href */

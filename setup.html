@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://dhohfavttsxwutanvcuj.supabase.co; font-src 'self'; connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:*; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<title>Schwab login setup</title>
+<link rel="stylesheet" href="styles/legal.css">
+</head>
+<body>
+<main>
+  <p class="brand"><a href="./">● SHWING TRADER</a></p>
+  <h1>Use the app with your own Schwab login</h1>
+  <p class="date">For anyone using Shwing Trader without a Tradier key</p>
+
+  <p>You make your own Schwab developer app and run your own copy of the small worker that logs you in.</p>
+  <p>After that, quotes, charts, option chains, futures, positions and orders all come from your Schwab account.</p>
+  <p>It takes about 20 minutes of work, plus Schwab's wait to approve your app.</p>
+  <p>Why your own: Schwab's individual developer access covers your own accounts, so each person brings their own app. The worker runs on your Cloudflare account, so your Schwab tokens pass only through your worker and your browser.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Schwab brokerage account.</li>
+    <li>A free Cloudflare account (<a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">dash.cloudflare.com/sign-up</a>).</li>
+    <li>A computer with a browser. Nothing to install.</li>
+  </ul>
+
+  <h2>1. Make a Schwab developer app</h2>
+  <ol>
+    <li>Sign up at <a href="https://developer.schwab.com" target="_blank" rel="noopener">developer.schwab.com</a> and ask for individual developer access (Trader API, Individual).</li>
+    <li>Create an app with two API products: <b>Accounts and Trading Production</b> and <b>Market Data Production</b>.</li>
+    <li>Set its callback URL to exactly <code>https://shwing-trader.aolfat.workers.dev/</code> (with the trailing slash).</li>
+    <li>Wait until the app's status says <b>Ready For Use</b>. "Approved - Pending" isn't ready yet; this can take a few days.</li>
+    <li>Note the app's <b>App Key</b> and <b>Secret</b>.</li>
+  </ol>
+  <p>Without Market Data Production, logging in works but quotes and charts don't: the app says Schwab refused the market data.</p>
+
+  <h2>2. Make your worker</h2>
+  <ol>
+    <li>Download the worker: <a href="worker/schwab/worker.js" download="worker.js">worker.js</a>.</li>
+    <li>In Cloudflare, open <b>Workers &amp; Pages</b>, then <b>Create</b>, and start a Worker from <b>Hello World</b>. Name it anything, say <code>my-schwab</code>, and deploy it.</li>
+    <li>Tap <b>Edit code</b>, delete everything in the editor, paste in all of <code>worker.js</code>, and tap <b>Deploy</b>.</li>
+    <li>In the worker's <b>Settings</b>, under <b>Variables and Secrets</b>, add these four, then deploy:
+      <ul>
+        <li><code>SCHWAB_CALLBACK_URL</code>, type Text: <code>https://shwing-trader.aolfat.workers.dev/</code></li>
+        <li><code>ALLOWED_ORIGINS</code>, type Text: <code>https://shwing-trader.aolfat.workers.dev</code> (no trailing slash)</li>
+        <li><code>SCHWAB_APP_KEY</code>, type Secret: the App Key</li>
+        <li><code>SCHWAB_APP_SECRET</code>, type Secret: the Secret</li>
+      </ul>
+    </li>
+    <li>Copy the worker's address from its page, like <code>https://my-schwab.yourname.workers.dev</code>.</li>
+  </ol>
+  <p>Until all four are set, the worker answers "worker not configured". The worker stores nothing.</p>
+
+  <h2>3. Connect in the app</h2>
+  <ol>
+    <li>Open <a href="./">the app</a> and tap the settings button.</li>
+    <li>Leave the Tradier API key empty.</li>
+    <li>Under Schwab, paste your worker's address and tap <b>Log in to Schwab</b>.</li>
+    <li>Log in at Schwab. It sends you back to the app, which finishes by itself.</li>
+    <li>Pick your account. The status line at the top of Settings says Quotes from Schwab.</li>
+  </ol>
+  <p>On iPhone, add the app to your home screen from Safari's share menu if you like.</p>
+
+  <h2>Good to know</h2>
+  <ul>
+    <li>Schwab ends every login after 7 days. The app's banner says when to log in again.</li>
+    <li>Every order is real: Schwab has no sandbox. Try one share first.</li>
+    <li>Without a Tradier key the price doesn't stream: Live checks the quote every 2 seconds.</li>
+    <li>An option contract's own price history isn't on Schwab, so the journal's option bars and the option pane of a position chart stay empty. The underlying's charts work.</li>
+    <li>Signing in with Google is optional. It syncs your settings and shares your Schwab login with your other devices, kept encrypted in the app's database, which the app's administrator can decrypt. Signed out, everything stays in your browser. See <a href="privacy.html">Privacy</a>.</li>
+    <li>You can turn the worker off any time in Cloudflare, or delete the app in Schwab's developer portal.</li>
+  </ul>
+
+  <h2>If something doesn't work</h2>
+  <ul>
+    <li><b>"Your Schwab worker can't read market data yet":</b> your worker is older than the market data relay. Download <code>worker.js</code> again and paste it over the old code.</li>
+    <li><b>"Schwab refused the market data":</b> add Market Data Production to your Schwab app, wait for Ready For Use, then log in again.</li>
+    <li><b>Schwab says the callback doesn't match:</b> the callback URL in the developer portal and <code>SCHWAB_CALLBACK_URL</code> must both be exactly <code>https://shwing-trader.aolfat.workers.dev/</code>.</li>
+    <li><b>"worker not configured":</b> set all four variables (step 2).</li>
+    <li><b>The app can't reach your worker:</b> check <code>ALLOWED_ORIGINS</code> has no trailing slash.</li>
+  </ul>
+  <p>Still stuck: <a href="mailto:ao.aolfat@gmail.com">ao.aolfat@gmail.com</a>.</p>
+
+  <p class="back"><a href="./">Back to the app</a></p>
+</main>
+</body>
+</html>

@@ -1,4 +1,4 @@
-/* The privacy page (privacy.html): a plain reading column in the app's dark theme, same font stack as base.css. */
+/* The plain pages (privacy.html, setup.html): a reading column in the app's dark theme, same font stack as base.css. */
 @font-face { font-family: "Inter"; src: url(../fonts/inter.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
 :root {
   --bg: #0b0d12;
@@ -21,7 +21,10 @@ h2 { font-size: 18px; margin: 32px 0 8px; padding-top: 24px; border-top: 1px sol
 p, li { color: var(--text2); }
 p + p { margin-top: 8px; }
 b { color: var(--text); font-weight: 600; }
-ul { margin: 8px 0 0 20px; }
+ul, ol { margin: 8px 0 0 20px; }
+li ul { margin-top: 6px; }
+ul + p, ol + p { margin-top: 12px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--text); background: #1a1e27; padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
 li + li { margin-top: 6px; }
 a { color: var(--blue); }
 .back { margin-top: 40px; }

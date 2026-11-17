@@ -3,11 +3,13 @@ main = "worker.js"
 compatibility_date = "2026-08-01"
 
 [vars]
-# Moving the app to its own host (../app/README.md) means changing both values.
+# The app lives at https://shwing-trader.aolfat.workers.dev/ (../app/README.md).
+# Redeploy only once the Schwab portal's callback says the same address and the app is Ready For Use again.
 # must match the callback URL in your Schwab app exactly (scheme, host, port, path, trailing slash)
-SCHWAB_CALLBACK_URL = "https://aolfat.github.io/size-calc/"
+SCHWAB_CALLBACK_URL = "https://shwing-trader.aolfat.workers.dev/"
 # pages allowed to call this worker from a browser, comma separated
-ALLOWED_ORIGINS = "https://aolfat.github.io,http://localhost:8765"
+# aolfat.github.io stays only until the move is done: remove it once the repo is private and Pages is off.
+ALLOWED_ORIGINS = "https://shwing-trader.aolfat.workers.dev,https://aolfat.github.io,http://localhost:8765"
 
 # secrets, never in this file:
 #   npx wrangler secret put SCHWAB_APP_KEY

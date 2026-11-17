@@ -3,7 +3,8 @@
 Trading software for swing traders: sizing off a max loss, options, positions, Trade at Schwab, the journal and the market.
 It was the Size Calculator, briefly Bracket, then Tradeforge; Shwing Trader is its name (owner request: a play on swing, for swing traders).
 The name shows in the page title and manifest name ('Shwing Trader'), the home-screen name ('Shwing': manifest short_name and apple-mobile-web-app-title, short so iOS doesn't truncate it) and the share cards' wordmark ('● SHWING TRADER', drawShareCard).
-Addresses keep size-calc (the repo, the Pages URL, the Schwab workers and callback, the service worker's cache, the history download's app field): renaming them would break sign-in and the Schwab login.
+Addresses keep size-calc (the repo, the Schwab workers, the service worker's cache, the history download's app field): renaming them would break the Schwab login and old installs.
+The app's own address is https://shwing-trader.aolfat.workers.dev/ (the Cloudflare worker `shwing-trader`), the Schwab callback with it.
 No build step, no dependencies, no framework: `index.html` markup, `styles/*.css`, and native ES modules in `src/`, served as-is.
 Keep it that way.
 Two exceptions, both pinned in `vendor/`, committed and updated by hand, never loaded from a CDN, each with its version, sha256 and update steps in its header: Supabase's client library, `vendor/supabase.js` (supabase-js 2.117.3, the package's `dist/umd/supabase.js` wrapped as an ES module), loaded with `import()` only when signing in or when a session exists; and TradingView's Lightweight Charts, `vendor/lightweight-charts.js` (lightweight-charts 5.2.1, Apache-2.0, the package's `dist/lightweight-charts.standalone.production.mjs` unmodified under the header), loaded with `import()` (effects.loadChartLibrary) only when a Journal trade page draws a chart.
@@ -61,7 +62,7 @@ Each area's behavior is written down in its own file under `docs/`.
 Read it before changing that area, and update it in the same PR when behavior changes.
 - `docs/calculator.md`: the Size tab (Tradier, stops and stop strategies, ATR, shares and allocation sizing, the options chain and loss model, the simulator, quick lookup, verticals, the daily and intraday charts, live mode, extended hours)
 - `docs/sync.md`: Google sign-in, settings sync, the Tradier key in Vault
-- `docs/schwab-setup.md`: the guide for other people: their own Schwab developer app and worker, no Tradier key (owner request; Schwab's individual developer access covers one's own accounts, so each user brings their own app)
+- `docs/schwab-setup.md`: notes on the guide for other people, `setup.html`, served by the app: their own Schwab developer app and worker, no Tradier key (owner request; Schwab's individual developer access covers one's own accounts, so each user brings their own app)
 - `docs/schwab.md`: the Schwab login and worker, Trade at Schwab, the banner, account size from Schwab, raw capture, the history download
 - `docs/positions.md`: the Positions tab (rows, spreads, columns and R, position trades, the spread close, working orders, cancel, cancel all, edit, the position chart and targets)
 - `docs/journal.md`: the Journal tab (imports, trades, spreads, fees, reviews, bars, features, the trade page and its After the exit and Stop check, the review deck, calendar and stats, the notebook)
@@ -175,17 +176,18 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
 - Possible future: stop-on-premium mode (vs stop-on-underlying), condensed mobile column set for <500px, OI static intraday (OCC settles overnight)
 
 ## Deploy
-The app lives on GitHub Pages (https://aolfat.github.io/size-calc/), where sign-in, API keys and Schwab work.
-Credentials need HTTPS or localhost (`src/lib/credential-origin.js`); any other address clears old credentials on load and disables entry. github.io was briefly blocked too (every Pages site under the account shares the origin's storage) and allowed again by request.
-The only other Pages site there, aolfat.github.io/resume, runs no scripts: any script on any aolfat.github.io page could read the Tradier key, the Google session and the Schwab tokens, so keep it that way.
-`worker/app/wrangler.toml` can serve the same app on its own `workers.dev` origin if that ever changes; `worker/app/README.md` lists the Supabase and Schwab callback changes that move needs.
+The app lives on Cloudflare at https://shwing-trader.aolfat.workers.dev/, the worker in `worker/app/wrangler.toml`, free plan, no domain bought (owner request: a private repo with no hosting bill).
+Cloudflare's Workers Builds deploys it on every push to main (deploy command `npx wrangler deploy --config worker/app/wrangler.toml`, no build command).
+It moved off GitHub Pages (https://aolfat.github.io/size-calc/) so the repo could go private; `worker/app/README.md` lists the Supabase, Google and Schwab callback changes the move needed.
+Until the move is finished, aolfat.github.io stays in the Schwab worker's ALLOWED_ORIGINS and Supabase's redirect list; take it out of both once Pages is off.
+Credentials need HTTPS or localhost (`src/lib/credential-origin.js`); any other address clears old credentials on load and disables entry.
 `.assetsignore` limits deployment to browser runtime files, and `_headers` supplies security headers.
 The shared Schwab worker remains in use; its operator can access tokens in transit, and the Supabase administrator can decrypt synced Tradier keys.
 The Supabase administrator can decrypt the shared Schwab login too (signed in, one login for every device: docs/schwab.md).
 Settings discloses both.
 The entry page must be `index.html` at the root; `styles/`, `src/`, `fonts/` and `data/` deploy beside it as plain files.
 The privacy page, `privacy.html` (styles/legal.css, no scripts), sits beside it, linked from Settings → Account; it is the Google consent screen's privacy policy link, so update it when what the app keeps or who can see it changes.
-`worker/app/wrangler.toml` names the Cloudflare app worker `shwing-trader`.
+`setup.html`, the Schwab setup guide for other people, sits there too (docs/schwab-setup.md), and `worker/schwab/worker.js` deploys as a download for it.
 A Pages deploy that fails or sticks in queued during a GitHub Actions outage may never restart, even re-run (Nov 2026: the re-runs sat queued and could not be cancelled); a new commit on main starts a fresh one.
 The Schwab worker deploys separately with wrangler (`worker/schwab/README.md`).
 The one Edge Function, `supabase/functions/claude-model-example` (Claude adding Model books screenshots), deploys with `npx supabase functions deploy claude-model-example --no-verify-jwt`.

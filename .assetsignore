@@ -2,6 +2,7 @@
 *
 !index.html
 !privacy.html
+!setup.html
 !manifest.json
 !sw.js
 !icon-180.png
@@ -18,3 +19,6 @@
 !vendor/**
 !data/
 !data/*.csv
+!worker/
+!worker/schwab/
+!worker/schwab/worker.js

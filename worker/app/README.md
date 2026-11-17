@@ -6,8 +6,7 @@ Deploy the static app to its own HTTPS origin without buying a domain:
 npx wrangler deploy --config worker/app/wrangler.toml
 ```
 
-Wrangler prints `https://shwing-trader.<your-account>.workers.dev`. Use that
-address as the app's home. This worker serves static files only. Keep using
+Wrangler prints `https://shwing-trader.aolfat.workers.dev`, the app's home. This worker serves static files only. Keep using
 the existing Schwab API worker URL in Settings.
 
 Before signing in:
@@ -26,6 +25,7 @@ Before signing in:
    fresh login after this security update.
 
 Until then the GitHub Pages URL keeps working, sign-in and Schwab included.
+After it, `aolfat.github.io` comes out of the Schwab worker's `ALLOWED_ORIGINS` and Supabase's redirect list.
 Browser storage belongs to the entire host, so repository paths under one
 `github.io` account cannot isolate credentials: that's only safe while no
 other Pages site is published under the account.

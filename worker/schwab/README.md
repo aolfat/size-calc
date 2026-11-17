@@ -16,10 +16,10 @@ browser's storage only (never in sync). Browser calls are accepted
 only from `ALLOWED_ORIGINS`. The worker operator can access tokens passing
 through this worker. They are not hidden from the operator by encryption.
 
-Using the hosted app (https://aolfat.github.io/size-calc/) with your own Schwab
-login? Follow [the setup guide](../../docs/schwab-setup.md): it's the same steps,
-and this folder's `wrangler.toml` already has the hosted app's callback and
-origins, so you only add your app's key and secret.
+Other people using the hosted app (https://shwing-trader.aolfat.workers.dev/) with their own Schwab
+login follow the guide the app serves, https://shwing-trader.aolfat.workers.dev/setup.html
+(`setup.html`, notes in `docs/schwab-setup.md`): they paste this folder's
+`worker.js` into Cloudflare's dashboard and set the variables there.
 
 ## One-time setup
 
@@ -55,7 +55,7 @@ After the Schwab login, Schwab sends the browser to your callback URL with a
 `code` in the address.
 
 - **Callback is the app's own URL** (recommended, for example
-  `https://shwing-trader.<your-account>.workers.dev/`): the app finishes the login by itself.
+  `https://shwing-trader.aolfat.workers.dev/`): the app finishes the login by itself.
   The worker reports its callback at `/callback`, and when it's the app's own
   page, Settings hides the paste box. The portal takes one HTTPS address (a
   comma list was rejected). Changing the callback can put the app back into
@@ -89,19 +89,18 @@ again.
 - History imports stop when the Google user, broker account, or connection
   changes. Delayed login, refresh, and account responses cannot restore a
   disconnected connection. Token and Trader API responses use `no-store`.
-- An origin is the whole host, not a repo: `https://aolfat.github.io` is every
-  GitHub Pages site under that account. Any of them shares the app's
-  localStorage (the Schwab tokens included) and passes `ALLOWED_ORIGINS`, so it
-  can call the worker as the app.
+- An origin is the whole host, not a repo: `https://aolfat.github.io` was every
+  GitHub Pages site under that account. Any of them shared the app's
+  localStorage (the Schwab tokens included) and passed `ALLOWED_ORIGINS`, so it
+  could call the worker as the app. That's why the app moved to its own
+  `workers.dev` origin.
 - `/token` and `/refresh` check only the Origin header, which anything outside a
   browser can set. A stolen refresh token gets fresh access tokens until Schwab
   ends the login, up to 7 days.
 - Serve the app from its own origin, list only that in `ALLOWED_ORIGINS`, and
-  keep other pages off it. The app runs on `aolfat.github.io`, which is safe
-  only while no other Pages site is published under that account. Before
-  adding one, or inviting users to connect brokerage accounts, move the app to
-  its own host (`../app/README.md`): deploying code does not update Schwab or
-  Supabase callback settings.
+  keep other pages off it. The app runs on https://shwing-trader.aolfat.workers.dev
+  (`../app/README.md`); `aolfat.github.io` stays in `ALLOWED_ORIGINS` only
+  until the move is finished.
 - Supabase Vault encrypts synced Tradier keys at rest, but the database
   administrator can decrypt them. Settings discloses this separately from the
   Schwab worker's token access. Neither storage path is operator-blind.
