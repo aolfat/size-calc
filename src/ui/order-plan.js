@@ -163,10 +163,10 @@ const moveName = (lib, move, side) => move === PATTERN ? 'Pattern' : cap(lib.nam
 /** a setup made of parts, as a key the rings go by */
 const partsKey = p => p.pattern ? `p:${p.pattern}` : `a:${p.action || ''}:${[...(p.levels || [])].sort().join('+')}`;
 /** what the typed line rings: every part's first match (Enter's, top) and the part being typed's every match (all) */
-function quickRing(t, lib) {
+function quickRing(t, lib, line) {
   const none = { top: new Set(), all: new Set() };
   if (!(state.tradeQuickText || '').trim()) return none;
-  const line = quickLine(t, lib);
+  line ||= quickLine(t, lib);
   const top = new Set([...line.setups.map(partsKey), ...line.tactics.map(k => `t:${k}`), ...(line.grade ? [`g:${line.grade}`] : [])]);
   return { top, all: new Set([...top, ...line.last.setups.map(partsKey), ...line.last.tactics.map(k => `t:${k}`)]) };
 }
@@ -316,9 +316,12 @@ export function keepQuickCursor(draw) {
   try { box.setSelectionRange(at[0], at[1]); } catch(e) {}
 }
 
-/** desktop: the sheet opens with the cursor in the typed line (owner request), unless you've already moved on in it */
+/**
+ * desktop: the sheet opens with the cursor in the typed line (owner request), unless you've already moved on in it. Only
+ * with a mouse or trackpad: an iPad wide enough for the desktop layout would pop its keyboard over the chips.
+ */
 export function focusTradeQuick() {
-  if (!mq(DESKTOP_MQ) || state.openSheetName !== 'trade') return;
+  if (!mq(DESKTOP_MQ) || !mq('(pointer: fine)') || state.openSheetName !== 'trade') return;
   const box = /** @type {HTMLInputElement | null} */ (document.getElementById('tradeQuick'));
   const at = document.activeElement;
   if (!box || box.disabled || (at && at !== document.body && at !== document.getElementById('tradeSheet') && at !== box)) return;
@@ -473,9 +476,9 @@ const quickLine = (t, lib) => readQuickLine(state.tradeQuickText || '', quickLis
 const partsName = (lib, p, side) => { const have = setupOfParts(lib, p); return have ? lib.nameOf('setup', have.key, side) : setupName(lib, p, side); };
 
 /** under the line: what Enter puts on and what didn't match, the move a lone move word turned to, or what's still missing */
-function quickPreview(t, lib) {
+function quickPreview(t, lib, line) {
   if (!(state.tradeQuickText || '').trim()) { const need = needWords(t); return need ? `<span class="tp-need">${need}</span>` : ''; }
-  const p = quickLine(t, lib), side = sideOf(t);
+  const p = line || quickLine(t, lib), side = sideOf(t);
   const said = [...p.setups.map(s => partsName(lib, s, side)), ...p.tactics.map(k => lib.nameOf('tactic', k)), ...(p.grade ? [`Grade ${p.grade}`] : [])];
   const lone = !said.length && p.last.move && !p.last.setups.length ? `<b>${esc(moveName(lib, p.last.move, side))}</b> at… type the level` : '';
   return (said.length ? `<kbd>Enter</kbd> puts on <b>${esc(said.join(' · '))}</b>` : lone)
@@ -490,12 +493,14 @@ export function tradeQuickInput(value) {
   const t = state.tradeTicket;
   if (!t || !state.journalReview || state.journalReviewError) return;
   if (t.backArmed) { t.backArmed = false; renderTradePlan(); return; }
-  const lib = library(), last = quickLine(t, lib).last;
-  if (last.move && last.move !== moveOf(t, lib)) t.pickMove = last.move;
+  const lib = library();
+  let line = quickLine(t, lib);
+  const { last } = line;
+  if (last.move && last.move !== moveOf(t, lib)) { t.pickMove = last.move; line = quickLine(t, lib); } // a level alone now reads under it
   const one = last.setups[0];
   if (one && !one.pattern && one.levels?.length === 1) t.openLevel = one.levels[0];
-  const ring = quickRing(t, lib);
-  for (const [id, html] of [['tradeQuickPreview', quickPreview(t, lib)], ['tradePickSetup', setupPickerHtml(t, lib, ring)], ['tradePickTactic', tacticPickerHtml(t, lib, ring)], ['tradePickGrade', gradeHtml(t, ring)]]) {
+  const ring = quickRing(t, lib, line);
+  for (const [id, html] of [['tradeQuickPreview', quickPreview(t, lib, line)], ['tradePickSetup', setupPickerHtml(t, lib, ring)], ['tradePickTactic', tacticPickerHtml(t, lib, ring)], ['tradePickGrade', gradeHtml(t, ring)]]) {
     const el = document.getElementById(id);
     if (el) el.innerHTML = html;
   }

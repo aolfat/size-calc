@@ -421,9 +421,9 @@ export function setupOfParts(lib, parts) {
 /**
  * One part of the Trade at Schwab sheet's typed line, read as you type it. A single letter A to F is the grade. A part that
  * starts with a timeframe ('15', '5m') is a tactic when one matches. Otherwise it's a setup read in parts, in this order:
- * a pattern; a move word and a level in either order ('21 ur', 'ur 21': a word that starts one of a move's names or
- * initials, long or short, so 'unr' is undercut & rally and reclaim & fail alike), the move on screen tried first; a
- * move alone ('unr': the picker turns to it, nothing to pick yet); a level alone under the move on screen; one of My setups
+ * a move alone ('unr': the picker turns to it, nothing to pick yet; 'breakout' is the move, not Base breakout); a
+ * pattern; a move word and a level in either order ('21 ur', 'ur 21': a word that starts one of a move's names or
+ * initials, long or short, so 'unr' is undercut & rally and reclaim & fail alike), the move on screen tried first; a level alone under the move on screen; one of My setups
  * by name (a setup of several levels, or one named for itself); then a tactic.
  * @param {string} text
  * @param {{ moves: Named[], levels: Named[], patterns: Named[], setups: (Named & { parts: SetupParts })[], tactics: Named[], move: string }} lists
@@ -439,18 +439,19 @@ export function readQuickPart(text, lists) {
   const tokens = part.split(/\s+/);
   const tactics = lists.tactics.filter(i => matchesQuery(i.names, part)).map(i => i.key);
   if (/^(5|15|30)(m|min)?\b/.test(part) && tactics.length) return { ...out, tactics };
+  const moves = [...lists.moves.filter(m => m.key === lists.move), ...lists.moves.filter(m => m.key !== lists.move)];
+  const isMove = moves.map(m => wordMatcher(m.names));
+  // nothing but a move's words is that move, even where a pattern shares them ('breakout' beside Base breakout)
+  const alone = moves.find((m, n) => tokens.every(isMove[n]));
+  if (alone) return { ...out, move: alone.key };
   const patterns = lists.patterns.filter(i => matchesQuery(i.names, part));
   if (patterns.length) return { ...out, move: 'pattern', setups: patterns.map(i => ({ pattern: i.key })) };
-  const moves = [...lists.moves.filter(m => m.key === lists.move), ...lists.moves.filter(m => m.key !== lists.move)];
-  let alone = '';
-  for (const m of moves) {
-    const isMove = wordMatcher(m.names), rest = tokens.filter(q => !isMove(q));
+  for (const [n, m] of moves.entries()) {
+    const rest = tokens.filter(q => !isMove[n](q));
     if (rest.length === tokens.length) continue;
-    if (!rest.length) { alone ||= m.key; continue; }
     const levels = lists.levels.filter(l => matchesQuery(l.names, rest.join(' ')));
     if (levels.length) return { ...out, move: m.key, setups: levels.map(l => ({ action: m.key, levels: [l.key] })) };
   }
-  if (alone) return { ...out, move: alone };
   const onScreen = lists.moves.some(m => m.key === lists.move) ? lists.move : lists.moves[0]?.key || '';
   const levels = onScreen ? lists.levels.filter(l => matchesQuery(l.names, part)) : [];
   if (levels.length) return { ...out, setups: levels.map(l => ({ action: onScreen, levels: [l.key] })) };

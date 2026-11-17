@@ -176,7 +176,7 @@
   .tp-line { margin-bottom:4px; min-height:42px; border-color:var(--border2); cursor:text; }
   .tp-line:focus-within { border-color:var(--blue); box-shadow:0 0 0 3px rgba(91,157,255,0.15); }
   .tp-line .tp-need { display:none; }
-  .tp-quick { display:block; flex:1 1 140px; min-width:140px; padding:4px 2px; border:0; background:none; outline:none; font-size:15px; color:var(--text); }
+  .tp-quick { display:block; flex:1 1 140px; min-width:140px; padding:4px 2px; border:0; background:none; outline:none; font-size:16px; color:var(--text); }
   .tp-quick::placeholder { color:var(--text3); }
   .tp-quick-preview { display:block; min-height:18px; margin:0 2px 4px; font-size:12.5px; color:var(--text2); min-width:0; }
   .tp-quick-preview b { color:var(--blue); font-weight:600; }

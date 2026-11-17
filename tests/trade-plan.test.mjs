@@ -453,6 +453,10 @@ test('the typed line\'s parts: a grade, a tactic when it starts with a timeframe
   assert.deepEqual(part('21 ur').setups, [{ action: 'undercut', levels: ['ema21'] }, { action: 'undercut', levels: ['ema21w'] }]);
   assert.deepEqual([part('ur 21').move, part('rf 50').setups], ['undercut', [{ action: 'undercut', levels: ['sma50'] }]], 'either order; a short\'s words find the move');
   assert.deepEqual([part('unr').move, part('unr').setups], ['undercut', []], 'a move alone');
+  const withBreakout = { ...lists, moves: [...lists.moves, { key: 'bo', names: ['Breakout', 'Breakdown'] }] };
+  assert.deepEqual([readQuickPart('breakout', withBreakout).move, readQuickPart('breakdown', withBreakout).move], ['bo', 'bo'], 'a move\'s own word is the move, not the pattern that shares it');
+  assert.deepEqual(readQuickPart('base', withBreakout).setups, [{ pattern: 'base' }]);
+  assert.deepEqual(readQuickPart('res breakout', withBreakout).setups, [{ action: 'bo', levels: ['support'] }]);
   assert.deepEqual(part('50').setups, [{ action: 'bounce', levels: ['sma50'] }], 'a level alone: the move on screen');
   assert.deepEqual(readQuickPart('50', { ...lists, move: 'undercut' }).setups, [{ action: 'undercut', levels: ['sma50'] }]);
   assert.deepEqual(part('resist b').setups, [{ action: 'bounce', levels: ['support'] }], 'a short\'s level word');
