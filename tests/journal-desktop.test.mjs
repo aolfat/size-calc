@@ -87,6 +87,51 @@ test('Workbench: a Review column at the right (by the name under 1500px) says wh
   assert.doesNotThrow(() => a.run("fitSetupLines(document.getElementById('journalSection'))"), 'nothing laid out to measure: left as drawn');
 });
 
+/**
+ * a laid-out Workbench table in miniature (the fake DOM has no layout): `rest` px of other columns, each row's setups line
+ * as wide as its shown pills (gap 4) up to the cap the table sets (--jb-setups-max, 280 by default)
+ */
+function laidOut(room, rest, rows) {
+  const cls = (set) => ({ add: c => set.add(c), remove: c => set.delete(c), contains: c => set.has(c), toggle: (c, on) => on ? set.add(c) : set.delete(c) });
+  const vars = new Map(), cap = () => parseFloat(vars.get('--jb-setups-max') ?? '280');
+  const lines = rows.map(widths => {
+    const pills = widths.map(w => ({ w, hidden: false, title: `${w}` })), more = { hidden: true, textContent: '', title: '' };
+    const natural = () => pills.filter(p => !p.hidden).reduce((s, p, i) => s + p.w + (i ? 4 : 0), 0) + (more.hidden ? 0 : 34);
+    const line = { classList: cls(new Set()), querySelectorAll: () => pills, querySelector: () => more,
+      get scrollWidth() { return natural(); }, get clientWidth() { return Math.min(natural(), cap()); }, get offsetWidth() { return Math.min(natural(), cap()); } };
+    return { line, pills, more };
+  });
+  const table = { style: { setProperty: (k, v) => vars.set(k, v), removeProperty: k => vars.delete(k), getPropertyValue: k => vars.get(k) ?? '' },
+    get offsetWidth() { return Math.max(room, rest + Math.max(...lines.map(l => l.line.offsetWidth)) + 16); } };
+  const wrapCls = new Set(['jb-wrap', 'jb-fits']);
+  const wrap = { classList: cls(wrapCls), clientWidth: room, querySelector: () => table };
+  const root = { querySelectorAll: () => lines.map(l => l.line), querySelector: () => wrap };
+  return { root, lines, table, wrapCls };
+}
+
+test('Workbench: a window too narrow for the setups at full width cuts them to the room, so the table never slides under the panel', async () => {
+  const a = await app({ width: 1250 });
+  const fit = a.run('fitSetupLines');
+  // room for all: left alone
+  let t = laidOut(900, 400, [[110, 150]]);
+  fit(t.root);
+  assert.equal(t.table.style.getPropertyValue('--jb-setups-max'), '');
+  assert.equal(t.lines[0].more.hidden, true);
+  // 634px of column, 400 of other columns: 264 at full width is 46 too many, so the cap comes down and the second pill goes to +1
+  t = laidOut(634, 400, [[110, 150], [90]]);
+  fit(t.root);
+  assert.equal(t.table.style.getPropertyValue('--jb-setups-max'), '218px');
+  assert.equal(t.table.offsetWidth, 634, 'it fits its column');
+  assert.deepEqual([t.lines[0].pills.map(p => p.hidden), t.lines[0].more.textContent], [[false, true], '+1']);
+  assert.equal(t.lines[1].more.hidden, true, 'a row that fits keeps its pill');
+  assert.ok(t.wrapCls.has('jb-fits'), 'still spilling, so the day bands stick');
+  // too narrow even with the setups at their least: the table scrolls in its own column
+  t = laidOut(480, 460, [[110, 150]]);
+  fit(t.root);
+  assert.equal(t.table.style.getPropertyValue('--jb-setups-max'), '96px');
+  assert.ok(!t.wrapCls.has('jb-fits') && t.wrapCls.has('jb-squeezed'));
+});
+
 test('Review desk: one click away, the Workbench rail, the cards two-up with the progress, Up next and By setup beside them; kept on this device', async () => {
   const a = await desktop();
   assert.match(a.list(), /data-action="setJournalLayout" data-arg="desk"/);
