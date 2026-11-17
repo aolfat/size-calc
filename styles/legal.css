@@ -1,0 +1,27 @@
+/* The privacy page (privacy.html): a plain reading column in the app's dark theme, same font stack as base.css. */
+@font-face { font-family: "Inter"; src: url(../fonts/inter.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+:root {
+  --bg: #0b0d12;
+  --border: #232936;
+  --text: #e9ecf2;
+  --text2: #97a0b3;
+  --green: #2fd67b;
+  --blue: #5b9dff;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif; /* same stack as base.css */
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); }
+main { max-width: 680px; margin: 0 auto; padding: max(32px, env(safe-area-inset-top)) 16px 64px; }
+.brand { font-size: 13px; font-weight: 700; letter-spacing: .06em; margin-bottom: 24px; }
+.brand a { color: var(--green); text-decoration: none; }
+h1 { font-size: 28px; line-height: 1.2; }
+.date { color: var(--text2); font-size: 14px; margin: 4px 0 24px; }
+h2 { font-size: 18px; margin: 32px 0 8px; padding-top: 24px; border-top: 1px solid var(--border); }
+p, li { color: var(--text2); }
+p + p { margin-top: 8px; }
+b { color: var(--text); font-weight: 600; }
+ul { margin: 8px 0 0 20px; }
+li + li { margin-top: 6px; }
+a { color: var(--blue); }
+.back { margin-top: 40px; }

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://dhohfavttsxwutanvcuj.supabase.co; font-src 'self'; connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:*; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<title>Shwing Trader privacy</title>
+<link rel="stylesheet" href="styles/legal.css">
+</head>
+<body>
+<main>
+  <p class="brand"><a href="./">● SHWING TRADER</a></p>
+  <h1>Privacy</h1>
+  <p class="date">Effective November 17, 2026</p>
+
+  <p>Shwing Trader is a position sizing, trading and journal app for swing traders. This page says what it keeps about you, where, and who can see it.</p>
+
+  <h2>Without signing in</h2>
+  <p>The calculator works without an account.</p>
+  <p>Your settings and any Tradier API key stay in this browser's storage on this device. Nothing is sent to us.</p>
+
+  <h2>Signing in with Google</h2>
+  <p>Sign-in goes through Google and Supabase, the database the app runs on.</p>
+  <p>We receive your name, email address and Google account ID. We use them only to sign you in and keep your data under your account.</p>
+
+  <h2>What's kept in your account</h2>
+  <ul>
+    <li><b>Settings:</b> account size, risk presets, stop settings, last ticker, your Schwab worker address and similar choices.</li>
+    <li><b>API keys and logins:</b> your Tradier key and your Schwab login tokens, encrypted in Supabase Vault, so your other devices can use them.</li>
+    <li><b>Journal:</b> trades you import or that come from Schwab, fills and fees, reviews, labels, notes, plans, model books, screenshots you add, the price bars and trade features the journal saves, and the plan kept with each order you send.</li>
+    <li><b>Claude access keys:</b> only a hash of each key you create, never the key itself.</li>
+  </ul>
+  <p>Every table is locked to its owner: the database only returns your rows to your signed-in account.</p>
+
+  <h2>Who can see it</h2>
+  <ul>
+    <li><b>The app's administrator</b> runs the Supabase project and can technically read your stored data and decrypt your Tradier key and Schwab login. We don't look at your data except to fix a problem you report, or when the law requires it.</li>
+    <li><b>The Schwab worker's operator.</b> Schwab requests pass through the worker whose address you enter in Settings, and its operator can see the tokens and data in transit. If you run your own worker, that's you.</li>
+    <li><b>Anyone holding a Claude access key you create</b> can read your journal and save reviews to it, until you delete the key.</li>
+    <li><b>Anyone who gets into your Google account</b> can sign in as you, and could trade through a Schwab login that's still active.</li>
+  </ul>
+
+  <h2>Services the app talks to</h2>
+  <ul>
+    <li><b>Google</b> for sign-in.</li>
+    <li><b>Supabase</b> to store your account's data.</li>
+    <li><b>Tradier</b> for quotes, charts and option chains, called from your browser with your own key.</li>
+    <li><b>Charles Schwab</b> for market data, positions and orders, through the Schwab worker, when you log in to Schwab.</li>
+    <li><b>Cloudflare</b> serves the app and runs the Schwab worker.</li>
+  </ul>
+  <p>Each of them handles data under its own privacy policy.</p>
+
+  <h2>What we don't do</h2>
+  <ul>
+    <li>No ads, no analytics, no tracking cookies.</li>
+    <li>We never sell or share your data with anyone else.</li>
+    <li>We don't place trades for you. Orders go to Schwab only when you send them.</li>
+  </ul>
+
+  <h2>Keeping and deleting</h2>
+  <p>Your data stays until you delete it or ask us to delete your account.</p>
+  <p>Signing out clears your synced settings, keys and Schwab login from that device; your account keeps them.</p>
+  <p>To delete your account and everything in it, contact the administrator. It's removed within 30 days.</p>
+  <p>The database is on a free plan with no automatic backups, so keep your own copies of anything you can't lose.</p>
+
+  <h2>Not financial advice</h2>
+  <p>The app is a tool. Its numbers can be wrong or late, and every trade is your decision.</p>
+
+  <h2>Changes</h2>
+  <p>If this page changes, the effective date above changes with it.</p>
+
+  <p class="back"><a href="./">Back to the app</a></p>
+</main>
+</body>
+</html>
