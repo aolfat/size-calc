@@ -41,9 +41,10 @@ const OPT_BARS = ['2026-10-08', '2026-10-09', '2026-10-12'].flatMap((day, d) => 
 }));
 
 // Schwab answers from the fixtures; Tradier answers the daily history and the option's timesales, counted
-function network({ bars = BARS, fiveFails = false } = {}) {
+function network({ bars = BARS, fiveFails = false, dailyFails = 0 } = {}) {
   const tradier = [], schwab = [];
   let fails = fiveFails === true ? Infinity : +fiveFails || 0; // true: every 5-minute read fails; a number: that many first
+  let dFails = dailyFails; // the first that many daily reads fail
   const fetch = async (url) => {
     if (url.startsWith(PROXY)) {
       const path = url.slice(PROXY.length);
@@ -53,7 +54,7 @@ function network({ bars = BARS, fiveFails = false } = {}) {
       }
       return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
     }
-    if (url.includes('/markets/history')) { tradier.push(url); return json({ history: bars.length ? { day: bars } : null }); }
+    if (url.includes('/markets/history')) { tradier.push(url); if (dFails > 0) { dFails--; return json({}, 500); } return json({ history: bars.length ? { day: bars } : null }); }
     if (url.includes('/markets/timesales')) { tradier.push(url); if (fails > 0) { fails--; return json({}, 400); } return json({ series: { data: OPT_BARS } }); }
     throw new Error('Unexpected request ' + url);
   };
@@ -527,6 +528,22 @@ test('a pane still missing after its retries tries again on the next Positions r
   run('refreshPositions()');
   await settle();
   assert.equal(fives(), 4, 'a pane with its bars is not read again');
+});
+
+test('the daily pane retries the same way: twice at once, then on the next Positions read', async () => {
+  const { run, elements, tradier } = await chartApp({ dailyFails: 3 });
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const dailies = () => tradier.filter(u => u.includes('/markets/history')).length;
+  assert.equal(dailies(), 3);
+  assert.equal(elements.get('posColD').style.display, 'none');
+  assert.match(elements.get('posChartStatus').textContent, /daily/);
+  assert.equal(run('posChart.five.bars.length'), 10, 'the 5-minute pane shows meanwhile');
+  run('refreshPositions()');
+  await settle();
+  assert.equal(dailies(), 4);
+  assert.equal(run('posChart.daily.bars.length'), 260);
+  assert.equal(elements.get('posColD').style.display, '');
 });
 
 test('a pane that never answers stops retrying after four Positions reads', async () => {
