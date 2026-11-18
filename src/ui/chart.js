@@ -1,4 +1,4 @@
-// Intraday chart: 5-minute timesales (Schwab's price history for futures), aggregated intervals, canvas candles, VWAP and EMA, stop lines, touch crosshair.
+// Intraday chart: 5-minute timesales (Schwab's price history for futures), aggregated intervals, canvas candles, VWAP and the 8 and 21 EMA (each a chip, ui/chart-ind.js), stop lines, touch crosshair.
 import { state } from '../state.js';
 import { aggregateBars } from '../core/bars.js';
 import { effectivePrice, regularBar } from '../core/extended-hours.js';
@@ -11,6 +11,7 @@ import { zoneClock } from '../lib/zone.js';
 import { baseUrl, headers } from '../services/tradier.js';
 import { marketFetch } from '../services/market-source.js';
 import { renderChain } from './chain.js';
+import { indOn, chartAverages } from './chart-ind.js';
 import { effects } from './effects.js';
 import { drawDailyChart, renderAdr, updateChartVisibility } from './daily.js';
 import { fetchFuturesBars } from './futures.js';
@@ -101,7 +102,10 @@ function applyChartBars(ticker, extended, raw) {
   const young = !!futuresSymbol(ticker) && raw.filter(b => (b.t || '').startsWith(days[days.length - 1])).length < 24;
   const sessions = (CHART_SESSIONS[state.chartInterval] || 1) + (young ? 1 : 0);
   const keep = new Set(days.slice(-sessions));
-  state.chartBars = aggregateBars(raw.filter(b => keep.has((b.t || '').slice(0, 10))), state.chartInterval);
+  // buckets never cross a day, so the days before the ones shown aggregate on their own: the EMAs' warm-up
+  const all = aggregateBars(raw, state.chartInterval);
+  state.chartBars = all.filter(b => keep.has((b.t || '').slice(0, 10)));
+  state.chartWarm = all.filter(b => (b.t || '') < (state.chartBars[0]?.t || '')).map(b => b.c);
   const result = calculateAtr5(extended ? raw.filter(b => regularBar(b.t)) : raw);
   state.atr5 = result ? { symbol: ticker, ...result } : null;
   const lastDay = days[days.length - 1];
@@ -156,7 +160,6 @@ export function drawChart() {
   const cRed = css.getPropertyValue('--red').trim();
   const cAmber = css.getPropertyValue('--amber').trim();
   const cBlue = css.getPropertyValue('--blue').trim();
-  const cPurple = css.getPropertyValue('--purple').trim();
   const cText3 = css.getPropertyValue('--text3').trim();
   const cBorder = css.getPropertyValue('--border2').trim();
 
@@ -267,7 +270,7 @@ export function drawChart() {
     ctx.fillRect(x(i) - bw / 2, top, bw, Math.max(1, bot - top));
   }
 
-  // VWAP (blue, resets each session) + 8 EMA (purple) overlays
+  // VWAP (blue, resets each session) and the 8 and 21 EMA, each drawn while its chip is on
   let pvSum = 0, vSum = 0, vwDay = null;
   const vwap = state.chartBars.map(b => {
     const bd = (b.t || '').slice(0, 10);
@@ -276,19 +279,21 @@ export function drawChart() {
     pvSum += tp * (b.v || 0); vSum += (b.v || 0);
     return vSum > 0 ? pvSum / vSum : tp;
   });
-  const k = 2 / 9;
-  let e = state.chartBars[0].c;
-  const ema8 = state.chartBars.map(b => (e = b.c * k + e * (1 - k)));
-  const overlay = (arr, color) => {
+  const overlay = (arr, color, breakAtDay = false) => {
     ctx.save();
+    ctx.beginPath(); ctx.rect(g.padL, g.padT, g.plotW, g.plotH); ctx.clip(); // an average can lag outside the fitted range
     ctx.strokeStyle = color; ctx.lineWidth = 1.25; ctx.globalAlpha = 0.85;
     ctx.beginPath();
-    arr.forEach((p, i) => { i ? ctx.lineTo(x(i), y(p)) : ctx.moveTo(x(i), y(p)); });
+    arr.forEach((p, i) => {
+      const day = (state.chartBars[i].t || '').slice(0, 10);
+      if (i && (!breakAtDay || day === (state.chartBars[i - 1].t || '').slice(0, 10))) ctx.lineTo(x(i), y(p)); else ctx.moveTo(x(i), y(p));
+    });
     ctx.stroke();
     ctx.restore();
   };
-  overlay(vwap, cBlue);
-  overlay(ema8, cPurple);
+  if (indOn('intraday', 'vwap')) overlay(vwap, cBlue, true); // a new session's VWAP starts over, so the line breaks there
+  const color = name => css.getPropertyValue(name).trim();
+  for (const m of chartAverages('intraday', state.chartWarm, state.chartBars.map(b => b.c), color)) overlay(m.values, m.color);
 
   // hover crosshair: vertical on the bar, horizontal at the cursor with a price tag
   if (state.chartHoverY >= g.padT && state.chartHoverY <= g.h - g.padB) {

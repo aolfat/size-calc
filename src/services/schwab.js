@@ -489,9 +489,9 @@ export function schwabFuturesBars(symbol, days = 8, now = Date.now()) {
   return marketData(`/pricehistory?${q}`);
 }
 
-/** a futures ticker's daily candles over the last year (Schwab's price history body) @param {string} symbol */
+/** a futures ticker's daily candles over the last two years (the Size tab's daily pane: its year plus the 200 SMA's warm-up; Schwab's price history body) @param {string} symbol */
 export function schwabFuturesDaily(symbol) {
-  const q = new URLSearchParams({ symbol, periodType: 'year', period: '1', frequencyType: 'daily', frequency: '1' });
+  const q = new URLSearchParams({ symbol, periodType: 'year', period: '2', frequencyType: 'daily', frequency: '1' });
   return marketData(`/pricehistory?${q}`);
 }
 

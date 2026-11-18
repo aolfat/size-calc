@@ -202,13 +202,19 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Debit card leads with max profit; the credit card instead shows an always-visible Max loss / spread stat (max profit = the credit = stat 1) and the credit as % of width (on the pinned stat and share image).
   Breakeven (near K ± net, same formula both kinds), reward/risk; direction tag color follows isBull.
   Share/copy label as '100/110c debit spread' / 'sold … credit spread'
-- **Daily chart**: second canvas pane LEFT of the 5-min when side-by-side; when STACKED (<700px and the compact desktop tier, 1100–1439) the 5-min working chart leads and daily sits below (#chartCol5 order:-1), a window onto the ADR history fetch (~260 sessions incl. today's forming bar), candles + daily 8 EMA + the context's stop lines.
+- **Daily chart**: second canvas pane LEFT of the 5-min when side-by-side; when STACKED (<700px and the compact desktop tier, 1100–1439) the 5-min working chart leads and daily sits below (#chartCol5 order:-1), a window onto the ADR history fetch (~260 sessions incl. today's forming bar), candles + the daily moving averages + the context's stop lines.
   The window: range chips 1M / 3M / 6M / 1Y (21 / 63 / 126 / 252 sessions, default 3M, persisted as daily_range, device-local like show_daily) next to the 'Daily' label; pinch (touch, trackpad as ctrl+wheel, Safari gesture events) or ctrl/cmd+scroll zooms around the cursor, mouse drag / one-finger sideways swipe / horizontal trackpad swipe / shift+scroll pans; plain vertical scroll and vertical swipes still move the page. dailyView {count, offset} counts back from today (core/chart-view.js: clampView, viewRange, zoomView, panView; fractional so small steps add up; 10-bar floor).
   A chip lights only while the view shows exactly that range (none after a gesture zoom); tapping it resets to today.
   Panned back, a 'Today →' chip sits in the plot's bottom-right corner (not the caption: no room on phones).
   The view resets to the chosen range on a new symbol (dailySymbol), not on a reload of the same one.
   A reload of the same symbol keeps its daily bars, ADR and prior-day levels until the new ones land, and a failed one leaves them as they were; a new symbol drops the last one's at once (fetchAdr).
-  The price scale fits the VISIBLE bars plus stop/entry lines; the EMA is warmed up on the full history and clipped to the plot. dailyGeom(w) is the one scale for drawing, hover and click-to-stop (dailyPriceAtY).
+  The price scale fits the VISIBLE bars plus stop/entry lines; the averages are warmed up on the full history and clipped to the plot.
+  **Indicators** (owner request: the daily and intraday charts draw different ones, each one a chip): daily 8 EMA (purple), 21 EMA (amber), 50 SMA (pink), 100 SMA (teal) and 200 SMA (white); intraday 8 EMA, 21 EMA and VWAP (blue).
+  The chips sit over each plot's top-left corner like a legend (#dailyInd, #chartInd, ui/chart-ind.js), so they cost the card no height; a tap hides or shows that line on that chart only.
+  What's off is kept on this device (daily_ind_off, chart_ind_off: the ids turned off, so everything starts on).
+  The colors match the position chart's where they overlap.
+  The daily pane fetches ~680 days (DAILY_FETCH_DAYS, Schwab's futures history two years) so the 200 SMA has a value across the whole 1Y view; it shows only the last 380 days (DAILY_SHOWN_DAYS), and what's before is only the averages' warm-up (state.dailyWarm), so ADR, HV20 and the IV percentile still read the year.
+  The intraday EMAs warm up on the earlier days the 5-minute fetch already holds (14 days), aggregated at the chosen interval (state.chartWarm), so a 21 EMA doesn't start from the first bar on screen. dailyGeom(w) is the one scale for drawing, hover and click-to-stop (dailyPriceAtY).
   Scale, painting and gestures live in ui/candles.js (candleGeom, paintCandles, attachCandleGestures), shared with the position chart; line labels draw over the candles on a backing.
   A mouse drag never sets a stop; touch gestures go through attachTouchCrosshair's optional gestures hooks (a second finger cancels the long-press there, on every chart).
   Click sets a stop (setStopFromPrice, shared with 5-min); hover = full crosshair (vertical bar line + horizontal price line with axis tag, like the 5-min and sim charts) and shares the OHLC readout with a '1D' prefix.
@@ -222,7 +228,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   An interval chip redraws from the bars in hand at once, then refetches.
   A new symbol's bars are never borrowed from the last one: a Load of another ticker clears chartRaw, and its chart stays hidden until its own bars land.
   Dashed lines: HOD/LOD, red long stop, green short stop.
-  Overlays: blue VWAP, purple 8 EMA.
+  Overlays: blue VWAP (broken at each new session, since it starts over), purple 8 EMA, amber 21 EMA, each a chip over the plot (see Indicators under the daily chart).
   Click/tap = set stop (side-aware).
   **Dragging the lines** (owner request: the chart sets the stop; chartLines, chartLineAt, moveChartLine): the entry line (amber, 'entry now' at the price until one is typed) and the active stop line (drawn even when it sits on the LOD / HOD) can be picked up within 6px with a mouse or 14px with a finger, and dragged.
   A finger on a line drags it at once, with no long-press, and keeps the touch from the crosshair and the page (its listeners go on before attachTouchCrosshair's and stop the rest).

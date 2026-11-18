@@ -4,10 +4,10 @@ import { store } from './lib/store.js';
 
 export const DAILY_RANGES = [21, 63, 126, 252]; // 1M / 3M / 6M / 1Y range chips, in sessions
 
-/** the position chart's indicators turned off, from pos_chart_ind_off; a bad or missing value is none */
-function indicatorsOff() {
+/** a chart's indicators turned off, from its key (pos_chart_ind_off, chart_ind_off, daily_ind_off); a bad or missing value is none */
+function indicatorsOff(key = 'pos_chart_ind_off') {
   try {
-    const a = JSON.parse(store.get('pos_chart_ind_off') || '[]');
+    const a = JSON.parse(store.get(key) || '[]');
     return Array.isArray(a) ? a.filter(x => typeof x === 'string') : [];
   } catch (e) { return []; }
 }
@@ -30,6 +30,9 @@ export function createState() {
     optionTradeSide: 'buy',
     exposureBySymbol: Object.create(null),
     chartBars: [],
+    chartWarm: [], // the closes before the intraday chart's first bar at its interval (the earlier days fetched), so its EMAs start warmed up
+    chartIndOff: indicatorsOff('chart_ind_off'), // the intraday chart's indicator chips turned off, by id (chart_ind_off, this device only)
+    dailyIndOff: indicatorsOff('daily_ind_off'), // the daily chart's indicator chips turned off, by id (daily_ind_off, this device only)
     chartHover: -1,
     chartHoverY: -1,
     chartDragRange: null, // { lo, hi } held while a chart line is dragged, so the scale stays put under the pointer
@@ -208,6 +211,7 @@ export function createState() {
     hv20: 0, // annualized 20-day historical volatility
     hvDist: [], // rolling HV20 over the past year, for the IV percentile
     dailyBars: [], // full history incl. today's forming bar, for the daily chart
+    dailyWarm: [], // the closes fetched before dailyBars' year, so the daily moving averages (the 200 SMA) cover the whole 1Y view
     showDaily: true,
     dailyRange, // the chosen range chip
     dailyView: { count: dailyRange, offset: 0 }, // what's on screen, after pinches and drags

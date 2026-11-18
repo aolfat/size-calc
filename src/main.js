@@ -11,6 +11,7 @@ import { updateSizingControls } from './ui/allocation.js';
 import { updateChainControls } from './ui/chain.js';
 import { initChartEvents, updateIntervalChips } from './ui/chart.js';
 import { initDailyChartEvents, initShowDaily } from './ui/daily.js';
+import { renderChartInd } from './ui/chart-ind.js';
 import { paintLiveDefault, pauseLive, resumeLive } from './ui/live.js';
 import { initMarketEvents, marketScheduleRefresh } from './ui/market.js';
 import { initModelBookEvents } from './ui/model-books.js';
@@ -73,6 +74,7 @@ applyQuickOpen();
 updateStopVisibility();
 setView(startView(location.hash)); // a reload stays on its tab (#journal, #market, ...); a fresh open goes back to the last one; sizing is the default
 updateIntervalChips();
+renderChartInd();
 
 // page listeners
 window.addEventListener('scroll', () => requestAnimationFrame(() => { updateStickyBar(); updateTitleBar(); }), { passive: true });

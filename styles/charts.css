@@ -25,6 +25,14 @@
   .chart-row #chartCol5 { order: -1; } /* stacked: the 5-min working chart leads, daily below for context */
 }
 
+/* indicator chips sit over the plot's top-left corner like a legend, so they cost the card no height; tap one to hide or show its line */
+.chart-plot { position: relative; }
+.chart-ind { position: absolute; top: 5px; left: 5px; right: 66px; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
+.ind-chip { pointer-events: auto; flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; font-size: 10.5px; line-height: 15px; color: var(--text3); background: rgba(26,30,39,0.82); border: 1px solid var(--border); border-radius: 5px; cursor: pointer; }
+.ind-chip i { width: 10px; height: 2px; border-radius: 1px; opacity: 0.35; }
+.ind-chip.active { color: var(--text2); }
+.ind-chip.active i { opacity: 1; }
+@media (hover: hover) { .ind-chip:hover { color: var(--text); } }
 .chart-wrap canvas { width: 100%; display: block; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; }
 .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
 /* the readout owns a reserved full-width line: hover text swaps can never reflow the card */

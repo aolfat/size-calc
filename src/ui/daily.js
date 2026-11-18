@@ -1,4 +1,4 @@
-// Daily history: ADR14, HV20, prior-day levels, IV percentile, and the daily chart pane (range chips, zoom and pan).
+// Daily history: ADR14, HV20, prior-day levels, IV percentile, and the daily chart pane (range chips, zoom and pan, the 8 and 21 EMA and 50, 100 and 200 SMA chips in ui/chart-ind.js).
 import { state } from '../state.js';
 import { hv20At, percentileOf } from '../core/bars.js';
 import { clampView, viewRange } from '../core/chart-view.js';
@@ -10,11 +10,21 @@ import { store } from '../lib/store.js';
 import { dailyHistory } from '../services/tradier.js';
 import { attachCandleGestures, candleGeom, ohlcText, paintCandles } from './candles.js';
 import { drawChart, setStopFromPrice } from './chart.js';
+import { chartAverages } from './chart-ind.js';
 import { fetchFuturesDays } from './futures.js';
 import { updateStickyBar } from './sticky-bar.js';
 import { chartStopVal, dayRange, rawStop, tradeCtx } from './stops.js';
 
-export function applyDailyHistory(list, today = nyDateStr(new Date())) {
+/** how far back the daily pane fetches: its year plus the 200 sessions a 200 SMA needs at the start of the 1Y view */
+export const DAILY_FETCH_DAYS = 680;
+/** the year the pane shows and IV percentile ranks against; what's fetched before it only warms up the averages */
+export const DAILY_SHOWN_DAYS = 380;
+
+export function applyDailyHistory(all, today = nyDateStr(new Date())) {
+  const t = new Date(today + 'T12:00:00Z');
+  const cutoff = Number.isFinite(t.getTime()) ? new Date(t.getTime() - DAILY_SHOWN_DAYS * 864e5).toISOString().slice(0, 10) : '';
+  const list = all.filter(x => !(x.date < cutoff));
+  state.dailyWarm = all.filter(x => x.date < cutoff).map(x => +x.close);
   state.dailyBars = list; // the bars carry New York dates (a futures bar its trading day's)
   const done = list.filter(x => x.date !== today); // today's range is still forming
   const last14 = done.slice(-14);
@@ -44,11 +54,12 @@ export async function fetchAdr(ticker) {
     state.hv20 = 0;
     state.hvDist = [];
     state.dailyBars = [];
+    state.dailyWarm = [];
     updateChartVisibility();
   }
   try {
     const futures = !!futuresSymbol(ticker);
-    const days = futures ? await fetchFuturesDays(ticker) : await dailyHistory(ticker);
+    const days = futures ? await fetchFuturesDays(ticker) : await dailyHistory(ticker, DAILY_FETCH_DAYS);
     if (ticker !== state.dailySymbol) return; // a newer symbol was requested meanwhile
     if (days.length) applyDailyHistory(days, futures ? futuresSessionClock(Date.now()).day : undefined);
   } catch(e) {
@@ -153,7 +164,8 @@ export function drawDailyChart() {
   if (tc !== 'short') lines.push(line(chartStopVal(true), '--red', 'long stop'));
   if (tc !== 'long') lines.push(line(chartStopVal(false), '--green', 'short stop'));
   lines.push(line(rawStop('entryPrice'), '--blue', 'entry'));
-  paintCandles(canvas, dailyGeom(w), state.dailyBars, { lines, hover: { index: state.dailyHover, y: state.dailyHoverY }, price: priceLabeler(state.quoteData) });
+  const mas = chartAverages('daily', state.dailyWarm, state.dailyBars.map(b => +b.close), color);
+  paintCandles(canvas, dailyGeom(w), state.dailyBars, { lines, hover: { index: state.dailyHover, y: state.dailyHoverY }, ema8: false, mas, price: priceLabeler(state.quoteData) });
   // hover crosshair shares the OHLC readout with the 5-min chart
   const b = state.dailyBars[state.dailyHover];
   const { start, end } = viewRange(state.dailyView, state.dailyBars.length);

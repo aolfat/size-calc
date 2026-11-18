@@ -10,6 +10,7 @@ import { allocationChanged, allocationQtyChanged, pinAllocation, setAllocationPc
 import { pinnedStopChanged, refreshAllPinned, refreshPinned, removePinned } from './cards.js';
 import { renderChain, selectExp, setSide, setZoneMode, toggleExps } from './chain.js';
 import { setChartInterval, toggleExtHours } from './chart.js';
+import { toggleChartInd, toggleDailyInd } from './chart-ind.js';
 import { copyPinned, copyShares } from './copy-text.js';
 import { pinShares, shareOrderEntryChanged, shareOrderStopChanged } from './share-orders.js';
 import { dailyToday, setDailyRange, toggleDaily } from './daily.js';
@@ -453,6 +454,8 @@ export const actions = {
   toggleDaily: () => toggleDaily(),
   setDailyRange: el => setDailyRange(num(el)),
   dailyToday: () => dailyToday(),
+  toggleChartInd: el => toggleChartInd(arg(el)),
+  toggleDailyInd: el => toggleDailyInd(arg(el)),
 
   // ---------- option chain and details ----------
   selectExp: el => selectExp(arg(el)),

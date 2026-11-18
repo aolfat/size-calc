@@ -15,9 +15,9 @@ export function headers() {
 }
 
 /** about a year of daily bars, oldest first, today's forming bar included; [] when Tradier has none */
-export async function dailyHistory(symbol) {
+export async function dailyHistory(symbol, back = 380) {
   const from = new Date();
-  from.setDate(from.getDate() - 380); // ~1 year: the daily charts use it all, HV percentile needs the year, ADR/HV20 use the tail
+  from.setDate(from.getDate() - back); // ~1 year: the daily charts use it all, HV percentile needs the year, ADR/HV20 use the tail (the Size tab's pane asks for more, for its 200 SMA)
   const url = `${baseUrl()}/markets/history?symbol=${encodeURIComponent(symbol)}&interval=daily&start=${nyDateStr(from)}&end=${nyDateStr(new Date())}`;
   const res = await marketFetch(url, { headers: headers() });
   const days = (await res.json())?.history?.day;
