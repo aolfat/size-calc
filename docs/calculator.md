@@ -18,6 +18,15 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   The Schwab app needs Market Data Production, and the worker must relay `/marketdata/v1` (a worker deployed before futures answers 404).
   A refused read says which (schwabRefusal: 404 the worker, 401 or 403 Market Data Production) on a Load and in the chain's status, instead of 'Symbol not found'.
   Schwab has no price history for options, so a contract's own 5-minute bars (the journal's option bars, the position chart's option pane) need a Tradier key.
+- **Falling back from Tradier to Schwab** (services/market-source.js; owner request: auto fallback): with a Tradier key and a live Schwab login, a Tradier read that fails is asked of Schwab instead, in the same call, so the caller never knows.
+  A failure is no answer (a dropped connection or the 15-second deadline, not the caller's own abort) or a 401, 403, 429 or 5xx; a 400 or 404 is Tradier's answer about the symbol and stands.
+  Once Schwab has answered for it, Tradier rests a minute (TRADIER_REST_MS, state.tradierRestUntil): reads in that minute go straight to Schwab, and the first one after it tries Tradier again.
+  When Schwab can't answer either, Tradier's own failure (its response, or the error it threw) is what the caller gets, and nothing rests, so the next read asks Tradier first.
+  Reads with no Schwab stand-in stay with Tradier, failure and all: the stream, and an option's bars (an empty Schwab answer there would read as a day with no trades).
+  A toast says when it starts ("Tradier isn't answering. Quotes come from Schwab for now.") and when a Tradier read succeeds again ("Tradier is answering again."), through the onMarketFallback seam settings.js registers.
+  Meanwhile Settings' status line says 'Tradier not answering · quotes from Schwab' (amber dot), Live polls instead of opening Tradier's stream, and bars saved name 'schwab' (marketSourceNow, barSource.sourceFor; an option's stay 'tradier').
+  Saving the key or the environment (saveKey) forgets the failure and tries Tradier at once.
+  Answers made from Schwab's carry an `X-Market-Source: schwab` header.
 - **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip on phones (same `order` as the strip, after it in the markup) listing the rules last week's review set (docs/journal.md, Rules for next week).
   On desktop it heads the main pane, over the ticker card, its groups side by side in one short band, so the rail keeps only the ticket and fits a laptop screen (owner request).
   On a desktop window shorter than 920px the rail and main pane tighten further (styles/layout.css): the stops hint, the shares edit hint and How adjustments work step aside (the chart's hint, the input's title and the label's title say the same), so Trade at Schwab and the whole intraday chart show without scrolling on a 14-inch MacBook Pro.

@@ -227,6 +227,8 @@ export function createState() {
     liveStreamSymbol: '', // the symbol the socket was last told to watch
     liveStreamOk: false, // events are arriving: the quote stops polling
     liveStreamRetry: 0, // no new socket before this time (ms) after one failed
+    tradierRestUntil: 0, // with a Schwab login, market reads skip Tradier and go to Schwab until this time (ms) after a Tradier read failed
+    tradierOut: false, // Tradier failed and Schwab answers for it, until a Tradier read succeeds again
     liveRenderAt: 0, // the last quote render a stream event drew (ms)
     liveRenderTimer: null, // the trailing render for events that landed inside the throttle
     liveChainBusy: false,

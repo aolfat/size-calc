@@ -20,7 +20,8 @@ function needSchwab() {
   throw err;
 }
 import { baseUrl, headers } from './tradier.js';
-import { marketFetch, marketSource } from './market-source.js';
+import { isOccSymbol } from '../core/options.js';
+import { marketFetch, marketSource, marketSourceNow } from './market-source.js';
 
 /**
  * Tradier: timesales already speaks the app's form (unpadded OCC symbols, bars stamped with their start, New York time).
@@ -29,9 +30,13 @@ import { marketFetch, marketSource } from './market-source.js';
  * for a Tradier key.
  */
 const tradier = {
-  get name() { return marketSource() === 'schwab' ? 'schwab' : 'tradier'; },
-  /** the provider a symbol's saved bars name: a future's are always Schwab's @param {string} symbol */
-  sourceFor(symbol) { return futuresSymbol(symbol) ? 'schwab' : this.name; },
+  get name() { return marketSourceNow() === 'schwab' ? 'schwab' : 'tradier'; },
+  /**
+   * the provider a symbol's saved bars name: a future's are always Schwab's, an option's Tradier's with a key (Schwab has
+   * no option bars to answer for a failing Tradier with)
+   * @param {string} symbol
+   */
+  sourceFor(symbol) { return futuresSymbol(symbol) ? 'schwab' : isOccSymbol(symbol) && marketSource() === 'tradier' ? 'tradier' : this.name; },
   /**
    * one symbol's 5-minute bars from one New York day through another, extended hours included (04:00 to 20:00)
    * @param {string} symbol @param {string} from @param {string} to @returns {Promise<Map<string, (string | number)[][]>>}

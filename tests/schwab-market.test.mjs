@@ -194,3 +194,94 @@ test('a Schwab app without Market Data Production says what to fix, not "symbol 
   assert.equal(h.run('schwabRefusal(404)'), "Your Schwab worker can't read market data yet. Redeploy it (worker/schwab/README.md).");
   assert.equal(h.run('schwabRefusal(500)'), '');
 });
+
+/** a Tradier key and a Schwab login: Tradier answers as `tradier(url)` says, Schwab from the fixtures (or as `schwab` says) */
+async function both({ tradier, schwab } = {}) {
+  const tradierCalls = [], schwabCalls = [];
+  const fetch = async (url, init = {}) => {
+    if (url.startsWith('https://api.tradier.com/')) { tradierCalls.push(url); return tradier(url, init); }
+    if (!url.startsWith(PROXY)) throw new Error('Unexpected request ' + url);
+    schwabCalls.push(url);
+    if (schwab) return schwab(url);
+    if (new URL(url).pathname === '/marketdata/v1/quotes') return json({ AAPL });
+    return json({}, 404);
+  };
+  const h = await app({ fetch, storage: connected() });
+  h.run("document.getElementById('apiKey').value = 'tk-1'");
+  return { ...h, tradierCalls, schwabCalls };
+}
+const QUOTE_URL = 'https://api.tradier.com/v1/markets/quotes?symbols=AAPL';
+const read = (run, url = QUOTE_URL) => run(`marketFetch(${JSON.stringify(url)}, { headers: headers() }).then(async r => ({ status: r.status, from: r.headers.get('X-Market-Source') || 'tradier', body: await r.json() }))`);
+
+test('with both, a Tradier read that fails is answered by Schwab, Tradier rests a minute, and the first good Tradier read ends it', async () => {
+  let tradierUp = false;
+  const h = await both({ tradier: async () => tradierUp ? json({ quotes: { quote: { symbol: 'AAPL', last: 231 } } }) : json({ fault: 'down' }, 503) });
+  assert.equal(h.run('marketSource()'), 'tradier');
+  const first = await read(h.run);
+  assert.equal(first.from, 'schwab');
+  assert.equal(first.status, 200);
+  assert.equal(first.body.quotes.quote.symbol, 'AAPL');
+  assert.equal(h.tradierCalls.length, 1);
+  assert.equal(h.elements.get('errorBox').textContent, "Tradier isn't answering. Quotes come from Schwab for now.");
+  assert.match(h.elements.get('apiStatus').innerHTML, /Tradier not answering · quotes from Schwab/);
+  assert.equal(h.run('marketSourceNow()'), 'schwab');
+  assert.equal(h.run('barSource.sourceFor("AAPL")'), 'schwab', 'bars read meanwhile say where they came from');
+  assert.equal(h.run('barSource.sourceFor("AAPL261218C00230000")'), 'tradier', "Schwab has no option bars to answer with");
+
+  // resting: straight to Schwab, Tradier not asked
+  assert.equal((await read(h.run)).from, 'schwab');
+  assert.equal(h.tradierCalls.length, 1);
+
+  // a minute on, Tradier is asked again, and answers
+  tradierUp = true;
+  h.run('state.tradierRestUntil = Date.now() - 1');
+  const back = await read(h.run);
+  assert.equal(back.from, 'tradier');
+  assert.equal(back.body.quotes.quote.last, 231);
+  assert.equal(h.elements.get('errorBox').textContent, 'Tradier is answering again.');
+  assert.equal(h.run('marketSourceNow()'), 'tradier');
+  assert.doesNotMatch(h.elements.get('apiStatus').innerHTML, /not answering/);
+});
+
+test('a dropped connection or timeout from Tradier falls back too; a missing symbol does not', async () => {
+  const h = await both({ tradier: async url => { if (url.includes('NOPE')) return json({ quotes: { unmatched_symbols: { symbol: 'NOPE' } } }, 400); throw new TypeError('Failed to fetch'); } });
+  const missing = await read(h.run, 'https://api.tradier.com/v1/markets/quotes?symbols=NOPE');
+  assert.equal(missing.from, 'tradier');
+  assert.equal(missing.status, 400);
+  assert.equal(h.schwabCalls.length, 0, "Tradier's own no is the answer");
+  const dropped = await read(h.run);
+  assert.equal(dropped.from, 'schwab');
+  assert.equal(dropped.body.quotes.quote.symbol, 'AAPL');
+});
+
+test('when Schwab cannot answer either, Tradier\'s own failure stands and Tradier is not rested', async () => {
+  const h = await both({ tradier: async () => json({ fault: 'down' }, 502), schwab: async () => json({ message: 'down' }, 503) });
+  const res = await read(h.run);
+  assert.equal(res.from, 'tradier');
+  assert.equal(res.status, 502);
+  assert.equal(h.run('state.tradierRestUntil'), 0);
+  assert.equal(h.run('tradierFallingBack()'), false);
+  assert.equal(h.elements.get('errorBox').textContent || '', '', 'no fallback toast');
+  await read(h.run);
+  assert.equal(h.tradierCalls.length, 2, 'the next read asks Tradier first again');
+
+  const thrown = await both({ tradier: async () => { throw new TypeError('Failed to fetch'); }, schwab: async () => json({}, 503) });
+  await assert.rejects(read(thrown.run), /Failed to fetch/);
+});
+
+test('a read Schwab has no stand-in for (an option\'s bars) stays with Tradier, failure and all', async () => {
+  const h = await both({ tradier: async () => json({ fault: 'down' }, 503) });
+  const url = 'https://api.tradier.com/v1/markets/timesales?symbol=AAPL261218C00230000&interval=5min&start=2026-11-02%2004%3A00&end=2026-11-02%2020%3A00&session_filter=all';
+  const res = await read(h.run, url);
+  assert.equal(res.status, 503);
+  assert.equal(h.schwabCalls.length, 0);
+});
+
+test('a new key gets a fresh try at Tradier', async () => {
+  const h = await both({ tradier: async () => json({}, 503) });
+  await read(h.run);
+  assert.equal(h.run('tradierFallingBack()'), true);
+  h.run("document.getElementById('apiKey').value = 'tk-2'; saveKey()");
+  assert.equal(h.run('tradierFallingBack()'), false);
+  assert.equal(h.run('state.tradierRestUntil'), 0);
+});

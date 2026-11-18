@@ -7,7 +7,7 @@ import { applyStreamEvent, parseStreamData, STREAM_URL, subscribeMessage } from 
 import { store } from '../lib/store.js';
 import { inZone } from '../lib/zone.js';
 import { baseUrl, headers, streamSession } from '../services/tradier.js';
-import { marketFetch, marketSource } from '../services/market-source.js';
+import { marketFetch, marketSourceNow } from '../services/market-source.js';
 import { refreshAllPinned } from './cards.js';
 import { fetchChain } from './chain.js';
 import { fetchChart } from './chart.js';
@@ -240,7 +240,7 @@ export async function livePoll() {
 export function ensureStream() {
   const sym = state.quoteData?.symbol;
   if (!sym || isFuturesQuote(state.quoteData)) return;
-  if (document.getElementById('apiEnv').value === 'sandbox' || marketSource() !== 'tradier') return; // Schwab's quotes poll
+  if (document.getElementById('apiEnv').value === 'sandbox' || marketSourceNow() !== 'tradier') return; // Schwab's quotes poll (with no key, or while it answers for a failing Tradier)
   const ws = state.liveSocket;
   if (ws) {
     if (ws.readyState === 1 && ws.sessionid && state.liveStreamSymbol !== sym) {

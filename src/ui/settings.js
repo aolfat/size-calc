@@ -6,7 +6,7 @@ import { CREDENTIAL_ORIGIN_MESSAGE, credentialOriginAllowed } from '../lib/crede
 import { cloudClearDevice, cloudFirstSignIn, cloudFlush, cloudPull, cloudPush, loadPending, onCloudView } from '../services/cloud.js';
 import { currentSession, finishGoogleReturn, hasStoredSession, isGoogleReturn, SESSION_KEY, signInWithGoogle, signOutSupabase } from '../services/supabase.js';
 import { schwabDisconnect, schwabSession, schwabSyncShared } from '../services/schwab.js';
-import { marketSource } from '../services/market-source.js';
+import { marketSource, onMarketFallback, resetMarketFallback, tradierFallingBack } from '../services/market-source.js';
 import { renderClaudeAccess } from './claude-access.js';
 import { effects } from './effects.js';
 import { maybeCapture } from './schwab-capture.js';
@@ -50,6 +50,7 @@ export function saveKey() {
   if (!credentialOriginAllowed()) { clearUnsafeCredentials(); showError(CREDENTIAL_ORIGIN_MESSAGE); return; }
   store.set('tradier_key', document.getElementById('apiKey').value.trim());
   store.set('tradier_env', document.getElementById('apiEnv').value);
+  resetMarketFallback(); // a new key or environment gets a fresh try
   updateApiStatus();
 }
 
@@ -169,6 +170,10 @@ async function resumeSession() {
 
 // synced changes report here: status line, re-read storage, and a toast when another device's edits land
 onCloudView({ status: setCloudUi, applied: cloudRehydrate, pulled: () => showToast('Synced changes from your other device.') });
+onMarketFallback(out => {
+  showToast(out ? "Tradier isn't answering. Quotes come from Schwab for now." : 'Tradier is answering again.');
+  updateApiStatus();
+});
 
 export function setCloudUi(status) {
   const s = state.session;
@@ -245,7 +250,9 @@ export async function initCloud(href = location.href) {
 
 export function updateApiStatus() {
   const source = marketSource();
-  document.getElementById('apiStatus').innerHTML = (source === 'tradier'
+  document.getElementById('apiStatus').innerHTML = (source === 'tradier' && tradierFallingBack()
+    ? '<span style="color:var(--amber)">●</span> Tradier not answering · quotes from Schwab'
+    : source === 'tradier'
     ? `<span style="color:var(--green)">●</span> Key saved · ${document.getElementById('apiEnv').value}`
     : source === 'schwab' ? '<span style="color:var(--green)">●</span> Quotes from Schwab'
     : '○ No key yet') + (state.session ? ' · <span style="color:var(--blue)">Signed in</span>' : '');
