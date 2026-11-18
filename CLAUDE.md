@@ -149,7 +149,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Saved tag links pass cleanLink again when drawn
 - PWA: manifest.json + icon-180/512.png + icon.svg + sw.js (network-first with cache: 'no-cache', so every open revalidates past the browser's HTTP cache, which GitHub Pages lets keep files 10 minutes; same-origin GETs only — API calls pass through; cached fallback offline).
   Registered only on https.
-  The icon: a green candle, a red stop under it and a line measuring entry to stop, on graphite.
+  The icon: a higher low, the swing setup: a green price line that dips, rallies, makes a higher low (a ringed entry dot) and breaks out, with a red stop under the higher low, on graphite.
   icon.svg is the tab icon (rounded tile); the PNGs are the same artwork as full-bleed squares, since iOS rounds them itself, so redraw all three together.
   Fixes iOS home-screen staleness — fresh version on every online open
 - Durability: navigator.storage.persist() requested at init.
