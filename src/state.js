@@ -3,6 +3,7 @@
 import { store } from './lib/store.js';
 
 export const DAILY_RANGES = [21, 63, 126, 252]; // 1M / 3M / 6M / 1Y range chips, in sessions
+export const SIM_RANGES = [21, 63, 126]; // the simulator's 1M / 3M / 6M history chips, in sessions
 
 /** a chart's indicators turned off, from its key (pos_chart_ind_off, chart_ind_off, daily_ind_off); a bad or missing value is none */
 function indicatorsOff(key = 'pos_chart_ind_off') {
@@ -14,6 +15,7 @@ function indicatorsOff(key = 'pos_chart_ind_off') {
 
 export function createState() {
   const dailyRange = DAILY_RANGES.includes(+store.get('daily_range')) ? +store.get('daily_range') : 63;
+  const simRange = SIM_RANGES.includes(+store.get('sim_range')) ? +store.get('sim_range') : 21;
   let posCols = [];
   try { posCols = JSON.parse(store.get('positions_cols') || '[]'); } catch(e) {}
   let journalHidden = [];
@@ -37,9 +39,12 @@ export function createState() {
     chartHoverY: -1,
     chartDragRange: null, // { lo, hi } held while a chart line is dragged, so the scale stays put under the pointer
     errorTimer: null,
-    simState: null,
-    simHover: -1,
-    simHoverY: -1,
+    simState: null, // the open simulator's contract or spread, as openSim fitted it (ui/sim.js)
+    simView: null, // its chart: { S, t, sessions, uNow, u1, ahead, split, axis, dragging, touched, edge } (S and t = the target)
+    simRange, // the simulator's history chip in sessions: 21 / 63 / 126 (1M / 3M / 6M), sim_range on this device
+    simBars: simRange, // the sessions of daily history it shows, after pinches
+    simTargets: {}, // the target you left on each contract (by label) this session: { S, t }
+    simDaily: {}, // daily bars fetched for the simulator by symbol: { bars, warm, loading, error }
     simReg: {}, // chain detail rows park their sim params here by option symbol
     session: null, // the signed-in Supabase session, or null
     sessionResuming: false, // a stored session is being read back (boot, or the poll's retry)

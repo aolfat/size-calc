@@ -1,12 +1,12 @@
-// Sheets: settings, account & risk, the Schwab order reviews (new trade, held position, closing a spread, cancelling or changing a working order, cancelling them all), the Journal's Import and Export, and a journal trade (your stop, deleting it), a panel under the header on desktop and a bottom sheet on phones.
+// Sheets: settings, account & risk, the simulator, the Schwab order reviews (new trade, held position, closing a spread, cancelling or changing a working order, cancelling them all), the Journal's Import and Export, and a journal trade (your stop, deleting it), a panel under the header on desktop and a bottom sheet on phones.
 import { state } from '../state.js';
 import { marketSource } from '../services/market-source.js';
 import { mq, PHONE_MQ } from '../lib/media.js';
 import { effects } from './effects.js';
 
-export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', posActions: 'posActionsSheet', posShare: 'posShareSheet', spreadClose: 'spreadCloseSheet', cancel: 'cancelSheet', cancelAll: 'cancelAllSheet', edit: 'editSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', journalFilters: 'journalFiltersSheet', tradeReview: 'tradeReviewSheet', journalLibrary: 'journalLibrarySheet' };
+export const SHEETS = { settings: 'settingsSheet', risk: 'riskSheet', trade: 'tradeSheet', posTrade: 'posTradeSheet', posActions: 'posActionsSheet', posShare: 'posShareSheet', spreadClose: 'spreadCloseSheet', cancel: 'cancelSheet', cancelAll: 'cancelAllSheet', edit: 'editSheet', journalImport: 'journalImportSheet', journalExport: 'journalExportSheet', journalFilters: 'journalFiltersSheet', tradeReview: 'tradeReviewSheet', journalLibrary: 'journalLibrarySheet', sim: 'simSheet' };
 // the page behind a sheet goes inert (no clicks, no Tab stops, hidden from screen readers); the toast stays live
-export const SHEET_BACKGROUND = ['stickyBar', 'titleBar', 'appHeader', 'sidePane', 'mainPane', 'simOverlay'];
+export const SHEET_BACKGROUND = ['stickyBar', 'titleBar', 'appHeader', 'sidePane', 'mainPane'];
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const trapped = new WeakSet();
 const draggable = new WeakSet();
@@ -86,7 +86,7 @@ export function attachSheetDrag(sheet) {
   sheet.addEventListener('touchstart', e => {
     mode = null;
     if (e.touches.length !== 1 || !mq(PHONE_MQ) || sheet.scrollTop > 0) return;
-    if (e.target?.closest?.('input, textarea, select')) return; // typing and picking stay theirs
+    if (e.target?.closest?.('input, textarea, select, [data-own-gestures]')) return; // typing, picking and a chart's own drags stay theirs
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); dy = 0; mode = 'maybe';
   }, { passive: true });
   sheet.addEventListener('touchmove', e => {

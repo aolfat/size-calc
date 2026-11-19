@@ -1,10 +1,9 @@
 /* Intraday and daily chart card. */
 .chart-wrap { position: relative; } /* flex column: margins no longer collapse, the card's own margin-bottom spaces it */
 /* long-press on a chart must not start iOS text selection / copy callout */
-.chart-wrap, .chart-wrap canvas, #simChart, #simOverlay {
+.chart-wrap, .chart-wrap canvas, #simChart, .sim-legend {
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
-.sim-chips { display: contents; } /* the simulator's chip sets: stop and R for a sized trade, ±1σ for a held position */
 .chart-row { display: flex; gap: 12px; }
 .chart-row > div { min-width: 0; }
 #chartCol5 { flex: 1.55; }
@@ -38,3 +37,38 @@
 /* the readout owns a reserved full-width line: hover text swaps can never reflow the card */
 .chart-head .ohlc { font-size: 11.5px; color: var(--text2); font-family: var(--num); flex-basis: 100%; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chart-hint { font-size: 11px; color: var(--text3); margin-top: 6px; }
+
+/* The simulator sheet (ui/sim.js): the contract's price at your target, one chart, the target's three values, two quiet lines. */
+@media (min-width: 601px) { .sheet.sim-sheet { width: min(560px, calc(100vw - 32px)); } }
+.sim-sheet .sheet-head { margin-bottom: 10px; }
+.sim-sheet .sheet-head h2 { font-size: 14px; font-weight: 600; color: var(--text2); }
+.sim-value { font: 700 42px/1 var(--num); letter-spacing: -0.025em; }
+.sim-value small { font: 500 15px var(--sans); color: var(--text3); letter-spacing: 0; margin-left: 6px; }
+.sim-result { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 8px 0 12px; font: 600 14.5px var(--num); }
+.sim-result .pos, .sim-facts .pos { color: var(--green); }
+.sim-result .neg, .sim-facts .neg { color: var(--red); }
+.sim-result .dim { color: var(--text3); font-weight: 400; }
+.sim-chart { position: relative; margin: 0 -4px; }
+#simChart { width: 100%; height: 300px; display: block; touch-action: none; cursor: grab; outline: none; }
+#simChart:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
+/* the legend over the chart's top-left corner, like the daily chart's: the history chips, then the moving averages */
+.sim-legend { position: absolute; top: 4px; left: 4px; display: flex; gap: 2px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 70px); }
+.sim-legend button { background: rgba(18,21,28,.72); border: 0; font: 600 11px var(--sans); padding: 3px 5px; border-radius: 5px; cursor: pointer; color: var(--text3); }
+.sim-legend button.off { opacity: .38; text-decoration: line-through; }
+.sim-range { display: flex; gap: 1px; background: rgba(18,21,28,.72); border-radius: 6px; padding: 1px; margin-right: 2px; }
+.sim-range button { background: none; padding: 3px 7px; }
+.sim-range button.on { background: var(--bg4); color: var(--text); }
+/* the target: three values, each a field you tap (its input sits on top, unseen until focused) */
+.sim-target { display: grid; grid-template-columns: 1.15fr 1fr 0.9fr; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-top: 12px; }
+.sim-cell { position: relative; padding: 9px 0 9px 12px; min-width: 0; cursor: pointer; }
+.sim-cell:first-child { padding-left: 0; }
+.sim-cell + .sim-cell { border-left: 1px solid var(--border); }
+.sim-cell .k { display: block; font-size: 11.5px; color: var(--text3); }
+.sim-cell .v { display: block; font: 650 16px var(--num); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sim-cell input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; border-radius: 8px; background: var(--bg3); color: var(--text); font: 650 16px var(--num); padding: 18px 12px 0; cursor: pointer; color-scheme: dark; }
+.sim-cell input:focus { opacity: 1; outline: 2px solid var(--blue); outline-offset: -2px; cursor: text; }
+.sim-facts { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; font: 12.5px var(--num); color: var(--text2); }
+.sim-facts > div { display: flex; flex-wrap: wrap; gap: 0 14px; }
+.sim-facts b { color: var(--text); font-weight: 600; }
+.sim-foot { margin-top: 8px; font-size: 11px; color: var(--text3); }
+@media (min-width: 601px) { #simChart { height: 330px; } }

@@ -71,6 +71,30 @@ function thirdFridayHoliday(y, m, d) {
 /** an OCC option symbol as Tradier sends it (root, YYMMDD, C/P, strike × 1000), so nothing else reaches the page. @param {unknown} s */
 export function isOccSymbol(s) { return typeof s === 'string' && /^[A-Z][A-Z0-9.]{0,5}\d{6}[CP]\d{8}$/.test(s); }
 
+/**
+ * An NYSE full-day holiday? New Year's, MLK, Presidents', Good Friday, Memorial, Juneteenth (from 2022), Independence,
+ * Labor, Thanksgiving and Christmas, a Saturday one observed the Friday before and a Sunday one the Monday after
+ * (except New Year's on a Saturday, which the NYSE doesn't move into December). Early closes aren't known.
+ * @param {string} day YYYY-MM-DD @returns {boolean}
+ */
+export function nyseHoliday(day) {
+  const [y, m, d] = day.split('-').map(Number), wd = weekday(y, m, d);
+  if (wd === 0 || wd === 6) return false;
+  /** the nth weekday (0 Sunday) of a month @param {number} mo @param {number} dow @param {number} n */
+  const nth = (mo, dow, n) => 1 + (dow - weekday(y, mo, 1) + 7) % 7 + (n - 1) * 7;
+  /** the last weekday of a month @param {number} mo @param {number} dow */
+  const last = (mo, dow) => { const dim = new Date(Date.UTC(y, mo, 0)).getUTCDate(); return dim - (weekday(y, mo, dim) - dow + 7) % 7; };
+  /** a fixed date as observed @param {number} mo @param {number} dd @param {boolean} [moveSat] */
+  const fixed = (mo, dd, moveSat = true) => {
+    const w = weekday(y, mo, dd);
+    return w === 6 ? moveSat && m === mo && d === dd - 1 : w === 0 ? m === mo && d === dd + 1 : m === mo && d === dd;
+  };
+  if (fixed(1, 1, false) || fixed(7, 4) || fixed(12, 25) || (y >= 2022 && fixed(6, 19))) return true;
+  if (Date.UTC(y, m - 1, d) === easter(y) - 2 * 864e5) return true;
+  return (m === 1 && d === nth(1, 1, 3)) || (m === 2 && d === nth(2, 1, 3)) || (m === 5 && d === last(5, 1))
+    || (m === 9 && d === nth(9, 1, 1)) || (m === 11 && d === nth(11, 4, 4));
+}
+
 /** @param {string} expStr YYYY-MM-DD @returns {boolean} */
 export function isMonthlyExp(expStr) {
   // standard monthly = third Friday; when that Friday is an NYSE holiday the
