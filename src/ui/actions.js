@@ -54,7 +54,7 @@ import { openPosShare, pickAllPosShare, sharePositions, togglePosShare } from '.
 import { contractsQtyChanged, renderShares, sharesQtyChanged } from './shares.js';
 import { closeSheet, dismissSheet, openSheet } from './sheets.js';
 import { toggleKbdHelp } from './shortcuts.js';
-import { closeSim, drawSim, simFromPinned, simPriceTyped, simSetPrice } from './sim.js';
+import { closeSim, simFromPinned, simRange, simTargetDay, simTargetPrice, simTargetTime, simToggleInd } from './sim.js';
 import { cancelSpread, startSpread } from './spreads.js';
 import { jumpTo } from './sticky-bar.js';
 import { setAtrMultiplier, setDirection, setStopPercent, setStopStrategy, stopsChanged } from './stops.js';
@@ -590,10 +590,11 @@ export const actions = {
 
   // ---------- simulator ----------
   closeSim: () => closeSim(),
-  closeSimBackdrop: (el, event) => { if (event.target === el) closeSim(); },
-  drawSim: () => drawSim(),
-  simPriceTyped: el => simPriceTyped(el),
-  simSetPrice: el => simSetPrice(Number.isNaN(num(el)) ? arg(el) : num(el)), // 'stop' | 'current' | R multiple
+  simRange: el => simRange(num(el)), // a history chip: 21 / 63 / 126 sessions
+  simToggleInd: el => simToggleInd(arg(el)),
+  simTargetPrice: el => simTargetPrice(el),
+  simTargetDay: el => simTargetDay(el),
+  simTargetTime: el => simTargetTime(el),
 
   // ---------- market ----------
   marketToggleAuto: () => marketToggleAuto(),

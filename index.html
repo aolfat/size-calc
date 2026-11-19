@@ -589,28 +589,24 @@
 
   <div id="errorBox" style="display:none;" class="error"></div>
 
-  <div id="simOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:150;overflow-y:auto;" data-action="closeSimBackdrop">
-    <div class="card" style="max-width:600px;margin:7vh auto 40px;padding:16px 18px;">
-      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:2px;">
-        <span class="pinned-symbol" id="simTitle"></span>
-        <button data-action="closeSim" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;">×</button>
-      </div>
-      <div class="hint" id="simMeta" style="margin:0 0 10px;"></div>
-      <canvas id="simChart" height="240" style="width:100%;display:block;border-radius:10px;background:var(--bg3);border:1px solid var(--border);cursor:crosshair;"></canvas>
-      <div style="font-size:12.5px;color:var(--text2);font-family:var(--num);margin:10px 2px;" id="simReadout"></div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <span class="chip-label">Underlying</span>
-        <input type="range" id="simPrice" style="flex:1;min-width:160px;" data-input="drawSim" />
-        <div class="prefix-wrap" style="width:96px;"><span class="prefix">$</span><input type="number" id="simPriceInput" step="0.01" min="0" title="Type an exact underlying price" style="padding:5px 8px 5px 22px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:100%;font-family:var(--num);outline:none;" data-change="simPriceTyped" /></div>
-        <span class="sim-chips" id="simRChips"><button class="filter-btn" data-action="simSetPrice" data-arg="stop">stop</button></span>
-        <span class="sim-chips" id="simEmChips" style="display:none;"><button class="filter-btn" data-action="simSetPrice" data-arg="-em" title="One standard deviation lower by expiry, from IV">−1σ</button></span>
-        <button class="filter-btn" data-action="simSetPrice" data-arg="current" title="Jump to the current underlying price">current</button>
-        <span class="sim-chips" id="simRChips2"><button class="filter-btn" data-action="simSetPrice" data-arg="1">1R</button>
-        <button class="filter-btn" data-action="simSetPrice" data-arg="2">2R</button></span>
-        <span class="sim-chips" id="simEmChips2" style="display:none;"><button class="filter-btn" data-action="simSetPrice" data-arg="+em" title="One standard deviation higher by expiry, from IV">+1σ</button></span>
-      </div>
-      <div class="hint">theoretical Black-Scholes value, IV held constant · drag the chart for a date · slide or tap chips for a price</div>
+  <div class="sheet sim-sheet" id="simSheet" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="simTitle" tabindex="-1">
+    <div class="sheet-head">
+      <h2 id="simTitle"></h2>
+      <button class="sheet-close" data-action="closeSim" aria-label="Close">×</button>
     </div>
+    <div class="sim-value" id="simValue"></div>
+    <div class="sim-result" id="simResult"></div>
+    <div class="sim-chart">
+      <canvas id="simChart" data-own-gestures tabindex="0" aria-label="Your daily chart and the target: drag up and down for the price, sideways for the time. Arrow keys nudge it."></canvas>
+      <div class="sim-legend" id="simLegend"></div>
+    </div>
+    <div class="sim-target">
+      <label class="sim-cell"><span class="k" id="simPxLabel">Stock at</span><span class="v" id="simPxText"></span><input id="simPxInput" type="number" inputmode="decimal" step="0.01" min="0" aria-label="Target price" data-change="simTargetPrice" /></label>
+      <label class="sim-cell"><span class="k">On</span><span class="v" id="simDayText"></span><input id="simDayInput" type="date" aria-label="Target day" data-change="simTargetDay" /></label>
+      <label class="sim-cell"><span class="k">At</span><span class="v" id="simTimeText"></span><input id="simTimeInput" type="time" step="300" aria-label="Target time" data-change="simTargetTime" /></label>
+    </div>
+    <div class="sim-facts" id="simFacts"></div>
+    <div class="sim-foot" id="simMeta"></div>
   </div>
 
   <div id="sheetBackdrop" class="sheet-backdrop" style="display:none;" data-action="closeSheet"></div>

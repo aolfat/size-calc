@@ -136,12 +136,42 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   While Schwab is connected each card has its own **Trade at Schwab** (openCardTrade, docs/schwab.md); a sent order shows on the card with **Status**, which reopens that order's review.
   A redraw you didn't cause (the live refresh, a login change, a review starting) waits while you're typing in a card's box; committing the box redraws it.
   Cards live in memory like the other pinned cards: a reload clears them.
-- **Simulate returns**: Black-Scholes (normCdf via Abramowitz-Stegun, RISK_FREE 4%) canvas modal — return % over time (now → expiry) at a slider-chosen underlying price, IV held constant.
-  Green above breakeven / red below via canvas clipping, max-loss floor, drag crosshair readout (est $/ct, %, $ P&L × qty).
-  Price chips: stop / now / 1R / 2R (R = distance to stop, side-aware), or −1σ / now / +1σ when opened from a position (#simRChips / #simEmChips).
+- **Simulate returns** (ui/sim.js, the model in core/simulate.js; designed with the owner over six rounds): what the contract or spread is worth with the stock at a target price on a day and time you pick.
+  The way it's used: a price target in mind for the stock, and the question is the instrument's price then (owner request).
+  Black-Scholes (normCdf via Abramowitz-Stegun, RISK_FREE 4%) on the IV fitted to the quote when the sheet opens, held after; each leg its own type, strike and expiry.
+  It's a sheet (SHEETS.sim, #simSheet): a bottom sheet on phones that pulls down to close, a 560px panel on desktop; ×, the backdrop and Esc close it.
+  Top to bottom: the name, the price at the target big (per contract, per spread, or 'to close' for a credit), one line of dollars, R, percent and, for a vertical, % of max gain, then the chart, the target's three values, two quiet lines and the footer.
+  No buttons in the sheet besides the chart's legend (owner request: sleek).
+  R is what the stop costs right now on the whole size (the loss the trade was sized for), so a stop hit now reads −1.0R; with no stop there's no R.
+  Percent is of simReturnBase (the entry, a credit vertical's max loss, a sold put's strike).
+
+  **The chart**: the left side is your daily chart, the right side the future, split at the Now line (owner request: the stock's chart as the reference).
+  The past is daily candles with the daily chart's moving averages (8 and 21 EMA, 50, 100 and 200 SMA, its colors), the Size tab's bars when it's the same symbol, else dailyHistory fetched once per symbol (state.simDaily).
+  The future is market minutes (sessionsThrough: 9:30 to 4:00 New York, weekdays, NYSE full-day holidays skipped by nyseHoliday in core/options.js; early closes aren't known), so a target at 2:15 PM tomorrow sits where it should and nights take no room.
+  Its window fits the target: 3, 5 or 10 sessions after today's, or to expiry, the smallest keeping the target in its first three quarters; let go at the right edge and it opens a size up, easing over 260ms.
+  The stop and 1R, 2R, 3R (R = the distance to the stop, on the trade's side) and the strikes run across both sides, named on the right axis; a position with no stop gets −1σ and +1σ instead (em = spot × IV × √years).
+  The target is a dot with a dashed line from now, a price tag on the right axis and a day-and-time tag under it; it's green while the target makes money and red while it loses.
+
+  **Moving the target** (owner request: price and time separate, so a price can be held while time moves): a drag locks to the direction it starts in, up and down moves only the price, sideways only the time, from anywhere on the chart and by however far it slides.
+  Chevrons on the dot show which way, and the held value's guide turns solid.
+  The right edge is a price ruler and the bottom edge under the future a time ruler: touch and slide to set that one alone.
+  The price snaps to the stop, the R levels, the price now and the strikes (a haptic tick); it moves in 5 cents otherwise, the time in 5 minutes.
+  The price scale holds still during a drag so the dot stays under the finger.
+  Tapping the price, day or time under the chart types it: their inputs sit over them unseen until focused (the number keyboard, iOS's date and time wheels); a weekend or holiday rolls to the next session and a time holds inside the session, in the zone times show in (docs/time-zone.md).
+  Arrow keys on the focused chart nudge it: ← → five minutes, ↑ ↓ five cents.
+  It starts at 1R (or the σ on the trade's side) at 3:00 PM New York the next session, today's close when expiry is today, and where you left it when the same contract opens again this session (state.simTargets).
+
+  **Configuring the past** (owner request: chips, stopping at 6M): the legend over the chart's top-left corner, like the daily chart's, holds 1M · 3M · 6M chips (21 / 63 / 126 sessions, sim_range on this device, 1M by default) and the moving averages by period.
+  A moving average there is the daily chart's own switch (toggleDailyInd, daily_ind_off): hide it here and it's hidden there.
+  Two fingers pinch the past freely (ctrl + wheel, a trackpad's pinch, on desktop), between 10 and 126 sessions; a chip lights only at exactly its range.
+  The ‹ Now › handle on the bottom axis drags the split between past and future (25% to 72%).
+  The chart canvas carries data-own-gestures, so the sheet's pull-to-close leaves its drags alone.
+
+  **Under the chart**: breakeven then (the price where P&L crosses zero nearest the price now, at the target's moment) and what a stop hit then costs, in dollars and R, which shows what holding costs; a vertical adds max gain and max loss, in dollars and R.
+  The footer names the quote and its time, the entry, the size and the IV.
   Entry points: chain detail row (simReg by OCC symbol), pinned cards (entry = mid), option positions (entry = your average cost).
-  Position spreads simulate too (docs/positions.md): a sim leg may carry its own isCall and expStr, fitted and priced at its own expiry, with the time axis running to the nearest one.
-  Esc closes
+  Position spreads simulate too (docs/positions.md): a sim leg may carry its own isCall and expStr, fitted and priced at its own expiry, with the future running to the nearest one.
+  simCurve(S) is the model's value at S from the quote's moment to expiry, for checks and tests.
 - **Trade at Schwab on a contract**: the detail row and the rail ticket end with a button that buys the sized contracts to open at a limit with a stop on the option at the loss model's Premium @ stop (docs/schwab.md, Options entries).
 - **Option loss model**: Black-Scholes move applied to the market mid — `premium@stop = max(0, mid + BS(stop,T) − BS(spot,T))` so IV-skew level offsets cancel; time to expiry runs to the 4pm New York close (expiryCloseMs in core/options.js, whatever the device's zone; also the sim and the allocation expired check); falls back to Δ+½Γ·move² when the contract has no IV (model flag 'bs'/'approx').
   Clamped so a loss-direction move can't show a gain. loss/ct = (mid − premium@stop) × 100, contracts = floor(risk$ / loss per ct).

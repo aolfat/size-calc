@@ -187,58 +187,58 @@ test('an expired option or a price the model cannot fit shows an error, not a di
 
 function useRealSimulator({ api, elements }, t) {
   api.effects.openSim = api.openSim;
-  elements.get('simChart').getContext = () => new Proxy({ measureText: () => ({ width: 40 }) }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  const ctx = new Proxy(function () {}, { get: (o, k) => k === 'measureText' ? () => ({ width: 40 }) : ctx, apply: () => ctx, set: () => true });
+  elements.get('simChart').getContext = () => ctx;
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
   t.after(() => { delete globalThis.getComputedStyle; });
 }
+// the target at the quote's own price and moment: the sheet then reads what holdings shows
+const atNow = 'simView.S = simState.spot; simView.t = simState.asOf; drawSim()';
 
-test('the now readout matches holdings price and P/L for long calls and sold puts and calls', async t => {
+test('at the price now the sheet matches holdings price and P/L for long calls and sold puts and calls', async t => {
   const h = await simApp();
   useRealSimulator(h, t);
-  for (const [symbol, price, pct, pnl] of [[CALL, '3.00', '20.0', '100.00'], [PUT, '1.50', '16.7', '90.00'], [SHORT_CALL, '1.00', '16.7', '20.00']]) {
+  for (const [symbol, price, pct, pnl] of [[CALL, '3.00', '20', '100'], [PUT, '1.50', '17', '90'], [SHORT_CALL, '1.00', '17', '20']]) {
     await h.run(`simPosition('${symbol}')`);
-    assert.match(h.elements.get('simReadout').innerHTML, new RegExp(`est <b>\\$${price}</b>/ct.*\\+${pct}%.*\\+\\$${pnl}`));
+    h.run(atNow);
+    assert.match(h.elements.get('simValue').innerHTML, new RegExp(`^\\$${price}<small>`));
+    assert.match(h.elements.get('simResult').innerHTML, new RegExp(`\\+\\$${pnl}</span>.*\\+${pct}%`));
     assert.match(h.elements.get('simMeta').textContent, /Schwab.*as of.*IV.*fitted/);
   }
 });
 
-test('the current chip and redraws keep the fitted position snapshot, even with an older calculator quote', async t => {
+test('moving the target and redrawing keep the fitted position snapshot, even with an older calculator quote', async t => {
   const h = await simApp();
   useRealSimulator(h, t);
   await h.run(`simPosition('${CALL}')`);
   const original = h.run('simCurve(simState.spot)');
-  h.run("quoteData = { symbol: 'HOOD', last: 35 }; simSetPrice('+em'); simSetPrice('current')");
-  assert.equal(+h.elements.get('simPrice').value, 41.1);
+  h.run(`quoteData = { symbol: 'HOOD', last: 35 }; simView.S = 48; drawSim(); ${atNow}`);
+  assert.equal(h.elements.get('simPxInput').value, '41.10');
   await h.advance(DAY);
   h.run('drawSim()');
   assert.equal(h.run('simCurve(simState.spot)[0].v'), original[0].v);
   assert.equal(h.run('simCurve(simState.spot)[0].t'), original[0].t);
-  assert.match(h.elements.get('simReadout').innerHTML, /est <b>\$3\.00<\/b>/);
+  assert.match(h.elements.get('simValue').innerHTML, /^\$3\.00/);
   const moved = h.run('simCurve(55)');
   assert.ok(moved[0].v > 3);
   assert.equal(moved.at(-1).v, 5, 'expiry is still intrinsic, with no permanent price offset');
 });
 
-test('the simulator: a position swaps stop and R chips for ±1σ, which move the price by the expected move', async t => {
+test('the simulator: a position marks ±1σ instead of stop and R, and starts on its side of the move', async t => {
   const h = await simApp();
   const { run, elements } = h;
   useRealSimulator(h, t);
   await run(`simPosition('${CALL}')`);
-  assert.equal(elements.get('simRChips').style.display, 'none');
-  assert.equal(elements.get('simEmChips').style.display, '');
-  assert.match(elements.get('simMeta').textContent, /avg cost \$2\.50\/ct · 2 ct/);
   const em = run('simState.em');
-  run("simSetPrice('+em')");
-  assert.equal(+elements.get('simPrice').value, +(41.1 + em).toFixed(2));
-  run("simSetPrice('-em')");
-  assert.equal(+elements.get('simPrice').value, +(41.1 - em).toFixed(2));
-  // the slider covers at least 1.5× the move either side
-  assert.ok(+elements.get('simPrice').max >= 41.1 + em * 1.5 - 0.01);
+  assert.equal(run('JSON.stringify(simLevels(simState).map(l => l.label))'), JSON.stringify(['−1σ', '+1σ']));
+  assert.equal(run('simView.S'), +(41.1 + em).toFixed(2), 'a long call aims up by the expected move');
+  assert.match(elements.get('simMeta').textContent, /avg cost \$2\.50\/ct · 2 ct/);
+  assert.doesNotMatch(elements.get('simResult').innerHTML, /R<\/span>/, 'no stop, no R');
 
-  // a calculator card still gets its stop chips
+  // a calculator card still gets its stop and R levels
   run("openSim({ isCall: true, K: 50, expStr: '2026-12-18', iv: 0.5, entry: 2, qty: 1, spot: 41, stop: 39, label: 'x', parsedTicker: 'HOOD' })");
-  assert.equal(elements.get('simRChips').style.display, '');
-  assert.equal(elements.get('simEmChips').style.display, 'none');
+  assert.equal(run('JSON.stringify(simLevels(simState).map(l => l.label))'), JSON.stringify(['Stop', '1R', '2R', '3R']));
+  assert.equal(run('simView.S'), 43);
 });
 
 // spreads: Schwab's legs folded back into one row, simulated as one position
@@ -287,7 +287,10 @@ test('a credit vertical is short its legs\' net: P/L the other way, measured on 
   assert.ok(Math.abs(o.entry - 1.2) < 1e-9);
   assert.equal(o.width, 5);
   assert.ok(Math.abs(h.run('simReturnBase(simState)') - 3.8) < 1e-9);
-  assert.match(h.elements.get('simReadout').innerHTML, /est <b>\$1\.00<\/b>\/ct.*\+5\.3%.*\+\$20\.00<\/span> for 1 ct/);
+  h.run(atNow);
+  assert.match(h.elements.get('simValue').innerHTML, /^\$1\.00<small>to close/);
+  assert.match(h.elements.get('simResult').innerHTML, /\+\$20<\/span>.*\+5%.*on 1 ct/);
+  assert.match(h.elements.get('simFacts').innerHTML, /Max gain <b class="pos">\+\$120<\/b>.*Max loss <b class="neg">−\$380<\/b>/);
   assert.match(h.elements.get('simMeta').textContent, /credit \$1\.20\/ct · 1 ct/);
   // below the bought strike at expiry: the full width to close, the whole max loss
   assert.ok(Math.abs(h.run('simCurve(30).at(-1).v') - 5) < 1e-9);
@@ -300,7 +303,9 @@ test('a calendar: each leg at its own expiry, the curve ending at the nearer one
   const o = h.run('simState');
   assert.equal(o.expStr, '2026-12-18');
   assert.equal(o.noFloor, false, 'a calendar risks its debit');
-  assert.match(h.elements.get('simReadout').innerHTML, /est <b>\$1\.20<\/b>\/ct.*\+50\.0%.*\+\$40\.00<\/span> for 1 ct/);
+  h.run(atNow);
+  assert.match(h.elements.get('simValue').innerHTML, /^\$1\.20<small>per spread/);
+  assert.match(h.elements.get('simResult').innerHTML, /\+\$40<\/span>.*\+50%.*on 1 ct/);
   // at the near expiry with HOOD at the strike, the short leg is worthless and the January call keeps time value
   const end = h.run('simCurve(50).at(-1).v');
   assert.ok(end > 0.5 && end < 5, `far leg's time value, got ${end}`);
