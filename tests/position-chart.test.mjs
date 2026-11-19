@@ -54,7 +54,7 @@ function network({ bars = BARS, fiveFails = false, dailyFails = 0 } = {}) {
       }
       return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
     }
-    if (url.includes('/markets/history')) { tradier.push(url); if (dFails > 0) { dFails--; return json({}, 500); } return json({ history: bars.length ? { day: bars } : null }); }
+    if (url.includes('/markets/history')) { tradier.push(url); if (dFails > 0) { dFails--; return json({}, 400); } return json({ history: bars.length ? { day: bars } : null }); }
     if (url.includes('/markets/timesales')) { tradier.push(url); if (fails > 0) { fails--; return json({}, 400); } return json({ series: { data: OPT_BARS } }); }
     throw new Error('Unexpected request ' + url);
   };
