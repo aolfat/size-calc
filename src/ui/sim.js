@@ -95,7 +95,9 @@ function watchSheet() {
 
 /** the daily bars behind the chart: the Size tab's when it's the same symbol, else fetched once per symbol */
 async function loadDaily(symbol) {
-  if (!symbol || symbol === state.dailySymbol || state.simDaily[symbol]) return;
+  if (!symbol || (symbol === state.dailySymbol && state.dailyBars.length)) return;
+  const had = state.simDaily[symbol];
+  if (had && (had.loading || !had.error)) return; // in hand or on its way; a failed read tries again on the next open
   const entry = state.simDaily[symbol] = { bars: [], warm: [], loading: true, error: '' };
   try {
     entry.bars = await dailyHistory(symbol, DAILY_FETCH_DAYS);
@@ -509,6 +511,8 @@ export function initSimEvents() {
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
+  // a resize or a phone turning sideways repaints at the new width
+  window.addEventListener?.('resize', () => { if (state.simState) drawSim(); });
   canvas.addEventListener('wheel', e => { if (!e.ctrlKey || !state.simView) return; e.preventDefault(); setBars(state.simBars * Math.exp(e.deltaY * 0.01)); }, { passive: false });
   canvas.addEventListener('keydown', e => {
     const v = state.simView;

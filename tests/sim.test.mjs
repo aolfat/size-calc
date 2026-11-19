@@ -161,6 +161,29 @@ test('the chart paints with the daily bars of the loaded symbol', async t => {
   assert.ok(run('simView.lo') < 39 && run('simView.hi') > 43.2, 'the scale holds the candles and the levels');
 });
 
+test('another symbol\'s daily bars are fetched for the chart, and a failed read tries again on the next open', async t => {
+  let calls = 0, fail = true;
+  const fetch = async url => {
+    if (!url.includes('/markets/history')) throw new Error('Unexpected request ' + url);
+    calls++;
+    if (fail) return new Response('{}', { status: 500 });
+    return new Response(JSON.stringify({ history: { day: [{ date: '2026-10-13', open: 40, high: 42, low: 39, close: 41 }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const { run, elements } = await simulator(t, { fetch, storage: new Map([['tradier_key', 'tk']]) });
+  elements.get('apiKey').value = 'tk';
+  const open = `closeSim(); openSim(simParamsFromCard(${JSON.stringify(card())}, 3, 2))`;
+  const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
+  run(open); await settle();
+  assert.equal(calls, 1);
+  assert.equal(run("simDaily.HOOD.bars.length"), 0);
+  fail = false;
+  run(open); await settle();
+  assert.equal(calls, 2, 'the failed read tries again');
+  assert.equal(run("simDaily.HOOD.bars.length"), 1);
+  run(open); await settle();
+  assert.equal(calls, 2, 'bars in hand are kept');
+});
+
 test('sessions skip weekends and NYSE holidays; the chart runs on market minutes', async t => {
   const { run } = await simulator(t);
   const days = run("sessionsThrough(Date.UTC(2026, 10, 25, 15), '2026-12-01').map(s => s.day)");

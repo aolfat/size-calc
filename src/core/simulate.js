@@ -31,7 +31,7 @@ export function sessionsThrough(now, expStr) {
   /** @type {Session[]} */
   const out = [];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expStr || '')) return out;
-  for (let day = nyDateStr(new Date(now)), i = 0; day <= expStr && i < 800; day = nextDay(day), i++) {
+  for (let day = nyDateStr(new Date(now)), i = 0; day <= expStr && i < 1200; day = nextDay(day), i++) {
     if (!isSessionDay(day)) continue;
     const close = nyWallMs(day, '16:00');
     if (close > now) out.push({ day, open: nyWallMs(day, '09:30'), close });

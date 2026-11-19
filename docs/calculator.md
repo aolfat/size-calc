@@ -147,6 +147,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 
   **The chart**: the left side is your daily chart, the right side the future, split at the Now line (owner request: the stock's chart as the reference).
   The past is daily candles with the daily chart's moving averages (8 and 21 EMA, 50, 100 and 200 SMA, its colors), the Size tab's bars when it's the same symbol, else dailyHistory fetched once per symbol (state.simDaily).
+  A failed read tries again the next time the sheet opens, and the chart repaints when the window resizes or the phone turns.
   The future is market minutes (sessionsThrough: 9:30 to 4:00 New York, weekdays, NYSE full-day holidays skipped by nyseHoliday in core/options.js; early closes aren't known), so a target at 2:15 PM tomorrow sits where it should and nights take no room.
   Its window fits the target: 3, 5 or 10 sessions after today's, or to expiry, the smallest keeping the target in its first three quarters; let go at the right edge and it opens a size up, easing over 260ms.
   The stop and 1R, 2R, 3R (R = the distance to the stop, on the trade's side) and the strikes run across both sides, named on the right axis; a position with no stop gets −1σ and +1σ instead (em = spot × IV × √years).
