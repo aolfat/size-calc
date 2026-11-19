@@ -138,7 +138,7 @@ const SUFFIX = { five: '5', daily: 'D' };
 // a pane: one timeframe's bars, VWAP (5-minute only), view, range chip (daily only), hover and load state
 function newPane(kind) {
   const range = kind === 'five' ? 0 : state.dailyRange; // the daily starts at the daily_range preference
-  return { kind, bars: [], vwap: [], mas: {}, view: { count: range, offset: 0 }, range, loading: false, error: '', hover: -1, hoverY: -1 };
+  return { kind, bars: [], vwap: [], mas: {}, view: { count: range, offset: 0 }, range, loading: false, error: '', retries: 0, hover: -1, hoverY: -1 };
 }
 
 // the pane's whole view: the whole session on the 5-minute, the range chip's sessions back from now on the daily
@@ -247,24 +247,56 @@ async function paneBars(sym, five) {
     : await dailyHistory(sym);
 }
 
-async function loadPane(c, kind) {
-  const on = c.on, five = kind === 'five', sym = tradierSymbol(on === 'under' ? c.under : c.symbol), name = on === 'under' ? c.under : '';
-  let bars = [], all = [], error = '';
+// a pane whose read failed or came back empty (a slow answer, a dropped connection, a login renewing) tries again after these,
+// still saying it's loading, before it says why; then each Positions read (every 30s, and on coming back to the app) tries
+// it again, up to POLL_RETRIES times, so a blip never leaves the chart without it until it's reopened
+const RETRY_WAITS = [2000, 5000];
+const POLL_RETRIES = 4;
+
+/** one read of a pane's bars: { bars, all, error } */
+async function readPane(c, on, kind) {
+  const five = kind === 'five', sym = tradierSymbol(on === 'under' ? c.under : c.symbol), name = on === 'under' ? c.under : '';
   try {
     // a spread: the legs' bars netted in ratio, at every bar any leg traded
-    all = c.spread ? spreadBars(await Promise.all(c.legs.map(l => paneBars(tradierSymbol(l), five))), c.weights) : await paneBars(sym, five);
-    bars = five ? latestSession(all) : all;
-    error = bars.length ? '' : c.spread ? (five ? `Tradier shows no 5-minute bars where every leg of ${c.label} has traded in the last two weeks.` : `Tradier has no daily history for every leg of ${c.label}.`)
+    const all = c.spread ? spreadBars(await Promise.all(c.legs.map(l => paneBars(tradierSymbol(l), five))), c.weights) : await paneBars(sym, five);
+    const bars = five ? latestSession(all) : all;
+    const error = bars.length ? '' : c.spread ? (five ? `Tradier shows no 5-minute bars where every leg of ${c.label} has traded in the last two weeks.` : `Tradier has no daily history for every leg of ${c.label}.`)
       : c.option && !name ? (five ? `Tradier shows no trades in ${c.label} in the last two weeks.` : `Tradier has no daily history for ${c.label}.`)
       : five ? `Tradier shows no 5-minute bars for ${name || c.symbol} in the last two weeks.` : `Tradier has no daily history for ${name || c.symbol}.`;
+    return { bars, all, error };
   } catch(e) {
-    error = five ? `Tradier would not send ${name || (c.spread ? 'the legs' : c.option ? 'this contract' : c.symbol)}'s 5-minute bars. They need a brokerage-linked key.` : 'Could not load the daily chart from Tradier.';
+    const error = five ? `Tradier would not send ${name || (c.spread ? 'the legs' : c.option ? 'this contract' : c.symbol)}'s 5-minute bars. They need a brokerage-linked key.` : 'Could not load the daily chart from Tradier.';
+    return { bars: [], all: [], error };
+  }
+}
+
+async function loadPane(c, kind) {
+  const on = c.on, p = c.sets[on][kind];
+  p.loading = true;
+  let got = await readPane(c, on, kind);
+  for (const ms of RETRY_WAITS) {
+    if (got.bars.length || state.posChart !== c) break;
+    await effects.wait(ms);
+    if (state.posChart !== c) return; // closed while it waited
+    got = await readPane(c, on, kind);
   }
   if (state.posChart !== c) return; // closed while it loaded
-  const p = c.sets[on][kind];
+  const { bars, all, error } = got, five = kind === 'five';
   Object.assign(p, { bars, error, loading: false, vwap: five && !c.spread ? sessionVwap(bars) : [], mas: paneAverages(all.slice(0, all.length - bars.length), bars) });
   p.view = rangeView(p);
   renderPositionChart();
+}
+
+/** a Positions read: the open chart tries a pane without bars again (not one still loading), up to POLL_RETRIES times */
+export function retryPositionChart() {
+  const c = state.posChart;
+  if (!c || !marketSource()) return;
+  const set = c.sets && c.sets[c.on];
+  if (!set) return;
+  const again = PANES.filter(k => set[k] && !set[k].bars.length && !set[k].loading && (set[k].retries || 0) < POLL_RETRIES);
+  if (!again.length) return;
+  for (const k of again) { set[k].retries = (set[k].retries || 0) + 1; loadPane(c, k); }
+  if (state.positionsView) renderPositionChart(); // the note says it's loading again
 }
 
 /** each moving average over the pane's bars, warmed up on the bars before them (the 5-minute pane's earlier days) */

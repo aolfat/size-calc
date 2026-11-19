@@ -41,8 +41,10 @@ const OPT_BARS = ['2026-10-08', '2026-10-09', '2026-10-12'].flatMap((day, d) => 
 }));
 
 // Schwab answers from the fixtures; Tradier answers the daily history and the option's timesales, counted
-function network({ bars = BARS, fiveFails = false } = {}) {
+function network({ bars = BARS, fiveFails = false, dailyFails = 0 } = {}) {
   const tradier = [], schwab = [];
+  let fails = fiveFails === true ? Infinity : +fiveFails || 0; // true: every 5-minute read fails; a number: that many first
+  let dFails = dailyFails; // the first that many daily reads fail
   const fetch = async (url) => {
     if (url.startsWith(PROXY)) {
       const path = url.slice(PROXY.length);
@@ -52,8 +54,8 @@ function network({ bars = BARS, fiveFails = false } = {}) {
       }
       return path.includes('/orders?') ? json(ORDERS) : path.endsWith('?fields=positions') ? json(ACCOUNT) : json({}, 404);
     }
-    if (url.includes('/markets/history')) { tradier.push(url); return json({ history: bars.length ? { day: bars } : null }); }
-    if (url.includes('/markets/timesales')) { tradier.push(url); return fiveFails ? json({}, 400) : json({ series: { data: OPT_BARS } }); }
+    if (url.includes('/markets/history')) { tradier.push(url); if (dFails > 0) { dFails--; return json({}, 400); } return json({ history: bars.length ? { day: bars } : null }); }
+    if (url.includes('/markets/timesales')) { tradier.push(url); if (fails > 0) { fails--; return json({}, 400); } return json({ series: { data: OPT_BARS } }); }
     throw new Error('Unexpected request ' + url);
   };
   return { fetch, tradier, schwab };
@@ -78,6 +80,7 @@ async function chartApp({ key = true, timers, clock, ...opts } = {}) {
   // canvas: the daily pane, canvas5: the 5-minute pane
   const canvas5 = fakeCanvas(h.elements.get('posChart5')), canvas = fakeCanvas(h.elements.get('posChartD'));
   globalThis.window.addEventListener = () => {};
+  h.run('wait = async () => {}'); // a failed pane's retries go at once
   h.run('initPositionChartEvents()');
   h.run("setView('positions')");
   await settle();
@@ -492,6 +495,63 @@ test('5-minute bars Tradier won\'t send say so, and the daily takes the card', a
   assert.equal(elements.get('posCol5').style.display, 'none');
   assert.equal(elements.get('posColD').style.display, '');
   assert.equal(run('posChart.daily.bars.length'), 260);
+});
+
+test('a 5-minute read that fails tries again, after 2s and then 5s, before it gives up', async () => {
+  const { run, elements, tradier, api } = await chartApp({ fiveFails: 2 });
+  const waits = [];
+  api.effects.wait = async ms => { waits.push(ms); };
+  run("togglePositionChart('HOOD')");
+  await settle();
+  assert.deepEqual(waits, [2000, 5000], 'two retries, after 2s and 5s');
+  assert.equal(tradier.filter(u => u.includes('/markets/timesales')).length, 3);
+  assert.equal(run('posChart.five.bars.length'), 10, 'the third read lands');
+  assert.equal(elements.get('posCol5').style.display, '');
+  assert.doesNotMatch(elements.get('posChartStatus').textContent, /5-minute/);
+});
+
+test('a pane still missing after its retries tries again on the next Positions read, up to four times', async () => {
+  const { run, elements, tradier } = await chartApp({ fiveFails: 3 });
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const fives = () => tradier.filter(u => u.includes('/markets/timesales')).length;
+  assert.equal(fives(), 3);
+  assert.equal(elements.get('posCol5').style.display, 'none');
+  assert.match(elements.get('posChartStatus').textContent, /would not send HOOD's 5-minute bars/);
+  const daily = tradier.filter(u => u.includes('/markets/history')).length;
+  run('refreshPositions()');
+  await settle();
+  assert.equal(fives(), 4, 'the 30s read tries the missing pane again');
+  assert.equal(tradier.filter(u => u.includes('/markets/history')).length, daily, 'not the pane that has its bars');
+  assert.equal(run('posChart.five.bars.length'), 10);
+  assert.equal(elements.get('posCol5').style.display, '');
+  run('refreshPositions()');
+  await settle();
+  assert.equal(fives(), 4, 'a pane with its bars is not read again');
+});
+
+test('the daily pane retries the same way: twice at once, then on the next Positions read', async () => {
+  const { run, elements, tradier } = await chartApp({ dailyFails: 3 });
+  run("togglePositionChart('HOOD')");
+  await settle();
+  const dailies = () => tradier.filter(u => u.includes('/markets/history')).length;
+  assert.equal(dailies(), 3);
+  assert.equal(elements.get('posColD').style.display, 'none');
+  assert.match(elements.get('posChartStatus').textContent, /daily/);
+  assert.equal(run('posChart.five.bars.length'), 10, 'the 5-minute pane shows meanwhile');
+  run('refreshPositions()');
+  await settle();
+  assert.equal(dailies(), 4);
+  assert.equal(run('posChart.daily.bars.length'), 260);
+  assert.equal(elements.get('posColD').style.display, '');
+});
+
+test('a pane that never answers stops retrying after four Positions reads', async () => {
+  const { run, tradier } = await chartApp({ fiveFails: true });
+  run("togglePositionChart('HOOD')");
+  await settle();
+  for (let i = 0; i < 6; i++) { run('refreshPositions()'); await settle(); }
+  assert.equal(tradier.filter(u => u.includes('/markets/timesales')).length, 3 + 4 * 3);
 });
 
 test('neither chart: the plot hides and the note says why for each', async () => {

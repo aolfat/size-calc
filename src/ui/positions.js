@@ -19,7 +19,7 @@ import { showToast } from './feedback.js';
 import { journalTradesFrom } from './journal.js';
 import { onCaptureChange } from './schwab-capture.js';
 import { openSheet } from './sheets.js';
-import { renderPositionChart } from './position-chart.js';
+import { renderPositionChart, retryPositionChart } from './position-chart.js';
 import { originalEditingIn, originalStopBlock } from './position-original.js';
 import { shareIconButton } from './share-button.js';
 
@@ -264,7 +264,7 @@ async function readPositions(id, acct, asked) {
     state.positionsError = e instanceof TypeError ? 'Could not reach the Schwab worker. Check its URL in Settings.' : e.message;
     if (!schwabConnected()) state.positions = null; // the login ended
   } finally {
-    if (id === state.positionsRequest) { state.positionsBusy = false; renderPositions(); schedulePositions(); }
+    if (id === state.positionsRequest) { state.positionsBusy = false; renderPositions(); schedulePositions(); retryPositionChart(); }
   }
 }
 
