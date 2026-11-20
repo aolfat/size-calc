@@ -177,6 +177,7 @@ export function createState() {
     periodNoteDraft: null, // { unit, key, field, text }: a part's note, an overall note, how the rules went or a rule for next week ('rule:<id>') being typed, saved on blur
     periodRulesError: '', // why the rules list (rules_next, rules_kept, rules_note) couldn't be read (its columns not pushed yet): the one rule box stands in
     periodRuleDraft: '', // the new rule for next week being typed, added with + Add or Enter
+    rulesMoreOpen: false, // the rules card shows every rule, not just the first RULES_SHOWN (ui/week-rules.js)
     weekRulesAt: 0, // when the calculator last read the week reviews for this week's rules (Date.now()), so focusing the app reads them at most every few minutes
     journalPeriod: 'all', // the dates Trades, Calendar and Stats share (the filter bar's first control): all | ytd (Jan 1 through today) | day | week | month | range (Dates)
     journalPeriodKey: '', // which one: 'YYYY-MM-DD' (a week = its Monday), 'YYYY-MM' or 'YYYY-MM-DD..YYYY-MM-DD' (Dates); empty = the newest with closed trades

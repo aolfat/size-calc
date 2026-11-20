@@ -69,8 +69,9 @@ export function syncSbLive() {
 export function updateStickyBar() {
   const bar = document.getElementById('stickyBar');
   const qs = document.getElementById('quoteSection');
-  // #quoteSection is display:contents (no box of its own), so measure the quote card inside it
-  const show = !!state.quoteData && qs.style.display !== 'none' && window.scrollY > document.getElementById('quoteCard').offsetTop + 60;
+  // the quote sits inside the ticker card, so measure where it is on the page, not in its card
+  const quoteTop = document.getElementById('quoteCard').getBoundingClientRect().top + window.scrollY;
+  const show = !!state.quoteData && qs.style.display !== 'none' && window.scrollY > quoteTop + 60;
   bar.style.display = show ? 'flex' : 'none';
   if (show) renderStickyBar();
   // chain header sticks just below the bar on mobile

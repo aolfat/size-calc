@@ -46,10 +46,12 @@ export function renderExt(q) {
   return ext;
 }
 
-// Quote-bound surfaces. The shares answer sits in the rail, outside #quoteSection, so it follows that section by hand.
+// Quote-bound surfaces. The quote itself sits in the ticker card and the shares answer in the rail, both outside
+// #quoteSection, so they follow that section by hand.
 
 export function setQuoteVisible(show) {
   document.getElementById('quoteSection').style.display = show ? '' : 'none';
+  document.getElementById('quoteCard').style.display = show ? '' : 'none';
   updateModeSections();
 }
 
@@ -72,6 +74,10 @@ export function renderLevels() {
   document.getElementById('qLodPct').textContent = `(${lodPct}%)`;
   document.getElementById('qHod').textContent = money(hod);
   document.getElementById('qHodPct').textContent = `(${+hodPct >= 0 ? '+' : ''}${hodPct}%)`; // HOD sits under an after-hours price
+  // the day-range bar (desktop): how far up the day's range the price sits
+  const at = hod > lod ? Math.min(1, Math.max(0, (price - lod) / (hod - lod))) * 100 : 50;
+  document.getElementById('qRangeFill').style.width = `${at.toFixed(1)}%`;
+  document.getElementById('qRangeMark').style.left = `${at.toFixed(1)}%`;
 }
 
 export function renderQuote() {
@@ -84,6 +90,7 @@ export function renderQuote() {
   const chgPct = q.change_percentage || 0;
 
   document.getElementById('qTicker').textContent = (fut ? q.contract : q.symbol) + '  ';
+  document.getElementById('quoteCard').classList.toggle('fut', fut); // desktop shows the contract month; a stock's symbol is in the box
   document.getElementById('qPrice').textContent = money(price);
   const chgEl = document.getElementById('qChg');
   chgEl.textContent = ` ${chg >= 0 ? '+' : ''}${fut ? fmtTicks(chg, q.tickSize) : fmtN(chg, 2)} (${chgPct >= 0 ? '+' : ''}${fmtN(chgPct, 2)}%)`;

@@ -11,6 +11,12 @@ import { loadPeriodReviews } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { loadJournalReview } from './journal-review.js';
 
+/** past this many rules the card shows the first RULES_SHOWN and a button for the rest: three rows of three on desktop */
+export const RULES_MAX = 9;
+export const RULES_SHOWN = 8;
+/** a rule longer than this many characters spans two of the band's columns */
+const LONG_RULE = 60;
+
 /** coming back to the app reads the reviews again at most this often */
 const REFRESH_MS = 5 * 60000;
 
@@ -71,6 +77,12 @@ export function standingLists() {
   return { rules: activeItems(rules), goals: activeItems(goals) };
 }
 
+/** the show-all button: every rule, or back to the first few */
+export function toggleRulesMore() {
+  state.rulesMoreOpen = !state.rulesMoreOpen;
+  renderWeekRulesCard();
+}
+
 /** the card: shown in the calculator when it's on and there are rules or goals; each list shows only when it has some */
 export function renderWeekRulesCard() {
   const card = document.getElementById('weekRulesCard');
@@ -81,10 +93,22 @@ export function renderWeekRulesCard() {
   const lists = on ? standingLists() : { rules: [], goals: [] };
   /** a standing rule this week's list already holds shows once, there */
   const rules = lists.rules.filter(r => !same.has(r.name.trim().toLowerCase()));
-  const groups = [['weekRules', week.map(r => r.text)], ['myRules', rules.map(r => r.name)], ['myGoals', lists.goals.map(g => g.name)]];
+  // a long list stays three rows tall: the first few rules (this week's first), then a button for the rest
+  const total = week.length + rules.length;
+  const cut = total > RULES_MAX && !state.rulesMoreOpen;
+  const weekShown = cut ? week.slice(0, RULES_SHOWN) : week;
+  const rulesShown = cut ? rules.slice(0, Math.max(0, RULES_SHOWN - week.length)) : rules;
+  const groups = [['weekRules', weekShown.map(r => r.text)], ['myRules', rulesShown.map(r => r.name)], ['myGoals', lists.goals.map(g => g.name)]];
   for (const [id, items] of groups) {
     document.getElementById(`${id}Group`).style.display = items.length ? '' : 'none';
-    document.getElementById(`${id}List`).innerHTML = items.map(t => `<li>${esc(t)}</li>`).join('');
+    // a long rule takes two cells of the desktop band, so it reads whole instead of a tall narrow column
+    document.getElementById(`${id}List`).innerHTML = items.map(t => `<li${t.length > LONG_RULE ? ' class="long"' : ''}>${esc(t)}</li>`).join('');
   }
+  const more = document.getElementById('rulesMoreBtn');
+  more.style.display = total > RULES_MAX ? '' : 'none';
+  more.textContent = state.rulesMoreOpen ? 'Show fewer' : `+${total - RULES_SHOWN} more rules · show all`;
+  more.setAttribute('aria-expanded', String(state.rulesMoreOpen));
+  card.classList.toggle('has-rules', total > 0);
+  card.classList.toggle('has-goals', lists.goals.length > 0);
   card.style.display = groups.some(([, items]) => items.length) ? '' : 'none';
 }

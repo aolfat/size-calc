@@ -60,8 +60,12 @@ export function setView(v) {
   app.classList.toggle('positions-view', state.positionsView);
   app.classList.toggle('utils-view', state.utilsView);
   app.classList.toggle('journal-view', state.journalView);
-  document.getElementById('modeShares').classList.toggle('active', calc && state.currentMode === 'shares');
-  document.getElementById('modeOptions').classList.toggle('active', calc && state.currentMode === 'options');
+  for (const [id, mode] of [['modeShares', 'shares'], ['modeOptions', 'options'], ['modeTabShares', 'shares'], ['modeTabOptions', 'options']]) {
+    const on = calc && state.currentMode === mode;
+    const b = document.getElementById(id);
+    b.classList.toggle('active', on);
+    if (id.startsWith('modeTab')) b.setAttribute('aria-pressed', String(on)); // the chart card's tabs (desktop)
+  }
   [['brandSize', calc], ['brandPositions', state.positionsView], ['brandJournal', state.journalView], ['brandTools', state.utilsView], ['brandMarket', state.marketView]].forEach(([id, active]) => {
     const button = document.getElementById(id);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');

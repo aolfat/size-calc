@@ -120,3 +120,30 @@ test('a goal added in the Journal shows in Size on the way back', async () => {
   assert.ok(shown(a.card()));
   assert.equal(a.goals(), '<li>Size by the stop</li>');
 });
+
+test('a long list of rules shows the first eight and a button for the rest, so the desktop band stays three rows', async () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, kind: 'rule', name: `Rule ${i + 1}`, settings: { order: i, since: '2026-09-01' } }));
+  const a = await size({ items: many });
+  const more = a.elements.get('rulesMoreBtn');
+  const count = id => (a.elements.get(id).innerHTML.match(/<li/g) || []).length;
+  assert.equal(count('weekRulesList') + count('myRulesList'), 8, "this week's two, then six of yours");
+  assert.ok(shown(more));
+  assert.equal(more.textContent, '+6 more rules · show all');
+  assert.equal(more.getAttribute('aria-expanded'), 'false');
+  a.run('toggleRulesMore()');
+  assert.equal(count('weekRulesList') + count('myRulesList'), 14, 'every rule');
+  assert.equal(more.textContent, 'Show fewer');
+  assert.equal(more.getAttribute('aria-expanded'), 'true');
+  a.run('toggleRulesMore()');
+  assert.equal(count('myRulesList'), 6);
+  const few = await size({ items: ITEMS });
+  assert.ok(!shown(few.elements.get('rulesMoreBtn')), 'nine or fewer: no button');
+  assert.ok(few.card().classList.contains('has-rules') && few.card().classList.contains('has-goals'));
+});
+
+test('a long rule takes two cells of the band; a short one keeps one', async () => {
+  const long = 'If a stock gaps below my stop, I wait for the first 15-minute candle to close, and if it goes under that candle\'s low, I take the loss.';
+  const a = await size({ periods: [], items: [{ id: 'r1', kind: 'rule', name: long, settings: { order: 0, since: '2026-09-01' } }, { id: 'r2', kind: 'rule', name: 'Follow your stops', settings: { order: 1, since: '2026-09-01' } }] });
+  assert.match(a.rules(), /^<li class="long">If a stock gaps[^<]*<\/li><li>Follow your stops<\/li>$/);
+  assert.ok(!a.card().classList.contains('has-goals'));
+});

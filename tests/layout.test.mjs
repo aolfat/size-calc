@@ -64,10 +64,14 @@ test('the risk amount and its chips come first, ahead of the ticket, one tap awa
 
 test('the chart sets the stop: phones run ticker, quote, chart, entry and stops, then the answer; desktop puts the ticker over the quote and the answer in the rail', async () => {
   const order = id => +css.match(new RegExp(`#${id}(?:, [^{]+)? \\{ order: (\\d+); \\}`))[1];
-  const phone = ['riskStrip', 'modeCard', 'quoteCard', 'chartWrap', 'stopsCard', 'sharesSection', 'optionTicket', 'quickCard', 'pinnedSection', 'optionsSection'];
+  const phone = ['riskStrip', 'modeCard', 'chartWrap', 'stopsCard', 'sharesSection', 'optionTicket', 'quickCard', 'pinnedSection', 'optionsSection'];
   assert.deepEqual([...phone].sort((a, b) => order(a) - order(b)), phone);
   const main = block('mainPane'), rail = block('railPane');
   assert.ok(main.indexOf('id="modeCard"') >= 0 && main.indexOf('id="modeCard"') < main.indexOf('id="quoteSection"'), 'desktop: the ticker card heads the main pane');
+  const ticker = block('modeCard');
+  assert.ok(ticker.indexOf('id="ticker"') < ticker.indexOf('id="quoteCard"'), 'the quote sits in the ticker card, after the ticker');
+  assert.match(block('quoteCard'), /id="adrInfo"/, 'ADR is part of the quote');
+  assert.match(block('chartWrap'), /id="modeTabShares"[\s\S]*id="modeTabOptions"/, 'desktop: the chart card carries the instrument tabs');
   for (const id of ['dirField', 'entryStopsRow', 'orbRow', 'stopAdjustment']) assert.match(block('stopsCard'), new RegExp(`id="${id}"`), id);
   assert.ok(rail.indexOf('id="stopsCard"') < rail.indexOf('id="sharesSection"'), 'rail: entry and stops, then the answer');
   // the rail is the ticket alone, so a laptop screen shows it down to Trade at Schwab; rules and goals head the main pane
@@ -400,4 +404,28 @@ test('every function an action handler calls is imported or defined in actions.j
     if (!known.has(name) && !builtins.has(name)) missing.add(name);
   }
   assert.deepEqual([...missing], [], 'called by a handler but never imported');
+});
+
+test('the quote shows in the ticker card once loaded; the chart card carries the instrument tabs on desktop', async () => {
+  const { run, elements } = await app();
+  const quote = elements.get('quoteCard');
+  assert.ok(!shown(quote), 'nothing loaded: no quote');
+  run("quoteData = { symbol: 'TEST', last: 100, low: 96, high: 106, change: -1, change_percentage: -1, volume: 1000 }; renderQuote(); setQuoteVisible(true)");
+  assert.ok(shown(quote));
+  assert.equal(elements.get('qRangeFill').style.width, '40.0%', "the day-range bar: 100 sits 40% up a 96 to 106 day");
+  assert.equal(elements.get('qRangeMark').style.left, '40.0%');
+  assert.ok(!quote.classList.contains('fut'), "a stock's symbol is in the box");
+  run("setView('positions')");
+  assert.ok(!shown(quote));
+  run("setView('calc')");
+  assert.ok(shown(quote));
+  await run("setMode('options')");
+  assert.ok(elements.get('modeTabOptions').classList.contains('active') && elements.get('modeOptions').classList.contains('active'));
+  assert.equal(elements.get('modeTabOptions').getAttribute('aria-pressed'), 'true');
+  assert.equal(elements.get('modeTabShares').getAttribute('aria-pressed'), 'false');
+  const app_ = elements.get('app');
+  run('chartBars = []; dailyBars = []; updateChartVisibility()');
+  assert.ok(!app_.classList.contains('has-chart'), 'no chart: the ticker card keeps the switch');
+  run("chartBars = [{ time: 1, open: 1, high: 1, low: 1, close: 1 }]; drawChart = () => {}; updateChartVisibility()");
+  assert.ok(app_.classList.contains('has-chart'));
 });
