@@ -121,29 +121,30 @@ test('a goal added in the Journal shows in Size on the way back', async () => {
   assert.equal(a.goals(), '<li>Size by the stop</li>');
 });
 
-test('a long list of rules shows the first eight and a button for the rest, so the desktop band stays three rows', async () => {
+test('a long list of rules shows the first six and a button for the rest, so the desktop band stays three rows', async () => {
   const many = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, kind: 'rule', name: `Rule ${i + 1}`, settings: { order: i, since: '2026-09-01' } }));
   const a = await size({ items: many });
   const more = a.elements.get('rulesMoreBtn');
   const count = id => (a.elements.get(id).innerHTML.match(/<li/g) || []).length;
-  assert.equal(count('weekRulesList') + count('myRulesList'), 8, "this week's two, then six of yours");
+  assert.equal(count('weekRulesList') + count('myRulesList'), 6, "this week's two, then four of yours");
   assert.ok(shown(more));
-  assert.equal(more.textContent, '+6 more rules · show all');
+  assert.equal(more.textContent, '+8 more rules · show all');
   assert.equal(more.getAttribute('aria-expanded'), 'false');
   a.run('toggleRulesMore()');
   assert.equal(count('weekRulesList') + count('myRulesList'), 14, 'every rule');
   assert.equal(more.textContent, 'Show fewer');
   assert.equal(more.getAttribute('aria-expanded'), 'true');
   a.run('toggleRulesMore()');
-  assert.equal(count('myRulesList'), 6);
+  assert.equal(count('myRulesList'), 4);
   const few = await size({ items: ITEMS });
-  assert.ok(!shown(few.elements.get('rulesMoreBtn')), 'nine or fewer: no button');
+  assert.ok(!shown(few.elements.get('rulesMoreBtn')), 'six or fewer: no button');
   assert.ok(few.card().classList.contains('has-rules') && few.card().classList.contains('has-goals'));
 });
 
-test('a long rule takes two cells of the band; a short one keeps one', async () => {
+test('every rule is written out whole, and the band fills down a column before the next', async () => {
   const long = 'If a stock gaps below my stop, I wait for the first 15-minute candle to close, and if it goes under that candle\'s low, I take the loss.';
   const a = await size({ periods: [], items: [{ id: 'r1', kind: 'rule', name: long, settings: { order: 0, since: '2026-09-01' } }, { id: 'r2', kind: 'rule', name: 'Follow your stops', settings: { order: 1, since: '2026-09-01' } }] });
-  assert.match(a.rules(), /^<li class="long">If a stock gaps[^<]*<\/li><li>Follow your stops<\/li>$/);
+  assert.equal(a.rules(), `<li>${long.replace("'", '&#39;')}</li><li>Follow your stops</li>`);
+  assert.equal(a.elements.get('myRulesList').style.gridTemplateRows, 'repeat(1, auto)', 'two rules: one row of two');
   assert.ok(!a.card().classList.contains('has-goals'));
 });

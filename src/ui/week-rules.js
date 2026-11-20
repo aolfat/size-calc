@@ -11,11 +11,11 @@ import { loadPeriodReviews } from '../services/journal-review.js';
 import { state } from '../state.js';
 import { loadJournalReview } from './journal-review.js';
 
-/** past this many rules the card shows the first RULES_SHOWN and a button for the rest: three rows of three on desktop */
-export const RULES_MAX = 9;
-export const RULES_SHOWN = 8;
-/** a rule longer than this many characters spans two of the band's columns */
-const LONG_RULE = 60;
+/** past this many rules the card shows the first RULES_SHOWN and a button for the rest: three rows of two on desktop */
+export const RULES_MAX = 6;
+export const RULES_SHOWN = 6;
+/** the desktop band's columns: each list fills down, then across (1 to 3 on the left, 4 to 6 on the right) */
+const RULE_COLUMNS = 2;
 
 /** coming back to the app reads the reviews again at most this often */
 const REFRESH_MS = 5 * 60000;
@@ -101,8 +101,10 @@ export function renderWeekRulesCard() {
   const groups = [['weekRules', weekShown.map(r => r.text)], ['myRules', rulesShown.map(r => r.name)], ['myGoals', lists.goals.map(g => g.name)]];
   for (const [id, items] of groups) {
     document.getElementById(`${id}Group`).style.display = items.length ? '' : 'none';
-    // a long rule takes two cells of the desktop band, so it reads whole instead of a tall narrow column
-    document.getElementById(`${id}List`).innerHTML = items.map(t => `<li${t.length > LONG_RULE ? ' class="long"' : ''}>${esc(t)}</li>`).join('');
+    const list = document.getElementById(`${id}List`);
+    list.innerHTML = items.map(t => `<li>${esc(t)}</li>`).join('');
+    // the desktop band's rows, so the rules fill down a column before the next (a grid there, a plain list on phones)
+    list.style.gridTemplateRows = id === 'myGoals' || !items.length ? '' : `repeat(${Math.ceil(items.length / RULE_COLUMNS)}, auto)`;
   }
   const more = document.getElementById('rulesMoreBtn');
   more.style.display = total > RULES_MAX ? '' : 'none';

@@ -122,27 +122,25 @@
   #sharesSection .shares-metrics dt { margin-bottom: 4px; }
   #sharesSection .shares-metrics dd { font-size: 16px; }
   #sharesSection .shares-actions { margin-top: 14px; padding-top: 12px; }
-  /* rules and goals: a band at the top of the main pane (owner request: the rules stand out), three numbered rules a
-     row with your goals in a blue column on the right, so the rail keeps only the ticket. Past nine rules it shows
-     eight and a button for the rest (ui/week-rules.js), so it never grows past three rows */
-  #mainPane #weekRulesCard {
-    display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; flex-shrink: 0; /* clipped corners: never squeezed by the chart */
-    background: color-mix(in srgb, var(--amber) 5%, var(--bg2)); border-color: color-mix(in srgb, var(--amber) 24%, var(--border));
-  }
+  /* rules and goals: a band at the top of the main pane (owner request: the rules stand out), two columns of numbered
+     chips that fill down, then across (1 to 3, then 4 to 6: ui/week-rules.js sets the rows), every rule written out
+     whole, and your goals as blue chips in a column on the right behind a divider, so the rail keeps only the ticket.
+     Past six rules it shows six and a button for the rest, so it never grows past three rows */
+  #mainPane #weekRulesCard { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; flex-shrink: 0; /* clipped corners: never squeezed by the chart */ }
   #mainPane #weekRulesCard.has-rules.has-goals { grid-template-columns: minmax(0, 1fr) 250px; }
-  #mainPane .week-rules-group { min-width: 0; padding: 10px 16px; }
-  #mainPane .week-rules-group + .week-rules-group { padding-top: 0; }
-  #mainPane .week-rules-title { font-size: 11.5px; }
-  #mainPane .week-rules-list { counter-reset: rule; list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 20px; font-size: 13.5px; font-weight: 600; line-height: 1.35; }
-  #mainPane .week-rules-list > li { counter-increment: rule; display: flex; gap: 9px; align-items: baseline; min-width: 0; }
-  #mainPane .week-rules-list > li::before { content: counter(rule); flex: none; min-width: 12px; color: var(--amber); font-size: 19px; font-weight: 700; line-height: 1; }
-  #mainPane .week-rules-list > li.long { grid-column: span 2; font-weight: 500; }
-  #mainPane #myGoalsGroup { grid-column: -2; grid-row: 1 / span 3; align-self: stretch; padding: 10px 16px; background: var(--blue-bg); }
-  #mainPane #weekRulesCard:not(.has-rules) #myGoalsGroup { grid-column: 1; grid-row: auto; }
+  #mainPane .week-rules-group { min-width: 0; padding: 10px 14px 12px; }
+  #mainPane .week-rules-group:not([style*="none"]) + .week-rules-group { padding-top: 0; } /* only under a group that shows */
+  #mainPane .week-rules-title { font-size: 11.5px; padding-left: 2px; }
+  #mainPane .week-rules-list { counter-reset: rule; list-style: none; margin: 7px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; align-items: start; gap: 6px 8px; font-size: 12.5px; font-weight: 600; line-height: 1.45; }
+  #mainPane .week-rules-list > li { counter-increment: rule; display: flex; gap: 8px; align-items: flex-start; min-width: 0; padding: 5px 12px 4px 4px; border-radius: 15px; background: var(--bg3); border: 1px solid var(--border2); overflow-wrap: anywhere; }
+  #mainPane .week-rules-list > li::before { content: counter(rule); flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: -2px; border-radius: 50%; background: var(--amber); color: #1a1205; font-size: 11px; font-weight: 700; line-height: 1; }
+  #mainPane #myGoalsGroup { grid-column: -2; grid-row: 1 / span 3; align-self: stretch; border-left: 1px solid var(--border); padding-top: 10px; }
+  #mainPane #weekRulesCard:not(.has-rules) #myGoalsGroup { grid-column: 1; grid-row: auto; border-left: 0; }
   #mainPane #myGoalsGroup .week-rules-title { color: var(--blue); }
-  #mainPane #myGoalsGroup .week-rules-list { grid-template-columns: minmax(0, 1fr); gap: 5px; font-weight: 500; font-size: 13px; color: color-mix(in srgb, var(--blue) 45%, var(--text)); }
-  #mainPane #myGoalsGroup .week-rules-list > li::before { content: none; }
-  #mainPane #weekRulesCard:not(.has-goals) .week-rules-list, #mainPane #weekRulesCard:not(.has-rules) #myGoalsGroup .week-rules-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #mainPane #myGoalsGroup .week-rules-list { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; font-weight: 500; color: color-mix(in srgb, var(--blue) 45%, var(--text)); }
+  #mainPane #myGoalsGroup .week-rules-list > li { padding-left: 10px; background: var(--blue-bg); border-color: var(--blue-bd); }
+  #mainPane #myGoalsGroup .week-rules-list > li::before { content: "\25CE"; width: auto; height: auto; margin-top: 0; background: none; color: var(--blue); font-size: 11px; line-height: inherit; }
+  #mainPane #weekRulesCard:not(.has-rules) #myGoalsGroup .week-rules-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #mainPane #rulesMoreBtn { grid-column: 1; justify-self: start; margin: -2px 16px 10px; }
   /* the main pane is wide: the chart's day and bar count (the hover readout) share the title's line */
   #chartWrap .chart-head .ohlc { flex: 1 1 0; flex-basis: 0; min-width: 0; }
@@ -166,11 +164,11 @@
   #mainPane > .card, #mainPane #quoteSection > .card { margin-bottom: 10px; }
   #mainPane #modeCard { padding-top: 12px; padding-bottom: 12px; }
   #mainPane #recentTickers, #mainPane .ticker-actions { margin-top: 10px !important; }
-  #mainPane .week-rules-group { padding-top: 8px; padding-bottom: 8px; }
+  #mainPane .week-rules-group, #mainPane #myGoalsGroup { padding-top: 8px; padding-bottom: 8px; }
 }
 
 /* the compact desktop tier: the main pane is too narrow for the whole quote beside the ticker box, so the day's range
-   and ADR take the next line; the band of rules goes two across */
+   and ADR take the next line; the goals column narrows */
 @media (min-width: 1100px) and (max-width: 1439px) {
   #mainPane #modeCard {
     grid-template-columns: auto auto minmax(0, 1fr);
@@ -179,7 +177,6 @@
   }
   #mainPane .quote-levels { width: 330px; margin-top: 12px; }
   #mainPane .quote-adr { max-width: none; margin-top: 12px; }
-  #mainPane .week-rules-list, #mainPane #weekRulesCard:not(.has-goals) .week-rules-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #mainPane #weekRulesCard.has-rules.has-goals { grid-template-columns: minmax(0, 1fr) 210px; }
 }
 
