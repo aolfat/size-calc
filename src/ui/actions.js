@@ -37,7 +37,7 @@ import { addPeriodRule, carryPeriodRule, closePeriodReview, graduatePeriodRule, 
 import { setWeekRulesShown, toggleRulesMore } from './week-rules.js';
 import { clearJournalScope, clearJournalSetupFilter, closeJournalSetup, restoreJournalScope, closeMonthPicker, openJournalFilters, pickCalendarDate, pickJournalMonth, stepMonthPicker, toggleMonthPicker, openJournalSetup, openJournalStats, showSetupIn, pickJournalDay, setJournalPeriod, setScopeDates, whenPicked, setJournalReviewFilter, setJournalSetupFilter, stepJournalPeriod } from './journal.js';
 import { clearTosStatement, pickTosStatement, saveTosStatement, setTosZone, tosStatementChosen } from './journal-tos.js';
-import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
+import { addTradeToModelBook, closeJournalTrade, editJournalTrade, journalPageTrade, openJournalTrade, openLinkedTrade, openTradeExample, stepJournalTrade, setJournalChartKind, setJournalInterval, setJournalRange, setJournalTradeLeft, setJournalTradeTab, openNextToReview, toggleJournalLog } from './journal-trade.js';
 import { toggleTradeFeatures } from './journal-features.js';
 import { addJournalFilter, applyJournalView, cancelJournalView, clearJournalFilters, closeJournalFilterEdit, deleteJournalView, editJournalFilter, journalViewTyped, pickJournalView, removeJournalFilter, saveJournalView, setJournalFilterBound, setJournalFilterNot, setJournalFilterOp, startJournalView, toggleJournalFilterValue } from './journal-filters.js';
 import { reviewJournalDay, pickNotebookDay, addMissedTactic, addMissedTrade, openMissedOnDay, cancelMissedTactic, missedTacticInput, newMissedSetup, startMissedTactic, addNotebookItem, closeJournalDay, daySleepSave, dayTextInput, dayTextSave, editNotebookList, missedInput, missedNoteInput, missedNoteSave, moveNotebookItem, notebookItemInput, openJournalDay, openMissedTrade, openTodayNotebook, removeMissedTrade, renameNotebookItem, retireNotebookItem, setDayEnergy, setDayFocusKept, setDayGrade, setDayMarket, setDayPlace, setDayRule, setDayWeekRule, toggleMissedSetup, setMissedSide, toggleMissedTactic, setMissedWhy, stepJournalDay, toggleDayFeeling, setDayPlan, undoClearPlan, toggleWokeEarly, undoRemoveMissed, addFocusTicker, focusInput, focusNoteInput, focusNoteSave, newFocusSetup, openFocusTicker, removeFocusTicker, setFocusPlayed, setFocusSide, toggleFocusSetup, undoRemoveFocus } from './journal-notebook.js';
@@ -243,6 +243,7 @@ export const actions = {
   openTradeRow: (el, e) => openTradeRow(arg(el), e),
   closeJournalTrade: () => closeJournalTrade(),
   stepJournalTrade: el => stepJournalTrade(num(el)),
+  openLinkedTrade: el => openLinkedTrade(arg(el)),
   setJournalReviewFilter: el => setJournalReviewFilter(arg(el)),
   setJournalSetupFilter: el => setJournalSetupFilter(/** @type {HTMLSelectElement} */ (el).value),
   clearJournalSetupFilter: () => clearJournalSetupFilter(),

@@ -35,7 +35,8 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  *   orderQty: Record<string, number>, fees: number, feesMissing: number, grossPnl: number, afterFees: boolean, realized: Realized[],
  *   legs?: Trade[], group?: 'auto' | 'yours', spreadKind?: 'debit' | 'credit',
  *   kind?: 'single' | 'merged' | 'spread', id?: string, savedIds?: string[], parts?: string[],
- *   bias?: 'long' | 'short' | 'neutral', structure?: string, setupOn?: string | null, setupLev?: number | null }} Trade
+ *   bias?: 'long' | 'short' | 'neutral', structure?: string, setupOn?: string | null, setupLev?: number | null,
+ *   linked?: string[], netEntry?: number | null }} Trade
  * kind: single = grouped flat to flat on its own; merged = trades on one symbol you made one; spread = option legs as one
  * (by one order, group 'auto', or by you, 'yours'). id / savedIds = the trades rows behind it (Separate deletes them),
  * parts = the trade keys it's made of.
@@ -44,6 +45,10 @@ export const multiplierOf = (assetType, symbol = '') => assetType === 'OPTION' ?
  * one of yours); bias is then the bet on that symbol, so a long inverse fund is short. null when it's on the symbol traded.
  * via = an option delivered it: the option's trade closed at $0 by an assignment or exercise, or the shares' trade opened
  * or closed by one at the strike (delivered: the option is older than the history). From Schwab's transactions.
+ * linked = the other trades an assignment or exercise ties to this one (withLinks): the option and the shares it delivered,
+ * and on through the shares to the next option (a put assigned, then the covered call that took them away), oldest first.
+ * netEntry = a shares trade's entry net of the options whose assignment or exercise opened it: the strike less the
+ * premium a sold put kept, per share (plus what a bought call cost). null when no option opened it.
  * peakQty = the most held at once (a single or merged trade; a spread has none).
  * costAvg = what the shares still open cost on average, the whole position's: each add averages in, a trim leaves it as it was.
  * lotsAvg = what the shares still open cost by lot, oldest sold first (Schwab's way, so a trim after an add leaves the add's price).
@@ -409,8 +414,61 @@ export function journalTrades(fills, records, reviews = {}, opts = {}) {
     const rv = reviews[t.key] || {};
     return { ...withFees(withRisk(t, stops, rv.stop ?? null), fees, orderTotals, !!opts.afterFees), deleted: !!rv.deleted };
   });
-  return shapeTrades(legs, opts.saved || [], reviews, stops).map(t => withSetupOn(withBias(t), opts.funds || {}))
+  return withLinks(shapeTrades(legs, opts.saved || [], reviews, stops).map(t => withSetupOn(withBias(t), opts.funds || {})))
     .sort((a, b) => { const ka = a.closedAt || a.openedAt, kb = b.closedAt || b.openedAt; return ka < kb ? 1 : ka > kb ? -1 : 0; });
+}
+
+/** an assignment's fill (assignmentFills): its transaction's id, and ':option:' on the option's $0 close */
+const ASSIGNMENT_FILL = /^tx:([^:]+):\d+(:option:\d+)?$/;
+
+/**
+ * Trades an assignment or exercise ties together: the option it closed at $0 and the shares it delivered at the strike
+ * share the transaction (their fills are tx:<id>:… from assignmentFills), and so do the shares and the next option that
+ * takes them away, so a wheel (a put assigned, the shares, the covered call called away) reads as one chain. Each trade
+ * gets linked (the others in its chain, oldest first) and a shares trade an option opened its netEntry: its average entry
+ * less what those options made per share (a sold put's premium lowers it; a bought call's cost raises it), the other
+ * way for a short. Every trade stays its own in the stats.
+ * @param {Trade[]} trades @returns {Trade[]}
+ */
+export function withLinks(trades) {
+  /** @type {Map<string, { i: number, option: boolean }[]>} */
+  const byTx = new Map();
+  trades.forEach((t, i) => {
+    for (const id of t.fillIds) {
+      const m = ASSIGNMENT_FILL.exec(id);
+      if (!m) continue;
+      const k = `${t.account}|${m[1]}`;
+      if (!byTx.has(k)) byTx.set(k, []);
+      const list = /** @type {{ i: number, option: boolean }[]} */ (byTx.get(k));
+      if (!list.some(x => x.i === i && x.option === !!m[2])) list.push({ i, option: !!m[2] });
+    }
+  });
+  const parent = trades.map((_, i) => i);
+  const find = (/** @type {number} */ i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+  for (const list of byTx.values()) list.slice(1).forEach(x => { parent[find(x.i)] = find(list[0].i); });
+  /** @type {Map<number, number[]>} */
+  const chains = new Map();
+  trades.forEach((_, i) => { const r = find(i); if (!chains.has(r)) chains.set(r, []); /** @type {number[]} */ (chains.get(r)).push(i); });
+  return trades.map((t, i) => {
+    const chain = /** @type {number[]} */ (chains.get(find(i)));
+    if (chain.length < 2) return t;
+    const linked = chain.filter(j => j !== i).map(j => trades[j])
+      .sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0)).map(x => x.key);
+    let netEntry = null;
+    if (t.assetType !== 'OPTION' && !t.legs && t.entryQty > EPS && t.status !== 'history') {
+      // the options whose transaction opened these shares (its shares fill is one of the trade's entries)
+      const opened = new Set();
+      for (const [k, list] of byTx) {
+        if (!list.some(x => x.i === i && !x.option) || !t.entryOrderIds.includes(`tx:${k.slice(k.indexOf('|') + 1)}`)) continue;
+        for (const x of list) if (x.option && x.i !== i) opened.add(x.i);
+      }
+      if (opened.size) {
+        const made = [...opened].reduce((n, j) => n + trades[j].pnl, 0);
+        netEntry = round8(t.avgEntry - (t.direction === 'long' ? 1 : -1) * made / (t.entryQty * t.multiplier));
+      }
+    }
+    return { ...t, linked, netEntry };
+  });
 }
 
 /**
