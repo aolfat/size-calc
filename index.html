@@ -225,6 +225,7 @@
     <div class="week-rules-group" id="weekRulesGroup"><div class="strip-title week-rules-title">This week's rules</div><ol class="week-rules-list rule-caps" id="weekRulesList"></ol></div>
     <div class="week-rules-group" id="myRulesGroup" style="display:none;"><div class="strip-title week-rules-title">Rules</div><ol class="week-rules-list rule-caps" id="myRulesList"></ol></div>
     <div class="week-rules-group" id="myGoalsGroup" style="display:none;"><div class="strip-title week-rules-title">Goals</div><ol class="week-rules-list rule-caps" id="myGoalsList"></ol></div>
+    <button type="button" class="link-btn rules-more" id="rulesMoreBtn" data-action="toggleRulesMore" aria-expanded="false" style="display:none;"></button>
   </div>
 
   <div class="card" id="modeCard">
@@ -236,23 +237,29 @@
     <div class="row" id="tickerRow" style="align-items:flex-end;margin-top:16px;">
       <div class="field" id="symbolField" style="flex:0 0 140px;">
         <label for="ticker">Ticker</label>
-        <input type="text" id="ticker" placeholder="AAPL, /MES" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
+        <div class="ticker-box">
+          <svg class="ticker-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          <input type="text" id="ticker" placeholder="AAPL, /MES" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-describedby="tickerParsed" style="text-transform:uppercase;" data-input="tickerInputChanged" data-enter="submitTicker" />
+          <kbd class="ticker-kbd" aria-hidden="true">/</kbd>
+        </div>
       </div>
-      <div class="field" style="flex:0 0 auto;">
+      <div class="ticker-actions">
+      <div class="field" id="loadField" style="flex:0 0 auto;">
         <label>&nbsp;</label>
         <button class="btn primary" data-action="submitTicker">
           <span id="fetchBtnText">Load<span class="btn-word"> quote</span></span>
         </button>
       </div>
-      <div class="field" style="flex:0 0 auto;">
+      <div class="field" id="refreshField" style="flex:0 0 auto;">
         <label>&nbsp;</label>
-        <button class="btn" data-action="refreshQuote" title="Refresh quote (r) · press ? for all shortcuts">
+        <button class="btn" data-action="refreshQuote" aria-label="Refresh quote" title="Refresh quote (r) · press ? for all shortcuts">
           ↻<span class="btn-word"> Refresh</span>
         </button>
       </div>
-      <div class="field" style="flex:0 0 auto;">
+      <div class="field" id="liveField" style="flex:0 0 auto;">
         <label>&nbsp;</label>
         <button class="btn" data-action="toggleLive" id="liveBtn" title="Live quotes: the price streams trade by trade. Every Load goes live (tap to stop); with Settings set to Tap to start, taps run 1m, then 5m, then 30m, then stop. Pauses while the page is hidden (l)">⚡ Live</button>
+      </div>
       </div>
     </div>
     <div class="ticker-hint" id="tickerParsed" role="status">Or pin a contract: AAPL 245c 6/20</div>
@@ -263,25 +270,26 @@
       <p class="hint">Sell put reserves the full assignment amount. Standard 100-share equity/ETF contracts only. Mid quotes are estimates, before fees.</p>
     </div>
     </div>
-  </div>
-
-  <div id="quoteSection" style="display:none;">
-    <div class="card" id="quoteCard">
+    <div class="quote-card" id="quoteCard" style="display:none;">
       <div class="quote-bar">
-        <div>
+        <div class="quote-main">
           <span class="quote-ticker" id="qTicker"></span>
           <span class="quote-price" id="qPrice"></span>
           <span class="quote-chg" id="qChg"></span>
-          <span id="qExt" style="font-size:13px;font-family:var(--num);margin-left:4px;"></span>
+          <span class="quote-ext" id="qExt"></span>
         </div>
         <div class="quote-levels">
           <span class="quote-lod">▼ LOD <span id="qLod"></span> <span class="lod-pct" id="qLodPct"></span></span>
+          <span class="day-range" aria-hidden="true"><span class="day-range-fill" id="qRangeFill"></span><span class="day-range-mark" id="qRangeMark"></span></span>
           <span class="quote-hod">▲ HOD <span id="qHod"></span> <span class="lod-pct" id="qHodPct"></span></span>
-          <span style="font-size:12px;color:var(--text3);font-family:var(--num);" id="qVol"></span>
+          <span class="quote-vol" id="qVol"></span>
         </div>
+        <div class="quote-adr" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></div>
       </div>
     </div>
+  </div>
 
+  <div id="quoteSection" style="display:none;">
     <div id="optionsSection" style="display:none;">
       <div class="card">
         <div class="section-title">Expiration</div>
@@ -328,8 +336,8 @@
 
   <div class="card chart-wrap" id="chartWrap" style="display:none;">
     <div class="chart-head">
-      <span class="section-title" style="margin-bottom:0;">Chart</span>
-      <span style="font-size:11.5px;color:var(--text2);font-family:var(--num);" id="adrInfo" title="14-day average daily range, and how far price has travelled off the LOD in ADR units"></span>
+      <div class="mode-tabs" id="modeTabs" role="group" aria-label="Instrument"><button id="modeTabShares" class="active" aria-pressed="true" data-action="setMode" data-arg="shares">Stocks &amp; futures</button><button id="modeTabOptions" aria-pressed="false" data-action="setMode" data-arg="options">Options</button></div>
+      <span class="section-title chart-title" style="margin-bottom:0;">Chart</span>
       <span class="ohlc" id="chartOhlc"></span>
     </div>
     <div class="chart-row">

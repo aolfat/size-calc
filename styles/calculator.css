@@ -30,6 +30,7 @@
 .week-rules { padding:10px 16px 12px; display:flex; flex-direction:column; gap:10px; }
 .week-rules-title { color:var(--text2); }
 .week-rules-list { margin:6px 0 0; padding-left:20px; font-size:13.5px; line-height:1.5; }
+.rules-more { align-self:flex-start; color:var(--amber); font-size:12.5px; }
 #allocationControls .row { margin-top:2px; }
 
 /* direction: its own full-width switch, the side you're on filled solid (owner request: make long / short obvious) */
@@ -142,6 +143,22 @@
 .quote-chg.up { color: var(--green); }
 .quote-chg.dn { color: var(--red); }
 .quote-ticker { font-size: 13px; color: var(--text2); font-weight: 600; letter-spacing: 0.04em; }
+.quote-ext { font-size: 13px; font-family: var(--num); margin-left: 4px; }
+.quote-vol { font-size: 12px; color: var(--text3); font-family: var(--num); }
+.quote-adr { font-size: 11.5px; color: var(--text2); font-family: var(--num); margin-top: 6px; }
+.quote-adr:empty { display: none; }
+/* the quote sits in the ticker card, under the ticker row */
+.quote-card { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+.day-range { display: none; } /* the desktop quote draws the day's range as a bar */
+.day-range-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px 0 0 3px; background: var(--red-bd); }
+.day-range-mark { position: absolute; top: -5px; width: 3px; height: 16px; margin-left: -1.5px; border-radius: 2px; background: var(--text); }
+/* the ticker box: the search icon and the / shortcut show on desktop */
+.ticker-box { position: relative; display: flex; }
+.ticker-box input { flex: 1 1 auto; min-width: 0; }
+.ticker-icon, .ticker-kbd { display: none; }
+.ticker-actions { display: contents; } /* Load, refresh and Live: one group on desktop, part of the ticker row on phones */
+/* Stocks & futures / Options as the chart card's tabs on desktop; phones keep the big switch in the ticker card */
+.mode-tabs { display: none; }
 
 .lod-pct { font-size: 11px; color: var(--text3); margin-left: 4px; }
 

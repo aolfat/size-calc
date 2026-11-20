@@ -56,7 +56,7 @@ Keys - and = (or +) step risk through one ladder of every preset (riskLadder: % 
 The same ladder is one tap on a phone: − and + buttons either side of the risk $ input (#riskDown, #riskUp, owner request), greyed out at the ladder's ends.
 In the risk $ input, ↑ ↓ step the ladder too instead of the input's fixed $50 (the - and = keys stay off while typing).
 There is no header risk pill (it was removed: two extra taps per change). risk_open is an orphan key from the old collapsible card.
-Your rules and goals (#weekRulesCard: the rules last week's review set, your standing rules and your goals from the Journal) sit right under the strip on phones while signed in, and as a band over the ticker card on desktop; Settings can hide them (docs/calculator.md).
+Your rules and goals (#weekRulesCard: the rules last week's review set, your standing rules and your goals from the Journal) sit right under the strip on phones while signed in, and as a band of numbered rules over the ticker card on desktop; Settings can hide them (docs/calculator.md).
 
 ## Where the details live
 Each area's behavior is written down in its own file under `docs/`.
@@ -108,7 +108,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Image and summary actions sit in the footer.
 - One share button everywhere a card image is copied (owner request: uniform, like the logo): the share icon in a 30px square, shareIconButton and SHARE_ICON in `src/ui/share-button.js`, class .share-btn in base.css; the shares answer's static one in index.html carries the same icon (a test keeps them equal).
 - Desktop shell (≥1100px, calculator and Positions only, media-only — no toggle): .app becomes a 100vh grid and the PAGE HOLDS STILL; each pane scrolls on its own (no position:sticky in the shell — sticky charts once shifted against the page; don't re-add; the Journal's rail, right column and day bands are the one exception).
-  Panes: #sidePane = #railPane (setup notice, #riskStrip, entry and stops #stopsCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, rules and goals (#weekRulesCard, its groups side by side), the ticker card #modeCard (instrument switch and ticker row side by side, stacked in the 1100–1439 tier), quote card, charts, chain (and the positions table in Positions, which spans the full width).
+  Panes: #sidePane = #railPane (setup notice, #riskStrip, entry and stops #stopsCard, shares answer, #optionTicket) over #trayPane (quick lookup, pinned cards); #mainPane = kbd help, rules and goals (#weekRulesCard, a band of numbered rules with the goals beside them), the ticker card #modeCard (the ticker in a big box with its quote beside it, recent tickers under it), charts (Stocks & futures and Options as the chart card's tabs), chain (and the positions table in Positions, which spans the full width).
   The ticket was split in two so the rail reads max loss, entry and stops, then the answer, which starts above the fold at 900px tall.
   The rail fits a MacBook Pro browser window (1512 by about 830) down to Trade at Schwab with no scrolling (owner request): tighter rail cards, no Entry & stops title (as on phones), the answer's three figures in one row, the idle opening-range line hidden (its chips' titles say it).
   That's why the rules card lives in the main pane: in the rail it pushed the answer below the fold.
@@ -116,7 +116,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   On desktop the chart's day and bar count share the title's line.
   Tools and Market scroll as a normal page at ≥1100 but keep the shell's full-width header at the same position and height (`.app > .header`), so switching views never moves the tabs; their content is a centered column (888px; Market 1468px).
   The Journal at ≥1100 scrolls as a page (owner request), up to 1680px wide, its rail and right column sticky (the one place position: sticky is used); the full review holds still like the shell (styles/journal-desktop.css, docs/journal.md The desktop). ≥1800px: #sidePane goes display:contents and the tray becomes its own right column (360 / 1fr / 340).
-  Below 1100 every pane wrapper is display:contents and .app is a flex column, so the cards are flex items placed by `order` (setupNotice, riskStrip, weekRulesCard, modeCard, quoteCard, chartWrap, stopsCard, sharesSection, optionTicket, quick lookup, pinned, positions, then optionsSection).
+  Below 1100 every pane wrapper is display:contents and .app is a flex column, so the cards are flex items placed by `order` (setupNotice, riskStrip, weekRulesCard, modeCard with the quote in it, chartWrap, stopsCard, sharesSection, optionTicket, quick lookup, pinned, positions, then optionsSection).
   Chain tiers: COMPACT_CHAIN_MQ (1100–1439) keeps the compact columns (twoPaneChain(), isMobileChain() true, Δ/OI re-shown, colspans both 13 / single 8 / banner 6, charts stacked 5m first); ≥1440 the main pane is ~1000px so the full table returns (min-width dropped to fit, charts side by side).
   CSS mirrors DESKTOP_MQ / COMPACT_CHAIN_MQ exactly.
   On desktop, tapping a chain contract fills the rail ticket (#optionTicket via detailBody/showDetail, railDetailSym, re-armed on re-render, cleared by closeDetails) instead of an inline row; phones and tablets keep the inline detail row.
@@ -130,7 +130,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
 - Daily chart toggle: 'D1' chip in the interval row AND the tappable 'Daily · tap to hide' label (.daily-toggle, truncates on narrow phones) both call toggleDaily (show_daily persisted; until it's saved initShowDaily starts it on at desktop width and off below, where it would stack between the intraday chart and the stops it sets); updateChartVisibility gates chartColD on showDaily, syncs the D1 active state, and repaints on re-show
 - Card headers (pinned/spread): wide cards = one line, flex-wrap nowrap so the .pinned-meta shrinks/ellipsizes instead of splitting the .card-act cluster; mobile (<600px) and the narrow desktop columns (rail, tray) = identity line, full-width meta (keeps the editable stop visible), action row, badges hidden in rail/tray
 - The chart card lives in #mainPane outside quoteSection; on phones it follows the quote and comes before entry and stops and the answer (owner request: the chart sets the stop; the sticky bar carries the share count while you drag); updateChartVisibility gates on positionsView since the card doesn't inherit quoteSection's hiding. drawChart skips a hidden canvas (it would wipe it to zero width) and setView repaints on the way back
-- Page order = trade order: setup notice (only with neither a Tradier key nor a Schwab login), risk strip, ticker card (instrument, ticker), quote bar, chart, entry and stops, the answer, quick lookup (collapsible, q expands), pinned cards, then the chain.
+- Page order = trade order: setup notice (only with neither a Tradier key nor a Schwab login), risk strip, ticker card (instrument, ticker, its quote), chart, entry and stops, the answer, quick lookup (collapsible, q expands), pinned cards, then the chain.
   Chart sits ABOVE the chain — levels before contracts.
   Setup never sits in the page: the header settings button (amber dot until a key exists) opens #settingsSheet (account, times, key, environment) and the risk strip's summary link opens #riskSheet.
   Sheets (openSheet/closeSheet) are a panel under the header on desktop and a bottom sheet on phones; missing-key actions call requireKey(), which toasts and opens Settings
@@ -142,6 +142,7 @@ Put a new area's notes in its own `docs/` file and add a pointer above.
   Recalc-triggered re-renders pulse stat values (.pulse).
   Errors are fixed-position toasts, self-dismiss in 6s
 - Big Stocks & futures / Options segmented switcher at top of ticker card — keep it prominent.
+  On desktop it moves to the chart card as its tabs once a chart shows (owner request, docs/calculator.md, The ticker card).
   Futures are a ticker in Stocks & futures (/MES), not a tab of their own (owner request); the mode is still 'shares' in code
 - localStorage wrapped in try/catch (`store` helper) so sandboxed previews don't crash
 - Content-Security-Policy meta in index.html, copied in `_headers` plus `frame-ancestors 'none'` (a test keeps them equal): `default-src 'self'`, no inline scripts, eval or other-origin scripts, styles self plus inline (style attributes), images self / data: / blob: / the Supabase project (signed screenshot links), no frames, objects or other-origin form posts; connect-src is any https (plus localhost) because the Schwab worker URL is user-configured.

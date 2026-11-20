@@ -10,7 +10,7 @@
    flex item of .app and `order` places it (the desktop main pane, a flex column, follows the same numbers). */
 #appHeader, #schwabBanner { order: 0; } #kbdHelp { order: 1; } #setupNotice { order: 2; } #riskStrip { order: 3; } /* risk first: the max loss frames the trade */
 #weekRulesCard { order: 3; } /* under the risk strip: same order, later in the markup */
-#modeCard { order: 4; } #quoteCard { order: 5; } #chartWrap { order: 6; } #stopsCard { order: 7; } #sharesSection { order: 8; }
+#modeCard { order: 4; } #chartWrap { order: 6; } #stopsCard { order: 7; } #sharesSection { order: 8; }
 #optionTicket { order: 9; }
 #quickCard { order: 10; } #pinnedBar { order: 11; } #pinnedSection { order: 12; } #positionsSection { order: 13; }
 #optionsSection { order: 14; } #marketSection, #utilsSection, #journalSection, #journalTradeSection { order: 15; }
@@ -28,6 +28,14 @@
   .app.calc-view #railPane, .app.calc-view #trayPane { display: block; }
   .app.calc-view #mainPane, .app.positions-view #mainPane { display: flex; flex-direction: column; grid-column: 2; grid-row: 3; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
   .app.positions-view #sidePane { display: none; }
+  /* the panes' scrollbars match the dark theme, thin and quiet (owner request: the rail's grey bar was ugly where macOS
+     always shows them): the standard properties for Chrome and Firefox, the -webkit ones for Safari. Only the panes:
+     in Safari any -webkit-scrollbar rule turns the system's overlay bars into always-drawn ones */
+  #sidePane, #railPane, #trayPane, #mainPane { scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+  :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar { width: 10px; }
+  :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar-track { background: transparent; }
+  :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar-thumb { background: var(--border2); background-clip: padding-box; border: 3px solid transparent; border-radius: 5px; }
+  @media (hover: hover) { :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar-thumb:hover { background-color: var(--text3); } }
   .app.positions-view #mainPane { grid-column: 1 / -1; }
   /* Tools and Market scroll as a page, but the header stays where the shell puts it (full width, same height)
      so switching views never moves the tabs; their content is a centered column under it */
@@ -36,14 +44,61 @@
   .app.journal-view .pane > * { width: 100%; max-width: 1100px; margin-inline: auto; }
   .app.market-view .pane > * { width: 100%; max-width: 1468px; margin-inline: auto; }
 
-  /* the ticker card heads the main pane, over the quote and chart it loads: the instrument switch, then the ticker row */
-  #mainPane #modeCard { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); column-gap: 24px; align-items: start; padding: 14px 18px; }
-  #mainPane #modeCard .seg.mode-big { margin-top: 22px; } /* level with the inputs under their labels */
-  #mainPane #modeCard .seg.mode-big button { font-size: 14px; }
-  #tickerRow { gap: 8px; margin-top: 0 !important; }
-  #tickerRow .field { min-width: 0; }
-  #symbolField { flex: 0 1 220px !important; }
-  #tickerRow .btn { padding: 9px 12px; }
+  /* the ticker card heads the main pane (owner request: the ticker easy to find): the ticker in a big box on the left,
+     its quote beside it (price, the day's range, ADR), recent tickers, refresh and Live under them. The wrappers go
+     display:contents so every piece is a cell of the card's grid; a hidden wrapper's inline display:none still wins */
+  #mainPane #modeCard {
+    display: grid; column-gap: 20px; align-items: center; padding: 14px 18px;
+    grid-template-columns: auto auto minmax(250px, 330px) minmax(0, 1fr);
+    grid-template-areas: "mode mode mode mode" "tick main range adr" "hint hint hint hint" "recent recent recent act" "opt opt opt opt";
+  }
+  #mainPane #sizingControls, #mainPane #tickerRow, #mainPane #quoteCard, #mainPane .quote-bar { display: contents; }
+  #mainPane #modeSeg { grid-area: mode; max-width: 420px; margin-bottom: 14px; }
+  #mainPane #modeSeg button { font-size: 14px; }
+  .app.has-chart #mainPane #modeSeg { display: none; } /* the chart card carries the switch as its tabs */
+  #mainPane #tickerRow .field { min-width: 0; gap: 0; }
+  #mainPane #tickerRow .field:not(#symbolField) > label { display: none; }
+  #mainPane #tickerRow #symbolField { grid-area: tick; min-width: max-content; }
+  #mainPane #symbolField > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #mainPane .ticker-box { width: 210px; height: 60px; }
+  #mainPane .ticker-box input { height: 100%; padding: 0 34px; background: var(--bg3); border: 1.5px solid var(--blue-bd); border-radius: 12px; font-size: 30px; font-weight: 800; letter-spacing: 0.02em; text-align: center; }
+  #mainPane .ticker-box input::placeholder { font-size: 14px; font-weight: 500; letter-spacing: 0; }
+  #mainPane .ticker-icon { display: block; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text2); pointer-events: none; }
+  #mainPane .ticker-kbd { display: block; position: absolute; right: 11px; top: 50%; transform: translateY(-50%); padding: 1px 6px; border: 1px solid var(--border2); border-radius: 4px; color: var(--text2); font: 11px var(--sans); pointer-events: none; }
+  #mainPane .ticker-actions { grid-area: act; justify-self: end; display: flex; gap: 8px; margin-top: 12px; }
+  #mainPane #loadField { display: none; }
+  #mainPane #loadField:has(.spinner) { display: flex; } /* only while a load runs: Enter in the box loads */
+  #mainPane #liveBtn { white-space: nowrap; }
+  #mainPane #refreshField .btn-word { display: none; }
+  #mainPane #tickerRow .btn { padding: 7px 12px; }
+  #mainPane #tickerParsed { grid-area: hint; margin-top: 8px; }
+  #mainPane #tickerParsed:not(.ok):not(.wait) { display: none; } /* only while you type a contract */
+  #mainPane #recentTickers { grid-area: recent; align-items: center; margin-top: 12px !important; }
+  #mainPane #recentTickers:not(:empty)::before { content: 'Recent'; margin-right: 4px; font-size: 12px; color: var(--text3); }
+  #mainPane #recentTickers .filter-btn { border-radius: 999px; padding: 4px 11px; }
+  #mainPane #optionTradeControls { grid-area: opt; }
+  /* the quote: price and change over the after-hours line, the day's range as a bar, ADR */
+  #mainPane .quote-card { border-top: 0; margin-top: 0; padding-top: 0; }
+  #mainPane .quote-main { grid-area: main; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 3px; }
+  #mainPane .quote-ticker { display: none; } /* the box holds the symbol */
+  #mainPane .quote-card.fut .quote-ticker { display: block; order: 3; flex-basis: 100%; font-size: 12px; } /* a future's contract month */
+  #mainPane .quote-price { order: 1; font-size: 32px; font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; }
+  #mainPane .quote-chg { order: 2; font-size: 15px; font-weight: 600; }
+  #mainPane .quote-ext { order: 4; flex-basis: 100%; margin-left: 0; font-size: 12.5px; }
+  #mainPane .quote-levels { grid-area: range; display: grid; grid-template-columns: auto auto; justify-content: space-between; grid-template-areas: "lod hod" "bar bar" "vol vol"; gap: 7px 12px; }
+  #mainPane .quote-levels .lod-pct { margin-left: 2px; }
+  #mainPane .quote-lod { grid-area: lod; font-weight: 600; white-space: nowrap; }
+  #mainPane .quote-hod { grid-area: hod; font-weight: 600; white-space: nowrap; text-align: right; }
+  #mainPane .day-range { display: block; grid-area: bar; position: relative; height: 6px; border-radius: 3px; background: var(--bg4); }
+  #mainPane .quote-vol { grid-area: vol; font-size: 11.5px; }
+  #mainPane .quote-adr { grid-area: adr; margin-top: 0; max-width: 190px; font-size: 12.5px; line-height: 1.45; }
+  /* the chart card: Stocks & futures and Options are its tabs */
+  #chartWrap .mode-tabs { display: flex; align-self: stretch; margin: -6px 0 0 -6px; }
+  #chartWrap .mode-tabs button { padding: 4px 12px 9px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text2); font: 500 14px var(--sans); cursor: pointer; }
+  #chartWrap .mode-tabs button.active { color: var(--text); font-weight: 600; border-bottom-color: var(--text); }
+  @media (hover: hover) { #chartWrap .mode-tabs button:not(.active):hover { color: var(--text); } }
+  #chartWrap .chart-head { border-bottom: 1px solid var(--border); padding-bottom: 0; margin-bottom: 10px; }
+  #chartWrap .chart-title { display: none; }
   #entryStopsRow .field { flex: 1 1 130px !important; min-width: 0; } /* two per row; a third (Both view) wraps */
   #entryStopsRow > div:not(.field) { flex: 0 0 100%; }
   #quickInput { padding-right: 12px !important; }
@@ -67,11 +122,28 @@
   #sharesSection .shares-metrics dt { margin-bottom: 4px; }
   #sharesSection .shares-metrics dd { font-size: 16px; }
   #sharesSection .shares-actions { margin-top: 14px; padding-top: 12px; }
-  /* rules and goals: a short band over the ticker card, the groups side by side, so the rail keeps only the ticket */
-  #mainPane #weekRulesCard { flex-direction: row; align-items: flex-start; gap: 28px; padding: 12px 18px; }
-  #mainPane .week-rules-group { flex: 1 1 0; min-width: 0; }
-  #mainPane #weekRulesGroup { flex-grow: 1.6; } /* this week's rules run longest */
-  #mainPane .week-rules-list { font-size: 13px; line-height: 1.45; margin-top: 4px; }
+  /* rules and goals: a band at the top of the main pane (owner request: the rules stand out), three numbered rules a
+     row with your goals in a blue column on the right, so the rail keeps only the ticket. Past nine rules it shows
+     eight and a button for the rest (ui/week-rules.js), so it never grows past three rows */
+  #mainPane #weekRulesCard {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; flex-shrink: 0; /* clipped corners: never squeezed by the chart */
+    background: color-mix(in srgb, var(--amber) 5%, var(--bg2)); border-color: color-mix(in srgb, var(--amber) 24%, var(--border));
+  }
+  #mainPane #weekRulesCard.has-rules.has-goals { grid-template-columns: minmax(0, 1fr) 250px; }
+  #mainPane .week-rules-group { min-width: 0; padding: 10px 16px; }
+  #mainPane .week-rules-group + .week-rules-group { padding-top: 0; }
+  #mainPane .week-rules-title { font-size: 11.5px; }
+  #mainPane .week-rules-list { counter-reset: rule; list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 20px; font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+  #mainPane .week-rules-list > li { counter-increment: rule; display: flex; gap: 9px; align-items: baseline; min-width: 0; }
+  #mainPane .week-rules-list > li::before { content: counter(rule); flex: none; min-width: 12px; color: var(--amber); font-size: 19px; font-weight: 700; line-height: 1; }
+  #mainPane .week-rules-list > li.long { grid-column: span 2; font-weight: 500; }
+  #mainPane #myGoalsGroup { grid-column: -2; grid-row: 1 / span 3; align-self: stretch; padding: 10px 16px; background: var(--blue-bg); }
+  #mainPane #weekRulesCard:not(.has-rules) #myGoalsGroup { grid-column: 1; grid-row: auto; }
+  #mainPane #myGoalsGroup .week-rules-title { color: var(--blue); }
+  #mainPane #myGoalsGroup .week-rules-list { grid-template-columns: minmax(0, 1fr); gap: 5px; font-weight: 500; font-size: 13px; color: color-mix(in srgb, var(--blue) 45%, var(--text)); }
+  #mainPane #myGoalsGroup .week-rules-list > li::before { content: none; }
+  #mainPane #weekRulesCard:not(.has-goals) .week-rules-list, #mainPane #weekRulesCard:not(.has-rules) #myGoalsGroup .week-rules-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #mainPane #rulesMoreBtn { grid-column: 1; justify-self: start; margin: -2px 16px 10px; }
   /* the main pane is wide: the chart's day and bar count (the hover readout) share the title's line */
   #chartWrap .chart-head .ohlc { flex: 1 1 0; flex-basis: 0; min-width: 0; }
   #sidePane .stat-grid, #trayPane .stat-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
@@ -92,16 +164,23 @@
   #stopsCard .stops-hint, #stopAdjustment .hint-details, #sharesSection .shares-edit-hint { display: none; }
   #riskStrip .risk-chip { min-height: 36px; padding-top: 3px; padding-bottom: 3px; }
   #mainPane > .card, #mainPane #quoteSection > .card { margin-bottom: 10px; }
-  #mainPane #modeCard { padding-top: 10px; padding-bottom: 10px; }
-  #mainPane #recentTickers { margin-top: 6px !important; }
-  #mainPane #weekRulesCard { padding-top: 10px; padding-bottom: 10px; }
-  #quoteCard { padding-top: 12px; padding-bottom: 12px; }
+  #mainPane #modeCard { padding-top: 12px; padding-bottom: 12px; }
+  #mainPane #recentTickers, #mainPane .ticker-actions { margin-top: 10px !important; }
+  #mainPane .week-rules-group { padding-top: 8px; padding-bottom: 8px; }
 }
 
-/* the compact desktop tier: the main pane is too narrow for the switch and the ticker row side by side */
+/* the compact desktop tier: the main pane is too narrow for the whole quote beside the ticker box, so the day's range
+   and ADR take the next line; the band of rules goes two across */
 @media (min-width: 1100px) and (max-width: 1439px) {
-  #mainPane #modeCard { grid-template-columns: minmax(0, 1fr); row-gap: 14px; }
-  #mainPane #modeCard .seg.mode-big { margin-top: 0; max-width: 420px; }
+  #mainPane #modeCard {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-areas: "mode mode mode" "tick main main" "range range adr" "hint hint hint" "recent recent act" "opt opt opt";
+    row-gap: 0;
+  }
+  #mainPane .quote-levels { width: 330px; margin-top: 12px; }
+  #mainPane .quote-adr { max-width: none; margin-top: 12px; }
+  #mainPane .week-rules-list, #mainPane #weekRulesCard:not(.has-goals) .week-rules-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #mainPane #weekRulesCard.has-rules.has-goals { grid-template-columns: minmax(0, 1fr) 210px; }
 }
 
 /* very wide screens: pinned ideas get their own tray column on the right */

@@ -114,7 +114,10 @@ function updateDailyControls() {
 
 export function updateChartVisibility() {
   const has5 = state.chartBars.length > 0, hasD = state.dailyBars.length > 0 && state.showDaily;
-  document.getElementById('chartWrap').style.display = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView && (has5 || hasD) ? 'block' : 'none';
+  const shown = !state.positionsView && !state.utilsView && !state.marketView && !state.journalView && (has5 || hasD);
+  document.getElementById('chartWrap').style.display = shown ? 'block' : 'none';
+  // desktop: the chart card carries the Stocks & futures / Options tabs; with no chart the ticker card shows the switch
+  document.getElementById('app').classList.toggle('has-chart', shown);
   document.getElementById('chartCol5').style.display = has5 ? 'block' : 'none';
   document.getElementById('chartColD').style.display = hasD ? 'block' : 'none';
   document.getElementById('dailyToggle').classList.toggle('active', state.showDaily);

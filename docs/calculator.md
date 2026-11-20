@@ -29,7 +29,10 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Answers made from Schwab's carry an `X-Market-Source: schwab` header.
 - **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip on phones (same `order` as the strip, after it in the markup) listing the rules last week's review set (docs/journal.md, Rules for next week).
   The rules and goals show in capitals (`.rule-caps`, docs/journal.md, Goals and rules).
-  On desktop it heads the main pane, over the ticker card, its groups side by side in one short band, so the rail keeps only the ticket and fits a laptop screen (owner request).
+  On desktop it heads the main pane, over the ticker card, as a band (owner request: the rules stand out, but not in the rail, which keeps only the ticket and fits a laptop screen).
+  The band is warm-tinted, three numbered rules a row (two in the 1100–1439 tier) with an amber number on each, and your goals in a blue column on its right.
+  A rule longer than 60 characters spans two cells, so it reads whole instead of as a tall narrow column (class long).
+  Past nine rules (RULES_MAX) the card shows the first eight (RULES_SHOWN, this week's first) and a button, '+N more rules · show all' (#rulesMoreBtn, toggleRulesMore, state.rulesMoreOpen), so the band never grows past three rows; it shows on phones too.
   On a desktop window shorter than 920px the rail and main pane tighten further (styles/layout.css): the stops hint, the shares edit hint and How adjustments work step aside (the chart's hint, the input's title and the label's title say the same), so Trade at Schwab and the whole intraday chart show without scrolling on a 14-inch MacBook Pro.
   It also lists your standing rules and your goals, the notebook's lists (docs/journal.md, Goals and rules), in your order and without the retired ones (owner request: all the rules and the goals, not only the week's).
   Three groups, each titled and shown only when it has items: This week's rules (#weekRulesGroup), Rules (#myRulesGroup), Goals (#myGoalsGroup); a standing rule with the same words as one of this week's shows once, under the week.
@@ -38,6 +41,13 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Saving the rules in the week's review, or a goal or rule in the notebook, shows in the card the next time Size is in view.
   Settings, Rules and goals: Show in Size (the default) or Hide (setWeekRulesShown, `week_rules_calc`, this device only).
   Settings, Setup picker: how Trade at Schwab picks the setup, Sketches (the default), Grid or Level first (docs/schwab.md, Order plans).
+- **The ticker card** (#modeCard): the instrument switch, the ticker row (box, Load, refresh, Live), the contract hint, recent tickers, and the quote (#quoteCard: price and change, after hours, LOD / HOD, volume, ADR), one card since the quote moved into it (owner request: the ticker was hard to find).
+  The quote shows once a quote loads (setQuoteVisible shows it with #quoteSection); on phones it sits under the recent tickers behind a hairline.
+  On desktop the card is a grid (styles/layout.css): the ticker in a big box on the left (search icon, / shortcut, the symbol centered in it), the price and change beside it over the after-hours line, the day's range as a bar between LOD and HOD with volume under it (#qRangeFill / #qRangeMark, renderLevels), then ADR; recent tickers as pills under them, refresh and Live at the right.
+  The 1100–1439 tier puts the day's range and ADR on the next line.
+  Load hides on desktop (Enter in the box loads) and shows only while a load spins; the contract hint shows only while you type a contract.
+  A stock's symbol is in the box, so desktop hides #qTicker; a future's contract month (/MESZ26) shows under its price (class fut).
+  On desktop Stocks & futures and Options are the chart card's tabs (#modeTabs, owner request); the big switch shows in the ticker card only while there's no chart (the app's has-chart class, updateChartVisibility).
 - **Stops**: ONE global stop pair in the entry and stops card (#stopsCard), used everywhere; with options sized by allocation the card hides.
   Long stop (shares-long + calls, blank = LOD) and short stop (shares-short + puts, blank = HOD).
   Only the stop matching tradeCtx() is shown/drawn (shares follow the Long/Short toggle, options follow chain side; Both view shows both).
@@ -221,6 +231,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   DTE counts to 4pm New York on expiry (expiryCloseMs), wherever you are; Tradier's dates go into markup, so any that isn't YYYY-MM-DD is dropped where they come in (cleanExpirations).
   Shows 12 + "+N more" expand
 - **Quick lookup**: the ticker field is ALSO the search box: submitTicker routes a single word to fetchQuote and anything with spaces to fetchQuickOption(text, fromSearch) — which pins the card, puts the loaded symbol back in the field, and scrolls the new card into view on phones. #tickerParsed under the field previews the pin ('Pin AAPL $245 call …'), says what's missing, or shows the shorthand hint.
+  On desktop the idle shorthand hint hides; the line shows only while you type a contract.
   On phones the separate Quick lookup card is hidden (the field does it); desktop and tablet keep it.
   Order-free shorthand parser — tokens classified by shape (ticker / strike / date / call-put, and a strike may carry its type: 245c, 580.5p), any order, `/` or `.` date separators ("AAPL 245 6/20", "9.18 300 aapl", "SPY 580 put 6/18/26") → OCC symbol → pinned result cards, newest on top.
   Dotted number = date unless a date is already set or it can't be a calendar day like 9.31 (then strike); impossible dates (9/31, 2/30) are rejected, a month/day already passed in New York rolls to next year, and an unexplained extra number makes it ambiguous (quickParseHint says why, in #tickerParsed and the error toast); bare c/p = type only when another word can be the ticker.
@@ -275,7 +286,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Touch: LONG-PRESS (~220ms hold) engages the crosshair via attachTouchCrosshair — the chart owns the gesture (preventDefault, page holds still), and RELEASING SETS THE STOP at the final crosshair price (onEnd gets the last point; the trailing click is suppressed so it can't double-fire; sim chart release is read-only).
   Quick swipes scroll the page normally, plain taps still set stops.
   Mouse hover = full crosshair (vertical bar line + horizontal price line with axis tag) + OHLC readout.
-  Chart header shows ADR14 (from `/markets/history` daily bars, today excluded) as $ and % of price, plus % of the ADR consumed from the trade's reference level — LOD when long, HOD when short (shares follow the direction toggle, options follow chain side, Both shows both); amber at ≥90% consumed
+  The quote shows ADR14 (#adrInfo, from `/markets/history` daily bars, today excluded) as $ and % of price, plus % of the ADR consumed from the trade's reference level — LOD when long, HOD when short (shares follow the direction toggle, options follow chain side, Both shows both); amber at ≥90% consumed
 - **Keyboard shortcuts**: single keydown listener, ? shows the map.
   Keys ignored while typing in fields or while a sheet is open; Esc closes an open sheet first
 - **Live mode**: ⚡ button polls quote + current chain each tick, chart every 4th tick, with countdown and overlap guards (duration ladder — see Recent tickers bullet)
