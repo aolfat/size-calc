@@ -130,14 +130,14 @@ test('a calendar day opens its page: premarket, the day\'s trades, post-market; 
   assert.match(page, /To write: how you feel, sleep and energy, where you&#39;re trading and the market/);
   assert.match(page, /<div class="seg nb-plan-seg" aria-label="Plan"><button class="active" aria-pressed="true" data-action="setDayPlan" data-arg="none">No plan<\/button><button class="" aria-pressed="false" data-action="setDayPlan" data-arg="plan">Plan<\/button><\/div>/, 'No plan is the default');
   assert.doesNotMatch(page, /id="nb-plan"/, 'the box opens on Plan');
-  assert.match(page, /<ol class="nb-list"><li>Max loss = 5%<\/li><li>Follow your stop!!<\/li><\/ol>/);
+  assert.match(page, /<ol class="nb-list rule-caps"><li>Max loss = 5%<\/li><li>Follow your stop!!<\/li><\/ol>/);
   assert.match(page, /No goals yet/);
   assert.match(page, /<dt>Net P&amp;L<\/dt><dd class="journal-sell">−\$100\.00<span class="pos-sub">1 with an exit/);
   assert.match(page, /data-action="openTradeRow" data-arg="[^"]*MSFT[^"]*"><span class="nb-trade-name"><b>MSFT<\/b> long/);
   assert.doesNotMatch(page, /<b>AAPL<\/b> long/, 'Monday\'s trade isn\'t Tuesday\'s');
   assert.match(page, /data-action="pickJournalDay" data-arg="2026-10-06">The day's trades<\/button>/);
   assert.match(page, /To review: a grade, 2 rules and what went well or what to work on/);
-  assert.match(page, /<span class="nb-rule-name">Max loss = 5%<\/span><span class="chip-row jr-chips"><button class="filter-btn" aria-pressed="false" data-action="setDayRule" data-arg="mine:r1" data-arg2="kept">Kept<\/button>/);
+  assert.match(page, /<span class="nb-rule-name rule-caps">Max loss = 5%<\/span><span class="chip-row jr-chips"><button class="filter-btn" aria-pressed="false" data-action="setDayRule" data-arg="mine:r1" data-arg2="kept">Kept<\/button>/);
   assert.match(page, /From the day's trades[\s\S]*<b>MSFT<\/b> <span class="nb-none">No exit note yet<\/span>/);
   assert.doesNotMatch(page, /Kept your last focus/, 'no focus written before: no question');
   assert.match(page, /<div class="jc-head jc-period nb-head"><div class="jc-lead"><button class="btn jc-back" data-action="closeJournalDay">← Calendar<\/button><button class="pos-link jc-today" data-action="openTodayNotebook" disabled>Today<\/button><\/div><div class="jc-pillrow"><div class="jc-pill jc-pill-steps"><button class="jc-pill-step" data-action="stepJournalDay" data-arg="-1" aria-label="Earlier weekday"><svg[^]*?<\/button><label class="jc-pill-name jc-picks"><span class="jc-title">Tue, Oct 6, 2026<\/span><input class="jc-pick" type="date" value="2026-10-06" data-change="pickNotebookDay"/, 'the calendar\'s pill: the way back and Today (greyed on today\'s page) over ‹ the day ›, a date picker on its name');
@@ -272,7 +272,7 @@ test('before the woke up early column is pushed the checkmark is greyed out, and
 test('goals and rules: added, reworded, moved and retired in place, each a library row', async () => {
   const { run, out, writes, supabase } = await journal();
   run("openJournalDay('2026-10-06'); editNotebookList('rule')");
-  assert.match(out(), /id="nbNewItem"[^>]*data-enter="addNotebookItem" data-arg="rule"/);
+  assert.match(out(), /<input type="text" class="rule-caps" id="nbNewItem"[^>]*data-enter="addNotebookItem" data-arg="rule"/, 'a rule is typed in capitals');
   run("notebookItemInput('Follow your stop!!'); addNotebookItem('rule')");
   run("notebookItemInput('Max loss = 5%'); addNotebookItem('rule')");
   await settle();
@@ -282,18 +282,18 @@ test('goals and rules: added, reworded, moved and retired in place, each a libra
   run(`moveNotebookItem('${loss}', -1)`);
   await settle();
   run("editNotebookList('rule')");
-  assert.match(out(), /<ol class="nb-list"><li>Max loss = 5%<\/li><li>Follow your stop!!<\/li><\/ol>/, 'moved up');
+  assert.match(out(), /<ol class="nb-list rule-caps"><li>Max loss = 5%<\/li><li>Follow your stop!!<\/li><\/ol>/, 'moved up');
   run(`editNotebookList('rule'); renameNotebookItem('${stop}', 'Follow your stop')`);
   await settle();
   assert.equal(supabase.tables.library_items.get(`user-1:${stop}`).name, 'Follow your stop');
   run(`retireNotebookItem('${loss}')`);
   await settle();
   assert.equal(supabase.tables.library_items.get(`user-1:${loss}`).hidden, true);
-  assert.match(out(), /Retired: Max loss = 5% <button class="pos-link" data-action="retireNotebookItem"[^>]*>Bring back<\/button>/);
+  assert.match(out(), /Retired: <span class="rule-caps">Max loss = 5%<\/span> <button class="pos-link" data-action="retireNotebookItem"[^>]*>Bring back<\/button>/);
   run("editNotebookList('goal'); notebookItemInput('Learn to abide by your rules'); addNotebookItem('goal'); editNotebookList('goal')");
   await settle();
-  assert.match(out(), /Goals <button[^>]*>Edit<\/button><\/div><div><ol class="nb-list"><li>Learn to abide by your rules<\/li>/);
-  assert.match(out(), /<ol class="nb-list"><li>Follow your stop<\/li><\/ol>/, 'a retired rule leaves the list');
+  assert.match(out(), /Goals <button[^>]*>Edit<\/button><\/div><div><ol class="nb-list rule-caps"><li>Learn to abide by your rules<\/li>/);
+  assert.match(out(), /<ol class="nb-list rule-caps"><li>Follow your stop<\/li><\/ol>/, 'a retired rule leaves the list');
 });
 
 test('post-market: the grade, every rule and a note make the day reviewed; the calendar marks it', async () => {
@@ -768,7 +768,7 @@ const WEEK_RULES = [{ id: 'w1', text: 'No trades before 9:45' }, { id: 'w2', tex
 test("this week's rules: read before the open, each kept or broke after the close, needed for the day to be reviewed", async () => {
   const { run, out, writes, supabase } = await journal({ library: RULES, periods: [{ unit: 'week', period_key: '2026-09-28', rules_next: WEEK_RULES }] });
   run("openJournalDay('2026-10-06')");
-  assert.match(out(), /aria-label="Premarket"[\s\S]*<div class="nb-focus nb-week-rules"><span class="nb-focus-label">This week's rules<\/span><ol class="nb-list"><li>No trades before 9:45<\/li><li>Size down after a loss<\/li><\/ol><\/div>[\s\S]*Mental check-in/);
+  assert.match(out(), /aria-label="Premarket"[\s\S]*<div class="nb-focus nb-week-rules"><span class="nb-focus-label">This week's rules<\/span><ol class="nb-list rule-caps"><li>No trades before 9:45<\/li><li>Size down after a loss<\/li><\/ol><\/div>[\s\S]*Mental check-in/);
   assert.match(out(), /aria-label="Post-market"[\s\S]*Your rules[\s\S]*<div class="jr-label">This week's rules <span class="jr-sub">from last week's review<\/span><\/div>[\s\S]*No trades before 9:45<\/span><span class="chip-row jr-chips"><button class="filter-btn" aria-pressed="false" data-action="setDayWeekRule" data-arg="w1" data-arg2="kept">Kept<\/button>/);
   run("setDayGrade('B'); setDayRule('mine:r1', 'kept'); setDayRule('mine:r2', 'kept'); dayTextSave('went_well', 'Waited')");
   await settle();

@@ -28,6 +28,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Saving the key or the environment (saveKey) forgets the failure and tries Tradier at once.
   Answers made from Schwab's carry an `X-Market-Source: schwab` header.
 - **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip on phones (same `order` as the strip, after it in the markup) listing the rules last week's review set (docs/journal.md, Rules for next week).
+  The rules and goals show in capitals (`.rule-caps`, docs/journal.md, Goals and rules).
   On desktop it heads the main pane, over the ticker card, as a band (owner request: the rules stand out, but not in the rail, which keeps only the ticket and fits a laptop screen).
   The band is warm-tinted, three numbered rules a row (two in the 1100–1439 tier) with an amber number on each, and your goals in a blue column on its right.
   A rule longer than 60 characters spans two cells, so it reads whole instead of as a tall narrow column (class long).

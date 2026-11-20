@@ -444,7 +444,7 @@ test('before the overall notes\' columns are pushed their boxes are off and say 
 test('last week\'s one rule (from before the list) shows on top with Kept it?, saved on this week', async () => {
   const { run, out, supabase } = await journal({ periods: [{ unit: 'week', period_key: '2026-09-28', rule_next: 'Size down after a loss' }] });
   run("openPeriodReview('week', '2026-10-05')");
-  assert.match(out(), /<div class="jw-rule-label">This week's rule <span class="jw-optional">set last week<\/span><\/div>[\s\S]*?<p class="jw-rule-text">Size down after a loss<\/p>[\s\S]*?Kept it\?<\/span><button class="filter-btn" aria-pressed="false" data-action="setRuleKept" data-arg="rule" data-arg2="yes">Yes<\/button>/);
+  assert.match(out(), /<div class="jw-rule-label">This week's rule <span class="jw-optional">set last week<\/span><\/div>[\s\S]*?<p class="jw-rule-text rule-caps">Size down after a loss<\/p>[\s\S]*?Kept it\?<\/span><button class="filter-btn" aria-pressed="false" data-action="setRuleKept" data-arg="rule" data-arg2="yes">Yes<\/button>/);
   assert.doesNotMatch(out(), /jw-tally/, 'its days were never asked');
   assert.match(out(), /To finish: grades on 8 parts and the rules for next week\./, 'Kept it? on it is never needed');
   run("setRuleKept('rule', 'partly')");
@@ -541,8 +541,8 @@ test("this week's rules on top: how the days checked each, Kept it? on each, how
   await run('loadJournalReview()');
   run("openPeriodReview('week', '2026-10-05')");
   assert.match(out(), /<section class="jw-rule jw-rule-last" aria-label="this week&#39;s rules"><div class="jw-rule-label">This week's rules <span class="jw-optional">set last week<\/span><\/div>/);
-  assert.match(out(), /<p class="jw-rule-text">No trades before 9:45<\/p><span class="jw-tally">Kept 2 · Broke 0 · 2 days not checked<\/span>/, 'Mon to Thu asked, Friday still to come');
-  assert.match(out(), /<p class="jw-rule-text">Size down after a loss<\/p><span class="jw-tally">Kept 0 · Broke 1 · 3 days not checked<\/span>/);
+  assert.match(out(), /<p class="jw-rule-text rule-caps">No trades before 9:45<\/p><span class="jw-tally">Kept 2 · Broke 0 · 2 days not checked<\/span>/, 'Mon to Thu asked, Friday still to come');
+  assert.match(out(), /<p class="jw-rule-text rule-caps">Size down after a loss<\/p><span class="jw-tally">Kept 0 · Broke 1 · 3 days not checked<\/span>/);
   assert.match(out(), /<label class="jw-overall-label" for="jwRulesNote">How did this week's rules go\?<\/label>/);
   assert.match(out(), /To finish: Kept it\? on this week&#39;s rules, how this week&#39;s rules went, grades on 8 parts and the rules for next week\./);
 

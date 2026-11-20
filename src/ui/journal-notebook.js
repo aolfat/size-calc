@@ -492,20 +492,20 @@ const textRow = (label, field, day, placeholder, off, missing = false, rows = 3)
 function listRow(kind, title, empty, off) {
   const items = lists()[`${kind}s`], active = activeItems(items), editing = state.notebookEdit === kind && !off;
   const edit = off ? '' : `<button class="pos-link nb-edit" data-action="editNotebookList" data-arg="${kind}">${editing ? 'Done' : 'Edit'}</button>`;
-  const label = `${title} ${edit}`;
+  const label = `${title} ${edit}`, caps = ' rule-caps', capsAttr = ' class="rule-caps"';
   if (!editing) {
-    const body = active.length ? `<ol class="nb-list">${active.map(i => `<li>${esc(i.name)}</li>`).join('')}</ol>` : `<p class="hint nb-empty">${empty}</p>`;
+    const body = active.length ? `<ol class="nb-list${caps}">${active.map(i => `<li>${esc(i.name)}</li>`).join('')}</ol>` : `<p class="hint nb-empty">${empty}</p>`;
     return `<div class="jr-row"><div class="jr-label">${label}</div><div>${body}</div></div>`;
   }
-  const line = (i, n) => `<div class="nb-item"><input type="text" maxlength="${MAX_ITEM}" value="${esc(i.name)}" aria-label="Reword ${esc(i.name)}" data-change="renameNotebookItem" data-arg="${esc(i.id)}" />
+  const line = (i, n) => `<div class="nb-item"><input type="text"${capsAttr} maxlength="${MAX_ITEM}" value="${esc(i.name)}" aria-label="Reword ${esc(i.name)}" data-change="renameNotebookItem" data-arg="${esc(i.id)}" />
     <button class="btn nb-move" data-action="moveNotebookItem" data-arg="${esc(i.id)}" data-arg2="-1" aria-label="Move up"${n === 0 ? ' disabled' : ''}>↑</button><button class="btn nb-move" data-action="moveNotebookItem" data-arg="${esc(i.id)}" data-arg2="1" aria-label="Move down"${n === active.length - 1 ? ' disabled' : ''}>↓</button>
     <button class="pos-link" data-action="retireNotebookItem" data-arg="${esc(i.id)}">Retire</button></div>`;
   const retired = items.filter(i => i.hidden);
   const word = kind === 'goal' ? 'goal' : 'rule';
   return `<div class="jr-row"><div class="jr-label">${label}</div><div class="nb-editing">
     ${active.map(line).join('')}
-    <div class="nb-item"><input type="text" id="nbNewItem" maxlength="${MAX_ITEM}" placeholder="${kind === 'goal' ? 'Learn to abide by your rules' : 'Follow your stop'}" autocomplete="off" value="${esc(state.notebookItemDraft)}" data-input="notebookItemInput" data-enter="addNotebookItem" data-arg="${kind}" aria-label="New ${word}" /><button class="btn" data-action="addNotebookItem" data-arg="${kind}">+ Add</button></div>
-    ${retired.length ? `<p class="hint nb-retired">Retired: ${retired.map(i => `${esc(i.name)} <button class="pos-link" data-action="retireNotebookItem" data-arg="${esc(i.id)}">Bring back</button>`).join(' · ')}</p>` : ''}
+    <div class="nb-item"><input type="text"${capsAttr} id="nbNewItem" maxlength="${MAX_ITEM}" placeholder="${kind === 'goal' ? 'Learn to abide by your rules' : 'Follow your stop'}" autocomplete="off" value="${esc(state.notebookItemDraft)}" data-input="notebookItemInput" data-enter="addNotebookItem" data-arg="${kind}" aria-label="New ${word}" /><button class="btn" data-action="addNotebookItem" data-arg="${kind}">+ Add</button></div>
+    ${retired.length ? `<p class="hint nb-retired">Retired: ${retired.map(i => `<span${capsAttr}>${esc(i.name)}</span> <button class="pos-link" data-action="retireNotebookItem" data-arg="${esc(i.id)}">Bring back</button>`).join(' · ')}</p>` : ''}
     <p class="hint">${kind === 'rule' ? 'Each rule is checked after the close. Retiring one keeps the days it was answered.' : 'Your goals show every morning.'}</p>
   </div></div>`;
 }
@@ -568,7 +568,7 @@ function wokeChip(r) {
 function weekRulesNote(day) {
   const rules = weekRulesOf(day);
   if (!rules.length) return '';
-  return `<div class="nb-focus nb-week-rules"><span class="nb-focus-label">This week's rules</span><ol class="nb-list">${rules.map(r => `<li>${esc(r.text)}</li>`).join('')}</ol></div>`;
+  return `<div class="nb-focus nb-week-rules"><span class="nb-focus-label">This week's rules</span><ol class="nb-list rule-caps">${rules.map(r => `<li>${esc(r.text)}</li>`).join('')}</ol></div>`;
 }
 
 /** post-market: each of this week's rules kept or broken; before their column is pushed it says so */
@@ -578,7 +578,7 @@ function weekRulesRow(day, off) {
   const why = !notebookOff() && data().weekRulesError ? `<p class="hint jw-db">Checking them needs a database update: ${esc(data().weekRulesError)}</p>` : '';
   const dis = off || (weekRulesOff() ? ' disabled' : '');
   const started = !!(r?.grade || r?.went_well || r?.work_on || Object.keys(r?.rules || {}).length || Object.keys(r?.week_rules || {}).length) && !st.reviewed;
-  const items = rules.map(x => `<li><span class="nb-rule-name">${esc(x.text)}${x.id === LEGACY_RULE_ID ? ' <span class="jr-sub">optional</span>' : ''}</span><span class="chip-row jr-chips">${RULE_ANSWERS.map(([v, w]) => chip(w, r?.week_rules?.[x.id] === v, `data-action="setDayWeekRule" data-arg="${esc(x.id)}" data-arg2="${v}"`, dis)).join('')}</span></li>`).join('');
+  const items = rules.map(x => `<li><span class="nb-rule-name rule-caps">${esc(x.text)}${x.id === LEGACY_RULE_ID ? ' <span class="jr-sub">optional</span>' : ''}</span><span class="chip-row jr-chips">${RULE_ANSWERS.map(([v, w]) => chip(w, r?.week_rules?.[x.id] === v, `data-action="setDayWeekRule" data-arg="${esc(x.id)}" data-arg2="${v}"`, dis)).join('')}</span></li>`).join('');
   return `<div class="jr-row${started && !st.week ? ' jr-missing' : ''}"><div class="jr-label">This week's rules <span class="jr-sub">from last week's review</span></div><div>${why}<ul class="nb-rules nb-week-check">${items}</ul></div></div>`;
 }
 
@@ -672,7 +672,7 @@ function postmarket(day, trades, off) {
   const started = !!(r?.grade || r?.went_well || r?.work_on || Object.keys(r?.rules || {}).length) && !st.reviewed;
   const focus = lastFocus(days(), day);
   const status = st.reviewed ? '<span class="jr-status journal-buy" role="status">Reviewed</span>' : `<span class="jr-status" role="status">To review: ${esc(reviewMissingWords(st))}</span>`;
-  const ruleRows = rules.length ? `<ul class="nb-rules">${rules.map(x => `<li><span class="nb-rule-name${x.hidden ? ' nb-retired-name' : ''}">${esc(x.name)}</span><span class="chip-row jr-chips">${RULE_ANSWERS.map(([v, w]) => chip(w, r?.rules?.[x.key] === v, `data-action="setDayRule" data-arg="${esc(x.key)}" data-arg2="${v}"`, off)).join('')}</span></li>`).join('')}</ul>`
+  const ruleRows = rules.length ? `<ul class="nb-rules">${rules.map(x => `<li><span class="nb-rule-name rule-caps${x.hidden ? ' nb-retired-name' : ''}">${esc(x.name)}</span><span class="chip-row jr-chips">${RULE_ANSWERS.map(([v, w]) => chip(w, r?.rules?.[x.key] === v, `data-action="setDayRule" data-arg="${esc(x.key)}" data-arg2="${v}"`, off)).join('')}</span></li>`).join('')}</ul>`
     : '<p class="hint nb-empty">No rules yet. Add them under Rules above.</p>';
   const closed = dayTrades(trades, day).filter(t => t.status !== 'open');
   const exitNotes = closed.length ? `<div class="jr-row"><div class="jr-label">From the day's trades <span class="jr-sub">their exit notes</span></div><ul class="nb-notes">${closed.map(t => {
