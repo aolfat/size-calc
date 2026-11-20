@@ -231,6 +231,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   DTE counts to 4pm New York on expiry (expiryCloseMs), wherever you are; Tradier's dates go into markup, so any that isn't YYYY-MM-DD is dropped where they come in (cleanExpirations).
   Shows 12 + "+N more" expand
 - **Quick lookup**: the ticker field is ALSO the search box: submitTicker routes a single word to fetchQuote and anything with spaces to fetchQuickOption(text, fromSearch) — which pins the card, puts the loaded symbol back in the field, and scrolls the new card into view on phones. #tickerParsed under the field previews the pin ('Pin AAPL $245 call …'), says what's missing, or shows the shorthand hint.
+  On desktop the idle shorthand hint hides; the line shows only while you type a contract.
   On phones the separate Quick lookup card is hidden (the field does it); desktop and tablet keep it.
   Order-free shorthand parser — tokens classified by shape (ticker / strike / date / call-put, and a strike may carry its type: 245c, 580.5p), any order, `/` or `.` date separators ("AAPL 245 6/20", "9.18 300 aapl", "SPY 580 put 6/18/26") → OCC symbol → pinned result cards, newest on top.
   Dotted number = date unless a date is already set or it can't be a calendar day like 9.31 (then strike); impossible dates (9/31, 2/30) are rejected, a month/day already passed in New York rolls to next year, and an unexplained extra number makes it ambiguous (quickParseHint says why, in #tickerParsed and the error toast); bare c/p = type only when another word can be the ticker.

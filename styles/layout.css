@@ -28,6 +28,14 @@
   .app.calc-view #railPane, .app.calc-view #trayPane { display: block; }
   .app.calc-view #mainPane, .app.positions-view #mainPane { display: flex; flex-direction: column; grid-column: 2; grid-row: 3; overflow-y: auto; min-height: 0; padding: 0 2px 40px; }
   .app.positions-view #sidePane { display: none; }
+  /* the panes' scrollbars match the dark theme, thin and quiet (owner request: the rail's grey bar was ugly where macOS
+     always shows them): the standard properties for Chrome and Firefox, the -webkit ones for Safari. Only the panes:
+     in Safari any -webkit-scrollbar rule turns the system's overlay bars into always-drawn ones */
+  #sidePane, #railPane, #trayPane, #mainPane { scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+  :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar { width: 10px; }
+  :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar-track { background: transparent; }
+  :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar-thumb { background: var(--border2); background-clip: padding-box; border: 3px solid transparent; border-radius: 5px; }
+  @media (hover: hover) { :is(#sidePane, #railPane, #trayPane, #mainPane)::-webkit-scrollbar-thumb:hover { background-color: var(--text3); } }
   .app.positions-view #mainPane { grid-column: 1 / -1; }
   /* Tools and Market scroll as a page, but the header stays where the shell puts it (full width, same height)
      so switching views never moves the tabs; their content is a centered column under it */
