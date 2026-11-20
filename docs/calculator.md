@@ -161,6 +161,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Tapping the price, day or time under the chart types it: their inputs sit over them unseen until focused (the number keyboard, iOS's date and time wheels); a weekend or holiday rolls to the next session and a time holds inside the session, in the zone times show in (docs/time-zone.md).
   Arrow keys on the focused chart nudge it: ← → five minutes, ↑ ↓ five cents.
   It starts at 1R (or the σ on the trade's side) at 3:00 PM New York the next session, today's close when expiry is today, and where you left it when the same contract opens again this session (state.simTargets).
+  The day always reads as its date ('Fri Nov 20' under the chart, 'Nov 20' on the target's tag), never Today or Tomorrow (owner request).
 
   **Configuring the past** (owner request: chips, stopping at 6M): the legend over the chart's top-left corner, like the daily chart's, holds 1M · 3M · 6M chips (21 / 63 / 126 sessions, sim_range on this device, 1M by default) and the moving averages by period.
   A moving average there is the daily chart's own switch (toggleDailyInd, daily_ind_off): hide it here and it's hidden there.
