@@ -176,13 +176,8 @@ function refit(edge = false) {
 const signed = (v, f) => (+v.toFixed(2) >= 0 ? '+' : '−') + f(Math.abs(v));
 const dollars = v => '$' + Math.round(v).toLocaleString('en-US');
 const tone = v => +v.toFixed(2) >= 0 ? 'pos' : 'neg';
-/** 'Today', 'Tomorrow', or 'Mon Nov 23' for a session */
-function dayWords(v, t) {
-  const i = v.sessions.findIndex(s => t <= s.close);
-  if (i === 0 && wallClock(t, 'America/New_York').day === wallClock(state.simState.asOf, 'America/New_York').day) return 'Today';
-  if (i === 1 && v.sessions[0].day === wallClock(state.simState.asOf, 'America/New_York').day) return 'Tomorrow';
-  return inZone(t, { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '');
-}
+/** the session's date, 'Fri Nov 20', never Today or Tomorrow (owner request) */
+const dayWords = t => inZone(t, { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '');
 const clockWords = t => inZone(t, { hour: 'numeric', minute: '2-digit' });
 
 export function drawSim() {
@@ -198,7 +193,7 @@ export function drawSim() {
   const lv = simLevels(o).find(l => Math.abs(l.price - v.S) < 0.005);
   document.getElementById('simPxLabel').textContent = `${o.parsedTicker || 'Stock'} at`;
   document.getElementById('simPxText').textContent = fmt$(v.S) + (lv ? ` · ${lv.label}` : '');
-  document.getElementById('simDayText').textContent = dayWords(v, v.t);
+  document.getElementById('simDayText').textContent = dayWords(v.t);
   document.getElementById('simTimeText').textContent = clockWords(v.t);
   syncInputs();
   const be = breakevenNear(S => gainPerShare(o, contractValue(o, S, v.t)), o.spot);
@@ -371,7 +366,7 @@ function paint(good) {
 
   // the target's time tag, placed first so no day label runs into it
   const tx = XF(minuteOf(v.sessions, v.t)), ty = Y(v.S);
-  const words = dayWords(v, v.t), short = words === 'Tomorrow' ? 'Tmrw' : words === 'Today' ? words : inZone(v.t, { weekday: 'short', day: 'numeric' }).replace(/(\d+) (\w+)/, '$2 $1');
+  const short = inZone(v.t, { month: 'short', day: 'numeric' });
   const tl = `${short} ${clockWords(v.t).replace(' ', '')}`;
   ctx.font = `600 10.5px ${SANS_FONT}`;
   const tw = ctx.measureText(tl).width + 12, tlx = Math.max(xs + 28, Math.min(x1 - tw, tx - tw / 2));

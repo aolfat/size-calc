@@ -106,7 +106,7 @@ test('the sheet opens on 1R at 3:00 PM the next session, and price, day and time
   assert.equal(run('openSheetName'), 'sim');
   assert.equal(run('simView.S'), 43.2, '1R: the stop is 2.10 under, so 2.10 over');
   assert.equal(run('simView.t'), Date.UTC(2026, 9, 15, 19), 'Thursday 3:00 PM New York');
-  assert.equal(elements.get('simDayText').textContent, 'Tomorrow');
+  assert.equal(elements.get('simDayText').textContent, 'Thu Oct 15', 'the date, never Tomorrow');
   assert.equal(elements.get('simTimeText').textContent, '3:00 PM');
   assert.match(elements.get('simPxText').textContent, /\$43\.20 · 1R/);
   run("simTargetPrice({ value: '45', blur() {} })");
