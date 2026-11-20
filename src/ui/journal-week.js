@@ -376,7 +376,7 @@ function reviewTop(p, off) {
       : `<button class="pos-link" data-action="carryPeriodRule" data-arg="${esc(r.id)}"${off}>Keep it next ${word}</button>`;
     const keep = permanent ? '<span class="jw-carried">In your rules</span>' : graduateOff ? ''
       : `<button class="pos-link" data-action="graduatePeriodRule" data-arg="${esc(r.id)}"${off}>Make it permanent</button>`;
-    return `<li class="jw-rule-item${open}"><p class="jw-rule-text">${esc(r.text)}</p>${tally ? `<span class="jw-tally">${esc(tally)}</span>` : ''}
+    return `<li class="jw-rule-item${open}"><p class="jw-rule-text rule-caps">${esc(r.text)}</p>${tally ? `<span class="jw-tally">${esc(tally)}</span>` : ''}
       <div class="jw-kept" role="group" aria-label="${esc(`Kept it? ${r.text}`)}"><span class="jw-kept-q">Kept it?</span>${RULE_KEPT.map(([v, w]) => chip(w, kept === v, `data-action="setRuleKept" data-arg="${esc(r.id)}" data-arg2="${v}"${off}`)).join('')}<span class="jw-rule-acts">${carry}${keep}</span></div></li>`;
   };
   const these = `this ${word}'s rule${rules.length === 1 ? '' : 's'}`;
@@ -403,12 +403,12 @@ function overall(p, off) {
 function ruleNext(p, off) {
   const word = unitWord(p.unit), missing = !off && !stateOf(p.unit, p.key).rule;
   if (state.periodRulesError) return `<div class="jw-rule${missing ? ' jw-cat-open' : ''}"><label class="jw-rule-label" for="jwRuleNext">Rule for next ${word}</label>
-    <input type="text" class="jw-rule-input" id="jwRuleNext" maxlength="${MAX_RULE}" autocomplete="off" placeholder="One rule to hold yourself to" data-input="periodTextInput" data-change="periodTextSave" data-arg="rule" value="${esc(textOf(p.unit, p.key, 'rule'))}"${off} /></div>`;
+    <input type="text" class="jw-rule-input rule-caps" id="jwRuleNext" maxlength="${MAX_RULE}" autocomplete="off" placeholder="One rule to hold yourself to" data-input="periodTextInput" data-change="periodTextSave" data-arg="rule" value="${esc(textOf(p.unit, p.key, 'rule'))}"${off} /></div>`;
   const list = periodRules(rowOf(p.unit, p.key)), d = state.periodNoteDraft;
   const valueOf = r => d && d.unit === p.unit && d.key === p.key && d.field === `rule:${r.id}` ? d.text : r.text;
-  const line = (r, n) => `<li class="nb-item jw-rule-line"><input type="text" class="jw-rule-input" id="jwRule-${esc(r.id)}" maxlength="${MAX_RULE}" autocomplete="off" aria-label="Rule ${n + 1} for next ${word}" data-input="periodRuleInput" data-change="periodRuleSave" data-arg="${esc(r.id)}" value="${esc(valueOf(r))}"${off} /><button class="pos-link" data-action="removePeriodRule" data-arg="${esc(r.id)}" aria-label="${esc(`Remove ${r.text}`)}"${off}>Remove</button></li>`;
+  const line = (r, n) => `<li class="nb-item jw-rule-line"><input type="text" class="jw-rule-input rule-caps" id="jwRule-${esc(r.id)}" maxlength="${MAX_RULE}" autocomplete="off" aria-label="Rule ${n + 1} for next ${word}" data-input="periodRuleInput" data-change="periodRuleSave" data-arg="${esc(r.id)}" value="${esc(valueOf(r))}"${off} /><button class="pos-link" data-action="removePeriodRule" data-arg="${esc(r.id)}" aria-label="${esc(`Remove ${r.text}`)}"${off}>Remove</button></li>`;
   const add = list.length >= MAX_PERIOD_RULES ? `<p class="hint">${MAX_PERIOD_RULES} rules at most.</p>`
-    : `<div class="nb-item jw-rule-line"><input type="text" class="jw-rule-input" id="jwRuleNew" maxlength="${MAX_RULE}" autocomplete="off" placeholder="${list.length ? 'Another rule' : 'One rule to hold yourself to'}" aria-label="New rule for next ${word}" data-input="periodRuleDraftInput" data-enter="addPeriodRule" value="${esc(state.periodRuleDraft)}"${off} /><button class="btn" data-action="addPeriodRule"${off}>+ Add</button></div>`;
+    : `<div class="nb-item jw-rule-line"><input type="text" class="jw-rule-input rule-caps" id="jwRuleNew" maxlength="${MAX_RULE}" autocomplete="off" placeholder="${list.length ? 'Another rule' : 'One rule to hold yourself to'}" aria-label="New rule for next ${word}" data-input="periodRuleDraftInput" data-enter="addPeriodRule" value="${esc(state.periodRuleDraft)}"${off} /><button class="btn" data-action="addPeriodRule"${off}>+ Add</button></div>`;
   const where = p.unit === 'week' ? 'Each day next week asks whether you kept them, and Size can show them under your max loss (Settings).' : `Next ${word}'s review asks whether you kept them.`;
   return `<div class="jw-rule${missing ? ' jw-cat-open' : ''}"><div class="jw-rule-label">Rules for next ${word} <span class="jw-optional">up to ${MAX_PERIOD_RULES}</span></div>
     ${list.length ? `<ol class="jw-rules-next">${list.map(line).join('')}</ol>` : ''}${add}<p class="hint">${where}</p></div>`;
