@@ -492,7 +492,7 @@ const textRow = (label, field, day, placeholder, off, missing = false, rows = 3)
 function listRow(kind, title, empty, off) {
   const items = lists()[`${kind}s`], active = activeItems(items), editing = state.notebookEdit === kind && !off;
   const edit = off ? '' : `<button class="pos-link nb-edit" data-action="editNotebookList" data-arg="${kind}">${editing ? 'Done' : 'Edit'}</button>`;
-  const label = `${title} ${edit}`, caps = kind === 'rule' ? ' rule-caps' : '', capsAttr = caps && ` class="${caps.trim()}"`;
+  const label = `${title} ${edit}`, caps = ' rule-caps', capsAttr = ' class="rule-caps"';
   if (!editing) {
     const body = active.length ? `<ol class="nb-list${caps}">${active.map(i => `<li>${esc(i.name)}</li>`).join('')}</ol>` : `<p class="hint nb-empty">${empty}</p>`;
     return `<div class="jr-row"><div class="jr-label">${label}</div><div>${body}</div></div>`;

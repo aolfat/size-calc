@@ -292,7 +292,7 @@ test('goals and rules: added, reworded, moved and retired in place, each a libra
   assert.match(out(), /Retired: <span class="rule-caps">Max loss = 5%<\/span> <button class="pos-link" data-action="retireNotebookItem"[^>]*>Bring back<\/button>/);
   run("editNotebookList('goal'); notebookItemInput('Learn to abide by your rules'); addNotebookItem('goal'); editNotebookList('goal')");
   await settle();
-  assert.match(out(), /Goals <button[^>]*>Edit<\/button><\/div><div><ol class="nb-list"><li>Learn to abide by your rules<\/li>/);
+  assert.match(out(), /Goals <button[^>]*>Edit<\/button><\/div><div><ol class="nb-list rule-caps"><li>Learn to abide by your rules<\/li>/);
   assert.match(out(), /<ol class="nb-list rule-caps"><li>Follow your stop<\/li><\/ol>/, 'a retired rule leaves the list');
 });
 

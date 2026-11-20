@@ -28,7 +28,7 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
   Saving the key or the environment (saveKey) forgets the failure and tries Tradier at once.
   Answers made from Schwab's carry an `X-Market-Source: schwab` header.
 - **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip on phones (same `order` as the strip, after it in the markup) listing the rules last week's review set (docs/journal.md, Rules for next week).
-  The rules show in capitals, the goals as typed (`.rule-caps`, docs/journal.md, Goals and rules).
+  The rules and goals show in capitals (`.rule-caps`, docs/journal.md, Goals and rules).
   On desktop it heads the main pane, over the ticker card, its groups side by side in one short band, so the rail keeps only the ticket and fits a laptop screen (owner request).
   On a desktop window shorter than 920px the rail and main pane tighten further (styles/layout.css): the stops hint, the shares edit hint and How adjustments work step aside (the chart's hint, the input's title and the label's title say the same), so Trade at Schwab and the whole intraday chart show without scrolling on a 14-inch MacBook Pro.
   It also lists your standing rules and your goals, the notebook's lists (docs/journal.md, Goals and rules), in your order and without the retired ones (owner request: all the rules and the goals, not only the week's).
