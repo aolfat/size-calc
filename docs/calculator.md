@@ -30,9 +30,10 @@ How the calculator works: Tradier, stops and stop strategies, ATR, shares and al
 - **Rules and goals** (ui/week-rules.js, #weekRulesCard): a small card right under the risk strip on phones (same `order` as the strip, after it in the markup) listing the rules last week's review set (docs/journal.md, Rules for next week).
   The rules and goals show in capitals (`.rule-caps`, docs/journal.md, Goals and rules).
   On desktop it heads the main pane, over the ticker card, as a band (owner request: the rules stand out, but not in the rail, which keeps only the ticket and fits a laptop screen).
-  The band is warm-tinted, three numbered rules a row (two in the 1100–1439 tier) with an amber number on each, and your goals in a blue column on its right.
-  A rule longer than 60 characters spans two cells, so it reads whole instead of as a tall narrow column (class long).
-  Past nine rules (RULES_MAX) the card shows the first eight (RULES_SHOWN, this week's first) and a button, '+N more rules · show all' (#rulesMoreBtn, toggleRulesMore, state.rulesMoreOpen), so the band never grows past three rows; it shows on phones too.
+  The band is two columns of chips (owner request: the chips' look with a ruled list's order), each rule a rounded tile with a solid amber number, written out whole however long.
+  The rules fill down a column, then across (1 to 3 on the left, 4 to 6 on the right): renderWeekRulesCard sets each list's grid rows.
+  Your goals are blue chips in a column on its right, behind a divider.
+  Past six rules (RULES_MAX) the card shows the first six (RULES_SHOWN, this week's first) and a button, '+N more rules · show all' (#rulesMoreBtn, toggleRulesMore, state.rulesMoreOpen), so the band never grows past three rows; it shows on phones too.
   On a desktop window shorter than 920px the rail and main pane tighten further (styles/layout.css): the stops hint, the shares edit hint and How adjustments work step aside (the chart's hint, the input's title and the label's title say the same), so Trade at Schwab and the whole intraday chart show without scrolling on a 14-inch MacBook Pro.
   It also lists your standing rules and your goals, the notebook's lists (docs/journal.md, Goals and rules), in your order and without the retired ones (owner request: all the rules and the goals, not only the week's).
   Three groups, each titled and shown only when it has items: This week's rules (#weekRulesGroup), Rules (#myRulesGroup), Goals (#myGoalsGroup); a standing rule with the same words as one of this week's shows once, under the week.
