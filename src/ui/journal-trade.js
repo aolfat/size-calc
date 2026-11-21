@@ -273,6 +273,38 @@ function statsHtml(t, ex) {
   return `<dl class="jt-stats">${cells.join('')}</dl>`;
 }
 
+/**
+ * The trades an assignment or exercise ties to this one (core withLinks): each opens its page, with its P&L, then all of
+ * them together and, on shares an option delivered, their entry net of the option. Left out while the review deck hides
+ * the result.
+ */
+function linkedHtml(t, list) {
+  if (!t.linked?.length || deckHidesPnl(t)) return '';
+  const chain = t.linked.map(k => list.find(x => x.key === k)).filter(Boolean);
+  if (!chain.length) return '';
+  const pnlCls = v => (v > 0 ? 'journal-buy' : v < 0 ? 'journal-sell' : '');
+  const closedPnl = x => (x.status === 'history' ? null : x.pnl);
+  const item = x => {
+    const v = closedPnl(x), qty = x.assetType === 'OPTION' || x.assetType === 'SPREAD' ? `${x.entryQty} ${esc(x.label)}` : `${x.entryQty} ${esc(x.label)} shares`;
+    return `<li><button class="pos-link" data-action="openLinkedTrade" data-arg="${esc(x.key)}">${qty}</button>`
+      + ` <span class="pos-sub">${esc(sideWord(x))}${x.via ? ` · ${esc(x.via)}` : ''}${x.status === 'open' ? ' · open' : ''}</span>`
+      + (v === null ? '' : ` <span class="${pnlCls(v)}">${signed$(v)}</span>`) + '</li>';
+  };
+  const all = [t, ...chain].filter(x => closedPnl(x) !== null);
+  const together = Math.round(all.reduce((n, x) => n + x.pnl, 0) * 100) / 100;
+  const open = [t, ...chain].some(x => x.status === 'open');
+  const net = t.netEntry !== null && t.netEntry !== undefined
+    ? `<p class="hint jt-linked-net" title="The shares' ${t.direction === 'long' ? 'cost' : 'price'} at the strike, less what the option made per share">Entry net of the option: <b>${px(t.netEntry, t.assetType)}</b> a share (${px(t.avgEntry, t.assetType)} at the strike)</p>` : '';
+  return `<div class="jt-linked"><span class="jt-linked-title">Linked by ${t.via === 'exercised' || chain.every(x => x.via === 'exercised') ? 'exercise' : 'assignment'}</span>
+    <ul>${chain.map(item).join('')}</ul>
+    <p class="jt-linked-total">Together <b class="${pnlCls(together)}">${signed$(together)}</b>${open ? ' <span class="pos-sub">so far</span>' : ''}</p>${net}</div>`;
+}
+
+/** a linked trade's page, keeping the arrows' list when it's in it */
+export function openLinkedTrade(key) {
+  openJournalTrade(key, state.journalTrade?.nav);
+}
+
 /** the fills that closed it: a long's sells, a short's buys */
 const exitFills = (t, fills) => exitFillsOf(t, fills);
 
@@ -513,6 +545,7 @@ export function renderJournalTrade() {
   const active = document.activeElement, focused = ['setupSearch', 'tacticSearch'].includes(active?.id) || active?.id?.startsWith('modelTrade') ? active.id : '';
   const caret = focused && Number.isInteger(active.selectionStart) ? [active.selectionStart, active.selectionEnd] : null;
   const stats = `${statsHtml(t, ex)}
+    ${linkedHtml(t, list)}
     ${deckPnlNote()}
     ${t.legs ? '<p class="hint">Excursions for spreads come later: the legs\' bars don\'t add up into a spread\'s high and low.</p>'
       : ex ? `<p class="hint">From ${ex.bars} five-minute bars while it was open, against the ${px(t.avgEntry, t.assetType)} average entry on all ${t.entryQty}.</p>` : ''}

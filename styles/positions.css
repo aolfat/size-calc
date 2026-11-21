@@ -723,6 +723,12 @@ span.journal-pick { cursor: default; }
 .jt-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-family: var(--num); }
 .jt-stats dd .pos-sub { font-size: 11.5px; font-weight: 400; }
 .jt-sub { margin-top: 14px; }
+/* trades an assignment or exercise ties to this one: each a link with its P&L, then together */
+.jt-linked { margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.jt-linked-title { font-size: 12px; color: var(--text2); }
+.jt-linked ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; }
+.jt-linked-total { margin: 6px 0 0; }
+.jt-linked .jt-linked-net { margin: 2px 0 0; }
 .jt-after-title { margin-top: 6px; } /* After the exit, under the stats; not a .jt-sub, which the desktop's tabs hide */
 .jt-table { min-width: 0; width: 100%; }
 /* trade features: the Features tab (what each reads, how far it's stamped) and the trade page's At entry table */

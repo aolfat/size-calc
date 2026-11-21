@@ -109,3 +109,66 @@ test('the Journal tags assigned trades and words the fills', async () => {
   assert.match(out(), /Buy to close \(assigned\)/);
   assert.match(out(), /Buy \(assigned\)/);
 });
+
+test('an assignment links the option and the shares it delivered, and nets the premium off the shares\' entry', async () => {
+  const { run } = await app();
+  const trades = json(run, `journalTrades(fillsFrom(${JSON.stringify(SOFI)}), ${JSON.stringify(SOFI)}, {}, { now: ${NOW} })`);
+  const put = trades.find(t => t.symbol === PUT), shares = trades.find(t => t.symbol === 'SOFI');
+  assert.deepEqual(put.linked, [shares.key]);
+  assert.deepEqual(shares.linked, [put.key]);
+  assert.equal(put.netEntry, null, 'an option has no shares entry to net');
+  assert.ok(Math.abs(shares.netEntry - (20 - 2200 / 1500)) < 1e-6, 'the strike less what the put made, per share');
+  const unlinked = json(run, `journalTrades(fillsFrom(${JSON.stringify([SOFI[0], SOFI[3]])}), ${JSON.stringify([SOFI[0], SOFI[3]])}, {}, { now: ${NOW} })`);
+  assert.ok(unlinked.every(t => t.linked === undefined), 'no assignment, no links');
+});
+
+test('a wheel is one chain: the put assigned, the shares, the covered call that took them away', async () => {
+  const { run } = await app();
+  const P = 'AMD   260320P00150000', C = 'AMD   260417C00160000';
+  const records = [
+    order(7, 'SELL_TO_OPEN', P, 'OPTION', 1, 4, '2026-03-02T15:00:00+0000'),
+    delivery(41, 'AMD', 100, 150, 'OPENING', '2026-03-20T04:00:00+0000'),
+    order(8, 'SELL_TO_OPEN', C, 'OPTION', 1, 3, '2026-03-23T15:00:00+0000'),
+    delivery(42, 'AMD', -100, 160, 'CLOSING', '2026-04-17T04:00:00+0000'),
+  ];
+  const trades = json(run, `journalTrades(fillsFrom(${JSON.stringify(records)}), ${JSON.stringify(records)}, {}, { now: ${NOW} })`);
+  const put = trades.find(t => t.symbol === P), call = trades.find(t => t.symbol === C), shares = trades.find(t => t.symbol === 'AMD');
+  assert.equal(shares.pnl, 1000);
+  assert.deepEqual(put.linked, [shares.key, call.key], 'oldest first');
+  assert.deepEqual(shares.linked, [put.key, call.key]);
+  assert.deepEqual(call.linked, [put.key, shares.key]);
+  assert.equal(shares.netEntry, 146, 'only the put opened the shares: $150 less its $4');
+});
+
+test('a covered call on bought shares links them, with no net entry: the call didn\'t open them', async () => {
+  const { run } = await app();
+  const CALL = 'MSFT  260320C00400000';
+  const records = [
+    order(5, 'BUY', 'MSFT', 'EQUITY', 100, 392, '2026-03-02T15:00:00+0000'),
+    order(6, 'SELL_TO_OPEN', CALL, 'OPTION', 1, 3, '2026-03-02T15:05:00+0000'),
+    delivery(31, 'MSFT', -100, 400, 'CLOSING', '2026-03-20T04:00:00+0000'),
+  ];
+  const trades = json(run, `journalTrades(fillsFrom(${JSON.stringify(records)}), ${JSON.stringify(records)}, {}, { now: ${NOW} })`);
+  const shares = trades.find(t => t.symbol === 'MSFT'), call = trades.find(t => t.symbol === CALL);
+  assert.deepEqual(shares.linked, [call.key]);
+  assert.equal(shares.netEntry, null);
+});
+
+test('the trade page shows the linked trades, together, and opens one', async () => {
+  const { run, elements } = await app({ supabase: fakeRecords(SOFI), session: SESSION });
+  run("setView('journal')");
+  await run('loadJournal()');
+  await settle();
+  const key = sym => run(`journalTradeList().find(t => t.symbol === ${JSON.stringify(sym)}).key`);
+  run(`openJournalTrade(${JSON.stringify(key(PUT))})`);
+  await settle();
+  const body = () => elements.get('jtBody').innerHTML;
+  assert.match(body(), /Linked by assignment/);
+  assert.match(body(), /data-action="openLinkedTrade" data-arg="[^"]*SOFI[^"]*">1500 SOFI shares<\/button>[^]*?\+\$1,500/);
+  assert.match(body(), /Together <b class="journal-buy">\+\$3,700\.00<\/b>/);
+  assert.doesNotMatch(body(), /Entry net of the option/, 'not on the option');
+  run(`actions.openLinkedTrade({ dataset: { arg: ${JSON.stringify(key('SOFI'))} } })`);
+  await settle();
+  assert.equal(run('state.journalTrade.key'), key('SOFI'));
+  assert.match(body(), /Entry net of the option: <b>\$18\.53<\/b> a share \(\$20\.00 at the strike\)/);
+});
